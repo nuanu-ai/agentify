@@ -11,8 +11,9 @@ import { defineConfig } from "vite";
  * click then fetches the route module first and only then discovers the chunk:
  * a second round trip on the way to the page. As one chunk, which the frame is
  * drawn from, every page has loaded it before any click. The operator's
- * workspace keeps its components out of it: its pages are sent with no script,
- * and a merchant's page would only carry them.
+ * workspace keeps its components out of it, its frame in the shared package
+ * among them: its pages are sent with no script, and a merchant's page would
+ * only carry them.
  */
 export default defineConfig({
   base: "/dashboard/",
@@ -29,7 +30,7 @@ export default defineConfig({
       external: ["brotli-wasm"],
       output: {
         manualChunks(id) {
-          return /\/packages\/ui\/|\/app\/components\/(?!admin)/.test(id)
+          return /\/packages\/ui\/(?!src\/workspace)|\/app\/components\/(?!admin)/.test(id)
             ? "components"
             : undefined;
         },

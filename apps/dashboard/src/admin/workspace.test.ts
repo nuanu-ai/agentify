@@ -312,3 +312,78 @@ describe("a press made with a sign-in older than fifteen minutes", () => {
     expect(await stateOf(workspace)).toBe(before);
   });
 });
+
+/**
+ * What each link on a page into the workspace says, in the order the page
+ * draws them: any link to an address at or under an `admin` segment, however
+ * it is written.
+ */
+const doorsIn = (html: string): string[] =>
+  [...html.matchAll(/<a\b[^>]*\bhref="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g)]
+    .filter(([, href]) => /(?:^|\/)admin(?:[/?#]|$)/.test(href ?? ""))
+    .map(([, , words]) => readable(words ?? ""));
+
+/** Whether a page shows or links any way into the workspace. */
+const anyDoorIn = (html: string): boolean =>
+  doorsIn(html).length > 0 || /\bAdmin\b/.test(readable(html));
+
+describe("the door into the workspace from the merchant's dashboard", () => {
+  it("stands in an operator's header, saying Admin, and in the menu, and nowhere for an account the flag does not confirm", async () => {
+    const workspace = await serve();
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const merchant = await workspace.signedIn(MERCHANT);
+
+    for (const path of ["/cards", "/orders", "/settings"]) {
+      expect(doorsIn((await operator.get(path)).html), path).toStrictEqual([
+        "Admin",
+        "Open the admin →",
+      ]);
+      expect(anyDoorIn((await merchant.get(path)).html), path).toBe(false);
+    }
+  });
+
+  it("is not named in the data a merchant's page is drawn from, while an operator's carries its address", async () => {
+    // A merchant's browser is not told the workspace exists, not even that
+    // their account lacks the flag for it.
+    const workspace = await serve();
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const merchant = await workspace.signedIn(MERCHANT);
+
+    const merchants = await merchant.get("/cards.data");
+    expect(merchants.status).toBe(200);
+    expect(merchants.html).not.toMatch(/admin|"operator"/i);
+    expect((await operator.get("/cards.data")).html).toContain("/dashboard/admin");
+  });
+
+  it("is gone from the next request once the flag is taken away", async () => {
+    const { signedIn, rows } = await serve();
+    const operator = await signedIn(OPERATOR, { operator: true });
+    expect(doorsIn((await operator.get("/cards")).html)).not.toStrictEqual([]);
+
+    flagRow(rows, OPERATOR, false);
+
+    expect(anyDoorIn((await operator.get("/cards")).html)).toBe(false);
+  });
+
+  it("is not drawn on a page drawn where the flag could not be read", async () => {
+    // The gate's own read goes on working; only the workspace's read fails, so
+    // its page is drawn with nothing any loader read.
+    const { signedIn } = await serve({
+      identity: (real) =>
+        ({
+          ...real,
+          whoIs: async (cookie: string | undefined, reading?: { renew?: boolean }) => {
+            if (reading?.renew === false) throw new Error("the identity is gone");
+            return await real.whoIs(cookie, reading);
+          },
+        }) as Identity,
+    });
+    const operator = await signedIn(OPERATOR, { operator: true });
+
+    const refused = await operator.get("/admin/merchants");
+
+    expect(refused.status).toBe(404);
+    expect(readable(refused.html)).toContain(OPERATOR);
+    expect(anyDoorIn(refused.html)).toBe(false);
+  });
+});

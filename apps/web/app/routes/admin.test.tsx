@@ -10,19 +10,17 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  OperatorDashboard,
-  OperatorDashboardStatus,
-} from "../../components/operator-dashboard.server";
+import { drawOperatorPage, OperatorDashboard } from "../../components/operator-dashboard.server";
 import type { OperatorDashboard as Numbers } from "../../lib/server/operator-dashboard";
 import { SCAN_LIMITS } from "../../lib/server/scan-limits";
 import { ask } from "../../testing/scanner";
 
 const SESSION = "agentify.session_token";
 const HEADING = "Landing views and scans";
-const TITLE = "Scanner for the operator";
+const TITLE = "Agentify operator";
 const BANNER = 'aria-label="Privacy choices"';
 let sellerDashboard: Server;
 let sellerDashboardAt = "";
@@ -412,10 +410,54 @@ describe("the operator's dashboard, drawn", () => {
   it("says no self-check has completed rather than drawing an empty one", () => {
     expect(drawn).toContain("No Agentify self-scan has completed yet.");
   });
+});
 
-  it("leads the operator from its header to the workspace", () => {
-    const header = renderToStaticMarkup(<OperatorDashboardStatus data={NUMBERS} />);
+describe("the operator's page, in the workspace's frame", () => {
+  const page = drawOperatorPage({
+    data: NUMBERS,
+    who: "operator@example.com",
+    channel: { mode: "test", name: "Test channel", line: "test.agentify.ad" },
+  });
+  const sidebar = part(page, /<aside\b/, "aside");
+  const linkTo = (words: string) =>
+    sidebar.match(new RegExp(`<a[^>]*href="([^"]*)"[^>]*>${words}</a>`))?.[1] ?? null;
 
-    expect(header).toMatch(/<a[^>]*href="\/dashboard\/admin"/);
+  it("leads from its sidebar to every other section, the seller dashboard's pages of the workspace", () => {
+    expect(linkTo("Overview")).toBe("/dashboard/admin");
+    expect(linkTo("Merchants")).toBe("/dashboard/admin/merchants");
+    expect(linkTo("Orders")).toBe("/dashboard/admin/orders");
+    expect(linkTo("Money")).toBe("/dashboard/admin/money");
+    expect(linkTo("Health")).toBe("/dashboard/admin/health");
+    expect(linkTo("Accounts")).toBe("/dashboard/admin/accounts");
+    expect(linkTo("Journal")).toBe("/dashboard/admin/journal");
+  });
+
+  it("marks the scanner as the section on screen, and is no link to itself", () => {
+    expect(sidebar).toContain('<span aria-current="page">Scanner</span>');
+    expect(linkTo("Scanner")).toBeNull();
+  });
+
+  it("draws the channel's band on the test channel, as the workspace's pages do, and only the marker on the live one", () => {
+    expect(text(page)).toContain(SURFACE_WORDS.test ?? "a test channel's words");
+    expect(page).toContain(`${SURFACE_MARKER_ATTRIBUTE}="test"`);
+
+    const live = drawOperatorPage({
+      data: NUMBERS,
+      who: "operator@example.com",
+      channel: { mode: "live", name: "Live channel", line: "agentify.ad" },
+    });
+    expect(live).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
+    expect(live).not.toContain('class="surface-words"');
+  });
+
+  it("draws no section's count, which it cannot read, rather than a zero", () => {
+    expect(page).not.toMatch(/class="count/);
+  });
+
+  it("finds a record through the workspace's lookup, and names the channel and the operator with the way out", () => {
+    expect(page).toMatch(/<form[^>]*action="\/dashboard\/admin\/find"/);
+    expect(text(sidebar)).toContain("Test channel test.agentify.ad");
+    expect(page).toContain("operator@example.com");
+    expect(page).toMatch(/<form[^>]*action="\/dashboard\/sign-out"/);
   });
 });

@@ -4,7 +4,8 @@
  * asks for a fresh sign-in, and an address that is no page.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
 import type { StepUpLink, StepUpView } from "../../src/admin/step-up.js";
 import { momentView } from "../../src/views.js";
@@ -57,6 +58,8 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
       "The workspace's layout reads the flag before any page runs and answers as for a page that is not there.",
     path: "/admin/merchants",
     mode: "live",
+    // Signed in as a merchant, whose header has no door into the workspace.
+    loaded: { "routes/gate": { who: "owner@example.com" } },
     failed: {
       // Drawn by the gate's boundary, the nearest above the layout that threw.
       "routes/gate": new ErrorResponseImpl(404, "", {

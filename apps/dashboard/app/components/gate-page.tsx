@@ -1,8 +1,7 @@
-import { SignedIn, SiteFooter, SiteHeader } from "@agentify/ui";
+import { SignedIn, SiteFooter, SiteHeader, SurfaceNote } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
-import type { Chrome } from "../answer.js";
-import { SurfaceNote } from "./surface-note.js";
+import type { Chrome, Gated } from "../answer.js";
 
 /**
  * A page outside the dashboard's frame: the ones in front of the gate, and
@@ -15,7 +14,7 @@ export function GatePage({
   title,
   children,
 }: Readonly<{ chrome: Chrome; title: string; children: ReactNode }>) {
-  const gate = useRouteLoaderData<{ who: string }>("routes/gate");
+  const gate = useRouteLoaderData<Gated>("routes/gate");
   return (
     <div className="page">
       <title>{`${title} — Agentify`}</title>
@@ -24,7 +23,12 @@ export function GatePage({
         link={Link}
         visitor={
           gate === undefined ? null : (
-            <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
+            <SignedIn
+              who={gate.who}
+              account={`${chrome.base}/settings`}
+              signOut={`${chrome.base}/sign-out`}
+              admin={gate.admin}
+            />
           )
         }
       />

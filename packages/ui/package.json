@@ -9,7 +9,10 @@
     "./assets": "./src/assets.ts",
     "./budget": "./src/budget.ts",
     "./chromium": "./src/chromium.ts",
-    "./docs": "./src/docs.ts"
+    "./docs": "./src/docs.ts",
+    "./surface": "./src/surface.ts",
+    "./workspace": "./src/workspace.tsx",
+    "./workspace-view": "./src/workspace-view.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

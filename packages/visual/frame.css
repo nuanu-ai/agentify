@@ -1,0 +1,667 @@
+/*
+ * The working frame both applications draw a signed-in person's pages in, on
+ * top of `tokens.css`, which is loaded ahead of this file: the working header
+ * over a sidebar of sections beside the workspace, with a bar at the
+ * workspace's top for the page's title, and the parts a page is drawn with in
+ * it, the figures' tiles and the lists of rows. Every colour, face, radius and
+ * space is a token; nothing here declares one.
+ */
+
+/* --- the frame ---------------------------------------------------------- */
+
+/*
+ * One frame for every screen, the shared `.container`, at the width the scanner
+ * lays its report out in; nothing here declares a page width, and a block that
+ * needs an inset uses the frame it is in. The bar and the banner span the window,
+ * so each holds a `.container` of its own to line its words up with the content.
+ */
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The sections: the one on screen is marked, and the rest lead to theirs. */
+.tabs {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  align-self: stretch;
+}
+
+.tabs > a,
+.tabs > span {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: var(--muted);
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.tabs > a:hover {
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.tabs > [aria-current="page"] {
+  color: var(--fg);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* A section's count, in a pill beside its name or a group's heading. */
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--fg-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  vertical-align: 2px;
+}
+
+.count.warn {
+  background: var(--fail);
+  color: var(--on-accent);
+}
+
+/*
+ * The working area under the working header: the sections in a sidebar beside
+ * the workspace, and a bar at the top of the workspace with the screen's
+ * title. On a laptop the sections and the bar
+ * stay in view under the header, 68px tall there with its hairline under
+ * it; they stop at the hairline, never over it or under it. Only the
+ * sidebar's own words stay in view, at their own height, so on a window
+ * taller than those words and the foot of the page together the foot pushes
+ * none of them under the header; on a shorter one it moves them up by what
+ * is missing.
+ */
+.app-shell {
+  --under-header: calc(68px + var(--hairline));
+  min-height: calc(100vh - 68px);
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+}
+
+.app-sidebar {
+  border-right: var(--hairline) solid var(--line);
+  background: var(--surface);
+}
+
+.app-sidebar-inner {
+  position: sticky;
+  top: var(--under-header);
+  z-index: 10;
+}
+
+.app-sidebar .tabs {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 24px 14px;
+  overflow: visible;
+}
+
+.app-sidebar .tabs > a,
+.app-sidebar .tabs > span {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  gap: 11px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+  font-weight: 550;
+  box-shadow: none;
+}
+
+.app-sidebar .tabs > [aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.app-workspace {
+  min-width: 0;
+}
+.app-workspace .top {
+  position: sticky;
+  top: var(--under-header);
+  z-index: 10;
+  border-bottom: var(--hairline) solid var(--line);
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.app-workspace .top-inner {
+  min-height: 68px;
+  padding: 0 clamp(22px, 4vw, 52px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 20px;
+}
+
+.app-content {
+  width: min(1180px, calc(100% - clamp(44px, 8vw, 104px)));
+  margin: 0 auto;
+  padding-bottom: 56px;
+}
+
+.app-workspace .top-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  letter-spacing: -0.035em;
+}
+
+/* On a phone and a tablet the sidebar gives way to the menu at the end of the
+   header's row, and only that row stays in view; the title bar scrolls with
+   the page. The frame turns at the width where the working header takes up
+   its menu and leaves its doors to it, so the page never shows the sidebar and
+   the menu together; the frame's other narrow rules below turn at the same
+   width. */
+@media (max-width: 910px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .app-sidebar {
+    display: none;
+  }
+  .app-workspace .top {
+    position: static;
+  }
+  .app-content {
+    width: calc(100% - 36px);
+  }
+}
+
+@media (max-width: 560px) {
+  .app-workspace .top-inner {
+    min-height: 56px;
+    padding-inline: 18px;
+  }
+}
+
+/* The heading in the top bar starts on the same line as the content under it. */
+.app-workspace .top-inner {
+  width: min(1180px, calc(100% - clamp(44px, 8vw, 104px)));
+  min-height: 84px;
+  margin: 0 auto;
+  padding-inline: 0;
+}
+/* Where the title, the light and the address wrap onto two rows, the title
+   keeps the room above it that one centred row gives it. */
+@media (max-width: 910px) {
+  .app-workspace .top-inner {
+    width: calc(100% - 36px);
+    min-height: 64px;
+    padding-block: 14px;
+  }
+}
+
+/* The working header over the frame starts its lockup on the sidebar's line
+   of words and ends its doors on the content's right edge, as the foot under
+   the frame does, rather than centring them in the window. */
+.app-frame .site-header-inner {
+  --workspace: calc(100% - 252px);
+  --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
+  width: auto;
+  margin-inline: 0;
+  padding-inline: 26px calc((var(--workspace) - var(--content)) / 2);
+}
+@media (max-width: 910px) {
+  .app-frame .site-header-inner {
+    padding-inline: 18px;
+  }
+}
+
+/* The foot under the frame lines its words up with the content beside the
+   sidebar, as the bar over the page does, rather than with the window. */
+.app-shell + .foot .foot-inner {
+  --workspace: calc(100% - 252px);
+  --content: min(1180px, calc(var(--workspace) - clamp(44px, 8vw, 104px)));
+  width: var(--content);
+  margin-inline: calc(252px + (var(--workspace) - var(--content)) / 2) 0;
+}
+@media (max-width: 910px) {
+  .app-shell + .foot .foot-inner {
+    width: calc(100% - 36px);
+    margin-inline: auto;
+  }
+}
+
+/* The menu at the end of the header's row holds, where there is no room for
+   the sidebar, the sections as the sidebar lists them and the doors out, to
+   the documentation and for an operator to the workspace, over who is signed
+   in. */
+.site-menu .app-menu-sections [aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.site-menu .app-menu-door {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 6px;
+  padding: 0 12px;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+/* --- figures ------------------------------------------------------------- */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 24px 0 0;
+}
+
+.tile {
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: 20px 24px;
+}
+
+.tile .label {
+  color: var(--muted);
+  font: 500 0.75rem / 1.3 var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tile .figure {
+  font-family: var(--font-mono);
+  font-size: 1.625rem;
+  margin-top: 10px;
+  letter-spacing: -0.02em;
+}
+
+.tile .figure.ok {
+  color: var(--pass);
+}
+
+.tile .aside {
+  color: var(--muted);
+  font-size: 0.875rem;
+  margin-top: 4px;
+}
+
+/* --- lists -------------------------------------------------------------- */
+
+/*
+ * One bordered surface of rows separated by hairlines. Where the list's own box
+ * is wide a row is a grid on the columns the list names in `--columns`, under a
+ * light row of heads; where it is narrow a row's cells stack in lines by the
+ * place each names, and the head gives way. The box decides, a container
+ * query, so the rule holds wherever a list is put.
+ */
+.list-box {
+  margin: 20px 0 14px;
+  container-type: inline-size;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.list-empty {
+  padding: 32px 20px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.list-empty a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.list > li + li {
+  border-top: var(--hairline) solid var(--line-soft);
+}
+
+.list-head,
+.list-row {
+  display: grid;
+  grid-template-columns: var(--columns);
+  gap: 16px;
+  align-items: center;
+  padding-inline: 20px;
+}
+
+.list-head {
+  padding-block: 12px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.list > .list-head + li {
+  border-top: 0;
+}
+
+.list-head .end,
+.cell-amount {
+  text-align: right;
+}
+
+.list-row {
+  padding-block: 14px;
+  font-size: 0.875rem;
+}
+
+.list-row.off {
+  background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
+}
+
+.list-row.needs-you {
+  background: color-mix(in oklab, var(--fail) 7%, var(--surface));
+}
+
+.list-day {
+  padding: 10px 20px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.list-day :is(h2, h3) {
+  margin: 0;
+  font: inherit;
+  letter-spacing: normal;
+}
+
+.list > li.list-day + li {
+  border-top: 0;
+}
+
+.list > li + li.list-day {
+  border-top-color: var(--line);
+}
+
+.cell {
+  min-width: 0;
+}
+
+.cell-main {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+}
+
+.cell-title {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cell-aside {
+  color: var(--muted);
+}
+
+.cell-amount {
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.list-row.off .cell-amount {
+  color: var(--muted);
+}
+
+.cell-fact {
+  color: var(--muted);
+}
+
+.cell-action {
+  display: flex;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.cell-note {
+  color: var(--muted);
+  text-align: right;
+}
+
+.cell-more {
+  display: none;
+  /* Reached by its address, a row's details stand clear of the working
+     header, which stays 68px tall over the page on a laptop. */
+  scroll-margin-top: 80px;
+}
+
+.cell-more.wide {
+  display: block;
+  grid-column: 1 / -1;
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.cell-more > summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.more-body {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 0.875rem;
+}
+
+/* A row's facts, a label beside each value; a box narrower than a label and an
+   identifier puts the label over its value. Panels that list facts the same
+   way are containers too. */
+.more-facts {
+  display: grid;
+  gap: var(--space-tight);
+  margin: 0;
+  font-size: var(--text-small);
+}
+.more-facts > div {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-block);
+}
+.more-facts dt {
+  color: var(--muted);
+}
+.more-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+/* Somebody's own words, kept on the lines they wrote them on. */
+.more-facts .words {
+  white-space: pre-wrap;
+}
+.more-facts .ident {
+  max-width: 100%;
+}
+.more-facts .ident > span:first-child {
+  min-width: 0;
+}
+@container (max-width: 560px) {
+  .more-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-snug);
+  }
+}
+
+/* A cell's own label where no head is over it: read out beside a wide row's
+   column, drawn on a narrow row's line. */
+.said-on-narrow {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@container (max-width: 860px) {
+  .list-head {
+    display: none;
+  }
+
+  /*
+   * The lines of a narrow row, in this order whatever the order of the
+   * columns: the title and the amount; the state and one fact; the identifier
+   * and the action; a note; the opened row. A row of boxes that wrap, so a
+   * fact too long to sit beside the state moves whole to a line of its own
+   * rather than wrapping beside it, and a line no cell names takes no room.
+   * The two breaks between the first three lines are the row's own.
+   */
+  .list-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0 12px;
+    padding: 14px 16px;
+  }
+
+  .list-row::before,
+  .list-row::after {
+    content: "";
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .list-row::before {
+    order: 3;
+  }
+
+  .list-row::after {
+    order: 6;
+  }
+
+  .list-row > .cell-main {
+    display: contents;
+  }
+
+  .cell-title {
+    order: 1;
+    flex: 1 1 0;
+    align-self: flex-start;
+  }
+
+  .cell-amount {
+    order: 2;
+    flex: none;
+    align-self: flex-start;
+  }
+
+  .cell-aside {
+    display: none;
+  }
+
+  .said-on-narrow {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .cell-state {
+    order: 4;
+    flex: none;
+    margin-top: 6px;
+  }
+
+  .cell-fact {
+    order: 5;
+    flex: 0 1 auto;
+    margin-top: 6px;
+  }
+
+  .cell-ident {
+    order: 7;
+    flex: 1 1 auto;
+    margin-top: 6px;
+  }
+
+  .cell-action {
+    order: 8;
+    flex: none;
+    margin-top: 6px;
+    margin-left: auto;
+  }
+
+  .cell-note {
+    order: 9;
+    flex-basis: 100%;
+    margin-top: 6px;
+    text-align: left;
+  }
+
+  .cell-more {
+    order: 10;
+    flex-basis: 100%;
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 0.8125rem;
+  }
+}
+
+/* Under a list cut short: which rows of how many, then the ways to the rest. */
+.cut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.cut a {
+  font-weight: 500;
+}
+
+/* A heading over a group of rows, with its count in a pill. */
+.group {
+  margin-top: 28px;
+}
+
+.group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.group-head h2 {
+  margin: 0;
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+.group-aside {
+  color: var(--muted);
+  font-size: 0.875rem;
+}

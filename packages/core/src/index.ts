@@ -27,8 +27,6 @@ export {
   PUBLIC_X402_FACILITATOR_URL,
   SANDBOX_FACILITATOR,
   SITES,
-  SURFACE_MARKER_ATTRIBUTE,
-  SURFACE_WORDS,
   surfaceModeOf,
   TESTNET_CHAINS,
 } from "./deployment/environment.js";

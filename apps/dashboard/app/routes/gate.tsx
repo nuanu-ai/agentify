@@ -15,8 +15,8 @@ import {
   type ShouldRevalidateFunction,
 } from "react-router";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
-import { chromeOf, type Trouble } from "../answer.js";
-import { services, signedIn } from "../services.js";
+import { chromeOf, type Gated, type Trouble } from "../answer.js";
+import { holdsOperatorFlag, services, signedIn } from "../services.js";
 
 const cookies = (lines: readonly string[]): Headers => {
   const headers = new Headers();
@@ -73,6 +73,7 @@ export const middleware: MiddlewareFunction<Response>[] = [
       );
     }
     context.set(signedIn, answer.person);
+    context.set(holdsOperatorFlag, answer.operator);
     const response = await next();
     // Once a day the read moves the session's end, and the browser must be
     // told or its cookie expires thirty days after sign-in however often its
@@ -93,8 +94,14 @@ export const middleware: MiddlewareFunction<Response>[] = [
  */
 export { ErrorBoundary } from "../root.js";
 
-/** The address every page behind the gate is drawn for, and names. */
-export const loader = ({ context }: LoaderFunctionArgs) => ({ who: context.get(signedIn).email });
+/**
+ * What every page behind the gate is drawn for: the address it names, and for
+ * an operator alone the door into the workspace.
+ */
+export const loader = ({ context }: LoaderFunctionArgs): Gated => ({
+  who: context.get(signedIn).email,
+  ...(context.get(holdsOperatorFlag) ? { admin: `${context.get(services).base}/admin` } : {}),
+});
 
 /**
  * Not asked again after a press: the press was refused unless drawn for the

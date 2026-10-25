@@ -13,7 +13,7 @@
  */
 
 import type { ComponentType, ReactNode } from "react";
-import { Form, Link } from "react-router";
+import { Link } from "react-router";
 import { BrandMark } from "./mark.js";
 import { HeaderMenu } from "./menu.js";
 
@@ -277,28 +277,33 @@ export function SectionNav({
  * Who is signed in, for a header's doors. The whole address is in the
  * title, since the bar cuts it short where it is narrow and leaves it out on
  * a phone. The way out is a form, because signing out changes something and a
- * link can be followed by anything that reads the page; it loads the next page
- * whole, so nothing drawn for the address stays in the tab's memory.
+ * link can be followed by anything that reads the page; the browser posts it
+ * itself and loads the next page whole, so nothing drawn for the address stays
+ * in the tab's memory.
  */
 export function SignedIn({
   who,
   account,
   signOut,
+  admin,
 }: Readonly<{
   who: string;
   /** The page about the account, where the address links to. */
   account: string;
-  /** Where the sign-out form posts. */
+  /** Where the sign-out form posts, its whole path on the origin. */
   signOut: string;
+  /** The operator's workspace, drawn as a door before the address for an operator alone. */
+  admin?: string;
 }>) {
   return (
     <span className="site-visitor">
+      {admin === undefined ? null : <a href={admin}>Admin</a>}
       <a className="site-who" href={account} title={who}>
         {who}
       </a>
-      <Form className="site-sign-out" method="post" action={signOut} reloadDocument>
+      <form className="site-sign-out" method="post" action={signOut}>
         <button type="submit">Sign out</button>
-      </Form>
+      </form>
     </span>
   );
 }

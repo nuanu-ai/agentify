@@ -21,6 +21,7 @@ import type {
   JournalSubject,
 } from "@agentify/gateway/journal";
 import type { MoneyHistory } from "@agentify/gateway/operator";
+import type { SectionCounts } from "@agentify/ui/workspace-view";
 import { adminDestinationIn } from "../dashboard-entry.js";
 import { type Identity, OperatorMailRefused } from "../identity.js";
 import { askedIn, type Listing, listingOf, PAGE_ROWS, type SegmentRule } from "../listing.js";
@@ -28,7 +29,6 @@ import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
 import type { Operator } from "./access.js";
 import { type ActionAnswer, type ChangeAnswer, pressed } from "./action.js";
-import type { SectionCounts } from "./frame.js";
 import type { AdminParts } from "./parts.js";
 
 /** The accounts as an operator reads and changes them. */

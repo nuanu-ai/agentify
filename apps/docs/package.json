@@ -14,7 +14,6 @@
   "dependencies": {
     "@agentify/analytics": "workspace:*",
     "@agentify/consent": "workspace:*",
-    "@agentify/core": "workspace:*",
     "@agentify/ui": "workspace:*",
     "@agentify/visual": "workspace:*",
     "minisearch": "7.2.0",

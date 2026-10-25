@@ -11,6 +11,11 @@
  * declares has a state here.
  */
 
+// The operator's page links the frame's and the workspace's stylesheets by
+// their addresses, which the gallery does not follow, so they are imported
+// here for the page's states.
+import "@agentify/visual/frame.css";
+import "@agentify/visual/workspace.css";
 import { createHash } from "node:crypto";
 import { BannerAnswered } from "@agentify/consent";
 import type { BrowserScene, GalleryState, GallerySurface } from "@agentify/gallery";
@@ -21,9 +26,9 @@ import {
   type ReportResponse,
   type ScanStatusResponse,
 } from "@agentify/scanner-contracts";
+import { CHANNEL_NAMES, type ChannelView } from "@agentify/ui/workspace-view";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import type { ComponentType, ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import {
   createRoutesStub,
   UNSAFE_ErrorResponseImpl as ErrorResponseImpl,
@@ -31,10 +36,7 @@ import {
   Meta,
   type MetaFunction,
 } from "react-router";
-import {
-  OperatorDashboard,
-  OperatorDashboardStatus,
-} from "../components/operator-dashboard.server";
+import { drawOperatorPage } from "../components/operator-dashboard.server";
 import { getPublicEditorialPage, type PublicEditorialPath } from "../content/public-editorial";
 import { getPublicAppConfig, type PublicAppConfig } from "../lib/app-config";
 import { PENDING_SCAN_STORAGE_KEY, type PendingScanRequest } from "../lib/pending-scan";
@@ -601,6 +603,9 @@ const NUMBERS: OperatorNumbers = {
  * waiting, the challenge is off, nothing has checked the site yet, and two
  * people wait for a copy of their data.
  */
+/** The live channel the operator's examples open /admin on. */
+const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live, line: "agentify.ad" };
+
 const TROUBLED: OperatorNumbers = {
   ...NUMBERS,
   turnstileEnforced: false,
@@ -1433,18 +1438,26 @@ const ACCOUNT: GalleryState[] = [
         "scanner-admin",
         "An operator opens /admin; everybody else, a stranger included, gets the page not found.",
         NUMBERS,
+        LIVE,
+      ],
+      [
+        "scanner-admin-test-channel",
+        "An operator opens /admin on the test channel, which says what its money is under the header, as every page of the workspace there does.",
+        NUMBERS,
+        { mode: "test", name: CHANNEL_NAMES.test, line: "test.agentify.ad" },
       ],
       [
         "scanner-admin-troubled",
         "An operator opens /admin while the worker has gone quiet, the challenge is not enforced, no self-scan has completed and data access requests wait.",
         TROUBLED,
+        LIVE,
       ],
     ] as const
-  ).map(([id, when, numbers]) =>
+  ).map(([id, when, numbers, channel]) =>
     at(
       {
         id,
-        screen: "Scanner for the operator",
+        screen: "Scanner",
         when,
         cause:
           "The seller dashboard confirms the signed-in account as an operator; the numbers here are examples.",
@@ -1453,9 +1466,12 @@ const ACCOUNT: GalleryState[] = [
         path: "/admin",
         loaded: {
           "routes/admin": {
-            title: "Scanner for the operator",
-            status: renderToStaticMarkup(<OperatorDashboardStatus data={numbers} />),
-            html: renderToStaticMarkup(<OperatorDashboard data={numbers} />),
+            title: "Scanner — Agentify operator",
+            html: drawOperatorPage({
+              data: numbers,
+              who: "operator@example.com",
+              channel,
+            }),
           },
         },
       },

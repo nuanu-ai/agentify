@@ -3,7 +3,7 @@
  * functions built: a fact that could not be read is never drawn as nothing.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE } from "@agentify/ui/surface";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";

@@ -38,6 +38,16 @@ export type Trouble =
   | Readonly<{ kind: "not-drawn-for-you"; chrome: Chrome; who: string; start: string }>
   | Readonly<{ kind: "broken"; chrome: Chrome }>;
 
+/** What the gate's loader reads for every page behind it. */
+export interface Gated {
+  readonly who: string;
+  /**
+   * The operator's workspace, the header's door into it, sent only for an
+   * account that holds the operator flag: nobody else is told it exists.
+   */
+  readonly admin?: string;
+}
+
 /** What a page behind the gate is drawn with: the address signed in, and the merchant's pages' frame. */
 export interface DrawnFor {
   readonly who: string;

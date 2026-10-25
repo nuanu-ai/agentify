@@ -5,8 +5,9 @@
  * merchants are this file's own and nobody's.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
 import type { JournalRow } from "@agentify/gateway/journal";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
 import type { Operator } from "../../src/admin/access.js";

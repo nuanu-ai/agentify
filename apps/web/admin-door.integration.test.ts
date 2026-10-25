@@ -37,7 +37,7 @@ if (!existsSync(fileURLToPath(new URL("./dist/server/index.js", import.meta.url)
 
 const SESSION = "agentify.session_token";
 const HEADING = "Landing views and scans";
-const TITLE = "Scanner for the operator";
+const TITLE = "Agentify operator";
 const BANNER = 'aria-label="Privacy choices"';
 /** The cookie values the stand-in seller dashboard knows, and which of them are operators. */
 const people = new Set(["operator", "person"]);
@@ -182,6 +182,10 @@ async function expectMissingPages(visitor: Asking, who: string): Promise<void> {
     expect(posted.status, `${label} POST`).toBe(404);
     const postedData = await ask(door, { ...visitor, method: "POST", data: true });
     expect(postedData.status, `${label} POST navigation`).toBe(404);
+    // The page's own markup links no stylesheet of the workspace. The router's
+    // manifest, which names every route's files to any visitor who asks, still
+    // names it; this holds the page, not the manifest.
+    expect(answered.body, label).not.toMatch(/(?:frame|workspace)-[^"]+\.css/);
     const scripts = await scriptsHandedOver(answered, door, visitor);
     expect(scripts.size, label).toBeGreaterThan(0);
     const handed = [answered, navigated, posted, postedData];
@@ -270,6 +274,11 @@ describe("the operator's dashboard at /admin", () => {
     const opened = await ask("/admin", operator);
     expect(opened.status).toBe(200);
     expect(opened.body).toContain(HEADING);
+    // Drawn in the workspace's frame, with its stylesheet, the scanner the
+    // section on screen and the others the seller dashboard's pages.
+    expect(opened.body).toContain('<span aria-current="page">Scanner</span>');
+    expect(opened.body).toContain('href="/dashboard/admin/merchants"');
+    expect(opened.body).toMatch(/<link rel="stylesheet" href="\/assets\/workspace-[^"]+\.css"/);
     // The dashboard is measured by nobody, so nobody is asked on it.
     expect(opened.body).not.toContain(BANNER);
     // Nothing in front of the scanner keeps the dashboard out of caches, so the

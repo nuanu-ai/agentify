@@ -1,4 +1,10 @@
-import type { Surface } from "../../src/page-services.js";
+/** Which stack a page is drawn on: its mode, and the words said about it, none on the live one. */
+interface Surface {
+  /** The attribute the mode is marked with. */
+  readonly attribute: string;
+  readonly mode: string;
+  readonly words: string | null;
+}
 
 /**
  * The band naming the stack, and on the live one an empty marker with no band:

@@ -27,11 +27,11 @@ import {
   CONSENT_STORAGE_KEY,
   createConsentSnapshot,
 } from "@agentify/analytics/browser";
-import { SURFACE_WORDS } from "@agentify/core";
 import { precompressedFrom } from "@agentify/ui/assets";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { launchChromium } from "@agentify/ui/chromium";
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
+import { SURFACE_WORDS } from "@agentify/ui/surface";
 import type { Browser, BrowserContext, Page, Request } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

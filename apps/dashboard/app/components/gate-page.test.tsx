@@ -6,7 +6,7 @@
  * data is handled from it, at any width.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE } from "@agentify/ui/surface";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";

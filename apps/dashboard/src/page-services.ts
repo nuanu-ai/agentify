@@ -8,7 +8,7 @@
  * it by the process that mounts it.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
 import { NewKeyLabelSchema } from "@agentify/gateway";
 import type {
   AnalyticsEvent,
@@ -18,6 +18,7 @@ import type {
 } from "@agentify/gateway/analytics";
 import { failureNamed } from "@agentify/gateway/failure-named";
 import { PARTNER_CLICK_ID_PATTERN } from "@agentify/scanner-contracts/click-id";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   EvmAddressSchema,
   IdentifierSchema,

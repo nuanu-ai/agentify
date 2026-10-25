@@ -32,9 +32,11 @@ a[data-going] {
 /*
  * The scanner's links are navigation and editorial rows that take their colour
  * and underline from the block they sit in. The shared base's accent with an
- * underline on hover would repaint most of this site's navigation.
+ * underline on hover would repaint most of this site's navigation. The
+ * operator's page is drawn in the workspace's frame, whose links keep the
+ * shared base's look, as they do where the seller dashboard draws the frame.
  */
-a {
+a:where(:not(.app-frame a)) {
   color: inherit;
   text-decoration: revert;
 }

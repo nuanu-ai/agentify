@@ -5,7 +5,7 @@
  * nothing keeps the text.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE } from "@agentify/ui/surface";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";

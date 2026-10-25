@@ -1,8 +1,7 @@
 /**
- * The scanner's page for the operator: read-only numbers about the scanner,
- * for a session whose account carries the operator flag. The rest of the
- * operator's work is in the workspace the seller dashboard draws, which this
- * page links to.
+ * The scanner's page of the operator's workspace: read-only numbers about the
+ * scanner, for a session whose account carries the operator flag, in the
+ * workspace's frame, whose other sections the seller dashboard draws.
  *
  * Nothing stands in front of /admin, so this page, and any page added beside
  * it, must refuse by itself. Anybody the seller dashboard does not confirm as
@@ -13,7 +12,8 @@
  * refused would tell them what this page is.
  */
 
-import { renderToStaticMarkup } from "react-dom/server";
+import frameSheet from "@agentify/visual/frame.css?url";
+import workspaceSheet from "@agentify/visual/workspace.css?url";
 import {
   type ActionFunctionArgs,
   data,
@@ -22,53 +22,48 @@ import {
   useLoaderData,
 } from "react-router";
 
-import { Brand } from "../../components/brand";
-import styles from "../../components/operator-dashboard.module.css";
-import {
-  OperatorDashboard,
-  OperatorDashboardStatus,
-} from "../../components/operator-dashboard.server";
+import { drawOperatorPage } from "../../components/operator-dashboard.server";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
-import { isOperator } from "../../lib/server/operator";
+import { channelHere, operatorOf } from "../../lib/server/operator";
 import { getOperatorDashboard } from "../../lib/server/operator-dashboard";
 
-/** Throws the site's 404 for anybody the seller dashboard does not confirm as an operator. */
-async function refuseAllButOperators(request: Request): Promise<void> {
-  if (!(await isOperator(request.headers.get("cookie")))) throw data(null, { status: 404 });
+/** The operator's address, or the site's 404 for anybody the seller dashboard does not confirm as one. */
+async function operatorOrNobody(request: Request): Promise<string> {
+  const who = await operatorOf(request.headers.get("cookie"));
+  if (who === null) throw data(null, { status: 404 });
+  return who;
 }
 
+export const links = () => [
+  { rel: "stylesheet", href: frameSheet },
+  { rel: "stylesheet", href: workspaceSheet },
+];
+
 export async function loader({ request }: LoaderFunctionArgs) {
-  await refuseAllButOperators(request);
-  const dashboard = await getOperatorDashboard();
+  const who = await operatorOrNobody(request);
   return {
-    title: "Scanner for the operator",
-    status: renderToStaticMarkup(<OperatorDashboardStatus data={dashboard} />),
-    html: renderToStaticMarkup(<OperatorDashboard data={dashboard} />),
+    title: "Scanner — Agentify operator",
+    html: drawOperatorPage({ data: await getOperatorDashboard(), who, channel: channelHere() }),
   };
 }
 
 /** The page takes no posts, and says so only to an operator. */
 export async function action({ request }: ActionFunctionArgs) {
-  await refuseAllButOperators(request);
+  await operatorOrNobody(request);
   throw data(null, { status: 405 });
 }
 
 export const meta = ({ matches, loaderData }: MetaArgs<typeof loader>) =>
-  pageMeta(siteConfigOf(matches), { title: loaderData?.title, robots: "noindex, nofollow" });
+  pageMeta(siteConfigOf(matches), {
+    title: loaderData?.title,
+    titleAlone: true,
+    robots: "noindex, nofollow",
+  });
 
 export default function AdminPage() {
-  const { status, html } = useLoaderData<typeof loader>();
-  // React drew both on the server and escaped every value in them, the
-  // scanned sites' hostnames included.
-  return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Brand />
-        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: drawn by React on the server */}
-        <div className={styles.status} dangerouslySetInnerHTML={{ __html: status }} />
-      </header>
-      {/* biome-ignore lint/security/noDangerouslySetInnerHtml: drawn by React on the server */}
-      <div dangerouslySetInnerHTML={{ __html: html }} />
-    </main>
-  );
+  const { html } = useLoaderData<typeof loader>();
+  // React drew it on the server and escaped every value in it, the scanned
+  // sites' hostnames included.
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: drawn by React on the server
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
 }

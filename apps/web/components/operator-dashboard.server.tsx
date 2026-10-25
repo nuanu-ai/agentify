@@ -1,4 +1,10 @@
+import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
+import { WorkspaceFrame } from "@agentify/ui/workspace";
+import type { ChannelView } from "@agentify/ui/workspace-view";
 import type { ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import type {
   OperatorDashboard as OperatorDashboardData,
   OperatorDay,
@@ -9,8 +15,6 @@ import {
   evaluateWorkerHeartbeat,
   HEARTBEAT_FRESH_MS,
 } from "../lib/server/worker-health";
-
-import styles from "./operator-dashboard.module.css";
 
 const number = new Intl.NumberFormat("en-US");
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
@@ -67,10 +71,8 @@ function span(seconds: number): string {
   return `${Math.round(hours / 24)} days`;
 }
 
-type Tone = "pass" | "partial" | "fail" | "notice" | "progress" | "quiet";
-
 /** A scan's, a check's or a browser run's state, as a badge says it. */
-const STATES: Readonly<Record<string, readonly [Tone, string]>> = {
+const STATES: Readonly<Record<string, readonly [BadgeTone, string]>> = {
   pass: ["pass", "Pass"],
   partial: ["partial", "Partial"],
   fail: ["fail", "Fail"],
@@ -87,10 +89,6 @@ const STATES: Readonly<Record<string, readonly [Tone, string]>> = {
   not_applicable: ["quiet", "Not applicable"],
 };
 
-function Badge({ tone, children }: Readonly<{ tone: Tone; children: string }>) {
-  return <span className={`badge badge-${tone}`}>{children}</span>;
-}
-
 function State({ status, none }: Readonly<{ status: string | null; none: string }>) {
   if (status === null) return <Badge tone="quiet">{none}</Badge>;
   const [tone, words] = STATES[status] ?? [
@@ -106,10 +104,10 @@ function Tile({
   aside,
 }: Readonly<{ label: string; figure: string; aside: string }>) {
   return (
-    <div className={styles.tile}>
-      <p className={styles.label}>{label}</p>
-      <p className={styles.figure}>{figure}</p>
-      <p className={styles.aside}>{aside}</p>
+    <div className="tile">
+      <p className="label">{label}</p>
+      <p className="figure">{figure}</p>
+      <p className="aside">{aside}</p>
     </div>
   );
 }
@@ -140,6 +138,22 @@ function scaleTop(largest: number): number {
   return Math.ceil(step) * 4;
 }
 
+/** What the days of the chart add up to, in words. */
+function chartSummary(rows: readonly OperatorDay[]): string {
+  const landings = rows.reduce((sum, row) => sum + row.landingViews, 0);
+  const scans = rows.reduce((sum, row) => sum + row.scans, 0);
+  const outnumbered = rows.filter((row) => row.scans > row.landingViews).length;
+  const first = rows[0];
+  const last = rows.at(-1);
+  return first && last
+    ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${chartDay(new Date(`${first.day}T00:00:00Z`))} to today${
+        outnumbered > 0
+          ? `; on ${counted(outnumbered, "day", "days")} scans outnumbered measured landing views`
+          : ""
+      }`
+    : "No days to draw";
+}
+
 /**
  * Landing views against scans per day. Both series share one scale, the larger
  * of the two, so a day with more scans than measured landing views is drawn
@@ -156,7 +170,7 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
   const bar = (value: number, x: number, series: string, label: string, soft: boolean) => {
     // However small beside the other series, a day with something stands taller than one with nothing.
     const height = value > 0 ? Math.max(EMPTY_BAR + 1, round((value / top) * plot)) : EMPTY_BAR;
-    const kind = value > 0 ? (soft ? styles.barSoft : styles.bar) : styles.barEmpty;
+    const kind = value > 0 ? (soft ? "bar soft" : "bar") : "bar zero";
     return (
       <rect
         className={kind}
@@ -170,40 +184,23 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
       </rect>
     );
   };
-  const landings = rows.reduce((sum, row) => sum + row.landingViews, 0);
-  const scans = rows.reduce((sum, row) => sum + row.scans, 0);
-  const outnumbered = rows.filter((row) => row.scans > row.landingViews).length;
-  const first = rows[0];
-  const last = rows.at(-1);
-  const summary =
-    first && last
-      ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${chartDay(new Date(`${first.day}T00:00:00Z`))} to today${
-          outnumbered > 0
-            ? `; on ${counted(outnumbered, "day", "days")} scans outnumbered measured landing views`
-            : ""
-        }`
-      : "No days to draw";
 
   // The picture is for the eye; a screen reader is read the same days as words.
   return (
-    <figure className={styles.chartFigure}>
-      <svg
-        aria-hidden="true"
-        className={styles.chart}
-        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
-      >
+    <>
+      <svg aria-hidden="true" className="op-chart" viewBox={`0 0 ${CHART.width} ${CHART.height}`}>
         {[0, 1, 2, 3, 4].map((step) => {
           const y = round(CHART.base - (plot * step) / 4);
           return (
             <g key={step}>
               <line
-                className={step === 0 ? styles.base : styles.grid}
+                className={step === 0 ? "base" : "grid"}
                 x1={CHART.left}
                 y1={y}
                 x2={CHART.right}
                 y2={y}
               />
-              <text className={styles.right} x={CHART.left - 8} y={y + 4}>
+              <text className="right" x={CHART.left - 8} y={y + 4}>
                 {number.format((top * step) / 4)}
               </text>
             </g>
@@ -222,7 +219,7 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
         {rows.map((row, at) =>
           at === rows.length - 1 || (at % 7 === 0 && rows.length - 1 - at > 3) ? (
             <text
-              className={at === rows.length - 1 ? styles.today : styles.mid}
+              className={at === rows.length - 1 ? "mid end" : "mid"}
               key={row.day}
               x={round(CHART.left + at * slot + slot / 2)}
               y={CHART.height - 12}
@@ -239,8 +236,7 @@ function DailyChart({ rows, readAt }: Readonly<{ rows: OperatorDay[]; readAt: st
           </li>
         ))}
       </ul>
-      <figcaption className={styles.chartSum}>{summary}</figcaption>
-    </figure>
+    </>
   );
 }
 
@@ -274,14 +270,13 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
       : (readAt.getTime() - new Date(heartbeat.heartbeat_at).getTime()) / 1000;
 
   return (
-    <section className={styles.panel} aria-labelledby="worker-title">
-      <div className={styles.panelHead}>
+    <section className="op-panel" aria-labelledby="worker-title">
+      <div className="op-panel-head">
         <h2 id="worker-title">The scanner's worker</h2>
-        <p>By the rules of its own health check</p>
         <Badge tone={healthy ? "pass" : "fail"}>{healthy ? "Healthy" : "Degraded"}</Badge>
       </div>
-      <div className={styles.panelBody}>
-        <dl className={styles.facts}>
+      <div className="op-panel-body">
+        <dl className="op-dl">
           <Fact term="Last heartbeat">
             {heartbeatAge === null ? (
               <Badge tone="fail">None recorded</Badge>
@@ -297,7 +292,7 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
             ) : (
               <>
                 <Badge tone="fail">Not ready</Badge>{" "}
-                <span className={styles.why}>{notReadyBecause(heartbeat, worker)}</span>
+                <span className="op-sub">{notReadyBecause(heartbeat, worker)}</span>
               </>
             )}
           </Fact>
@@ -319,7 +314,7 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
             <Badge tone={health.analyticsOutbox ? "pass" : "fail"}>
               {health.analyticsOutbox ? "Delivering" : deadLetters > 0 ? "Failing" : "Overdue"}
             </Badge>{" "}
-            <span className={styles.why}>
+            <span className="op-sub">
               {`${deadLetters > 0 ? `${counted(deadLetters, "event", "events")} given up` : "No event given up"}; ${
                 pending > 0
                   ? `longest overdue ${span(Number(signals.outbox_age_seconds))}`
@@ -329,28 +324,16 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
           </Fact>
         </dl>
       </div>
-      <p className={styles.panelFoot}>
-        An analytics event is given up, a dead letter, when the analytics service refuses it or it
-        runs out of attempts; it is never sent again.
+      <p className="op-panel-foot">
+        Healthy or degraded by the rules of the scanner's own health check. An analytics event is
+        given up, a dead letter, when the analytics service refuses it or it runs out of attempts;
+        it is never sent again.
       </p>
     </section>
   );
 }
 
-/** What the page's header says beside the brand: whose page this is, as of when, and the way to the workspace. */
-export function OperatorDashboardStatus({ data }: Readonly<{ data: OperatorDashboardData }>) {
-  return (
-    <>
-      <span className={styles.mark}>Operator</span>
-      <span className={styles.headerEnd}>
-        <span>Read {moment(new Date(data.generatedAt))}</span>
-        <a href="/dashboard/admin">Operator workspace</a>
-      </span>
-    </>
-  );
-}
-
-/** Everything on the page under its header, from the numbers the loader read. */
+/** Everything on the page under the workspace's bar, from the numbers the loader read. */
 export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardData }>) {
   const { overview, selfScan, dataAccess } = data;
   const shown = data.recentScans.length;
@@ -358,13 +341,12 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
 
   return (
     <>
-      <h1 className={styles.title}>Scanner</h1>
-      <p className={styles.asof}>
-        Last 30 days · contact details and raw evidence are not shown · the rest of the operator's
-        work is in the workspace
+      <p className="op-asof">
+        Last 30 days · read {moment(new Date(data.generatedAt))} · contact details and raw evidence
+        are not shown
       </p>
 
-      <div className={styles.figures}>
+      <div className="summary op-figures">
         <Tile
           label="Visitors"
           figure={number.format(overview.visitors30d)}
@@ -396,39 +378,39 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
         />
       </div>
 
-      <section className={styles.panel} aria-labelledby="trend-title">
-        <div className={styles.panelHead}>
+      <section className="op-panel" aria-labelledby="trend-title">
+        <div className="op-panel-head">
           <h2 id="trend-title">Landing views and scans</h2>
-          <div className={styles.legend}>
+          <div className="op-legend">
             <span>
-              <i className={styles.swatchSoft} />
+              <i className="soft" />
               Landing views · {MEASURED_ONLY.toLowerCase()}
             </span>
             <span>
-              <i className={styles.swatch} />
+              <i />
               Scans · every visitor
             </span>
           </div>
         </div>
-        <div className={styles.panelBody}>
+        <div className="op-panel-body">
           <DailyChart rows={data.daily} readAt={data.generatedAt} />
         </div>
-        <p className={styles.panelFoot}>
-          Both series share one scale, the larger of the two, so a day with more scans than measured
-          landing views is drawn whole.
+        <p className="op-panel-foot">
+          {chartSummary(data.daily)}. Both series share one scale, the larger of the two, so a day
+          with more scans than measured landing views is drawn whole.
         </p>
       </section>
 
-      <div className={styles.two}>
-        <section className={styles.panel} aria-labelledby="self-title">
-          <div className={styles.panelHead}>
+      <div className="op-two">
+        <section className="op-panel" aria-labelledby="self-title">
+          <div className="op-panel-head">
             <h2 id="self-title">Can agents read agentify.ad?</h2>
             {selfScan ? <p>The latest self-scan, {moment(new Date(selfScan.acceptedAt))}</p> : null}
           </div>
-          <div className={styles.panelBody}>
+          <div className="op-panel-body">
             {selfScan ? (
               <>
-                <div className={styles.score}>
+                <div className="op-score">
                   <strong>{selfScan.score ?? "—"}</strong>
                   <span>
                     {[
@@ -440,7 +422,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
                     ].join(" · ")}
                   </span>
                 </div>
-                <dl className={styles.facts}>
+                <dl className="op-dl">
                   <Fact term="Substantive initial HTML">
                     <State status={selfScan.substantiveHtmlStatus} none="Not assessed" />
                   </Fact>
@@ -456,21 +438,21 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
               <p>No Agentify self-scan has completed yet.</p>
             )}
           </div>
-          <p className={styles.panelFoot}>
+          <p className="op-panel-foot">
             A pass proves public HTTP compatibility at scan time. It does not prove that a model
             indexed, cited or recommended Agentify.
           </p>
         </section>
 
-        <section className={styles.panel} aria-labelledby="abuse-title">
-          <div className={styles.panelHead}>
+        <section className="op-panel" aria-labelledby="abuse-title">
+          <div className="op-panel-head">
             <h2 id="abuse-title">Abuse controls</h2>
             <Badge tone={data.turnstileEnforced ? "pass" : "notice"}>
               {data.turnstileEnforced ? "Turnstile enforced" : "Turnstile not enforced"}
             </Badge>
           </div>
-          <div className={styles.panelBody}>
-            <dl className={styles.facts}>
+          <div className="op-panel-body">
+            <dl className="op-dl">
               <Fact term="Free anonymous scans">
                 {data.turnstileEnforced
                   ? `${SCAN_LIMITS.freePerAddressHour} per address per rolling hour, then the challenge`
@@ -493,7 +475,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
               </Fact>
             </dl>
           </div>
-          <p className={styles.panelFoot}>
+          <p className="op-panel-foot">
             Turnstile is Cloudflare's challenge that tells a person from a script; a visitor meets
             it after the free scans. The limits are read from the code that enforces them, and the
             hard ceilings hold even when Turnstile is down.
@@ -503,48 +485,53 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
 
       <WorkerPanel data={data} />
 
-      <section className={styles.group} aria-labelledby="scans-title">
-        <div className={styles.groupHead}>
+      <section className="group" aria-labelledby="scans-title">
+        <div className="group-head">
           <h2 id="scans-title">Latest scans</h2>
-          <p>Hostnames only, never the submitted address</p>
+          <p className="group-aside">Hostnames only, never the submitted address</p>
         </div>
-        <div className={styles.listBox}>
-          <ul className={styles.list} aria-label="Latest scans">
-            <li className={styles.listHead} aria-hidden="true">
+        <div className="list-box op-cols-scans">
+          <ul className="list" aria-label="Latest scans">
+            <li className="list-head" aria-hidden="true">
               <span>Site</span>
               <span>Segment</span>
               <span>State</span>
-              <span className={styles.num}>Score</span>
-              <span className={styles.num}>Coverage</span>
+              <span className="num">Score</span>
+              <span className="num">Coverage</span>
               <span>Accepted</span>
             </li>
             {data.recentScans.map((scan) => (
-              <li className={styles.listRow} key={scan.scanId}>
-                <div className={styles.site}>{scan.targetHost}</div>
-                <div className={styles.soft}>
-                  <span className={styles.said}>Segment </span>
+              <li className="list-row" key={scan.scanId}>
+                <div className="cell cell-title">{scan.targetHost}</div>
+                <div className="cell cell-ident soft">
+                  <span className="said-on-narrow">Segment </span>
                   {scan.segment}
                 </div>
-                <div>
+                <div className="cell cell-state">
                   <State status={scan.status} none="Not known" />
                 </div>
-                <div className={styles.num}>
-                  <span className={styles.said}>Score </span>
-                  {scan.score ?? "—"}
+                {/* One box inside the cell's row of boxes, so the label keeps its space. */}
+                <div className="cell cell-action num">
+                  <span>
+                    <span className="said-on-narrow">Score </span>
+                    {scan.score ?? "—"}
+                  </span>
                 </div>
-                <div className={styles.num}>
-                  <span className={styles.said}>Coverage </span>
-                  {scan.coverage === null ? "—" : percent.format(scan.coverage)}
+                <div className="cell cell-action num">
+                  <span>
+                    <span className="said-on-narrow">Coverage </span>
+                    {scan.coverage === null ? "—" : percent.format(scan.coverage)}
+                  </span>
                 </div>
-                <div className={styles.fact}>
-                  <span className={styles.said}>Accepted </span>
+                <div className="cell cell-fact">
+                  <span className="said-on-narrow">Accepted </span>
                   {moment(new Date(scan.acceptedAt))}
                 </div>
               </li>
             ))}
           </ul>
         </div>
-        <p className={styles.cut}>
+        <p className="cut">
           {shown === 0
             ? "No scan has been accepted yet"
             : shown < total
@@ -553,5 +540,58 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
         </p>
       </section>
     </>
+  );
+}
+
+/** The scanner's own pages are anchors here, since the page is markup with no router behind it. */
+function Anchor({
+  to,
+  className,
+  "aria-current": current,
+  children,
+}: Readonly<{ to: string; className?: string; "aria-current"?: "true"; children: ReactNode }>) {
+  return (
+    <a className={className} href={to} aria-current={current}>
+      {children}
+    </a>
+  );
+}
+
+/**
+ * The whole page, the workspace's frame around the scanner's numbers, as
+ * markup drawn here on the server for `who`, the operator the seller dashboard
+ * confirmed. The scanner cannot read the other sections' counts, so it draws
+ * none; the band naming the stack is the one the workspace's other pages draw.
+ * The frame's menu reads a router's location, which a page drawn as markup has
+ * none of, so it is drawn under one of its own.
+ */
+export function drawOperatorPage({
+  data,
+  who,
+  channel,
+}: Readonly<{ data: OperatorDashboardData; who: string; channel: ChannelView }>): string {
+  return renderToStaticMarkup(
+    <MemoryRouter initialEntries={["/admin"]}>
+      <WorkspaceFrame
+        surface="scanner"
+        link={Anchor}
+        visitor={<SignedIn who={who} account="/dashboard/settings" signOut="/dashboard/sign-out" />}
+        channel={channel}
+        section="scanner"
+        heading="Scanner"
+        find="/dashboard/admin/find"
+        note={
+          <SurfaceNote
+            surface={{
+              attribute: SURFACE_MARKER_ATTRIBUTE,
+              mode: channel.mode,
+              words: SURFACE_WORDS[channel.mode],
+            }}
+          />
+        }
+      >
+        <OperatorDashboard data={data} />
+      </WorkspaceFrame>
+    </MemoryRouter>,
   );
 }

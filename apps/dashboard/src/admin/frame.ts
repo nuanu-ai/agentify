@@ -6,44 +6,14 @@
  * a pill that says nothing is not a claim that nothing waits.
  */
 
-import type { SurfaceMode } from "@agentify/core";
+import { CHANNEL_NAMES, type ChannelView, type SectionCounts } from "@agentify/ui/workspace-view";
 import type { DashboardConfig } from "../config.js";
 import type { Operator } from "./access.js";
-
-/** The sections of the workspace, as its sidebar lists them. */
-export type AdminSection =
-  | "overview"
-  | "merchants"
-  | "orders"
-  | "money"
-  | "health"
-  | "scanner"
-  | "accounts"
-  | "journal";
-
-/** A section's count: how many wait there, red only where they wait for the operator. */
-export type SectionCount = Readonly<{ count: number; needsYou: boolean }>;
-
-export type SectionCounts = Readonly<Partial<Record<AdminSection, SectionCount>>>;
-
-export interface ChannelView {
-  readonly mode: SurfaceMode;
-  /** "Live channel", "Test channel" or "Sandbox". */
-  readonly name: string;
-  /** The site's host and the chain it settles on. */
-  readonly line: string;
-}
 
 export interface AdminFrameView {
   readonly channel: ChannelView;
   readonly counts: SectionCounts;
 }
-
-const CHANNEL_NAMES: Readonly<Record<SurfaceMode, string>> = {
-  live: "Live channel",
-  test: "Test channel",
-  sandbox: "Sandbox",
-};
 
 const CHAINS: Readonly<Record<number, string>> = { 8453: "Base", 84532: "Base Sepolia" };
 

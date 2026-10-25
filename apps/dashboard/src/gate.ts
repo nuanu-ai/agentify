@@ -74,7 +74,13 @@ type GateAnswer =
       start: string;
       setCookies: readonly string[];
     }>
-  | Readonly<{ kind: "signed-in"; person: Person; setCookies: readonly string[] }>;
+  | Readonly<{
+      kind: "signed-in";
+      person: Person;
+      /** Whether the account holds the operator flag, read with this very session. */
+      operator: boolean;
+      setCookies: readonly string[];
+    }>;
 
 export type Gate = (asked: GateQuestion) => Promise<GateAnswer>;
 
@@ -128,6 +134,11 @@ export function gateFor(base: string, identity: DashboardIdentity, cookieSecure:
     // Once a day the read moves the session's end, and the browser must be told
     // or its cookie expires thirty days after sign-in however often its person
     // returns.
-    return { kind: "signed-in", person: session.person, setCookies: session.setCookies };
+    return {
+      kind: "signed-in",
+      person: session.person,
+      operator: session.operator,
+      setCookies: session.setCookies,
+    };
   };
 }

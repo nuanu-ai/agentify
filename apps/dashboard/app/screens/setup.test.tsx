@@ -5,7 +5,7 @@
  * refused name comes back to be corrected with the reason beside the box.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
 import { NAME_NEEDED, NAME_REFUSED, NAME_RULE } from "../../src/seller-name.js";
 import { formTo, readable } from "../../src/testing/html.js";
-import type { Chrome } from "../answer.js";
+import type { Chrome, Gated } from "../answer.js";
 import { ChooseNameScreen, MerchantScreen } from "./setup.js";
 
 const WHO = "owner@example.com";
@@ -27,16 +27,16 @@ const chrome: Chrome = {
   },
 };
 
-/** Inside the gate, as the screens are, so a form that posts knows its address. */
-const served = (screen: () => ReactElement): string => {
+/**
+ * Inside the gate, as the screens are, so a form that posts knows its address;
+ * `gated` is what the gate's loader read, a merchant's unless given.
+ */
+const served = (screen: () => ReactElement, gated: Gated = { who: WHO }): string => {
   const Stub = createRoutesStub([
     { id: "routes/gate", path: "/", children: [{ path: "page", Component: screen }] },
   ]);
   return renderToString(
-    <Stub
-      initialEntries={["/page"]}
-      hydrationData={{ loaderData: { "routes/gate": { who: WHO } } }}
-    />,
+    <Stub initialEntries={["/page"]} hydrationData={{ loaderData: { "routes/gate": gated } }} />,
   );
 };
 
@@ -130,5 +130,33 @@ describe("choosing the seller name", () => {
     expect(html).toContain('href="/dashboard/cards"');
     expect(html).toContain('href="/dashboard/settings"');
     expect(formTo(html, "post", "/choose-name")?.fields.get(DRAWN_FOR)).toBe(WHO);
+  });
+});
+
+describe("the door into the operator's workspace on the setup screens", () => {
+  const SCREENS = {
+    "opening a seller dashboard": () => (
+      <MerchantScreen chrome={chrome} view={{ unavailable: false }} />
+    ),
+    "choosing the seller name": () => (
+      <ChooseNameScreen chrome={chrome} view={{ typed: "", rule: NAME_RULE }} />
+    ),
+  };
+
+  it("stands beside the address in the header of an account the gate gave the door", () => {
+    for (const [name, screen] of Object.entries(SCREENS)) {
+      const html = served(screen, { who: WHO, admin: "/dashboard/admin" });
+
+      expect(html, name).toMatch(/<a href="\/dashboard\/admin">Admin<\/a><a class="site-who"/);
+    }
+  });
+
+  it("is not drawn, nor named, for an account the gate gave none", () => {
+    for (const [name, screen] of Object.entries(SCREENS)) {
+      const html = served(screen);
+
+      expect(html, name).not.toMatch(/href="[^"]*\/admin\b/);
+      expect(readable(html), name).not.toMatch(/\bAdmin\b/);
+    }
   });
 });

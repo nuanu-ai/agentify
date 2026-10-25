@@ -15,16 +15,16 @@ import {
   SectionNav,
   SignedIn,
   SiteFooter,
+  SurfaceNote,
   WorkHeader,
 } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
-import type { Chrome, DrawnFor } from "../answer.js";
+import type { Chrome, DrawnFor, Gated } from "../answer.js";
 import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
-import { SurfaceNote } from "./surface-note.js";
 
 /**
  * Each section is also a destination the sign-in returns to, so a section
@@ -72,8 +72,9 @@ export function Frame({
   if (chrome === undefined) {
     throw new Error("a page was drawn without the root's chrome, which every page loads first");
   }
-  const gate =
-    useRouteLoaderData<{ who: string }>("routes/gate") ??
+  // A page drawn where no loader ran does not know the flag, so it draws no door.
+  const gate: Gated | undefined =
+    useRouteLoaderData<Gated>("routes/gate") ??
     (drawn === undefined ? undefined : { who: drawn.who });
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
@@ -94,8 +95,16 @@ export function Frame({
       current: key === marked,
       to: `/${key}`,
     }));
-  const signedIn = (
-    <SignedIn who={gate.who} account={`${chrome.base}/settings`} signOut="/sign-out" />
+  // The header's row draws the door into the workspace beside the address, as
+  // the site's header does; the menu lists it among its own doors instead, so
+  // the address is not drawn between two links that look alike.
+  const signedIn = (admin?: string) => (
+    <SignedIn
+      who={gate.who}
+      account={`${chrome.base}/settings`}
+      signOut={`${chrome.base}/sign-out`}
+      admin={admin}
+    />
   );
   return (
     <div className="page app-frame">
@@ -104,7 +113,7 @@ export function Frame({
       <WorkHeader
         surface="dashboard"
         link={Link}
-        visitor={signedIn}
+        visitor={signedIn(gate.admin)}
         menu={
           <HeaderMenu>
             <SectionNav
@@ -112,10 +121,15 @@ export function Frame({
               label={navigation?.label ?? "Dashboard sections"}
               sections={sections}
             />
-            <a className="app-menu-docs" href="/docs/">
+            <a className="app-menu-door" href="/docs/">
               Open the docs →
             </a>
-            {signedIn}
+            {gate.admin === undefined ? null : (
+              <a className="app-menu-door" href={gate.admin}>
+                Open the admin →
+              </a>
+            )}
+            {signedIn()}
           </HeaderMenu>
         }
       />

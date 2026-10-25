@@ -1,3 +1,4 @@
-/* The shared visual language, then the dashboard's own layout over it. */
+/* The shared visual language and the working frame, then the dashboard's own layout over them. */
 @import "@agentify/visual/tokens.css";
+@import "@agentify/visual/frame.css";
 @import "./dashboard.css";

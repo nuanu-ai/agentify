@@ -11,7 +11,8 @@
  * clock the test moves.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS, type SurfaceMode } from "@agentify/core";
+import type { SurfaceMode } from "@agentify/core";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";

@@ -634,6 +634,15 @@ textarea.field-input {
   }
 }
 
+/* An operator's doors hold one more, the workspace's, beside the address. On a
+   bar without a menu the address gives way to it first, where the row would
+   otherwise put the way out on a second line, as it gives way on a phone. */
+@media (max-width: 1080px) {
+  .site-header-links:not(:has(> .site-menu)) .site-visitor:has(> a:not(.site-who)) > .site-who {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .site-header-inner {
     min-height: 60px;
