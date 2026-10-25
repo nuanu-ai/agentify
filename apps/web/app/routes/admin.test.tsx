@@ -10,6 +10,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawOperatorPage, OperatorDashboard } from "../../components/operator-dashboard.server";
@@ -434,6 +435,19 @@ describe("the operator's page, in the workspace's frame", () => {
   it("marks the scanner as the section on screen, and is no link to itself", () => {
     expect(sidebar).toContain('<span aria-current="page">Scanner</span>');
     expect(linkTo("Scanner")).toBeNull();
+  });
+
+  it("draws the channel's band on the test channel, as the workspace's pages do, and only the marker on the live one", () => {
+    expect(text(page)).toContain(SURFACE_WORDS.test ?? "a test channel's words");
+    expect(page).toContain(`${SURFACE_MARKER_ATTRIBUTE}="test"`);
+
+    const live = drawOperatorPage({
+      data: NUMBERS,
+      who: "operator@example.com",
+      channel: { mode: "live", name: "Live channel", line: "agentify.ad" },
+    });
+    expect(live).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
+    expect(live).not.toContain('class="surface-words"');
   });
 
   it("draws no section's count, which it cannot read, rather than a zero", () => {
