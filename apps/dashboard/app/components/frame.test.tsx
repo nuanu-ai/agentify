@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accountOf } from "../../src/account-banner.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
+import type { Gated } from "../answer.js";
 import { shouldRevalidate } from "../routes/merchant-only.js";
 import { OrdersScreen } from "../screens/orders.js";
 import { Frame, type Tab } from "./frame.js";
@@ -207,7 +208,12 @@ describe.each([
  * One screen drawn in the frame, behind the gate and the merchant's own pages
  * as every section is.
  */
-const framed = (tab: Tab, { account = [] }: Partial<FrameView> = {}, at: string = tab) => {
+const framed = (
+  tab: Tab,
+  { account = [] }: Partial<FrameView> = {},
+  at: string = tab,
+  gated: Gated = { who: PERSON },
+) => {
   const Stub = createRoutesStub([
     {
       id: "root",
@@ -250,7 +256,7 @@ const framed = (tab: Tab, { account = [] }: Partial<FrameView> = {}, at: string 
             base: "",
             surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: null },
           },
-          "routes/gate": { who: PERSON },
+          "routes/gate": gated,
           "routes/merchant-only": { account } satisfies FrameView,
         },
       }}
@@ -418,6 +424,23 @@ describe("the sidebar", () => {
     if (sidebar === null) throw new Error("the frame drew no sidebar");
 
     expect(sidebar.textContent).toBe(sections().textContent);
+  });
+});
+
+describe("the menu of an operator who also sells", () => {
+  it("lists the door into the workspace among its doors, apart from who is signed in", async () => {
+    framed("cards", {}, "cards", { who: PERSON, admin: "/dashboard/admin" });
+    await screen.findByText("The screen");
+    const menu = document.querySelector<HTMLElement>(".site-menu-panel");
+    const visitor = menu?.querySelector<HTMLElement>(".site-visitor");
+    if (menu === null || visitor === null || visitor === undefined) {
+      throw new Error("the frame drew no menu with who is signed in");
+    }
+
+    const door = within(menu).getByRole("link", { name: "Open the admin →" });
+    expect(door.getAttribute("href")).toBe("/dashboard/admin");
+    expect(visitor.contains(door)).toBe(false);
+    expect(within(visitor).queryByRole("link", { name: /admin/i })).toBeNull();
   });
 });
 
