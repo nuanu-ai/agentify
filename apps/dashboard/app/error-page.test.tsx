@@ -150,7 +150,7 @@ describe("the error page after a failed request", () => {
       base: "",
       surface: { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: SURFACE_WORDS.live },
     };
-    const pressed = (status: number, outcome?: "refused" | "unconfirmed") =>
+    const pressed = (status: number, outcome?: "refused") =>
       failedWith("/settings/payout-wallet", status, {
         kind: "problem",
         chrome,
@@ -164,7 +164,5 @@ describe("the error page after a failed request", () => {
     expect((await pressed(500)).title).toBe("We don't know if this was done");
     cleanup();
     expect((await pressed(409)).title).toBe("Nothing was changed");
-    cleanup();
-    expect((await pressed(400, "unconfirmed")).title).toBe("We don't know if this was done");
   });
 });

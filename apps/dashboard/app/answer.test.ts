@@ -245,7 +245,7 @@ describe("a problem the server half answered", () => {
     const request = new Request("http://dashboard.test/dashboard/settings/payout-wallet", {
       method: "POST",
     });
-    const marked = (outcome?: "refused" | "unconfirmed"): unknown => {
+    const marked = (outcome?: "refused"): unknown => {
       try {
         answer(
           {

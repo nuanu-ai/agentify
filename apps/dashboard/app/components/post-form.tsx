@@ -187,8 +187,9 @@ export function PostForm({
   className?: string;
   children: (pending: boolean) => ReactNode;
   /**
-   * The server's longest wait for this press's answer, for a whole-page press;
-   * the gateway's usual deadline unless the press waits longer.
+   * The server's longest wait for this press's answer, for a whole-page press:
+   * by default one gateway call's deadline, so a press that makes several calls
+   * in a row passes their sum.
    */
   answeredWithinMs?: number;
 }>) {

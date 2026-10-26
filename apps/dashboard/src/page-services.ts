@@ -114,10 +114,10 @@ interface Problem {
   readonly status: number;
   readonly said: string;
   /**
-   * What is known of the work a press asked for: refused where nothing was
-   * done, unconfirmed where it may have been; left out where nothing says.
+   * Refused where the press is known to have done nothing; left out where
+   * nothing says, which a page words as possibly done.
    */
-  readonly outcome?: "refused" | "unconfirmed";
+  readonly outcome?: "refused";
 }
 
 /** A screen of the cabinet, as product analytics names it. */
@@ -392,15 +392,14 @@ const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
   `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
 
 /**
- * Nothing answered in time may have been done; a refusal that says nothing was
- * written, or one the route gives before it writes (a 4xx), was not.
+ * A refusal that says nothing was written, or one the route gives before it
+ * writes (a 4xx), did nothing. A call that ran out never reaches a page as a
+ * problem: `answer` words it as unknown by the request's method.
  */
 const outcomeOf = (answer: Answer<unknown> & { ok: false }): Problem["outcome"] =>
-  answer.status === 0
-    ? "unconfirmed"
-    : answer.nothingRecorded === true || (answer.status >= 400 && answer.status < 500)
-      ? "refused"
-      : undefined;
+  answer.nothingRecorded === true || (answer.status >= 400 && answer.status < 500)
+    ? "refused"
+    : undefined;
 
 export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => {
   const outcome = outcomeOf(answer);

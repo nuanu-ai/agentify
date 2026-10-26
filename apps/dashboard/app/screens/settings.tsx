@@ -1,7 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import { useState } from "react";
 import { Form } from "react-router";
-import { WALLET_CHANGE_MS } from "../../src/deadlines.js";
+import { WALLET_PRESS_MS } from "../../src/deadlines.js";
 import type {
   CoinbaseView,
   PayoutView,
@@ -202,7 +202,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
             <PostForm
               document
               action="/settings/payout-wallet/cancel"
-              answeredWithinMs={WALLET_CHANGE_MS}
+              answeredWithinMs={WALLET_PRESS_MS}
               className="inline"
             >
               {(pressed) => (
@@ -232,7 +232,7 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
       <PostForm
         document
         action="/settings/payout-wallet"
-        answeredWithinMs={WALLET_CHANGE_MS}
+        answeredWithinMs={WALLET_PRESS_MS}
         className="issue"
       >
         {(pressed) => (

@@ -87,7 +87,12 @@ export type Answer<T> =
        * each one to be copied.
        */
       readonly orders?: readonly string[];
-      /** Set where the refusal's own words say nothing was written. */
+      /**
+       * Set where the refusal's own words say nothing was written. A refusal
+       * with a status under 500 is read as having written nothing even
+       * without it, so a call that acts and then refuses with a 4xx must not
+       * be added: it would be titled "Nothing was changed".
+       */
       readonly nothingRecorded?: true;
     };
 

@@ -24,3 +24,12 @@ export const ANSWER_WITHIN_MS = 10_000;
  * person the gateway did not answer while their change was being recorded.
  */
 export const WALLET_CHANGE_MS = 30_000;
+
+/**
+ * How long a press on a payout wallet form may take in all: the gateway's read
+ * of the wallet and then its change, each allowed `WALLET_CHANGE_MS`, and the
+ * Settings page drawn again after them. A page waits this out before it says
+ * the change could not be confirmed, so that it never says so while the
+ * gateway is still recording it.
+ */
+export const WALLET_PRESS_MS = 2 * WALLET_CHANGE_MS + ANSWER_WITHIN_MS;

@@ -43,7 +43,7 @@ export type Trouble =
       again?: string;
       reopen?: string;
       /** What the server half knew of a refused press: see `Problem` in `page-services.ts`. */
-      outcome?: "refused" | "unconfirmed";
+      outcome?: "refused";
     }>
   /**
    * The dashboard's page for an address it does not have, drawn where no
