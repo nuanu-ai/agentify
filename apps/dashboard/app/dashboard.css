@@ -379,31 +379,6 @@ form.inline {
   color: var(--muted);
 }
 
-/* A fixed price, which opens to the moment it holds from, under it. The words
-   keep to a narrow column, so an opened price on a phone leaves the title its
-   room. */
-.price-since > summary {
-  list-style: none;
-  cursor: pointer;
-  text-decoration: underline dotted;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-}
-
-.price-since > summary::-webkit-details-marker {
-  display: none;
-}
-
-.since-said {
-  display: block;
-  max-width: 9rem;
-  margin: 2px 0 0 auto;
-  color: var(--muted);
-  font-size: var(--text-label);
-  font-weight: 400;
-  white-space: normal;
-}
-
 /* The short form of an identifier, which opens to the whole value under it. */
 .ident-whole > summary {
   list-style: none;
@@ -431,8 +406,8 @@ form.inline {
 
 /* --- the account banner ------------------------------------------------- */
 
-/* One banner over the screen, in the notice's colours, each reason a bold
-   title over its sentence; several reasons stack inside the one banner. */
+/* One banner over the screen, in the notice's colours: a heading, then one
+   reason in a line or several in a list (the component's own module). */
 .account-banner {
   display: flex;
   gap: 12px;
@@ -442,7 +417,7 @@ form.inline {
   border-radius: var(--radius-control);
   background: var(--notice-bg);
   color: var(--notice-ink);
-  font-size: 0.9375rem;
+  font-size: var(--text-body);
 }
 
 .account-banner svg {
@@ -452,10 +427,6 @@ form.inline {
   stroke: currentColor;
   stroke-width: 2;
   stroke-linecap: round;
-}
-
-.account-banner p + p {
-  margin-top: var(--gap-paragraph);
 }
 
 .account-banner b {

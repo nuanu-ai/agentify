@@ -30,7 +30,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
           <div className={styles.heroCopy}>
             <div className="eyebrow">{config.eyebrow}</div>
             <h1>{config.hero.title}</h1>
-            <p>{config.hero.subtitle}</p>
+            <p className={styles.subtitle}>{config.hero.subtitle}</p>
             <UrlScanForm cta={config.hero.cta} segment={config.segment} variant={config.variant} />
             <div className={styles.assurances}>
               {LANDING_SHARED_CONTENT.assurances.map((assurance) => (

@@ -159,8 +159,8 @@ export const ACCOUNT_WORDS: Readonly<
   },
   paused: {
     title: "Sales are paused",
-    says: "You paused all sales.",
-    fix: { to: "/cards", words: "Resume them on Cards" },
+    says: "Nothing sells until you resume.",
+    fix: { to: "/cards", words: "Go to Cards" },
   },
   not_approved: {
     title: "Not approved for live sales yet",
@@ -184,7 +184,7 @@ export const ACCOUNT_WORDS: Readonly<
   },
   busy: {
     title: "Agents cannot buy right now",
-    says: "20 purchases are waiting for payment, the most Agentify allows at once. Sales resume by themselves as they are paid or expire, usually within a minute.",
+    says: "20 purchases are waiting for payment, the most Agentify allows at once. Sales resume by themselves as they are paid or their price expires.",
     fix: null,
   },
   unread: {
@@ -205,17 +205,19 @@ const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
 /**
  * The banner's heading. One reason is headed by its own title; several by
  * what they come to together where one of them keeps every product off sale,
- * and otherwise by the first. Here rather than beside the reasons, so the
- * page's script that draws the banner does not carry the rules that find them.
+ * otherwise by the unpaid purchases where they hold, since they refuse every
+ * product and silence only those delivered later, and otherwise by the first.
+ * Here rather than beside the reasons, so the page's script that draws the
+ * banner does not carry the rules that find them.
  */
 export const headingOf = (
   notes: readonly Readonly<{ reason: AccountReason; title: string }>[],
 ): string => {
   const [first] = notes;
   if (first === undefined) return "";
-  return notes.length > 1 && notes.some((note) => KEEP_OFF_SALE.has(note.reason))
-    ? "Your products are off sale"
-    : first.title;
+  if (notes.length === 1) return first.title;
+  if (notes.some((note) => KEEP_OFF_SALE.has(note.reason))) return "Your products are off sale";
+  return (notes.find((note) => note.reason === "busy") ?? first).title;
 };
 
 /** The banner's title while Agentify's withdrawal of the merchant's admission stands. */

@@ -122,7 +122,7 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
     return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
   }
   return card.fulfillment === "async"
-    ? { says: `${word},`, byDefault: DEFAULT_WINDOW }
+    ? { says: `${word}, within the`, byDefault: DEFAULT_WINDOW }
     : { says: word, byDefault: null };
 };
 
@@ -134,7 +134,7 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
-  | Readonly<{ kind: "reason"; text: string }>;
+  | Readonly<{ kind: "reason"; text: string; to: string }>;
 
 /**
  * The integration the merchant sells through, and their cards that are off
@@ -151,7 +151,9 @@ export interface CardsIntegration {
  * wallet is set: a card paused before then stays paused, and a Resume pressed
  * meanwhile can be taken back. A card published by the integration not in use
  * is offered none, and its word does not say its own pause either: the move
- * between integrations is made on the WooCommerce page.
+ * between integrations is made on the WooCommerce page, which its words lead
+ * to. They name the merchant's choice and not a sale, since a shop whose
+ * Connect was never approved sells nothing, and neither does code never run.
  */
 const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
   if (integration.offSale.includes(entry.id)) {
@@ -159,8 +161,9 @@ const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardCo
       kind: "reason",
       text:
         integration.through === "woocommerce"
-          ? "WooCommerce sells instead"
-          : "Your code sells instead",
+          ? "Off sale while you sell through WooCommerce"
+          : "Off sale while you sell through your code",
+      to: "/woocommerce",
     };
   }
   return { kind: "switch", verb: entry.paused ? "resume" : "pause" };
