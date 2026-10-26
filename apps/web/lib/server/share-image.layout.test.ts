@@ -23,6 +23,9 @@ const HEADLINE_PLACE = { top: 126, bottom: 420, right: 840 } as const;
 /** The strip of ground around the card. */
 const GROUND = 30;
 
+/** The card's top edge, above its header, where the tint of the level's colour lies. */
+const TINTED_EDGE = { left: 600, right: 1120, top: 44, bottom: 78 } as const;
+
 const label = (length = 63) => "w".repeat(length);
 
 const LONGEST = `${label()}.${label()}.${label()}.${label(61)}`;
@@ -97,6 +100,12 @@ const pixelsIn = (region: Region, matching: (at: number) => boolean): number => 
   return count;
 };
 
+const tintedEdge: Region = (x, y) =>
+  x >= TINTED_EDGE.left && x < TINTED_EDGE.right && y >= TINTED_EDGE.top && y < TINTED_EDGE.bottom;
+
+const luminance = (pixels: Uint8Array, at: number): number =>
+  0.2126 * (pixels[at] ?? 0) + 0.7152 * (pixels[at + 1] ?? 0) + 0.0722 * (pixels[at + 2] ?? 0);
+
 const differing = (a: Uint8Array, b: Uint8Array, region: Region = everywhere): number =>
   pixelsIn(
     region,
@@ -112,16 +121,17 @@ describe("a share's picture", () => {
     it("is drawn inside its card, with nothing on the ground around it", async () => {
       const pixels = await picture("example.com", level, score);
       // Text is far darker than the ground and the card's shadow on it.
-      const inked = pixelsIn(
-        onGround,
-        (at) =>
-          0.2126 * (pixels[at] ?? 0) +
-            0.7152 * (pixels[at + 1] ?? 0) +
-            0.0722 * (pixels[at + 2] ?? 0) <
-          180,
-      );
+      const inked = pixelsIn(onGround, (at) => luminance(pixels, at) < 180);
 
       expect(inked).toBe(0);
+    });
+
+    it("tints the card's top edge with the level's colour and greys none of it", async () => {
+      const pixels = await picture("example.com", level, score);
+      // Every level's tint is lighter than this; grey is darker.
+      const greyed = pixelsIn(tintedEdge, (at) => luminance(pixels, at) < 230);
+
+      expect(greyed).toBe(0);
     });
 
     it.each(Object.entries(HOSTS))(
