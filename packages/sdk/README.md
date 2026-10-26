@@ -140,11 +140,13 @@ it was: `fulfillment_complete` where the goods were delivered or the parcel's
 shipment is recorded, and `nothing_to_close` where the order ended with
 nothing charged.
 
-An order read back carries `payment_status` for its original payment and
-`merchant_closure` for your closure. Closing does not cancel a charge Agentify
-had already sent to the facilitator. If that charge completes after you
-closed, you receive `order.unfulfilled` with the reason `paid_after_closure`,
-and the order stays on `orders.list({ open: true })` until you close it again;
+An order read back carries `payment_status` for its original payment,
+`transaction` for the transaction that paid it once that payment went through,
+whether or not you delivered, and `merchant_closure` for your closure. Closing
+does not cancel a charge Agentify had already sent to the facilitator. If that
+charge completes after you closed, you receive `order.unfulfilled` with the
+reason `paid_after_closure`, and the order stays on
+`orders.list({ open: true })` until you close it again;
 that second closure records its own time and message. The whole rule is on
 [Orders](https://agentify.ad/docs/orders#closing-fulfillment).
 
