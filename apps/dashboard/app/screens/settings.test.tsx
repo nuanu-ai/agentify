@@ -880,30 +880,53 @@ describe("what Getting paid says in each state", () => {
       ],
     ],
   };
-  // The page reads which payout contracts there are and never what they hold,
-  // so a merchant with no sale yet reads the same words as one with many.
-  const CLAIMS_MONEY = /\b(?:your money|your share|each share|holds?|waits?|stays?|arrives?)\b/i;
-  const sectionIn = (html: string): string =>
-    /<section[^>]*aria-labelledby="getting-paid"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
-
-  it.each(Object.values(STATES).flat())(
-    "claims no money in its contracts for %s, and still says what happens next",
-    (_state, looking) => {
-      const said = readable(sectionIn(settingsPage(looking)));
-
-      expect(said).toMatch(/getting paid/i);
-      expect(said).not.toMatch(CLAIMS_MONEY);
-      // Who pays out if the merchant does not, or whom to tell.
-      expect(said).toMatch(/Agentify's next payout|admin@agentify\.ad/);
-    },
+  /** A text's sentences, each count in it written `#`, since a note says the count it is given. */
+  const sentencesOf = (text: string): string[] =>
+    text
+      .replaceAll(/\d+/g, "#")
+      .split(/(?<=\.)\s+/)
+      .map((one) => one.trim())
+      .filter((one) => one.endsWith("."));
+  const NOTED = new Set(
+    Object.values(PAYOUT_NOTES).flatMap((note) =>
+      typeof note === "string"
+        ? sentencesOf(note)
+        : typeof note === "function"
+          ? [1, 2].flatMap((count) => sentencesOf(note(count)))
+          : Object.values(note).flatMap(sentencesOf),
+    ),
   );
-
-  it("draws each state as the kind it is cased under", () => {
-    const drawn = Object.entries(STATES).flatMap(([kind, cases]) =>
-      cases.map(([, looking]) => [kind, viewOf(looking).payout?.kind]),
+  /**
+   * Every sentence the section draws, read off each element that holds text of
+   * its own. Links and controls are ways on, not claims, and a label that is no
+   * sentence, a heading or a column's name, is not read.
+   */
+  const sentencesIn = (html: string): string[] => {
+    const section = document.createElement("div");
+    section.innerHTML =
+      /<section[^>]*aria-labelledby="getting-paid"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+    for (const away of section.querySelectorAll("a, button, textarea")) away.remove();
+    return [...section.querySelectorAll("*")].flatMap((element) =>
+      [...element.childNodes].some(
+        (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() !== "",
+      )
+        ? sentencesOf(element.textContent ?? "")
+        : [],
     );
+  };
 
-    expect(drawn.filter(([kind, as]) => kind !== as)).toStrictEqual([]);
+  it.each(
+    Object.entries(STATES).flatMap(([kind, cases]) =>
+      cases.map(([state, looking]) => [state, kind, looking] as const),
+    ),
+  )("says nothing for %s but the notes of Getting paid", (_state, kind, looking) => {
+    // A claim about money is then written, and reviewed, in one table; whether
+    // a note is true of the system is that review's, not this test's.
+    const said = sentencesIn(settingsPage(looking));
+
+    expect(viewOf(looking).payout?.kind).toBe(kind);
+    expect(said.length).toBeGreaterThan(0);
+    expect(said.filter((sentence) => !NOTED.has(sentence))).toStrictEqual([]);
   });
 });
 
