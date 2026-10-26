@@ -343,8 +343,16 @@ const SELLER_REFUSALS_LOGGED_EVERY_MS = 60_000;
 export const silentAt = (polled: number | null, at: number): boolean =>
   polled === null || polled + SILENT_AFTER_MS + CONTACT_WRITTEN_EVERY_MS < at;
 
-/** Why no purchase of a card can be made now (`offSaleNow`). */
-export type OffSale = "not_selling" | "seller_not_fulfilling" | "seller_not_taking_orders";
+/**
+ * Why no purchase of a card can be made now (`offSaleNow`), and whether that
+ * ends by itself within minutes. A look at a product off sale for a moment
+ * still answers with its payment challenge, because a listing someone else
+ * runs may drop a product whose look is refused and not take it back by
+ * itself; the catalogue and a purchase turn it away all the same.
+ */
+export type OffSale =
+  | { readonly code: "not_selling" | "seller_not_fulfilling"; readonly transient: false }
+  | { readonly code: "seller_not_taking_orders"; readonly transient: true };
 
 /** What decides whether one card can be bought now. */
 export interface SaleFacts {
@@ -373,10 +381,10 @@ export interface SaleFacts {
  * without paying, so it must not empty a seller's listing.
  */
 export const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
-  if (facts.selling !== "open") return "not_selling";
-  if (facts.unserved) return "seller_not_fulfilling";
+  if (facts.selling !== "open") return { code: "not_selling", transient: false };
+  if (facts.unserved) return { code: "seller_not_fulfilling", transient: false };
   if (facts.through === "api" && silentAt(facts.lastContact, at)) {
-    return "seller_not_taking_orders";
+    return { code: "seller_not_taking_orders", transient: true };
   }
   return null;
 };
@@ -893,7 +901,7 @@ export class Gateway {
       // safe reading is that it is not for sale.
       offSale:
         merchant === null
-          ? "not_selling"
+          ? { code: "not_selling", transient: false }
           : await this.#offSale(
               stored,
               {
@@ -1710,7 +1718,7 @@ export class Gateway {
     const at = this.runtime.clock();
     const theirs = await this.#howTheySell(stored.merchantId);
     // Before the order is written or the price asked, and in every mode.
-    switch (await this.#offSale(stored, theirs, at)) {
+    switch ((await this.#offSale(stored, theirs, at))?.code) {
       case "not_selling":
         return { step: "not_selling", message: NOT_ON_SALE };
       case "seller_not_fulfilling":
@@ -1718,7 +1726,7 @@ export class Gateway {
         return { step: "seller_not_fulfilling" };
       case "seller_not_taking_orders":
         return { step: "seller_not_taking_orders" };
-      case null:
+      case undefined:
         break;
     }
 
@@ -1918,11 +1926,14 @@ export class Gateway {
     }
 
     // Asked again here, before the payment is verified, because a price named
-    // just before the seller went quiet holds on into the silence.
+    // just before the seller went quiet holds on into the silence. A purchase
+    // being paid for the first time is refused in every mode, since nobody
+    // would draw its order; a repeat of a synchronous one that releases goods
+    // already made is not.
     if (
       payingMerchant !== null &&
-      before.order.mode.settle === "on_purchase" &&
-      takesANewPayment(before.order) &&
+      (before.order.state === "quoted" ||
+        (before.order.mode.settle === "on_purchase" && takesANewPayment(before.order))) &&
       (await this.#outOfTouch(payingMerchant.id, payingMerchant.integration, arrivedAt))
     ) {
       return { step: "seller_not_taking_orders" };

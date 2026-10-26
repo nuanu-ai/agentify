@@ -415,9 +415,10 @@ async function probeAnswer(
   if (offered === null) {
     return refusedWith(response, NO_SUCH_ITEM);
   }
-  // An off-sale card answers no challenge: the challenge carries the discovery
-  // declaration, and would keep inviting agents to a purchase that is refused.
-  switch (offered.offSale) {
+  // A card off sale for good answers no challenge: the challenge carries the
+  // discovery declaration, and would keep inviting agents to a purchase that is
+  // refused. One off sale for a moment still answers it (`OffSale`).
+  switch (offered.offSale?.transient ? undefined : offered.offSale?.code) {
     case "not_selling":
       return written(
         response,
@@ -426,13 +427,7 @@ async function probeAnswer(
       );
     case "seller_not_fulfilling":
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
-    case "seller_not_taking_orders":
-      return written(
-        response,
-        CONFLICT,
-        refusal("seller_not_taking_orders", SELLER_NOT_TAKING_ORDERS),
-      );
-    case null:
+    case undefined:
       break;
   }
   response.setHeader(
