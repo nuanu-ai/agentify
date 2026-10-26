@@ -209,36 +209,55 @@ The product feed check scores a store's home page and product page by three
 facts from the same reading, and nothing in a comment, a script, a class
 name or the visible text counts toward any of them.
 
-A product feed is a `<link rel="alternate">` with a feed's media type (RSS,
-Atom, XML, CSV or tab-separated values) or a link to a file of one of those
-kinds, whose title or address names the shop's products. A word of either
-counts when it begins with produ or prodott (product, Produk, produits,
-Produkte, prodotti, Produtos), catalog, Katalog or catálogo, or merchant. A
-word of the address also counts when it is a shop's base as WooCommerce
-shops write it: shop, store, toko, boutique, tienda, negozio, loja, laden,
-or Shopify's collections. Words count whole, so `/workshop/` and
-`/shopping-tips/` do not, and the host is left out, since it may name the
-shop rather than the feed. The title is held to the first kind of word
-because it usually carries the site's name, which may say "shop".
-WooCommerce's products feed counts, in the shop's language
-(`/shop/feed/` titled "Products Feed", `/toko/feed/` titled "Produk Feed",
-`?post_type=product&feed=rss2`), and so do a product category's and a
-product tag's feeds, which list products too.
+A products feed is known by its own words and by the forms of its address,
+never by words that belong to the site or the page around it, since a site's
+name or a product's name may say produce, Produk or catalog. It is a
+`<link rel="alternate">` with a feed's media type (RSS, Atom, XML, CSV or
+tab-separated values), or a link to a file of one of those kinds, and one of
+two things names it a feed of products.
 
-A feed of comments does not count. WordPress links one from a product page
-with reviews on, which is WooCommerce's default, at the page's own address
-plus `feed/` and titled "Kain Tenun Ikat Comments Feed"; its address holds
-`/product/`, so the address alone would have earned a product page 4
-points, or 3 where the shop's language writes `/produk/`. A feed titled as
-one of comments (comment, Komentar, Kommentar, commentaires, commenti,
-comentarios, comentários) is left out, and so is a feed at the page's own
-address plus `feed/` whose title does not name products, which covers a
-title in a language those words miss. A shop page's own feed at that
-address is its products feed and is titled so, which is why the title
-decides there. WordPress's posts feed, a Shopify blog's Atom feed, a
-language alternate and a stylesheet do not count either; all of these did
-when any address holding "feed" counted. A page that links a product feed
-earns the check's 4 points.
+The first is the feed's own title: what follows the last separator after the
+site's name (`»`, `|`, `·`, `–` or `—`, with spaces around it), or the whole
+title when there is none. "Site » Products Feed", "Products feed",
+"Umpan Produk" and "Flux des produits" count; "Green Valley Produce » Feed",
+"Blue Sky Productions » Feed", "Toko Produk Lokal » Feed" and
+"Catalog Living » Feed" do not. The title counts by whole words for products
+in the languages WooCommerce shops title their feeds in (products, Produk,
+produits, Produkte, productos, Produtos, prodotti), for a catalog (catalog,
+catalogue, Katalog, catálogo) or for a merchant feed, so Productions and
+Productivity are not among them. A title that says the feed is one of comments
+(comment, Komentar, Kommentar, commentaires, commenti, comentarios,
+comentários) never counts.
+
+The second is the address's form: WooCommerce's feed of the product post type
+(`?post_type=product&feed=rss2`) or of a product category or tag in the query,
+Shopify's feed of a collection (`/collections/all.atom`), a product category's
+or tag's archive feed (`/product-category/kain/feed/`,
+`/kategori-produk/kain/feed/`), a feed whose path segment right before `feed`
+names products (`/produk/feed/`), and a feed file whose name does
+(`/merchant/products.csv`). A shop's base word alone counts for nothing, so a
+WordPress installed under `/shop/` or `/toko/` links no products feed, and an
+address that holds "sitemap" never counts. The host is left out of every
+comparison, since it may name the shop rather than the feed.
+
+On a page that declares a product, the page's own address plus `feed/` is the
+feed of its reviews, which WordPress links from a product page with reviews
+on, WooCommerce's default, and it never counts, whatever its title says: the
+title carries the product's name, as in "Katalog Rak Reacties feed". The
+address is compared by path, so a link that writes another host or scheme is
+still the page's own. On any other page, such as a shop page, the own feed
+counts as any other feed does, by its title or its form, and a shop page's own
+feed titled "Products Feed" is its products feed. WordPress's posts feed, a
+Shopify blog's Atom feed, a language alternate and a stylesheet do not count.
+A page that links a products feed earns the check's 4 points.
+
+The reading misses a products feed titled and addressed in a language its
+words do not hold, such as Russian ("Лента товаров" at `/magazin/feed/`), a
+merchant feed whose name says only where it goes ("Google Shopping" at
+`/feeds/google.xml`), and a product category whose base is one word or in
+another language (`/productcategorie/`), its category page's own feed
+included. It counts a product page's reviews feed when the page declares no
+product and its title or slug names products.
 
 A product is declared by an Open Graph `og:type` of product, written in any
 attribute order or quoting, by any tag of Open Graph's `product:` namespace,
