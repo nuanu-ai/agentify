@@ -207,7 +207,7 @@ const decoded = (address: string): string => {
   }
 };
 // A feed titled as one of comments, in the words WordPress titles it with.
-const COMMENTS = /comment|koment|kommentar|comentar/;
+const COMMENTS = /comment|koment|kommentar|coment/;
 const words = (text: string): string[] =>
   text
     .toLowerCase()
