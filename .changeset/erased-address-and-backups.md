@@ -9,3 +9,7 @@ Copies of the database taken before the erasure keep it: the live channel's
 backups, usually for about sixty days, with no upper bound set yet, and the
 restore point each release takes, on either channel, until five newer releases
 replace it. Nothing a call sends or answers changes.
+
+A parcel's card, `fulfillment: "ship"`, now publishes and sells on the live
+channel as on the test one, and publishing it there no longer returns
+`not_sold_yet`.
