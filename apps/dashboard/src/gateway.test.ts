@@ -689,6 +689,37 @@ describe("what an order's record says beside its document", () => {
     });
   });
 
+  it("names no moment the money moved for an order charged after its goods, whose record keeps only when its payment was checked", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const room = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: "room-101",
+      title: "A room for the night",
+      description: "One night in room 101",
+      price: { amount: "80.00", currency: "USD" },
+      result: { access_code: { type: "string" } },
+      fulfillment: "sync",
+    });
+    if (!room.ok) throw new Error("the room was refused");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    const offered = await harnessed.gateway.beginPurchase(room.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await worker.stop();
+    const id = offered.order.order.id;
+    expect((await harnessed.store.orderById(id))?.order.timestamps.paidAt).not.toBeNull();
+
+    const read = await client.orderRecords();
+
+    expect(read.ok ? read.document[id] : undefined).toStrictEqual({
+      unfulfilled: null,
+      paidAt: null,
+      deadline: null,
+    });
+  });
+
   it("names no deadline for an order its merchant refused after payment, or one delivered", async () => {
     const harnessed = await started();
     const client = asTheOwner(harnessed);
