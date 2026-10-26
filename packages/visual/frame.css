@@ -513,7 +513,7 @@
   position: relative;
   z-index: 1;
   margin: 0;
-  padding: 2px 20px 20px;
+  padding: var(--space-snug) 20px var(--space-card);
 }
 
 .cell-chevron {
@@ -648,7 +648,7 @@
   }
 
   .row-more > .more-body {
-    padding: 2px 16px 16px;
+    padding: var(--space-snug) 16px var(--space-block);
   }
 
   .cell-aside {
@@ -730,15 +730,15 @@
 .pager {
   justify-content: space-between;
   align-items: center;
-  gap: 8px 16px;
-  margin-top: 14px;
+  gap: var(--space-tight) var(--space-block);
+  margin-top: var(--space-control);
 }
 
 .pager-ways {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-snug);
 }
 
 .pager-step,
@@ -750,7 +750,7 @@
   min-width: 36px;
   min-height: 36px;
   padding: 0 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   color: var(--fg-2);
 }
 
@@ -791,12 +791,12 @@
 }
 
 .pager-step.prev::before {
-  margin-right: 8px;
+  margin-right: var(--space-tight);
   transform: rotate(45deg);
 }
 
 .pager-step.next::after {
-  margin-left: 8px;
+  margin-left: var(--space-tight);
   transform: rotate(-135deg);
 }
 

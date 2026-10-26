@@ -533,7 +533,7 @@
 }
 
 .op-cols-orders .cell-title .op-sub {
-  margin-top: 2px;
+  margin-top: var(--space-snug);
   overflow-wrap: anywhere;
 }
 
