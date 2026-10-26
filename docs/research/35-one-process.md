@@ -611,10 +611,9 @@ to the listener, and that callback spends the token in the same transaction,
 under the account's lock, that writes the connection; the shop's address is
 taken from the grant, never from the callback. A token nobody issued, one
 already spent and one expired are refused alike, and an expired grant is kept
-so that its owner's WooCommerce page can say the attempt ended. Where the
-connector is not offered, on the live channel today, the dashboard mounts none
-of its pages and starts no worker, so a connection made there before stays
-unused.
+so that its owner's WooCommerce page can say the attempt ended. Every
+channel, the live one included, mounts the connector's pages and starts its
+worker.
 
 `woo:recover` reads one order and delivers late goods for it with the
 account's cabinet key. Once the key is gone it builds the application in its

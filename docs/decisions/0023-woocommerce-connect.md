@@ -2,8 +2,8 @@
 
 Date: 2026-09-14
 Status: accepted; developed on equal terms with the SDK (the product owner,
-2026-10-11), one of the two at a time (ADR-0036), and off the live channel until
-its orders pass end to end on the test channel.
+2026-10-11), one of the two at a time (ADR-0036), and offered on every channel
+(the product owner, 2026-10-26).
 
 ## Context
 
@@ -53,10 +53,12 @@ What a sale from a shop that calculates tax means, and the one-cent match of
 every shop's order to its payment, are ADR-0041. A shop priced in another currency than US
 dollars sells at a rate its merchant sets, as ADR-0044 records.
 
-The dashboard fills orders as the merchant's worker in the process it shares
-with the gateway ([research 35](../research/35-one-process.md)), recording one
-paid WooCommerce order per sale before it answers, so a redelivery returns the
-stored result. The ledger moves forward only: a refusal proved before the create
+The dashboard offers the connector on every channel (the product owner,
+2026-10-26), and on the live one an imported card sells only once the operator
+has approved its merchant, as any card there does. It fills orders as the
+merchant's worker in the process it shares with the gateway
+([research 35](../research/35-one-process.md)), recording one paid WooCommerce
+order per sale before it answers, so a redelivery returns the stored result. The ledger moves forward only: a refusal proved before the create
 request is `precreate_refused`; once that request is sent the order is
 `create_unknown`, never resent on its own, until a validated, correlated answer
 makes it `placed`, which delivers without the shop credential and is final for a
