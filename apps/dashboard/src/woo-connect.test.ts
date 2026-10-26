@@ -60,7 +60,19 @@ describe("the address a merchant types", () => {
   it("takes an https shop", () => {
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com")).toBeNull();
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/")).toBeNull();
-    expect(whatIsWrongWithTheShopUrl("https://shop.example.com/store")).toMatch(/root/i);
+  });
+
+  it("offers no root address for a shop in a folder of its site, which is another WordPress", () => {
+    for (const typed of [
+      "https://example.com/store",
+      "https://example.com/store/",
+      "example.com/store",
+      "http://example.com/store/wp-admin/",
+    ]) {
+      const wrong = whatIsWrongWithTheShopUrl(typed);
+      expect(wrong, typed).toMatch(/root of its address/);
+      expect(wrong, typed).not.toMatch(/https:\/\/example\.com\b(?!\/)/);
+    }
   });
 
   it("names, in a refusal, the address the merchant most likely meant", () => {
