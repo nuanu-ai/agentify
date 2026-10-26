@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   readSessionResponseSchema,
+  type SendDataCopyRequest,
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -48,9 +49,15 @@ function identityWith(postman: Postman) {
   return { identity: identityFor(config(), { rows, postman }), rows };
 }
 
+/** The copies the route was asked to mail, answered as the provider took them. */
+const copiesAsked: SendDataCopyRequest[] = [];
+
 async function serve(postman: Postman) {
   const { identity, rows } = identityWith(postman);
-  const server = buildReportIdentityApp(SECRET, identity).listen(0, "127.0.0.1");
+  const server = buildReportIdentityApp(SECRET, identity, async (request) => {
+    copiesAsked.push(request);
+    return { status: "accepted" };
+  }).listen(0, "127.0.0.1");
   servers.push(server);
   await new Promise<void>((resolve, reject) => {
     server.once("listening", resolve);
@@ -83,7 +90,15 @@ const sendBody = {
   request: REQUEST,
 };
 
+const copyBody = {
+  operation: "copy",
+  request: REQUEST,
+  email: EMAIL,
+  scanner: { lead: null },
+};
+
 afterEach(async () => {
+  copiesAsked.splice(0);
   await Promise.all(
     servers
       .splice(0)
@@ -94,7 +109,9 @@ afterEach(async () => {
 describe("the dashboard's internal route for the scanner", () => {
   it("opens no listener for a standalone dashboard without the private secret", () => {
     const { identity } = identityWith(async () => "accepted");
-    expect(startReportIdentityServer(null, identity)).toBeNull();
+    expect(
+      startReportIdentityServer(null, identity, async () => ({ status: "accepted" })),
+    ).toBeNull();
   });
 
   it("authenticates before parsing and exposes one strict operation route", async () => {
@@ -149,6 +166,13 @@ describe("the dashboard's internal route for the scanner", () => {
         "application/json",
         400,
       ],
+      // A copy carries the scanner's part, bounded; another question stays small.
+      [
+        JSON.stringify({ ...copyBody, scanner: { padding: "x".repeat(4 * 1024 * 1024) } }),
+        "application/json",
+        413,
+      ],
+      [JSON.stringify({ ...copyBody, email: "OWNER@example.com" }), "application/json", 400],
       // The question about a session reads the flag and has no way to set one.
       [
         JSON.stringify({ operation: "session", cookie: "", renew: false, operator: true }),
@@ -163,6 +187,18 @@ describe("the dashboard's internal route for the scanner", () => {
     }
     // Nothing refused reached a mailbox.
     expect(messages).toHaveLength(0);
+    expect(copiesAsked).toHaveLength(0);
+  });
+
+  it("hands a copy request, with the scanner's part of any ordinary size, to the copier", async () => {
+    const { url } = await serve(async () => "accepted");
+    const scanner = { analytics_events: { total: 1, rows: ["x".repeat(64 * 1024)] } };
+
+    const answered = await post(url, { ...copyBody, scanner });
+
+    expect(answered.status).toBe(200);
+    expect(await answered.json()).toStrictEqual({ status: "accepted" });
+    expect(copiesAsked).toStrictEqual([{ ...copyBody, scanner }]);
   });
 
   it("answers whose session a cookie is, naming the request its link was asked for", async () => {

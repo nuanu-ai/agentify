@@ -14,12 +14,22 @@ export const SANDBOX_MAIL = "sandbox:log";
 
 export const isSandboxMail = (mailUrl: string): boolean => mailUrl === SANDBOX_MAIL;
 
+/** A file sent with a message; `content` is its text, sent as UTF-8. */
+interface Attachment {
+  readonly filename: string;
+  readonly contentType: string;
+  readonly content: string;
+}
+
 export interface Message {
   readonly to: string;
   readonly subject: string;
   readonly body: string;
   readonly html: string;
+  readonly attachments?: readonly Attachment[];
 }
+
+const bytesOf = (attachment: Attachment): number => Buffer.byteLength(attachment.content, "utf8");
 
 /**
  * `"accepted"` is the provider taking the message and nothing more; everything
@@ -47,12 +57,19 @@ export function postmanFor(config: MailConfig): Postman {
  * The link is printed whole, because following it is the only reason to read
  * this. Taken rather than refused: the log is the only sink here, and a caller
  * told otherwise would hide the note naming the address from the person about
- * to look for the link.
+ * to look for the link. An attachment is named and never printed: it is a
+ * person's copy of their own data.
  */
 const toTheLog: Postman = async (message) => {
+  const attached = (message.attachments ?? [])
+    .map(
+      (attachment) =>
+        `\nAttached, not printed: ${attachment.filename}, ${bytesOf(attachment)} bytes.`,
+    )
+    .join("");
   console.log(
     `[dashboard] no mail provider is configured, so this message was not sent.` +
-      ` To: ${message.to}. Subject: ${message.subject}.\n${message.body}`,
+      ` To: ${message.to}. Subject: ${message.subject}.\n${message.body}${attached}`,
   );
   return "accepted";
 };
@@ -77,6 +94,15 @@ function throughResend(config: MailConfig): Postman {
           subject: message.subject,
           text: message.body,
           html: message.html,
+          ...(message.attachments === undefined
+            ? {}
+            : {
+                attachments: message.attachments.map((attachment) => ({
+                  filename: attachment.filename,
+                  content: Buffer.from(attachment.content, "utf8").toString("base64"),
+                  content_type: attachment.contentType,
+                })),
+              }),
         }),
       });
       if (!answered.ok) {
