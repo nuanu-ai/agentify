@@ -643,6 +643,101 @@
   font-weight: 500;
 }
 
+/*
+ * The pager: the range read first, then the steps and the pages at the end of
+ * the line, under the list's right edge; on a narrow screen the steps take a
+ * line of their own. Each way is a 36px target, the page shown is filled, and
+ * a step with nowhere to go stays in its place in grey, so the row does not
+ * shift from page to page.
+ */
+.pager {
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+
+.pager-range {
+  font-variant-numeric: tabular-nums;
+}
+
+.pager-ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.pager-step,
+.pager-page,
+.pager-gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pager a.pager-step,
+.pager a.pager-page {
+  font-weight: 500;
+}
+
+.pager a:hover {
+  background: var(--raised);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.pager-page[aria-current="page"] {
+  background: var(--raised);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.pager-step[aria-disabled="true"] {
+  color: var(--na);
+}
+
+.pager-gap {
+  min-width: 20px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.pager-step.prev::before,
+.pager-step.next::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 0 1.5px 1.5px;
+}
+
+.pager-step.prev::before {
+  margin-right: 8px;
+  transform: rotate(45deg);
+}
+
+.pager-step.next::after {
+  margin-left: 8px;
+  transform: rotate(-135deg);
+}
+
+@media (max-width: 560px) {
+  .pager-ways {
+    width: 100%;
+  }
+
+  .pager-step.next {
+    margin-left: auto;
+  }
+}
+
 /* A heading over a group of rows, with its count in a pill. */
 .group {
   margin-top: 28px;
