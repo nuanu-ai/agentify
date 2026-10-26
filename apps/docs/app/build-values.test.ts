@@ -13,7 +13,8 @@ const VALUES = {
   "silent-after": { ms: 600_000, unit: "minute" },
   "default-deadline": { ms: 86_400_000, unit: "day" },
   "waiting-at-most": { count: 50 },
-  rate: { text: "0.1%" },
+  rate: { part: 1_000, total: 1_000_000 },
+  release: { text: "0.9.1" },
 } as const;
 
 describe("a number a page names", () => {
@@ -35,6 +36,13 @@ describe("a number a page names", () => {
     );
     expect(writtenIn("and the facilitator's {{price-holds:number}} fit", VALUES)).toBe(
       "and the facilitator's thirty fit",
+    );
+  });
+
+  it("is written as a percentage, and in words where a screen reader reads it aloud", () => {
+    expect(writtenIn('W -- "{{rate}}" --> F', VALUES)).toBe('W -- "0.1%" --> F');
+    expect(writtenIn("accDescr: {{rate:words}} kept for Agentify", VALUES)).toBe(
+      "accDescr: 0.1 percent kept for Agentify",
     );
   });
 
@@ -64,6 +72,14 @@ describe("the build stops", () => {
     expect(() => writtenIn("holds {{price-holds:short}}", values)).toThrow(/price-holds/);
   });
 
+  it("on a rate it could only round", () => {
+    const values = { ...VALUES, rate: { part: 1, total: 3 } } as const;
+
+    expect(() => writtenIn("we take {{rate}}", values)).toThrow(
+      /\{\{rate\}\}.*no exact percentage/,
+    );
+  });
+
   it("on a count it has no words for", () => {
     const values = { ...VALUES, "waiting-at-most": { count: 120 } } as const;
 
@@ -74,6 +90,7 @@ describe("the build stops", () => {
 
   it("on a form the value does not have", () => {
     expect(() => writtenIn("{{rate:short}}", VALUES)).toThrow(/\{\{rate:short\}\}/);
+    expect(() => writtenIn("{{release:words}}", VALUES)).toThrow(/release:words/);
     expect(() => writtenIn("{{waiting-at-most:number}}", VALUES)).toThrow(/waiting-at-most:number/);
     expect(() => writtenIn("{{price-holds:long}}", VALUES)).toThrow(/price-holds:long/);
   });
