@@ -26,16 +26,8 @@ export async function operatorOf(cookieHeader: string | null | undefined): Promi
   }
 }
 
-/**
- * The channel this scanner serves, as the workspace's frame names it: its name
- * and the site's host. The chain is the seller dashboard's to say, and the
- * scanner is not told it, so the line leaves it out rather than guess it.
- */
+/** The channel this scanner serves, as the workspace's frame names it. */
 export function channelHere(): ChannelView {
-  const config = getServerConfig();
-  return {
-    mode: config.AGENTIFY_SURFACE_MODE,
-    name: CHANNEL_NAMES[config.AGENTIFY_SURFACE_MODE],
-    line: new URL(config.appBaseUrl).host,
-  };
+  const mode = getServerConfig().AGENTIFY_SURFACE_MODE;
+  return { mode, name: CHANNEL_NAMES[mode] };
 }

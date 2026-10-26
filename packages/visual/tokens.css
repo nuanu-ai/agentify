@@ -961,10 +961,12 @@ textarea.field-input {
 }
 
 /* Which stack this is, on every page but a live one: a band across the window
-   under the site header, its words lined up with the content. A band has no
-   corners for the window edge to cut, and stays short on a phone. */
+   under the site header, its words lined up with the content. It takes the
+   notice's colour, a dot and a heavier weight so it reads as a marker on the
+   page rather than as part of it. A band has no corners for the window edge
+   to cut, and stays short on a phone. */
 .stack-note {
-  border-bottom: var(--hairline) solid var(--line);
+  border-bottom: var(--hairline) solid color-mix(in srgb, var(--notice-ink) 24%, var(--line));
   background: var(--notice-bg);
   color: var(--notice-ink);
 }
@@ -972,14 +974,24 @@ textarea.field-input {
 .surface-words {
   margin: 0;
   padding-block: 10px;
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  font: 600 var(--text-label) / 1.5 var(--font-sans);
+}
+
+.surface-words::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
 
 @media (max-width: 760px) {
   .surface-words {
     padding-block: 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-caption);
   }
 }
 

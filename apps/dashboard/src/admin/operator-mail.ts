@@ -22,7 +22,7 @@ export interface FlagChanged {
   readonly at: Date;
   /** The address of the session the change was pressed from. */
   readonly askedBy: string;
-  /** "Live channel", "Test channel" or "Sandbox", with the channel's host and chain. */
+  /** "production", "test environment" or "sandbox", with the channel's host and chain. */
   readonly channel: string;
   /** The workspace's Accounts page. */
   readonly accounts: string;

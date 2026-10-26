@@ -22,10 +22,10 @@ export type SectionCounts = Readonly<Partial<Record<AdminSection, SectionCount>>
 
 type ChannelMode = "live" | "test" | "sandbox";
 
-/** What each channel is called wherever the workspace names it. */
+/** What each channel is called wherever the workspace names it, as the band over a test page names it. */
 export const CHANNEL_NAMES: Readonly<Record<ChannelMode, string>> = {
-  live: "Live channel",
-  test: "Test channel",
+  live: "Production",
+  test: "Test environment",
   sandbox: "Sandbox",
 };
 
@@ -33,6 +33,4 @@ export interface ChannelView {
   readonly mode: ChannelMode;
   /** One of `CHANNEL_NAMES`. */
   readonly name: string;
-  /** The site's host, and the chain it settles on where the drawing application knows it. */
-  readonly line: string;
 }

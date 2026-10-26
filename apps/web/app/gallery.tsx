@@ -604,7 +604,7 @@ const NUMBERS: OperatorNumbers = {
  * people wait for a copy of their data.
  */
 /** The live channel the operator's examples open /admin on. */
-const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live, line: "agentify.ad" };
+const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live };
 
 const TROUBLED: OperatorNumbers = {
   ...NUMBERS,
@@ -1444,7 +1444,7 @@ const ACCOUNT: GalleryState[] = [
         "scanner-admin-test-channel",
         "An operator opens /admin on the test channel, which says what its money is under the header, as every page of the workspace there does.",
         NUMBERS,
-        { mode: "test", name: CHANNEL_NAMES.test, line: "test.agentify.ad" },
+        { mode: "test", name: CHANNEL_NAMES.test },
       ],
       [
         "scanner-admin-troubled",
