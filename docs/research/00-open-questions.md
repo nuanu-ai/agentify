@@ -42,7 +42,6 @@ and git keeps the entries that were here.
 | --- | --- | --- |
 | How regulation reads money that waits in a merchant's split before a payout; the first live merchant is approved after this is answered | product owner | `47-commission-in-the-product.md` |
 | Whether Coinbase Wallet pays the network fee in USDC with no paymaster of ours, and what a first payout does when the wallet holds no USDC yet; checked by hand on the test channel | product owner | `48-merchant-wallet-onboarding.md` |
-| The smallest price production settles: the facilitator refuses amounts under a minimum it does not publish while publication accepts any positive price down to 0.000001 USD, one unit of USDC, and production is not to be measured (2026-09-25), so this returns when a merchant prices under a cent | product owner | `36-zero-price.md` |
 | Who pays for the purchase that first lists a card in the Bazaar, which at a real price sends the merchant its own price from Agentify's wallet | product owner, when a merchant with expensive goods arrives | `04-spike-bazaar-listing.md` |
 | Whether an Indonesian merchant may accept USDC through Agentify for goods priced in rupiah, given the Currency Law's requirement of the rupiah for payments in Indonesia and Bank Indonesia's position that crypto assets are not a means of payment, and what that makes of Agentify's own part; answered before an Indonesian shop sells on the live channel | product owner, with legal counsel | `58-woo-shop-currency.md` |
 
