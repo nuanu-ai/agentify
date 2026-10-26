@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 import { ScriptedFacilitator } from "@agentify/gateway";
 import { type AgentifyClient, createClient, type LiveOrder } from "@nuanu-ai/agentify";
 import type { CardInput } from "@nuanu-ai/agentify-contracts";
+import { generatePrivateKey } from "viem/accounts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type Booted, bootGateway } from "./gateway-harness.js";
 
@@ -41,8 +42,8 @@ const FAULTS = fileURLToPath(new URL("./buyer-program-faults.ts", import.meta.ur
 /** The x402 client and viem the program imports, at the release this package installs. */
 const MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
 
-/** The same valueless local-devnet key the rest of the slice signs with. */
-const TEST_BUYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+/** A key made for this run, so that no key sits in the repository. */
+const TEST_BUYER_KEY = generatePrivateKey();
 
 /** The card the quickstart publishes on its third step, sold at once. */
 const AT_ONCE = {
@@ -74,8 +75,8 @@ const REFUSED = {
   merchant_item_id: "access-monthly-refused",
 } satisfies CardInput;
 
-/** A second valueless local-devnet key, a wallet other than the one that paid. */
-const OTHER_BUYER_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+/** A second key made for this run, a wallet other than the one that paid. */
+const OTHER_BUYER_KEY = generatePrivateKey();
 
 /** What the fault preload prints for each read of an order it lets through. */
 const READ_MARK = "[faults] order read";
