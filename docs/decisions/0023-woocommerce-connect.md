@@ -66,10 +66,12 @@ A download's paid failure is recovered only on its merchant's recovery page for
 one order, never through an SDK method or the operator's workspace; the page
 shows a sale and calls the gateway or the shop only for the account that owns
 it. After a pre-create refusal the page may create the shop order once, while
-the order is still open, the same shop is connected again under a new grant
+the order is unfulfilled, the same shop is connected again under a new grant
 and the product still qualifies (the product owner, 2026-10-26). The ledger
 becomes `create_unknown` before the request is sent, so no second press
-creates again, and the order holds what the buyer paid. An unknown create
+creates again, and the order holds what the buyer paid. The Agentify order is
+read again after the shop's checks, just before the ledger moves, so a closure
+can still meet a create only in the moment between that read and the request. An unknown create
 binds only an order id the merchant supplies, read back and matched on every
 fact of the sale. A mismatch stays unfulfilled, as does a parcel's failure,
 whose address is gone, and no staffed recovery queue is part of the service
