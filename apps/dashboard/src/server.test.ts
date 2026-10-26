@@ -722,13 +722,13 @@ describe("the passwordless dashboard door", () => {
 
   it("tells somebody new that this same form is their way in", async () => {
     // There is no separate sign-up page, so the page says the form is for
-    // newcomers too, and what follows the link.
+    // newcomers too.
     const { browser } = await started();
 
     const form = readable((await browser.get("/sign-in")).html);
 
     expect(form).toMatch(/new to agentify\?/i);
-    expect(form).toMatch(/seller dashboard/i);
+    expect(form).toMatch(/creates your account/i);
   });
 
   it("leaves a stranger the site header's ways back to the rest of the site, and no one's address", async () => {
@@ -845,7 +845,7 @@ describe("the passwordless dashboard door", () => {
     expect(said).toContain(PERSON);
     // The wait is under a minute, so the hourly sentence would be false, and
     // the address's hourly allowance is untouched.
-    expect(said).not.toContain("three links an hour");
+    expect(said).not.toContain("three links");
     expect(said).not.toMatch(/Try again in \d+ minutes/);
     // The server's seconds reach the button, which counts them down, served
     // pressable; the way out for a wrong address stays beside it.
@@ -897,7 +897,7 @@ describe("the passwordless dashboard door", () => {
     expect(withoutAddress(known, PERSON)).toBe(withoutAddress(unknown, "nobody@example.com"));
     // Not the page an address that spent its own hour gets: that one would
     // send the person to another address, which does not help here.
-    expect(readable(known.html)).not.toContain("three links an hour");
+    expect(readable(known.html)).not.toContain("three links");
 
     const elsewhere = await browser
       .sending(ELSEWHERE)
@@ -1055,10 +1055,11 @@ describe("the passwordless dashboard door", () => {
 
     expect(answered.status).toBe(503);
     // "Refused" covers a timeout too, and that message may have arrived, so the
-    // page may not claim nothing was sent; only that nothing was written.
-    expect(readable(answered.html)).toMatch(/could not confirm/i);
+    // page may not claim nothing was sent; only that its link, never kept,
+    // will not work.
+    expect(readable(answered.html)).toMatch(/may not have been sent/i);
     expect(readable(answered.html)).not.toMatch(/no link was sent|nothing was sent/i);
-    expect(readable(answered.html)).toMatch(/no account or session was created/i);
+    expect(readable(answered.html)).toMatch(/link will not work/i);
     expect(answered.headers.getSetCookie()).toStrictEqual([]);
     expect(await identity.byEmail("new@example.com")).toBeNull();
     expect(rows.dashboard_sessions).toStrictEqual([]);

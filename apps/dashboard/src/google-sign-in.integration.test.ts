@@ -250,7 +250,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
       expect(JSON.stringify(await context.cookies())).not.toContain(CLICK);
       await page.getByLabel("Email address").fill("cancelled-google@example.com");
       await page.getByRole("button", { name: "Send me a sign-in link" }).click();
-      await page.getByRole("heading", { name: "Check your mail" }).waitFor();
+      await page.getByRole("heading", { name: "Check your email" }).waitFor();
     } finally {
       await context.close();
     }
@@ -269,7 +269,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
         await page.getByLabel("Email address").fill(`enter-${javaScriptEnabled}@example.com`);
         await page.getByLabel("Email address").press("Enter");
 
-        await page.getByRole("heading", { name: "Check your mail" }).waitFor();
+        await page.getByRole("heading", { name: "Check your email" }).waitFor();
         expect(sentToGoogle).toHaveLength(started);
       } finally {
         await context.close();
