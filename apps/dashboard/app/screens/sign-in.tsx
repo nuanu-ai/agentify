@@ -251,7 +251,7 @@ export function LinkRequestedScreen({
             </>
           ) : null
         ) : (
-          <Form className={styles.foot} method="get" action="/sign-in">
+          <Form className={styles.caption} method="get" action="/sign-in">
             <Destination destination={destination} />
             <Click clickId={clickId} />
             <button className={styles.textButton} type="submit">

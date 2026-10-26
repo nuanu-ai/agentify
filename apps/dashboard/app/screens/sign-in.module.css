@@ -30,27 +30,42 @@ button.google img {
 }
 
 /*
- * One rhythm on every sign-in card: a block's distance between the box, the
- * button under it and the second way in, and a card's distance before the
- * small print. Written under the gate, because the gate's own margins for its
- * boxes, buttons and paragraphs are as specific as a class of this card alone.
+ * One rhythm on every card in front of the dashboard: a paragraph's distance
+ * between paragraphs; the actions' gap from text to a box or a button and from
+ * a button to the next block; a control's distance from a box to its button;
+ * a caption's distance around the "or" and to the line under a button. Written
+ * under the gate, because the gate's own margins for its boxes, buttons and
+ * paragraphs are as specific as a class of this card alone.
  */
-:global(.gate) .card :global(.field) {
-  margin-top: var(--space-card);
+:global(.gate) .card p + p {
+  margin-top: var(--gap-paragraph);
 }
 
+:global(.gate) .card :global(.field),
 :global(.gate) .card :global(.button) {
-  margin-top: var(--space-block);
+  margin-top: var(--gap-actions);
+}
+
+:global(.gate) .card :global(.field) ~ :global(.button) {
+  margin-top: var(--space-control);
+}
+
+:global(.gate) .card p.or,
+:global(.gate) .card p.or + form :global(.button) {
+  margin-top: var(--gap-caption);
 }
 
 :global(.gate) .card p.or {
-  margin-top: var(--space-block);
   text-align: center;
   font-size: var(--text-small);
 }
 
 :global(.gate) .card .foot {
-  margin-top: var(--space-card);
+  margin-top: var(--gap-actions);
+}
+
+:global(.gate) .card .caption {
+  margin-top: var(--gap-caption);
 }
 
 /* A way back to the form, which matters to whoever mistyped and to nobody

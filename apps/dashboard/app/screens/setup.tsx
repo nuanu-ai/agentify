@@ -99,7 +99,7 @@ export function ChooseNameScreen({
             <Button pending={pending} disabled={alive && typed.trim() === ""}>
               Use this name
             </Button>
-            <p className={`quiet gate-skip ${styles.foot}`}>
+            <p className={`quiet gate-skip ${styles.caption}`}>
               <a href={`${chrome.base}/cards`}>Choose later</a>. Nothing goes on sale until you do.
             </p>
           </>
