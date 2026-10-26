@@ -501,6 +501,24 @@ describe("a synchronous purchase", () => {
     expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
     expect(taken.status).toBe(402);
   });
+
+  it("is not taken at a price named before the seller went quiet and paid after", async () => {
+    // A price that holds five minutes, so the payment arrives with its price
+    // still standing and only the seller's silence between them.
+    const { harnessed } = await started({ QUOTE_TTL_MS: String(5 * MINUTE) });
+    const itemId = await selling(harnessed, syncCard);
+    harnessed.advance(9 * MINUTE);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+
+    harnessed.advance(3 * MINUTE);
+    const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
+    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, payment, fingerprint);
+
+    expect(paid.step).toBe("seller_not_taking_orders");
+    expect(harnessed.facilitator.verifies).toStrictEqual([]);
+    expect(await harnessed.queue.draw(harnessed.merchant.id, 100, 0)).toStrictEqual([]);
+  });
 });
 
 /**
@@ -953,16 +971,34 @@ describe("a silent seller's products", () => {
 });
 
 /**
- * One way a card can stand when an agent comes to it: what is done once the
- * card is on sale, and what the door answers an unpaid purchase of it with,
- * null where it names a price.
+ * One way a card can stand when an agent comes to it: whose card it is, where
+ * that is not the harness's own seller, what is done once the card is on sale,
+ * what the door answers an unpaid purchase of it with, null where it names a
+ * price, and whether that refusal ends by itself within minutes, in which case
+ * a look still offers the price so that listings other people run keep it.
  */
 interface Standing {
   readonly card: Card;
   readonly through?: Integration;
+  readonly seller?: (harnessed: Harness) => Promise<string>;
   readonly after?: (harnessed: Harness, itemId: string) => Promise<void>;
   readonly refused: string | null;
+  readonly transient?: true;
 }
+
+/**
+ * A merchant made the way the dashboard makes one, named and paid, whose own
+ * code has never polled.
+ */
+const neverPolled = async (harnessed: Harness): Promise<string> => {
+  const merchantId = await harnessed.gateway.registerMerchant();
+  await harnessed.gateway.setSellerName(merchantId, { seller_name: "A shop never heard from" });
+  await harnessed.gateway.setPayoutWallet(merchantId, aWallet("their payout").address, {
+    kind: "signed_in",
+    email: "owner@example.com",
+  });
+  return merchantId;
+};
 
 const STANDINGS: Readonly<Record<string, Standing>> = {
   "a card charged before its goods, its seller in touch": { card: prepaidCard, refused: null },
@@ -971,11 +1007,19 @@ const STANDINGS: Readonly<Record<string, Standing>> = {
     card: prepaidCard,
     after: async (harnessed) => harnessed.advance(11 * MINUTE),
     refused: "seller_not_taking_orders",
+    transient: true,
   },
   "a synchronous card, its seller silent": {
     card: syncCard,
     after: async (harnessed) => harnessed.advance(11 * MINUTE),
     refused: "seller_not_taking_orders",
+    transient: true,
+  },
+  "a card of a seller whose own code has never polled": {
+    card: prepaidCard,
+    seller: neverPolled,
+    refused: "seller_not_taking_orders",
+    transient: true,
   },
   "a shop's card, nothing having polled for an hour": {
     card: prepaidCard,
@@ -1024,10 +1068,11 @@ const STANDINGS: Readonly<Record<string, Standing>> = {
 
 describe("the catalogue and the door", () => {
   it.each(Object.entries(STANDINGS))(
-    "agree on %s: the card is listed exactly when a look and a purchase are offered a price",
-    async (_, { card, through = "api", after, refused }) => {
+    "agree on %s: the card is listed exactly when a purchase is offered a price, and a look is refused only for what does not end by itself",
+    async (_, { card, through = "api", seller, after, refused, transient }) => {
       const { harnessed, served } = await started();
-      const itemId = await sellingThrough(harnessed, harnessed.merchant.id, through, card);
+      const merchantId = seller === undefined ? harnessed.merchant.id : await seller(harnessed);
+      const itemId = await sellingThrough(harnessed, merchantId, through, card);
       await after?.(harnessed, itemId);
 
       const listed = (await listedIn(served)).includes(itemId);
@@ -1040,7 +1085,7 @@ describe("the catalogue and the door", () => {
 
       expect({ listed, looked: answer(looked), bought: answer(bought) }).toStrictEqual({
         listed: refused === null,
-        looked: refused,
+        looked: transient ? null : refused,
         bought: refused,
       });
     },
