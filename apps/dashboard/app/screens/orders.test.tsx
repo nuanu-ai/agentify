@@ -1296,10 +1296,10 @@ describe("the transaction that paid an order", () => {
         )}
       />
     ));
-    const details = new RegExp(`<details[^>]*id="details-${FIRST}"[\\s\\S]*?</details>`).exec(
-      html,
-    )?.[0];
-    return { html, details: details ?? "", text: readable(details ?? "") };
+    // The page holds this one order, so its details run to the end of it; the
+    // copy buttons inside hold details of their own.
+    const details = html.slice(Math.max(0, html.indexOf(`<details id="details-${FIRST}"`)));
+    return { html, details, text: readable(details) };
   };
 
   it("is shown in the details of a paid order that was never delivered, with the way to the chain's explorer and to sending the money back", () => {
