@@ -321,6 +321,42 @@ describe("the orders a page reads", () => {
   });
 });
 
+describe("the paid orders left unfulfilled", () => {
+  it("name as counting toward the stop only the ones their merchant answers for", async () => {
+    // One refused by the merchant, and one whose deadline passed before it
+    // was ever handed over, which is not the merchant's to answer for.
+    const harnessed = await started();
+    const merchantId = harnessed.merchant.id;
+    const published = await harnessed.gateway.publishCard(merchantId, AN_ESIM);
+    if (!published.ok) throw new Error("the card was refused");
+    const paid = async (payment: string) => {
+      const offered = await harnessed.gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      await harnessed.gateway.payPurchase(offered.order.order.id, payment, payment);
+      return offered.order.order.id;
+    };
+    const refused = await paid("PAYMENT-1");
+    const missed = await paid("PAYMENT-2");
+    await harnessed.gateway.refuseOrder(merchantId, refused, {
+      code: "out_of_stock",
+      message: "the supplier has none",
+    });
+    harnessed.advance(3_601_000);
+    await harnessed.gateway.runner.apply(missed, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "async_fulfillment",
+    });
+
+    const read = await asTheOwner(harnessed).ordersWithRecords();
+
+    if (!read.ok) throw new Error("the orders could not be read");
+    const { records } = read.document;
+    expect(records[refused]).toMatchObject({ unfulfilled: "refused", counts: true });
+    expect(records[missed]).toMatchObject({ unfulfilled: "deadline_passed", counts: false });
+  });
+});
+
 describe("a call that does not finish", () => {
   it("is given up on at its deadline, saying what was asked may have been done", async () => {
     // The work behind it is not stopped (a late database still writes), so the
@@ -839,6 +875,7 @@ describe("what an order's record says beside its document", () => {
         paidAt: iso(paidAt),
         deadline: { at: iso(paidAt + HOUR), passed: false },
         soldThrough: "api",
+        counts: false,
       },
     });
     expect(passed).toStrictEqual({
@@ -847,6 +884,7 @@ describe("what an order's record says beside its document", () => {
         paidAt: iso(paidAt),
         deadline: { at: iso(paidAt + HOUR), passed: true },
         soldThrough: "api",
+        counts: false,
       },
     });
   });
@@ -902,6 +940,7 @@ describe("what an order's record says beside its document", () => {
       paidAt: receipt?.paid_at,
       deadline: null,
       soldThrough: "api",
+      counts: false,
     });
   });
 
@@ -929,6 +968,7 @@ describe("what an order's record says beside its document", () => {
       paidAt: iso(executedAt),
       deadline: null,
       soldThrough: "api",
+      counts: false,
     });
   });
 
@@ -951,6 +991,7 @@ describe("what an order's record says beside its document", () => {
       paidAt: iso(completedAt),
       deadline: null,
       soldThrough: "api",
+      counts: false,
     });
   });
 

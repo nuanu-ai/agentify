@@ -1674,6 +1674,71 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
+    describe("a paid order left unserved", () => {
+      /**
+       * An order of `merchantId`'s in `state`, paid for, with whether its
+       * merchant answers for it as the gateway decided, or nothing decided.
+       */
+      const paidOrder = (
+        id: string,
+        state: Order["state"],
+        answerable: boolean | undefined,
+        merchantId = A,
+      ): StoredOrder => {
+        const base = anOrder(id, state, {
+          merchantId,
+          createdAt: Number(id.replace(/\D/g, "")) || 1,
+        });
+        return {
+          ...base,
+          order: { ...base.order, payment: "settled" },
+          ...(answerable === undefined ? {} : { answerable }),
+        };
+      };
+
+      it("is counted for its own seller only, and only while unfulfilled and answered for by its merchant", async () => {
+        // One the merchant does not answer for, one decided before the fact was
+        // kept, one closed or delivered with the fact left on it, and another
+        // seller's: none of these counts.
+        const store = await twoMerchants();
+        await store.addOrder(paidOrder("ord_1", "unfulfilled", true));
+        await store.addOrder(paidOrder("ord_2", "unfulfilled", true));
+        await store.addOrder(paidOrder("ord_3", "unfulfilled", false));
+        await store.addOrder(paidOrder("ord_4", "unfulfilled", undefined));
+        await store.addOrder(paidOrder("ord_5", "fulfillment_closed", true));
+        await store.addOrder(paidOrder("ord_6", "delivered", true));
+        await store.addOrder(paidOrder("ord_7", "unfulfilled", true, B));
+
+        expect(await store.unservedOrders(A, 10)).toBe(2);
+        expect(await store.unservedOrders(B, 10)).toBe(1);
+      });
+
+      it("is counted up to the number asked and no further", async () => {
+        const store = await twoMerchants();
+        for (let one = 1; one <= 4; one += 1) {
+          await store.addOrder(paidOrder(`ord_${one}`, "unfulfilled", true));
+        }
+
+        expect(await store.unservedOrders(A, 3)).toBe(3);
+        expect(await store.unservedOrders(A, 5)).toBe(4);
+      });
+
+      it("names, among the sellers asked about, those with at least as many as asked", async () => {
+        const store = await twoMerchants();
+        for (let one = 1; one <= 3; one += 1) {
+          await store.addOrder(paidOrder(`ord_${one}`, "unfulfilled", true));
+        }
+        await store.addOrder(paidOrder("ord_4", "unfulfilled", true, B));
+        await store.addOrder(paidOrder("ord_5", "unfulfilled", false, B));
+        await store.addOrder(paidOrder("ord_6", "fulfillment_closed", true, B));
+
+        expect([...(await store.stoppedSellers([A, B], 2))]).toStrictEqual([A]);
+        expect([...(await store.stoppedSellers([B], 1))]).toStrictEqual([B]);
+        expect([...(await store.stoppedSellers([B], 2))]).toStrictEqual([]);
+        expect([...(await store.stoppedSellers([], 1))]).toStrictEqual([]);
+      });
+    });
+
     describe("an attempt that lapsed unpaid", () => {
       const DAY = 86_400_000;
 

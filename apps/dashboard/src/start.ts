@@ -13,6 +13,7 @@
  */
 
 import type { Server } from "node:http";
+import type { CommissionRate } from "@agentify/core/published";
 import type { Gateway } from "@agentify/gateway";
 import { postgresOperatorReader } from "@agentify/gateway/operator";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -29,7 +30,6 @@ import { startNuanuAnalytics } from "./nuanu-analytics.js";
 import type { Pages } from "./pages.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
-import type { CommissionRate } from "./shares.js";
 import { type Teller, tellerFor } from "./teller.js";
 import { postgresWooShops, wooOfferedOn } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";

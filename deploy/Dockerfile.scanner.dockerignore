@@ -28,7 +28,6 @@ output
 /apps/gateway
 /apps/browser-observer-actor
 /apps/scanner-worker
-/packages/core
 /packages/sdk
 /packages/slice
 /apps/docs

@@ -114,9 +114,10 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
  * Why the account as a whole is not selling as usual: all sales are paused,
  * something publishing needs is missing, purchases charged before delivery are
  * refused while their integration is not connected, new purchases are refused
- * while twenty wait for payment, or the cards their own code published are off
- * sale while a WooCommerce shop sells; or that what would say so could not be
- * read.
+ * while as many wait for payment as Agentify allows or while as many paid
+ * orders are left unserved as it allows, or the cards their own code published
+ * are off sale while a WooCommerce shop sells; or that what would say so could
+ * not be read.
  */
 export type AccountReason =
   | "paused"
@@ -125,6 +126,7 @@ export type AccountReason =
   | "no_payout_wallet"
   | "out_of_touch"
   | "busy"
+  | "unserved"
   | "through_shop"
   | "unread";
 
@@ -174,8 +176,13 @@ export const ACCOUNT_WORDS: Readonly<
   },
   busy: {
     title: "New purchases are refused",
-    says: "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
+    says: "As many purchases as Agentify allows are waiting for payment, so new ones are refused until one is paid or its price runs out.",
     fix: null,
+  },
+  unserved: {
+    title: "All new purchases are refused",
+    says: "As many paid orders you were given as Agentify allows are left without delivery or closure, so agents cannot buy anything from you until you deliver or close some of them. Under Needs you, each order that counts says so.",
+    fix: { to: "/orders?show=needs", words: "See them on Orders" },
   },
   through_shop: {
     title: "Selling through your WooCommerce shop",
@@ -188,6 +195,14 @@ export const ACCOUNT_WORDS: Readonly<
     fix: null,
   },
 });
+
+/**
+ * Said beside an order under Needs you that counts toward the stop on new
+ * purchases: the merchant must find exactly those, since closing an order that
+ * does not count lifts nothing.
+ */
+export const COUNTS_TOWARD_THE_STOP =
+  "This order counts toward the stop on your new purchases until you deliver or close it.";
 
 /** The banner's title while Agentify's withdrawal of the merchant's admission stands. */
 export const LIVE_SALES_STOPPED = "Live sales are stopped";

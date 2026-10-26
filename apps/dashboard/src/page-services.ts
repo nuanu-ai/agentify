@@ -996,6 +996,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         : { page: lapsed.document.attempts, of: lapsed.document.of },
       shopTotals,
       connector,
+      new Set(
+        Object.entries(records)
+          .filter(([, record]) => record.counts)
+          .map(([id]) => id),
+      ),
     );
     return { kind: "view", view };
   };
@@ -1504,6 +1509,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                   selling: standing.value.selling,
                   through: standing.value.through,
                   busy: standing.value.busy,
+                  unserved: standing.value.unserved,
                   ...(standing.value.withdrawn === null
                     ? {}
                     : {

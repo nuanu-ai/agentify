@@ -34,6 +34,7 @@ and git keeps the entries that were here.
 | How fresh a sign-in an administrative action asks for, fifteen minutes or another window, and whether reading the admin asks for one too | product owner, with the architect | `85-operator-admin.md` |
 | Whether the admin reads the splits' balances from the chain, so that the commission Agentify has received is a figure rather than a link to the explorer | product owner | `85-operator-admin.md` |
 | Who answers the access requests the scanner records through the route its privacy page names; the scanner's page counts them and nothing records an answer | product owner | `85-operator-admin.md` |
+| How the purchase door keeps unpaid price questions from loading a merchant's shop without letting anybody stop that merchant's sales for free; the limit of fifty purchases waiting for payment still lets them, and the product owner does not accept that (2026-10-26) | product owner | `87-unpaid-price-questions.md`, ADR-0043 |
 
 ## Money
 

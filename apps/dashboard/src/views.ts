@@ -396,6 +396,8 @@ interface OrderFact {
 
 /** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
 interface OrderNeed extends OrderRow {
+  /** Whether it counts toward the stop on the merchant's new purchases. */
+  readonly stops: boolean;
   /**
    * Where the row's own line in the list opens: the page as it is where the
    * line is on it, the order found by its ID where it is not. Named by the
@@ -687,6 +689,7 @@ export const ordersView = (
   lapsed: LapsedAttempts = NO_LAPSED,
   shopTotals: Readonly<Record<string, ShopTotal>> = {},
   connector: Readonly<Record<string, ConnectorSale>> = {},
+  stopping: ReadonlySet<string> = new Set(),
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -825,7 +828,11 @@ export const ordersView = (
             : "Order details",
     };
   };
-  const tell = ({ row }: (typeof listed)[number]): OrderNeed => ({ ...row, opens: opens(row) });
+  const tell = ({ order, row }: (typeof listed)[number]): OrderNeed => ({
+    ...row,
+    stops: order.status === "unfulfilled" && stopping.has(order.id),
+    opens: opens(row),
+  });
   const told = (which: (order: OrderList["orders"][number]) => boolean): ToldOrders => {
     const all = found.filter(({ order }) => which(order));
     return { rows: all.slice(0, PAGE_ROWS).map(tell), of: all.length };

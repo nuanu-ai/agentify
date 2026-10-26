@@ -514,8 +514,9 @@ from the revision `current` names.
 
 ## Collecting the commission
 
-Agentify's 0.1% stays credited to its commission wallet in the shared 0xSplits
-warehouse until somebody pays the splits out; nothing does that on a timer. The
+Agentify's commission ([Money](https://agentify.ad/docs/money#what-we-take))
+stays credited to its commission wallet in the shared 0xSplits warehouse until
+somebody pays the splits out; nothing does that on a timer. The
 operator's workspace shows the payout on its Money page, under the splits, at
 `/dashboard/admin/money`: for every split recorded on the channel's network,
 the transactions that create each split if it has no code yet, distribute it,
@@ -1067,11 +1068,12 @@ asked for, their cards leave the live catalogue, and publishing lists
 what is new exactly where pausing all selling does: orders already opened keep
 their fulfilment, the merchant still delivers them, and nothing is refunded or
 closed. An order already priced can still be paid within what remains of its
-price window: at most thirty seconds, or thirty-five for a card that asks the
-merchant for its price. Admitting them again on the same page lets their
-cards sell again without being republished. Every admission, withdrawal and
-refused press is a row of the operator's journal, which the merchant's page
-shows as its history.
+price window: how long a price holds, counted from the merchant's answer on a
+card that asks the merchant for its price ([Every time
+limit](https://agentify.ad/docs/orders#every-time-limit)). Admitting them again
+on the same page lets their cards sell again without being republished. Every
+admission, withdrawal and refused press is a row of the operator's journal,
+which the merchant's page shows as its history.
 
 ## Starting an address over on TEST
 

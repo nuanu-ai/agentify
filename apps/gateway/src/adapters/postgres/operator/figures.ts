@@ -4,8 +4,9 @@
  * chart needs days, so a busier month brings back the same number of rows.
  */
 
+import { SILENT_AFTER_MS } from "@agentify/core/published";
 import { type SQL, sql } from "drizzle-orm";
-import { CONTACT_WRITTEN_EVERY_MS, SILENT_AFTER_MS } from "../../../app/gateway.js";
+import { CONTACT_WRITTEN_EVERY_MS } from "../../../app/gateway.js";
 import {
   askedOn,
   CHART_DAYS,

@@ -5,8 +5,9 @@ AI agents read and buy from. Each product gets a card there and a paid address
 of its own, `/x402/<item>/purchase`, where an agent pays for it with the x402
 payment protocol. The buyer pays into the merchant's own payout contract, which nobody
 owns and nobody can redirect. It keeps the money until it is paid out, which
-the merchant can do at any time, and then sends 99.9% to the merchant's wallet
-and 0.1% to Agentify ([Money](https://agentify.ad/docs/money)).
+the merchant can do at any time, and then pays the merchant's share to the
+merchant's wallet and Agentify's commission to Agentify
+([Money](https://agentify.ad/docs/money#what-we-take)).
 
 This package is the merchant's side of it. It publishes the cards, receives
 paid orders and price questions through one outgoing connection, and closes

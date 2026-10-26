@@ -399,6 +399,7 @@ describe("a paid order left unfulfilled", () => {
                 paidAt: null,
                 deadline: null,
                 soldThrough: "api",
+                counts: false,
               },
             },
             { ord_unfulfilled: SPLIT },
@@ -434,6 +435,7 @@ describe("a paid order left unfulfilled", () => {
                 paidAt: null,
                 deadline: null,
                 soldThrough: "api",
+                counts: false,
               },
             },
             { ord_unfulfilled: SPLIT },
@@ -444,6 +446,38 @@ describe("a paid order left unfulfilled", () => {
     const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
     expect(callout).toContain("stopped waiting");
     expect(callout).not.toMatch(/network|chain|blockchain/i);
+  });
+
+  it("marks only the orders that count toward the stop on new purchases", () => {
+    // An unfulfilled order the merchant does not answer for, such as one
+    // Agentify never handed over, needs them too but does not hold their sales.
+    const two: OrderList = OrderListSchema.parse({
+      orders: [
+        { ...pricedAt("80.00", "ord_counted"), status: "unfulfilled" },
+        { ...pricedAt("12.00", "ord_not_counted"), status: "unfulfilled" },
+      ],
+    });
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(
+          SEEN_BY.mode,
+          cards,
+          two,
+          two,
+          undefined,
+          {},
+          {},
+          undefined,
+          {},
+          {},
+          new Set(["ord_counted"]),
+        )}
+      />
+    ));
+
+    expect([...html.matchAll(/data-stops="([^"]+)"/g)].map(([, id]) => id)).toStrictEqual([
+      "ord_counted",
+    ]);
   });
 
   it("does not guess why delivery was missing when no cause was read", () => {

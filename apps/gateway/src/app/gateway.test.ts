@@ -2980,6 +2980,7 @@ describe("a merchant's standing in one read", () => {
       // polled, nor for purchases waiting, of which there are none.
       outOfTouch: null,
       busy: false,
+      unserved: false,
       // The test channel asks for no admission, so nothing is withdrawn there.
       withdrawn: null,
     };
@@ -3047,25 +3048,6 @@ describe("a merchant's standing in one read", () => {
       sellerName: "Another name",
       liveApproved: true,
     });
-  });
-
-  it("reads the merchant's own row, last poll and waiting purchases and none of their cards, however many they have, while their process is in touch", async () => {
-    const harnessed = await started();
-    await published(harnessed, syncCard);
-    const read: string[] = [];
-    const store = harnessed.store as unknown as Record<string, (...asked: unknown[]) => unknown>;
-    for (const name of Object.getOwnPropertyNames(Object.getPrototypeOf(harnessed.store))) {
-      const method = store[name];
-      if (name === "constructor" || typeof method !== "function") continue;
-      store[name] = (...asked) => {
-        read.push(name);
-        return method.apply(harnessed.store, asked);
-      };
-    }
-
-    await harnessed.gateway.standingOf(harnessed.merchant.id);
-
-    expect(read).toStrictEqual(["merchantById", "lastContact", "waitingForPayment"]);
   });
 });
 

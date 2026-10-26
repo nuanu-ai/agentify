@@ -13,6 +13,7 @@
  */
 
 import { fulfillmentDeadline, outcomeFor, UNKNOWN } from "@agentify/core";
+import type { CommissionRate } from "@agentify/core/published";
 import type {
   Caller,
   Gateway,
@@ -63,7 +64,6 @@ import {
 import { ANSWER_WITHIN_MS } from "./deadlines.js";
 import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
-import type { CommissionRate } from "./shares.js";
 import type { LapsedAttempt } from "./views.js";
 
 export type Answer<T> =
@@ -134,6 +134,11 @@ export interface OrderRecord {
    * can still deliver it; null where the card cannot be read.
    */
   readonly soldThrough: Integration | null;
+  /**
+   * Whether it counts toward the stop on the merchant's new purchases: an
+   * order left unfulfilled that its merchant answers for.
+   */
+  readonly counts: boolean;
 }
 
 /**
@@ -290,6 +295,8 @@ export interface GatewayClient {
       readonly outOfTouch: { readonly since: number | null } | null;
       /** Whether as many purchases wait for payment as the door allows, so the next is refused. */
       readonly busy: boolean;
+      /** Whether as many paid orders are left unserved as the door allows, so every new purchase is refused. */
+      readonly unserved: boolean;
       /**
        * On the live channel while an operator's withdrawal of the merchant's
        * admission stands: when, and the note the operator wrote for them.
@@ -580,6 +587,7 @@ const orderRecordOf = (
     paidAt: moneyMovedAt(record, receipted),
     deadline: due === undefined ? null : { at: new Date(due.at).toISOString(), passed: !running },
     soldThrough,
+    counts: order.state === "unfulfilled" && record.answerable === true,
   };
 };
 

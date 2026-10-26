@@ -17,6 +17,7 @@
   "dependencies": {
     "@agentify/analytics": "workspace:*",
     "@agentify/consent": "workspace:*",
+    "@agentify/core": "workspace:*",
     "@agentify/observability": "workspace:*",
     "@agentify/remediation": "workspace:*",
     "@agentify/scanner": "workspace:*",

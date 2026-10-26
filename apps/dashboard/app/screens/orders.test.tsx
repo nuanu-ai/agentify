@@ -1057,18 +1057,21 @@ describe("an order's facts", () => {
       paidAt: "2026-10-12T16:40:05Z",
       deadline: { at: "2026-10-12T17:40:05Z", passed: true },
       soldThrough: "api",
+      counts: false,
     },
     [SAME_HEAD]: {
       unfulfilled: "refused",
       paidAt: "2026-10-12T16:41:05Z",
       deadline: null,
       soldThrough: "api",
+      counts: false,
     },
     [SAME_TAIL]: {
       unfulfilled: null,
       paidAt: "2026-10-12T16:42:05Z",
       deadline: { at: "2026-10-12T17:42:05Z", passed: false },
       soldThrough: "api",
+      counts: false,
     },
   } as const;
   const opened = (id: string) =>
@@ -1121,6 +1124,7 @@ describe("an order's facts", () => {
               paidAt: "2026-10-12T17:10:00Z",
               deadline: null,
               soldThrough: "api",
+              counts: false,
             },
           },
         )}
@@ -1162,7 +1166,7 @@ describe("the way on for an unfulfilled order", () => {
   const cause = (
     unfulfilled: "deadline_passed" | "refused" | "charge_confirmed_late",
     soldThrough: "api" | "woocommerce" = "woocommerce",
-  ) => ({ unfulfilled, paidAt: null, deadline: null, soldThrough });
+  ) => ({ unfulfilled, paidAt: null, deadline: null, soldThrough, counts: false });
   const opened = (id: string) =>
     detailsOf(
       served(() => (

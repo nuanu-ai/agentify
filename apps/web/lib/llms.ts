@@ -1,3 +1,9 @@
+import {
+  COMMISSION_RATE,
+  durationInWords,
+  percentagesOf,
+  QUOTE_TTL_MS,
+} from "@agentify/core/published";
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
 import { ShipToSchema } from "@nuanu-ai/agentify-contracts";
 import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
@@ -13,6 +19,8 @@ const labels = {
 } as const satisfies Record<(typeof PUBLIC_PAGE_PATHS)[number], string>;
 
 const LIVE_SITE = "https://agentify.ad";
+
+const { commission, share } = percentagesOf(COMMISSION_RATE);
 
 /** A parcel's purchase, with the example address the contract's own schema publishes. */
 const parcelPurchase = (): string => {
@@ -66,9 +74,9 @@ export function buildLlmsText(): string {
     "",
     "## Selling to agents",
     "",
-    "Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402. The buyer pays into the merchant's own payout contract, which nobody owns and which sends 99.9% to the merchant's wallet and 0.1% to Agentify when it is paid out.",
+    `Agentify also runs a merchant channel: an ordinary online business publishes product cards that AI agents buy and pay for over x402. The buyer pays into the merchant's own payout contract, which nobody owns and which sends ${share} to the merchant's wallet and ${commission} to Agentify when it is paid out.`,
     "",
-    "To buy, POST `{\"params\": {...}}`, holding the fields the item's `params` declare and empty when it declares none, with the address under `ship_to` beside it for an item whose `fulfillment` is `ship`, to the item's `purchase_url` in the catalogue. The first answer is a 402 whose x402 version 2 payment requirements are in the `PAYMENT-REQUIRED` header; the price in them holds for thirty seconds, so sign and send the payment at once, in a `PAYMENT-SIGNATURE` header on the same POST. It is answered with the order: the goods are in its `delivered`, or, where they come later, its `status_url` is read again while its `status` reads `in_progress`. The payment requirements name the order by its `order_id`, which binds your payment to it and opens nothing. The answer's `status_url` carries your buyer's key, the only key to the order and its goods: keep that address to yourself. Its `order_id` is not a secret; it is what you quote to the seller. If the answer is lost, sign the same payment requirements again from the same wallet: the order comes back with no second charge, or, if it ended with nothing charged or your payment's outcome is not known yet, a refusal that says so. Keep the payment requirements you were given and the payment you signed until you have the answer, because getting a lost answer back needs them: the requirements to sign again, and the payment to tell you which wallet has to sign. Asking the purchase_url again without the kept payment requirements starts a new purchase, which is charged again once paid.",
+    `To buy, POST \`{"params": {...}}\`, holding the fields the item's \`params\` declare and empty when it declares none, with the address under \`ship_to\` beside it for an item whose \`fulfillment\` is \`ship\`, to the item's \`purchase_url\` in the catalogue. The first answer is a 402 whose x402 version 2 payment requirements are in the \`PAYMENT-REQUIRED\` header; the price in them holds for ${durationInWords(QUOTE_TTL_MS, "second")}, so sign and send the payment at once, in a \`PAYMENT-SIGNATURE\` header on the same POST. It is answered with the order: the goods are in its \`delivered\`, or, where they come later, its \`status_url\` is read again while its \`status\` reads \`in_progress\`. The payment requirements name the order by its \`order_id\`, which binds your payment to it and opens nothing. The answer's \`status_url\` carries your buyer's key, the only key to the order and its goods: keep that address to yourself. Its \`order_id\` is not a secret; it is what you quote to the seller. If the answer is lost, sign the same payment requirements again from the same wallet: the order comes back with no second charge, or, if it ended with nothing charged or your payment's outcome is not known yet, a refusal that says so. Keep the payment requirements you were given and the payment you signed until you have the answer, because getting a lost answer back needs them: the requirements to sign again, and the payment to tell you which wallet has to sign. Asking the purchase_url again without the kept payment requirements starts a new purchase, which is charged again once paid.`,
     "",
     `A parcel's purchase without params, with an example address: \`${parcelPurchase()}\`. In \`ship_to\`, \`name\`, \`line_one\`, \`city\`, \`country\` and \`phone_number\` are required, and \`line_two\`, \`state\` and \`postal_code\` are given where the address has them. \`country\` is ISO 3166-1 alpha-2, and \`state\` is the subdivision code without the country in front.`,
     "",

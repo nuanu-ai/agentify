@@ -101,6 +101,10 @@ const noEnvelopes: Envelopes = {
   },
 };
 
+/** An unfulfilled order its merchant answers for, the one kind the stop counts. */
+const answeredFor = (held: StoredOrder): boolean =>
+  held.order.state === "unfulfilled" && held.answerable === true;
+
 /** What `MemoryStore#holdings` hands the operator's memory reader. */
 export interface MemoryHoldings {
   readonly merchants: readonly StoredMerchant[];
@@ -801,6 +805,27 @@ export class MemoryStore implements Store {
 
   async waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number> {
     return this.#waiting(merchantId, at, atMost);
+  }
+
+  async unservedOrders(merchantId: string, atMost: number): Promise<number> {
+    const unserved = [...this.#orders.values()].filter(
+      (held) => held.merchantId === merchantId && answeredFor(held),
+    ).length;
+    return Math.min(unserved, atMost);
+  }
+
+  async stoppedSellers(
+    merchantIds: readonly string[],
+    atLeast: number,
+  ): Promise<ReadonlySet<string>> {
+    const asked = new Set(merchantIds);
+    const counted = new Map<string, number>();
+    for (const held of this.#orders.values()) {
+      if (asked.has(held.merchantId) && answeredFor(held)) {
+        counted.set(held.merchantId, (counted.get(held.merchantId) ?? 0) + 1);
+      }
+    }
+    return new Set([...counted].flatMap(([id, many]) => (many >= atLeast ? [id] : [])));
   }
 
   #waiting(merchantId: string, at: number, atMost: number): number {

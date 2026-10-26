@@ -1262,7 +1262,7 @@ const CARDS: GalleryState[] = [
     {
       id: "dashboard-cards-busy",
       screen: "Cards",
-      when: "A merchant opens Cards while twenty purchases of theirs are priced and unpaid.",
+      when: "A merchant opens Cards while as many purchases of theirs as Agentify allows are priced and unpaid.",
       cause:
         "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so; each place comes free when its purchase is paid or its price runs out.",
     },
@@ -1701,8 +1701,9 @@ const OWED_BECAUSE: Parameters<typeof ordersView>[5] = Object.fromEntries(
               paidAt,
               deadline: { at: secondsAfter(paidAt, 3_600), passed: true },
               soldThrough: "api",
+              counts: false,
             }
-          : { unfulfilled: "refused", paidAt, deadline: null, soldThrough: "api" },
+          : { unfulfilled: "refused", paidAt, deadline: null, soldThrough: "api", counts: false },
       ] as const;
     }),
 );

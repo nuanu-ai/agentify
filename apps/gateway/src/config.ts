@@ -9,6 +9,7 @@ import {
   type SurfaceMode,
   surfaceModeOf,
 } from "@agentify/core";
+import * as published from "@agentify/core/published";
 import { z } from "zod";
 import {
   PAYOUT_SPLIT_NETWORKS,
@@ -222,14 +223,14 @@ const environmentSchema = z.object({
     .default(null),
 
   /** How long we wait for the merchant to say what the goods cost. */
-  QUOTE_RESPONSE_MS: durationMs(5_000),
+  QUOTE_RESPONSE_MS: durationMs(published.QUOTE_RESPONSE_MS),
   /**
    * How long a price holds, and with it the unpaid order it was named for. The
    * authorisation a payment challenge asks for lasts this long and more, so
    * that one signed as soon as the price is named and presented as it runs out
    * still outlives a charge sent after the goods (`app/payment-window.ts`).
    */
-  QUOTE_TTL_MS: durationMs(30_000),
+  QUOTE_TTL_MS: durationMs(published.QUOTE_TTL_MS),
   /**
    * How long we wait to be told whether the charge went through, on a
    * synchronous order: the goods are already made, and this wait is inside the
@@ -238,7 +239,7 @@ const environmentSchema = z.object({
    * time declares silent a charge that then goes through, and the agent leaves
    * without the goods it paid for.
    */
-  SETTLE_RESPONSE_MS: durationMs(10_000),
+  SETTLE_RESPONSE_MS: durationMs(published.SETTLE_RESPONSE_MS),
   /**
    * The same wait on an order paid before its goods (asynchronous, confirmed
    * or a parcel), which no promised ceiling contains. The payment layer
@@ -246,22 +247,22 @@ const environmentSchema = z.object({
    * time closes orders whose later confirmed payment leaves them unfulfilled. The
    * purchase call does not wait on this; it waits on the payment layer itself.
    */
-  SETTLE_BEFORE_GOODS_MS: durationMs(15_000),
+  SETTLE_BEFORE_GOODS_MS: durationMs(published.SETTLE_BEFORE_GOODS_MS),
   /**
    * How long the merchant has to answer a synchronous order with the goods,
    * counted from the moment the payment checked out. The portal publishes this
    * number to every merchant.
    */
-  SYNC_RESPONSE_MS: durationMs(10_000),
+  SYNC_RESPONSE_MS: durationMs(published.SYNC_RESPONSE_MS),
   /**
    * The ceiling the portal promises the agent for a synchronous purchase,
    * counted from the same moment, and how long its purchase call waits. No
    * deadline in the machine carries this number; it bounds the two that do,
    * the merchant's answer and then the charge.
    */
-  SYNC_BUDGET_MS: durationMs(20_000),
+  SYNC_BUDGET_MS: durationMs(published.SYNC_BUDGET_MS),
   /** What a card that names no delivery deadline of its own is held to. */
-  DEFAULT_ASYNC_FULFILLMENT_MS: durationMs(86_400_000),
+  DEFAULT_ASYNC_FULFILLMENT_MS: durationMs(published.DEFAULT_ASYNC_FULFILLMENT_MS),
 
   REDELIVERY_BASE_DELAY_MS: durationMs(500),
   /**
@@ -276,14 +277,14 @@ const environmentSchema = z.object({
     .refine((value) => value >= 1, "must be at least 1")
     .default(2),
   REDELIVERY_MAX_DELAY_MS: durationMs(30_000),
-  REDELIVERY_MAX_ATTEMPTS: countAbove(5),
+  REDELIVERY_MAX_ATTEMPTS: countAbove(published.REDELIVERY_MAX_ATTEMPTS),
 
   /**
    * How long a handler has to answer a delivery before it is reported
    * unanswered. Not a deadline on the order: from that report the machine
    * decides whether another attempt still fits the order's own deadline.
    */
-  HANDLER_ANSWER_MS: durationMs(3_000),
+  HANDLER_ANSWER_MS: durationMs(published.HANDLER_ANSWER_MS),
 
   /**
    * How many times a failed reminder is delivered again. A reminder is the only

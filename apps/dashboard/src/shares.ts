@@ -9,17 +9,10 @@
 
 /** The places USDC carries: its smallest unit is a millionth. */
 const PLACES = 6;
-const UNIT = 10n ** BigInt(PLACES);
 
 /** The parts of a payout split's total that its two recipients receive. */
 export interface SplitTerms {
   readonly merchantAllocation: number;
-  readonly commissionAllocation: number;
-  readonly totalAllocation: number;
-}
-
-/** Agentify's part of a payout split's total, and the total. */
-export interface CommissionRate {
   readonly commissionAllocation: number;
   readonly totalAllocation: number;
 }
@@ -78,23 +71,3 @@ export const sharesOf = (
  * place it needs beyond them, such as "12.34" or "0.000999", and no currency.
  */
 export const usdcOf = (units: bigint): string => written(units, 2);
-
-/** Agentify's percentage of every sale and the merchant's, such as "0.1%" and "99.9%". */
-export const percentagesOf = (
-  rate: CommissionRate,
-): { readonly commission: string; readonly share: string } => ({
-  commission: percentOf(rate.commissionAllocation, rate.totalAllocation),
-  share: percentOf(rate.totalAllocation - rate.commissionAllocation, rate.totalAllocation),
-});
-
-/**
- * A part of a split's total as a percentage, such as "0.1%". Throws where it
- * has no exact decimal within USDC's places, which no rate in the code has.
- */
-export const percentOf = (part: number, total: number): string => {
-  const scaled = BigInt(part) * 100n * UNIT;
-  if (scaled % BigInt(total) !== 0n) {
-    throw new Error(`${part} of ${total} has no exact percentage to say`);
-  }
-  return `${written(scaled / BigInt(total), 0)}%`;
-};
