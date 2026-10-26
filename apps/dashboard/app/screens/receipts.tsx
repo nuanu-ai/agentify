@@ -1,6 +1,6 @@
 import { Fragment } from "react";
-import type { ReceiptsView, TransferView } from "../../src/views.js";
-import { Ident, shortened } from "../components/copy.js";
+import type { ReceiptsView } from "../../src/views.js";
+import { Ident } from "../components/copy.js";
 import {
   Cell,
   DayHeading,
@@ -12,41 +12,10 @@ import {
   RowMore,
 } from "../components/list.js";
 import { Moment } from "../components/moment.js";
+import { Transfer } from "../components/transfer.js";
 import { Word } from "../components/word.js";
 import { TestMark } from "./orders.js";
 import styles from "./orders.module.css";
-
-/** An arrow out of a box, for a page on another site. */
-const Out = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
-  </svg>
-);
-
-/**
- * The transfer behind a receipt, short with its copy button, and where this
- * deployment has the chain's page for it, a way there; a receipt without one
- * says only that this receipt does not carry it.
- */
-const Transfer = ({ transfer }: Readonly<{ transfer: TransferView }>) =>
-  transfer.kind === "none" ? (
-    <span className="quiet">Not on this receipt</span>
-  ) : (
-    <span className="transfer">
-      <Ident value={transfer.text} what="transfer" />
-      {transfer.kind === "link" ? (
-        <a
-          className="copy"
-          href={transfer.href}
-          rel="noreferrer"
-          aria-label={`See the transfer ${shortened(transfer.text)} on the chain's explorer`}
-          title="See it on the chain's explorer"
-        >
-          <Out />
-        </a>
-      ) : null}
-    </span>
-  );
 
 export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
   return (
@@ -125,7 +94,12 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
                   <Word word={row.outcome} />
                 </Cell>
                 <Cell at="ident">
-                  <Transfer transfer={row.transfer} />
+                  {/* A receipt without one says only that this receipt does not carry it. */}
+                  {row.transfer.kind === "none" ? (
+                    <span className="quiet">Not on this receipt</span>
+                  ) : (
+                    <Transfer transfer={row.transfer} />
+                  )}
                 </Cell>
                 <RowMore summary="Receipt, order and price times" of={row.product} wide>
                   <Facts>

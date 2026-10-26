@@ -451,6 +451,15 @@ became of the original payment: `paid`, `not_paid`, or `unresolved` while
 nobody knows. It is apart from the status because an order you closed can
 still have been paid.
 
+A paid order you read back also carries `transaction`, the transaction that
+paid it, once the payment has gone through and a transaction was recorded,
+whether or not you have delivered. It is the same transaction the buyer's
+status names and, once there is a receipt, the receipt. An order that was not
+paid, or whose payment is still unknown, carries none. Where the buyer did not
+get the goods, it is how you find the payment to send money back to, as
+[If the buyer did not get the goods](/money#if-the-buyer-did-not-get-the-goods)
+describes.
+
 An order that ended `rejected` or `expired` with nothing charged or held is
 deleted {{lapsed-kept}} after it was last written, at the first daily clean-up
 after that. From then on `orders.get`
@@ -757,9 +766,10 @@ none, and neither has a paid order that was never delivered or shipped,
 including one you closed. A payment found after its deadline writes a receipt
 only where it releases goods already held, and never once you closed
 fulfillment. Receipts therefore do not account for all the money you
-received. The buyer's status names the transaction of every paid order under
-`transaction` once its payment has gone through, so a payment whose goods are
-still to come can be proved without searching the chain for it.
+received. Every paid order you read back names its transaction under
+`transaction` once its payment has gone through, as the buyer's status does,
+so a payment whose goods are still to come, or never came, can be found without
+searching the chain for it.
 
 | Field | What it is |
 | --- | --- |

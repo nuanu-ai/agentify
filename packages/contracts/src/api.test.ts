@@ -31,6 +31,7 @@ import {
 } from "./api.js";
 import { CardSchema, publicCardOf } from "./card.js";
 import { CONTRACT_VERSION, type SchemaName, schemas, toJsonSchemas } from "./index.js";
+import { readerOf } from "./reading.js";
 import { ORDER_CALL_ERROR_CODES, ORDER_CALL_RESULTS } from "./results.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
@@ -119,6 +120,20 @@ describe("an order read back with its state", () => {
 
   it("refuses a field it does not know", () => {
     expect(errorOf(OrderWithStatusSchema, { ...openOrder, attempts: 2 })).toContain("attempts");
+  });
+
+  it("names the transaction that paid the order to the merchant's reader, is read without one, and never names an empty one", () => {
+    const paid = { ...openOrder, transaction: `0x${"ab".repeat(32)}` };
+
+    expect(OrderWithStatusSchema.parse(paid)).toStrictEqual(paid);
+    expect(readerOf(OrderWithStatusSchema).parse(paid).transaction).toBe(paid.transaction);
+    expect(OrderWithStatusSchema.parse(openOrder)).not.toHaveProperty("transaction");
+    expect(errorOf(OrderWithStatusSchema, { ...openOrder, transaction: "" })).toContain(
+      "transaction",
+    );
+    expect(errorOf(OrderWithStatusSchema, { ...openOrder, transaction: " " })).toContain(
+      "transaction",
+    );
   });
 });
 
