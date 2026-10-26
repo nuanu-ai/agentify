@@ -200,13 +200,13 @@ path to the field where there is one. Four findings are about your merchant
 rather than the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site`
 on a parcel's card, and `no_operator_approval` on the live channel ([who
 checks a card](/cards#who-checks-a-card-before-it-is-published)).
+Fixing what they name, not sending the card again, changes the answer.
 
 A published card is in the catalogue only while a process of yours is
 polling, which step 4 starts. Until its first poll, and whenever none has
 polled for {{silent-after}}, the catalogue leaves your cards out and every
 purchase of them is refused; they come back at the next poll ([What can go
 wrong](/failures)).
-Fixing what they name, not sending the card again, changes the answer.
 
 A call that fails for another reason — a key we do not accept, an address that
 does not answer — throws an `AgentifyError` with a `code`, such as
