@@ -265,6 +265,45 @@ describe("an order off the worker stream", () => {
     expect(problems[0]?.fatal).toBe(false);
   });
 
+  it.each([
+    ["an order", "order", envelopes.order, order.id],
+    ["a price question", "quote", envelopes.quote, question.price_id],
+    ["an event", "event", envelopes.event, event.order_id],
+  ] as const)(
+    "reports a handler for %s that throws something with no text form, and goes on",
+    async (_what, kind, envelope, subject) => {
+      // JavaScript can throw anything, including a value that turning into text
+      // throws again. The report about the handler must not be what fails: that
+      // would stop the worker for good and blame this SDK.
+      const problems: WorkerProblem[] = [];
+      const thrown: unknown = Object.create(null);
+      const throwing = () => {
+        throw thrown;
+      };
+
+      gateway = await startFakeGateway({
+        apiKey: API_KEY,
+        routes: { poll_worker: polling(batch(envelope), batch()) },
+      });
+
+      const worker = startWorker(
+        { apiKey: API_KEY, baseUrl: gateway.url },
+        { [kind]: throwing, problem: (problem: WorkerProblem) => problems.push(problem) },
+        recordingClock(),
+      );
+      running = worker;
+
+      await waitUntil(() => problems.length > 0, "the problem to be reported");
+      await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "further polls");
+
+      expect(problems.map((problem) => [problem.kind, problem.subject])).toStrictEqual([
+        [WORKER_PROBLEM_KINDS.HANDLER_FAILED, subject],
+      ]);
+      expect(problems[0]?.cause).toBe(thrown);
+      expect(worker.running()).toBe(true);
+    },
+  );
+
   it("sends nothing when the handler answers with something the contract refuses", async () => {
     // "Not right now" is not one of the three answers. Held back, the order
     // is redelivered and the merchant is told why.
