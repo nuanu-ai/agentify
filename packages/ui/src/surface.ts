@@ -14,14 +14,11 @@ export const SURFACE_MARKER_ATTRIBUTE = "data-agentify-surface";
  * chain says the money is not real, not that anything settles, since any
  * facilitator on it is a test mode, a local model that settles nothing among
  * them; nor does it prove anything about what a merchant's worker does with
- * the order, and the merchants here run their own code.
+ * the order, and the merchants here run their own code. The words open with
+ * the name the operator's workspace gives the mode.
  */
 export const SURFACE_WORDS: Readonly<Record<"sandbox" | "test" | "live", string | null>> = {
-  sandbox:
-    "Sandbox. No chain stands behind this stack: every payment it accepts is pretend, nothing " +
-    "arrives at the address in a challenge, and no receipt it writes points at a transfer.",
-  test:
-    "Test environment. Payments here are in test funds on Base Sepolia, and every order and " +
-    "receipt is marked as a test. The live site is agentify.ad.",
+  sandbox: "Sandbox. There is no chain here: payments are pretend and no money moves.",
+  test: "Test environment. Payments use test funds, not real money.",
   live: null,
 };
