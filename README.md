@@ -42,15 +42,14 @@ their engineer writes code against the SDK: the dashboard issues the key that
 code calls with, and the SDK publishes the product cards and runs a process
 beside the shop's existing API that fulfills the orders. Or the owner connects
 a WooCommerce shop from the dashboard, with no code: the connector imports the
-shop's products as cards and creates each paid order in the shop. The
-connector is offered on the test channel only, until its orders pass end to
-end there. Either way the first sale happens on the test channel, where
-payments settle on Base Sepolia with test funds. Publishing there needs a
-seller name and a payout wallet, and live publication also needs the
-operator's admission of that merchant, given and withdrawn on the merchant's
-page in the operator's workspace at `/dashboard/admin/merchants`; publication
-lists whatever is still missing. The admission publishes nothing and bypasses
-no seller or payout check.
+shop's products as cards and creates each paid order in the shop. The connector
+is offered on both channels. Either way the first sale happens on the test
+channel, where payments settle on Base Sepolia with test funds. Publishing
+there needs a seller name and a payout wallet, and live publication also needs
+the operator's admission of that merchant, given and withdrawn on the
+merchant's page in the operator's workspace at `/dashboard/admin/merchants`;
+publication lists whatever is still missing. The admission publishes nothing
+and bypasses no seller or payout check.
 
 One origin serves all of it, on a laptop and on a server alike: the scanner at
 `/`, the merchant documentation at `/docs`, the dashboard at `/dashboard`, the
@@ -215,7 +214,7 @@ with the order's status address, whose buyer's key is the whole of its proof
 when it comes back for the goods, while the order's identifier only names the
 order (ADR-0011). A parcel, the `ship` mode, is paid at the purchase
 too, carries the buyer's address to the merchant and ends when the merchant
-records the shipment; it sells on the test channel only (ADR-0032, ADR-0033).
+records the shipment, on every channel (ADR-0032, ADR-0033).
 A paid order not delivered in time reads `unfulfilled`, and a late delivery
 still counts until the merchant closes fulfillment, which stops Agentify
 accepting deliveries and confirms no refund (ADR-0028). A charge whose answer

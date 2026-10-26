@@ -622,8 +622,8 @@ it names; whether its recent attempts reached the chain is in the logs, and
 the row links there. The merchants' workers row says how many connected within
 the gateway's window of ten and a half minutes, and which merchants with cards
 on sale are out of touch, since when. The WooCommerce row counts connected
-shops and the orders whose shop order is uncertain, and on the live channel
-says that the connector is not offered there. The sign-in row counts the
+shops and the orders whose shop order is uncertain, on every channel. The
+sign-in row counts the
 sign-in and report links sent in the last hour against the channel's ceiling
 of two hundred each. The outbox rows count analytics events and ad reports
 given up. Two rows carry the action "Check now": whether the facilitator

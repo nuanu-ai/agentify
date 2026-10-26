@@ -350,7 +350,7 @@ export interface PageServices {
     issue(person: Person, form: FormData): Promise<Outcome<KeysView | NewKeyView>>;
     disable(person: Person, keyId: string): Promise<Outcome<never>>;
   };
-  /** The WooCommerce connector's screens where it is offered; null elsewhere. */
+  /** The WooCommerce connector's screens; null on a dashboard given no shop store. */
   readonly woo: WooPages | null;
 }
 
@@ -369,8 +369,8 @@ export interface PageParts {
    */
   readonly registrar: Registrar;
   /**
-   * The WooCommerce connector's screens where this dashboard offers it; null
-   * elsewhere, where no screen offers it and none of its pages is answered.
+   * The WooCommerce connector's screens; null on a dashboard given no shop
+   * store, where no screen offers it and none of its pages is answered.
    */
   readonly woo: WooPages | null;
 }
