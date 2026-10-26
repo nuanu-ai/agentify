@@ -631,8 +631,8 @@ A purchase whose parameters do not fit the card is refused at the door, before
 any order exists, and a payment that fails its check is refused the same way,
 leaving the priced order to lapse as `expired`. Three more refusals come
 before anything is charged, all described on [What can go wrong](/failures): a
-purchase while {{waiting-for-payment-at-most}} of yours already wait for payment, a purchase that
-charges before its goods while no process of yours has polled for {{silent-after}},
+purchase while {{waiting-for-payment-at-most}} of yours already wait for payment, any purchase
+while no process of yours has polled for {{silent-after}},
 and any purchase while {{unserved-at-most}} or more of your orders are paid for with nothing
 delivered. A pause ends no orders: cards
 stop selling, and the orders already taken on play out in the ordinary way.

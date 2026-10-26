@@ -351,6 +351,24 @@ above, and checks the cards against those on sale before its first run. The
 timer never names a card, so on TEST a release that takes cards off sale waits
 for a person's run.
 
+A card also leaves the catalog for its seller's own state, whatever is
+released: while the seller has left too many paid orders without delivery or
+closure, or while the seller's own process has not polled for ten minutes.
+A stop longer than those ten minutes, such as a long restore or long
+migrations, leaves every seller of their own code silent when the release
+starts, until their worker polls again, which the SDK's worker does within
+half a minute. So activation reads the catalog again for up to 45 seconds
+while cards are gone and not named, and holds only what is still gone after
+that to the rules here. For each card gone and not named, activation asks its purchase address with a
+GET, as a crawler does, and a card whose look is refused with
+`seller_not_fulfilling` is not held against the release; the success line
+names it. A seller whose process has gone quiet
+still answers that look with the payment challenge, because listings other
+people run must not drop a card for a pause that ends by itself, so activation
+cannot tell such a card from one the release broke and fails the release; the
+failure says so. A person who sees on the admin's Health page that the seller
+has gone quiet names the card with `--leaving`.
+
 ### The transition record
 
 From just before the three applications stop until the release is verified, the

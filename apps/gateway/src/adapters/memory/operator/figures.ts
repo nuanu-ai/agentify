@@ -13,7 +13,6 @@ import {
   inCodeOrder,
   type OperatorFigures,
   PERIOD_DAYS,
-  PREPAID_FULFILLMENT,
   RECENT_DAYS,
   SILENT_NAMED_AT_MOST,
   UNKNOWN_MERCHANTS_NAMED_AT_MOST,
@@ -102,11 +101,7 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
           ready(merchant, asked) &&
           silentAt(contact.get(merchant.id) ?? null, asked.at) &&
           cards.some(
-            (card) =>
-              card.merchantId === merchant.id &&
-              !card.paused &&
-              card.integration === "api" &&
-              PREPAID_FULFILLMENT.includes(card.card.fulfillment ?? "sync"),
+            (card) => card.merchantId === merchant.id && !card.paused && card.integration === "api",
           ),
       )
       .map((merchant) => ({

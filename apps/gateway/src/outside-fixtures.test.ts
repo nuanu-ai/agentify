@@ -199,6 +199,13 @@ describe("a purchase from the outside", () => {
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
 
+      // The merchant's worker is running, as nothing of theirs is offered
+      // while it is not.
+      await gateway.call("POST", "/v0/worker/poll", {
+        body: { wait_seconds: 0 },
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
+
       // The agent finds it. Nothing here needs a key.
       const catalog = await gateway.call("GET", "/x402/catalog");
       expect(catalog.status).toBe(200);
@@ -220,7 +227,7 @@ describe("a purchase from the outside", () => {
       expect(gateway.facilitator.verifies).toHaveLength(0);
       expect(gateway.facilitator.settles).toHaveLength(0);
 
-      // The merchant's worker is running, and the agent pays.
+      // The merchant's worker draws the order, and the agent pays.
       const worker = aMerchantsWorker(gateway.call, () => ({ access_code: "4417" }));
       const bought = await gateway.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: { nights: 1 } },
@@ -296,18 +303,17 @@ describe("a purchase from the outside", () => {
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
 
+      // The merchant's worker is running before the sale, as nothing of
+      // theirs is offered while it is not.
+      await gateway.call("POST", "/v0/worker/poll", {
+        body: { wait_seconds: 0 },
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
       const catalog = await gateway.call("GET", "/x402/catalog");
       expect(
         (catalog.body as { items: { fulfillment: string; fulfill_deadline_seconds: number }[] })
           .items[0],
       ).toMatchObject({ fulfillment: "async", fulfill_deadline_seconds: 86_400 });
-
-      // The merchant's worker is running before the sale, as a seller paid
-      // before the goods are made needs it to be.
-      await gateway.call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0 },
-        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
-      });
       const challenged = await gateway.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: {} },
       });
@@ -491,6 +497,10 @@ describe("a purchase from the outside", () => {
       });
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
+      await gateway.call("POST", "/v0/worker/poll", {
+        body: { wait_seconds: 0 },
+        headers: { authorization: `Bearer ${theirKey}` },
+      });
 
       // What a crawler is told about the seller. Without a name the challenge
       // carries none, and the merchant is silently absent from every catalogue

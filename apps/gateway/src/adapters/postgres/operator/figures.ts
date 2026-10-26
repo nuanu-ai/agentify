@@ -18,7 +18,6 @@ import {
   type FunnelStep,
   type OperatorFigures,
   PERIOD_DAYS,
-  PREPAID_FULFILLMENT,
   RECENT_DAYS,
   SILENT_NAMED_AT_MOST,
   UNKNOWN_MERCHANTS_NAMED_AT_MOST,
@@ -154,8 +153,7 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
          where m.selling = 'open' and m.integration = 'api' and ${ready(asked, scope.network)}
            and (mc.polled_at is null or mc.polled_at < ${quiet})
            and exists (select 1 from cards c
-                        where c.merchant_id = m.id and not c.paused and c.integration = 'api'
-                          and coalesce(c.card ->> 'fulfillment', 'sync') in ${listOf(PREPAID_FULFILLMENT)})
+                        where c.merchant_id = m.id and not c.paused and c.integration = 'api')
          order by mc.polled_at nulls first, m.id collate "C"
          limit ${SILENT_NAMED_AT_MOST}`);
       return {

@@ -765,9 +765,11 @@ export class PostgresStore implements Store {
         sellerSite: merchants.sellerSite,
         liveApprovedAt: merchants.liveApprovedAt,
         integration: merchants.integration,
+        polledAt: merchantContact.polledAt,
       })
       .from(cards)
       .innerJoin(merchants, eq(cards.merchantId, merchants.id))
+      .leftJoin(merchantContact, eq(merchantContact.merchantId, merchants.id))
       .orderBy(cards.asOf);
     return rows.map((row) => ({
       card: storedCardOf(row.card),
@@ -777,6 +779,7 @@ export class PostgresStore implements Store {
       sellerSite: row.sellerSite,
       liveApprovedAt: row.liveApprovedAt?.getTime() ?? null,
       integration: integrationOf(row.integration),
+      lastContact: row.polledAt?.getTime() ?? null,
     }));
   }
 

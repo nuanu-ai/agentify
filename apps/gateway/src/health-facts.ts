@@ -21,7 +21,7 @@ export interface GatewayHealthFacts {
   readonly recovery:
     | { readonly configured: false }
     | { readonly configured: true; readonly host: string };
-  /** How long a seller's process may go without polling before a prepaid purchase is refused. */
+  /** How long a seller's process may go without polling before their purchases are refused. */
   readonly workerWindowMs: number;
 }
 

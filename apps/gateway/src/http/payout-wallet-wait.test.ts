@@ -124,6 +124,16 @@ const card: Card = {
   fulfillment: "sync",
 };
 
+/**
+ * Moves the clock on by `ms` while the seller's process keeps polling, as a
+ * running one does: a seller silent that long has their cards taken off sale,
+ * and these tests are about the wallet, not the silence.
+ */
+const waitedOut = async (harnessed: Harness, ms: number): Promise<void> => {
+  harnessed.advance(ms);
+  await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now());
+};
+
 /** The address an agent is told to pay for this merchant's card, right now. */
 const payToNow = async (served: Served, itemId: string) => {
   const answered = await served.call("GET", `/x402/${itemId}/purchase`);
@@ -246,7 +256,7 @@ describe("a replacement on the live deployment", () => {
     expect(paidNow?.split?.merchantWallet).toBe(harnessed.merchant.wallet);
     expect(await payToNow(served, itemId)).toBe(paidNow?.split?.address);
 
-    harnessed.advance(THE_WAIT - 1);
+    await waitedOut(harnessed, THE_WAIT - 1);
     expect(await payToNow(served, itemId)).toBe(paidNow?.split?.address);
 
     // Nothing is written when the moment comes, so the split named from then
@@ -292,7 +302,7 @@ describe("a replacement on the live deployment", () => {
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
     await ask(harnessed, A_WALLET);
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
@@ -313,7 +323,7 @@ describe("a replacement on the live deployment", () => {
     const itemId = await published(served, harnessed.merchant.key);
     await ask(harnessed, A_WALLET);
     const challenged = await payToNow(served, itemId);
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
 
     await buyOverHttp(harnessed, served, itemId, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
@@ -332,7 +342,7 @@ describe("a replacement on the live deployment", () => {
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
     await ask(harnessed, A_WALLET);
-    harnessed.advance(THE_WAIT - 1_000);
+    await waitedOut(harnessed, THE_WAIT - 1_000);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     harnessed.advance(2_000);
@@ -351,7 +361,7 @@ describe("a replacement on the live deployment", () => {
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
     await ask(harnessed, A_WALLET);
-    harnessed.advance(THE_WAIT - 1_000);
+    await waitedOut(harnessed, THE_WAIT - 1_000);
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
       onOrder: () => {
@@ -445,7 +455,7 @@ describe("asking again", () => {
     // address back and takes its own write for a failure.
     const { harnessed } = await started();
     const first = await ask(harnessed, A_WALLET);
-    harnessed.advance(HOURS);
+    await waitedOut(harnessed, HOURS);
 
     let again: WalletAnswer | undefined;
     const written = await journalled(async () => {
@@ -462,7 +472,7 @@ describe("asking again", () => {
   it("for a different address replaces the waiting change and starts the wait again", async () => {
     const { served, harnessed } = await started();
     await ask(harnessed, A_WALLET);
-    harnessed.advance(HOURS);
+    await waitedOut(harnessed, HOURS);
     const replaced = harnessed.now();
 
     const answered = await ask(harnessed, ANOTHER_WALLET);
@@ -484,7 +494,7 @@ describe("asking again", () => {
 
     // And the first change never takes effect: its moment passes and the
     // money is still paid where it was.
-    harnessed.advance(THE_WAIT - HOURS);
+    await waitedOut(harnessed, THE_WAIT - HOURS);
     expect((await walletOf(served, harnessed.merchant.key)).payout_wallet).toBe(
       harnessed.merchant.wallet,
     );
@@ -498,14 +508,14 @@ describe("asking again", () => {
     const itemId = await published(served, harnessed.merchant.key);
     const S1 = splitOf(harnessed, harnessed.merchant.wallet).address;
     await ask(harnessed, A_WALLET);
-    harnessed.advance(HOURS);
+    await waitedOut(harnessed, HOURS);
     await ask(harnessed, ANOTHER_WALLET);
 
     expect(await recordedSplitOf(harnessed, harnessed.merchant.wallet)).not.toBeNull();
     expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
     expect(await recordedSplitOf(harnessed, ANOTHER_WALLET)).not.toBeNull();
     expect(await payToNow(served, itemId)).toBe(S1);
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(splitOf(harnessed, ANOTHER_WALLET).address);
   });
 
@@ -515,7 +525,7 @@ describe("asking again", () => {
     await ask(harnessed, A_WALLET);
 
     const written = await journalled(() => ask(harnessed, harnessed.merchant.wallet));
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
 
     expect(written).toStrictEqual([]);
     expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
@@ -543,7 +553,7 @@ describe("asking again", () => {
       cancelled: A_WALLET,
       asked_with: SIGNED_IN,
     });
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
     expect(await payToNow(served, itemId)).toBe(
       (await recordedSplitOf(harnessed, harnessed.merchant.wallet))?.address,
     );
@@ -659,7 +669,7 @@ describe("two changes for one merchant at once", () => {
     // message went out, but its split was never recorded and nothing names it.
     expect(await recordedSplitOf(harnessed, ANOTHER_WALLET)).not.toBeNull();
     expect(await recordedSplitOf(harnessed, A_WALLET)).toBeNull();
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
     const itemId = await published(served, harnessed.merchant.key);
     expect(await payToNow(served, itemId)).toBe(splitOf(harnessed, ANOTHER_WALLET).address);
   });
@@ -963,7 +973,7 @@ describe("the splits a payout covers", () => {
     expect(waiting.pending?.address).toBe(splitOf(harnessed, A_WALLET).address);
     expect(waiting.toPayOut.map((split) => split.address)).toStrictEqual([first]);
 
-    harnessed.advance(THE_WAIT);
+    await waitedOut(harnessed, THE_WAIT);
     const moved = await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id);
     expect(moved.inForce?.address).toBe(splitOf(harnessed, A_WALLET).address);
     expect(moved.pending).toBeNull();

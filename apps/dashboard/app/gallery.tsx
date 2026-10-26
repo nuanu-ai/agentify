@@ -1250,7 +1250,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A merchant whose own process stopped polling over ten minutes ago opens Cards.",
       cause:
-        "The gateway refuses new purchases of their cards that charge before delivery until their integration polls again, so the banner says since when it has not connected; the cards themselves stay on sale.",
+        "The gateway leaves their cards out of the catalogue and refuses new purchases of them until their integration polls again, so the banner says since when it has not connected.",
     },
     cardsView(CATALOGUE, ORIGIN.live),
     "live",

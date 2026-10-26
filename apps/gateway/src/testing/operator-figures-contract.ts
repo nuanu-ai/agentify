@@ -634,12 +634,13 @@ export function describeOperatorFigures(
         expect((await reader.figures.merchantCounts(TEST)).selling).toBe(2);
       });
 
-      it("whose process went silent while a prepaid card is on sale are named, and polls within the window are counted", async () => {
+      it("whose process went silent while any card of theirs is on sale are named, and polls within the window are counted", async () => {
         const { store, reader } = await open();
         await ready(store, A);
         await store.publishCard(A, aCard("sku-1", "async"), NOW - DAY);
         await store.noteContact(A, NOW - 11 * 60_000);
-        // Silent too, but every card of theirs is paid after its goods.
+        // Silent too, with only a card paid after its goods, which the
+        // catalogue leaves out all the same.
         await ready(store, B);
         await store.publishCard(B, aCard("sku-1", "sync"), NOW - DAY);
         await store.noteContact(B, NOW - HOUR);
@@ -650,8 +651,11 @@ export function describeOperatorFigures(
         expect(without(await reader.figures.workers(LIVE))).toStrictEqual({
           connectedWithin: 1,
           everConnected: 3,
-          silent: [{ merchantId: A, name: "Merchant mch_a", since: NOW - 11 * 60_000 }],
-          silentOf: 1,
+          silent: [
+            { merchantId: B, name: "Merchant mch_b", since: NOW - HOUR },
+            { merchantId: A, name: "Merchant mch_a", since: NOW - 11 * 60_000 },
+          ],
+          silentOf: 2,
         });
       });
     });
