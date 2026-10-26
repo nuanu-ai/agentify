@@ -120,30 +120,6 @@
   background: var(--surface);
 }
 
-/* A row of actions in the article stands as far below the text above it as
-   the block that holds it ends below it. The line that answers a press sits
-   closer under the row, and takes no room while it has nothing to say: it is
-   on the page from the start, so what it says next is read out. */
-.editorial-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-control);
-  margin-top: var(--gap-actions);
-}
-
-.editorial-actions + :not(.editorial-answer) {
-  margin-top: var(--gap-actions);
-}
-
-.editorial-article .editorial-answer {
-  margin: 0;
-  padding-top: var(--gap-caption);
-}
-
-.editorial-article .editorial-answer:empty {
-  padding-top: 0;
-}
-
 .editorial-notice > :last-child {
   margin-bottom: 0;
 }
