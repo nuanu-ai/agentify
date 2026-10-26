@@ -318,7 +318,7 @@ describe("asking the scanner for a verification link", () => {
     const fetched = answerWith(400, {
       error: {
         code: "invalid_phone",
-        message: "Give the phone with its country code.",
+        message: "This phone was refused.",
         retryable: false,
         request_id: "019f5b6a-4b9f-7000-8000-00000000002f",
       },
@@ -336,6 +336,6 @@ describe("asking the scanner for a verification link", () => {
 
     await screen.findByText(/Check your inbox/);
     expect(phone.getAttribute("aria-invalid")).toBeNull();
-    expect(describedAs(phone)).not.toContain("country code.");
+    expect(describedAs(phone)).not.toContain("This phone was refused.");
   });
 });
