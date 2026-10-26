@@ -67,6 +67,7 @@ written in; the rest are in English.
 | [0005](0005-web-surface.md) | One origin and one door: the scanner, the documentation, the dashboard and the gateway share one address and one route table, on a laptop and on both channels. |
 | [0026](0026-one-way-in.md) | One identity for the whole site: email links and Google, one session, live publication guarded by the operator's approval, and the operator flag for `/admin`. |
 | [0045](0045-every-administrative-action-leaves-a-journal-row.md) | Every administrative action and refused attempt leaves a row in the operator's journal, committed with the change, naming people only by identifier. |
+| [0046](0046-a-copy-of-a-persons-data-goes-only-to-their-address.md) | A copy of the data held about an address is made only for a person signed in as it, mailed to that address alone as an attached JSON file, with every credential and other people's data left out, and tried again for an hour before the operator's page counts it. |
 | [0039](0039-what-an-ad-brought-is-reported-to-its-tracker.md) | What a person our ad sent went on to do is reported to the ad's tracker by the click alone: their first registration once, and their merchant's first card within 30 days once, with the click kept no longer than that. |
 
 ### Data and operations
