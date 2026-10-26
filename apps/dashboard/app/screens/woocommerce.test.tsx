@@ -382,9 +382,10 @@ describe("where the shop screen says why a press was refused", () => {
       "/woocommerce/connect",
     );
 
-    expect(readable(block)).toMatch(/Try again in a moment/);
+    expect(block).not.toContain("ord_quote0f3c9a1b2d4e6f8a7b9c");
+    expect(block).not.toMatch(/aria-label="Copy the whole order ID/);
+    expect(readable(block)).not.toMatch(/\b\d+ orders?\b/);
     expect(readable(block)).not.toMatch(/in progress|within a minute/);
-    expect(readable(block)).not.toMatch(/\b0 orders?\b/);
   });
 
   it("says how a parcel ends where one holds the way out", () => {
