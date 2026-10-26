@@ -226,10 +226,11 @@ describe("what the checks read from the markup real sites write", () => {
       // WooCommerce's products feed in the shop's own language.
       '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Produk Feed" href="https://example.com/toko/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Boutique &raquo; Flux des produits" href="https://example.com/boutique/feed/" />',
-      '<link rel="alternate" type="application/rss+xml" title="Negozio &raquo; Feed Prodotti" href="https://example.com/negozio/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Negozio &raquo; Feed Prodotti" href="https://example.com/acquista/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Feed de Produtos" href="https://example.com/loja/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Laden &raquo; Produkte-Feed" href="https://example.com/shop/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Tienda" href="https://example.com/tienda/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain" href="https://example.com/toko/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Loja" href="https://example.com/cat%C3%A1logo/feed/" />',
     ])
       expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)).toMatchObject({
