@@ -36,7 +36,7 @@
   align-items: center;
   padding: 0 14px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 
@@ -63,7 +63,7 @@
   border-radius: var(--radius-pill);
   background: var(--raised);
   color: var(--fg-2);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
   vertical-align: 2px;
 }
@@ -117,7 +117,7 @@
   border-radius: 10px;
   gap: 11px;
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   font-weight: 550;
   box-shadow: none;
 }
@@ -251,7 +251,7 @@
   min-height: 44px;
   margin-top: 6px;
   padding: 0 12px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 
@@ -260,8 +260,8 @@
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 24px 0 0;
+  gap: var(--space-block);
+  margin: var(--space-card) 0 0;
 }
 
 .tile {
@@ -273,16 +273,17 @@
 
 .tile .label {
   color: var(--muted);
-  font: 500 0.75rem / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .tile .figure {
+  margin-top: var(--space-tight);
   font-family: var(--font-mono);
   font-size: 1.625rem;
-  margin-top: 10px;
   letter-spacing: -0.02em;
+  line-height: var(--leading-heading);
 }
 
 .tile .figure.ok {
@@ -290,9 +291,9 @@
 }
 
 .tile .aside {
+  margin-top: var(--space-tight);
   color: var(--muted);
-  font-size: 0.875rem;
-  margin-top: 4px;
+  font-size: var(--text-small);
 }
 
 /* --- lists -------------------------------------------------------------- */
@@ -305,7 +306,7 @@
  * query, so the rule holds wherever a list is put.
  */
 .list-box {
-  margin: 20px 0 14px;
+  margin: var(--space-block) 0 var(--space-control);
   container-type: inline-size;
 }
 
@@ -348,8 +349,9 @@
   border-bottom: var(--hairline) solid var(--line);
   background: var(--surface-sunken);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
+  line-height: var(--leading-ui);
 }
 
 .list > .list-head + li {
@@ -363,7 +365,7 @@
 
 .list-row {
   padding-block: 14px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .list-row.off {
@@ -379,7 +381,7 @@
   border-bottom: var(--hairline) solid var(--line);
   background: var(--surface-sunken);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
 }
 
@@ -409,7 +411,7 @@
 
 .cell-title {
   color: var(--fg);
-  font-size: 1rem;
+  font-size: var(--text-body);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -420,7 +422,7 @@
 
 .cell-amount {
   color: var(--fg);
-  font-size: 1rem;
+  font-size: var(--text-body);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -456,7 +458,7 @@
   grid-column: 1 / -1;
   margin-top: -6px;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
 }
 
 .cell-more > summary {
@@ -465,9 +467,9 @@
 }
 
 .more-body {
-  margin-top: 4px;
+  margin-top: var(--space-snug);
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 /* A row's facts, a label beside each value; a box narrower than a label and an
@@ -622,9 +624,9 @@
     order: 10;
     flex-basis: 100%;
     display: block;
-    margin-top: 4px;
+    margin-top: var(--space-snug);
     color: var(--muted);
-    font-size: 0.8125rem;
+    font-size: var(--text-label);
   }
 }
 
@@ -633,10 +635,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 16px;
-  margin: 0 0 14px;
+  gap: var(--space-snug) var(--space-block);
+  margin: 0 0 var(--space-control);
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .cut a {
@@ -645,7 +647,7 @@
 
 /* A heading over a group of rows, with its count in a pill. */
 .group {
-  margin-top: 28px;
+  margin-top: var(--space-section);
 }
 
 .group-head {
@@ -657,11 +659,10 @@
 
 .group-head h2 {
   margin: 0;
-  font-size: 1.1875rem;
-  font-weight: 600;
+  font-size: var(--text-heading);
 }
 
 .group-aside {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }

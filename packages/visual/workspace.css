@@ -25,7 +25,7 @@
   border-radius: var(--radius-pill);
   background: var(--fg);
   color: var(--bg);
-  font: 500 var(--text-caption) / 1.4 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   vertical-align: 3px;
@@ -65,7 +65,7 @@
 .op-group {
   margin: 14px 26px 2px;
   color: var(--faint);
-  font: 500 var(--text-caption) / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -107,10 +107,12 @@
   font-size: 0.9375rem;
 }
 
-/* As of when a screen's figures were read, under its title's line. */
+/* As of when a screen's figures were read: the first line under the bar,
+   standing clear of the bar's rule as a screen's first block does. */
 .op-asof {
+  margin-top: var(--space-block);
   color: var(--muted);
-  font: var(--text-caption) / 1.5 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 /* Where the sidebar gives way to the menu, the live channel moves to the
@@ -128,7 +130,7 @@
     gap: 4px 10px;
     margin-top: 18px;
     color: var(--muted);
-    font: var(--text-caption) / 1.5 var(--font-mono);
+    font: var(--text-caption) / var(--leading-ui) var(--font-mono);
   }
 
   .op-channel-line .badge {
@@ -149,7 +151,7 @@
 .site-menu-panel .op-menu-channel {
   margin: 4px 12px 8px;
   color: var(--muted);
-  font: var(--text-caption) / 1.5 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 .op-figures {
@@ -159,7 +161,7 @@
 .tile .figure small {
   margin-left: 4px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   letter-spacing: 0;
 }
 
@@ -170,7 +172,7 @@
 /* --- panels -------------------------------------------------------------- */
 
 .op-panel {
-  margin-top: 28px;
+  margin-top: var(--space-section);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
@@ -182,13 +184,13 @@
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px 16px;
-  padding: 22px 24px 0;
+  gap: var(--space-snug) var(--space-block);
+  padding: var(--space-card) var(--space-card) 0;
 }
 
 .op-panel-head h2 {
   margin: 0;
-  font-size: 1.1875rem;
+  font-size: var(--text-heading);
 }
 
 .op-panel-head p {
@@ -197,11 +199,11 @@
 }
 
 .op-panel-body {
-  padding: 18px 24px 24px;
+  padding: var(--space-block) var(--space-card) var(--space-card);
 }
 
 .op-panel-foot {
-  padding: 0 24px 22px;
+  padding: 0 var(--space-card) var(--space-card);
   color: var(--muted);
   font-size: var(--text-small);
 }
@@ -209,12 +211,12 @@
 .op-two {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 18px;
+  gap: var(--space-card);
   align-items: start;
 }
 
 .op-two > .op-panel {
-  margin-top: 28px;
+  margin-top: var(--space-section);
 }
 
 @media (max-width: 1100px) {

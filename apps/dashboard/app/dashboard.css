@@ -16,13 +16,6 @@ p {
   text-wrap: wrap;
 }
 
-/*
- * The base is the shared one, 16px at 1.6; only dense rows shrink: 0.75rem in the
- * monospaced face for a column head or a caption, 0.8125rem for an identifier or
- * an account line, 0.875rem for a list's row or an aside, 0.9375rem for something read
- * character by character. No type on these screens is sized in pixels.
- */
-
 /* Form controls do not inherit the page's face on their own, and the shared base
    does not set it. */
 button,
@@ -33,7 +26,7 @@ textarea {
 }
 
 .lede {
-  padding: 32px 0 0;
+  padding: var(--space-section) 0 0;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -51,12 +44,19 @@ textarea {
 /* A section heading rather than a gate page's hero, so it is calm: the scanner's
    report uses the same size. */
 .lede h1 {
-  font-size: 1.5rem;
+  font-size: var(--text-section);
+}
+
+.lede :is(h1, h2) {
+  margin-bottom: var(--gap-heading);
 }
 
 .lede p {
-  margin-top: 6px;
   color: var(--muted);
+}
+
+.lede p + p {
+  margin-top: var(--gap-paragraph);
 }
 
 .actions {
@@ -70,7 +70,7 @@ textarea {
 /* The box a new key's secret is shown in, scrolling sideways rather than
    breaking a value read character by character. */
 .scroller {
-  margin: 24px 0 32px;
+  margin: var(--space-card) 0 var(--gap-actions);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
@@ -78,9 +78,9 @@ textarea {
 }
 
 .under {
+  margin-top: var(--space-snug);
   color: var(--muted);
-  font-size: 0.875rem;
-  margin-top: 3px;
+  font-size: var(--text-small);
 }
 
 /* A moment breaks between its date and its time and nowhere else. */
@@ -124,7 +124,7 @@ input:where(:not([type="checkbox"])) {
 
 /* The label over a box, at the weight the scanner gives one. */
 label {
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
 }
 
@@ -137,26 +137,25 @@ form.inline {
 /* Secondary notes stay part of the reading flow rather than looking like an
    alert. Actionable notices use a full panel; no message uses a one-sided-border
    callout. */
-/* The new key's copy button, a block clear of the note under it. */
+/* The new key's copy button, as far from the note under it as from the box
+   over it. */
 .copy-row {
-  margin: 0 0 var(--space-block);
+  margin: 0 0 var(--gap-actions);
 }
 
 .note {
-  margin: 0 0 32px;
+  margin: 0 0 var(--space-section);
   color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.55;
+  font-size: var(--text-small);
 }
 
 .callout {
-  margin: 0 0 32px;
+  margin: 0 0 var(--space-section);
   border: var(--hairline) solid color-mix(in srgb, var(--notice-ink) 24%, var(--line));
   border-radius: var(--radius-card);
-  padding: 16px 20px;
+  padding: var(--space-block) 20px;
   background: var(--notice-bg);
   color: var(--notice-ink);
-  line-height: 1.55;
 }
 
 /* A list that could not be read: the panel saying so, its way on under it,
@@ -164,8 +163,8 @@ form.inline {
 .not-loaded {
   display: grid;
   justify-items: start;
-  gap: 16px;
-  margin-top: 28px;
+  gap: var(--gap-actions);
+  margin-top: var(--space-section);
 }
 
 .not-loaded > .callout {
@@ -182,8 +181,8 @@ form.inline {
 
 /* The consequence over the reason, told apart by size: one ink on one tint. */
 .callout .why {
-  margin-top: 4px;
-  font-size: 0.875rem;
+  margin-top: var(--space-snug);
+  font-size: var(--text-small);
 }
 
 /* Somebody's own words, kept on the lines they wrote them on. */
@@ -194,7 +193,7 @@ form.inline {
 /* Under the figures, so the numbers are seen first and what they leave out is
    read before the list. */
 .summary-text {
-  margin: 20px 0 0;
+  margin: var(--space-card) 0 0;
 }
 
 .summary-text p {
@@ -202,7 +201,7 @@ form.inline {
 }
 
 .summary-text p + p {
-  margin-top: 6px;
+  margin-top: var(--gap-paragraph);
 }
 
 /* Over a long list: the search and the segments with their counts. */
@@ -210,16 +209,16 @@ form.inline {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  margin-top: 28px;
+  gap: var(--space-control);
+  margin-top: var(--space-section);
 }
 
 .account-banner + .list-tools {
-  margin-top: 20px;
+  margin-top: var(--space-card);
 }
 
 .list-tools + .list-box {
-  margin-top: 16px;
+  margin-top: var(--space-block);
 }
 
 .list-tools .search {
@@ -260,7 +259,7 @@ form.inline {
   padding: 7px 12px;
   border-radius: 9px;
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 
@@ -292,7 +291,7 @@ form.inline {
   flex-basis: 100%;
   margin: 0;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 /* --- identifiers and their copy buttons -------------------------------- */
@@ -308,7 +307,7 @@ form.inline {
   align-items: center;
   gap: 6px;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   overflow-wrap: anywhere;
 }
 
@@ -385,7 +384,7 @@ form.inline {
   max-width: 9rem;
   margin: 2px 0 0 auto;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 400;
   white-space: normal;
 }
@@ -423,13 +422,12 @@ form.inline {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  margin: 28px 0 0;
+  margin: var(--space-section) 0 0;
   padding: 14px 16px;
   border-radius: var(--radius-control);
   background: var(--notice-bg);
   color: var(--notice-ink);
   font-size: 0.9375rem;
-  line-height: 1.5;
 }
 
 .account-banner svg {
@@ -442,12 +440,12 @@ form.inline {
 }
 
 .account-banner p + p {
-  margin-top: 10px;
+  margin-top: var(--gap-paragraph);
 }
 
 .account-banner b {
   display: block;
-  margin-bottom: 2px;
+  margin-bottom: var(--space-snug);
   color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
   font-weight: 600;
 }
@@ -460,7 +458,7 @@ form.inline {
 }
 
 .account-banner + .lede {
-  padding-top: 20px;
+  padding-top: var(--space-card);
 }
 
 /* --- signing in --------------------------------------------------------- */
@@ -492,9 +490,10 @@ form.inline {
 }
 
 .gate h1 {
-  font-size: clamp(2rem, 5vw, 2.5rem);
-  line-height: 1.1;
-  margin-bottom: 16px;
+  margin-bottom: var(--gap-heading);
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
 }
 
 .gate p {
@@ -547,14 +546,14 @@ form.inline {
    Written against the paragraph, not the class alone, because the gate card's
    and heading block's muted paragraph rules would otherwise win. */
 p.problem {
-  margin-top: 16px;
+  margin-top: var(--space-block);
   color: var(--fail);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 p.quiet {
-  margin-top: 16px;
-  font-size: 0.875rem;
+  margin-top: var(--space-block);
+  font-size: var(--text-small);
   color: var(--muted);
 }
 
@@ -563,7 +562,7 @@ p.quiet {
 /* Opens a second half of one screen rather than a second screen: smaller than
    the page heading, larger than the body. */
 h2 {
-  font-size: 1.125rem;
+  font-size: var(--text-heading);
 }
 
 /* One box and one button side by side, the row every form in the dashboard
@@ -572,9 +571,9 @@ h2 {
 .issue {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: var(--space-control);
   flex-wrap: wrap;
-  padding: 20px 0 32px;
+  padding-block: var(--gap-actions);
 }
 
 .issue label {
@@ -660,7 +659,7 @@ h2 {
   padding: 28px 24px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 0.9375rem;
+  font-size: var(--text-code);
   overflow-wrap: anywhere;
 }
 
@@ -676,14 +675,14 @@ h2 {
 /* A saved address and its contract, a part of the panel set apart by a
    hairline over it rather than a box inside the box. */
 .saved {
-  margin: 0 0 24px;
-  padding: 16px 0 0;
+  margin: 0 0 var(--space-card);
+  padding: var(--space-block) 0 0;
   border-top: var(--hairline) solid var(--line);
 }
 
 .saved .label {
   color: var(--muted);
-  font: 500 0.75rem / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -691,9 +690,9 @@ h2 {
 /* Whole and in fours: the saved address, and the one a refusal hands back under
    the form, which must be readable against a wallet beyond the box's width. */
 .address {
-  margin-top: 10px;
+  margin-top: var(--space-tight);
   font-family: var(--font-mono);
-  font-size: 0.9375rem;
+  font-size: var(--text-code);
   overflow-wrap: anywhere;
 }
 
@@ -709,14 +708,14 @@ h2 {
 }
 
 .saved .under {
+  margin-top: var(--space-tight);
   color: var(--muted);
-  font-size: 0.875rem;
-  margin-top: 10px;
+  font-size: var(--text-small);
 }
 
 /* The contract buyers pay into, under the wallet it pays, inside the same box. */
 .saved .split-label {
-  margin-top: 18px;
+  margin-top: var(--space-card);
 }
 
 /*
@@ -736,7 +735,7 @@ h2 {
 .payout dt {
   padding-top: 2px;
   color: var(--muted);
-  font: 500 0.75rem / 1.5 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-text) var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -760,14 +759,14 @@ h2 {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   overflow-wrap: anywhere;
   word-break: break-all;
   resize: vertical;
 }
 
 .payout .copy-row {
-  margin: 10px 0 0;
+  margin: var(--space-control) 0 0;
 }
 
 .pays {
@@ -802,8 +801,8 @@ h2 {
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  padding: 24px 0 40px;
+  gap: var(--space-card);
+  padding: var(--space-card) 0 var(--space-section);
 }
 
 .settings-panel {
@@ -815,25 +814,29 @@ h2 {
 }
 
 .settings-panel > .lede {
-  padding: 24px 24px 0;
+  padding: var(--space-card) var(--space-card) 0;
 }
 
+/* A panel's form stands as far under its words as the panel's edge is under
+   it; a second form follows the first at that one distance, not two. */
 .settings-panel > .issue {
-  padding: 20px 24px 24px;
+  padding: var(--gap-actions) var(--space-card) var(--space-card);
+}
+
+.settings-panel > .issue + .issue {
+  padding-top: 0;
 }
 
 .settings-panel > .saved {
-  margin: 16px 24px 8px;
+  margin: var(--space-block) var(--space-card) var(--space-tight);
 }
 
 /*
- * Every sentence in a panel is the quiet size, a sentence apart from the one
- * before. The payout panel's rule is a second lede continuing the first, so it
- * takes no inset of its own.
+ * Every sentence in a panel is the quiet size. The payout panel's rule is a
+ * second lede continuing the first, so it takes no inset of its own.
  */
 .settings-panel .lede p {
-  margin-top: 8px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .settings-panel > .lede + .lede,
@@ -844,7 +847,7 @@ h2 {
 /* A panel that ends in words ends the same distance from its edge as one that
    ends in a form; otherwise its last line sits on the bottom border. */
 .settings-panel > .lede:last-child {
-  padding-bottom: 24px;
+  padding-bottom: var(--space-card);
 }
 
 @media (max-width: 980px) {
@@ -854,7 +857,7 @@ h2 {
 }
 
 .app-content > .lede:first-of-type {
-  padding-top: 28px;
+  padding-top: var(--space-section);
 }
 .app-content .lede h1 {
   font-size: clamp(1.75rem, 3vw, 2.25rem);
@@ -863,12 +866,6 @@ h2 {
 .app-content .scroller,
 .app-content .settings-panel {
   box-shadow: 0 18px 48px -40px rgba(26, 25, 23, 0.55);
-}
-
-@media (max-width: 560px) {
-  .app-content > .lede:first-of-type {
-    padding-top: 28px;
-  }
 }
 
 /* Each panel's words, form and messages sit at their own height, one under
@@ -881,28 +878,27 @@ h2 {
   padding-bottom: 0;
 }
 .panel-top > .lede {
-  padding: 24px 24px 0;
+  padding: var(--space-card) var(--space-card) 0;
 }
 .panel-top > .lede + .lede,
 .panel-top > .saved + .lede {
   padding-top: 0;
 }
 .panel-top > .saved {
-  margin: 16px 24px 8px;
+  margin: var(--space-block) var(--space-card) var(--space-tight);
 }
 /* The name panel's own second subject, its shop's site, follows its form. */
 .panel-follow > h2 {
-  margin-top: 24px;
+  margin: var(--space-card) 0 var(--gap-heading);
 }
 .panel-follow > .quiet {
-  margin-top: 8px;
-  font-size: 0.875rem;
+  margin-top: 0;
 }
 .panel-messages {
-  padding: 0 24px 24px;
+  padding: 0 var(--space-card) var(--space-card);
 }
 .panel-messages > p {
-  margin: 12px 0 0;
+  margin: var(--gap-caption) 0 0;
 }
 .settings-wide {
   grid-column: 1 / -1;
@@ -912,12 +908,12 @@ h2 {
 .connect-ways {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-  padding: 16px 24px 24px;
+  gap: var(--space-card);
+  padding: var(--space-block) var(--space-card) var(--space-card);
 }
 /* No heading above the ways to carry the top inset. */
 .settings-connect > .connect-ways:first-child {
-  padding-top: 24px;
+  padding-top: var(--space-card);
 }
 .connect-way {
   display: flex;
@@ -934,27 +930,28 @@ h2 {
   padding: 10px 12px;
   border: 0;
   border-radius: 10px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 .connect-way h2 {
-  margin: 0;
-  font-size: 1rem;
+  margin: 0 0 var(--gap-heading);
+  font-size: var(--text-body);
 }
 .connect-way p {
-  margin-top: 8px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
+}
+.connect-way p + p {
+  margin-top: var(--gap-paragraph);
 }
 .connect-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--space-control);
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: var(--gap-actions);
 }
 .settings-account > .lede {
   align-items: center;
-  padding-bottom: 24px;
 }
 .gate-skip {
   text-align: center;
@@ -1002,10 +999,10 @@ h2 {
   display: none;
 }
 .confirm-pop {
-  margin-top: 8px;
+  margin-top: var(--space-tight);
   text-align: right;
 }
 .confirm-pop > p {
-  margin: 0 0 8px;
-  font-size: 0.875rem;
+  margin: 0 0 var(--space-tight);
+  font-size: var(--text-small);
 }
