@@ -73,12 +73,12 @@ describe("the account banner", () => {
     expect(note?.fix?.to).toBe("/orders?show=needs");
   });
 
-  it("heads purchases refused for both silence and the unpaid ones by the refusal that covers every product", () => {
+  it("heads silence and the unpaid purchases together by what silence does to every product", () => {
     const both = accountOf(READY, { selling: "open", busy: true, outOfTouch: { since: null } });
-    const busy = accountOf(READY, { selling: "open", busy: true });
+    const silent = accountOf(READY, { selling: "open", outOfTouch: { since: null } });
 
     expect(both.map((note) => note.reason)).toStrictEqual(["out_of_touch", "busy"]);
-    expect(headingOf(both)).toBe(headingOf(busy));
+    expect(headingOf(both)).toBe(headingOf(silent));
   });
 
   it("names a waiting change of the payout wallet before every other reason, with the address, the moment it applies and the wallet paid now", () => {

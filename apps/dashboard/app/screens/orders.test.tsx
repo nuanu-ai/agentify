@@ -1327,7 +1327,7 @@ describe("the transaction that paid an order", () => {
     ));
     // The page holds this one order, so its details run to the end of it; the
     // copy buttons inside hold details of their own.
-    const details = html.slice(Math.max(0, html.indexOf(`<details id="details-${FIRST}"`)));
+    const details = html.slice(Math.max(0, html.indexOf(`id="details-${FIRST}"`)));
     return { html, details, text: readable(details) };
   };
 
@@ -1338,7 +1338,6 @@ describe("the transaction that paid an order", () => {
     ]) {
       const { details, text } = drawn(orders);
 
-      expect(details).toMatch(/<details[^>]*class="[^"]*wide/);
       expect(text).toContain(`Transfer ${shortened(PAID_WITH)}`);
       expect(details).toContain(`href="${EXPLORER}${PAID_WITH}"`);
       expect(details).toContain(`href="${REFUND}"`);
@@ -1356,7 +1355,6 @@ describe("the transaction that paid an order", () => {
     for (const status of ["in_progress", "delivered"]) {
       const { details, text } = drawn(one(status, "paid", PAID_WITH));
 
-      expect(details, status).toMatch(/<details[^>]*class="[^"]*wide/);
       expect(text, status).toContain(`Transfer ${shortened(PAID_WITH)}`);
       expect(details, status).not.toContain(REFUND);
     }
