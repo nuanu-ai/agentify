@@ -216,11 +216,12 @@ export type QuoteSource = (typeof QUOTE_SOURCES)[number];
 /**
  * Why a payment did not pass verification, by what its payer can do about it:
  * sign again (`signature`), fund the wallet (`insufficient_funds`), buy anew
- * for a fresh price (`price_stale`), pay from another wallet
- * (`wallet_refused`), or nothing, because the payment network will not carry
- * the order's amount (`amount_not_payable`). `unexplained` is a refusal that
- * named no fault, and `unrecognised` one whose reason this system cannot
- * read; neither says which of the others would help.
+ * for a fresh price (`price_stale`), or nothing, because the payment network
+ * will not carry the order's amount (`amount_not_payable`) or refused the
+ * paying wallet as it stands (`wallet_refused`). `unexplained` is a refusal
+ * that named no fault this system can act on, and `unrecognised` one whose
+ * reason this system cannot read; neither says which of the others would
+ * help.
  */
 export const PAYMENT_VERIFICATION_FAILURES = [
   "signature",
