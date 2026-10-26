@@ -182,7 +182,7 @@ export const ACCOUNT_WORDS: Readonly<
   unserved: {
     title: "All new purchases are refused",
     says: "As many of your orders as Agentify allows are paid for with nothing delivered, so agents cannot buy anything from you until you deliver or close some of them.",
-    fix: { to: "/orders?show=needs", words: "Deliver or close them on Orders" },
+    fix: { to: "/orders?show=needs", words: "See them on Orders" },
   },
   through_shop: {
     title: "Selling through your WooCommerce shop",
