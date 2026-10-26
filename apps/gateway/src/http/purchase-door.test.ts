@@ -1056,6 +1056,11 @@ const STANDINGS: Readonly<Record<string, Standing>> = {
     },
     refused: "not_selling",
   },
+  "a card stored at a price the price rule refuses": {
+    // Stored as published before the rule was as strict as it is now.
+    card: { ...prepaidCard, price: { amount: "25", currency: "USD" } },
+    refused: "not_selling",
+  },
   "a card of a seller with ten paid orders left unserved": {
     card: syncCard,
     after: async (harnessed) => {
