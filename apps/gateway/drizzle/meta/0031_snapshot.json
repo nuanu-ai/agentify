@@ -1,5 +1,5 @@
 {
-  "id": "5a377f7c-86d0-49a4-a774-6483ae942745",
+  "id": "239810c5-7084-4375-93f0-db849df36ead",
   "prevId": "20e43538-b0e4-4c1e-9c87-8b174d810e21",
   "version": "7",
   "dialect": "postgresql",
@@ -893,7 +893,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"orders\".\"state\" = 'unfulfilled' and ((\"orders\".\"record\" -> 'order' -> 'dispatch' ->> 'accepted') = 'true' or (\"orders\".\"record\" -> 'order' -> 'closure' ->> 'cause') = 'merchant_refused' or ((\"orders\".\"record\" -> 'order' -> 'closure' ->> 'cause') = 'deadline_expired' and (\"orders\".\"record\" -> 'order' -> 'timestamps' ->> 'dispatchedAt') is not null))",
+          "where": "\"orders\".\"state\" = 'unfulfilled' and (\"orders\".\"record\" ->> 'answerable') = 'true'",
           "concurrently": false,
           "method": "btree",
           "with": {}

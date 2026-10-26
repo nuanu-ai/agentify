@@ -77,6 +77,7 @@ import type {
   StoredOrder,
   WithTheOrder,
 } from "../ports/store.js";
+import { answerableFor } from "../ports/store.js";
 import { statusUrlOf } from "./addresses.js";
 import {
   type Channel,
@@ -787,7 +788,12 @@ export class OrderRunner {
     const actor: OrderActor = scope === undefined ? "system" : (scope.actor ?? "unknown");
     return this.#runtime.store.withOrder(
       orderId,
-      change,
+      async (found) => {
+        const decided = await change(found);
+        return decided.save === undefined
+          ? decided
+          : { ...decided, save: await this.#answering(found, decided.save) };
+      },
       scope === undefined
         ? undefined
         : {
@@ -806,6 +812,27 @@ export class OrderRunner {
         }
       },
     );
+  }
+
+  /**
+   * The order to save, carrying whether its merchant answers for it: decided
+   * here as the order becomes unfulfilled, the one moment where the hand-over,
+   * the refusal and the shop's taking it on are all on the order, kept while
+   * it stays unfulfilled, and dropped once it is not. Every change after an
+   * order's birth comes through here.
+   */
+  async #answering(before: StoredOrder, after: StoredOrder): Promise<StoredOrder> {
+    if (after.order.state !== "unfulfilled") {
+      if (after.answerable === undefined) return after;
+      const { answerable: _, ...rest } = after;
+      return rest;
+    }
+    if (before.order.state === "unfulfilled") return after;
+    const card = await this.#runtime.store.cardById(after.itemId);
+    return {
+      ...after,
+      answerable: card !== null && answerableFor(after.order, card.integration),
+    };
   }
 
   /**

@@ -40,15 +40,13 @@ export const WAITING_STATES = sql.raw(
 );
 
 /**
- * The orders `leftUnserved` may count, whichever integration their card sells
- * through: unfulfilled, and taken on, refused, or let past a deadline after a
- * hand-over. A shop's order among them counts only once taken on, which the
- * count asks of its card besides. Written once for the partial index and the
- * count, because the planner uses the index only for a predicate it can see is
- * the index's own.
+ * An unfulfilled order its merchant answers for (`StoredOrder#answerable`),
+ * the one kind the stop on a merchant's sales counts. Written once for the
+ * partial index and the counts, because the planner uses the index only for a
+ * predicate it can see is the index's own.
  */
-export const mayBeLeftUnserved = (state: AnyPgColumn, record: AnyPgColumn): SQL =>
-  sql`${state} = 'unfulfilled' and ((${record} -> 'order' -> 'dispatch' ->> 'accepted') = 'true' or (${record} -> 'order' -> 'closure' ->> 'cause') = 'merchant_refused' or ((${record} -> 'order' -> 'closure' ->> 'cause') = 'deadline_expired' and (${record} -> 'order' -> 'timestamps' ->> 'dispatchedAt') is not null))`;
+export const answeredFor = (state: AnyPgColumn, record: AnyPgColumn): SQL =>
+  sql`${state} = 'unfulfilled' and (${record} ->> 'answerable') = 'true'`;
 
 /**
  * One row per merchant, with whether they are taking new orders: the merchant
@@ -257,11 +255,9 @@ export const orders = pgTable(
     index("orders_waiting_idx")
       .on(table.merchantId)
       .where(sql`${table.state} in ${WAITING_STATES}`),
-    // A merchant's orders taken on and left unserved, counted at the birth and
-    // the payment of every purchase of theirs.
-    index("orders_unserved_idx")
-      .on(table.merchantId)
-      .where(mayBeLeftUnserved(table.state, table.record)),
+    // A merchant's unfulfilled orders they answer for, counted at the birth
+    // and the payment of every purchase of theirs and for the catalogue.
+    index("orders_unserved_idx").on(table.merchantId).where(answeredFor(table.state, table.record)),
     // The order a buyer's key opens, and never two orders under one key.
     uniqueIndex("orders_buyer_key_unique").on(sql`(${table.record} ->> 'buyerKey')`),
   ],

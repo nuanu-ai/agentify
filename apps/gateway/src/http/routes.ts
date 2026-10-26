@@ -426,7 +426,7 @@ async function probeAnswer(
       refusal("not_selling", "this product is not on sale at the moment"),
     );
   }
-  if (offered.unserved) {
+  if (await gateway.stoppedForUnserved(offered.stored.merchantId)) {
     return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
   }
   response.setHeader(

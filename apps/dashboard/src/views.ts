@@ -381,6 +381,8 @@ interface OrderRow {
 /** An order said in a row of its own: what happened to it, and what is the merchant's to do. */
 interface OrderNeed extends OrderRow {
   readonly why: string;
+  /** Whether it counts toward the stop on the merchant's new purchases. */
+  readonly stops: boolean;
   readonly rest: Rest | null;
   /**
    * Where the row's own line in the list opens: the page as it is where the
@@ -646,6 +648,7 @@ export const ordersView = (
   paidInto: PaidIntoSplits = {},
   lapsed: LapsedAttempts = NO_LAPSED,
   shopTotals: Readonly<Record<string, ShopTotal>> = {},
+  stopping: ReadonlySet<string> = new Set(),
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -770,6 +773,7 @@ export const ordersView = (
   const tell = ({ order, row }: (typeof listed)[number]): OrderNeed => ({
     ...row,
     why: reopened(order) ? PAID_AFTER_CLOSURE : whatHappened(order, owed[order.id]),
+    stops: order.status === "unfulfilled" && stopping.has(order.id),
     rest: whereTheRestIs(order.status),
     opens: opens(row),
   });

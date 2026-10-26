@@ -95,6 +95,14 @@ export type Answer<T> =
  */
 export type UnfulfilledCause = "refused" | "deadline_passed" | "charge_confirmed_late";
 
+/** What Needs you is told of the paid orders left unfulfilled. */
+interface UnfulfilledOrders {
+  /** Why each was left unfulfilled, where the order says. */
+  readonly causes: Readonly<Record<string, UnfulfilledCause>>;
+  /** The ones their merchant answers for, which count toward the stop on new purchases. */
+  readonly counting: readonly string[];
+}
+
 /**
  * A merchant's payout splits on this network, for the payout wallet screen,
  * and the one transaction that pays out every split that can hold their
@@ -146,9 +154,10 @@ export interface GatewayClient {
   /** How many purchases lapsed unpaid, with none of them read. */
   lapsedCount(): Promise<Answer<number>>;
   /**
-   * Why each paid order was left unfulfilled, by order, for Needs you.
+   * Why each paid order was left unfulfilled, by order, and which of them
+   * count toward the stop on new purchases, for Needs you.
    */
-  unfulfilledOrders(): Promise<Answer<Readonly<Record<string, UnfulfilledCause>>>>;
+  unfulfilledOrders(): Promise<Answer<UnfulfilledOrders>>;
   receipts(): Promise<Answer<ReceiptList>>;
   /**
    * The payout split this order's payment was checked against, as recorded,
@@ -560,7 +569,11 @@ export const gatewayFor = (
     unfulfilledOrders: () =>
       call("reading why orders are unfulfilled", async () => {
         const owed: Record<string, UnfulfilledCause> = {};
+        const counting: string[] = [];
         for (const record of await application.orders(merchantId, true)) {
+          if (record.order.state === "unfulfilled" && record.answerable === true) {
+            counting.push(record.order.id);
+          }
           const cause =
             record.order.state === "unfulfilled" ? record.order.closure?.cause : undefined;
           const said =
@@ -575,7 +588,7 @@ export const gatewayFor = (
             owed[record.order.id] = said;
           }
         }
-        return done(owed);
+        return done({ causes: owed, counting });
       }),
     receipts: () =>
       call("reading the receipts", async () =>

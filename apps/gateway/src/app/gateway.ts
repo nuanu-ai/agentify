@@ -255,11 +255,6 @@ export interface PaidResource {
   /** The seller's name in a discovery catalog. */
   readonly serviceName: string | null;
   /**
-   * Whether every purchase of this seller is refused for the paid orders they
-   * left unserved, which an off-sale card's challenge would hide.
-   */
-  readonly unserved: boolean;
-  /**
    * Where an agent is asked to pay for this card: its own merchant's recorded
    * split, read from the card's owner and nowhere else, or one seller's
    * takings go to another. Null where there is nowhere to pay.
@@ -831,28 +826,28 @@ export class Gateway {
    * The catalog an agent reads: the cards that are actually for sale. A paused
    * card is left out rather than listed and then refused, because an agent
    * budgets against what it lists and would only find out at the till, and so
-   * is every card of a seller stopped for their unserved orders. That costs
-   * one count per seller listed.
+   * is every card of a seller stopped for their unserved orders, asked in one
+   * read for the sellers of the cards otherwise listed.
    */
   async catalog(): Promise<{ readonly items: ProjectedCard[] }> {
     const entries = await this.runtime.store.catalogEntries();
     const at = this.runtime.clock();
-    const stopped = new Set<string>();
-    for (const merchantId of new Set(entries.map((entry) => entry.card.merchantId))) {
-      if (await this.#unserved(merchantId)) stopped.add(merchantId);
-    }
+    const forSale = entries.filter(
+      (entry) =>
+        sellingFor(
+          entry.merchant,
+          entry.card,
+          sellableBy({ ...entry, id: entry.card.merchantId }, this.runtime.config, at),
+          entry.integration,
+        ) === "open",
+    );
+    const stopped = await this.runtime.store.stoppedSellers(
+      [...new Set(forSale.map((entry) => entry.card.merchantId))],
+      UNSERVED_AT_MOST,
+    );
     return {
-      items: entries
-        .filter(
-          (entry) =>
-            !stopped.has(entry.card.merchantId) &&
-            sellingFor(
-              entry.merchant,
-              entry.card,
-              sellableBy({ ...entry, id: entry.card.merchantId }, this.runtime.config, at),
-              entry.integration,
-            ) === "open",
-        )
+      items: forSale
+        .filter((entry) => !stopped.has(entry.card.merchantId))
         .map((entry) =>
           publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
             id: entry.card.id,
@@ -892,7 +887,6 @@ export class Gateway {
               merchant.integration,
             ),
       serviceName: merchant?.serviceName ?? null,
-      unserved: merchant !== null && (await this.#unserved(merchant.id)),
       // A pending wallet change's split is the one paid once its moment has
       // come, and not before.
       payTo: merchant === null ? null : payToAt(merchant, this.runtime.config, at),
@@ -2328,6 +2322,15 @@ export class Gateway {
     console.warn(
       `[gateway] ${merchantId} has ${waiting} purchases waiting for payment, so new purchases of theirs are refused as seller_busy`,
     );
+  }
+
+  /**
+   * Whether every purchase of this merchant is refused for the paid orders
+   * they left unserved. Read alone, for a look at one of their products, which
+   * must not carry a challenge to a purchase that is always refused.
+   */
+  async stoppedForUnserved(merchantId: string): Promise<boolean> {
+    return await this.#unserved(merchantId);
   }
 
   /** Whether as many of this merchant's paid orders are left unserved as the door allows. */

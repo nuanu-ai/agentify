@@ -97,27 +97,19 @@ export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
 };
 
 /**
- * Whether an order is one its buyer paid for and its merchant took on and left
- * with nothing delivered, given the integration its card sells through. Only
- * an `unfulfilled` order is, and only where the merchant was given it: their
- * own code refused it, or was handed it and let its deadline pass, or took it
- * on. A shop's order counts only once taken on, because the connector that
- * draws and refuses it runs inside Agentify. An order never handed over, such
- * as one whose charge settled only after it was closed on that charge's
- * silence, does not count: nothing records whether the merchant or Agentify
- * failed it.
+ * Whether the merchant answers for an order that has just become
+ * `unfulfilled`, given the integration its card sells through: whether they
+ * were given it. Their own code answers for an order it was handed, and they
+ * for one they refused by a call before any hand-over. A shop answers only
+ * for an order it took on, which the connector does only for a parcel it
+ * ordered in the shop; a download it delivers itself, so whatever stops one is
+ * Agentify's. An order never handed over is nobody's that the record can
+ * name, Agentify's own failures among them, so it is not the merchant's.
  */
-export const leftUnserved = (record: StoredOrder, through: Integration): boolean => {
-  const { order } = record;
-  if (order.state !== "unfulfilled") return false;
-  if (order.dispatch.accepted) return true;
-  if (through !== "api") return false;
-  const cause = order.closure?.cause;
-  return (
-    cause === "merchant_refused" ||
-    (cause === "deadline_expired" && order.timestamps.dispatchedAt !== null)
-  );
-};
+export const answerableFor = (order: Order, through: Integration): boolean =>
+  through === "api"
+    ? order.timestamps.dispatchedAt !== null || order.closure?.cause === "merchant_refused"
+    : order.dispatch.accepted;
 
 /**
  * Whether an order is an attempt that lapsed unpaid: it ended rejected or
@@ -304,6 +296,13 @@ export interface StoredOrder {
    * report the handler as silent and send the order again.
    */
   readonly openDeliveryId: string | null;
+  /**
+   * On an `unfulfilled` order only: whether its merchant answers for it
+   * (`answerableFor`), decided as it became unfulfilled and gone once it is
+   * not. An unfulfilled order without it, written before it was kept, is
+   * answered for by nobody.
+   */
+  readonly answerable?: boolean;
 }
 
 /** One thing the payment layer said, and when. */
@@ -988,10 +987,16 @@ export interface Store {
   waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
 
   /**
-   * How many of this merchant's orders were paid for, taken on and left with
-   * nothing delivered (`leftUnserved`), counted up to `atMost` and no further.
+   * How many of this merchant's orders are `unfulfilled` and answered for by
+   * them (`StoredOrder#answerable`), counted up to `atMost` and no further.
    */
   unservedOrders(merchantId: string, atMost: number): Promise<number>;
+
+  /**
+   * Which of these merchants have at least `atLeast` such orders, in one read
+   * however many are asked about.
+   */
+  stoppedSellers(merchantIds: readonly string[], atLeast: number): Promise<ReadonlySet<string>>;
 
   /**
    * Writes an order that is not there yet. The record says whose it is. An

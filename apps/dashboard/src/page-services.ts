@@ -958,12 +958,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       orders.document,
       open.document,
       query,
-      owed.document,
+      owed.document.causes,
       paidInto.document,
       typeof lapsed.document === "number"
         ? { page: null, of: lapsed.document }
         : { page: lapsed.document.attempts, of: lapsed.document.of },
       shopTotals,
+      new Set(owed.document.counting),
     );
     if (parts.woo !== null && view.needsYou.rows.length > 0) {
       const links = await parts.woo.recoveryLinks(

@@ -181,7 +181,7 @@ export const ACCOUNT_WORDS: Readonly<
   },
   unserved: {
     title: "All new purchases are refused",
-    says: "As many of your orders as Agentify allows are paid for with nothing delivered, so agents cannot buy anything from you until you deliver or close some of them.",
+    says: "As many paid orders you were given as Agentify allows are left without delivery or closure, so agents cannot buy anything from you until you deliver or close some of them. Under Needs you, each order that counts says so.",
     fix: { to: "/orders?show=needs", words: "See them on Orders" },
   },
   through_shop: {
@@ -195,6 +195,14 @@ export const ACCOUNT_WORDS: Readonly<
     fix: null,
   },
 });
+
+/**
+ * Said beside an order under Needs you that counts toward the stop on new
+ * purchases: the merchant must find exactly those, since closing an order that
+ * does not count lifts nothing.
+ */
+export const COUNTS_TOWARD_THE_STOP =
+  "This order counts toward the stop on your new purchases until you deliver or close it.";
 
 /** The banner's title while Agentify's withdrawal of the merchant's admission stands. */
 export const LIVE_SALES_STOPPED = "Live sales are stopped";
