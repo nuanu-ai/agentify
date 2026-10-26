@@ -194,7 +194,8 @@ percent" for a description a screen reader reads aloud. A name written with a
 capital, as `{{Silent-after}}`, opens a sentence. `app/build-values.ts` lists
 the names with the constant each one reads. A number the build cannot say in
 words in its unit, such as a wait of a second and a half, stops the build, and
-so does a name it does not know.
+so does a name it does not know or anything else written between double
+braces, with the page it is on named.
 
 What a deployment decides is not written into a page but named: `{{origin}}`
 for the site's address, `{{abuse-email}}` and `{{operator}}` for the scanner's

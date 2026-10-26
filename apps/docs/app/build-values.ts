@@ -101,19 +101,31 @@ function said(value: BuildValue, form: string | undefined): string {
 }
 
 /** A name, with a capital where its sentence opens on it, and a form after a colon. */
-const NAMED = /(?<!<!--)\{\{([A-Za-z][a-z-]*)(?::([a-z]+))?\}\}/g;
+const NAMED = /\{\{([A-Za-z][a-z-]*)(?::([a-z]+))?\}\}/g;
 
-/** `source` with every value in `values` written in, as `withBuildValues` writes the build's. */
-export function writtenIn(source: string, values: Readonly<Record<string, BuildValue>>): string {
-  return source.replace(NAMED, (whole, written: string, form: string | undefined) => {
-    const name = written.toLowerCase();
-    const capital = written !== name;
+/** Whatever opens as a name does, up to its closing braces or the end of its line. */
+const OPENED = /\{\{[^}\n]*(?:\}\})?/g;
+
+/** A value a deployment fills, as a page leaves it for Caddy. */
+const LEFT_FOR_CADDY = /^\{\{([a-z-]+)\}\}$/;
+
+function written(source: string, values: Readonly<Record<string, BuildValue>>): string {
+  const filled = source.replace(NAMED, (whole, named: string, form: string | undefined) => {
+    const name = named.toLowerCase();
+    const capital = named !== name;
     const value = Object.hasOwn(values, name) ? values[name] : undefined;
     if (value === undefined) {
-      if (!capital && form === undefined && isSiteValueName(name)) return whole;
-      throw new Error(
-        `${whole} names no value the build writes in and no value a deployment fills`,
-      );
+      if (!isSiteValueName(name)) {
+        throw new Error(
+          `${whole} names no value the build writes in and no value a deployment fills`,
+        );
+      }
+      if (capital || form !== undefined) {
+        throw new Error(
+          `${whole}: a value a deployment fills is written {{${name}}}, with no capital and no form`,
+        );
+      }
+      return whole;
     }
     try {
       const text = said(value, form);
@@ -122,7 +134,34 @@ export function writtenIn(source: string, values: Readonly<Record<string, BuildV
       throw new Error(`${whole} cannot be written in: ${(error as Error).message}`);
     }
   });
+  for (const [left] of filled.matchAll(OPENED)) {
+    const name = LEFT_FOR_CADDY.exec(left)?.[1];
+    if (name === undefined || !isSiteValueName(name)) {
+      throw new Error(
+        `${left} is not written as a name: a name is lower-case words joined by hyphens, as {{quote-ttl}}, with a capital first letter where it opens a sentence and a lower-case form after a colon`,
+      );
+    }
+  }
+  return filled;
+}
+
+/**
+ * `source` with every value in `values` written in, as `withBuildValues`
+ * writes the build's, and a refusal for anything else written as a name,
+ * which names `where` it was written when it is given.
+ */
+export function writtenIn(
+  source: string,
+  values: Readonly<Record<string, BuildValue>>,
+  where?: string,
+): string {
+  try {
+    return written(source, values);
+  } catch (error) {
+    throw where === undefined ? error : new Error(`${where}: ${(error as Error).message}`);
+  }
 }
 
 /** A page's source with every value the build knows written in. */
-export const withBuildValues = (source: string): string => writtenIn(source, BUILD_VALUES);
+export const withBuildValues = (source: string, where?: string): string =>
+  writtenIn(source, BUILD_VALUES, where);
