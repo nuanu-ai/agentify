@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { durationInWords, inWords, percentOf } from "./published.js";
+import { durationInWords, inWords, ordinalInWords, percentOf } from "./published.js";
 
 describe("a stretch of time, said in words", () => {
   it("is counted in the unit its sentence names", () => {
@@ -40,6 +40,27 @@ describe("a count, said in words", () => {
     for (const count of [0, 100, 2.5, -3]) {
       expect(() => inWords(count), String(count)).toThrow(/cannot say .* in words/);
     }
+  });
+});
+
+describe("a count, said as its place in a row", () => {
+  it("is written as a sentence writes it", () => {
+    const said = [1, 2, 3, 5, 8, 9, 10, 12, 20, 21, 50, 99].map(ordinalInWords);
+
+    expect(said).toStrictEqual([
+      "first",
+      "second",
+      "third",
+      "fifth",
+      "eighth",
+      "ninth",
+      "tenth",
+      "twelfth",
+      "twentieth",
+      "twenty-first",
+      "fiftieth",
+      "ninety-ninth",
+    ]);
   });
 });
 

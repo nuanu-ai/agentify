@@ -46,6 +46,12 @@ describe("a number a page names", () => {
     );
   });
 
+  it("is written as a place in a row where the sentence counts up to it", () => {
+    expect(writtenIn("a price named before the {{waiting-at-most:ordinal}} one", VALUES)).toBe(
+      "a price named before the fiftieth one",
+    );
+  });
+
   it("opens a sentence with a capital where its name is written with one", () => {
     expect(writtenIn("{{Waiting-at-most}} of your purchases", VALUES)).toBe(
       "Fifty of your purchases",
@@ -76,6 +82,7 @@ describe("the build stops", () => {
     expect(() => writtenIn("{{release:words}}", VALUES)).toThrow(/release:words/);
     expect(() => writtenIn("{{waiting-at-most:number}}", VALUES)).toThrow(/waiting-at-most:number/);
     expect(() => writtenIn("{{price-holds:long}}", VALUES)).toThrow(/price-holds:long/);
+    expect(() => writtenIn("{{price-holds:ordinal}}", VALUES)).toThrow(/price-holds:ordinal/);
     expect(() => writtenIn("{{silent-after:short}}", VALUES)).toThrow(/silent-after:short/);
   });
 
