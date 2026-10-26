@@ -293,6 +293,30 @@ describe("signing in again before an action", () => {
   });
 });
 
+describe("a page read with a sign-in older than fifteen minutes", () => {
+  it("asks for a fresh sign-in where its actions are, before the operator types a reason", async () => {
+    // A reason typed into a form the press then refuses for the sign-in's age
+    // is a reason written twice.
+    const workspace = await serve({ channel: "live" });
+    const { harnessed, identity } = workspace;
+    await identity.make(MERCHANT, harnessed.merchant.id);
+    const account = (await identity.byEmail(MERCHANT))?.id ?? "acc_missing";
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const pages = [`/admin/merchants/${harnessed.merchant.id}`, `/admin/accounts/${account}`];
+    for (const path of pages) {
+      expect((await operator.get(path)).html, path).toContain('name="reason"');
+    }
+
+    workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
+
+    for (const path of pages) {
+      const read = await operator.get(path);
+      expect(read.html, path).toContain(`action="${ADMIN_BASE}/admin/sign-in-again"`);
+      expect(read.html, path).not.toContain('name="reason"');
+    }
+  });
+});
+
 describe("a press made with a sign-in older than fifteen minutes", () => {
   /**
    * Everything a press could change: the gateway's rows, the journal's rows
@@ -337,7 +361,11 @@ describe("a press made with a sign-in older than fifteen minutes", () => {
       // A page with no press of its own is not handed a post at all; the
       // address that is no page is answered as none.
       const refused = pressed.status === 404 || pressed.status === 405;
-      const steppedUp = readable(pressed.html).includes("Confirm it is you");
+      // The step-up's own press sends the link and draws what became of it.
+      const steppedUp =
+        path === "/admin/sign-in-again"
+          ? pressed.status === 202
+          : pressed.html.includes(`action="${ADMIN_BASE}/admin/sign-in-again"`);
       expect(refused || steppedUp, `POST ${path} answered ${pressed.status}`).toBe(true);
     }
     expect(await stateOf(workspace)).toBe(before);

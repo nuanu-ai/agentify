@@ -99,6 +99,27 @@ describe("an administrative press", () => {
     ]);
   });
 
+  it("hands back the reason as it was typed when it asks for a fresh sign-in or refuses the press", async () => {
+    // The operator typed it before pressing; a step-up or a refusal that drops
+    // it makes them write it again from memory.
+    const { pressing, change } = setUp();
+
+    expect(await pressed(withdrawal(READY, FRESH_SIGN_IN_MS), pressing, change())).toMatchObject({
+      kind: "step-up",
+      typed: READY.reason,
+    });
+    expect(await pressed(withdrawal({ reason: READY.reason }), pressing, change())).toMatchObject({
+      kind: "refused",
+      typed: READY.reason,
+    });
+    expect(
+      await pressed(withdrawal({ confirm: "yes", reason: "<b>stop</b>" }), pressing, change()),
+    ).toMatchObject({ kind: "refused", typed: "<b>stop</b>", field: "reason" });
+    expect(
+      await pressed(withdrawal({ confirm: "yes", reason: "  " }), pressing, change()),
+    ).toMatchObject({ kind: "refused", field: "reason" });
+  });
+
   it("refuses a press whose consequence is not ticked, or ticked twice", async () => {
     const { pressing, change, changes, rows } = setUp();
 
@@ -107,7 +128,7 @@ describe("an administrative press", () => {
       { reason: READY.reason, confirm: "on" },
     ];
     for (const fields of unticked) {
-      expect(await pressed(withdrawal(fields), pressing, change())).toStrictEqual({
+      expect(await pressed(withdrawal(fields), pressing, change())).toMatchObject({
         kind: "refused",
         said: NOT_CONFIRMED,
       });
@@ -127,7 +148,7 @@ describe("an administrative press", () => {
 
     expect(
       await pressed(withdrawal({ confirm: "yes", reason: "   " }), pressing, change()),
-    ).toStrictEqual({ kind: "refused", said: NO_REASON });
+    ).toMatchObject({ kind: "refused", said: NO_REASON });
     const markup = await pressed(
       withdrawal({ confirm: "yes", reason: "<b>stop</b>" }),
       pressing,
@@ -173,7 +194,7 @@ describe("an administrative press", () => {
       change({ kind: "refused", code: "no_such_merchant", said: "There is no such merchant." }),
     );
 
-    expect(answered).toStrictEqual({ kind: "refused", said: "There is no such merchant." });
+    expect(answered).toMatchObject({ kind: "refused", said: "There is no such merchant." });
     expect(await rows()).toMatchObject([
       { outcome: { kind: "refused", code: "no_such_merchant" }, reason: READY.reason },
     ]);
