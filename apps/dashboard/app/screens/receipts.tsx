@@ -64,7 +64,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
       {view.testWarning === null ? null : <p className="problem">{view.testWarning}</p>}
       <Group title="All receipts" count={listing.segments[0]?.count ?? listing.rows.length}>
         {listing.rows.length === 0 ? (
-          <ListEmpty>No receipts yet. One appears when a product reaches a buyer.</ListEmpty>
+          <ListEmpty>No receipts yet.</ListEmpty>
         ) : (
           <List
             label="Receipts"

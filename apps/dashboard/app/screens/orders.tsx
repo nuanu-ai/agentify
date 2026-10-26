@@ -145,8 +145,8 @@ const CloseFulfillment = ({
     <section className={styles.close} aria-label={press}>
       <p className={styles.help}>
         {again
-          ? "The buyer paid after you closed this order. Close it again with a note that says what you did. No money moves."
-          : "Agentify stops delivering this order, and you cannot undo it. No money moves, and nothing changes in your shop."}
+          ? "The buyer paid after you closed this order. Close it again with a note saying what you did; this moves no money."
+          : "Agentify stops delivering this order, and this cannot be undone. It moves no money and changes nothing in your shop."}
       </p>
       <PostForm action="/orders" className="issue">
         {(pending) => (

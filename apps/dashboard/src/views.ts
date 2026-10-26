@@ -830,7 +830,7 @@ export const ordersPlace = (fields: URLSearchParams): string =>
  */
 export const CLOSURE_NOTES = {
   unconfirmed:
-    "We could not confirm that this order was closed. Close it again: a second closure changes nothing.",
+    "Agentify could not confirm the closure. Close the order again: closing it twice does no harm.",
   ended: "Nothing was closed: this order had already ended.",
 } as const;
 

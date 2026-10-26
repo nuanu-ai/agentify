@@ -1747,7 +1747,7 @@ const ORDERS: GalleryState[] = [
         screen: "Orders",
         when: "A merchant checks an order they closed and an original payment still unknown.",
         cause:
-          "Merchant closure is shown separately from the original payment. The explanation is attributed to the merchant; the unknown payment remains unknown.",
+          "Merchant closure is shown separately from the original payment. The note to the buyer is attributed to the merchant; the unknown payment remains unknown.",
       },
       CLOSED,
     ),
@@ -1788,7 +1788,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
       cause:
-        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the explanation typed is still in the box.",
+        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the note typed is still in the box.",
     },
     OWING,
     {
@@ -1800,15 +1800,15 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-close-refused",
       screen: "Orders",
-      when: "A merchant typed markup into the explanation and pressed Close fulfillment.",
+      when: "A merchant typed markup into the note to the buyer and pressed Close fulfillment.",
       cause:
-        "The explanation is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
+        "The note is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
     },
     OWING,
     {
       note: null,
       refusal:
-        "Your explanation carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
+        "Your note carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
       typed: "Your payment was <b>returned</b>.",
     },
   ),

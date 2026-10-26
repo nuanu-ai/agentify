@@ -7165,7 +7165,7 @@ describe("closing fulfillment from Orders", () => {
     const posted = await running.browser.post("/orders", { order_id: id });
     const read = await running.browser.get(posted.to ?? "");
     expect(readable(read.html)).toContain("Closed by you");
-    expect(readable(read.html)).not.toContain("closure could not be confirmed");
+    expect(readable(read.html)).not.toContain(CLOSURE_NOTES.unconfirmed);
   });
 
   it("keeps an unanswered closure honest when its read also cannot confirm it", async () => {
@@ -7291,7 +7291,7 @@ describe("closing fulfillment from Orders", () => {
     );
     const box = /<textarea[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
     expect(box).toContain('aria-invalid="true"');
-    expect(readable(refused.html)).toContain("Your explanation carries HTML markup");
+    expect(readable(refused.html)).toContain("Your note carries HTML markup");
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 

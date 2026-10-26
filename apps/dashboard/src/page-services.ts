@@ -1349,7 +1349,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             {
               id: id.data,
               note: null,
-              refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
+              refusal: `Your note ${reason.replace(/^a closure message /, "")}.`,
               typed: said,
             },
             400,
