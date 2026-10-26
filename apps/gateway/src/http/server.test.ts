@@ -583,6 +583,24 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.amount).toBe("10000");
   });
 
+  it("asks for a price written past the cent exactly, to the last place", async () => {
+    // Six places are what USDC carries, so a price above the smallest one is
+    // charged as written, never rounded to the cent.
+    const { served } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      price: { amount: "0.010001", currency: "USD" },
+    });
+
+    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
+
+    expect(answered.status).toBe(402);
+    const challenge = decodePaymentRequiredHeader(
+      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    );
+    expect(challenge.accepts[0]?.amount).toBe("10001");
+  });
+
   it("prices a POST against an order it opened, and names that order by its identifier", async () => {
     const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);

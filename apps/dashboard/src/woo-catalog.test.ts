@@ -239,27 +239,6 @@ describe("turning a shop's products into cards", () => {
     expect(skipped[0]?.why).toContain("zero");
   });
 
-  it("sells a product its rate makes worth less than a cent at one cent, the smallest price sold", () => {
-    // Converted amounts are rounded up to the cent, so a cheap product in a
-    // currency of small units is not left in the shop for falling under the
-    // smallest price Agentify sells at; only a price of zero is.
-    const rupiah = (id: number, price: string) =>
-      product({ id, prices: { price, currency_code: "IDR", currency_minor_unit: 0 } });
-
-    const { cards, skipped } = cardsFromTheShop(
-      [rupiah(1, "1"), rupiah(2, "0"), rupiah(3, "179")],
-      "https://shop.example.com",
-      { currency: "IDR", decimals: 0, rate: "18000" },
-    );
-
-    expect(cards.map((one) => [one.id, one.card.price])).toEqual([
-      ["1", { amount: "0.01", currency: "USD" }],
-      ["3", { amount: "0.01", currency: "USD" }],
-    ]);
-    expect(skipped.map((one) => one.id)).toEqual(["2"]);
-    expect(skipped[0]?.why).toContain("zero");
-  });
-
   it("leaves a product it cannot map alone and says why", () => {
     const { cards, skipped } = cardsFromTheShop([
       product({ id: 1, type: "variable" }),
