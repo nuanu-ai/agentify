@@ -82,6 +82,19 @@ describe("an address on an EVM chain", () => {
     expect(complaint).not.toMatch(/lower ?case/i);
   });
 
+  it("tells an address a tool wrote in capitals that its case changed, not that it has a typo", () => {
+    // Some QR generators and tools print an address all in capitals. No
+    // character is wrong, so a refusal claiming a typo would send the merchant
+    // hunting for one that is not there.
+    const shouted = `0x${(CHECKSUMMED[0] ?? "").slice(2).toUpperCase()}`;
+    const complaint = errorOf(EvmAddressSchema, shouted);
+
+    expect(accepts(shouted)).toBe(false);
+    expect(complaint).toMatch(/changed case/i);
+    expect(complaint).not.toMatch(/has a mistyped/i);
+    expect(complaint).not.toMatch(/lower ?case/i);
+  });
+
   it("refuses a shape that is not an address at all", () => {
     expect(accepts("")).toBe(false);
     expect(accepts("0x")).toBe(false);
