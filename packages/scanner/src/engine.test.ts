@@ -839,6 +839,22 @@ describe("18-check engine", () => {
     });
   });
 
+  it("reads a Markdown answer as text, whatever markup its prose or code mentions", () => {
+    // Markdown that names a `<textarea>` or a `<script>` tag in inline code,
+    // read as HTML, opens one and hides everything after it.
+    const input = makeArtifacts("owner");
+    input.markdown = artifact(
+      "https://example.com/",
+      `Leave a \`<textarea>\` for notes, and add the \`<script>\` tag the widget needs.\n\n# Fixture Store\n\n${"Substantive deterministic product information for machines. ".repeat(12)}`,
+      { headers: { "content-type": "text/markdown", vary: "Accept" } },
+    );
+    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
+      status: "pass",
+      earnedWeight: 8,
+      evidence: { semantic_parity: true },
+    });
+  });
+
   it("keeps unrelated Markdown partial even when its headers are valid", () => {
     const input = makeArtifacts("owner");
 
