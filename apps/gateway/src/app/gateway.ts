@@ -388,7 +388,9 @@ export interface SaleFacts {
  *
  * A card whose stored price the price rule refuses is not on sale: it was
  * published before the rule was as strict, and is sold again once its
- * merchant publishes it at a price the rule takes. A seller silent beyond `SILENT_AFTER_MS` is refused whatever the card's
+ * merchant publishes it at a price the rule takes.
+ *
+ * A seller silent beyond `SILENT_AFTER_MS` is refused whatever the card's
  * mode: a synchronous purchase would charge nothing, but nobody would draw
  * its order, so it could only lapse after the buyer had signed and waited. A
  * shop sold through the connector is never silent, since the connector runs
