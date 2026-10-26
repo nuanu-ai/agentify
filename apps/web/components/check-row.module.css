@@ -79,6 +79,13 @@ details.row[open] + .row {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Every row still beside its state on a phone is numbered, and a check's
+     verdict words are shorter than the longest state any list says, so the
+     slot gives the name back what it can. */
+  .numbered :global(.badge-slot) {
+    min-inline-size: 7.25rem;
+  }
+
   details.row[open] {
     margin-inline: -8px;
     padding-inline: 8px;

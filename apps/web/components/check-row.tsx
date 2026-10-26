@@ -4,8 +4,9 @@ import styles from "./check-row.module.css";
 
 /**
  * One check, finding or observation as a line of a list: what it is, and its
- * state at the end of the line. What it found sits under the line, shown
- * there, or folded under it where `fold` says whether it starts open.
+ * state at the end of the line, in a slot of one width on every row so the
+ * states of a list read down one column. What it found sits under the line,
+ * shown there, or folded under it where `fold` says whether it starts open.
  */
 export function CheckRow({
   detail,
@@ -29,7 +30,7 @@ export function CheckRow({
         )}
         {title}
       </span>
-      {state}
+      <span className="badge-slot">{state}</span>
     </>
   );
   if (detail === undefined)

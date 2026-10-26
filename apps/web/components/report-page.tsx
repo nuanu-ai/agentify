@@ -49,7 +49,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
               <ul aria-label="Checks by state" className={styles.tally}>
                 {view.tally.map(({ status, count }) => (
                   <li key={status}>
-                    <StatusBadge status={status} /> <b>{count}</b>
+                    <StatusBadge count={count} status={status} />
                   </li>
                 ))}
               </ul>
