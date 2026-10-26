@@ -142,33 +142,22 @@ const payoutOf = (
 };
 
 /**
- * What `transaction` would bring if sent now, or `UNKNOWN`. The chain gets at
- * most half the page's own deadline, so a hanging endpoint costs the payout
- * panel its amount and never the rest of the page; a read the page stopped
- * waiting for goes on, and its answer is kept for the next page.
+ * What `transaction` would bring if sent now, or `UNKNOWN` where the chain
+ * gave no answer within `withinMs`, which the check keeps to.
  */
-const broughtWithin = async (
+const broughtWithin = (
   check: PayoutCheck | undefined,
   transaction: PayoutTransaction,
   withinMs: number,
-): Promise<bigint | typeof UNKNOWN> => {
-  if (check === undefined) return UNKNOWN;
-  let cut: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<typeof UNKNOWN>((resolve) => {
-    cut = setTimeout(() => resolve(UNKNOWN), withinMs);
-  });
-  const read = check.wouldBring(transaction, withinMs).catch((thrown: unknown): typeof UNKNOWN => {
-    console.error(
-      `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
-    );
-    return UNKNOWN;
-  });
-  try {
-    return await Promise.race([read, late]);
-  } finally {
-    clearTimeout(cut);
-  }
-};
+): Promise<bigint | typeof UNKNOWN> =>
+  check === undefined
+    ? Promise.resolve(UNKNOWN)
+    : check.wouldBring(transaction, withinMs).catch((thrown: unknown): typeof UNKNOWN => {
+        console.error(
+          `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
+        );
+        return UNKNOWN;
+      });
 
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
@@ -703,9 +692,13 @@ export const gatewayFor = (
         answered(API_ROUTES.get_payout_wallet, await application.payoutWallet(merchantId)),
       ),
     // Built from the splits as recorded, on the network's contracts; the rate
-    // is the one a wallet saved now is recorded with.
+    // is the one a wallet saved now is recorded with. The chain gets half the
+    // page's deadline counted from the start of this read, so a slow database
+    // and a slow chain together still leave the rest of Settings, the control
+    // that signs every other device out among it, drawn in time.
     payoutSplits: () =>
       call("reading the payout splits", async () => {
+        const chainBy = Date.now() + answerWithinMs / 2;
         const { payoutSplit: network, payoutSplitNetworks } = application.runtime.config;
         const { inForce, pending, toPayOut } = await application.payoutSplitsOf(merchantId);
         const built =
@@ -729,7 +722,7 @@ export const gatewayFor = (
                   brings: await broughtWithin(
                     application.runtime.payoutCheck,
                     built,
-                    answerWithinMs / 2,
+                    chainBy - Date.now(),
                   ),
                 },
         });
