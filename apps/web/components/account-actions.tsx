@@ -162,7 +162,9 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
           </button>
         </div>
       )}
-      <p aria-live="polite">{message}</p>
+      <p aria-live="polite" className="message-answer">
+        {message}
+      </p>
     </>
   );
 }
