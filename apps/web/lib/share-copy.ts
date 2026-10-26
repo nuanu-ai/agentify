@@ -19,7 +19,8 @@ export type ShareCopy = {
   tone: ShareTone;
 };
 
-function cleanHost(host: string): string {
+/** The host as the share names it, without a leading `www.`. */
+export function cleanHost(host: string): string {
   return host.replace(/^www\./i, "");
 }
 

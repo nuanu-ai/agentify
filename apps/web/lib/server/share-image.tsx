@@ -2,8 +2,8 @@ import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 
 import { BrandMark } from "@agentify/ui";
 import { getPublicAppConfig } from "../app-config";
-import { type ShareTone, shareCopy } from "../share-copy";
-import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";
+import { cleanHost, type ShareCopy, type ShareTone, shareCopy } from "../share-copy";
+import { drawPng, HUMAN_FONT, laidOutHeight, MONO_FONT } from "./drawing";
 
 /**
  * The site's colours the picture draws with, named as the tokens in
@@ -32,6 +32,30 @@ const TONE: Record<ShareTone, { color: string; soft: string }> = {
 
 const SHARE_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 
+// Every block of the card but the statement has a fixed size, so the room
+// left for the statement is known before anything is drawn.
+const GROUND = 36;
+const CARD_BORDER = 1;
+const CARD_PADDING = { x: 56, y: 44 } as const;
+const HEADER_HEIGHT = 40;
+const BAND_GAP = 24;
+const FOOT_HEIGHT = 114;
+const RING_SIZE = 256;
+const RING_GAP = 48;
+
+const STATEMENT_WIDTH =
+  SHARE_IMAGE_SIZE.width - 2 * (GROUND + CARD_BORDER + CARD_PADDING.x) - RING_SIZE - RING_GAP;
+const STATEMENT_HEIGHT =
+  SHARE_IMAGE_SIZE.height -
+  2 * (GROUND + CARD_BORDER + CARD_PADDING.y) -
+  HEADER_HEIGHT -
+  2 * BAND_GAP -
+  FOOT_HEIGHT;
+
+/** Headline sizes, largest first; a host the smallest cannot hold is shortened. */
+const HEADLINE_SIZES = [52, 46, 40, 35, 30] as const;
+const ELLIPSIS = "…";
+
 const ZONES = [
   { key: "invisible", name: "Invisible", range: "0–24" },
   { key: "readable", name: "Readable", range: "25–49" },
@@ -39,14 +63,92 @@ const ZONES = [
   { key: "ahead_of_market", name: "Ahead", range: "70–100" },
 ];
 
-/** The card a published share unfurls into, and the picture a visitor downloads of it. */
-export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Array<ArrayBuffer>> {
-  const { displayBrand } = getPublicAppConfig();
+type Tone = (typeof TONE)[ShareTone];
+
+function Statement({ copy, tone, size }: { copy: ShareCopy; tone: Tone; size: number }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: STATEMENT_WIDTH,
+        gap: 20,
+      }}
+    >
+      <div style={{ display: "flex" }}>
+        <span
+          style={{
+            display: "flex",
+            padding: "9px 20px",
+            borderRadius: 999,
+            background: tone.soft,
+            border: `1px solid ${tone.color}`,
+            color: tone.color,
+            fontFamily: MONO_FONT,
+            fontSize: 22,
+            fontWeight: 500,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+          }}
+        >
+          {copy.kicker}
+        </span>
+      </div>
+      {/* A host is one word to the layout, and one label may be wider than
+          the column, so a word breaks wherever it has to. */}
+      <strong
+        style={{ fontSize: size, fontWeight: 600, lineHeight: 1.12, wordBreak: "break-word" }}
+      >
+        {copy.headline}
+      </strong>
+      <span style={{ fontSize: 25, color: INK.muted, lineHeight: 1.4 }}>{copy.subline}</span>
+    </div>
+  );
+}
+
+const fits = async (copy: ShareCopy, tone: Tone, size: number): Promise<boolean> =>
+  (await laidOutHeight(<Statement copy={copy} tone={tone} size={size} />, STATEMENT_WIDTH)) <=
+  STATEMENT_HEIGHT;
+
+const shortened = (host: string, kept: number): string =>
+  `${host.slice(0, Math.ceil(kept / 2))}${ELLIPSIS}${host.slice(host.length - Math.floor(kept / 2))}`;
+
+/**
+ * The statement at the largest headline size that holds it. A host the
+ * smallest size cannot hold loses characters from its middle, so the picture
+ * still shows where the name starts and the site's own name at its end.
+ */
+async function fittedStatement(
+  snapshot: PublicShareSnapshot,
+  tone: Tone,
+): Promise<{ copy: ShareCopy; size: number }> {
   const copy = shareCopy(snapshot);
-  const tone = TONE[copy.tone];
+  for (const size of HEADLINE_SIZES) if (await fits(copy, tone, size)) return { copy, size };
+
+  const size = HEADLINE_SIZES[HEADLINE_SIZES.length - 1];
+  const host = cleanHost(snapshot.host);
+  const copyKeeping = (kept: number) => shareCopy({ ...snapshot, host: shortened(host, kept) });
+  let kept = 0;
+  let tooMany = host.length;
+  while (tooMany - kept > 1) {
+    const middle = Math.floor((kept + tooMany) / 2);
+    if (await fits(copyKeeping(middle), tone, size)) kept = middle;
+    else tooMany = middle;
+  }
+  return { copy: copyKeeping(kept), size };
+}
+
+/** The card a published share unfurls into, and the picture a visitor downloads of it. */
+export async function drawShareImage(
+  snapshot: PublicShareSnapshot,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const { displayBrand } = getPublicAppConfig();
+  const tone = TONE[shareCopy(snapshot).tone];
+  const { copy, size } = await fittedStatement(snapshot, tone);
   const score = Math.max(0, Math.min(100, snapshot.score));
   const pct = score / 100;
-  const circumference = 2 * Math.PI * 120;
+  const radius = RING_SIZE / 2 - 20;
+  const circumference = 2 * Math.PI * radius;
   const dash = circumference * pct;
   const date = new Date(snapshot.generated_at).toISOString().slice(0, 10);
 
@@ -56,7 +158,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
         width: "100%",
         height: "100%",
         display: "flex",
-        padding: 40,
+        padding: GROUND,
         background: "#EFEBE2",
         fontFamily: HUMAN_FONT,
       }}
@@ -66,12 +168,14 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
-          padding: 60,
+          gap: BAND_GAP,
+          padding: `${CARD_PADDING.y}px ${CARD_PADDING.x}px`,
           borderRadius: 28,
-          border: `1px solid ${INK.line}`,
+          border: `${CARD_BORDER}px solid ${INK.line}`,
           background: "#FFFFFF",
-          backgroundImage: `radial-gradient(680px 360px at 88% 4%, ${tone.soft}, transparent 62%)`,
+          // The renderer fades to `transparent` through black, so the tint
+          // fades to itself at no opacity.
+          backgroundImage: `radial-gradient(680px 360px at 88% 4%, ${tone.soft}, ${tone.soft}00 62%)`,
           color: INK.fg,
           boxShadow: "0 30px 70px -46px rgba(26,25,23,0.42)",
         }}
@@ -79,12 +183,14 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
         <div
           style={{
             display: "flex",
+            height: HEADER_HEIGHT,
+            flexShrink: 0,
             justifyContent: "space-between",
             alignItems: "center",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <BrandMark size={40} />
+            <BrandMark size={HEADER_HEIGHT} />
             <strong
               style={{
                 fontSize: 30,
@@ -119,49 +225,19 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
         <div
           style={{
             display: "flex",
+            height: STATEMENT_HEIGHT,
+            flexShrink: 0,
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 40,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              maxWidth: 600,
-              gap: 22,
-            }}
-          >
-            <div style={{ display: "flex" }}>
-              <span
-                style={{
-                  display: "flex",
-                  padding: "9px 20px",
-                  borderRadius: 999,
-                  background: tone.soft,
-                  border: `1px solid ${tone.color}`,
-                  color: tone.color,
-                  fontFamily: MONO_FONT,
-                  fontSize: 22,
-                  fontWeight: 500,
-                  letterSpacing: 2,
-                  textTransform: "uppercase",
-                }}
-              >
-                {copy.kicker}
-              </span>
-            </div>
-            <strong style={{ fontSize: 52, fontWeight: 600, lineHeight: 1.12 }}>
-              {copy.headline}
-            </strong>
-            <span style={{ fontSize: 25, color: INK.muted, lineHeight: 1.4 }}>{copy.subline}</span>
-          </div>
+          <Statement copy={copy} tone={tone} size={size} />
 
           <div
             style={{
               position: "relative",
-              width: 280,
-              height: 280,
+              width: RING_SIZE,
+              height: RING_SIZE,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -169,28 +245,35 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
           >
             <svg
               aria-hidden="true"
-              width="280"
-              height="280"
-              viewBox="0 0 280 280"
+              width={RING_SIZE}
+              height={RING_SIZE}
+              viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
               style={{ position: "absolute" }}
             >
-              <circle cx="140" cy="140" r="120" fill="none" stroke={INK.line} strokeWidth="20" />
               <circle
-                cx="140"
-                cy="140"
-                r="120"
+                cx={RING_SIZE / 2}
+                cy={RING_SIZE / 2}
+                r={radius}
+                fill="none"
+                stroke={INK.line}
+                strokeWidth="20"
+              />
+              <circle
+                cx={RING_SIZE / 2}
+                cy={RING_SIZE / 2}
+                r={radius}
                 fill="none"
                 stroke={tone.color}
                 strokeWidth="20"
                 strokeLinecap="round"
                 strokeDasharray={`${dash} ${circumference - dash}`}
-                transform="rotate(-90 140 140)"
+                transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
               />
             </svg>
             <div style={{ display: "flex", alignItems: "baseline" }}>
               <strong
                 style={{
-                  fontSize: 108,
+                  fontSize: 98,
                   fontWeight: 600,
                   lineHeight: 1,
                   color: tone.color,
@@ -198,12 +281,20 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
               >
                 {score}
               </strong>
-              <span style={{ fontSize: 30, color: INK.faint }}>/100</span>
+              <span style={{ fontSize: 28, color: INK.faint }}>/100</span>
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: FOOT_HEIGHT,
+            flexShrink: 0,
+            gap: 14,
+          }}
+        >
           <div
             style={{
               display: "flex",
@@ -236,8 +327,10 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
                     fontWeight: active ? 600 : 400,
                   }}
                 >
-                  <span style={{ fontSize: 18 }}>{zone.name}</span>
-                  <span style={{ fontSize: 15, color: INK.faint }}>{zone.range}</span>
+                  <span style={{ fontSize: 18, lineHeight: "22px" }}>{zone.name}</span>
+                  <span style={{ fontSize: 15, lineHeight: "18px", color: INK.faint }}>
+                    {zone.range}
+                  </span>
                 </div>
               );
             })}
@@ -250,6 +343,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
               marginTop: 8,
               fontFamily: MONO_FONT,
               fontSize: 19,
+              lineHeight: "24px",
             }}
           >
             <span style={{ color: INK.faint }}>Diagnostic, not a certification</span>
