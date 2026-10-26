@@ -945,10 +945,11 @@ describe("a gateway speaking another dialect", () => {
     expect(seen).toStrictEqual([]);
   });
 
-  it("passes on the version it saw in an answer it could not read, and keeps going", async () => {
-    // The version a body this SDK refuses names is worth telling the merchant,
-    // but that body was held to no schema: acted on, a proxy's error page
-    // could stop a worker for good. So it is a remark in a retryable problem.
+  it("says an answer it could not read named another version, without repeating what it named, and keeps going", async () => {
+    // Another version named is worth telling the merchant, but that body was
+    // held to no schema: acted on, a proxy's error page could stop a worker
+    // for good, and repeated, it puts whatever the body carried in a log. So
+    // it is a remark in a retryable problem, and the remark carries no value.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -956,7 +957,7 @@ describe("a gateway speaking another dialect", () => {
       routes: {
         poll_worker: () => ({
           status: 503,
-          text: JSON.stringify({ contract_version: "99", error: "no worker here" }),
+          text: JSON.stringify({ contract_version: "9.9-preview", error: "no worker here" }),
         }),
       },
     });
@@ -971,8 +972,10 @@ describe("a gateway speaking another dialect", () => {
 
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
     expect(problems[0]?.fatal).toBe(false);
-    expect(problems[0]?.message).toContain("99");
-    expect(problems[0]?.message).toContain("may mean");
+    expect(problems[0]?.message).toContain("another version");
+    expect(problems[0]?.message).toContain(contractVersion);
+    expect(problems[0]?.message).not.toContain("9.9-preview");
+    expect(problems[0]?.message).not.toContain("no worker here");
 
     // And it went on asking.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "further polls");
@@ -1003,6 +1006,35 @@ describe("a gateway speaking another dialect", () => {
 
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
     expect(problems[0]?.fatal).toBe(false);
+  });
+
+  it("repeats nothing of a poll answer cut short in the problem it reports", async () => {
+    // A poll answer cut mid-order carries the buyer's parameters, and the
+    // problem goes to the merchant's log.
+    const problems: WorkerProblem[] = [];
+    const cut = JSON.stringify({ contract_version: contractVersion, envelopes: [envelopes.order] });
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: () => ({
+          type: "application/json",
+          text: cut.slice(0, cut.indexOf("buyer@example.com") + 20),
+        }),
+      },
+    });
+
+    running = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      { problem: (problem) => problems.push(problem) },
+      recordingClock(),
+    );
+
+    await waitUntil(() => problems.length > 0, "the problem to be reported");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
+    expect(problems[0]?.message).toContain("application/json");
+    expect(problems[0]?.message).not.toContain("buyer@example.com");
   });
 
   it("keeps the merchant's handlers and reporter when a loop is started again", async () => {

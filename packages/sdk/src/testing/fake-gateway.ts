@@ -38,12 +38,14 @@ interface GatewayCall {
 /**
  * What a test wants sent back. `body` is a document, held to the route's own
  * schema before it goes out; `text` is sent untouched, to play a broken
- * gateway, a proxy's error page or a truncated answer.
+ * gateway, a proxy's error page or a truncated answer, under `type` as its
+ * content type, plain text unless the test names another.
  */
 export interface GatewayAnswer {
   readonly status?: number;
   readonly body?: unknown;
   readonly text?: string;
+  readonly type?: string;
 }
 
 /** How a test answers one route, given the call and how many came before it. */
@@ -266,7 +268,7 @@ export const startFakeGateway = async (options: FakeGatewayOptions): Promise<Fak
     const status = answer.status ?? 200;
 
     if (answer.text !== undefined) {
-      response.writeHead(status, { "content-type": "text/plain" });
+      response.writeHead(status, { "content-type": answer.type ?? "text/plain" });
       response.end(answer.text);
       return;
     }
