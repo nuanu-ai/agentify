@@ -71,6 +71,13 @@ export const shopNameOf = (address: string): string => {
   }
 };
 
+/**
+ * What a Disconnect form drawn with no shop connected carries in place of the
+ * shop's address, so a press from a page drawn before one was connected
+ * forgets nothing.
+ */
+export const NO_SHOP = "none";
+
 /** Why nothing is connected although a Connect was started. */
 export interface NoKeysYet {
   readonly what: string;
@@ -120,6 +127,12 @@ export interface Refusal {
   readonly says: string;
   readonly orders: readonly string[];
   readonly more: number;
+  /**
+   * The page to go on to, said under the sentence: pausing all sales where
+   * purchases about to lapse hold a move and new ones can keep arriving, or
+   * Products where an import already running publishes what it reads.
+   */
+  readonly follow: "pause" | "products" | null;
 }
 
 /**
@@ -135,19 +148,58 @@ export interface Held {
   readonly parcels: boolean;
 }
 
-/** A refusal as a press's answer hands it over: a sentence, a refusal's own words, or held orders. */
-export type Said = string | Readonly<{ why: string }> | Readonly<{ held: Held }>;
+/** An order as the open list shows it, as much as a held move reads of it. */
+export interface OpenOrder {
+  readonly id: string;
+  readonly status: string;
+  readonly payment_status: string;
+  readonly ship_to?: unknown;
+}
+
+/**
+ * The orders that held a move, as the open list shows them now, which is what
+ * See open orders leads to: an order missing from it has ended since the
+ * refusal, or has no price yet, which it gets within seconds or never. Where
+ * the list could not be read, the refusal's own orders, said as goods owed.
+ */
+export const heldBy = (
+  to: Integration,
+  named: readonly string[],
+  open: readonly OpenOrder[] | null,
+): Held => {
+  if (open === null) return { to, orders: named, quick: false, parcels: false };
+  const still = open.filter((order) => named.includes(order.id));
+  return {
+    to,
+    orders: still.map((order) => order.id),
+    quick: still.every(
+      (order) => order.status === "in_progress" && order.payment_status === "not_paid",
+    ),
+    parcels: still.some((order) => order.ship_to !== undefined),
+  };
+};
+
+/**
+ * A refusal as a press's answer hands it over: a sentence, a refusal's own
+ * words, held orders, or an import of the shop already running.
+ */
+export type Said =
+  | string
+  | Readonly<{ why: string }>
+  | Readonly<{ held: Held }>
+  | Readonly<{ running: true }>;
 
 const heldSays = ({ to, orders, quick, parcels }: Held): string => {
-  const one = orders.length === 1;
-  const counted = `${orders.length} ${one ? "order" : "orders"} from your ${to === "woocommerce" ? "code" : "shop"} ${one ? "is" : "are"}`;
+  const one = orders.length <= 1;
+  const from = `from your ${to === "woocommerce" ? "code" : "shop"}`;
+  const counted =
+    orders.length === 0
+      ? `An order ${from} is`
+      : `${orders.length} ${one ? "order" : "orders"} ${from} ${one ? "is" : "are"}`;
   if (quick) return `${counted} still in progress and should end within a minute. Try again then.`;
-  if (to === "woocommerce") {
-    return `${counted} still open. Try again once your code delivers ${one ? "it" : "them"} or ${one ? "its" : "their"} time runs out.`;
-  }
   return (
     `${counted} still open. Try again once ${one ? "it ends" : "they end"}.` +
-    (parcels
+    (to === "api" && parcels
       ? " A parcel ends when you mark it Completed in WooCommerce, or after its seven days."
       : "")
   );
@@ -155,8 +207,16 @@ const heldSays = ({ to, orders, quick, parcels }: Held): string => {
 
 const refusalOf = (said: Said | undefined): Refusal | null => {
   if (said === undefined) return null;
-  if (typeof said === "string") return { says: said, orders: [], more: 0 };
-  if ("why" in said) return { says: said.why, orders: [], more: 0 };
+  if (typeof said === "string") return { says: said, orders: [], more: 0, follow: null };
+  if ("why" in said) return { says: said.why, orders: [], more: 0, follow: null };
+  if ("running" in said) {
+    return {
+      says: "An import of your shop is already running. Import again once it ends to see a result here.",
+      orders: [],
+      more: 0,
+      follow: "products",
+    };
+  }
   const { held } = said;
   // Purchases about to lapse are not worth copying: they are gone in a minute.
   const named = held.quick ? [] : held.orders;
@@ -164,6 +224,7 @@ const refusalOf = (said: Said | undefined): Refusal | null => {
     says: heldSays(held),
     orders: named.slice(0, ORDERS_DRAWN),
     more: Math.max(0, named.length - ORDERS_DRAWN),
+    follow: held.quick ? "pause" : null,
   };
 };
 
@@ -184,7 +245,9 @@ const SETTING_NAMES: Readonly<Record<Unset, string>> = Object.freeze({
  */
 export type ImportHeld =
   | Readonly<{ kind: "settings"; what: string }>
-  | Readonly<{ kind: "rate"; currency: string }>;
+  | Readonly<{ kind: "rate"; currency: string }>
+  /** Coinbase gives no rate for the shop's currency, so no rate can be saved and nothing sells. */
+  | Readonly<{ kind: "unlisted"; currency: string }>;
 
 /** The shop the keys came from, the one state in which anything can be sold. */
 export interface ConnectionView {
@@ -198,10 +261,10 @@ export interface ConnectionView {
    */
   readonly readOnly: boolean;
   /**
-   * The merchant sells through their own code while this shop is connected: a
-   * Disconnect cut off between moving them back and forgetting the shop leaves
-   * them so, and so can two tabs. Nothing imported sells, and nothing can be
-   * imported, until they switch.
+   * The merchant sells through their own code while this shop is connected: an
+   * order of the code's open when the keys arrived refused the switch, or a
+   * Disconnect was cut off between moving them back and forgetting the shop.
+   * Nothing imported sells, and nothing can be imported, until they switch.
    */
   readonly onCode: boolean;
   /** Why selling through this shop was just refused. */
@@ -262,10 +325,9 @@ export interface WooShopView {
   readonly connection: ConnectionView | null;
   /**
    * The way back to the merchant's own code, for one who sells through a shop
-   * that is not connected: they pressed Connect and never approved, or the
-   * account was put on the shop by cards it had imported. Nothing reads a shop
-   * for them, so the shop's cards cannot sell, and the code's are off sale
-   * until they press it.
+   * that is not connected, which an account put on the shop by cards it had
+   * imported can be. Nothing reads a shop for them, so the shop's cards cannot
+   * sell, and the code's are off sale until they press it.
    */
   readonly wayBack: boolean;
   readonly noKeysYet: NoKeysYet | null;
@@ -274,8 +336,8 @@ export interface WooShopView {
   /** Why the address typed was refused, said under its box. */
   readonly addressProblem: string | null;
   /**
-   * For a merchant on their own code, Connect switches them to the shop at
-   * once, before they approve, and the form says so before the press.
+   * For a merchant on their own code, the shop's keys arriving switch them to
+   * the shop, and the form says so before the press.
    */
   readonly connectSwitches: boolean;
   /**
@@ -383,13 +445,21 @@ const rateViewOf = (read: NonNullable<ShopRead["rate"]>, answer: ShopAnswer): Ra
   };
 };
 
+/** What publishing lacks, in Settings' own names: "seller name and payout wallet". */
+export const settingsNamed = (unset: readonly Unset[]): string =>
+  unset.map((one) => SETTING_NAMES[one]).join(" and ");
+
 const heldImport = (read: ShopRead): ImportHeld | null => {
   const unset = read.unset ?? [];
   if (unset.length > 0) {
-    return { kind: "settings", what: unset.map((one) => SETTING_NAMES[one]).join(" and ") };
+    return { kind: "settings", what: settingsNamed(unset) };
   }
   if (read.rate !== undefined && read.rate.current === null) {
-    return { kind: "rate", currency: read.rate.currency.code };
+    const { reference, currency } = read.rate;
+    return {
+      kind: !reference.ok && reference.listed === false ? "unlisted" : "rate",
+      currency: currency.code,
+    };
   }
   return null;
 };

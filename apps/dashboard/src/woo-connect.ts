@@ -47,6 +47,21 @@ const likelyMeant = (typed: string): string | null => {
 };
 
 /**
+ * The folder a typed address puts the shop in, after leaving out WordPress's
+ * own admin and sign-in pages, which a merchant copies from their dashboard's
+ * address bar; null at the root. A shop in a folder is a WordPress of its
+ * own, so its site's root is no address to suggest.
+ */
+const folderOf = (typed: string): string | null => {
+  const written = /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`;
+  if (!URL.canParse(written)) return null;
+  const folder = new URL(written).pathname
+    .replace(/\/(wp-admin|wp-login\.php)(\/.*)?$/, "")
+    .replace(/\/+$/, "");
+  return folder === "" ? null : folder;
+};
+
+/**
  * https is required although http would work: WooCommerce then wants an OAuth
  * 1.0a signature instead of HTTP Basic, and we would send the merchant's
  * consumer secret in the clear on every order. WooCommerce also refuses to post
@@ -58,6 +73,10 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
   const trimmed = typed.trim();
   if (trimmed === "") {
     return AN_ADDRESS;
+  }
+  const folder = folderOf(trimmed);
+  if (folder !== null) {
+    return `Agentify connects a shop only at the root of its address, and this one is in the folder ${folder}.`;
   }
   const meant = likelyMeant(trimmed);
   if (!URL.canParse(trimmed)) {
@@ -74,8 +93,7 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
     return `Leave out the user name and password: ${meant}`;
   }
   // A query or a fragment would be swallowed once a path is appended, reaching
-  // an address nobody meant; a path is not supported, the shop being at the
-  // root of its address.
+  // an address nobody meant; what is left of a path is an admin page.
   if (
     address.search !== "" ||
     address.hash !== "" ||

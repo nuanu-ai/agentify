@@ -1,14 +1,15 @@
 import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router";
-import type {
-  ConnectionView,
-  ImportHeld,
-  NoKeysYet,
-  RateView,
-  Refusal,
-  WooImportView,
-  WooShopView,
+import {
+  type ConnectionView,
+  type ImportHeld,
+  NO_SHOP,
+  type NoKeysYet,
+  type RateView,
+  type Refusal,
+  type WooImportView,
+  type WooShopView,
 } from "../../src/woo-views.js";
 import type { Word as WordView } from "../../src/words.js";
 import { type Chrome, useChrome } from "../answer.js";
@@ -27,7 +28,7 @@ const GUIDE = "/docs/woocommerce";
 const CONNECTED: WordView = { text: "Connected", tone: "ok" };
 
 /** Every purchase is refused before payment, so the connection is not a success to show green. */
-const READ_ONLY: WordView = { text: "Read-only access", tone: "warn" };
+const NO_READ_WRITE: WordView = { text: "No Read/Write access", tone: "warn" };
 
 /** The same words wherever a switch is about the products the merchant's own code published. */
 const codeProducts = (count: number | null): string =>
@@ -36,6 +37,10 @@ const codeProducts = (count: number | null): string =>
     : count === 1
       ? "the product your code published"
       : `the ${count} products your code published`;
+
+/** Said before a Connect: nothing changes for the code's products until the shop's keys arrive. */
+const offSaleOnKeys = (count: number | null): string =>
+  `${codeProducts(count)} ${count === 1 ? "goes" : "go"} off sale`;
 
 const comeBack = (count: number | null): string => {
   const said = codeProducts(count);
@@ -48,7 +53,22 @@ const comeBack = (count: number | null): string => {
  */
 function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }>) {
   if (said === null) return null;
-  if (said.orders.length === 0) return <p className="problem">{said.says}</p>;
+  if (said.orders.length === 0) {
+    return (
+      <>
+        <p className="problem">{said.says}</p>
+        {said.follow === "pause" ? (
+          <p>
+            If new purchases keep arriving, <a href={`${base}/cards`}>pause all sales</a> first.
+          </p>
+        ) : said.follow === "products" ? (
+          <p>
+            Its products appear on <a href={`${base}/cards`}>Products</a> as it publishes them.
+          </p>
+        ) : null}
+      </>
+    );
+  }
   return (
     <div className={styles.refusal}>
       <p className="problem">{said.says}</p>
@@ -111,8 +131,8 @@ function ConnectPanel({
         </p>
         {view.connectSwitches && view.codeProducts !== 0 ? (
           <p>
-            Connecting takes {codeProducts(view.codeProducts)} off sale until you disconnect the
-            shop.
+            When your shop sends its keys, {offSaleOnKeys(view.codeProducts)} until you disconnect
+            the shop.
           </p>
         ) : null}
       </PanelHead>
@@ -159,9 +179,12 @@ function WayBackPanel({ view, base }: Readonly<{ view: WooShopView; base: string
       </PanelHead>
       <PostForm action="/woocommerce/disconnect" className="issue">
         {(pending) => (
-          <Button variant="secondary" pending={pending}>
-            Use my own code
-          </Button>
+          <>
+            <input type="hidden" name="shop" value={NO_SHOP} autoComplete="off" />
+            <Button variant="secondary" pending={pending}>
+              Use my own code
+            </Button>
+          </>
         )}
       </PostForm>
     </section>
@@ -212,7 +235,7 @@ function Status({
   return (
     <div className={styles.status}>
       <p className={styles.state}>
-        <Word word={connection.readOnly ? READ_ONLY : CONNECTED} />
+        <Word word={connection.readOnly ? NO_READ_WRITE : CONNECTED} />
         <span className={styles.shop}>{connection.shop}</span>
         <span className={styles.since}>
           since <Moment at={connection.connectedAt} />
@@ -233,9 +256,12 @@ function Status({
           </p>
           <PostForm action="/woocommerce/disconnect" className={styles.confirmPress}>
             {(pending) => (
-              <Button variant="secondary" pending={pending}>
-                <span className={styles.leave}>Disconnect shop</span>
-              </Button>
+              <>
+                <input type="hidden" name="shop" value={connection.shopUrl} autoComplete="off" />
+                <Button variant="secondary" pending={pending}>
+                  <span className={styles.leave}>Disconnect shop</span>
+                </Button>
+              </>
             )}
           </PostForm>
         </div>
@@ -256,10 +282,10 @@ function ReadOnlyPanel({
         said={<Problem said={view.problem} base={base} />}
       >
         <p>
-          Your shop gave read-only access, so Agentify can't create orders there and agents can't
-          buy. Connect again and approve Read/Write.
+          Your shop didn't grant Read/Write access, so Agentify can't create orders there and agents
+          can't buy. Connect again and approve Read/Write.
           {connection.onCode
-            ? ` Connecting again also takes ${codeProducts(view.codeProducts)} off sale.`
+            ? ` When the new keys arrive, ${offSaleOnKeys(view.codeProducts)}.`
             : null}
         </p>
       </PanelHead>
@@ -302,13 +328,23 @@ function SwitchPanel({
 
 /** Why Import is held, in a line under it, with the page that puts it right. */
 function HeldLine({ held, base }: Readonly<{ held: ImportHeld; base: string }>) {
-  return held.kind === "settings" ? (
-    <p className="quiet">
-      Set your {held.what} in <a href={`${base}/settings`}>Settings</a> first.
-    </p>
-  ) : (
-    <p className="quiet">Set the exchange rate for {held.currency} first.</p>
-  );
+  switch (held.kind) {
+    case "settings":
+      return (
+        <p className="quiet">
+          Set your {held.what} in <a href={`${base}/settings`}>Settings</a> first.
+        </p>
+      );
+    case "rate":
+      return <p className="quiet">Set the exchange rate for {held.currency} first.</p>;
+    case "unlisted":
+      return (
+        <p className="quiet">
+          A shop priced in {held.currency} can't sell through Agentify, because Coinbase gives no
+          rate for it.
+        </p>
+      );
+  }
 }
 
 function ImportPanel({

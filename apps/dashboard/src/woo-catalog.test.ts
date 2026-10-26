@@ -311,7 +311,7 @@ describe("turning a shop's products into cards", () => {
       "1": false,
       "2": false,
       "3": false,
-      "4": false,
+      "4": true,
       "5": true,
       "6": true,
       "7": true,
@@ -402,6 +402,6 @@ describe("a physical product, which a carrier takes to the buyer", () => {
     const { cards, skipped } = cardsFromTheShop([parcel({ manage_stock: true })]);
 
     expect(cards).toHaveLength(0);
-    expect(skipped[0]?.why).toMatch(/stock/i);
+    expect(skipped[0]?.why).toMatch(/Manage stock/);
   });
 });

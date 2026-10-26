@@ -956,6 +956,14 @@ export interface Store {
     analytics?: AnalyticsEvent,
   ): Promise<IntegrationSwitch>;
 
+  /**
+   * The orders that would hold this merchant where they are, were they to
+   * switch to `to` now: what `switchIntegration` would name, with nothing
+   * written. None where they sell through `to` already. An order made or
+   * ended after the read can still change what the switch itself answers.
+   */
+  switchHeldBy(merchantId: string, to: Integration): Promise<readonly string[]>;
+
   // --- orders ---------------------------------------------------------------
 
   /**

@@ -6,20 +6,21 @@ import { Word } from "../components/word.js";
 import styles from "./integrations.module.css";
 
 const IN_USE: WordView = { text: "In use", tone: "ok" };
+const IN_USE_UNSOLD: WordView = { text: "In use", tone: "warn" };
 const CONNECTED: WordView = { text: "Connected", tone: "ok" };
-const READ_ONLY: WordView = { text: "Read-only access", tone: "warn" };
+const NO_READ_WRITE: WordView = { text: "No Read/Write access", tone: "warn" };
 
 /** A way in: its name, the mark where sales go through it, its words and its one action. */
 function Way({
   name,
   inUse,
   children,
-}: Readonly<{ name: string; inUse: boolean; children: ReactNode }>) {
+}: Readonly<{ name: string; inUse: WordView | null; children: ReactNode }>) {
   return (
     <div className="connect-way">
       <div className={styles.head}>
         <h2>{name}</h2>
-        {inUse ? <Word word={IN_USE} /> : null}
+        {inUse === null ? null : <Word word={inUse} />}
       </div>
       {children}
     </div>
@@ -66,7 +67,7 @@ function ShopTile({
       return (
         <>
           <p className={styles.state}>
-            <Word word={tile.readOnly ? READ_ONLY : CONNECTED} />
+            <Word word={tile.readOnly ? NO_READ_WRITE : CONNECTED} />
             <span className={styles.shop}>{tile.shop}</span>
             <span>
               since <Moment at={tile.connectedAt} />
@@ -74,7 +75,7 @@ function ShopTile({
           </p>
           {tile.readOnly ? (
             <p>
-              Agents can't buy: your shop gave read-only access. Connect again and approve
+              Agents can't buy: your shop didn't grant Read/Write access. Connect again and approve
               Read/Write.
             </p>
           ) : sellsElsewhere ? (
@@ -135,7 +136,7 @@ export function IntegrationsScreen({
           }
         >
           <div className={view.shop === null ? `connect-ways ${styles.alone}` : "connect-ways"}>
-            <Way name="Your own code" inUse={inUse === "api"}>
+            <Way name="Your own code" inUse={inUse === "api" ? IN_USE : null}>
               <p>
                 Publish products and handle orders from your Node.js code with the{" "}
                 <code className={styles.package}>@nuanu-ai/agentify</code> package.
@@ -155,7 +156,11 @@ export function IntegrationsScreen({
               </div>
             </Way>
             {view.shop === null ? null : (
-              <Way name="WooCommerce" inUse={inUse === "woocommerce"}>
+              <Way
+                name="WooCommerce"
+                inUse={inUse !== "woocommerce" ? null : view.nothingSells ? IN_USE_UNSOLD : IN_USE}
+              >
+                {view.nothingSells ? <p>Nothing sells until a shop is connected.</p> : null}
                 <ShopTile
                   tile={view.shop}
                   primary={inUse !== "api"}

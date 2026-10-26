@@ -62,11 +62,14 @@ import type { ShopCurrency, ShopTotal, WooConnection, WooShops } from "./woo-sho
 import {
   groupedRate,
   type Held,
+  heldBy,
   type ImportOutcome,
+  NO_SHOP,
   referenceShown,
   type Said,
   type ShopAnswer,
   type ShopState,
+  settingsNamed,
   shopNameOf,
   type WooImportView,
   type WooShopView,
@@ -126,7 +129,11 @@ export interface WooPages {
     cookie: string | undefined,
   ): Promise<Outcome<WooShopView | WooImportView>>;
   switchToShop(person: Person): Promise<Outcome<WooShopView>>;
-  disconnect(person: Person): Promise<Outcome<WooShopView>>;
+  /**
+   * Refused, with the page drawn as it stands, where the form names another
+   * shop than the one connected now, or none where one is.
+   */
+  disconnect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
   /**
    * Where the shop sends the browser back to, in front of the gate. It reads
    * the session and nothing else, and answers anybody without one alike.
@@ -445,10 +452,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   };
 
   /**
-   * A refused move between integrations, worded from the orders that hold it:
-   * read once more, so a purchase about to lapse is told apart from goods
-   * owed. An order missing from the open list has ended since the refusal, or
-   * has no price yet, which it gets within seconds or never.
+   * A refused move between integrations, worded from the orders that hold it,
+   * read once more so a purchase about to lapse is told apart from goods owed.
    */
   const refusedMove = async (
     gateway: GatewayClient,
@@ -457,18 +462,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   ): Promise<Said> => {
     if (refused.code !== "orders_waiting" || refused.orders === undefined) return refused;
     const open = await gateway.orders(true);
-    if (!open.ok) return { held: { to, orders: refused.orders, quick: false, parcels: false } };
-    const still = open.document.orders.filter((order) => refused.orders?.includes(order.id));
-    return {
-      held: {
-        to,
-        orders: refused.orders,
-        quick: still.every(
-          (order) => order.status === "in_progress" && order.payment_status === "not_paid",
-        ),
-        parcels: still.some((order) => order.ship_to !== undefined),
-      },
-    };
+    return { held: heldBy(to, refused.orders, open.ok ? open.document.orders : null) };
   };
 
   /**
@@ -544,8 +538,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           ` ${connection.shopUrl} was not read and nothing was published`,
       );
       // The screen holds Import for what is unset; a press that got here was
-      // drawn before it was.
-      return await drawTheShop(person, saved, 409);
+      // drawn before it was, so the answer says what the press did.
+      return await drawTheShop(
+        person,
+        {
+          importing: `Nothing was imported: set your ${settingsNamed(unset.document)} in Settings first.`,
+          ...saved,
+        },
+        409,
+      );
     }
 
     const origin = originOf(connection);
@@ -557,11 +558,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return await drawTheShop(
         person,
         rateSaved === null
-          ? {
-              importing:
-                "An import of your shop is already running; its products appear on Products." +
-                " Import again once it ends to see a result here.",
-            }
+          ? { importing: { running: true } }
           : {
               rate: {
                 saved: rateSaved,
@@ -825,9 +822,10 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       });
 
       // A shop that could sell nothing, in a currency or at decimals out of
-      // scope, is refused before the switch below takes the code's cards off
-      // sale. Asked alongside the grant screen, so Connect waits for the slower
-      // of the two rather than both in turn.
+      // scope, is refused before the merchant approves keys whose arrival
+      // would take the code's cards off sale. Asked alongside the grant
+      // screen, so Connect waits for the slower of the two rather than both in
+      // turn.
       //
       // A shop with plain permalinks answers the grant address with its own
       // front page and a 200, so a merchant sent there would land on their
@@ -861,16 +859,14 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         return await drawTheShop(person, { problem: looked.why, typed }, 400);
       }
 
-      // The merchant moves to the shop here, before they are sent to it, and
-      // not when the keys arrive: refused at the callback, the switch could
-      // only be told to the shop's server; refused here, it is told to the
-      // merchant beside the button. One who goes and never approves sells
-      // through a shop with none connected, and the page offers the way back.
-      const switched = await gatewayAs(person).sellThrough("woocommerce");
-      if (!switched.ok) {
+      // Only asked here: the switch is made when the keys arrive, so a
+      // merchant who never approves keeps the code's cards on sale. Asking
+      // first tells them beside the button what would refuse it now.
+      const allowed = await gatewayAs(person).maySellThrough("woocommerce");
+      if (!allowed.ok) {
         return await drawTheShop(
           person,
-          { problem: await refusedMove(gatewayAs(person), "woocommerce", switched), typed },
+          { problem: await refusedMove(gatewayAs(person), "woocommerce", allowed), typed },
           409,
         );
       }
@@ -1042,8 +1038,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
 
     async switchToShop(person) {
       // For a merchant whose shop is connected while they sell through their
-      // code: what Connect does before sending them to the shop, for one whose
-      // shop is already here.
+      // code: the switch the keys' arrival makes, asked again by the merchant.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
         return await drawTheShop(
@@ -1056,7 +1051,22 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return { kind: "redirect", location: `${base}/woocommerce` };
     },
 
-    async disconnect(person) {
+    async disconnect(person, form) {
+      // A page drawn before keys arrived, or before another tab connected
+      // another shop, would forget a shop its reader never saw.
+      const connected = await shops.connectionOf(person.id);
+      if (once(form.getAll("shop")) !== (connected?.shopUrl ?? NO_SHOP)) {
+        return await drawTheShop(
+          person,
+          {
+            leaving:
+              connected === null
+                ? "Nothing was changed: the shop this page showed is no longer connected."
+                : `Nothing was disconnected: ${shopNameOf(connected.shopUrl)} was connected after this page loaded. Disconnect it here if you meant to.`,
+          },
+          409,
+        );
+      }
       // Back to the merchant's own code first, and the keys forgotten only
       // once that held: a shop forgotten while one of its orders still waits
       // would leave that order to nobody, since a parcel's shipment is read

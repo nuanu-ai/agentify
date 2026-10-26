@@ -1107,6 +1107,15 @@ export class Gateway {
   }
 
   /**
+   * The orders that would refuse this merchant's switch to `to` if it were
+   * asked now, with nothing switched; none where it would be made. Only a
+   * read: the switch itself decides, and an order made in between holds it.
+   */
+  async switchHeldBy(merchantId: string, to: Integration): Promise<readonly string[]> {
+    return await this.runtime.store.switchHeldBy(merchantId, to);
+  }
+
+  /**
    * Every receipt this merchant has. The merchant is in the query, so somebody
    * else's receipt is never read at all.
    */

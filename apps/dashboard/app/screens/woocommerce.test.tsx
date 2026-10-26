@@ -22,6 +22,7 @@ import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import {
   type Held,
+  heldBy,
   type ShopAnswer,
   type ShopRead,
   wooImportView,
@@ -335,7 +336,54 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(block)).toMatch(/try again/i);
     expect(readable(block)).toMatch(/within a minute/);
     expect(block).not.toMatch(/aria-label="Copy the whole order ID/);
-    expect(readable(block)).not.toMatch(/pause/i);
+    // A merchant whose buyers keep coming has no other way out.
+    expect(block).toMatch(/<a href="\/cards">[^<]*pause[^<]*<\/a>/i);
+  });
+
+  it("counts and names only the orders still open, which See open orders shows", () => {
+    // A purchase not yet priced is not on the open list, and one that ended
+    // since the refusal is gone from it.
+    const still = "ord_still0f3c9a1b2d4e6f8a7b9c";
+    const block = blockOf(
+      shopPage(
+        {},
+        {
+          problem: {
+            held: heldBy(
+              "woocommerce",
+              ["ord_quote0f3c9a1b2d4e6f8a7b9c", still, "ord_ended0f3c9a1b2d4e6f8a7b9c"],
+              [
+                { id: still, status: "in_progress", payment_status: "paid" },
+                {
+                  id: "ord_other0f3c9a1b2d4e6f8a7b9c",
+                  status: "in_progress",
+                  payment_status: "paid",
+                },
+              ],
+            ),
+          },
+        },
+      ),
+      "/woocommerce/connect",
+    );
+
+    expect(readable(block)).toMatch(/\b1 order from your code is still open/);
+    expect([...block.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(1);
+    expect(readable(block)).toContain(still);
+    expect(readable(block)).not.toMatch(/delivers/);
+  });
+
+  it("asks to try again shortly where no order it named is open any more", () => {
+    const block = blockOf(
+      shopPage(
+        {},
+        { problem: { held: heldBy("woocommerce", ["ord_quote0f3c9a1b2d4e6f8a7b9c"], []) } },
+      ),
+      "/woocommerce/connect",
+    );
+
+    expect(readable(block)).toMatch(/within a minute/);
+    expect(readable(block)).not.toMatch(/\b0 orders?\b/);
   });
 
   it("says how a parcel ends where one holds the way out", () => {
@@ -427,6 +475,23 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(readable(formOf(html, "/woocommerce/import"))).toContain("exchange rate");
   });
 
+  it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", () => {
+    const html = shopPage({
+      state: CONNECTED,
+      through: "woocommerce",
+      rate: {
+        currency: { code: "XAF", decimals: 0 },
+        current: null,
+        reference: { ok: false, listed: false },
+      },
+    });
+    const held = readable(formOf(html, "/woocommerce/import"));
+
+    expect(importButton(html)).toMatch(/\bdisabled\b/);
+    expect(held).toMatch(/can't sell/);
+    expect(held).not.toMatch(/Set the exchange rate/);
+  });
+
   it("offers Import where nothing stands in its way, and where what stands could not be read", () => {
     for (const unset of [[], null] as const) {
       const html = shopPage({ state: CONNECTED, through: "woocommerce", unset });
@@ -442,27 +507,39 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(formTo(html, "post", "/woocommerce/import")).toBeUndefined();
   });
 
-  it("asks before it disconnects: the press stands inside a closed disclosure", () => {
-    const html = shopPage({ state: CONNECTED, through: "woocommerce" });
-    const block = blockOf(html, "/woocommerce/disconnect");
+  it("asks before it disconnects a connected shop: every press stands inside a closed disclosure", () => {
+    for (const through of ["woocommerce", "api"] as const) {
+      const page = new DOMParser().parseFromString(
+        shopPage({ state: CONNECTED, through }),
+        "text/html",
+      );
+      const forms = [...page.querySelectorAll('form[action="/woocommerce/disconnect"]')];
 
-    expect(block).toMatch(/^<details(?![^>]*\bopen\b)[^>]*>/);
-    expect(block).toMatch(/<summary>/);
+      expect(forms, through).not.toHaveLength(0);
+      for (const form of forms) {
+        const disclosure = form.closest("details");
+        expect(disclosure, through).not.toBeNull();
+        expect(disclosure?.open, through).toBe(false);
+      }
+    }
   });
 
-  it("says a read-only grant as a warning rather than as connected", () => {
-    const text = readable(
-      shopPage({
-        state: {
-          kind: "connected",
-          shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date() },
-        },
-        through: "woocommerce",
-      }),
-    );
+  it("says a grant short of Read/Write as a warning rather than as connected, and never calls a write grant read-only", () => {
+    for (const permissions of ["read", "write"]) {
+      const text = readable(
+        shopPage({
+          state: {
+            kind: "connected",
+            shop: { shopUrl: SHOP, permissions, connectedAt: new Date() },
+          },
+          through: "woocommerce",
+        }),
+      );
 
-    expect(text).toContain("Read-only access");
-    expect(text).not.toContain("Connected");
+      expect(text, permissions).toContain("didn't grant Read/Write access");
+      expect(text, permissions).not.toMatch(/read-only/i);
+      expect(text, permissions).not.toContain("Connected");
+    }
   });
 });
 
@@ -471,13 +548,13 @@ describe("what the shop screen says a switch does to the code's products", () =>
     readable(blockOf(shopPage({ through: "api", codeProducts }), "/woocommerce/connect"));
 
   it("says it only where the code published some, with how many", () => {
-    expect(connectPanel(12)).toContain("the 12 products your code published off sale");
-    expect(connectPanel(1)).toContain("the product your code published off sale");
+    expect(connectPanel(12)).toContain("the 12 products your code published go off sale");
+    expect(connectPanel(1)).toContain("the product your code published goes off sale");
     expect(connectPanel(0)).not.toMatch(/off sale/);
   });
 
   it("says it without a number where the products could not be counted, never as none", () => {
-    expect(connectPanel(null)).toContain("the products your code published off sale");
+    expect(connectPanel(null)).toContain("the products your code published go off sale");
   });
 
   it("says the code's products come back paused, where there are some, on the way back", () => {

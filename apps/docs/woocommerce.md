@@ -285,23 +285,29 @@ sale, for example "240000 IDR in your shop, paid as 13.34 USDC at your rate of
 ## Your shop or your code, one at a time
 
 You sell through the shop or through your own code with the Agentify SDK, never
-both. Pressing Connect switches you to the shop at once, before you approve:
-the products your code published go off sale and your code receives no orders
-until you disconnect the shop. The WooCommerce page says how many products
-that takes off sale before you press it.
+both. You move to the shop when it sends Agentify its keys, which it does the
+moment you approve access: from then the products your code published are off
+sale and your code receives no orders until you disconnect the shop. The
+WooCommerce page says how many products that takes off sale before you press
+Connect. Until the keys arrive nothing changes, so if you decline or close the
+approval screen, your code goes on selling as before.
 
-The switch is refused while an order from your code is still open, and each
-such order has to end first. A purchase its buyer has not paid yet ends within
-a minute, paid or lapsed, so the page asks you to try again then. An order your
+Connect and Sell through this shop are refused while an order from your code
+is still open, and each such order has to end first. A purchase its buyer has not paid yet ends within a
+minute, paid or lapsed, so the page asks you to try again then. An order your
 code took on ends when your code delivers or refuses it, or when its time runs
 out; the page names those orders and links to them on Orders. If you paused
 all sales on Products to keep new orders from arriving meanwhile, selling stays
 paused after the switch until you resume it there.
 
-If you pressed Connect and never approved, you sell through a shop that is not
-connected, and nothing sells. The WooCommerce page offers the way back to your
-own code; its products come back with selling stopped until you resume it on
-Products.
+An order from your code can also open while you are approving. The shop is then
+connected when its keys arrive, but you keep selling through your code, and the
+WooCommerce page offers Sell through this shop to press once that order has
+ended.
+
+If you sell through the shop while none is connected, nothing sells. The
+WooCommerce page offers the way back to your own code; its products come back
+with selling stopped until you resume it on Products.
 
 ## Importing
 
@@ -331,10 +337,10 @@ order:
 
 | Heading | What happened | What you do |
 | --- | --- | --- |
-| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
+| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published, stock tracking (Manage stock) turned on, or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
 | No verdict | Agentify did not answer about it, so whether it was published is not known | import again; it does not double products |
 | Not attempted | the import stopped at the first product with no verdict | import again |
-| Not supported | the connector does not sell its kind, such as a variable or grouped product, a product whose stock is tracked, or a download that also ships | nothing in the shop's product puts it right |
+| Not supported | the connector does not sell its kind, such as a variable or grouped product, or a download that also ships | nothing in the shop's product puts it right |
 | Published | the product is on Products, folded under the other headings | nothing; whether it sells is on Products |
 
 ## When a product changes in the shop
