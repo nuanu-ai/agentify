@@ -9,7 +9,12 @@
  * purchase and not the publishing door.
  */
 
-import { type Card, CardSchema, type QuoteResponse } from "@nuanu-ai/agentify-contracts";
+import {
+  type Card,
+  CardSchema,
+  type QuoteResponse,
+  type ShipTo,
+} from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Integration } from "../ports/store.js";
 import {
@@ -60,6 +65,31 @@ const syncCard: Card = CardSchema.parse({
   fulfillment: "sync",
 });
 
+/**
+ * A parcel a shop is asked the price of, the one kind of shop order the
+ * connector takes on rather than delivering itself.
+ */
+const parcelCard: Card = CardSchema.parse({
+  merchant_item_id: "beans-1kg",
+  title: "Coffee beans, one kilogram",
+  description: "Roasted in Bali this week and sent by courier.",
+  price: { amount: "12.00", currency: "USD" },
+  fulfillment: "ship",
+  ship_within_seconds: 86_400,
+  price_check: "handler",
+});
+
+/** An address in a real place, with the person and the number taken out of it. */
+const address: ShipTo = {
+  name: "The buyer",
+  line_one: "Jl. Raya Kediri, Beraban",
+  city: "Tabanan",
+  state: "BA",
+  postal_code: "82121",
+  country: "ID",
+  phone_number: "+62 000 0000 0000",
+};
+
 const MINUTE = 60_000;
 
 const priced: QuoteResponse = {
@@ -92,14 +122,10 @@ const sellingThrough = async (
   harnessed: Harness,
   merchantId: string,
   through: Integration,
+  card: Card = pricedCard,
 ): Promise<string> => {
   await harnessed.store.switchIntegration(merchantId, through);
-  const stored = await harnessed.store.publishCard(
-    merchantId,
-    pricedCard,
-    harnessed.now(),
-    through,
-  );
+  const stored = await harnessed.store.publishCard(merchantId, card, harnessed.now(), through);
   return stored.id;
 };
 
@@ -437,9 +463,9 @@ describe("a synchronous purchase", () => {
  * `count` purchases of `itemId` paid for and then refused by their seller, so
  * each is an order whose buyer paid and got nothing. The worker answers the
  * price questions and draws the orders, which hands them over, and leaves them
- * to the seller's own calls. A shop's order is taken on before it is refused,
- * as the connector takes on an order it has made in the shop, unless `takenOn`
- * says it never was.
+ * to the seller's own calls. A shop's parcel is taken on before it is refused,
+ * as the connector takes on a parcel it has ordered in the shop, unless
+ * `takenOn` says it never was.
  */
 const leftUnserved = async (
   harnessed: Harness,
@@ -449,15 +475,16 @@ const leftUnserved = async (
   through: Integration = "api",
   takenOn: boolean = through === "woocommerce",
 ): Promise<string[]> => {
+  const shipTo = (await isParcel(harnessed, itemId)) ? address : undefined;
   const worker = workUntilStopped(harnessed, { onQuote: () => priced, merchantId, through });
   const ids: string[] = [];
   try {
     for (let one = 0; one < count; one += 1) {
-      const offered = await harnessed.gateway.beginPurchase(itemId, {});
+      const offered = await harnessed.gateway.beginPurchase(itemId, {}, shipTo);
       if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
       const orderId = offered.order.order.id;
       const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
-      await harnessed.gateway.payPurchase(orderId, payment, fingerprint);
+      await harnessed.gateway.payPurchase(orderId, payment, fingerprint, shipTo);
       await vi.waitFor(async () =>
         expect((await harnessed.store.orderById(orderId))?.order.state).toBe("dispatched"),
       );
@@ -478,6 +505,10 @@ const leftUnserved = async (
   }
   return ids;
 };
+
+/** Whether `itemId` is a parcel's card, whose purchase carries where it goes. */
+const isParcel = async (harnessed: Harness, itemId: string): Promise<boolean> =>
+  (await harnessed.store.cardById(itemId))?.card.fulfillment === "ship";
 
 /** A buyer's wallet, for payments that have to come from one payer. */
 const BUYER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
@@ -543,9 +574,12 @@ const tryToBuy = async (
   merchantId: string = harnessed.merchant.id,
   through: Integration = "api",
 ) => {
+  const body = (await isParcel(harnessed, itemId))
+    ? { params: {}, ship_to: address }
+    : { params: {} };
   const worker = workUntilStopped(harnessed, { onQuote: () => priced, merchantId, through });
   try {
-    return await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } });
+    return await served.call("POST", `/x402/${itemId}/purchase`, { body });
   } finally {
     await worker.stop();
   }
@@ -563,12 +597,13 @@ describe("a seller with ten paid orders left unserved", () => {
     async (through) => {
       const { harnessed, served } = await started();
       const merchantId = harnessed.merchant.id;
-      const itemId = await sellingThrough(harnessed, merchantId, through);
+      const card = through === "woocommerce" ? parcelCard : pricedCard;
+      const itemId = await sellingThrough(harnessed, merchantId, through, card);
       await leftUnserved(harnessed, itemId, 10, merchantId, through);
       const before = (await harnessed.store.orders(merchantId)).length;
 
       const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
-        body: { params: {} },
+        body: through === "woocommerce" ? { params: {}, ship_to: address } : { params: {} },
       });
 
       expect(refused.status).toBe(409);
@@ -791,12 +826,12 @@ describe("a seller with ten paid orders left unserved", () => {
     expect(harnessed.facilitator.settles).toHaveLength(settled);
   });
 
-  it("does not count a shop's orders the connector refused before the shop's own order was made", async () => {
+  it("does not count a shop's parcels the connector refused before the shop's own order was made", async () => {
     // The connector runs inside Agentify, so its refusal before creating the
     // shop's order is Agentify's, and the shop never took the order on.
     const { harnessed, served } = await started();
     const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "woocommerce");
+    const itemId = await sellingThrough(harnessed, merchantId, "woocommerce", parcelCard);
     await leftUnserved(harnessed, itemId, 10, merchantId, "woocommerce", false);
 
     expect((await tryToBuy(harnessed, served, itemId, merchantId, "woocommerce")).status).toBe(402);

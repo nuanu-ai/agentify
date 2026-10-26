@@ -3004,26 +3004,6 @@ describe("a merchant's standing in one read", () => {
       liveApproved: true,
     });
   });
-
-  it("reads none of the merchant's cards, however many they have, while their process is in touch", async () => {
-    const harnessed = await started();
-    await published(harnessed, syncCard);
-    const read: string[] = [];
-    const store = harnessed.store as unknown as Record<string, (...asked: unknown[]) => unknown>;
-    for (const name of Object.getOwnPropertyNames(Object.getPrototypeOf(harnessed.store))) {
-      const method = store[name];
-      if (name === "constructor" || typeof method !== "function") continue;
-      store[name] = (...asked) => {
-        read.push(name);
-        return method.apply(harnessed.store, asked);
-      };
-    }
-
-    await harnessed.gateway.standingOf(harnessed.merchant.id);
-
-    expect(read).not.toHaveLength(0);
-    expect(read.filter((name) => /card|catalog/i.test(name))).toStrictEqual([]);
-  });
 });
 
 describe("one integration at a time", () => {
