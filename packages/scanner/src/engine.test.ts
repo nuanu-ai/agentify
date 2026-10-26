@@ -223,6 +223,13 @@ describe("what the checks read from the markup real sites write", () => {
       '<link rel="alternate" type="application/xml" title="Catalog" href="/catalog">',
       '<link rel="alternate" href="https://example.com/products.xml">',
       '<link rel="alternate" type="application/atom+xml" href="/collections/all.atom">',
+      // WooCommerce's products feed in the shop's own language.
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Produk Feed" href="https://example.com/toko/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Boutique &raquo; Flux des produits" href="https://example.com/boutique/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Negozio &raquo; Feed Prodotti" href="https://example.com/negozio/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Feed de Produtos" href="https://example.com/loja/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Laden &raquo; Produkte-Feed" href="https://example.com/shop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Tienda" href="https://example.com/tienda/feed/" />',
     ])
       expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)).toMatchObject({
         status: "pass",
@@ -242,6 +249,11 @@ describe("what the checks read from the markup real sites write", () => {
       // A language alternate of the catalogue is a page, not a feed.
       '<link rel="alternate" hreflang="de" href="https://example.com/de/collections/all">',
       '<link rel="stylesheet" href="/assets/feedback.css">',
+      // A word of the address counts whole, not inside another word.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/workshop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/shopping-tips/feed/" />',
+      // A language alternate is a page, whatever its address ends in.
+      '<link rel="alternate" hreflang="de" href="https://example.com/de/products/kain.xml">',
       '<!-- <link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/"> -->',
       `<script>document.head.insertAdjacentHTML("beforeend", '<link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/">');</script>`,
     ])
@@ -353,16 +365,46 @@ describe("what the checks read from the markup real sites write", () => {
         },
       ],
     };
+    // WordPress links the posts' and comments' feeds from every page, and a
+    // product page with reviews on, as WooCommerce has by default, links the
+    // feed of its own reviews, at its address plus `feed/`.
     const page = `<head><link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Feed" href="https://example.com/feed/" />
-<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Comments Feed" href="https://example.com/comments/feed/" /></head>
+<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Comments Feed" href="https://example.com/comments/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Kain Tenun Ikat Comments Feed" href="https://example.com/product/kain-tenun-ikat/feed/" /></head>
 <body class="product-template-default single single-product woocommerce"><h1 class="product_title entry-title">Kain Tenun Ikat</h1>
 <p class="price"><span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">Rp</span>150.000</bdi></span></p>
 <p class="stock in-stock">12 in stock</p><script type="application/ld+json">${JSON.stringify(offer)}</script></body>`;
-    expect(check(withBase(page), 15)).toMatchObject({
+    const input = withBase("<title>Toko Kain</title><p>Selamat datang.</p>");
+    input.representative = artifact("https://example.com/product/kain-tenun-ikat/", page);
+    expect(check(input, 15)).toMatchObject({
       status: "partial",
       earnedWeight: 3,
       evidence: { feed_link: false, product_identifiers: true, price_availability: true },
     });
+  });
+
+  it("takes a product page's own feed for its reviews, in any language, and a shop page's own feed for its products", () => {
+    const productPage = (feed: string) => {
+      const input = withBase("<title>Toko Kain</title><p>Selamat datang.</p>");
+      input.representative = artifact(
+        "https://example.com/product/kain-tenun-ikat/",
+        `<head>${feed}</head><body><h1>Kain Tenun Ikat</h1></body>`,
+      );
+      return check(input, 15);
+    };
+    // A Japanese site titles the reviews' feed in words the reader does not
+    // know, so its address tells it apart; an Indonesian one says Komentar.
+    for (const feed of [
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Tenun Ikat のコメントのフィード" href="https://example.com/product/kain-tenun-ikat/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Tenun Ikat Umpan Komentar" href="https://example.com/produk/kain-tenun-ikat/feed/" />',
+    ])
+      expect(productPage(feed)).toMatchObject({ status: "fail", earnedWeight: 0 });
+    const input = withBase("<title>Toko Kain</title><p>Selamat datang.</p>");
+    input.representative = artifact(
+      "https://example.com/shop/",
+      '<head><link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Products Feed" href="https://example.com/shop/feed/" /></head><body><h1>Shop</h1></body>',
+    );
+    expect(check(input, 15)).toMatchObject({ status: "pass", earnedWeight: 4 });
   });
 
   it("scores a Shopify product page by its Open Graph and JSON-LD facts", () => {
