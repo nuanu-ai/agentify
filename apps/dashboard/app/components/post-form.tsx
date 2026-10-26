@@ -64,60 +64,76 @@ const useFocusKept = (form: RefObject<HTMLFormElement | null>, pending: boolean)
   };
 };
 
+/** How long a whole-page press waits for its answer before saying it cannot confirm it. */
+const UNCONFIRMED_AFTER_MS = 5_000;
+
 /**
  * A press sent as a whole page load. The browser carries it out and tells the
- * page little about it, so the stage is "sending" from the press until the
- * next page is drawn, and "unknown" once the press was stopped before its
- * answer came. A desktop browser stops a loading page on Escape, and the page
- * sees the key; a page the browser restores from its cache after the press is
- * in the same state. The toolbar's stop button sends the page no event, so a
- * press stopped there stays "sending" until the page is opened again.
+ * page nothing when the load is stopped, by the toolbar, by Escape, or on a
+ * phone, and a second press of a form unlocked then could send the change
+ * twice. So the form stays locked until the next page is drawn, and a few
+ * seconds on with no answer it says the change cannot be confirmed, with a
+ * read of the page as the way to see where it stands. A page the browser
+ * brings back from its cache after the press is a page as it was before it.
  */
 const useWholeLoad = () => {
-  const [stage, setStage] = useState<"idle" | "sending" | "unknown">("idle");
+  const [stage, setStage] = useState<"idle" | "sending" | "unconfirmed">("idle");
   useEffect(() => {
-    const stopped = () => setStage((now) => (now === "sending" ? "unknown" : now));
-    const escaped = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) stopped();
-    };
     const restored = (event: PageTransitionEvent) => {
-      if (event.persisted) stopped();
+      if (event.persisted) setStage("idle");
     };
-    window.addEventListener("keydown", escaped);
     window.addEventListener("pageshow", restored);
-    return () => {
-      window.removeEventListener("keydown", escaped);
-      window.removeEventListener("pageshow", restored);
-    };
+    return () => window.removeEventListener("pageshow", restored);
   }, []);
+  useEffect(() => {
+    if (stage !== "sending") return;
+    const waited = setTimeout(() => setStage("unconfirmed"), UNCONFIRMED_AFTER_MS);
+    return () => clearTimeout(waited);
+  }, [stage]);
   return { stage, send: () => setStage("sending") };
 };
 
-/** What a person types into or chooses; buttons show the press themselves. */
-const ENTERED = "input:not([type='hidden'], [type='submit'], [type='button']), textarea, select";
+/** Fields a person types into, which stay focusable while locked. */
+const TYPED =
+  "textarea, input:not([type='hidden'], [type='submit'], [type='button'], [type='reset'], [type='image'], [type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color'])";
+
+/** Fields a person chooses with, which only `disabled` holds still. */
+const CHOSEN =
+  "select, input[type='checkbox'], input[type='radio'], input[type='file'], input[type='range'], input[type='color']";
 
 /**
  * The form's fields take no input while its press is on its way, so nothing
- * typed meanwhile is lost when the answer is drawn from what was saved. The
- * lock waits a task after the press, because the browser reads a whole-page
- * form after the submit event and leaves out any field disabled by then.
+ * typed meanwhile is lost when the answer is drawn from what was saved. A box
+ * is made read-only, which keeps the focus where it was; a choice is
+ * disabled. The lock waits a task after the press, because the browser reads
+ * a whole-page form after the submit event and leaves out any field disabled
+ * by then.
  */
 const useFieldsLocked = (form: RefObject<HTMLFormElement | null>, pending: boolean) => {
   useEffect(() => {
     if (!pending) return;
-    const locked: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] = [];
+    const undo: (() => void)[] = [];
     const lock = setTimeout(() => {
-      for (const field of form.current?.querySelectorAll<
-        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-      >(ENTERED) ?? []) {
-        if (field.disabled) continue;
-        field.disabled = true;
-        locked.push(field);
+      const held = form.current;
+      if (held === null) return;
+      for (const box of held.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(TYPED)) {
+        if (box.readOnly) continue;
+        box.readOnly = true;
+        undo.push(() => {
+          box.readOnly = false;
+        });
+      }
+      for (const choice of held.querySelectorAll<HTMLInputElement | HTMLSelectElement>(CHOSEN)) {
+        if (choice.disabled) continue;
+        choice.disabled = true;
+        undo.push(() => {
+          choice.disabled = false;
+        });
       }
     });
     return () => {
       clearTimeout(lock);
-      for (const field of locked) field.disabled = false;
+      for (const one of undo) one();
     };
   }, [pending, form]);
 };
@@ -136,9 +152,9 @@ const useFieldsLocked = (form: RefObject<HTMLFormElement | null>, pending: boole
  * script, its fields and button are locked from the press until the page that
  * answers it is drawn, so a page read again after the press never shows the
  * old state pressable; a page that answers its own press keeps the person
- * where they were on it. A whole-page press stopped before its answer unlocks
- * the form and says the outcome is unknown, with a read of this page as the
- * way to see where it stands. Only the person sends a press again.
+ * where they were on it. A whole-page press with no answer a few seconds on
+ * says the change cannot be confirmed and offers a read of this page, and the
+ * form stays locked. Only the person sends a press again.
  *
  * `autoComplete="off"` because Firefox restores a hidden field's old value on
  * reload, which would put the first address back into a page redrawn for
@@ -168,7 +184,7 @@ export function PostForm({
   const here = useHref(`${location.pathname}${location.search}`);
   const form = useRef<HTMLFormElement>(null);
   const pending = document
-    ? whole.stage === "sending"
+    ? whole.stage !== "idle"
     : navigation.state !== "idle" && navigation.formAction?.endsWith(action) === true;
   const pressing = useFocusKept(form, pending);
   useFieldsLocked(form, pending);
@@ -181,6 +197,7 @@ export function PostForm({
       preventScrollReset
       {...(replace === undefined ? {} : { replace })}
       className={className}
+      aria-busy={pending ? true : undefined}
       onSubmit={() => {
         pressing();
         if (document) whole.send();
@@ -188,10 +205,10 @@ export function PostForm({
     >
       <input type="hidden" name={DRAWN_FOR} value={gate.who} autoComplete="off" />
       {children(pending)}
-      {whole.stage === "unknown" ? (
+      {whole.stage === "unconfirmed" ? (
         <p role="status">
-          The outcome is unknown: no answer reached this page.{" "}
-          <a href={here}>Open this page again</a> to see where it stands.
+          We could not confirm whether your change was made. <a href={here}>Open this page again</a>{" "}
+          to see where it stands; this sends nothing again.
         </p>
       ) : null}
     </Form>

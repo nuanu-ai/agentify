@@ -234,7 +234,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
       // logged, because driver and provider exceptions can carry bound values,
       // session tokens and merchant keys among them.
       console.error("[dashboard] a request failed");
-      response.status(500).type("text/plain").send("Something in the dashboard is broken.");
+      response
+        .status(500)
+        .type("text/plain")
+        .send(
+          "Something went wrong on our side. Open the dashboard again to see where things stand.",
+        );
     },
   );
 

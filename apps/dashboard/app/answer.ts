@@ -30,10 +30,10 @@ export interface Chrome {
 
 /**
  * What a page that could not be drawn is drawn from instead. `again` is the
- * address a failed read offers once more; `reopen` is the address a press was
- * sent to, offered as a read, which leads to the page the press was made on and
- * sends nothing again. A failure the browser met on the way to the dashboard
- * carries no chrome: the root's is already loaded there.
+ * address a failed read offers once more. `reopen` is the page a press was
+ * made on, or the address it was sent to, which a read leads to that page
+ * from; reading it sends nothing again. A failure the browser met on the way
+ * to the dashboard carries no chrome: the root's is already loaded there.
  */
 export type Trouble =
   | Readonly<{ kind: "problem"; chrome: Chrome; said: string; again?: string; reopen?: string }>
@@ -42,10 +42,15 @@ export type Trouble =
    * loader ran, with what the gate and the merchant's pages' layout read.
    */
   | Readonly<{ kind: "no-such-page"; chrome: Chrome; drawn: DrawnFor }>
-  /** A read that failed: it changed nothing. */
-  | Readonly<{ kind: "unread"; chrome?: Chrome; again: string }>
+  /**
+   * A read that failed: it changed nothing. `answered` where it was the read
+   * of the page after a press that was answered as done.
+   */
+  | Readonly<{ kind: "unread"; chrome?: Chrome; again: string; answered?: true }>
   /** A press whose answer never came: it may or may not have been done. */
   | Readonly<{ kind: "unanswered"; chrome?: Chrome; reopen: string }>
+  /** A press the gate could not check, refused before anything below it ran. */
+  | Readonly<{ kind: "broken"; chrome: Chrome; reopen: string }>
   | Readonly<{ kind: "not-drawn-for-you"; chrome: Chrome; who: string; start: string }>;
 
 const KINDS: ReadonlySet<string> = new Set<Trouble["kind"]>([
@@ -53,6 +58,7 @@ const KINDS: ReadonlySet<string> = new Set<Trouble["kind"]>([
   "no-such-page",
   "unread",
   "unanswered",
+  "broken",
   "not-drawn-for-you",
 ]);
 
@@ -85,25 +91,62 @@ export const failedAt = (method: string, url: URL, chrome?: Chrome): Trouble => 
     : { kind: "unanswered", ...drawn, reopen: at };
 };
 
+/** The same, for a request that failed before anything it asked for began. */
+export const failedBefore = (method: string, url: URL, chrome: Chrome): Trouble =>
+  reads(method)
+    ? failedAt(method, url, chrome)
+    : { kind: "broken", chrome, reopen: `${url.pathname}${url.search}` };
+
+/** The status a press was answered with, where it was answered with data. */
+const statusOf = (answered: unknown): number | undefined => {
+  if (typeof answered !== "object" || answered === null || !("init" in answered)) return undefined;
+  const { init } = answered as { init?: { status?: number } | null };
+  return init?.status ?? 200;
+};
+
+/**
+ * The address of a press answered as done. React Router reads the page after
+ * a press at the press's own address, as the very next request, and that read
+ * alone may say the change was made.
+ */
+let pressAnswered: string | null = null;
+
 /**
  * The browser's half of the same rule, run around every request a page makes
  * once its script runs. A request that failed on its way, such as a dropped
  * connection, or came back as something the dashboard did not write, such as
  * a proxy's own 502 page while the process restarts, reaches the error page as
- * the read or the press it was. Nothing is sent again.
+ * the read or the press it was. A press leads back to the page it was made
+ * on, which is still the browser's address while the press is on its way,
+ * with its place in a list. Nothing is sent again.
  */
 export const saidAsAsked: MiddlewareFunction<Record<string, DataStrategyResult>> = async (
   { request },
   next,
 ) => {
+  const after = pressAnswered === request.url;
+  pressAnswered = null;
   const results = await next();
   if (request.signal.aborted) return results;
+  const outcomes = Object.values(results);
+  if (!reads(request.method)) {
+    const done = outcomes.every(
+      (result) => result.type === "data" && (statusOf(result.result) ?? 400) < 400,
+    );
+    if (done && outcomes.length > 0) pressAnswered = request.url;
+  }
   const url = new URL(request.url);
+  const at =
+    reads(request.method) || typeof window === "undefined" ? url : new URL(window.location.href);
   for (const [route, result] of Object.entries(results)) {
     // A redirect arrives as a thrown response and is React Router's to follow.
     if (result.type !== "error" || result.result instanceof Response) continue;
     if (troubleIn(result.result) !== undefined) continue;
-    results[route] = { type: "error", result: data(failedAt(request.method, url)) };
+    const failed = failedAt(request.method, at);
+    results[route] = {
+      type: "error",
+      result: data(failed.kind === "unread" && after ? { ...failed, answered: true } : failed),
+    };
   }
   return results;
 };
@@ -231,6 +274,14 @@ export function answer<View>(outcome: Outcome<View>, { request, url, context }: 
       chrome.base,
       headersOf(outcome.headers, outcome.setCookies),
     );
+  }
+  // Nothing answered in time is not a refusal: a read of it changed nothing,
+  // and a press of it may or may not have been done, whatever words came with it.
+  if (outcome.problem.status === 504) {
+    throw data(failedAt(request.method, url, chrome), {
+      status: 504,
+      headers: headersOf(undefined, outcome.setCookies),
+    });
   }
   const trouble: Trouble = {
     kind: "problem",

@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import {
   type DataStrategyResult,
   data,
+  isRouteErrorResponse,
   Links,
   type LoaderFunctionArgs,
   Meta,
@@ -17,7 +18,6 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
-  useHref,
   useLocation,
   useMatches,
   useRouteError,
@@ -130,10 +130,59 @@ export default function App() {
   return <Outlet />;
 }
 
-/** The chrome comes with the trouble wherever the page's own loaders did not run. */
+/**
+ * The screen a press was made on, read off the address it posted to, which
+ * is that screen's or one under it, and named as the sidebar names it; the
+ * dashboard's start for anything else, which leads wherever the person
+ * begins.
+ */
+const PRESSED_ON: Readonly<Record<string, readonly [string, string]>> = {
+  cards: ["/cards", "Products"],
+  orders: ["/orders", "Orders"],
+  receipts: ["/receipts", "Receipts"],
+  integrations: ["/integrations", "Integrations"],
+  woocommerce: ["/woocommerce", "WooCommerce"],
+  keys: ["/keys", "API keys"],
+  settings: ["/settings", "Settings"],
+  admin: ["/admin", "Admin"],
+};
+
+const screenOf = (path: string): readonly [string, string] =>
+  PRESSED_ON[path.split("/")[1] ?? ""] ?? ["/", "the dashboard"];
+
+/** One message panel: whether anything changed, why, and the one way on. */
+function MessagePage({
+  chrome,
+  title,
+  said,
+  way,
+}: Readonly<{ chrome: Chrome; title: string; said: ReactNode; way: readonly [string, string] }>) {
+  return (
+    <GatePage chrome={chrome} title={title}>
+      <div className="gate-card">
+        <h1>{title}</h1>
+        <p>{said}</p>
+        <a className="button button-primary" href={way[0]}>
+          {way[1]}
+        </a>
+      </div>
+    </GatePage>
+  );
+}
+
+/**
+ * The chrome comes with the trouble wherever the page's own loaders did not
+ * run. The heading answers whether anything changed: a read changed nothing
+ * and is offered again; a press refused changed nothing; a press that broke or
+ * went unanswered may have been done, so the page sends the person to the
+ * screen they pressed on to look before they press again, never to reload
+ * an answer to a form, which would send the press a second time.
+ */
 export function ErrorBoundary() {
-  const trouble = troubleIn(useRouteError());
+  const error = useRouteError();
   const root = useRouteLoaderData<typeof loader>("root");
+  const { pathname } = useLocation();
+  const trouble = troubleIn(error);
   const chrome = trouble?.chrome ?? root;
   if (chrome === undefined) {
     return <p>Something in the dashboard is broken.</p>;
@@ -141,6 +190,8 @@ export function ErrorBoundary() {
   if (trouble?.kind === "no-such-page") {
     return <NoSuchPage drawn={{ ...trouble.drawn, chrome }} />;
   }
+  const [path, name] = screenOf(pathname);
+  const open = [`${chrome.base}${path}`, `Open ${name}`] as const;
   if (trouble?.kind === "not-drawn-for-you") {
     return (
       <GatePage chrome={chrome} title="Nothing was changed">
@@ -158,54 +209,65 @@ export function ErrorBoundary() {
       </GatePage>
     );
   }
-  return <Failed chrome={chrome} trouble={trouble} />;
-}
-
-/**
- * Every way on is a read, so it sends nothing again. A page that failed is
- * offered again at its own address. After a press, the way on reads the
- * address the press went to, which leads to the page it was made on.
- */
-function Failed({ chrome, trouble }: Readonly<{ chrome: Chrome; trouble: Trouble | undefined }>) {
-  const location = useLocation();
-  const here = useHref(`${location.pathname}${location.search}`);
-  const [title, said, way] =
-    trouble?.kind === "unread"
-      ? [
-          "This page could not be loaded",
-          "Loading a page changes nothing, so trying again is safe.",
-          { again: trouble.again },
-        ]
-      : trouble?.kind === "unanswered"
-        ? [
-            "The outcome is unknown",
-            "The answer to what you pressed was lost on the way, so it may or may not have been done. Opening the page again shows where it stands without sending the press again.",
-            { reopen: trouble.reopen },
-          ]
-        : trouble?.kind === "problem"
-          ? [
-              "Something went wrong",
-              trouble.said,
-              trouble.reopen === undefined
-                ? { again: trouble.again ?? here }
-                : { reopen: trouble.reopen },
-            ]
-          : ["Something went wrong", "This page could not be shown.", { again: here }];
+  const again =
+    trouble?.kind === "problem" || trouble?.kind === "unread" ? trouble.again : undefined;
+  if (again !== undefined) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="This page could not be loaded"
+        said={
+          trouble?.kind === "problem"
+            ? trouble.said
+            : trouble?.kind === "unread" && trouble.answered === true
+              ? "Your change was made, but the page could not be loaded after it."
+              : "Something broke on our side."
+        }
+        way={[again, "Try again"]}
+      />
+    );
+  }
+  // A press leads back to the page it was made on, its place in a list kept.
+  const reopen =
+    trouble?.kind === "problem" || trouble?.kind === "unanswered" || trouble?.kind === "broken"
+      ? trouble.reopen
+      : undefined;
+  const back =
+    reopen === undefined
+      ? open
+      : ([reopen, `Open ${screenOf(reopen.slice(chrome.base.length))[1]}`] as const);
+  // A refusal of a press did not do it; a fault behind one may have.
+  if (trouble?.kind === "problem" && isRouteErrorResponse(error) && error.status < 500) {
+    return (
+      <MessagePage chrome={chrome} title="Nothing was changed" said={trouble.said} way={back} />
+    );
+  }
+  if (trouble?.kind === "broken") {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="Nothing was changed"
+        said="Something broke on our side before anything was done. Try again in a moment."
+        way={back}
+      />
+    );
+  }
+  if (trouble === undefined) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="This page could not be shown"
+        said={`Something broke on our side. If you pressed a button, check ${name} before you try again.`}
+        way={open}
+      />
+    );
+  }
   return (
-    <GatePage chrome={chrome} title={title}>
-      <div className="gate-card">
-        <h1>{title}</h1>
-        <p>{said}</p>
-        {"reopen" in way ? (
-          <a className="button button-primary" href={way.reopen}>
-            Open the page again
-          </a>
-        ) : (
-          <a className="button button-primary" href={way.again}>
-            Try again
-          </a>
-        )}
-      </div>
-    </GatePage>
+    <MessagePage
+      chrome={chrome}
+      title="We don't know if this was done"
+      said={`${trouble.kind === "problem" ? `${trouble.said} ` : ""}Something went wrong before we could confirm it. ${back[1]} to see where it stands; this sends nothing again.`}
+      way={back}
+    />
   );
 }
