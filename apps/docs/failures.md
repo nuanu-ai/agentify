@@ -111,17 +111,24 @@ and the code `gateway_failed`, and the message says what is known of what the
 call did. A read that fails decided nothing, and it may be made again. A call
 that changes something, such as publishing or pausing a card, delivering, or
 closing fulfillment, may have done its work before it failed, so the answer
-says that whether it changed anything is not known: read the card or the order
-before you call again. It is marked retryable, because each of your calls made
-again either does its work once or answers with what already happened.
+says that whether it changed anything is not known, and it is marked
+retryable. Publishing, pausing and resuming, setting your seller name,
+`deliver`, `accept` and `close` can be made again as they are. A refusal
+cannot: read the order back with `get` before sending it again, as [When a
+call on an order does not go
+through](/orders#when-a-call-on-an-order-does-not-go-through) explains. An
+answer to a price question that failed this way may already have priced the
+purchase, and a repeat of it can be answered as not used even though the first
+one was.
 
 A purchase that fails after its payment arrived may have been charged, and the
 agent is told that whether it was is not known. That answer is not retryable,
-because the payment it carried may already be spent. The agent reads the order
-at its `status_url` if an earlier answer gave one, and otherwise signs the same
+because the payment it carried may already be spent. The agent signs the same
 payment request again from the same wallet, which is answered with the order
 or with where its payment stands and never charges twice. Asking for a new
-price instead starts a new purchase, which is charged again once paid.
+price instead starts a new purchase, which is charged again once paid. A
+purchase that fails before any payment it could read is told that nothing was
+charged, and the agent asks for the price again.
 
 ## What is not settled yet
 
