@@ -771,17 +771,21 @@ describe("an order's details", () => {
   it("open from every row on every width, each named apart from another sale of its product", () => {
     // The order's ID, its payment and the merchant's share are in no column,
     // so every row opens to them, whatever its state; two sales of one
-    // product read out by name alone could not be told apart.
+    // product read out by name alone could not be told apart, nor could two
+    // made at the same time of day on different days.
     const orders = ordersOf([
       { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
-      { id: SAME_HEAD, status: "delivered", at: "2026-10-12T14:12:00Z" },
+      { id: SAME_HEAD, status: "delivered", at: "2026-10-11T16:40:00Z" },
     ]);
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
     expect(detailsOf(html, FIRST)).toContain("row-more");
     expect(detailsOf(html, SAME_HEAD)).toContain("row-more");
-    expect(html).toContain('aria-label="Details of VPN, one month, 16:40:00"');
-    expect(html).toContain('aria-label="Details of VPN, one month, 14:12:00"');
+    const names = [...html.matchAll(/aria-label="(Details of VPN, one month[^"]*)"/g)].map(
+      (found) => found[1],
+    );
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
   });
 
   it("are drawn open where a press made on the order is said", () => {
