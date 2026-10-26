@@ -661,9 +661,18 @@ request from the same wallet, and once Agentify has checked that signature,
 without asking the facilitator and whatever the wallet holds now, the agent
 receives the original purchase without a second charge. Asking the purchase
 address again without that kept payment request starts a new purchase, which
-is charged again once paid, so recovery always signs the kept request again. The payment
-reference is public and opens nothing by itself: a payment already used, or one whose
-window has passed, sent again reveals neither the order nor where to read it.
+is charged again once paid, so recovery always signs the kept request again.
+An agent therefore keeps the payment request and the payment it signed from
+before it sends the payment until it has the answer: the request to sign
+again, and the payment to tell it which wallet signs. The test buyer on the
+[quickstart](/quickstart#_6-make-your-first-test-purchase) keeps both in a
+file.
+
+The payment request names the order only by its `order_id`, which opens
+nothing. The payment that already paid an order, sent again, is refused,
+because it can be read from the chain; a fresh payment from another wallet is
+refused as `not_this_purchase`. Neither answer reveals the order's goods, its
+address or where to read it.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is
