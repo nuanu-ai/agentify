@@ -24,6 +24,9 @@ export type FetchArtifact = {
   redirectLocation?: string;
 };
 
+/** How many sitemap files a scan reads at most, an index and what it lists included. */
+export const SITEMAP_FILE_LIMIT = 3;
+
 export type ScanArtifacts = {
   segment: Segment;
   canonicalTargetUrl: string;

@@ -98,6 +98,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   markdown_unavailable: "Markdown content negotiation could not be assessed.",
   mcp_absent:
     "No public MCP server-card declaration was found at the experimental discovery location.",
+  mcp_card_behind_sign_in:
+    "The MCP server card's address asks for sign-in, so an agent cannot read the card to discover the server before signing in.",
   mcp_card_incomplete:
     "An MCP server card was found, but required discovery fields are missing. The evidence lists them.",
   mcp_card_unparseable:
@@ -109,6 +111,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "Whether the site declares a sign-in for agents could not be told, because a discovery card that could declare one was not read whole. The card's own result says why.",
   oauth_metadata_absent:
     "The site declares an authenticated agent surface, but no OAuth authorization-server metadata was found.",
+  oauth_metadata_missing:
+    "The site declares an authenticated agent surface, but an OAuth discovery document it needs is missing and the other could not be read. The evidence names each.",
   oauth_metadata_partial:
     "OAuth discovery metadata was found, but a document is missing or an address in it does not use HTTPS. The evidence names which.",
   oauth_metadata_unparseable:
@@ -142,7 +146,7 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   robots_wrong_media_type:
     "robots.txt holds valid rules, but it is served with a web page's media type in place of text/plain.",
   sitemap_compressed:
-    "The sitemap is compressed with gzip, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
+    "The sitemap is still compressed with gzip after the scanner unpacked it once, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
   sitemap_doctype:
     "The sitemap declares an XML document type, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
   sitemap_empty: "A sitemap was found, but it lists no addresses.",
@@ -207,9 +211,11 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   markdown_negotiation_absent: "No alternate machine-readable Markdown view was found",
   markdown_negotiation_partial: "Your machine-readable text view is incomplete",
   mcp_absent: "No MCP declaration was found at the assessed locations",
+  mcp_card_behind_sign_in: "Your MCP discovery card asks for sign-in before discovery",
   mcp_card_incomplete: "Your MCP discovery card lacks fields an agent needs",
   mcp_card_unparseable: "Your MCP discovery card is not valid JSON",
   oauth_metadata_absent: "Your declared agent surface has no discoverable authorization setup",
+  oauth_metadata_missing: "Your authorization discovery metadata is missing a document",
   oauth_metadata_partial: "Your authorization discovery metadata is incomplete",
   oauth_metadata_unparseable: "Your authorization discovery metadata is not valid JSON",
   page_performance_heavy: "A heavy page raises agent cost",
@@ -401,6 +407,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Return the correct Markdown media type, Vary header, and fact-equivalent content for negotiated requests.",
   repair_robots:
     "Repair malformed robots.txt directives and validate the final crawler groups and sitemap declarations.",
+  serve_mcp_card_publicly:
+    "Serve the MCP server card without sign-in, and keep sign-in for the server it describes.",
   serve_robots:
     "Serve robots.txt to every visitor with status 200 and the media type text/plain, or answer with 404 if the site has no rules.",
   serve_robots_as_text: "Serve robots.txt with the media type text/plain.",

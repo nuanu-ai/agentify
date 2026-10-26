@@ -1,7 +1,7 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
 import { authSchemes, mediaType, varyNames } from "./http-fields.js";
 import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
-import type { FetchArtifact, ScanArtifacts } from "./model.js";
+import { type FetchArtifact, type ScanArtifacts, SITEMAP_FILE_LIMIT } from "./model.js";
 import {
   comparableTexts,
   htmlSignals,
@@ -382,11 +382,12 @@ type SitemapOutcome = Readonly<
   )
 >;
 
-// The fetch keeps a body as text, so a gzip file's second byte, 0x8b, arrives
-// as the replacement character.
+// The fetch unpacks a sitemap served as a gzip file, so a body that still
+// opens with gzip's magic bytes, as a file compressed twice does, was not
+// unpacked. A body is kept as text, in which the second byte, 0x8b, arrives as
+// the replacement character.
 const isGzip = (artifact: FetchArtifact): boolean =>
-  (artifact.body.charCodeAt(0) === 0x1f && [0x8b, 0xfffd].includes(artifact.body.charCodeAt(1))) ||
-  ["application/gzip", "application/x-gzip"].includes(mediaType(artifact.headers["content-type"]));
+  artifact.body.charCodeAt(0) === 0x1f && [0x8b, 0xfffd].includes(artifact.body.charCodeAt(1));
 
 const sitemapOutcome = (artifact: FetchArtifact): SitemapOutcome => {
   const reading = readingOf(artifact, "sitemap_unavailable");
@@ -501,7 +502,7 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
           : outcome.kind === "cut"
             ? `larger than ${outcome.readLimit}`
             : outcome.kind === "compressed"
-              ? "compressed with gzip"
+              ? "still compressed with gzip"
               : outcome.kind === "doctype"
                 ? "declares a document type"
                 : outcome.kind === "empty"
@@ -510,7 +511,24 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
     return `${place}: ${reason}`;
   };
   const missing = outcomes.filter(({ kind }) => BROKEN_SITEMAP.has(kind)).map(named);
-  const unread = outcomes.filter(({ kind }) => UNKNOWN_SITEMAP.has(kind)).map(named);
+  // An index's sitemap on another host that the scan did not fetch while it
+  // had room to is on another site, which the scan does not read.
+  const fetched = new Set(artifacts.sitemap.map(({ url }) => url));
+  const targetHost = new URL(artifacts.canonicalTargetUrl).hostname;
+  const offSite =
+    artifacts.sitemap.length < SITEMAP_FILE_LIMIT
+      ? indexes.flatMap((urls) =>
+          urls.flatMap((url, at) =>
+            !fetched.has(url) && URL.canParse(url) && new URL(url).hostname !== targetHost
+              ? [`entry ${at + 1} of the sitemap index: listed on another site, not read`]
+              : [],
+          ),
+        )
+      : [];
+  const unread = [
+    ...outcomes.filter(({ kind }) => UNKNOWN_SITEMAP.has(kind)).map(named),
+    ...offSite,
+  ];
   // Dates and entries are those of the pages listed; an index's own dates are
   // its sitemaps'.
   const pages = sitemaps.filter(({ parsed }) => !parsed.isIndex);
@@ -767,9 +785,9 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
 
 const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
   const markdown = artifacts.markdown;
-  // A refusal is an answer every agent asking for Markdown meets; no answer,
-  // a timeout, a rate limit or a server error says nothing.
-  if (!markdown || inaccessible(markdown) || markdown.status === 408 || markdown.status === 429)
+  // A refusal is an answer every agent asking for Markdown meets; what leaves
+  // a document unread says nothing.
+  if (!markdown || readingOf(markdown, "markdown_unavailable").state === "unread")
     return result({
       id: 7,
       status: "unavailable",
@@ -967,6 +985,21 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
       summaryCode: "mcp_unavailable",
       userImpactCode: "mcp_not_assessed",
     });
+  // Discovery comes before sign-in, so a card that asks for one serves none.
+  const behindSignIn = artifacts.mcp.some(
+    (artifact, index) =>
+      readings[index]?.state === "refused" && artifact.status === 401 && asksForSignIn(artifact),
+  );
+  if (!fieldsMissing && behindSignIn)
+    return result({
+      id: 9,
+      status: "fail",
+      earnedWeight: 0,
+      summaryCode: "mcp_card_behind_sign_in",
+      evidence: { status: 401 },
+      userImpactCode: "mcp_callable_gap",
+      fixCode: "serve_mcp_card_publicly",
+    });
   if (!fieldsMissing)
     return noDocument(9, readings, "mcp_card_unparseable", "mcp_callable_gap", () =>
       result({
@@ -1048,6 +1081,12 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
 };
 
 const DECLARES_AUTH = /oauth|bearer|authorization/i;
+
+/** Whether an answer challenges for a Bearer or OAuth sign-in. */
+const asksForSignIn = (artifact?: FetchArtifact): boolean =>
+  authSchemes(artifact?.headers["www-authenticate"]).some(
+    (scheme) => scheme === "bearer" || scheme === "oauth",
+  );
 const authCards = (artifacts: Pick<ScanArtifacts, "mcp" | "ucp">): FetchArtifact[] => [
   ...artifacts.mcp,
   ...(artifacts.ucp ? [artifacts.ucp] : []),
@@ -1057,12 +1096,7 @@ const authCards = (artifacts: Pick<ScanArtifacts, "mcp" | "ucp">): FetchArtifact
 export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean =>
   documentsOf(authCards(artifacts), "card_unavailable").documents.some((document) =>
     DECLARES_AUTH.test(JSON.stringify(document)),
-  ) ||
-  [artifacts.base, ...artifacts.mcp].some((artifact) =>
-    authSchemes(artifact?.headers["www-authenticate"]).some(
-      (scheme) => scheme === "bearer" || scheme === "oauth",
-    ),
-  );
+  ) || [artifacts.base, ...artifacts.mcp].some(asksForSignIn);
 
 const OAUTH_DOCUMENTS = ["authorization server metadata", "protected resource metadata"];
 const oauthDocumentName = (artifact: FetchArtifact): string =>
@@ -1162,7 +1196,11 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
     id: 11,
     status: complete ? "pass" : "partial",
     earnedWeight: complete ? 4 : documents.length >= 2 ? 3 : documents.length ? 1 : 0,
-    summaryCode: complete ? "oauth_metadata_valid" : "oauth_metadata_partial",
+    summaryCode: complete
+      ? "oauth_metadata_valid"
+      : documents.length
+        ? "oauth_metadata_partial"
+        : "oauth_metadata_missing",
     evidence: {
       documents_found: documents.length,
       ...(documents.length ? { https_fields: consistent } : {}),

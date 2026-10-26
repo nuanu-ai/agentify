@@ -8,7 +8,9 @@ import { parseSafeJson } from "./parsers.js";
  * the limit so that the result can name it. A 404 or a 410 says the document
  * is not there. Any other 4xx refuses it, and an agent asking is refused too,
  * so to an agent it is not there either. No answer at all, a timeout (408), a
- * rate limit (429) or a server error says nothing about the document.
+ * rate limit (429), a refusal of the scanner's own request headers (431), a
+ * block that depends on where the scanner asks from (451) or a server error
+ * says nothing about the document.
  */
 export type Reading =
   | Readonly<{ state: "whole"; artifact: FetchArtifact }>
@@ -18,6 +20,7 @@ export type Reading =
   | Readonly<{ state: "unread"; errorCode: string; status?: number }>;
 
 const KIB = 1024;
+const UNREAD_4XX = new Set([408, 429, 431, 451]);
 
 /** A byte count in the binary units the scanner's read limits are set in. */
 export const byteSize = (bytes: number): string => {
@@ -37,8 +40,7 @@ export const readingOf = (artifact: FetchArtifact | undefined, unreadCode: strin
       ...(status ? { status } : {}),
     };
   if (status === 404 || status === 410) return { state: "absent", status };
-  if (status >= 400 && status < 500 && status !== 408 && status !== 429)
-    return { state: "refused", status };
+  if (status >= 400 && status < 500 && !UNREAD_4XX.has(status)) return { state: "refused", status };
   if (status < 200 || status >= 300)
     return { state: "unread", errorCode: `http_${status}`, status };
   // A cut answer holds exactly the limit it was cut at.
@@ -50,12 +52,20 @@ export const readingOf = (artifact: FetchArtifact | undefined, unreadCode: strin
 /**
  * Whether an answer is a web page: what a site that routes every address to
  * its application sends where a document belongs, and its way of saying the
- * document is not there. A comment, a server warning or an XML prolog may
- * come before the page's own opening, so the first KiB is searched for it.
+ * document is not there. The page's opening is looked for past white space,
+ * comments and an XML prolog, and nowhere else, so a document that only
+ * mentions a page's markup is not taken for one.
  */
 export const isWebPage = (body: string): boolean => {
-  const start = body.slice(0, KIB).toLowerCase();
-  return start.includes("<!doctype html") || /<html[\s>]/.test(start);
+  let rest = body.slice(0, 4 * KIB).trimStart();
+  for (;;) {
+    const close = rest.startsWith("<!--") ? "-->" : rest.startsWith("<?xml") ? "?>" : undefined;
+    const end = close ? rest.indexOf(close) : -1;
+    if (!close || end === -1) break;
+    rest = rest.slice(end + close.length).trimStart();
+  }
+  const opening = rest.slice(0, 15).toLowerCase();
+  return opening.startsWith("<!doctype html") || /^<html[\s>]/.test(opening);
 };
 
 /** A JSON discovery document as read: its object, or why there is none to judge. */
@@ -68,10 +78,10 @@ export type DocumentReading =
   | Readonly<{ state: "unread"; errorCode: string; status?: number }>;
 
 /**
- * A web page or an empty answer is no document, whether it was read whole or
- * cut. Anything else cut at the read limit is too large, a size that is known.
- * Anything else read whole is judged, and is malformed unless it parses to a
- * JSON object.
+ * An answer read whole that parses to a JSON object is the document. One that
+ * does not is no document when it is empty or a web page, and malformed
+ * otherwise. An answer cut at the read limit is no document when it opens as
+ * a web page, and too large otherwise, a size that is known.
  */
 export const jsonDocumentOf = (
   artifact: FetchArtifact | undefined,
@@ -81,11 +91,13 @@ export const jsonDocumentOf = (
   if (reading.state === "absent") return { state: "absent" };
   if (reading.state === "refused" || reading.state === "unread") return reading;
   const { body } = reading.artifact;
-  if (isWebPage(body) || body.trim() === "") return { state: "absent" };
-  if (reading.state === "cut") return { state: "too_large", readLimit: reading.readLimit };
+  if (reading.state === "cut")
+    return isWebPage(body)
+      ? { state: "absent" }
+      : { state: "too_large", readLimit: reading.readLimit };
   // Trimming takes a byte order mark with the white space.
   const value = parseSafeJson(body.trim());
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? { state: "document", value: value as Record<string, unknown> }
-    : { state: "malformed" };
+  if (value && typeof value === "object" && !Array.isArray(value))
+    return { state: "document", value: value as Record<string, unknown> };
+  return body.trim() === "" || isWebPage(body) ? { state: "absent" } : { state: "malformed" };
 };
