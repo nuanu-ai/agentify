@@ -34,6 +34,7 @@ import {
   type Acceptance,
   CARD_REJECTED,
   type CallError,
+  type Card,
   CardSchema,
   CONTRACT_VERSION,
   type Delivery,
