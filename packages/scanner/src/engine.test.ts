@@ -434,7 +434,7 @@ describe("a scan of a truncated HTML response", () => {
     );
     expect(productData(evaluateScan(input)).find(({ id }) => id === 5)).toMatchObject({
       status: "unavailable",
-      evidence: { invalid_script_count: 1 },
+      evidence: { unparseable_blocks: 1 },
     });
   });
 
@@ -715,7 +715,7 @@ describe("18-check engine", () => {
     });
     expect(evaluateScan(input).checks.find((check) => check.id === 5)).toMatchObject({
       status: "fail",
-      summaryCode: "jsonld_absent_or_invalid",
+      summaryCode: "jsonld_unparseable",
     });
   });
 

@@ -14,6 +14,7 @@ import {
   visibleText,
 } from "./parsers.js";
 import {
+  byteSize,
   type DocumentReading,
   isWebPage,
   jsonDocumentOf,
@@ -21,6 +22,7 @@ import {
   readingOf,
 } from "./reading.js";
 import {
+  AI_PROVIDERS,
   explicitAiPolicies,
   isPathAllowed,
   parseRobots,
@@ -293,7 +295,8 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       evidence: {
         provider_count: providerCount,
         providers: Object.keys(policies),
-        policy_tokens: Object.values(policies).flat(),
+        providers_missing: AI_PROVIDERS.filter((provider) => !(provider in policies)),
+        policy_agents: Object.values(policies).flat(),
       },
       userImpactCode: "ai_policy_ambiguity",
       fixCode: providerCount === 4 ? undefined : "declare_ai_policy",
@@ -499,18 +502,40 @@ const fieldPresent = (node: Record<string, unknown>, path: string): boolean => {
   return current !== undefined && current !== null && current !== "";
 };
 
+const OWNER_TYPES = [
+  "Product",
+  "LocalBusiness",
+  "Restaurant",
+  "Hotel",
+  "Store",
+  "Article",
+  "NewsArticle",
+  "BlogPosting",
+  "Organization",
+  "WebSite",
+];
+
 const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => {
   const nodeTypes = nodes.map((node) => ({ node, types: jsonLdTypes(node) }));
   const choose = (...types: string[]) =>
     nodeTypes.find((entry) => entry.types.some((type) => types.includes(type)));
   if (segment === "store")
     return {
+      expected: ["Product"],
       selected: choose("Product"),
       required: ["name", "image", "url", "offers.price", "offers.priceCurrency"],
       recommended: ["offers.availability"],
     };
   if (segment === "local")
     return {
+      expected: [
+        "LocalBusiness",
+        "a type whose name ends in Business",
+        "Restaurant",
+        "Hotel",
+        "Dentist",
+        "Store",
+      ],
       selected: nodeTypes.find((entry) =>
         entry.types.some(
           (type) =>
@@ -525,6 +550,7 @@ const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => 
   const product = choose("Product");
   if (product)
     return {
+      expected: OWNER_TYPES,
       selected: product,
       required: ["name", "image", "url", "offers.price", "offers.priceCurrency"],
       recommended: ["offers.availability"],
@@ -532,6 +558,7 @@ const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => 
   const local = choose("LocalBusiness", "Restaurant", "Hotel", "Store");
   if (local)
     return {
+      expected: OWNER_TYPES,
       selected: local,
       required: ["name", "address"],
       recommended: ["telephone", "openingHoursSpecification", "geo", "priceRange"],
@@ -539,11 +566,13 @@ const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => 
   const article = choose("Article", "NewsArticle", "BlogPosting");
   if (article)
     return {
+      expected: OWNER_TYPES,
       selected: article,
       required: ["headline", "image", "datePublished"],
       recommended: ["author", "dateModified"],
     };
   return {
+    expected: OWNER_TYPES,
     selected: choose("Organization", "WebSite"),
     required: ["name", "url"],
     recommended: ["contactPoint", "sameAs", "logo"],
@@ -582,24 +611,27 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     invalidCount: parsedPages.reduce((sum, page) => sum + page.invalidCount, 0),
   };
   const presence = parsed.nodes.length ? (parsed.invalidCount ? "partial" : "pass") : "fail";
+  const [presenceCode, presenceFix] =
+    presence === "pass"
+      ? ["jsonld_present", undefined]
+      : presence === "partial"
+        ? ["jsonld_partially_parseable", "repair_jsonld"]
+        : parsed.scriptCount
+          ? ["jsonld_unparseable", "repair_jsonld"]
+          : ["jsonld_absent", "publish_valid_jsonld"];
   const check5 = result({
     id: 5,
     status: presence,
     earnedWeight: presence === "pass" ? 10 : presence === "partial" ? 4 : 0,
-    summaryCode:
-      presence === "pass"
-        ? "jsonld_present"
-        : presence === "partial"
-          ? "jsonld_partially_parseable"
-          : "jsonld_absent_or_invalid",
+    summaryCode: presenceCode,
     evidence: {
-      script_count: parsed.scriptCount,
+      jsonld_blocks: parsed.scriptCount,
       node_count: parsed.nodes.length,
-      invalid_script_count: parsed.invalidCount,
+      unparseable_blocks: parsed.invalidCount,
       pages_checked: pages.length,
     },
     userImpactCode: "structured_data_machine_readability",
-    fixCode: presence === "pass" ? undefined : "publish_valid_jsonld",
+    fixCode: presenceFix,
     durationMs: pages.reduce((sum, page) => sum + page.durationMs, 0),
   });
   if (!parsed.nodes.length)
@@ -626,6 +658,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         summaryCode: "vertical_jsonld_wrong_type",
         evidence: {
           types: [...new Set(parsed.nodes.flatMap(jsonLdTypes))].slice(0, 20),
+          expected_types: profile.expected,
         },
         userImpactCode: "vertical_data_gap",
         fixCode: "publish_vertical_jsonld",
@@ -637,25 +670,36 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   );
   const requiredRatio = requiredFound.length / profile.required.length;
   const recommendedRatio = recommendedFound.length / profile.recommended.length;
-  const complete = requiredRatio === 1 && recommendedRatio >= 0.5;
-  const points = complete
-    ? 12
-    : Math.max(3, Math.min(9, Math.round(12 * (requiredRatio * 0.7 + recommendedRatio * 0.3))));
+  // A pass needs every required field and at least half the recommended ones.
+  const recommendedNeeded = Math.ceil(profile.recommended.length / 2);
+  const [summaryCode, fixCode] =
+    requiredRatio < 1
+      ? ["vertical_jsonld_required_missing", "complete_vertical_jsonld"]
+      : recommendedFound.length < recommendedNeeded
+        ? ["vertical_jsonld_recommended_missing", "add_recommended_jsonld"]
+        : ["vertical_jsonld_complete", undefined];
+  const points = fixCode
+    ? Math.max(3, Math.min(9, Math.round(12 * (requiredRatio * 0.7 + recommendedRatio * 0.3))))
+    : 12;
   return [
     check5,
     result({
       id: 6,
-      status: complete ? "pass" : "partial",
+      status: fixCode ? "partial" : "pass",
       earnedWeight: points,
-      summaryCode: complete ? "vertical_jsonld_complete" : "vertical_jsonld_incomplete",
+      summaryCode,
       evidence: {
         type: jsonLdTypes(selected.node)[0] ?? "unknown",
         required_found: requiredFound,
         required_missing: profile.required.filter((field) => !requiredFound.includes(field)),
         recommended_found: recommendedFound,
+        recommended_missing: profile.recommended.filter(
+          (field) => !recommendedFound.includes(field),
+        ),
+        recommended_needed_for_pass: recommendedNeeded,
       },
       userImpactCode: "vertical_data_machine_readability",
-      fixCode: complete ? undefined : "complete_vertical_jsonld",
+      fixCode,
     }),
   ];
 };
@@ -1148,33 +1192,38 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "page_performance_not_assessed",
       errorCode: base?.errorCode ?? "base_unavailable",
     });
+  // A page the read limit cut is larger than the limit: that much is known.
   if (base.truncated || base.durationMs >= 8_000)
     return result({
       id: 14,
       status: "fail",
       earnedWeight: 0,
-      summaryCode: "page_performance_limit_exceeded",
+      summaryCode: base.truncated ? "page_performance_too_large" : "page_performance_too_slow",
       evidence: {
         decoded_bytes: base.decodedBytes,
         ttfb_ms: base.ttfbMs,
         total_ms: base.durationMs,
         truncated: base.truncated,
+        ...(base.truncated ? { read_limit: byteSize(base.decodedBytes) } : {}),
       },
       userImpactCode: "page_performance_agent_cost",
-      fixCode: "reduce_page_weight_latency",
+      fixCode: base.truncated ? "reduce_page_weight" : "reduce_response_time",
     });
   const weight = base.decodedBytes < 2 * 1024 * 1024;
   const timing = base.ttfbMs < 1_500 && base.durationMs < 4_000;
+  const [summaryCode, fixCode] =
+    weight && timing
+      ? ["page_performance_within_budget", undefined]
+      : weight
+        ? ["page_performance_slow", "reduce_response_time"]
+        : timing
+          ? ["page_performance_heavy", "reduce_page_weight"]
+          : ["page_performance_slow_heavy", "reduce_page_weight_latency"];
   return result({
     id: 14,
     status: weight && timing ? "pass" : weight || timing ? "partial" : "fail",
     earnedWeight: weight && timing ? 4 : weight || timing ? 2 : 0,
-    summaryCode:
-      weight && timing
-        ? "page_performance_within_budget"
-        : weight || timing
-          ? "page_performance_partial"
-          : "page_performance_slow_heavy",
+    summaryCode,
     evidence: {
       decoded_bytes: base.decodedBytes,
       ttfb_ms: base.ttfbMs,
@@ -1182,7 +1231,7 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
       single_region_measurement: true,
     },
     userImpactCode: "page_performance_agent_cost",
-    fixCode: weight && timing ? undefined : "reduce_page_weight_latency",
+    fixCode,
   });
 };
 
@@ -1364,8 +1413,10 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "hreflang_conditional",
       applicable: false,
     });
-  const valid = tags.filter((tag) => tag === "x-default" || /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(tag));
-  const duplicate = new Set(tags).size !== tags.length;
+  const isValid = (tag: string) => tag === "x-default" || /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(tag);
+  const valid = tags.filter(isValid);
+  const duplicates = [...new Set(tags.filter((tag, at) => tags.indexOf(tag) !== at))];
+  const duplicate = duplicates.length > 0;
   const complete = valid.length === tags.length && !duplicate;
   return result({
     id: 18,
@@ -1376,6 +1427,12 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       locale_count: tags.length,
       valid_locale_count: valid.length,
       duplicate,
+      ...(complete
+        ? {}
+        : {
+            invalid_locales: [...new Set(tags.filter((tag) => !isValid(tag)))].slice(0, 20),
+            duplicate_locales: duplicates.slice(0, 20),
+          }),
     },
     userImpactCode: "locale_discovery",
     fixCode: complete ? undefined : "repair_hreflang",
@@ -1464,6 +1521,15 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     hreflangCheck(effective),
   ];
   const baseTruncated = Boolean(effective.base?.truncated && !inaccessible(effective.base));
+  // Every page request is cut at the same limit, so any cut one names it.
+  const cutPage = [
+    effective.base,
+    effective.representative,
+    effective.markdown,
+    effective.agentProbes.chatgpt,
+    effective.agentProbes.claude,
+  ].find((page) => page?.truncated);
+  const pageReadLimit = byteSize(cutPage?.decodedBytes ?? 0);
   const pagesTruncated =
     baseTruncated ||
     Boolean(effective.representative?.truncated && !inaccessible(effective.representative));
@@ -1494,7 +1560,8 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       switch (check.id) {
         case 5:
           truncated = pagesTruncated;
-          uncertain = check.summaryCode === "jsonld_absent_or_invalid";
+          uncertain =
+            check.summaryCode === "jsonld_absent" || check.summaryCode === "jsonld_unparseable";
           break;
         case 6:
           truncated = pagesTruncated;
@@ -1551,7 +1618,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           break;
       }
       if (!truncated) return check;
-      const evidence = { ...check.evidence, truncated: true };
+      const evidence = { ...check.evidence, truncated: true, read_limit: pageReadLimit };
       // A prefix proves what it contains, not what the rest of the page lacks.
       return uncertain
         ? result({
@@ -1574,8 +1641,7 @@ const PRODUCT_PAGE_ABSENCES: Record<
   { absent: (check: CheckResult) => boolean; summaryCode: string; userImpactCode: string }
 > = {
   5: {
-    absent: (check) =>
-      check.summaryCode === "jsonld_absent_or_invalid" && check.evidence.script_count === 0,
+    absent: (check) => check.summaryCode === "jsonld_absent",
     summaryCode: "jsonld_unavailable",
     userImpactCode: "structured_data_not_assessed",
   },

@@ -44,7 +44,7 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   ai_policy_absent: "robots.txt does not state a clear policy for the supported AI crawler groups.",
   ai_policy_explicit: "robots.txt states an explicit policy for every supported AI crawler group.",
   ai_policy_partial:
-    "robots.txt states a policy for some, but not all, supported AI crawler groups.",
+    "robots.txt states a policy for some, but not all, supported AI crawler groups. The evidence lists the groups without one.",
   ai_policy_unavailable:
     "The AI crawler policy could not be assessed because robots.txt was unavailable.",
   content_signal_absent: "No parseable Content-Signal policy was found in robots.txt.",
@@ -65,19 +65,21 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   fingerprint_observed:
     "The detected platform hint is informational and does not affect the score.",
   hreflang_partial:
-    "Language-alternative declarations were found, but they are incomplete or inconsistent.",
+    "Language-alternative declarations were found, but some codes are not valid or are declared twice. The evidence lists them.",
   hreflang_single_locale:
     "No language alternatives were detected, so hreflang is not required for this scan.",
   hreflang_unavailable: "Language-alternative declarations could not be assessed.",
   hreflang_valid: "Language-alternative declarations are present and internally consistent.",
   html_truncated:
-    "Only part of an HTML response was read because it exceeded the scan's size limit. This check could not be completed; missing data is not inferred from the unread part.",
-  jsonld_absent_or_invalid: "No valid JSON-LD structured data was found in the initial HTML.",
+    "Only the first part of the page was read, up to the scanner's read limit, which the evidence names. What was read does not settle this check, and nothing is inferred from the rest.",
+  jsonld_absent: "No JSON-LD structured data was found in the initial HTML.",
   jsonld_partially_parseable:
     "JSON-LD is present, but at least one block could not be parsed reliably.",
   jsonld_present: "Valid JSON-LD structured data was found in the initial HTML.",
   jsonld_unavailable:
     "Structured data could not be assessed because the page response was unavailable.",
+  jsonld_unparseable:
+    "JSON-LD blocks were found in the initial HTML, but none of them could be parsed.",
   llms_absent: "No llms.txt file was found. This optional signal has limited ecosystem adoption.",
   llms_malformed:
     "llms.txt exists, but it does not contain the minimal expected heading and links.",
@@ -110,11 +112,13 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   oauth_not_declared:
     "No authenticated agent surface was declared, so OAuth discovery is not applicable.",
   oauth_unavailable: "OAuth discovery metadata could not be assessed.",
-  page_performance_limit_exceeded:
-    "The public page exceeded the scanner's safe response-size or timing limit.",
-  page_performance_partial:
-    "The public page is readable, but either transfer size or response time is above the preferred budget.",
+  page_performance_heavy: "The public page is readable, but it is heavier than the 2 MiB budget.",
+  page_performance_slow:
+    "The public page is readable, but it answered slower than the budget of a first byte within 1.5 seconds and the whole page within 4 seconds.",
   page_performance_slow_heavy: "The public page is both heavy and slow for an automated reader.",
+  page_performance_too_large:
+    "The public page is larger than the scanner's read limit, which the evidence names.",
+  page_performance_too_slow: "The public page took 8 seconds or more to load in full.",
   page_performance_unavailable: "Page weight and response time could not be assessed.",
   page_performance_within_budget:
     "The public page stayed within the documented response-size and timing budgets.",
@@ -153,20 +157,22 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   ucp_absent: "No public UCP commerce profile was found for this store scan.",
   ucp_incomplete:
     "A UCP commerce profile was found, but required fields are missing. The evidence lists them.",
+  ucp_not_store: "UCP commerce discovery does not apply to this scan segment.",
   ucp_profile_unparseable:
     "A document is served at the UCP profile location, but it is not a JSON object that can be parsed.",
-  ucp_not_store: "UCP commerce discovery does not apply to this scan segment.",
   ucp_unavailable: "The UCP commerce profile could not be assessed.",
   ucp_valid: "A usable public UCP commerce profile was found.",
   vertical_jsonld_complete:
-    "The structured data contains the key public fields expected for this business segment.",
-  vertical_jsonld_incomplete:
-    "Business-specific structured data is present, but important public fields are missing.",
+    "The structured data has every required field and at least half of the recommended ones for this business segment.",
   vertical_jsonld_missing:
     "No business-specific structured-data type was found for this scan segment.",
+  vertical_jsonld_recommended_missing:
+    "Business-specific structured data has every required field, but fewer than half of the recommended ones. The evidence lists the missing fields and how many a pass needs.",
+  vertical_jsonld_required_missing:
+    "Business-specific structured data is present, but it lacks required fields. The evidence lists them.",
   vertical_jsonld_unavailable: "Business-specific structured data could not be assessed.",
   vertical_jsonld_wrong_type:
-    "Structured data exists, but it does not describe the business type expected for this scan segment.",
+    "Structured data exists, but it does not describe the business type expected for this scan segment. The evidence lists the types found and the types expected.",
 };
 
 const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
@@ -181,8 +187,9 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   feed_machine_signals_only: "Product signals exist, but no public feed declaration was found",
   feed_signals_absent: "No feed declaration or equivalent catalog signal was found",
   hreflang_partial: "Your language alternatives point inconsistently",
-  jsonld_absent_or_invalid: "No readable JSON-LD structured data was found",
+  jsonld_absent: "No JSON-LD structured data was found",
   jsonld_partially_parseable: "Part of your structured data cannot be read reliably",
+  jsonld_unparseable: "Your structured data cannot be parsed",
   llms_malformed: "Your llms.txt file cannot guide automated readers reliably",
   markdown_negotiation_absent: "No alternate machine-readable Markdown view was found",
   markdown_negotiation_partial: "Your machine-readable text view is incomplete",
@@ -192,9 +199,11 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   oauth_metadata_absent: "Your declared agent surface has no discoverable authorization setup",
   oauth_metadata_partial: "Your authorization discovery metadata is incomplete",
   oauth_metadata_unparseable: "Your authorization discovery metadata is not valid JSON",
-  page_performance_limit_exceeded: "The page exceeds the scanner's safe response budget",
-  page_performance_partial: "Page weight or response time raises agent cost",
+  page_performance_heavy: "A heavy page raises agent cost",
+  page_performance_slow: "Slow responses raise agent cost",
   page_performance_slow_heavy: "A slow, heavy page increases automated-reader timeout risk",
+  page_performance_too_large: "The page is larger than the scanner reads",
+  page_performance_too_slow: "The page takes 8 seconds or more to load",
   robots_invalid: "Your crawler rules cannot be interpreted reliably",
   robots_missing: "Crawler access rules are missing at the standard location",
   robots_partially_parseable: "Part of your crawler policy is malformed or ambiguous",
@@ -212,8 +221,9 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   ucp_absent: "No public UCP commerce profile is declared",
   ucp_incomplete: "Your UCP commerce profile is incomplete",
   ucp_profile_unparseable: "Your UCP commerce profile is not valid JSON",
-  vertical_jsonld_incomplete: "Business-specific structured data is missing key public facts",
   vertical_jsonld_missing: "No segment-specific structured-data type was found",
+  vertical_jsonld_recommended_missing: "Your structured data lacks recommended business fields",
+  vertical_jsonld_required_missing: "Your structured data lacks required business fields",
   vertical_jsonld_wrong_type: "Your structured data describes the wrong kind of business",
 };
 
@@ -315,6 +325,8 @@ const IMPACT_COPY: Readonly<Record<string, string>> = {
 const FIX_COPY: Readonly<Record<string, string>> = {
   add_markdown_negotiation:
     "Add standards-based HTTP content negotiation for a fact-equivalent Markdown representation.",
+  add_recommended_jsonld:
+    "Add the recommended fields the evidence lists, using facts already visible and maintained on the site.",
   add_sitemap_entries: "List the site's canonical public pages in the sitemap.",
   add_sitemap_lastmod:
     "Give each sitemap entry a lastmod date taken from when the page last changed.",
@@ -327,7 +339,7 @@ const FIX_COPY: Readonly<Record<string, string>> = {
   complete_ucp_profile:
     "Complete the UCP profile with the required public commerce fields and validate it against the current specification.",
   complete_vertical_jsonld:
-    "Add the missing business-specific JSON-LD fields using facts already visible and maintained on the site.",
+    "Add the required fields the evidence lists, using facts already visible and maintained on the site.",
   declare_ai_policy:
     "Declare an explicit allow or disallow policy for each supported AI crawler group in robots.txt.",
   fix_listed_sitemaps:
@@ -348,8 +360,12 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Add valid JSON-LD that describes the same public entities and facts shown on the page.",
   publish_vertical_jsonld:
     "Add the appropriate business-specific JSON-LD type and its key public fields.",
+  reduce_page_weight:
+    "Reduce the size of the public HTML without hiding critical facts behind client-only rendering.",
   reduce_page_weight_latency:
     "Reduce public response time and transfer size without hiding critical facts behind client-only rendering.",
+  reduce_response_time:
+    "Reduce the public page's response time without hiding critical facts behind client-only rendering.",
   refresh_sitemap_lastmod:
     "Keep each lastmod date equal to when its page last changed, in W3C date format. If most pages have not changed in six months, nothing needs to change.",
   render_substantive_html:
@@ -362,6 +378,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Serve the document as one valid JSON object and check it with a JSON parser before publishing it. If no such document is meant to exist, answer its address with 404.",
   repair_hreflang:
     "Repair locale codes and reciprocal hreflang links across equivalent language or market pages.",
+  repair_jsonld:
+    "Make every JSON-LD block valid JSON that describes the same public entities and facts shown on the page.",
   repair_llms:
     "Give llms.txt a minimal valid heading and links, while keeping the same public facts as the website.",
   repair_markdown_negotiation:

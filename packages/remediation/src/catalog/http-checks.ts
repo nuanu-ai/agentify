@@ -49,7 +49,7 @@ export const HTTP_CHECK_CATALOG: Readonly<Record<string, HttpRemediationCatalogE
   "6": {
     labelCode: "vertical_json_ld",
     desiredState:
-      "The appropriate Product, LocalBusiness, Article, Organization, or WebSite node contains the required public fields for this segment.",
+      "The appropriate Product, LocalBusiness, Article, Organization, or WebSite node contains every required field for this segment and at least half of the recommended ones.",
     verification:
       "Validate the selected node and compare its values with the visible source facts before re-running check 6.",
     standard:
