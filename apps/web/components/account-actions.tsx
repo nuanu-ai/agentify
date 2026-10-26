@@ -108,60 +108,69 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
         Signed in as <strong>{email}</strong>. What you press here is for this address.
       </p>
       {mode === "unsubscribe" ? (
-        <button
-          className="button button-primary"
-          disabled={busy}
-          onClick={() => void act("unsubscribe")}
-          type="button"
-        >
-          Unsubscribe from marketing
-        </button>
-      ) : (
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div className="editorial-actions">
           <button
-            className="button button-secondary"
+            className="button button-primary"
             disabled={busy}
-            onClick={() => void act("access")}
+            onClick={() => void act("unsubscribe")}
             type="button"
           >
-            Request data access
+            Unsubscribe from marketing
           </button>
-          {!confirmingDeletion ? (
+        </div>
+      ) : (
+        <>
+          <div className="editorial-actions">
             <button
-              className="button button-primary"
-              onClick={() => setConfirmingDeletion(true)}
+              className="button button-secondary"
+              disabled={busy}
+              onClick={() => void act("access")}
               type="button"
             >
-              Delete my data
+              Request data access
             </button>
-          ) : (
+            {!confirmingDeletion ? (
+              <button
+                className="button button-primary"
+                onClick={() => setConfirmingDeletion(true)}
+                type="button"
+              >
+                Delete my data
+              </button>
+            ) : null}
+          </div>
+          {confirmingDeletion ? (
             <div>
               <p>
                 For {email}, this closes report access, revokes shares, and irreversibly anonymizes
                 your lead and owned scan identifiers. Your sign-in goes too, unless it holds a
                 seller dashboard.
               </p>
-              <button
-                className="button button-primary"
-                disabled={busy}
-                onClick={() => void act("deletion")}
-                type="button"
-              >
-                {busy ? "Deleting…" : "Confirm deletion"}
-              </button>{" "}
-              <button
-                className="button button-secondary"
-                disabled={busy}
-                onClick={() => setConfirmingDeletion(false)}
-                type="button"
-              >
-                Cancel
-              </button>
+              <div className="editorial-actions">
+                <button
+                  className="button button-primary"
+                  disabled={busy}
+                  onClick={() => void act("deletion")}
+                  type="button"
+                >
+                  {busy ? "Deleting…" : "Confirm deletion"}
+                </button>
+                <button
+                  className="button button-secondary"
+                  disabled={busy}
+                  onClick={() => setConfirmingDeletion(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          ) : null}
+        </>
       )}
-      <p aria-live="polite">{message}</p>
+      <p aria-live="polite" className="editorial-answer">
+        {message}
+      </p>
     </div>
   );
 }
