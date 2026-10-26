@@ -1,10 +1,9 @@
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
 import { Badge } from "@agentify/ui";
 import { type CSSProperties, type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
 import { scanStatusIn } from "../lib/api-answers";
-import { ask } from "../lib/ask";
-import { scanAgainAt } from "../lib/pending-scan";
+import { ask, waitAfter } from "../lib/ask";
+import { formPathOf, scanAgainAt } from "../lib/pending-scan";
 import type { ScanFixture } from "../lib/scan-fixtures";
 import { SCAN_STATUS_LINES } from "../lib/scan-status";
 import { CheckRow } from "./check-row";
@@ -61,9 +60,6 @@ const ENDED: ReadonlySet<ScanStatusResponse["status"]> = new Set([
   "failed",
 ]);
 
-/** How long the page waits after a status it could not read: doubling from two seconds to half a minute. */
-const waitAfter = (failures: number) => Math.min(2 * 2 ** (failures - 1), 30);
-
 /** The token that reads a scan, kept for the tab's life under the scan's own key. */
 const tokenKey = (scanId: string) => `agentify:scan-token:${scanId}`;
 
@@ -91,7 +87,6 @@ export function ScanExperience({
   segment: Segment;
 }>) {
   const fixtureName = fixture?.name;
-  const navigate = useNavigate();
   const [data, setData] = useState<ScanStatusResponse | null>(fixture?.status ?? null);
   const [accessState, setAccessState] = useState<AccessState>(fixtureName ? "ready" : "loading");
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -99,8 +94,6 @@ export function ScanExperience({
   const terminal = data ? ENDED.has(data.status) : false;
   const underway = data !== null && !terminal;
   const [watchedItRun, setWatchedItRun] = useState(false);
-  // A press that reads the scan once more after it ended.
-  const [readings, setReadings] = useState(0);
 
   useEffect(() => {
     if (terminal || fixtureName) return;
@@ -114,7 +107,6 @@ export function ScanExperience({
 
   // The page asks for the scan's status until the scan ends or the API says
   // asking cannot help; an answer it cannot read makes it wait longer each time.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `readings` changes only to read the scan again.
   useEffect(() => {
     if (fixtureName) return;
     captureFragmentToken(scanId);
@@ -145,7 +137,7 @@ export function ScanExperience({
       }
       if (asked.kind === "later") {
         failures += 1;
-        const seconds = Math.max(asked.waitSeconds ?? 0, waitAfter(failures));
+        const seconds = waitAfter(failures, asked.waitSeconds);
         setRequestError(
           `${asked.words ?? "Live status cannot be read right now."} The page asks again in ${seconds} s.`,
         );
@@ -163,7 +155,7 @@ export function ScanExperience({
       left = true;
       window.clearTimeout(timer);
     };
-  }, [fixtureName, readings, scanId]);
+  }, [fixtureName, scanId]);
 
   useEffect(() => {
     if (!data?.teaser || fixtureName || accessState !== "ready") return;
@@ -229,7 +221,7 @@ export function ScanExperience({
             {fixtureBanner}
             {accessState === "loading" ? <LoadingState /> : null}
             {accessState === "missing" || accessState === "invalid" ? (
-              <AccessError invalid={accessState === "invalid"} />
+              <AccessError form={formPathOf(segment)} invalid={accessState === "invalid"} />
             ) : null}
             {accessState === "ready" && !data ? <LoadingState /> : null}
             {data && (!terminal || holding) ? (
@@ -237,20 +229,17 @@ export function ScanExperience({
             ) : null}
             {data?.status === "failed" ? (
               <ScanFailed
+                again={scanAgainAt(segment, data.target_host)}
                 blocked={data.blocked === true}
                 checks={data.checks}
-                onRetry={() => {
-                  const again = scanAgainAt(segment, data.target_host);
-                  void navigate(again.path, { state: again.state });
-                }}
                 stopReason={data.stop_reason}
               />
             ) : null}
             {finished && !data.teaser ? (
               <ScanFailed
+                again={scanAgainAt(segment, data.target_host)}
                 blocked={false}
                 checks={data.checks}
-                onRetry={() => setReadings((count) => count + 1)}
               />
             ) : null}
             {requestError ? (
@@ -411,14 +400,14 @@ function ProgressState({
   );
 }
 
-function AccessError({ invalid }: Readonly<{ invalid: boolean }>) {
+function AccessError({ form, invalid }: Readonly<{ form: string; invalid: boolean }>) {
   return (
     <div className={`${layout.message} ${styles.state}`}>
       <h1>
         {invalid ? "This scan link is no longer valid" : "Open the original private scan link"}
       </h1>
       <p>Scan progress is private.</p>
-      <SiteLink className="button button-primary" to="/">
+      <SiteLink className="button button-primary" to={form}>
         Start a new scan
       </SiteLink>
     </div>

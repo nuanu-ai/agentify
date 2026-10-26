@@ -6,7 +6,7 @@
  */
 
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserObservations } from "./browser-observations";
 
@@ -41,6 +41,10 @@ function apiAnswers(...answers: (() => Response)[]) {
 }
 
 const timePasses = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+
+// The panel loads the contract that reads an observation once it has one; it
+// is loaded here first, so the fake clock is not racing a module load.
+beforeAll(() => import("@agentify/scanner-contracts"));
 
 beforeEach(() => {
   asks = 0;

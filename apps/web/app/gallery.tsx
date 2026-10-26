@@ -999,7 +999,7 @@ const SCANNING: GalleryState[] = [
       screen: "Scan",
       when: "A scan has finished while its browser observation cannot be read.",
       cause:
-        "The site answered the page's ask for the observation with an error; the eighteen checks stand without it.",
+        "The site answered the page's ask for the observation with an error; the page asks again, waiting longer each time, and the eighteen checks stand without it.",
     },
     {
       status: ended("teaser"),
@@ -1091,7 +1091,13 @@ const SCANNING: GalleryState[] = [
       when: "Somebody opens a scan's private link after it stopped working.",
       cause: "The API refuses the token the link carried.",
     },
-    { status: { status: 401 }, shows: "This scan link is no longer valid" },
+    {
+      status: {
+        status: 401,
+        body: refusal("unauthorized", "A private scan token is required.", false),
+      },
+      shows: "This scan link is no longer valid",
+    },
   ),
   scan(
     {

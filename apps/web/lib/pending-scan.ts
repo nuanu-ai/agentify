@@ -80,12 +80,15 @@ export function clearPendingScan(storage: ScanStorage) {
   storage.removeItem(PENDING_SCAN_STORAGE_KEY);
 }
 
-/** Where each segment's scan form is. */
 const FORM_PATHS: Readonly<Record<Segment, string>> = {
   owner: "/",
   store: "/store",
   local: "/local",
 };
+
+/** Where a segment's scan form is; the owner's form for a segment the site does not have. */
+export const formPathOf = (segment: unknown): string =>
+  isSegment(segment) ? FORM_PATHS[segment] : FORM_PATHS.owner;
 
 /**
  * Where to send an owner who asks to scan an address again: the form the scan
@@ -93,9 +96,11 @@ const FORM_PATHS: Readonly<Record<Segment, string>> = {
  * page's address, so it reaches neither a log nor the attribution the form
  * records. The form starts nothing until it is pressed.
  */
-export function scanAgainAt(segment: Segment, address: string) {
+export function scanAgainAt(segment: Segment, address: string): ScanAgain {
   return { path: FORM_PATHS[segment], state: { address } };
 }
+
+export type ScanAgain = Readonly<{ path: string; state: Readonly<{ address: string }> }>;
 
 /** The address a form was opened to scan again, or the empty one. */
 export function addressToScanAgain(state: unknown): string {

@@ -1,12 +1,11 @@
 /**
  * A question a page asks the site again and again, such as where a scan
- * stands, and what one answer says about asking it once more. A refusal in the
- * shape the site's own routes answer in decides by its `retryable`, and its
- * wait, where it names one, is the least the page waits. A refusal in no shape
- * the page knows decides by its status: a client error other than a timeout or
- * a rate limit is the same answer the next time, so asking ends. Everything
- * else, an answer that never arrived, a server's or a proxy's error, a success
- * the page cannot read, is worth asking again later.
+ * stands, and what one answer says about asking it once more. Only a refusal
+ * in the shape the site's own routes answer in can end the asking, by its
+ * `retryable`; where it names a wait, that is the least the page waits.
+ * Anything else, an answer that never arrived, a refusal in no shape of the
+ * site's (something in front of the site answered), a success the page cannot
+ * read, says nothing about the scan, so the page asks again later.
  */
 
 import { refusalIn } from "./api-answers";
@@ -16,15 +15,25 @@ export type Asked<Answer> =
   | Readonly<{ kind: "ended" }>
   | Readonly<{ kind: "later"; waitSeconds: number | null; words: string | null }>;
 
-const WORTH_REPEATING = new Set([408, 425, 429]);
-
 const later = { kind: "later", waitSeconds: null, words: null } as const;
 
-/** Asks once and reads a success with `read`, which returns null for an answer the page cannot use. */
+/**
+ * Seconds to wait after `failures` answers in a row asked the page to come
+ * back later: doubling from two to half a minute, and never less than the
+ * wait the answer named.
+ */
+export const waitAfter = (failures: number, named: number | null = null) =>
+  Math.max(named ?? 0, Math.min(2 * 2 ** (failures - 1), 30));
+
+/**
+ * Asks once and reads a success with `read`, which is handed the body (null
+ * where there is none or it is not JSON) and the status, and returns null for
+ * an answer the page cannot use.
+ */
 export async function ask<Answer>(
   url: string,
   init: RequestInit,
-  read: (answer: unknown) => Answer | null,
+  read: (answer: unknown, status: number) => Answer | null,
 ): Promise<Asked<Answer>> {
   let response: Response;
   try {
@@ -34,15 +43,12 @@ export async function ask<Answer>(
   }
   const body: unknown = await response.json().catch(() => null);
   if (response.ok) {
-    const answer = read(body);
+    const answer = read(body, response.status);
     return answer === null ? later : { kind: "answered", answer };
   }
   const refusal = refusalIn(body);
-  if (refusal !== null) {
-    return refusal.retryable
-      ? { kind: "later", waitSeconds: refusal.retry_after_seconds ?? null, words: refusal.message }
-      : { kind: "ended" };
-  }
-  const clientError = response.status >= 400 && response.status < 500;
-  return clientError && !WORTH_REPEATING.has(response.status) ? { kind: "ended" } : later;
+  if (refusal === null) return later;
+  return refusal.retryable
+    ? { kind: "later", waitSeconds: refusal.retry_after_seconds ?? null, words: refusal.message }
+    : { kind: "ended" };
 }

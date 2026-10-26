@@ -1,5 +1,6 @@
 import type { ScanStatusResponse, ScanStopReason } from "@agentify/scanner-contracts";
 
+import type { ScanAgain } from "../lib/pending-scan";
 import { robotsHeadline } from "../lib/robots-notice";
 import layout from "./result-layout.module.css";
 import { RobotsNotice } from "./robots-notice";
@@ -27,16 +28,19 @@ const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words:
   },
 };
 
-/** Why a scan ended without a result, and the way to try again or start anew. */
+/**
+ * Why a scan ended without a result, and the way back to the form it came
+ * from with its address filled in, to try again or to start anew.
+ */
 export function ScanFailed({
+  again,
   blocked,
   checks,
-  onRetry,
   stopReason,
 }: Readonly<{
+  again: ScanAgain;
   blocked: boolean;
   checks: ScanStatusResponse["checks"];
-  onRetry: () => void;
   stopReason?: ScanStopReason;
 }>) {
   const headline = robotsHeadline(checks);
@@ -46,7 +50,7 @@ export function ScanFailed({
       <div className={`${layout.message} ${styles.state}`}>
         <h1 data-stop-reason={stopReason}>{stop.headline}</h1>
         <p>{stop.words}</p>
-        <SiteLink className="button button-primary" to="/">
+        <SiteLink className="button button-primary" state={again.state} to={again.path}>
           Start a new scan
         </SiteLink>
       </div>
@@ -78,9 +82,9 @@ export function ScanFailed({
           access block, or scanner failure.
         </p>
       )}
-      <button className="button button-primary" onClick={onRetry} type="button">
+      <SiteLink className="button button-primary" state={again.state} to={again.path}>
         Try again
-      </button>
+      </SiteLink>
     </div>
   );
 }
