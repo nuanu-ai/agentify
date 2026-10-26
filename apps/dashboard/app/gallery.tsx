@@ -24,6 +24,7 @@ import {
 } from "@agentify/gateway";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import {
+  CardSchema,
   MerchantCardListSchema,
   OrderListSchema,
   PayoutWalletSchema,
@@ -41,13 +42,7 @@ import {
 import config from "../react-router.config.js";
 import { type AccountNote, type AccountRead, accountOf } from "../src/account-banner.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
-import {
-  ANSWER_WITHIN_MS,
-  type Answer,
-  lateAnswer,
-  type PayoutSplits,
-  switchRefused,
-} from "../src/gateway.js";
+import { ANSWER_WITHIN_MS, type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
 import { inViewersZone } from "../src/moments.js";
@@ -86,8 +81,11 @@ import {
 } from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
-import type { WooRecoveryView } from "../src/woo-recovery-pages.js";
+import { gapOf } from "../src/woo-money.js";
+import { findingsOf, rateFarSays } from "../src/woo-pages.js";
+import { RECOVERY_UNKNOWN, type WooRecoveryView } from "../src/woo-recovery-pages.js";
 import {
+  type Said,
   type ShopAnswer,
   type ShopRead,
   type ShopState,
@@ -606,6 +604,35 @@ const IMPORTED = cardsFromTheShop(
       downloadable: false,
       manage_stock: true,
     }),
+    storeProduct(15, {
+      name: "Batik Sarong, Hand-Stamped Cap Technique, Indigo on Cream Rayon (115 × 180 cm)",
+      description: "<p>Stamped by hand with copper blocks in a family workshop near Ubud.</p>",
+      virtual: false,
+      downloadable: false,
+      status: "draft",
+    }),
+    storeProduct(16, {
+      name: "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+      description:
+        "<p>Forty recipes from our morning class, from sambal matah to babi guling, with a market shopping list.</p>",
+      downloads: [{ id: "dl_book", name: "Recipe book.pdf", file: `${SHOP}/recipe-book.pdf` }],
+      prices: { price: "1500", currency_code: "USD", currency_minor_unit: 2 },
+    }),
+    storeProduct(17, {
+      name: "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+      description:
+        "<p>Endek is the weft ikat of Bali: each bundle of thread is tied and dyed by hand before" +
+        " it goes on the loom, so the pattern appears as the cloth is woven. This runner comes" +
+        " from a cooperative of weavers in Klungkung, who still use the ceremonial red and gold" +
+        " worn for temple festivals. It is woven from mercerised cotton, finished with a hand-knotted" +
+        " fringe at both ends, and washed once to set the colours. Every piece differs slightly in" +
+        " where the pattern meets, which is how you can tell it was not printed. Wash cold by hand" +
+        " with mild soap, dry in the shade, and iron on the reverse while still damp. It fits a" +
+        " table for six to eight and makes a good wall hanging for a long hallway.</p>",
+      virtual: false,
+      downloadable: false,
+      prices: { price: "6400", currency_code: "USD", currency_minor_unit: 2 },
+    }),
   ],
   SHOP,
 );
@@ -614,6 +641,27 @@ const imported = (title: string) => {
   const found = IMPORTED.cards.find((one) => one.title === title);
   if (found === undefined) throw new Error(`the example shop's ${title} did not become a card`);
   return found;
+};
+
+/**
+ * A product the publish door refuses, in the door's own findings: the card is
+ * held to the contract's card rules, the source of the gateway's sentences.
+ */
+const refusedByTheDoor = (title: string) => {
+  const one = imported(title);
+  const parsed = CardSchema.safeParse(one.card);
+  if (parsed.success) throw new Error(`the example shop's ${title} would have been published`);
+  return {
+    id: one.id,
+    title,
+    ...findingsOf(
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.map(String),
+        code: issue.code,
+        message: issue.message,
+      })),
+    ),
+  };
 };
 
 /** A gateway answer the example needs as a refusal, its words included. */
@@ -633,8 +681,16 @@ const LATE_PROBLEM = (() => {
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
 const ORDERS_WAITING = [idOf("ord", "waiting one"), idOf("ord", "waiting two")];
-const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING));
-const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING));
+const TO_THE_SHOP: Said = {
+  held: { to: "woocommerce", orders: ORDERS_WAITING, quick: false, parcels: false },
+};
+const TO_THE_CODE: Said = {
+  held: { to: "api", orders: ORDERS_WAITING, quick: false, parcels: true },
+};
+/** Purchases the merchant's code priced and nobody has paid yet, which lapse in seconds. */
+const PRICES_RUNNING: Said = {
+  held: { to: "woocommerce", orders: ORDERS_WAITING, quick: true, parcels: false },
+};
 
 // --- the states ----------------------------------------------------------------
 
@@ -2324,6 +2380,10 @@ const RECEIPTS: GalleryState[] = [
   ),
 ];
 
+/** What the gateway says of a merchant who sells through their shop, or never touched one. */
+const THROUGH_THE_SHOP = { through: "woocommerce", offSale: [] } as const;
+const ON_THE_SHOP_NEVER = { through: "api", offSale: [] } as const;
+
 const integrations = (told: Told, view: ReturnType<typeof integrationsView>, mode: SurfaceMode) =>
   at(told, { path: "/integrations", mode, loaded: { "routes/integrations": view } });
 
@@ -2336,7 +2396,7 @@ const INTEGRATIONS: GalleryState[] = [
       cause:
         "The live site does not offer the WooCommerce connector, so the SDK is the only way in.",
     },
-    integrationsView(undefined),
+    integrationsView(),
     "live",
   ),
   integrations(
@@ -2344,9 +2404,10 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations",
       screen: "Integrations",
       when: "A merchant on the test site opens Integrations without having connected a shop.",
-      cause: "No WooCommerce connection and no Connect started for the account.",
+      cause:
+        "No WooCommerce connection, no Connect started and no product imported, so neither way is marked as chosen.",
     },
-    integrationsView({ kind: "none" }),
+    integrationsView({ kind: "none" }, ON_THE_SHOP_NEVER),
     "test",
   ),
   integrations(
@@ -2354,9 +2415,19 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations-shop-connected",
       screen: "Integrations",
       when: "A merchant whose WooCommerce shop is connected opens Integrations.",
-      cause: "The shop's keys arrived and grant read and write.",
+      cause: "The shop's keys arrived and grant read and write, and the merchant sells through it.",
     },
-    integrationsView(CONNECTED),
+    integrationsView(CONNECTED, THROUGH_THE_SHOP),
+    "test",
+  ),
+  integrations(
+    {
+      id: "dashboard-integrations-shop-on-code",
+      screen: "Integrations",
+      when: "A merchant whose shop is connected still sells through their own code.",
+      cause: "The shop is connected, but the merchant's integration is their code.",
+    },
+    integrationsView(CONNECTED, { through: "api", offSale: [idOf("itm", "gift card")] }),
     "test",
   ),
   integrations(
@@ -2366,10 +2437,13 @@ const INTEGRATIONS: GalleryState[] = [
       when: "A merchant approved only read access in their shop.",
       cause: "The shop's keys arrived granting read, which cannot create an order.",
     },
-    integrationsView({
-      kind: "connected",
-      shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date("2026-10-12T09:12:00Z") },
-    }),
+    integrationsView(
+      {
+        kind: "connected",
+        shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date("2026-10-12T09:12:00Z") },
+      },
+      THROUGH_THE_SHOP,
+    ),
     "test",
   ),
   integrations(
@@ -2379,7 +2453,7 @@ const INTEGRATIONS: GalleryState[] = [
       when: "A merchant comes to Integrations minutes after pressing Connect.",
       cause: "A Connect started less than fifteen minutes ago and no keys have arrived yet.",
     },
-    integrationsView(WAITING_FOR_KEYS),
+    integrationsView(WAITING_FOR_KEYS, THROUGH_THE_SHOP),
     "test",
   ),
   integrations(
@@ -2389,7 +2463,7 @@ const INTEGRATIONS: GalleryState[] = [
       when: "A merchant comes back to Integrations long after a Connect they never finished.",
       cause: "Fifteen minutes passed after a Connect with no keys arriving from the shop.",
     },
-    integrationsView(NO_KEYS),
+    integrationsView(NO_KEYS, THROUGH_THE_SHOP),
     "test",
   ),
   integrations(
@@ -2400,7 +2474,7 @@ const INTEGRATIONS: GalleryState[] = [
       cause:
         "The account's WooCommerce connection could not be read, which the page says rather than guessing.",
     },
-    integrationsView({ kind: "unread" }),
+    integrationsView({ kind: "unread" }, { through: "api", offSale: [] }),
     "test",
   ),
 ];
@@ -2448,9 +2522,10 @@ const WOOCOMMERCE: GalleryState[] = [
       id: "dashboard-woocommerce",
       screen: "WooCommerce",
       when: "A merchant who sells through their own code opens the WooCommerce screen.",
-      cause: "No shop is connected and no Connect is under way.",
+      cause:
+        "No shop is connected and no Connect is under way; the merchant's code published 12 products.",
     },
-    shopOn(shopRead({ kind: "none" }, { through: "api" })),
+    shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
@@ -2459,7 +2534,7 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant comes back to the screen a few minutes after pressing Connect.",
       cause: "A Connect started less than fifteen minutes ago and no keys have arrived yet.",
     },
-    shopOn(shopRead(WAITING_FOR_KEYS)),
+    shopOn(shopRead(WAITING_FOR_KEYS, { codeProducts: 12 })),
   ),
   shop(
     {
@@ -2468,7 +2543,7 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant comes back long after a Connect they did not finish.",
       cause: "Fifteen minutes passed with no keys from the shop; why is not known.",
     },
-    shopOn(shopRead(NO_KEYS)),
+    shopOn(shopRead(NO_KEYS, { codeProducts: 0 })),
   ),
   shop(
     {
@@ -2476,9 +2551,9 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant pressed Connect, never approved in the shop, and comes back.",
       cause:
-        "The merchant sells through the shop and none is connected, so nothing sells until they switch back.",
+        "The merchant sells through the shop and none is connected, so nothing sells until they connect one or switch back.",
     },
-    shopOn(shopRead({ kind: "none" })),
+    shopOn(shopRead({ kind: "none" }, { codeProducts: 12 })),
   ),
   shop(
     {
@@ -2487,7 +2562,7 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant approves access in their shop and is sent back here.",
       cause: "The shop's server posted its keys, and the browser came back from the shop.",
     },
-    shopOn(shopRead(CONNECTED), { cameBack: true }),
+    shopOn(shopRead(CONNECTED, { codeProducts: 0, unset: [] }), { cameBack: true }),
     { path: "/woocommerce?from=shop" },
   ),
   shop(
@@ -2498,7 +2573,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause:
         "The shop is connected but the merchant's integration is their code, so the shop's cards are off sale.",
     },
-    shopOn(shopRead(CONNECTED, { through: "api" })),
+    shopOn(shopRead(CONNECTED, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
@@ -2506,9 +2581,9 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant with a connected shop has not set a payout wallet.",
       cause:
-        "The gateway refuses every card until the wallet is set, so Import would publish nothing.",
+        "The gateway refuses every card until the wallet is set, so Import is held and says where to set it.",
     },
-    shopOn(shopRead(CONNECTED)),
+    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
     { noWallet: true },
   ),
   shop(
@@ -2588,11 +2663,14 @@ const WOOCOMMERCE: GalleryState[] = [
       {
         rate: {
           typed: "1800",
-          again:
-            "1800 IDR per US dollar is 90.0% below Coinbase's 18035.292596, read at 2026-10-21" +
-            " 14:52:48 UTC. So Rayon Sarong, priced 240000 IDR, would sell for 133.34 USD" +
-            " instead of 13.31 USD. Type the rate again to save it; if you wrote a dot between" +
-            " thousands, leave it out.",
+          again: rateFarSays({
+            rate: "1800",
+            typed: "1800",
+            currency: "IDR",
+            gap: gapOf("1800", COINBASE_RUPIAH.rate).shown,
+            reference: COINBASE_RUPIAH.rate,
+            example: { kind: "priced", name: "Rayon Sarong", price: "240000" },
+          }),
         },
       },
     ),
@@ -2606,8 +2684,8 @@ const WOOCOMMERCE: GalleryState[] = [
         cause: "The typed address is refused before the browser is sent anywhere.",
       },
       "connect",
-      shopOn(shopRead({ kind: "none" }, { through: "api" }), {
-        problem: whatIsWrongWithTheShopUrl(typed) ?? "",
+      shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 0 }), {
+        addressProblem: whatIsWrongWithTheShopUrl(typed) ?? "",
         typed,
       }),
     ))("shop.example.com/wp-admin"),
@@ -2615,12 +2693,13 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-connect-orders-waiting",
       screen: "WooCommerce",
-      when: "A merchant presses Connect while orders their code took are still open.",
-      cause: "The gateway refuses the switch to the shop until those orders end.",
+      when: "A merchant presses Connect while buyers are still answering prices their code gave.",
+      cause:
+        "The gateway refuses the switch until those purchases are paid or lapse, which takes seconds, so the screen says to try again in a minute.",
     },
     "connect",
-    shopOn(shopRead({ kind: "none" }, { through: "api" }), {
-      problem: TO_THE_SHOP,
+    shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 12 }), {
+      problem: PRICES_RUNNING,
       typed: SHOP,
     }),
   ),
@@ -2646,6 +2725,16 @@ const WOOCOMMERCE: GalleryState[] = [
           title: "Coffee beans, one kilogram",
           problems: [SITE_IN_SETTINGS],
         },
+        {
+          id: imported(
+            "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+          ).id,
+          title: "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+          published: idOf("itm", "recipe book"),
+        },
+        refusedByTheDoor(
+          "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+        ),
       ],
       IMPORTED.skipped,
     ),
@@ -2664,7 +2753,7 @@ const WOOCOMMERCE: GalleryState[] = [
         {
           id: imported("Coffee beans, one kilogram").id,
           title: "Coffee beans, one kilogram",
-          failed: LATE.why,
+          failed: true,
         },
         {
           id: imported("Coffee & Brunch Gift Card").id,
@@ -2681,10 +2770,10 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant presses Import before setting a payout wallet.",
       cause:
-        "The gateway would refuse every card, so the shop was not read and nothing was imported.",
+        "The wallet was unset when the press came, so the shop was not read; the page holds Import and says where to set it.",
     },
     "import",
-    shopOn(shopRead(CONNECTED), { refused: ["no_payout_wallet"] }),
+    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
     { noWallet: true },
   ),
   shopPress(
@@ -2695,7 +2784,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The gateway refuses the switch until those orders end.",
     },
     "switch",
-    shopOn(shopRead(CONNECTED, { through: "api" }), {
+    shopOn(shopRead(CONNECTED, { through: "api", codeProducts: 12 }), {
       switching: TO_THE_SHOP,
     }),
   ),
@@ -2707,7 +2796,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The gateway refuses the switch back to the merchant's code until those orders end.",
     },
     "disconnect",
-    shopOn(shopRead(CONNECTED), {
+    shopOn(shopRead(CONNECTED, { codeProducts: 12 }), {
       leaving: TO_THE_CODE,
     }),
   ),
@@ -2720,13 +2809,15 @@ const WOOCOMMERCE: GalleryState[] = [
         "The gateway refuses the switch back; the screen names the first five orders and counts the rest.",
     },
     "disconnect",
-    shopOn(shopRead(CONNECTED), {
-      leaving: refusalIn(
-        switchRefused(
-          "api",
-          Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
-        ),
-      ),
+    shopOn(shopRead(CONNECTED, { codeProducts: 12 }), {
+      leaving: {
+        held: {
+          to: "api",
+          orders: Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
+          quick: false,
+          parcels: true,
+        },
+      },
     }),
   ),
   at(
@@ -2745,7 +2836,6 @@ const RECOVERY_SALE = {
   product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
   amount: "25.00 USD",
-  test: true,
 };
 
 const RECOVERY_FRAME = {
@@ -2757,11 +2847,20 @@ const RECOVERY_FRAME = {
 /** A recovery page as the server draws it: drawn on opening, or answering a press. */
 const recovery = (
   told: Told,
-  view: Omit<WooRecoveryView, keyof typeof RECOVERY_SALE | "typedRefusal"> &
-    Partial<Pick<WooRecoveryView, "typedRefusal">>,
+  view: Omit<
+    WooRecoveryView,
+    keyof typeof RECOVERY_SALE | "typedRefusal" | "unknown" | "unavailable"
+  > &
+    Partial<Pick<WooRecoveryView, "typedRefusal" | "unknown" | "unavailable">>,
   answering = false,
 ): GalleryState => {
-  const drawn = { ...RECOVERY_SALE, typedRefusal: null, ...view } satisfies WooRecoveryView;
+  const drawn = {
+    ...RECOVERY_SALE,
+    typedRefusal: null,
+    unknown: false,
+    unavailable: null,
+    ...view,
+  } satisfies WooRecoveryView;
   return at(told, {
     ...RECOVERY_FRAME,
     ...(answering
@@ -2818,14 +2917,9 @@ const WOO_RECOVERY: GalleryState[] = [
       screen: "Recover WooCommerce delivery",
       when: "A press of Link and deliver failed inside Agentify partway.",
       cause:
-        "Whether a shop order or a delivery was recorded is not known, so the page says so and asks for a reload before another press.",
+        "Whether a shop order or a delivery was recorded is not known, so the page says so and offers a reload instead of another press.",
     },
-    {
-      mode: "link",
-      wooOrderId: "13",
-      message:
-        "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
-    },
+    { mode: "link", wooOrderId: "13", message: RECOVERY_UNKNOWN, unknown: true },
     true,
   ),
   recovery(
@@ -2834,13 +2928,16 @@ const WOO_RECOVERY: GalleryState[] = [
       screen: "Recover WooCommerce delivery",
       when: "A merchant opens recovery for a download whose shop was never asked to create the order.",
       cause:
-        "This page cannot create a shop order, so it offers no press and says what the merchant can do instead.",
+        "This page cannot create a shop order, so it offers no press and leads to closing fulfillment instead.",
     },
     {
       mode: "unavailable",
       wooOrderId: "",
-      message:
-        "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders.",
+      message: null,
+      unavailable: {
+        why: "Your shop never received this order, and this page can't create it.",
+        instead: "close",
+      },
     },
   ),
   recovery(

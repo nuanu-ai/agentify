@@ -13,13 +13,13 @@ import type { SetupResult } from "@agentify/gateway/analytics";
 import {
   type CardInput,
   MERCHANT_FINDINGS,
+  type Problem,
   type PublishResult,
 } from "@nuanu-ai/agentify-contracts";
 import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { type Postman, postmanFor } from "./mail.js";
-import { moment } from "./moments.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
 import { unsetIn } from "./viewer.js";
@@ -58,9 +58,14 @@ import {
 } from "./woo-shop.js";
 import type { ShopCurrency, ShopTotal, WooConnection, WooShops } from "./woo-shops.js";
 import {
+  groupedRate,
+  type Held,
   type ImportOutcome,
+  referenceShown,
+  type Said,
   type ShopAnswer,
   type ShopState,
+  shopNameOf,
   type WooImportView,
   type WooShopView,
   wooImportView,
@@ -199,7 +204,7 @@ async function publishedOrNot(
     return {
       ok: false,
       status: 500,
-      why: "something failed inside Agentify while this product was being published, so whether it was published is not known; import again later, which does not double cards",
+      why: "something failed inside Agentify while this product was being published",
     };
   }
 }
@@ -248,6 +253,73 @@ const currencyRead = (inspections: readonly ProductInspection[]): ShopCurrency |
     if (decimals !== undefined) return { code: one.product.price.currency, decimals };
   }
   return null;
+};
+
+/**
+ * The rate a merchant who wrote thousands apart, or a decimal comma, most
+ * likely meant, named in the refusal for them to type; nothing is saved from
+ * it. A comma before three digits is read as thousands, the way rates in the
+ * thousands are written, and a rate guessed wrong is caught beside Coinbase's.
+ */
+const rateMeant = (typed: string): string | null => {
+  if (/^\d{1,3}(?:[, ]\d{3})+(?:\.\d+)?$/.test(typed)) return typed.replace(/[, ]/g, "");
+  if (/^\d+,\d+$/.test(typed)) return typed.replace(",", ".");
+  return null;
+};
+
+/** WooCommerce's names for the fields a refused product's findings point at. */
+const FIELD_NAMES: Readonly<Record<string, string>> = Object.freeze({
+  title: "Product name",
+  description: "Description",
+});
+
+/**
+ * A refused card's findings as the import result lists them: the gateway's
+ * words, each under the name the shop gives the field, telling the merchant
+ * what to change in their shop. The shop's site is the exception, set in
+ * Settings by the person here rather than through the API.
+ */
+export const findingsOf = (
+  problems: readonly Problem[],
+): { readonly problems: readonly string[]; readonly tooLong?: true } => ({
+  problems: problems.map((problem) =>
+    problem.code === MERCHANT_FINDINGS.NO_SELLER_SITE
+      ? SITE_IN_SETTINGS
+      : problem.path.length === 0
+        ? problem.message
+        : `${FIELD_NAMES[problem.path.join(".")] ?? problem.path.join(".")}: ${problem.message}`,
+  ),
+  ...(problems.some((problem) => problem.code === "too_big") ? { tooLong: true } : {}),
+});
+
+/**
+ * Why a rate far from Coinbase's is asked for again: how far, and what one of
+ * the shop's products would then sell for. A dot is the likeliest slip, a dot
+ * written between thousands, so it is named where one was typed.
+ */
+export const rateFarSays = (far: {
+  readonly rate: string;
+  readonly typed: string;
+  readonly currency: string;
+  readonly gap: string;
+  readonly reference: string;
+  readonly example: PricedExample;
+}): string => {
+  const { rate, currency, example } = far;
+  const costs =
+    example.kind === "priced"
+      ? `${example.name} (${groupedRate(example.price)} ${currency}) would sell for` +
+        ` ${dollarsAt(example.price, rate) ?? "?"} USD instead of` +
+        ` ${dollarsAt(example.price, far.reference) ?? "?"} USD.`
+      : example.kind === "none"
+        ? `None of the first ${EXAMPLE_PAGE} products in your shop's public catalogue has a` +
+          ` price in ${currency}, so no example is shown.`
+        : "Your shop's public catalogue didn't answer, so no example is shown.";
+  return (
+    `${groupedRate(rate)} ${currency} is ${far.gap} Coinbase's ${referenceShown(far.reference)}.` +
+    ` ${costs} If that's right, type the rate again.` +
+    (far.typed.includes(".") ? " If the dot separates thousands, leave it out." : "")
+  );
 };
 
 export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages {
@@ -323,7 +395,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
    * after any of the four presses is refused), and a forgotten answer in one of
    * them would look like a merchant who has set nothing. The integration
    * failing to read fails the page: drawn without it, the page would offer or
-   * hide the switch on a guess.
+   * hide the switch on a guess. The settings failing to read hold nothing, and
+   * the code's products failing to count are said without a number.
    */
   const drawTheShop = async (
     person: Person,
@@ -331,19 +404,65 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     status = 200,
   ): Promise<Outcome<WooShopView>> => {
     const gateway = gatewayAs(person);
-    const [state, integration, rate] = await Promise.all([
+    const [state, integration, rate, unset] = await Promise.all([
       shopStateOf(shops, person.id),
       gateway.integration(),
       rateOf(person),
+      unsetOf(gateway),
     ]);
     if (!integration.ok) return problemOf(integration);
+    const { through, offSale } = integration.document;
     return {
       kind: "view",
       status,
       view: wooShopView(
-        { state, through: integration.document.through, ...(rate === null ? {} : { rate }) },
+        {
+          state,
+          through,
+          // Off sale are the cards of the integration not in use: the code's
+          // while the shop is, the shop's while the code is.
+          codeProducts:
+            through === "woocommerce" ? offSale.length : await codeProductsBeside(gateway, offSale),
+          unset: unset.ok ? unset.document : null,
+          ...(rate === null ? {} : { rate }),
+        },
         answer,
       ),
+    };
+  };
+
+  const codeProductsBeside = async (
+    gateway: GatewayClient,
+    shops: readonly string[],
+  ): Promise<number | null> => {
+    const cards = await gateway.cards();
+    return cards.ok ? cards.document.cards.length - shops.length : null;
+  };
+
+  /**
+   * A refused move between integrations, worded from the orders that hold it:
+   * read once more, so a purchase about to lapse is told apart from goods
+   * owed. An order missing from the open list has ended since the refusal, or
+   * has no price yet, which it gets within seconds or never.
+   */
+  const refusedMove = async (
+    gateway: GatewayClient,
+    to: Held["to"],
+    refused: Answer<never> & { ok: false },
+  ): Promise<Said> => {
+    if (refused.code !== "orders_waiting" || refused.orders === undefined) return refused;
+    const open = await gateway.orders(true);
+    if (!open.ok) return { held: { to, orders: refused.orders, quick: false, parcels: false } };
+    const still = open.document.orders.filter((order) => refused.orders?.includes(order.id));
+    return {
+      held: {
+        to,
+        orders: refused.orders,
+        quick: still.every(
+          (order) => order.status === "in_progress" && order.payment_status === "not_paid",
+        ),
+        parcels: still.some((order) => order.ship_to !== undefined),
+      },
     };
   };
 
@@ -395,7 +514,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         person,
         {
           switching:
-            "Nothing was imported: you sell through your own code, so nothing imported would sell. Sell through this shop first.",
+            "Nothing was imported: you sell through your own code. Switch to this shop first.",
           ...saved,
         },
         409,
@@ -419,7 +538,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
           ` ${connection.shopUrl} was not read and nothing was published`,
       );
-      return await drawTheShop(person, { refused: unset.document, ...saved }, 409);
+      // The screen holds Import for what is unset; a press that got here was
+      // drawn before it was.
+      return await drawTheShop(person, saved, 409);
     }
 
     const origin = originOf(connection);
@@ -432,17 +553,16 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         person,
         rateSaved === null
           ? {
-              problem:
-                "An import of your shop is already running, and the cards it publishes appear" +
-                " on Cards. Import again once it has ended to see a result here.",
+              importing:
+                "An import of your shop is already running; its products appear on Products." +
+                " Import again once it ends to see a result here.",
             }
           : {
               rate: {
                 saved: rateSaved,
-                problem:
-                  "An import of your shop is already running, and it may have read the rate" +
-                  " before you saved this one. Import again once it has ended to publish your" +
-                  " products at this rate.",
+                refused:
+                  "An import of your shop is already running and may have read the old rate." +
+                  " Import again once it ends to publish at this rate.",
               },
             },
         409,
@@ -471,7 +591,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     const read = await catalogue(connection.shopUrl, PRODUCTS_AT_MOST);
     if (!read.ok) {
       await resulted({ outcome: "blocked", reason_code: "catalogue_unavailable" });
-      return await drawTheShop(person, { problem: read.why, ...saved }, 502);
+      return await drawTheShop(person, { importing: read.why, ...saved }, 502);
     }
 
     const checked = await inspectProducts(
@@ -504,9 +624,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           {
             rate: {
               ...saved.rate,
-              problem:
-                `Nothing was imported: your shop sells in ${sells.code}, and no rate is set for` +
-                " it yet. Set one below; saving it imports your products at it.",
+              refused: `Nothing was imported: your shop sells in ${sells.code}. Set a rate below; saving it imports your products.`,
             },
           },
           409,
@@ -572,7 +690,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       if (!published.ok) {
         // The gateway did not answer, or answered with something else: not a
         // refused card, and said as what it is.
-        outcomes.push({ id: one.id, title: one.title, failed: published.why });
+        outcomes.push({ id: one.id, title: one.title, failed: true });
         outcomes.push(
           ...cards
             .slice(index + 1)
@@ -587,19 +705,10 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       firstRefusal ??= publishRefusalReason(
         published.document.error.problems.map((problem) => problem.code),
       );
-      // The gateway's findings word for word, telling the merchant which
-      // field to change in their shop; the shop's site is the exception, set
-      // in Settings by the person here rather than through the API.
       outcomes.push({
         id: one.id,
         title: one.title,
-        problems: published.document.error.problems.map((problem) =>
-          problem.code === MERCHANT_FINDINGS.NO_SELLER_SITE
-            ? SITE_IN_SETTINGS
-            : problem.path.length === 0
-              ? problem.message
-              : `${problem.path.join(".")}: ${problem.message}`,
-        ),
+        ...findingsOf(published.document.error.problems),
       });
     }
 
@@ -667,7 +776,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
 
       const wrong = whatIsWrongWithTheShopUrl(typed);
       if (wrong !== null) {
-        return await drawTheShop(person, { problem: wrong, typed }, 400);
+        return await drawTheShop(person, { addressProblem: wrong, typed }, 400);
       }
       const shopUrl = shopUrlAs(typed);
 
@@ -693,8 +802,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         return await drawTheShop(
           person,
           {
-            problem:
-              "Disconnect the connected shop before connecting another. Orders still waiting on the shop must finish first.",
+            problem: `Disconnect ${shopNameOf(connected.shopUrl)} before connecting another shop.`,
             typed,
           },
           409,
@@ -755,7 +863,11 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // through a shop with none connected, and the page offers the way back.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
-        return await drawTheShop(person, { problem: switched, typed }, 409);
+        return await drawTheShop(
+          person,
+          { problem: await refusedMove(gatewayAs(person), "woocommerce", switched), typed },
+          409,
+        );
       }
 
       // Written only now: a Connect nobody could complete is a row nobody comes
@@ -787,10 +899,10 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         return await drawTheShop(
           person,
           {
-            problem:
+            importing:
               currency === null
-                ? "Nothing was saved: Agentify has not read your shop's currency yet. Import your products once, which reads it."
-                : "Nothing was saved: your shop sells in US dollars, which need no rate.",
+                ? "No rate was saved: Agentify hasn't read your shop's currency yet. Import your products once to read it."
+                : "No rate was saved: your shop sells in US dollars, which need no rate.",
           },
           409,
         );
@@ -803,8 +915,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           person,
           {
             rate: {
-              problem:
-                `Nothing was saved: your shop now sells in ${currency.code}, not` +
+              refused:
+                `No rate was saved: your shop now sells in ${currency.code}, not` +
                 ` ${typeof asked === "string" ? asked : "the currency this page was drawn for"}.` +
                 ` Set a rate for ${currency.code} below.`,
             },
@@ -814,15 +926,16 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       }
       const rate = rateWrittenAs(typed);
       if (rate === null) {
+        const meant = rateMeant(typed);
         return await drawTheShop(
           person,
           {
             rate: {
               typed,
               problem:
-                `Nothing was saved. Write how many ${currency.code} one US dollar buys in digits,` +
-                " with a dot only before a fraction of at most six digits and nothing between" +
-                " thousands: 18000, not 18,000 or 18 000.",
+                meant === null
+                  ? `Write how many ${currency.code} one US dollar buys in digits, like 18000.`
+                  : `Write the rate in digits, with a dot only before decimals: ${meant}`,
             },
           },
           400,
@@ -835,10 +948,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           {
             rate: {
               typed,
-              problem:
-                `Nothing was saved: Coinbase gives no rate for ${currency.code}, and Agentify sells` +
-                " from a shop in another currency than US dollars only where it can show you" +
-                " Coinbase's rate beside yours.",
+              refused:
+                `No rate was saved: Coinbase gives no rate for ${currency.code}, and Agentify sells` +
+                " from a shop in another currency only where it can show Coinbase's rate beside yours.",
             },
           },
           409,
@@ -850,26 +962,19 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       const confirmed = gap?.far === true;
       const again = once(form.getAll("again"));
       if (read.ok && gap?.far === true && rateWrittenAs(String(again ?? "")) !== rate) {
-        const product = await example(connection.shopUrl, currency);
-        const costs =
-          product.kind === "priced"
-            ? `So ${product.name}, priced ${product.price} ${currency.code}, would sell for` +
-              ` ${dollarsAt(product.price, rate) ?? "?"} USD instead of` +
-              ` ${dollarsAt(product.price, read.rate) ?? "?"} USD.`
-            : product.kind === "none"
-              ? "What one of your products would cost is not shown, because none of the first" +
-                ` ${EXAMPLE_PAGE} products in your shop's public catalogue has a price in ${currency.code}.`
-              : "What one of your products would cost could not be shown, because your shop's" +
-                " public catalogue did not answer just now.";
         return await drawTheShop(
           person,
           {
             rate: {
               typed: rate,
-              again:
-                `${rate} ${currency.code} per US dollar is ${gap.shown} Coinbase's ${read.rate},` +
-                ` read at ${moment(read.readAt.toISOString())}. ${costs} Type the rate again to` +
-                " save it; if you wrote a dot between thousands, leave it out.",
+              again: rateFarSays({
+                rate,
+                typed,
+                currency: currency.code,
+                gap: gap.shown,
+                reference: read.rate,
+                example: await example(connection.shopUrl, currency),
+              }),
             },
           },
           409,
@@ -901,9 +1006,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           {
             rate: {
               typed: rate,
-              problem:
-                `Nothing was saved: every new rate is mailed to ${person.email}, and that message` +
-                " could not be sent just now. Try again in a moment.",
+              refused:
+                `No rate was saved: every new rate is mailed to ${person.email}, and that message` +
+                " couldn't be sent just now. Try again in a moment.",
             },
           },
           503,
@@ -924,9 +1029,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return await importFor(
         person,
         read.ok
-          ? `Your rate of ${rate} ${currency.code} per US dollar was saved.`
-          : `Your rate of ${rate} ${currency.code} per US dollar was saved. Coinbase's rate could` +
-              " not be read just now, so this rate was not compared with anything.",
+          ? `Rate saved: ${groupedRate(rate)} ${currency.code} per US dollar.`
+          : `Rate saved: ${groupedRate(rate)} ${currency.code} per US dollar. Coinbase's rate` +
+              " couldn't be read, so it wasn't compared with anything.",
       );
     },
 
@@ -936,7 +1041,11 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // shop is already here.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
-        return await drawTheShop(person, { switching: switched }, 409);
+        return await drawTheShop(
+          person,
+          { switching: await refusedMove(gatewayAs(person), "woocommerce", switched) },
+          409,
+        );
       }
       noted(person, "switched to selling through their connected WooCommerce shop");
       return { kind: "redirect", location: `${base}/woocommerce` };
@@ -949,7 +1058,11 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // off the shop, and only while it is connected.
       const switched = await gatewayAs(person).sellThrough("api");
       if (!switched.ok) {
-        return await drawTheShop(person, { leaving: switched }, 409);
+        return await drawTheShop(
+          person,
+          { leaving: await refusedMove(gatewayAs(person), "api", switched) },
+          409,
+        );
       }
       const shopUrl = await shops.forget(person.id);
       noted(person, "forgot the keys their WooCommerce shop had given");
