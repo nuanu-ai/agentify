@@ -22,7 +22,7 @@ export const NOT_FOUND = 404;
 export const CONFLICT = 409;
 export const UNPROCESSABLE = 422;
 export const TOO_MANY_REQUESTS = 429;
-/** Something of ours failed, and the call is not known to have done anything. */
+/** Something of ours failed; the words say what is known of what the call did. */
 export const FAILED = 500;
 
 export interface Refused {
@@ -54,8 +54,9 @@ export const NO_SUCH_ORDER: Refused = {
 };
 
 /**
- * A defect. The merchant is told nothing about what broke: never assemble this
- * from an exception's text.
+ * A defect in a call known to have decided nothing: a read, or a request that
+ * failed before it reached a route. The caller is told nothing about what
+ * broke: never assemble this from an exception's text.
  */
 export const GATEWAY_FAILED: Refused = {
   status: FAILED,
