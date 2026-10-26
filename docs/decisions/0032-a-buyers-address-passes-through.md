@@ -16,7 +16,7 @@ dumped with the database every ten minutes into snapshots kept for weeks
 (ADR-0029), and carried whole in a failed statement's error, which most paths
 log. An order is kept for good, unless it ended rejected or expired with
 nothing charged or held, which is deleted thirty days after it was last
-written (ADR-0047). For somebody's home
+written (ADR-0048). For somebody's home
 address that is a store of personal data no process of ours reads once the
 merchant has it. The survey
 behind this decision is `docs/research/37-physical-goods.md`.
@@ -72,7 +72,7 @@ text is theirs, and the portal asks them to keep the address out of it. A
 snapshot keeps what it caught until it expires. A dispute over where a parcel
 went cannot be checked against us. The rest of `params` stays with its order:
 for good on an order kept, and for thirty days after it was last written on
-one that ended rejected or expired with nothing charged or held (ADR-0047).
+one that ended rejected or expired with nothing charged or held (ADR-0048).
 
 Rejected: the address in merchant-declared `params` (no common shape, and no
 telling what to erase); a delivery token resolved outside the channel (no agent
