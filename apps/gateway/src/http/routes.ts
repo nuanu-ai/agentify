@@ -649,6 +649,16 @@ async function answerPurchase(
         ),
       );
 
+    case "seller_not_fulfilling":
+      return written(
+        response,
+        CONFLICT,
+        refusal(
+          "seller_not_fulfilling",
+          "this seller has ten or more paid orders they have not fulfilled, so Agentify takes no new purchase from them and nothing was charged; this lasts until the seller delivers or closes those orders, so trying again will not help",
+        ),
+      );
+
     case "seller_busy":
       // A purchase waiting for payment lapses with its price, so a place comes
       // free within a minute and usually much sooner.

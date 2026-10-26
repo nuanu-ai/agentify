@@ -965,6 +965,12 @@ export interface Store {
   waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
 
   /**
+   * How many of this merchant's orders were paid for and left with nothing
+   * delivered (`unfulfilled`), counted up to `atMost` and no further.
+   */
+  unservedOrders(merchantId: string, atMost: number): Promise<number>;
+
+  /**
    * Writes an order that is not there yet. The record says whose it is. An
    * identifier or a buyer's key another order already has is refused.
    *

@@ -541,6 +541,9 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // connection, and the same call goes through at its first poll; nobody has
   // to switch anything back on.
   seller_not_taking_orders: true,
+  // Only the seller can lift it, by delivering or closing the orders they left
+  // unserved, and nothing tells a buyer when that will be.
+  seller_not_fulfilling: false,
 
   order_closed_before_it_was_priced: false,
   payment_already_spent: false,

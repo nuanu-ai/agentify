@@ -484,7 +484,7 @@ const tryToBuy = async (
 /** The price questions on a seller's stream, which is how one reaches their code or shop. */
 const priceQuestionsFor = async (harnessed: Harness, merchantId: string) =>
   (await harnessed.queue.draw(merchantId, 100, 0)).filter(
-    (envelope) => envelope.kind === "quote_request",
+    (drawn) => drawn.envelope.kind === "quote_request",
   );
 
 describe("a seller with ten paid orders left unserved", () => {

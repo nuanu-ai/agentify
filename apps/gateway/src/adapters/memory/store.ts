@@ -803,6 +803,13 @@ export class MemoryStore implements Store {
     return this.#waiting(merchantId, at, atMost);
   }
 
+  async unservedOrders(merchantId: string, atMost: number): Promise<number> {
+    const unserved = [...this.#orders.values()].filter(
+      (held) => held.merchantId === merchantId && held.order.state === "unfulfilled",
+    ).length;
+    return Math.min(unserved, atMost);
+  }
+
   #waiting(merchantId: string, at: number, atMost: number): number {
     const waiting = [...this.#orders.values()].filter(
       (held) => held.merchantId === merchantId && waitsForPayment(held, at),

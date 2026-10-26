@@ -1013,6 +1013,29 @@ export class PostgresStore implements Store {
     return counted?.waiting ?? 0;
   }
 
+  /**
+   * An unfulfilled order is an open one, and `open` is named beside the state
+   * so the index on a merchant's open orders serves the count; it reads at
+   * most `atMost` rows.
+   */
+  async unservedOrders(merchantId: string, atMost: number): Promise<number> {
+    const [counted] = await this.#db.select({ unserved: sql<number>`count(*)::int` }).from(
+      this.#db
+        .select({ one: sql`1` })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.merchantId, merchantId),
+            eq(orders.open, true),
+            eq(orders.state, "unfulfilled"),
+          ),
+        )
+        .limit(atMost)
+        .as("unserved"),
+    );
+    return counted?.unserved ?? 0;
+  }
+
   async orderById(id: string): Promise<StoredOrder | null> {
     const [row] = await this.#db
       .select({ record: orders.record })

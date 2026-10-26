@@ -114,9 +114,10 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
  * Why the account as a whole is not selling as usual: all sales are paused,
  * something publishing needs is missing, purchases charged before delivery are
  * refused while their integration is not connected, new purchases are refused
- * while as many wait for payment as Agentify allows, or the cards their own
- * code published are off sale while a WooCommerce shop sells; or that what
- * would say so could not be read.
+ * while as many wait for payment as Agentify allows or while as many paid
+ * orders are left unserved as it allows, or the cards their own code published
+ * are off sale while a WooCommerce shop sells; or that what would say so could
+ * not be read.
  */
 export type AccountReason =
   | "paused"
@@ -125,6 +126,7 @@ export type AccountReason =
   | "no_payout_wallet"
   | "out_of_touch"
   | "busy"
+  | "unserved"
   | "through_shop"
   | "unread";
 
@@ -176,6 +178,11 @@ export const ACCOUNT_WORDS: Readonly<
     title: "New purchases are refused",
     says: "As many purchases as Agentify allows are waiting for payment, so new ones are refused until one is paid or its price runs out.",
     fix: null,
+  },
+  unserved: {
+    title: "All new purchases are refused",
+    says: "As many of your orders as Agentify allows are paid for with nothing delivered, so agents cannot buy anything from you until you deliver or close some of them.",
+    fix: { to: "/orders?show=needs", words: "Deliver or close them on Orders" },
   },
   through_shop: {
     title: "Selling through your WooCommerce shop",

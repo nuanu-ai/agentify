@@ -40,6 +40,8 @@ export interface AccountRead {
   readonly outOfTouch?: { readonly since: string | null };
   /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */
   readonly busy?: boolean;
+  /** True while as many paid orders are left unserved as Agentify allows, so new purchases are refused. */
+  readonly unserved?: boolean;
   /**
    * Present while Agentify's withdrawal of the merchant's admission to live
    * sales stands: when, as an ISO instant, and the note written for them.
@@ -70,6 +72,7 @@ const ORDER: readonly AccountReason[] = [
   "no_payout_wallet",
   "out_of_touch",
   "busy",
+  "unserved",
   "through_shop",
   "unread",
 ];
@@ -104,6 +107,7 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   if (read.through === "woocommerce") found.add("through_shop");
   if (read.outOfTouch !== undefined) found.add("out_of_touch");
   if (read.busy === true) found.add("busy");
+  if (read.unserved === true) found.add("unserved");
   if (read.unread === true) found.add("unread");
   return ORDER.filter((reason) => found.has(reason)).map((reason) => noteOf(reason, read));
 };
