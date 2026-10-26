@@ -41,9 +41,9 @@ message reach the agent word for word, so write the message for a stranger
 
 Neither the limit of fifty nor the rule about polling is a pause, and nothing
 has to be switched back on.
-The limit of fifty keeps anybody from loading your price handler or your shop
-through Agentify with purchases nobody means to pay, and it is counted for you
-alone, so one seller's fifty hold up nobody else. The rule about polling
+The limit of fifty bounds how far anybody can load your price handler or your
+shop through Agentify with purchases nobody means to pay, and it is counted for
+you alone, so one seller's fifty hold up nobody else. The rule about polling
 covers only a purchase that charges before its goods, an asynchronous one or a
 parcel, because without a process of yours running that buyer would pay for
 goods nothing is there to make; a synchronous purchase ends uncharged on its
