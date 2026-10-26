@@ -36,7 +36,13 @@ export default function Account() {
     <AdminFrame
       section="accounts"
       title="Account"
-      heading={view.kind === "found" ? view.account.email : "No such account"}
+      heading={
+        view.kind === "found"
+          ? view.account.email
+          : view.pressed?.act === "forget_account" && view.pressed.answer.kind === "done"
+            ? "Account forgotten"
+            : "No such account"
+      }
     >
       <AccountScreen view={view} />
       <Outlet />

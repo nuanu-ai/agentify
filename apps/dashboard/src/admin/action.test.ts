@@ -182,7 +182,7 @@ describe("an administrative press", () => {
       await pressed(withdrawal(READY), pressing, change(new Error("the line dropped"))),
     ).toStrictEqual({ kind: "unknown" });
     expect(await rows()).toStrictEqual([]);
-    expect(LOST_ANSWER).toContain("pressing again is safe");
+    expect(LOST_ANSWER).toContain("Pressing again is safe");
   });
 
   it("journals the change's own refusal with its code and the reason given", async () => {

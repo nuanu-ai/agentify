@@ -19,7 +19,7 @@ const chromeIn = (mode: SurfaceMode) => ({
 });
 
 const stepUp = (link: StepUpLink | null): StepUpView => ({
-  email: "owner@example.com",
+  email: "operator@example.com",
   signedInAt: momentView("2026-10-23T12:05:00Z"),
   destination: "admin/merchants/mch_78f0c3eaf1edb0c9086a6d2ae1731c28",
   googleEnabled: true,

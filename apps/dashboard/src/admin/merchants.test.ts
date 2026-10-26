@@ -8,12 +8,12 @@
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import { memoryOperatorReader, type OperatorReader } from "@agentify/gateway/operator";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AdminServed, adminServed } from "../testing/admin.js";
+import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
 import { memoryWooShops } from "../woo-shops.js";
 import type { Operator } from "./access.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
 import { merchantsFor } from "./merchants.js";
-import { WITHDRAWAL_NOTE } from "./merchants-words.js";
+import { NO_SELLER_NAME, WITHDRAWAL_NOTE } from "./merchants-words.js";
 import type { AdminParts } from "./parts.js";
 
 let served: AdminServed | null = null;
@@ -51,7 +51,7 @@ describe("the Merchants list", () => {
 
     expect(all.status).toBe(200);
     expect(text(all.html)).toContain("Coffee Roasters");
-    expect(text(all.html)).toContain("Seller name not set owner@unnamed.example");
+    expect(text(all.html)).toContain(`owner@unnamed.example ${NO_SELLER_NAME}`);
     expect(text(found.html)).toContain("owner@unnamed.example");
     expect(text(found.html)).not.toContain("Coffee Roasters");
     expect(all.html).toContain(`/admin/merchants/${named.id}`);
@@ -115,9 +115,9 @@ describe("a merchant's page", () => {
 
     expect(page.status).toBe(200);
     const said = text(page.html);
-    expect(said).toContain("Coffee Roasters, as buyers and their agents read it");
+    expect(said).toContain("Coffee Roasters");
     expect(said).toContain("Pays out from the split");
-    expect(said).toContain("A change of wallet waits and lands");
+    expect(said).toContain("A new wallet takes over");
     for (const hidden of [waiting, waitingSplit.address]) {
       expect(page.html.toLowerCase()).not.toContain(hidden.toLowerCase().slice(2));
     }
@@ -168,7 +168,7 @@ describe("withdrawing and giving the admission", () => {
 
     expect([admitted.status, again.status]).toStrictEqual([200, 200]);
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
-    expect(text(again.html)).toContain("It was so already");
+    expect(text(again.html)).toContain("It was admitted already; nothing changed.");
     // The history names who acted by their address, to them and to another operator.
     const second = await served.signedIn("op2@agentify.example", { operator: true });
     for (const reader of [operator, second]) {
@@ -196,7 +196,7 @@ describe("withdrawing and giving the admission", () => {
     });
 
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
-    expect(text(pressed.html)).toContain("Confirm it");
+    expect(pressed.html).toContain(`action="${ADMIN_BASE}/admin/sign-in-again"`);
     expect((await rowsAbout(served, merchant.id)).map((row) => row.outcome)).toStrictEqual([
       { kind: "refused", code: "sign_in_not_fresh" },
     ]);
@@ -253,8 +253,8 @@ describe("disabling a merchant's key", () => {
 
     expect([first.status, again.status]).toStrictEqual([200, 200]);
     // The answer drawn is the one its row holds: done, then already so.
-    expect(text(first.html)).toContain("Disabled just now");
-    expect(text(again.html)).not.toContain("Disabled just now");
+    expect(text(first.html)).toContain("The key is disabled.");
+    expect(text(again.html)).not.toContain("The key is disabled.");
     const keys = await served.harnessed.store.keysOf(merchant.id);
     expect(keys.filter((key) => key.disabledAt !== null).map((key) => key.id)).toStrictEqual([
       merchant.keyId,
@@ -279,8 +279,8 @@ describe("disabling a merchant's key", () => {
     const first = await operator.post(path, press);
     const again = await operator.post(path, press);
 
-    expect(text(first.html)).toContain("Disabled just now");
-    expect(text(again.html)).not.toContain("Disabled just now");
+    expect(text(first.html)).toContain("The key is disabled.");
+    expect(text(again.html)).not.toContain("The key is disabled.");
     expect((await rowsAbout(served, merchant.id)).map((row) => row.outcome.kind)).toStrictEqual([
       "unchanged",
       "done",
@@ -424,7 +424,10 @@ describe("a merchant's uncertain shop orders", () => {
       shops: { ...memoryWooShops(), ...(fails === "shop" ? { connectionOf: failing } : {}) },
       now: () => new Date(),
     } as unknown as AdminParts);
-    const answered = await pages.one({ person: { id: "acc_op" } } as Operator, merchant.id);
+    const answered = await pages.one(
+      { person: { id: "acc_op" }, signedInAt: new Date() } as unknown as Operator,
+      merchant.id,
+    );
     return answered.kind === "view" ? answered.view : null;
   };
 

@@ -8,7 +8,7 @@
 
 import { type ActionFunctionArgs, Link, useActionData } from "react-router";
 import { acted, formOf, readsLeadTo } from "../../answer.js";
-import { StepUp } from "../../components/admin/step-up.js";
+import { LinkSaid, SignInWays } from "../../components/admin/step-up.js";
 import { AdminFrame } from "../../components/admin-frame.js";
 import { workspaceIn } from "../../services.js";
 
@@ -24,13 +24,18 @@ export default function SignInAgain() {
   const view = useActionData<typeof action>();
   if (view === undefined) throw new Error("the step was drawn without a press");
   return (
-    <AdminFrame title="Confirm it is you">
-      <div className="op-decide">
-        <StepUp view={view} />
+    <AdminFrame title="Sign in again">
+      <div className="message-panel" role="status">
+        {view.link === null ? null : (
+          <p>
+            <LinkSaid link={view.link} email={view.email} />
+          </p>
+        )}
+        <SignInWays view={view} />
+        <p>
+          <Link to={`/${view.destination}`}>Back to the page you were on</Link>
+        </p>
       </div>
-      <p className="op-sub">
-        <Link to={`/${view.destination}`}>Back to the page you were on</Link>
-      </p>
     </AdminFrame>
   );
 }
