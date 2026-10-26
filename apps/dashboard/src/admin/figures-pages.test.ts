@@ -32,7 +32,7 @@ describe("the figures' pages", () => {
 
     const page = readable((await operator.get("/admin")).html);
 
-    expect(page).toContain("figures read");
+    expect(page).toContain("Figures read");
     expect(page).toContain("Settled sales · last 30 days");
     expect(page).toContain("How far merchants got");
     expect(page).toContain("Latest in the journal");

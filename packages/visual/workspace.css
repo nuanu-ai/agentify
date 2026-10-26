@@ -108,11 +108,14 @@
 }
 
 /* As of when a screen's figures were read: the first line under the bar,
-   standing clear of the bar's rule as a screen's first block does. */
+   standing clear of the bar's rule as a screen's first block does, in the
+   page's own face, since a moment is no identifier. */
 .op-asof {
-  margin-top: var(--space-block);
+  margin-top: var(--space-card);
   color: var(--muted);
-  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
+  font-size: var(--text-small);
+  line-height: var(--leading-ui);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Where the sidebar gives way to the menu, the live channel moves to the
@@ -158,6 +161,33 @@
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+/* Each tile takes three rows of the grid, shared with the tiles beside it,
+   so a label that wraps moves every figure in the row down together and the
+   figures stand on one line. The label is a caption in the page's face and
+   the figure a number in figures of one width: neither is an identifier. */
+.op-figures > .tile {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: var(--space-tight);
+}
+
+.op-figures > .tile > * {
+  margin: 0;
+}
+
+.op-figures .tile .label {
+  font: 500 var(--text-small) / var(--leading-ui) var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.op-figures .tile .figure {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .tile .figure small {
   margin-left: 4px;
   color: var(--muted);
@@ -176,7 +206,6 @@
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
-  box-shadow: var(--shadow-soft);
 }
 
 .op-panel-head {
@@ -367,8 +396,7 @@
 }
 
 .list-row .num {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 

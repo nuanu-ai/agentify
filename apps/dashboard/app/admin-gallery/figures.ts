@@ -23,16 +23,16 @@ import {
   type RecentOrders,
   type SalesByDay,
   type Splits,
+  startRefusedOf,
   type UnknownPayments,
   type WaitingForAdmission,
   type Workers,
 } from "../../src/admin/figures.js";
 import type { AdReportCounts } from "../../src/dashboard-entry.js";
 import { line } from "./accounts.js";
+import { AT, DAY, GIFT_CARDS, MERCHANTS_IN_ALL, SALES, TOURS } from "./examples.js";
 import { type AdminGalleryState, frameIn } from "./state.js";
 
-const AT = Date.parse("2026-10-23T14:05:00.000Z");
-const DAY = 86_400_000;
 const MINUTE = 60_000;
 
 const read = <T>(value: T): Readable<T> => ({ kind: "read", value });
@@ -51,31 +51,7 @@ const TEST: Channel = {
   addressPage: "https://sepolia.basescan.org/address/",
 };
 
-const MERCHANT_A = "mch_example_tea";
-const MERCHANT_B = "mch_example_tours";
-const WALLET_A = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-const WALLET_B = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
-const SPLIT_A = "0x2b7c1b5f3d6c4e8a9b0c1d2e3f405162738495e1";
-const SPLIT_A_OLD = "0x7a3f9e8d7c6b5a4938271605f4e3d2c1b0a988f3";
-const SPLIT_B = "0x91fa2e3d4c5b6a798867a5b4c3d2e1f00f1e0c3d";
 const COMMISSION = "0xf44A0b1c2d3e4f5061728394a5b6c7d8e9f06541";
-
-/** Thirty days of example sales, a few days quiet, two with no delivery recorded. */
-const SALES: SalesByDay = {
-  readAt: AT,
-  undated: { amount: "0.00", count: 0 },
-  days: Array.from({ length: 30 }, (_, index) => {
-    const day = new Date(AT - (29 - index) * DAY).toISOString().slice(0, 10);
-    const quiet = index % 6 === 1;
-    const dollars = quiet ? 0 : 5 + ((index * 7) % 23);
-    const nodel = index === 27 ? "12.00" : index === 28 ? "8.00" : "0.00";
-    return {
-      day,
-      delivered: { amount: `${dollars}.00`, count: quiet ? 0 : 1 + (index % 3) },
-      noDelivery: { amount: nodel, count: nodel === "0.00" ? 0 : 1 },
-    };
-  }),
-};
 
 const EMPTY_SALES: SalesByDay = {
   readAt: AT,
@@ -92,11 +68,11 @@ const WAITING: WaitingForAdmission = {
   of: 1,
   merchants: [
     {
-      merchantId: MERCHANT_A,
-      name: "Example Tea",
-      serviceName: "Example Tea",
-      sellerSite: "https://tea.example",
-      createdAt: AT - 4 * DAY,
+      merchantId: GIFT_CARDS.id,
+      name: GIFT_CARDS.name,
+      serviceName: GIFT_CARDS.name,
+      sellerSite: GIFT_CARDS.site,
+      createdAt: GIFT_CARDS.createdAt,
       integration: "api",
       lastContact: AT - 3 * MINUTE,
       cardsPublished: 4,
@@ -109,7 +85,7 @@ const UNKNOWN: UnknownPayments = {
   amount: "10.00",
   count: 2,
   oldestSince: AT - (3 * 60 + 12) * MINUTE,
-  merchants: [{ merchantId: MERCHANT_B, name: "Example Tours", count: 2 }],
+  merchants: [{ merchantId: TOURS.id, name: TOURS.name, count: 2 }],
   merchantsOf: 1,
 };
 
@@ -133,7 +109,7 @@ const SILENT: Workers = {
   readAt: AT,
   connectedWithin: 1,
   everConnected: 2,
-  silent: [{ merchantId: MERCHANT_B, name: "Example Tours", since: AT - 47 * MINUTE }],
+  silent: [{ merchantId: TOURS.id, name: TOURS.name, since: AT - 47 * MINUTE }],
   silentOf: 1,
 };
 
@@ -156,7 +132,7 @@ const LINKS = { dashboard: 14, report: 6, "step-up": 1 } as const;
 
 const COUNTS: MerchantCounts = {
   readAt: AT,
-  total: 23,
+  total: MERCHANTS_IN_ALL,
   selling: 1,
   admitted: 1,
   waitingForAdmission: 1,
@@ -232,7 +208,7 @@ const money = (
 const FUNNEL: Funnel = {
   readAt: AT,
   steps: [
-    { step: "created", merchants: 23 },
+    { step: "created", merchants: MERCHANTS_IN_ALL },
     { step: "seller_name", merchants: 15 },
     { step: "payout_wallet", merchants: 7 },
     { step: "key_or_shop", merchants: 4 },
@@ -245,18 +221,20 @@ const FUNNEL: Funnel = {
 
 const iso = (at: number) => new Date(at).toISOString();
 
+const KEY_DISABLED = line(3, iso(Date.UTC(2026, 9, 20, 16, 21)), {
+  actor: { kind: "account", id: "acc_operator_two", email: "ops@example.com" },
+  action: "disable_key",
+  subject: { kind: "key", id: "mk_3b7e05a1c94d", merchantId: TOURS.id, label: TOURS.name },
+  reason: "Shared outside the team, by the merchant's own report.",
+  outcome: { kind: "done" },
+});
+
 const JOURNAL_LINES: readonly JournalLineView[] = [
-  line(3, iso(AT - 3 * DAY), {
-    actor: { kind: "account", id: "acc_operator", email: "operator@example.com" },
-    action: "disable_key",
-    subject: { kind: "key", id: "mk_7c40e2b19d5a", merchantId: MERCHANT_B, label: "Example Tours" },
-    reason: "The key was pasted into a public issue.",
-    outcome: { kind: "done" },
-  }),
-  line(2, iso(AT - 39 * DAY), {
-    actor: { kind: "account", id: "acc_operator", email: "operator@example.com" },
+  KEY_DISABLED,
+  line(2, iso(TOURS.admittedAt), {
+    actor: { kind: "account", id: "acc_operator_two", email: "ops@example.com" },
     action: "admit",
-    subject: { kind: "merchant", id: MERCHANT_B, merchantId: MERCHANT_B, label: "Example Tours" },
+    subject: { kind: "merchant", id: TOURS.id, merchantId: TOURS.id, label: TOURS.name },
     reason: null,
     outcome: { kind: "done" },
   }),
@@ -278,13 +256,14 @@ const overviewReads = (over: Partial<OverviewReads> = {}): OverviewReads => ({
   at: AT,
   channel: LIVE,
   waiting: read(WAITING),
-  owners: read(new Map([[MERCHANT_A, "owner@tea.example"]])),
+  owners: read(new Map([[GIFT_CARDS.id, GIFT_CARDS.owner]])),
   unknown: read(UNKNOWN),
   workers: read(WORKERS),
   analytics: read(OUTBOX),
   adReports: read(ADS),
   links: read(LINKS),
   uncertainShopOrders: null,
+  startRefused: read(null),
   recovery: { configured: true, host: "mainnet.base.org" },
   merchants: read(COUNTS),
   orders: read(ORDERS),
@@ -314,16 +293,16 @@ const PAYOUT: PayoutListing = {
   kind: "listed",
   chain: { id: "eip155:8453", name: "Base" },
   splits: 3,
-  waiting: 0,
+  waiting: 1,
   parts: [
     {
       to: "0xcA11bde05977b3631167028862bE2a173976CA11",
       value: 0n,
       data: `0x82ad56cb${"0".repeat(56)}20${"0a1b2c3d4e5f".repeat(40)}`,
       splits: [
-        recordedSplit(SPLIT_A_OLD, MERCHANT_B, WALLET_A),
-        recordedSplit(SPLIT_A, MERCHANT_B, WALLET_B),
-        recordedSplit(SPLIT_B, MERCHANT_A, WALLET_A),
+        recordedSplit(TOURS.earlierSplit, TOURS.id, TOURS.earlierWallet),
+        recordedSplit(TOURS.split, TOURS.id, TOURS.wallet),
+        recordedSplit(GIFT_CARDS.split, GIFT_CARDS.id, GIFT_CARDS.wallet),
       ],
       commissionWallets: [COMMISSION],
     },
@@ -334,23 +313,23 @@ const SPLITS: Splits = {
   readAt: AT,
   of: 3,
   empty: 1,
-  waiting: 0,
+  waiting: 1,
   rows: [
     {
-      address: SPLIT_A,
-      merchantId: MERCHANT_B,
-      merchantName: "Example Tours",
-      merchantWallet: WALLET_B,
+      address: TOURS.split,
+      merchantId: TOURS.id,
+      merchantName: TOURS.name,
+      merchantWallet: TOURS.wallet,
       commissionWallet: COMMISSION,
       recordedAt: Date.parse(`${NEW_WALLET_FROM}T09:30:00Z`),
       inForce: true,
       settled: tallyOf(SALES.days.filter((day) => day.day >= NEW_WALLET_FROM)),
     },
     {
-      address: SPLIT_A_OLD,
-      merchantId: MERCHANT_B,
-      merchantName: "Example Tours",
-      merchantWallet: WALLET_A,
+      address: TOURS.earlierSplit,
+      merchantId: TOURS.id,
+      merchantName: TOURS.name,
+      merchantWallet: TOURS.earlierWallet,
       commissionWallet: COMMISSION,
       recordedAt: Date.parse(`${SPLITS_FROM}T00:00:00Z`),
       inForce: false,
@@ -359,12 +338,12 @@ const SPLITS: Splits = {
       ),
     },
     {
-      address: SPLIT_B,
-      merchantId: MERCHANT_A,
-      merchantName: "Example Tea",
-      merchantWallet: WALLET_A,
+      address: GIFT_CARDS.split,
+      merchantId: GIFT_CARDS.id,
+      merchantName: GIFT_CARDS.name,
+      merchantWallet: GIFT_CARDS.wallet,
       commissionWallet: COMMISSION,
-      recordedAt: AT - 2 * DAY,
+      recordedAt: GIFT_CARDS.createdAt + DAY,
       inForce: true,
       settled: { amount: "0.00", count: 0 },
     },
@@ -399,9 +378,24 @@ const healthReads = (over: Partial<HealthReads> = {}): HealthReads => ({
   adReports: read(ADS),
   links: read(LINKS),
   shops: null,
+  startRefused: read(null),
   keyCheck: null,
   listingCheck: null,
   ...over,
+});
+
+/** The gateway's refusal of a registry whose split for the tours' wallet is no longer the code's. */
+const REFUSED: PayoutListing = {
+  kind: "refused",
+  why: `1 recorded split of a wallet in force or waiting on eip155:8453, beginning with ${TOURS.split}, is no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`,
+};
+
+const START_REFUSED = read(startRefusedOf(REFUSED, SPLITS));
+
+/** On the test channel nobody is admitted, so the journal holds no admission. */
+const TEST_JOURNAL = read({
+  lines: JOURNAL_LINES.filter((one) => one.action !== "admit"),
+  total: 2,
 });
 
 /** The overview with something waiting, for a state of another area drawn over it. */
@@ -443,6 +437,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
     cause: "The test channel admits nobody, and one shop order was never confirmed.",
     path: "/admin",
     mode: "test",
+    frame: frameIn("test", { health: { count: 1, needsYou: false } }),
     loaded: {
       "routes/admin/index": overviewViewOf(
         overviewReads({
@@ -451,8 +446,21 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
           analytics: read(CLEAR_OUTBOX),
           uncertainShopOrders: read(1),
           workers: read(SILENT),
+          journal: TEST_JOURNAL,
         }),
       ),
+    },
+  },
+  {
+    id: "dashboard-admin-overview-start-refused",
+    screen: "Overview",
+    when: "An operator opens the workspace while a recorded payout split is no longer what the code makes.",
+    cause:
+      "The running gateway sells on, but its next start or release would refuse the registry, so it waits for the operator first.",
+    path: "/admin",
+    mode: "live",
+    loaded: {
+      "routes/admin/index": overviewViewOf(overviewReads({ startRefused: START_REFUSED })),
     },
   },
   {
@@ -565,10 +573,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
         moneyReads({
           period: "7d",
           money: read(money("7d")),
-          payout: read({
-            kind: "refused",
-            why: "1 recorded split of a wallet in force or waiting on eip155:8453 is no longer what this code makes for that merchant and wallet, so the gateway does not start",
-          }),
+          payout: read(REFUSED),
         }),
       ),
     },
@@ -635,6 +640,8 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
       "The test channel is not backed up by decision, offers the connector, and one worker stopped polling.",
     path: "/admin/health",
     mode: "test",
+    // A worker out of touch, the outbox's given-up events and the links near their ceiling.
+    frame: frameIn("test", { health: { count: 3, needsYou: false } }),
     loaded: {
       "routes/admin/health": healthViewOf(
         healthReads({
@@ -651,6 +658,17 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
           links: read({ dashboard: 171, report: 6, "step-up": 0 }),
         }),
       ),
+    },
+  },
+  {
+    id: "dashboard-admin-health-start-refused",
+    screen: "Health",
+    when: "An operator reads Health while a recorded payout split is no longer what the code makes.",
+    cause: "The gateway runs, but would refuse to start on the registry; Health names the split.",
+    path: "/admin/health",
+    mode: "live",
+    loaded: {
+      "routes/admin/health": healthViewOf(healthReads({ startRefused: START_REFUSED })),
     },
   },
   {

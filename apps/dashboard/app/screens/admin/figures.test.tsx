@@ -9,6 +9,7 @@ import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import type { OverviewView } from "../../../src/admin/figures.js";
+import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
 import { readable } from "../../../src/testing/html.js";
 import { FIGURES_STATES } from "../../admin-gallery/figures.js";
 import { OverviewScreen } from "./figures.js";
@@ -39,7 +40,8 @@ describe("the overview", () => {
       drawn(() => <OverviewScreen view={overviewOf("dashboard-admin-overview-unread")} />),
     );
 
-    expect(unread).toContain("Whether anything is worth a look about");
+    expect(unread).toContain(COULD_NOT_BE_READ);
+    expect(unread).toContain("The payments whose outcome is unknown");
     expect(unread).not.toContain("Nothing the automation has left unresolved");
   });
 });

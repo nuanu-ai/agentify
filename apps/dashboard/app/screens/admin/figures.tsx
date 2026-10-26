@@ -18,10 +18,12 @@ import type {
   MoneyView,
   OverviewView,
   Said,
+  StartRefusedView,
   TileView,
 } from "../../../src/admin/figures.js";
 import { StepUp } from "../../components/admin/step-up.js";
 import { CouldNotBeRead } from "../../components/admin/unknown.js";
+import { Moment } from "../../components/moment.js";
 import { PostForm } from "../../components/post-form.js";
 import { JournalList } from "./journal.js";
 
@@ -29,7 +31,7 @@ const BadgeOf = ({ badge }: Readonly<{ badge: Badge }>) => (
   <span className={`badge badge-${badge.tone}`}>{badge.word}</span>
 );
 
-/** Plain text and links in order; a link outside the dashboard is an ordinary one. */
+/** Plain text, links and moments in order; a link outside the dashboard is an ordinary one. */
 function SaidText({ said }: Readonly<{ said: Said }>) {
   return (
     <>
@@ -37,6 +39,9 @@ function SaidText({ said }: Readonly<{ said: Said }>) {
         typeof part === "string" ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one sentence never move.
           <span key={index}>{part}</span>
+        ) : "at" in part ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one sentence never move.
+          <Moment key={index} at={part.at} />
         ) : part.elsewhere === true ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one sentence never move.
           <a key={index} href={part.href}>
@@ -146,69 +151,105 @@ function SalesChart({ chart, title }: Readonly<{ chart: ChartView; title: string
   );
 }
 
+/** A part of the page whose read failed, said once with what it is. */
 function Unread({ what }: Readonly<{ what: string }>) {
   return (
-    <p className="op-sub">
-      <CouldNotBeRead /> {what} could not be read. Read the page again to try again.
+    <p className="op-sub op-unread">
+      <CouldNotBeRead /> <span>{what}. Read the page again to try again.</span>
     </p>
   );
 }
 
 // --- the overview -----------------------------------------------------------
 
+/** The registry of splits the gateway would refuse to start on, said where a decision waits. */
+function StartRefused({ refused }: Readonly<{ refused: StartRefusedView }>) {
+  return (
+    <li className="op-told">
+      <span className="badge badge-fail">Restart would fail</span>
+      <span className="t">The gateway would refuse to start</span>
+      <span className="a" />
+      <p className="why">
+        It runs now. Its next start or release stops on the recorded payout splits, so no release
+        goes out until they agree with this code.
+      </p>
+      <details className="op-why">
+        <summary>The gateway's reason</summary>
+        <p>{refused.why}</p>
+      </details>
+      <div className="meta">
+        {refused.merchant === null ? null : (
+          <Link to={`/admin/merchants/${refused.merchant.id}`}>
+            {refused.merchant.name ?? refused.merchant.id}
+          </Link>
+        )}
+        <Link to="/admin/money">See the splits in Money</Link>
+      </div>
+    </li>
+  );
+}
+
 export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
-  const waiting = view.needsYou?.kind === "read" ? view.needsYou.value : null;
+  const { admission, startRefused } = view.needsYou;
+  const waiting = admission?.kind === "read" ? admission.value : null;
+  const refused = startRefused?.kind === "read" ? startRefused.value : null;
+  const needs = (waiting?.of ?? 0) + (refused === null ? 0 : 1);
+  const needsUnread = admission?.kind === "unread" || startRefused?.kind === "unread";
   const nothingWaits =
-    (view.needsYou === null || (waiting !== null && waiting.of === 0)) &&
-    view.worth.items.length === 0 &&
-    view.worth.unread.length === 0;
+    needs === 0 && !needsUnread && view.worth.items.length === 0 && view.worth.unread.length === 0;
   return (
     <>
-      <p className="op-asof">{view.asOf}</p>
+      <p className="op-asof">
+        Figures read <Moment at={view.readAt} />
+      </p>
 
       {nothingWaits ? (
         <section className="group">
           <div className="group-head">
             <h2>Nothing waits for you</h2>
-            <p className="group-aside">{view.asOf}</p>
           </div>
         </section>
       ) : (
         <>
-          {view.needsYou === null ? null : (
+          {admission === null && startRefused === null ? null : (
             <section className="group">
               <div className="group-head">
                 <h2>
                   Needs you
-                  {waiting === null ? null : <span className="count warn">{waiting.of}</span>}
+                  {needs === 0 ? null : <span className="count warn">{needs}</span>}
                 </h2>
                 <p className="group-aside">Decisions only an operator can take</p>
               </div>
-              {view.needsYou.kind === "unread" ? (
-                <Unread what="Who waits for admission" />
-              ) : waiting === null || waiting.of === 0 ? (
-                <p className="op-sub">Nobody waits for admission.</p>
+              {needs === 0 ? (
+                needsUnread ? null : (
+                  <p className="op-sub">Nobody waits for admission.</p>
+                )
               ) : (
                 <div className="list-box op-cols-one">
                   <ul className="list" aria-label="Decisions that need you">
-                    {waiting.items.map((item) => (
+                    {refused === null ? null : <StartRefused refused={refused} />}
+                    {(waiting?.items ?? []).map((item) => (
                       <li className="op-told" key={item.merchantId}>
                         <span className="badge badge-notice">Waiting for admission</span>
-                        <Link className="t" to={`/admin/merchants/${item.merchantId}`}>
-                          {item.name}
-                        </Link>
+                        <span className="t">{item.name}</span>
                         <span className="a">{item.site ?? ""}</span>
                         <p className="why">{item.why}</p>
                         <div className="meta">
                           <Link to={`/admin/merchants/${item.merchantId}`}>Review and admit</Link>
                           {item.owner === null ? null : <span>{item.owner}</span>}
-                          <span>{item.created}</span>
+                          <span>
+                            Merchant since <Moment at={item.created} />
+                          </span>
                         </div>
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
+              {admission?.kind === "unread" ? <Unread what="Who waits for admission" /> : null}
+              {startRefused?.kind === "unread" ? (
+                <Unread what="Whether the gateway would start on the recorded splits" />
+              ) : null}
               {waiting !== null && waiting.of > waiting.items.length ? (
                 <p className="cut">
                   {waiting.items.length} of {waiting.of} waiting, those who waited longest first
@@ -225,9 +266,6 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
                   <span className="count">{view.worth.items.length}</span>
                 )}
               </h2>
-              <p className="group-aside">
-                Nothing waits for these; every sale carries on without them
-              </p>
             </div>
             {view.worth.items.length === 0 ? (
               view.worth.unread.length === 0 ? (
@@ -265,67 +303,67 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
                 </ul>
               </div>
             )}
-            {view.worth.unread.map((what) => (
-              <p className="op-sub" key={what}>
-                <CouldNotBeRead /> Whether anything is worth a look about {what} could not be read.
-              </p>
-            ))}
+            {view.worth.unread.length === 0 ? null : (
+              <Unread
+                what={view.worth.unread.join(", ").replace(/^./, (first) => first.toUpperCase())}
+              />
+            )}
           </section>
         </>
       )}
 
-      <Tiles tiles={view.tiles} />
+      {view.empty ? (
+        <p className="op-sub op-empty">No merchant on this channel yet.</p>
+      ) : (
+        <>
+          <Tiles tiles={view.tiles} />
 
-      <div className="op-two">
-        <section className="op-panel" aria-labelledby="sales-title">
-          <div className="op-panel-head">
-            <h2 id="sales-title">Settled sales · last 30 days</h2>
-            {view.chart.kind === "read" ? <p>{view.chart.value.head}</p> : null}
-          </div>
-          <div className="op-panel-body">
+          <section className="op-panel" aria-labelledby="sales-title">
+            <div className="op-panel-head">
+              <h2 id="sales-title">Settled sales · last 30 days</h2>
+              {view.chart.kind === "read" ? <p>{view.chart.value.head}</p> : null}
+            </div>
+            <div className="op-panel-body">
+              {view.chart.kind === "read" ? (
+                <SalesChart chart={view.chart.value.chart} title="Settled sales" />
+              ) : (
+                <Unread what="The sales of the last 30 days" />
+              )}
+            </div>
             {view.chart.kind === "read" ? (
-              <SalesChart chart={view.chart.value.chart} title="Settled sales" />
-            ) : (
-              <Unread what="The sales of the last 30 days" />
-            )}
-          </div>
-          <p className="op-panel-foot">
-            In US dollars a day, UTC, dated by the moment the order records it as paid. A thin bar
-            is a day with nothing settled; a past day can still grow when a late outcome lands.
-            Payments with an unknown outcome are not in it.
-          </p>
-        </section>
+              <p className="op-panel-foot">
+                USD per day, by payment date. Payments with an unknown outcome are left out, so a
+                past day can still grow.
+              </p>
+            ) : null}
+          </section>
 
-        <section className="op-panel" aria-labelledby="funnel-title">
-          <div className="op-panel-head">
-            <h2 id="funnel-title">How far merchants got</h2>
-            {view.funnel.kind === "read" ? <p>{view.funnel.value.lead}</p> : null}
-          </div>
-          <div className="op-panel-body">
-            {view.funnel.kind === "read" ? (
-              <ol className="op-funnel">
-                {view.funnel.value.steps.map((step) => (
-                  <li key={step.label}>
-                    <span className="step">{step.label}</span>
-                    <span className="track" aria-hidden="true">
-                      <span className="fill" style={{ width: step.width }} />
-                    </span>
-                    <span className="n">{step.merchants}</span>
-                    <span className="rate">{step.rate}</span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <Unread what="How far merchants got" />
-            )}
-          </div>
-          <p className="op-panel-foot">
-            Each share is of the step before. It starts at a created merchant, since every account
-            counts as signed in, scanner readers included. Where people stop, not how long they
-            took.
-          </p>
-        </section>
-      </div>
+          <section className="op-panel" aria-labelledby="funnel-title">
+            <div className="op-panel-head">
+              <h2 id="funnel-title">How far merchants got</h2>
+              {view.funnel.kind === "read" ? <p>{view.funnel.value.lead}</p> : null}
+            </div>
+            <div className="op-panel-body">
+              {view.funnel.kind === "read" ? (
+                <ol className="op-funnel">
+                  {view.funnel.value.steps.map((step) => (
+                    <li key={step.label}>
+                      <span className="step">{step.label}</span>
+                      <span className="track" aria-hidden="true">
+                        <span className="fill" style={{ width: step.share }} />
+                      </span>
+                      <span className="n">{step.merchants}</span>
+                      <span className="rate">{step.share}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <Unread what="How far merchants got" />
+              )}
+            </div>
+          </section>
+        </>
+      )}
 
       <JournalTail journal={view.journal} />
     </>
@@ -360,7 +398,7 @@ function JournalTail({ journal }: Readonly<{ journal: OverviewView["journal"] }>
 export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
   return (
     <>
-      <div className="list-tools">
+      <div className="list-tools op-period">
         <nav className="segments" aria-label="Period">
           {view.periods.map((period) =>
             period.here ? (
@@ -374,13 +412,12 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
             ),
           )}
         </nav>
-        <p className="op-asof">{view.asOf}</p>
+        <p className="op-asof">
+          Read <Moment at={view.readAt} /> · {view.currency}
+        </p>
       </div>
 
       <Tiles tiles={view.tiles} />
-      <div className="summary-text">
-        <p>{view.explained}</p>
-      </div>
 
       <section className="op-panel" aria-labelledby="days-title">
         <div className="op-panel-head">
@@ -420,7 +457,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
               <span className="count">{view.splits.value.count}</span>
             ) : null}
           </h2>
-          <p className="group-aside">One row per split: every wallet a merchant set has its own</p>
+          <p className="group-aside">One for every wallet a merchant set</p>
         </div>
         {view.splits.kind === "unread" ? (
           <Unread what="The splits" />
@@ -435,7 +472,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
                   <span>Split</span>
                   <span>Pays the wallet</span>
                   <span className="num">Settled into it</span>
-                  <span>Since</span>
+                  <span>Recorded</span>
                 </li>
                 {view.splits.value.rows.map((row) => (
                   <li className="list-row" key={row.split}>
@@ -465,7 +502,12 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
                     >
                       {row.settled}
                     </div>
-                    <div className="cell cell-fact">{row.since}</div>
+                    <div className="cell cell-fact">
+                      <span>{row.since}</span>
+                      {row.earlier ? (
+                        <span className="badge badge-quiet">Earlier wallet</span>
+                      ) : null}
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -479,7 +521,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
         <section className="op-panel" aria-labelledby="payout-title">
           <div className="op-panel-head">
             <h2 id="payout-title">The operator's payout</h2>
-            <p>For a person to send from a wallet of their own</p>
+            <p>Sent by a person, from a wallet of their own</p>
           </div>
           <div className="op-panel-body">
             {view.payout.kind === "unread" ? (
@@ -490,9 +532,9 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
               </p>
             ) : (
               <>
-                <p className="op-sub">{view.payout.value.intro}</p>
+                <p className="op-text">{view.payout.value.intro}</p>
                 {view.payout.value.parts.map((part) => (
-                  <div key={part.title}>
+                  <div key={part.title} className="op-payout">
                     <h3>{part.title}</h3>
                     <dl className="more-facts">
                       <div>
@@ -514,20 +556,24 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
                       </div>
                       <div>
                         <dt>Data</dt>
-                        <dd className="mono">
-                          <Whole value={part.data} short={`${part.data.slice(0, 18)}…`} />
+                        <dd>
+                          <textarea
+                            className="field-input op-data"
+                            readOnly
+                            rows={3}
+                            aria-label={`${part.title}: the transaction's data`}
+                            value={part.data}
+                          />
                         </dd>
                       </div>
                       <div>
                         <dt>Pays out</dt>
                         <dd>
-                          <ul className="op-sub">
+                          <ul className="op-pays">
                             {part.pays.map((pays) => (
-                              <li key={pays} className="mono">
-                                {pays}
-                              </li>
+                              <li key={pays}>{pays}</li>
                             ))}
-                            <li className="mono">{part.commission}</li>
+                            <li>{part.commission}</li>
                           </ul>
                         </dd>
                       </div>
@@ -558,7 +604,7 @@ function HealthRows({
           <span>Part</span>
           <span>State</span>
           <span>{fact}</span>
-          <span>Read</span>
+          <span />
         </li>
         {rows.map((row) => (
           <li className="list-row" key={row.part}>
@@ -569,12 +615,7 @@ function HealthRows({
             <div className="cell cell-note">
               <SaidText said={row.fact} />
             </div>
-            {row.check === undefined ? (
-              <div className="cell cell-fact mono">
-                <span className="said-on-narrow">Read </span>
-                {row.read}
-              </div>
-            ) : (
+            {row.check === undefined ? null : (
               <div className="cell cell-action">
                 <PostForm action="/admin/health" document>
                   {(pending) => (
@@ -598,27 +639,23 @@ function HealthRows({
 export function HealthScreen({ view }: Readonly<{ view: HealthView }>) {
   return (
     <>
-      <div className="lede">
-        <div>
-          <p>{view.lede}</p>
-        </div>
-        <div className="actions">
-          <a className="button button-secondary button-compact" href={view.grafana}>
-            Open Service health in Grafana
-          </a>
-        </div>
+      <div className="op-asof-row">
+        <p className="op-asof">
+          Read <Moment at={view.readAt} />
+        </p>
+        <a className="button button-secondary button-compact" href={view.grafana}>
+          Requests and hosts in Grafana
+        </a>
       </div>
-      <p className="op-asof">{view.asOf}</p>
       {view.stepUp === null ? null : (
         <div className="op-decide">
-          <StepUp view={view.stepUp} />
+          <StepUp view={view.stepUp} pressed />
         </div>
       )}
 
       <section className="group">
         <div className="group-head">
           <h2>What the application reads</h2>
-          <p className="group-aside">From its own database and its own process</p>
         </div>
         <HealthRows
           rows={view.read}
@@ -630,14 +667,12 @@ export function HealthScreen({ view }: Readonly<{ view: HealthView }>) {
       <section className="group">
         <div className="group-head">
           <h2>What the application cannot see</h2>
-          <p className="group-aside">Said here so that silence is not read as health</p>
         </div>
         <HealthRows
           rows={view.unseen}
           label="Parts the application does not measure"
           fact="Where the fact lives"
         />
-        <p className="note">{view.note}</p>
       </section>
     </>
   );
