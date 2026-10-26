@@ -1010,6 +1010,30 @@ describe("a facilitator that answers a check with a failure status and no verdic
     expect(answered).toMatchObject({ verified: "unknown", cause: "refused_agentify" });
   });
 
+  it.each([200, 400])(
+    "reads a refusal of an amount too small to carry, answered with %i, as one no new purchase can pass",
+    async (status) => {
+      const answered = await facilitatorFor(
+        await answeringWith(
+          status,
+          JSON.stringify({
+            isValid: false,
+            invalidReason: "amount_too_low",
+            invalidMessage: "payment amount is below the minimum",
+            payer: PAYER,
+          }),
+        ),
+        edge,
+      ).verify(charge(honest()));
+
+      expect(answered).toStrictEqual({
+        verified: false,
+        reason: "amount_not_payable",
+        message: "amount_too_low: payment amount is below the minimum",
+      });
+    },
+  );
+
   it.each([429, 500, 503])(
     "reads %i as no answer that asking again may cure, naming the status for the log",
     async (status) => {
