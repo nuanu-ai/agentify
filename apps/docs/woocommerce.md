@@ -290,15 +290,17 @@ moment you approve access: from then the products your code published are off
 sale and your code receives no orders until you disconnect the shop. The
 WooCommerce page says how many products that takes off sale before you press
 Connect. Until the keys arrive nothing changes, so if you decline or close the
-approval screen, your code goes on selling as before.
+approval screen, your code goes on selling as before. Keys that grant less than
+Read/Write switch nothing either, because every purchase through them would be
+refused; the page asks you to connect again and approve Read/Write.
 
 Connect and Sell through this shop are refused while an order from your code
-is still open, and each such order has to end first. A purchase its buyer has not paid yet ends within a
-minute, paid or lapsed, so the page asks you to try again then. An order your
-code took on ends when your code delivers or refuses it, or when its time runs
-out; the page names those orders and links to them on Orders. If you paused
-all sales on Products to keep new orders from arriving meanwhile, selling stays
-paused after the switch until you resume it there.
+is still open, and each such order has to end first. A purchase its buyer has
+not paid yet ends within a minute, paid or lapsed, so the page asks you to try
+again then. An order your code took on ends when your code delivers or refuses
+it, or when its time runs out; the page names those orders and links to them on
+Orders. If you paused all sales on Products to keep new orders from arriving
+meanwhile, selling stays paused after the switch until you resume it there.
 
 An order from your code can also open while you are approving. The shop is then
 connected when its keys arrive, but you keep selling through your code, and the
