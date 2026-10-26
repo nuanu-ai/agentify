@@ -525,6 +525,14 @@ describe("what the scanner takes for a price", () => {
     ["a Danish shop", '<span class="price">kr. 199</span>', "kr. 199"],
     ["a Hungarian shop", '<span class="price">1&nbsp;990&nbsp;Ft</span>', "1 990 Ft"],
     ["a South African shop", '<span class="price">R 1 299</span>', "R 1 299"],
+    ["a South African shop that writes no cents", '<span class="price">R 299</span>', "R 299"],
+    ["a South African shop that writes the code", '<span class="price">ZAR 299</span>', "ZAR 299"],
+    ["a Malaysian shop that writes no cents", '<span class="price">RM 199</span>', "RM 199"],
+    ["a Turkish shop that writes no kuruş", '<span class="price">150 TL</span>', "150 TL"],
+    ["a Philippine shop that writes the code", '<span class="price">PHP 500</span>', "PHP 500"],
+    ["a Swedish shop, at a round price,", '<span class="price">1999 kr</span>', "1999 kr"],
+    ["a Czech shop, at a round price,", '<span class="price">1999 Kč</span>', "1999 Kč"],
+    ["a Swiss shop, at a round price,", '<span class="price">CHF 2000</span>', "CHF 2000"],
   ])("finds the price %s writes in its visible text", (_shop, markup, price) => {
     const page = `<h1 class="product_title">Kain Tenun Ikat</h1>${markup}`;
     expect(htmlSignals(page)).toMatchObject({ hasPrice: true, price: { source: "text", price } });
@@ -574,7 +582,7 @@ describe("what the scanner takes for a price", () => {
     ],
     [
       "an English word that is also a currency code",
-      "<h2>TOP 10 BEST SELLERS</h2><p>TRY 30 DAYS FREE. SHOWER GEL 250ML. MEASURING SET, 2 CUPS</p><footer>© 2025 ALL RIGHTS RESERVED</footer>",
+      "<h2>TOP 10 BEST SELLERS</h2><h2>TOP 100 GIFTS</h2><p>TRY 30 DAYS FREE. SHOWER GEL 250ML. MEASURING SET, 2 CUPS</p><footer>© 2025 ALL RIGHTS RESERVED</footer>",
     ],
     [
       "an event, a version or a team",
@@ -582,9 +590,10 @@ describe("what the scanner takes for a price", () => {
     ],
     [
       "a unit or a word written like a currency's abbreviation",
-      "<p>10 Ft USB-C Cable. Run 5 KM. Livraison: Le 15 mars.</p>",
+      "<p>10 Ft USB-C Cable. 100 Ft Extension Cord. Run 5 KM. Range: 100 KM. Livraison: Le 15 mars.</p>",
     ],
-    ["a year next to a currency code", "<p>Sale 2024 USD</p>"],
+    ["a model and its year", "<p>Floor mats for Tesla Model S 2024</p>"],
+    ["a size or a rating", "<p>Size: M 38. Rated R 18. Galaxy S24, BMW M340i.</p>"],
     [
       "a Korean or Chinese word that ends in a currency's character",
       "<p>고객지원 1588-1234</p><p>인원 10명</p><p>公元2024年</p>",
