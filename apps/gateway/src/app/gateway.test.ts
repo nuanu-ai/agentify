@@ -178,6 +178,27 @@ describe("the catalog", () => {
     }
   });
 
+  it("tells a merchant about the smallest price before the places, so one correction is enough", async () => {
+    // An amount under a cent written past six places is refused once, for its
+    // size: fixing only its places would leave it refused again. An amount
+    // above the smallest price written past six places is refused for its
+    // places alone.
+    const harnessed = await started();
+    const findingFor = async (amount: string) => {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        price: { amount, currency: "USD" },
+      });
+      if (result.ok) throw new Error(`${amount} was published`);
+      expect(result.error.problems, amount).toHaveLength(1);
+      return result.error.problems[0]?.message ?? "";
+    };
+
+    expect(await findingFor("0.0000001")).toContain("0.01");
+    expect(await findingFor("0.00999999999")).toContain("0.01");
+    expect(await findingFor("5.0000001")).not.toContain("0.01");
+  });
+
   it("publishes every price a payment can be taken at", async () => {
     // So the rule cannot grow past its purpose: one cent is the smallest
     // price sold, an amount may carry places past the cent, and a card priced
