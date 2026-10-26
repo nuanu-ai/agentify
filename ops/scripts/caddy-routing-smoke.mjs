@@ -414,6 +414,17 @@ try {
     headers: { accept: "text/html, text/markdown" },
   });
   assert.match(response.headers.get("content-type") ?? "", /^text\/html(?:;|$)/);
+  // A parameter beside the type does not hide the Markdown, and a quality of
+  // zero refuses it whatever stands beside it.
+  for (const [accept, type] of [
+    ["text/markdown; charset=utf-8", /^text\/markdown(?:;|$)/],
+    ["text/markdown;q=0", /^text\/html(?:;|$)/],
+    ["text/markdown; charset=utf-8; q=0", /^text\/html(?:;|$)/],
+  ]) {
+    response = await fetch(`${innerBase}/docs/guide`, { headers: { accept } });
+    assert.equal(response.status, 200, accept);
+    assert.match(response.headers.get("content-type") ?? "", type, accept);
+  }
   // The front page's Markdown, with a part kept off a channel whose
   // operator's identity is published, and the front page's data.
   response = await fetch(`${innerBase}/docs/`, { headers: { accept: "text/markdown" } });
