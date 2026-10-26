@@ -196,6 +196,12 @@ for argument in "$@"; do case $argument in https://*) url=$argument ;; -w) code=
 path="${url#https://test.agentify.ad}"
 case $path in
   */purchase)
+    card="${path#/x402/}"; card="${card%/purchase}"
+    refused="$(awk -v card="$card" '$1 == card { print $2 }' /h/world/refused 2>/dev/null)"
+    if [[ -n $refused ]]; then
+      printf 'HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{"error": {"code": "%s"}}' "$refused"
+      exit 0
+    fi
     challenge="{\"resource\": {\"url\": \"$url\"}, \"accepts\": [{\"network\": \"$(< /h/world/network)\"}]}"
     printf 'HTTP/2 402\r\npayment-required: %s\r\n\r\n' "$(printf '%s' "$challenge" | base64 -w0)" ;;
   *)
@@ -869,6 +875,21 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", CARDS_AFTER="card_one", AGENTIFY_LEAVING="card_two")
         self.assertIn("exit 0", said)
         self.assertIsNone(self.record())
+
+    def test_a_card_that_left_because_its_seller_is_stopped_is_not_the_releases_doing(self):
+        # A seller who left too many paid orders unserved, or whose own process
+        # went quiet, loses their cards from the catalog whatever is released.
+        (self.world / "refused").write_text("card_two seller_not_fulfilling\n")
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("exit 0", said)
+        self.assertIn("left the catalog for their seller's own state: card_two", said)
+        self.assertIsNone(self.record())
+
+    def test_a_card_that_left_and_is_refused_for_anything_else_still_stops_the_release(self):
+        (self.world / "refused").write_text("card_two not_selling\n")
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("exit 1", said)
+        self.assertIn("--leaving card_two", said)
 
     def test_a_card_named_as_leaving_that_is_still_on_sale_stops_the_release(self):
         # Named as leaving and still selling is a person expecting something the
