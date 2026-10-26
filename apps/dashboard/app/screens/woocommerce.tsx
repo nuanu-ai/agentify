@@ -135,6 +135,12 @@ function ConnectPanel({
             the shop.
           </p>
         ) : null}
+        {view.testMoney ? (
+          <p role="note" aria-label="Test purchases">
+            A test purchase here makes a paid order in the shop you connect, marked as paid in test
+            USDC; if it is your real shop, do not ship for it.
+          </p>
+        ) : null}
       </PanelHead>
       <PostForm action="/woocommerce/connect" className={`issue ${styles.row}`}>
         {(pending) => (

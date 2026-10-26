@@ -91,6 +91,7 @@ import {
   type WooRecoveryView,
 } from "../src/woo-recovery-pages.js";
 import {
+  NOT_APPROVED_YET,
   type Said,
   type ShopAnswer,
   type ShopRead,
@@ -543,6 +544,7 @@ const WAITING = PayoutWalletSchema.parse({
 
 const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => ({
   state,
+  testMoney: true,
   through: "woocommerce",
   ...more,
 });
@@ -2437,11 +2439,10 @@ const INTEGRATIONS: GalleryState[] = [
     {
       id: "dashboard-integrations-live",
       screen: "Integrations",
-      when: "A merchant on the live site opens Integrations.",
-      cause:
-        "The live site does not offer the WooCommerce connector, so the SDK is the only way in.",
+      when: "A merchant on the live site opens Integrations without having connected a shop.",
+      cause: "The live site offers the SDK and the WooCommerce connector, as the test site does.",
     },
-    integrationsView(),
+    integrationsView({ kind: "none" }, THROUGH_THE_CODE),
     "live",
   ),
   integrations(
@@ -2531,11 +2532,24 @@ interface ShopAccount {
   readonly selling?: AccountRead["selling"];
   /** No payout wallet set, which the example's own read says. */
   readonly noWallet?: true;
+  /** The test channel where the example does not say. */
+  readonly mode?: SurfaceMode;
+  /** On live, whether the operator has approved the merchant; approved where not said. */
+  readonly approved?: boolean;
 }
 
-/** The banner over a WooCommerce screen: all sales paused, or no wallet, where the example says so. */
-const shopBanner = ({ selling = "open", noWallet }: ShopAccount) =>
-  bannerOf(seenBy("test", noWallet ? { payout: { wallet: null } } : {}), { selling });
+/**
+ * The banner over a WooCommerce screen: all sales paused, no wallet, or on live
+ * no approval, where the example says so.
+ */
+const shopBanner = ({ selling = "open", noWallet, mode = "test", approved = true }: ShopAccount) =>
+  bannerOf(
+    seenBy(mode, {
+      ...(noWallet ? { payout: { wallet: null } } : {}),
+      ...(mode === "live" ? { liveApproval: approved } : {}),
+    }),
+    { selling },
+  );
 
 const shop = (
   told: Told,
@@ -2544,7 +2558,7 @@ const shop = (
 ) =>
   at(told, {
     path,
-    mode: "test",
+    mode: account.mode ?? "test",
     account: shopBanner(account),
     loaded: { "routes/woocommerce": view },
   });
@@ -2558,7 +2572,7 @@ const shopPress = (
 ) =>
   at(told, {
     path: `/woocommerce/${press}`,
-    mode: "test",
+    mode: account.mode ?? "test",
     account: shopBanner(account),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
@@ -2573,6 +2587,29 @@ const WOOCOMMERCE: GalleryState[] = [
         "No shop is connected and no Connect is under way; the merchant's code published 12 products.",
     },
     shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 12 })),
+  ),
+  shop(
+    {
+      id: "dashboard-woocommerce-live",
+      screen: "WooCommerce",
+      when: "A merchant on the live site who sells through their own code opens the WooCommerce screen.",
+      cause:
+        "No shop is connected; a purchase on live is paid in real USDC, so the form carries no test-money note.",
+    },
+    shopOn(shopRead({ kind: "none" }, { through: "api", testMoney: false })),
+    { mode: "live" },
+  ),
+  shopPress(
+    {
+      id: "dashboard-woocommerce-import-not-approved",
+      screen: "WooCommerce",
+      when: "A merchant on the live site presses Import before Agentify has approved them.",
+      cause:
+        "The operator's approval is asked before the shop is read, so nothing was read or published.",
+    },
+    "import",
+    shopOn(shopRead(CONNECTED, { testMoney: false }), { importing: NOT_APPROVED_YET }),
+    { mode: "live", approved: false },
   ),
   shop(
     {

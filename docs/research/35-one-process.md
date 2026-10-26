@@ -82,8 +82,8 @@ behind one gate decided in one place (`apps/dashboard/src/gate.ts`), and they
 are tested over HTTP against the real gateway. Every path under the dashboard
 is one of its routes (`apps/dashboard/app/routes.ts`), the last of them the page
 that says there is no such page, so a visitor with no session is sent to the
-sign-in from an address that does not exist as from one that does, and where
-the WooCommerce connector is not offered its pages are such addresses. A request
+sign-in from an address that does not exist as from one that does, and on a
+dashboard given no shop store the WooCommerce pages are such addresses. A request
 no page takes, such as a post to a page that does not act, gets a plain 404 from
 the listener. Beside
 the pages the listener answers only the health probe and the WooCommerce shop's
@@ -611,10 +611,9 @@ to the listener, and that callback spends the token in the same transaction,
 under the account's lock, that writes the connection; the shop's address is
 taken from the grant, never from the callback. A token nobody issued, one
 already spent and one expired are refused alike, and an expired grant is kept
-so that its owner's WooCommerce page can say the attempt ended. Where the
-connector is not offered, on the live channel today, the dashboard mounts none
-of its pages and starts no worker, so a connection made there before stays
-unused.
+so that its owner's WooCommerce page can say the attempt ended. Every
+channel, the live one included, mounts the connector's pages and starts its
+worker.
 
 `woo:recover` reads one order and delivers late goods for it with the
 account's cabinet key. Once the key is gone it builds the application in its

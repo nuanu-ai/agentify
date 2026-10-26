@@ -263,6 +263,7 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(shop.placed).toEqual([
       {
         orderId: "ord_1",
+        test: true,
         productId: "11",
         email: MERCHANT_EMAIL,
         price: { amount: "25.00", currency: "USD" },
@@ -741,6 +742,14 @@ describe("one paid order, in the merchant's own shop", () => {
   });
 });
 
+/** What a production gateway is configured with, the facilitator's credentials made up. */
+const LIVE = {
+  PAYMENT_NETWORK: "eip155:8453",
+  FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+  CDP_API_KEY_ID: "key-id",
+  CDP_API_KEY_SECRET: "key-secret",
+} as const;
+
 describe("the whole way through, against a real gateway", () => {
   let open: Harness | null = null;
   let served: Served | null = null;
@@ -806,95 +815,101 @@ describe("the whole way through, against a real gateway", () => {
     return { url: `http://127.0.0.1:${port}`, orders };
   };
 
-  it("sells an imported product and leaves a paid order in the shop", async () => {
-    open = await harness();
-    served = await serve(open);
-    const shop = await aShopOnAPort();
-    const gateway = gatewayFor(open.gateway, {
-      merchantId: open.merchant.id,
-      email: MERCHANT_EMAIL,
-    });
-    // What pressing Connect does before the merchant is sent to their shop.
-    expect((await gateway.sellThrough("woocommerce")).ok).toBe(true);
+  it.each([
+    ["the sandbox", {}],
+    ["the live channel", LIVE],
+  ] as const)(
+    "on %s, sells an imported product and leaves a paid order in the shop",
+    async (_, channel) => {
+      open = await harness(channel);
+      served = await serve(open);
+      const shop = await aShopOnAPort();
+      const gateway = gatewayFor(open.gateway, {
+        merchantId: open.merchant.id,
+        email: MERCHANT_EMAIL,
+      });
+      // What pressing Connect does before the merchant is sent to their shop.
+      expect((await gateway.sellThrough("woocommerce")).ok).toBe(true);
 
-    // Published through the same path as every other card, with no leniency of
-    // its own.
-    const { cards } = cardsFromTheShop([aProduct()], shop.url);
-    const card = cards[0];
-    expect(card).toBeDefined();
-    const published = await gateway.publishCard(card?.card ?? ({} as never));
-    expect(published.ok).toBe(true);
-    const itemId = published.ok && published.document.ok ? published.document.id : "";
-    expect(itemId).not.toBe("");
+      // Published through the same path as every other card, with no leniency of
+      // its own.
+      const { cards } = cardsFromTheShop([aProduct()], shop.url);
+      const card = cards[0];
+      expect(card).toBeDefined();
+      const published = await gateway.publishCard(card?.card ?? ({} as never));
+      expect(published.ok).toBe(true);
+      const itemId = published.ok && published.document.ok ? published.document.id : "";
+      expect(itemId).not.toBe("");
 
-    const shops = memoryWooShops();
-    const parts = {
-      shops,
-      now: () => new Date("2026-09-14T12:00:00.000Z"),
-      placeOrder: (
-        keys: Parameters<typeof createTheOrderInTheShop>[0],
-        sold: Parameters<typeof createTheOrderInTheShop>[1],
-      ) => createTheOrderInTheShop(keys, sold, fetch),
-      inspectProduct: async () =>
-        showing({
-          kind: "download",
-          productId: "11",
-          downloadId: "dl_guide",
-          fileName: "Guide",
+      const shops = memoryWooShops();
+      const parts = {
+        shops,
+        now: () => new Date("2026-09-14T12:00:00.000Z"),
+        placeOrder: (
+          keys: Parameters<typeof createTheOrderInTheShop>[0],
+          sold: Parameters<typeof createTheOrderInTheShop>[1],
+        ) => createTheOrderInTheShop(keys, sold, fetch),
+        inspectProduct: async () =>
+          showing({
+            kind: "download",
+            productId: "11",
+            downloadId: "dl_guide",
+            fileName: "Guide",
+            price: { amount: "25.00", currency: "USD" },
+            fingerprint: "accepted-download-fingerprint",
+            tax: { mode: "off" as const },
+          }),
+        quotedSale: async () => boundAt("accepted-download-fingerprint"),
+      };
+      const connected: WooConnection = { ...connection(), shopUrl: shop.url };
+
+      const bought = await buyOverHttp(open, served, itemId, {
+        through: "woocommerce",
+        onOrder: async (order) => {
+          const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts, NO_SPLIT);
+          if (answer === null) {
+            throw new Error("the shop was not asked");
+          }
+          return answer;
+        },
+        onQuote: async () => ({
+          available: true,
           price: { amount: "25.00", currency: "USD" },
-          fingerprint: "accepted-download-fingerprint",
-          tax: { mode: "off" as const },
+          as_of: "2026-09-14T12:00:00.000Z",
         }),
-      quotedSale: async () => boundAt("accepted-download-fingerprint"),
-    };
-    const connected: WooConnection = { ...connection(), shopUrl: shop.url };
+      });
 
-    const bought = await buyOverHttp(open, served, itemId, {
-      through: "woocommerce",
-      onOrder: async (order) => {
-        const answer = await fillFromTheShop(order, connected, MERCHANT_EMAIL, parts, NO_SPLIT);
-        if (answer === null) {
-          throw new Error("the shop was not asked");
-        }
-        return answer;
-      },
-      onQuote: async () => ({
-        available: true,
-        price: { amount: "25.00", currency: "USD" },
-        as_of: "2026-09-14T12:00:00.000Z",
-      }),
-    });
+      // The buyer holds the number of an order in a shop they have never heard
+      // of.
+      expect(bought.status).toBe(200);
+      const started = bought.body as AgentOrderStatus;
+      const read = await served.call("GET", new URL(started.status_url).pathname);
+      const status = read.body as AgentOrderStatus;
+      expect(status.status).toBe("delivered");
+      expect(status.delivered).toMatchObject({ file_name: "Guide", order_number: "13" });
+      const durable = await shops.knownOrder(status.order_id);
+      expect(JSON.stringify(durable)).not.toContain("download_url");
+      expect(JSON.stringify(durable)).not.toContain(MERCHANT_EMAIL);
 
-    // The buyer holds the number of an order in a shop they have never heard
-    // of.
-    expect(bought.status).toBe(200);
-    const started = bought.body as AgentOrderStatus;
-    const read = await served.call("GET", new URL(started.status_url).pathname);
-    const status = read.body as AgentOrderStatus;
-    expect(status.status).toBe("delivered");
-    expect(status.delivered).toMatchObject({ file_name: "Guide", order_number: "13" });
-    const durable = await shops.knownOrder(status.order_id);
-    expect(JSON.stringify(durable)).not.toContain("download_url");
-    expect(JSON.stringify(durable)).not.toContain(MERCHANT_EMAIL);
-
-    // One paid order in the shop, carrying our identifier so the two systems
-    // can be reconciled by hand.
-    expect(shop.orders).toHaveLength(1);
-    const placed = shop.orders[0] as {
-      set_paid: boolean;
-      transaction_id: string;
-      line_items: { product_id: number; total: string }[];
-    };
-    expect(placed.set_paid).toBe(true);
-    expect(placed.transaction_id).toBe(status.order_id);
-    // The shop's order, which every employee and plugin of the shop reads,
-    // carries the identifier and not the buyer's key that opens the goods.
-    const key = (await open.store.orderById(status.order_id))?.buyerKey ?? "";
-    expect(key).not.toBe("");
-    expect(JSON.stringify(shop.orders)).not.toContain(key);
-    expect(placed.line_items[0]?.product_id).toBe(11);
-    expect(placed.line_items[0]?.total).toBe("25.00");
-  });
+      // One paid order in the shop, carrying our identifier so the two systems
+      // can be reconciled by hand.
+      expect(shop.orders).toHaveLength(1);
+      const placed = shop.orders[0] as {
+        set_paid: boolean;
+        transaction_id: string;
+        line_items: { product_id: number; total: string }[];
+      };
+      expect(placed.set_paid).toBe(true);
+      expect(placed.transaction_id).toBe(status.order_id);
+      // The shop's order, which every employee and plugin of the shop reads,
+      // carries the identifier and not the buyer's key that opens the goods.
+      const key = (await open.store.orderById(status.order_id))?.buyerKey ?? "";
+      expect(key).not.toBe("");
+      expect(JSON.stringify(shop.orders)).not.toContain(key);
+      expect(placed.line_items[0]?.product_id).toBe(11);
+      expect(placed.line_items[0]?.total).toBe("25.00");
+    },
+  );
 
   it("names on the shop's order the payout contract the payment went to, though the merchant moved their wallet since", async () => {
     // The line records where this payment went; after a change of wallet the
@@ -1805,8 +1820,10 @@ describe("a parcel's paid order", () => {
       postal_code: "82121",
     });
     expect(shop.placed).toHaveLength(1);
+    // Sold on the test channel, so the shop's order is marked as paid in test USDC.
     expect(shop.placed[0]).toMatchObject({
       orderId: "ord_1",
+      test: true,
       productId: "28",
       email: MERCHANT_EMAIL,
       total: { amount: "25.00", currency: "USD" },

@@ -377,7 +377,7 @@ const healthReads = (over: Partial<HealthReads> = {}): HealthReads => ({
   analytics: read(OUTBOX),
   adReports: read(ADS),
   links: read(LINKS),
-  shops: null,
+  shops: read({ connected: 1, uncertain: 0 }),
   startRefused: read(null),
   keyCheck: null,
   listingCheck: null,
@@ -636,8 +636,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
     id: "dashboard-admin-health-test",
     screen: "Health",
     when: "An operator reads the test channel's health while a merchant's worker is out of touch.",
-    cause:
-      "The test channel is not backed up on purpose, offers the connector, and one worker stopped polling.",
+    cause: "The test channel is not backed up on purpose, and one worker stopped polling.",
     path: "/admin/health",
     mode: "test",
     // A worker out of touch, the outbox's given-up events and the links near their ceiling.

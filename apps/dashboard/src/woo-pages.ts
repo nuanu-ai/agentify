@@ -64,6 +64,7 @@ import {
   type Held,
   heldBy,
   type ImportOutcome,
+  NOT_APPROVED_YET,
   referenceShown,
   type Said,
   type ShopAnswer,
@@ -379,8 +380,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   /**
    * The rule is the gateway's own (`readinessOf` in the core). This dashboard
    * has its gateway's chain and facilitator, so its surface mode is the
-   * gateway's. The operator's approval goes in as unknown: the connector is not
-   * offered on live, the only place it is asked for.
+   * gateway's. The operator's approval goes in as unknown, since nobody sets it
+   * in Settings and `unsetIn` leaves it out: on live the import asks it on its
+   * own, and the banner over the page says it is missing.
    */
   const unsetOf = async (gateway: GatewayClient): Promise<Answer<readonly Unset[]>> => {
     const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
@@ -435,6 +437,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           codeProducts:
             through === "woocommerce" ? offSale.length : await codeProductsBeside(gateway, offSale),
           unset: unset.ok ? unset.document : null,
+          testMoney: config.surfaceMode !== "live",
           ...(rate === null ? {} : { rate }),
         },
         answer,
@@ -546,6 +549,29 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         },
         409,
       );
+    }
+
+    // On live the operator's approval is asked before the shop too: without it
+    // the gateway refuses every card in the same sentence, which names nothing
+    // in the shop to change, and the merchant has only to import again later.
+    if (config.surfaceMode === "live") {
+      const approval = await gatewayAs(person).liveApproval();
+      if (!approval.ok) {
+        await resulted({ outcome: "failed", reason_code: "internal_error" });
+        return problemOf(approval);
+      }
+      if (!approval.document) {
+        await resulted({
+          outcome: "blocked",
+          reason_code: publishRefusalReason([MERCHANT_FINDINGS.NO_OPERATOR_APPROVAL]),
+        });
+        noted(
+          person,
+          `pressed Import before the operator approved the merchant for live sales, so the shop at` +
+            ` ${connection.shopUrl} was not read and nothing was published`,
+        );
+        return await drawTheShop(person, { importing: NOT_APPROVED_YET, ...saved }, 409);
+      }
     }
 
     const origin = originOf(connection);

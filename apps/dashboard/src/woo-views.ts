@@ -96,6 +96,11 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
   return null;
 };
 
+/** The answer to Import on live before the operator has approved the merchant. */
+export const NOT_APPROVED_YET =
+  "Nothing was imported: Agentify hasn't approved your business for live sales yet." +
+  " Import again once it has. To ask, write to admin@agentify.ad.";
+
 /** How many of the orders a refusal names are drawn before the rest are counted. */
 const ORDERS_DRAWN = 5;
 
@@ -323,6 +328,11 @@ export interface WooShopView {
    */
   readonly connectSwitches: boolean;
   /**
+   * Off the live channel a sale is paid in test USDC and still makes a paid
+   * order in the shop, so the form says so before a real shop is connected.
+   */
+  readonly testMoney: boolean;
+  /**
    * How many products the merchant's own code published, which every switch
    * takes off sale or brings back; null where they could not be counted, which
    * is said without a number rather than as none.
@@ -345,6 +355,8 @@ export interface ShopRead {
    * it could not be read, which holds nothing, the press finding out instead.
    */
   readonly unset?: readonly Unset[] | null;
+  /** Off the live channel, where a sale is paid in test USDC and still makes a paid shop order. */
+  readonly testMoney: boolean;
   /** For a connected shop in another currency: its rate now and Coinbase's. */
   readonly rate?: {
     readonly currency: ShopCurrency;
@@ -476,6 +488,7 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
       (state.kind === "waiting" || state.kind === "unanswered" ? state.shopUrl : ""),
     addressProblem: answer.addressProblem ?? null,
     connectSwitches: read.through === "api",
+    testMoney: read.testMoney,
     codeProducts: read.codeProducts === undefined ? null : read.codeProducts,
     problem: refusalOf(answer.problem ?? (leavingUnplaced ? answer.leaving : undefined)),
     leaving: leavingUnplaced ? null : refusalOf(answer.leaving),

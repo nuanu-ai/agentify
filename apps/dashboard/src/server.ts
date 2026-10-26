@@ -32,7 +32,7 @@ import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { printable } from "./printable.js";
 import { type ShopCalls, wooPagesFor } from "./woo-pages.js";
-import { type WooShops, wooOfferedOn } from "./woo-shops.js";
+import type { WooShops } from "./woo-shops.js";
 
 export interface DashboardParts {
   /** The pages, built ahead of time in a deployment or compiled from source. */
@@ -93,9 +93,6 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
     next();
   });
   const base = config.basePath;
-  // Where the connector is not offered none of its screens is mounted, so
-  // nothing invites an owner into what does not work there.
-  const wooShops = wooOfferedOn(config.surfaceMode) ? parts.wooShops : undefined;
   const identity = parts.identity;
   const clientFor =
     parts.clientFor ??
@@ -165,7 +162,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    */
   app.post(`${base}/woocommerce/callback`, express.json({ limit: "16kb" }), (request, response) => {
     void (async () => {
-      const shops = wooShops;
+      const shops = parts.wooShops;
       if (shops === undefined) {
         response.status(404).json({ ok: false });
         return;
@@ -232,12 +229,12 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         clientFor,
         registrar: parts.registrar ?? registrarFor(parts.gateway),
         woo:
-          wooShops === undefined
+          parts.wooShops === undefined
             ? null
             : wooPagesFor(config, {
                 identity,
                 clientFor: (acting) => clientFor(acting),
-                shops: wooShops,
+                shops: parts.wooShops,
                 ...(parts.shop === undefined ? {} : { shop: parts.shop }),
                 ...(parts.postman === undefined ? {} : { postman: parts.postman }),
               }),

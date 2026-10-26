@@ -158,9 +158,8 @@ const WHAT_THE_BUYER_RECEIVES = {
 
 /**
  * Agentify's number, not the merchant's estimate: WooCommerce has no field for
- * it. It holds while parcels sell in test mode only; selling them live needs
- * the time to ship from the merchant. The import screen says so, because an
- * order not shipped after it reads as unfulfilled.
+ * it, and whether to ask the merchant instead is an open question. The import
+ * screen says so, because an order not shipped after it reads as unfulfilled.
  */
 const SHIP_WITHIN_SECONDS = 7 * 24 * 60 * 60;
 

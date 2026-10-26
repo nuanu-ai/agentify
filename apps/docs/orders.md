@@ -18,8 +18,8 @@ in one table on [What can go wrong](/failures).
 | A parcel, `'ship'` | at the moment of purchase, before your shipment | with a carrier, once you record the shipment | as in the asynchronous mode |
 
 The mode is declared in the card under `fulfillment`, and the agent knows it
-before it pays. There are three: synchronous, asynchronous, and a parcel, which
-is published on the test channel only. The product decides the mode; which one
+before it pays. There are three: synchronous, asynchronous, and a parcel. The
+product decides the mode; which one
 yours takes is worked out on [The product card](/cards#goods-that-leave-later-than-the-answer),
 and what the moment of charging means for the owner of the business is on
 [Money](/money).
@@ -38,7 +38,10 @@ state and the postal code where the buyer gave them. Store the address before
 you take the order on: the moment you answer `accepted`, or the order ends
 without you, Agentify erases its copy, the order reads only
 `ship_to: { erased_at }` from then on, and it is never handed to your handler
-again.
+again. Erasing removes the address from Agentify's database. Copies of the
+database taken before the erasure keep it: the live channel's backups, usually
+for about sixty days, with no upper bound set yet, and the restore point each
+release takes, on either channel, until five newer releases replace it.
 
 When a carrier has the parcel, record the shipment with the same `deliver`
 call that delivers goods elsewhere, or answer your handler with it as
@@ -54,8 +57,7 @@ parcel — whether it arrives is between you and the buyer, who is pointed at
 your shop's site.
 
 A parcel not shipped by its deadline is `unfulfilled`, and a late shipment can
-still be recorded until you [close fulfillment](#closing-fulfillment). Parcels
-are not sold on the live channel yet.
+still be recorded until you [close fulfillment](#closing-fulfillment).
 
 ## Where an order comes from
 

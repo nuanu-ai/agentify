@@ -217,7 +217,13 @@ const recover = async (
     }
     const made = await (parts.placeOrder ?? createTheOrderInTheShop)(
       keysOf(connection),
-      soldItem(request.orderId, person.email, record.facts, inspected.product, paid.document),
+      soldItem(
+        { id: request.orderId, test: still.document.test },
+        person.email,
+        record.facts,
+        inspected.product,
+        paid.document,
+      ),
     );
     if (!made.ok) return unresolved(CREATE_UNKNOWN);
     return bindAndDeliver(
@@ -415,13 +421,14 @@ const differencesOf = (
  * currency at the rate bound to the sale, never the shop's price of today.
  */
 const soldItem = (
-  orderId: string,
+  order: { readonly id: string; readonly test: boolean },
   email: string,
   facts: WooOrderFacts,
   product: { downloadId: string; fileName: string; tax: SoldItem["tax"] },
   paidInto: PaidIntoSplit | null,
 ): SoldItem => ({
-  orderId,
+  orderId: order.id,
+  test: order.test,
   productId: facts.productId,
   email,
   price: inTheShopOf(facts),

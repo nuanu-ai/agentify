@@ -2,8 +2,8 @@
 
 Date: 2026-09-14
 Status: accepted; developed on equal terms with the SDK (the product owner,
-2026-10-11), one of the two at a time (ADR-0036), and off the live channel until
-its orders pass end to end on the test channel.
+2026-10-11), one of the two at a time (ADR-0036), and offered on every channel
+(the product owner, 2026-10-26).
 
 ## Context
 
@@ -39,28 +39,30 @@ delivers WooCommerce's own download permission URL, which holds the order key
 and is a bearer secret shown only in that delivery.
 
 A parcel (the product owner, 2026-10-09), neither virtual nor downloadable,
-sells on the test channel only, from a shop whose shipping is on and not forced
-to the billing address, and ships within seven days, Agentify's constant until
-parcels sell on the live channel and the time comes from the merchant
-(ADR-0033). Its price is the goods and the cheapest rate the shop's cart gives
-the locality, and no rate is no price. The rate is not bound: the order asks
-again and ships at the rate that makes up what was paid, or is refused before
-the shop is called. It is taken on only once the shop's answer shows the address
-as sent, Completed in the shop is its shipment, and the connector keeps and logs
-nothing of the address.
+sells from a shop whose shipping is on and not forced to the billing address,
+and ships within seven days, Agentify's constant, since WooCommerce has no field
+for the merchant's time to ship (ADR-0033). Its price is the goods and the
+cheapest rate the shop's cart gives the locality, and no rate is no price. The
+rate is not bound: the order asks again and ships at the rate that makes up what
+was paid, or is refused before the shop is called. It is taken on only once the
+shop's answer shows the address as sent, Completed in the shop is its shipment,
+and the connector keeps and logs nothing of the address.
 
 What a sale from a shop that calculates tax means, and the one-cent match of
-every shop's order to its payment, are ADR-0041. A shop priced in another currency than US
-dollars sells at a rate its merchant sets, as ADR-0044 records.
+every shop's order to its payment, are ADR-0041. A shop priced in another
+currency than US dollars sells at a rate its merchant sets, as ADR-0044 records.
 
-The dashboard fills orders as the merchant's worker in the process it shares
-with the gateway ([research 35](../research/35-one-process.md)), recording one
-paid WooCommerce order per sale before it answers, so a redelivery returns the
-stored result. The ledger moves forward only: a refusal proved before the create
-request is `precreate_refused`; once that request is sent the order is
-`create_unknown`, never resent on its own, until a validated, correlated answer
-makes it `placed`, which delivers without the shop credential and is final for a
-download; a placed parcel is followed until it ships or the shop ends it.
+The dashboard offers the connector on every channel (the product owner,
+2026-10-26), and on the live one an imported card sells only once the operator
+has approved its merchant, as any card there does. It fills orders as the
+merchant's worker in the process it shares with the gateway ([research
+35](../research/35-one-process.md)), recording one paid WooCommerce order per
+sale before it answers, so a redelivery returns the stored result. The ledger
+moves forward only: a refusal proved before the create request is
+`precreate_refused`; once that request is sent the order is `create_unknown`,
+never resent on its own, until a validated, correlated answer makes it `placed`,
+which delivers without the shop credential and is final for a download; a placed
+parcel is followed until it ships or the shop ends it.
 
 A download's paid failure is recovered only on its merchant's recovery page for
 one order, never through an SDK method or the operator's workspace; the page

@@ -7,7 +7,6 @@
  * party's credentials, stored as issued.
  */
 
-import type { SurfaceMode } from "@agentify/core";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
@@ -15,12 +14,6 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
 import type { ShopDecimals } from "./woo-money.js";
-
-/**
- * Everywhere but live: the connector says it works in test mode only, and a
- * live parcel cannot be sold. Asked by the pages and the worker alike.
- */
-export const wooOfferedOn = (surface: SurfaceMode): boolean => surface !== "live";
 
 /** The currency a shop sells in, and the Number of decimals it writes its amounts at. */
 export interface ShopCurrency {

@@ -63,7 +63,14 @@ const shopPage = (read: Partial<ShopRead>, answer: ShopAnswer = {}): string =>
   served(() => (
     <WooShopScreen
       view={wooShopView(
-        { state: { kind: "none" }, through: "api", codeProducts: 0, unset: [], ...read },
+        {
+          state: { kind: "none" },
+          through: "api",
+          codeProducts: 0,
+          unset: [],
+          testMoney: true,
+          ...read,
+        },
         answer,
       )}
       base=""
@@ -229,6 +236,15 @@ describe("what the import screen offers beside a product it could not publish", 
     expect([...html.matchAll(/href="\/settings"/g)]).toHaveLength(1);
     expect(html.indexOf('href="/settings"')).toBeGreaterThan(html.indexOf("Coffee beans"));
     expect(html.indexOf('href="/settings"')).toBeLessThan(html.indexOf("Canvas tote bag"));
+  });
+});
+
+describe("the Connect form's note about test purchases", () => {
+  it("is drawn where a purchase is paid in test USDC, and not where the money is real", () => {
+    const note = 'role="note" aria-label="Test purchases"';
+
+    expect(shopPage({ testMoney: true })).toContain(note);
+    expect(shopPage({ testMoney: false })).not.toContain(note);
   });
 });
 

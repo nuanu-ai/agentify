@@ -49,21 +49,20 @@ retryable, naming the shop and the way back; the import is refused the same
 way while they sell through their code. The merchant's keys still read orders
 and receipts and deliver an order the code had already taken on.
 
-The live channel offers no connector (ADR-0023), so every merchant there sells
-through the SDK, and a connection made there earlier switches nothing. A card
-already published is recorded by its merchant item id, whose `woo_` shape only
-the import produces, so a merchant with an imported card starts on the shop;
-the shop screen offers the way back whenever a merchant sells through the
-shop, connected or not.
+The rule is the same on every channel, since every channel offers the
+connector (ADR-0023). Cards already published are recorded by their merchant
+item id, whose `woo_` shape only the import produces, and a merchant with an
+imported card starts on the shop; the shop screen offers the way back to the
+SDK whenever a merchant sells through the shop, connected or not.
 
 ## Consequences
 
-A merchant cannot sell imported products and their code's at once; the Connect
-screen says so before anything changes, and the Cards screen says it beside
-every card off sale for this reason. ADR-0023 no longer calls the connector
-experimental (the product owner, 2026-10-11); it stays off the live channel
-until its orders pass end to end on the test channel. The contract and the SDK
-do not change.
+A merchant cannot sell imported products and products from their own code at
+once; the Connect screen says so before anything changes, and the Products
+screen says it beside every product that is off sale for this reason. ADR-0023 no longer
+calls the connector experimental (the product owner, 2026-10-11), and the
+connector is offered on the live channel as a production option (the product
+owner, 2026-10-26). The contract and the SDK do not change.
 
 Rejected: routing by the publishing integration, for the cost and the gaps
 above; switching at Connect, which takes the code's cards off sale for an

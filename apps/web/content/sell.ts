@@ -11,14 +11,14 @@ export const SELL_LANDING = {
   head: {
     title: "Agentify — sell products and services to AI agents",
     description:
-      "Publish digital products and services for AI agents, and physical products on the test channel for now, take orders, and get paid out in USDC to your own crypto wallet.",
+      "Publish digital products, services and physical products for AI agents, take orders, and get paid out in USDC to your own crypto wallet.",
     cardTitle: "Agentify — sell to AI agents",
     cardDescription: "Catalog, orders, and payouts for agentic commerce.",
   },
   hero: {
     eyebrow: "A new sales channel for products and services",
     title: "AI agents find and buy your products",
-    lede: `Connect your catalog of digital products and services once, and physical products on the test channel for now. Agentify shows them to AI agents and takes the order. The buyer pays in USDC, a digital dollar, into your own payout contract, made for your crypto wallet; the contract sends ${share} to your wallet and ${commission} to Agentify when it is paid out. You keep your site and your store as they are.`,
+    lede: `Connect your catalog of digital products, services and physical products once. Agentify shows them to AI agents and takes the order. The buyer pays in USDC, a digital dollar, into your own payout contract, made for your crypto wallet; the contract sends ${share} to your wallet and ${commission} to Agentify when it is paid out. You keep your site and your store as they are.`,
     action: "Connect your catalog",
     howItWorks: "How it works",
     facts: ["You connect your catalog", "An agent buys", "You get paid"],
@@ -50,7 +50,7 @@ export const SELL_LANDING = {
     steps: [
       {
         title: "Bring your products to Agentify",
-        text: "Connect your catalog through the SDK, or import supported products from your WooCommerce store, on the test channel for now.",
+        text: "Connect your catalog through the SDK, or import supported products from your WooCommerce store.",
       },
       {
         title: "Agentify publishes cards",
@@ -111,7 +111,7 @@ export const SELL_LANDING = {
     woo: {
       tag: "No new storefront",
       title: "A WooCommerce store",
-      text: "Connect your store, import supported products, and manage them on Products in your dashboard. Agentify never gets your store password. The connector works on the test channel only for now and supports a limited set of WooCommerce product configurations.",
+      text: "Connect your store, import supported products, and manage them on Products in your dashboard. Agentify never gets your store password. The connector supports a limited set of WooCommerce product configurations.",
       points: [
         "Your products, imported from your store",
         "Orders created in your store",
@@ -220,7 +220,7 @@ export const SELL_LANDING = {
       ],
       [
         "What products can I connect?",
-        "Digital products and services can be connected. Physical products, shipped as a parcel, sell on the test channel only for now. Each card tells the agent what it is buying, what information the order needs, and whether fulfillment is immediate, later, or shipped.",
+        "Digital products, services and physical products shipped as a parcel can be connected. Each card tells the agent what it is buying, what information the order needs, and whether fulfillment is immediate, later, or shipped.",
       ],
       [
         "Can I set a price in another currency?",

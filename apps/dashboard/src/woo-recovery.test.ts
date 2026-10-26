@@ -335,24 +335,43 @@ describe("a merchant creating the shop order of a download refused before creati
     });
   });
 
-  it("puts on the shop's order what the buyer paid, the merchant's email and the split the payment went to", async () => {
-    const shops = await setup("precreate_refused");
-    const test = parts(shops);
+  it.each([true, false])(
+    "puts on the shop's order what the buyer paid, the merchant's email, the split the payment went to and whether it was a test purchase (%s)",
+    async (testPurchase) => {
+      const shops = await setup("precreate_refused");
+      const test = parts(shops);
+      const value: Parts = {
+        ...test.value,
+        gatewayFor: (acting) => {
+          const gateway = test.value.gatewayFor(acting);
+          return {
+            ...gateway,
+            getOrder: async (orderId) => {
+              const read = await gateway.getOrder(orderId);
+              return read.ok
+                ? { ...read, document: { ...read.document, test: testPurchase } }
+                : read;
+            },
+          };
+        },
+      };
 
-    await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value);
+      await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, value);
 
-    expect(test.sold).toStrictEqual([
-      {
-        orderId: "ord_1",
-        productId: FACTS.productId,
-        email: EMAIL,
-        price: { amount: FACTS.amount, currency: FACTS.currency },
-        download: { id: PRODUCT.downloadId, name: PRODUCT.fileName },
-        paidInto: PAID_INTO,
-        tax: PRODUCT.tax,
-      },
-    ]);
-  });
+      expect(test.sold).toStrictEqual([
+        {
+          orderId: "ord_1",
+          test: testPurchase,
+          productId: FACTS.productId,
+          email: EMAIL,
+          price: { amount: FACTS.amount, currency: FACTS.currency },
+          download: { id: PRODUCT.downloadId, name: PRODUCT.fileName },
+          paidInto: PAID_INTO,
+          tax: PRODUCT.tax,
+        },
+      ]);
+    },
+  );
 
   it("creates nothing more on a second press, a double click or a press from a stale page", async () => {
     const shops = await setup("precreate_refused");
