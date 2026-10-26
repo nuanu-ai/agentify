@@ -1924,12 +1924,14 @@ export class Gateway {
           : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
       // A refusal's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
-      // client put in it, newlines included. A silence is the other way round:
+      // client put in it, newlines included. The log keeps the payment layer's
+      // code, a machine word, so a code nobody has given a meaning can be
+      // found. A silence is the other way round:
       // what failed is the operator's to fix, and says nothing a buyer can use.
       console.warn(
         `[gateway] a payment for order ${orderId} did not verify: ${
           verified.verified === false
-            ? `refused as ${verified.reason}`
+            ? `refused as ${verified.reason}${verified.code === undefined ? "" : ` (${verified.code})`}`
             : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
         }`,
       );
@@ -3062,9 +3064,9 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   amount_not_payable:
     "the payment network will not carry a payment of this amount, which is the order's own price, so neither a new signature nor a new purchase at this price will pass",
   wallet_refused:
-    "the payment network will not take this payment from the wallet that signed it, so the same wallet meets the same refusal; a payment from another wallet may pass while this order's price holds",
+    "the payment network refused this payment from the wallet that signed it, as that wallet stands",
   unexplained:
-    "the payment layer did not say what was wrong with it, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
+    "the payment layer's refusal names no fault Agentify can act on, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
   unrecognised:
     "the payment layer refused it for a reason this system does not recognise, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
 };

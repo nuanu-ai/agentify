@@ -106,6 +106,12 @@ export type VerifyOutcome =
       readonly verified: false;
       readonly reason: PaymentVerificationFailure;
       readonly message: string;
+      /**
+       * The payment layer's code for the refusal, a machine word kept for the
+       * operator's log so that a code nobody has given a meaning can be found.
+       * Absent where this gateway refused the payment itself.
+       */
+      readonly code?: string;
     }
   /**
    * No verdict on the payment, and nothing is claimed; `cause` says why.

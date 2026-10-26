@@ -326,28 +326,47 @@ const sameAddress = (theirs: string | undefined, ours: string): boolean =>
   theirs !== undefined && theirs.toLowerCase() === ours.toLowerCase();
 
 /**
- * A facilitator's refusal, by what its code means. The payer's buyer reads the
- * code with the facilitator's words; the operator's log gets the code alone,
- * because the words can quote the payment presented.
+ * A facilitator's refusal, by what its code means. The buyer reads the code of
+ * a verdict with the facilitator's words. The operator's log gets the code's
+ * leading machine word and never the words, which can quote the payment
+ * presented. A code or words that are not text are read as absent.
  */
-function refusal(answer: { invalidReason?: string; invalidMessage?: string }): VerifyOutcome {
-  const code = answer.invalidReason || undefined;
+function refusal(answer: { invalidReason?: unknown; invalidMessage?: unknown }): VerifyOutcome {
+  const code = textOf(answer.invalidReason);
+  const words = textOf(answer.invalidMessage);
   const reading = readRefusal(code);
+  const word = machineWord(code);
   if ("noVerdict" in reading) {
     return {
       verified: "unknown",
       cause: reading.noVerdict,
-      failure: `the facilitator answered a refusal that is no verdict on the payment: ${code}`,
+      failure: `the facilitator answered a refusal that is no verdict on the payment: ${word}`,
     };
   }
   const message =
     code === undefined
-      ? (answer.invalidMessage ?? "no reason was given")
-      : answer.invalidMessage
-        ? `${code}: ${answer.invalidMessage}`
-        : code;
-  return { verified: false, reason: reading.refused, message };
+      ? (words ?? "no reason was given")
+      : words === undefined
+        ? code
+        : `${code}: ${words}`;
+  return {
+    verified: false,
+    reason: reading.refused,
+    message,
+    ...(word === undefined ? {} : { code: word }),
+  };
 }
+
+const textOf = (value: unknown): string | undefined =>
+  typeof value === "string" && value !== "" ? value : undefined;
+
+/**
+ * The code's leading run of lower-case letters, digits and underscores, at
+ * most 80 characters. A facilitator may append its own text after the code,
+ * and that text can quote the payment.
+ */
+const machineWord = (code: string | undefined): string | undefined =>
+  code === undefined ? undefined : /^[a-z0-9_]{1,80}/.exec(code)?.[0];
 
 /**
  * Whether a verification status carries the facilitator's own decision. Only
