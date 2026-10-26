@@ -222,7 +222,12 @@ export {
 } from "./param-spec.js";
 export type { TextLines } from "./plain-text.js";
 export { notPlainTextIn } from "./plain-text.js";
-export { PAYABLE_CURRENCIES, PAYABLE_DECIMALS, priceProblemsOf } from "./price-rule.js";
+export {
+  PAYABLE_CURRENCIES,
+  PAYABLE_DECIMALS,
+  priceProblemsOf,
+  SMALLEST_PRICE,
+} from "./price-rule.js";
 export type {
   Amount,
   CurrencyCode,

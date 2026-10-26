@@ -55,18 +55,19 @@ const esimWithADeadline = (): CardInput => ({ ...EUROPE_ESIM, fulfill_deadline_s
 
 /*
  * Three cards in the shape the public x402 catalogue is mostly made of:
- * synchronous chain and market lookups answering with JSON for a fraction of a
- * cent. They name no merchant and copy nobody's wording; only the shape, the
- * price and the kind of thing are taken. Each exercises something the console
- * does differently: no purchase parameters at all, required parameters, and an
- * answer with several fields.
+ * synchronous chain and market lookups answering with JSON. That catalogue
+ * prices them at a fraction of a cent, under the smallest price Agentify sells
+ * at, so these start at one cent. They name no merchant and copy nobody's
+ * wording; only the shape and the kind of thing are taken. Each exercises
+ * something the console does differently: no purchase parameters at all,
+ * required parameters, and an answer with several fields.
  */
 const BLOCK_HEIGHT: CardInput = {
   merchant_item_id: "chain-tip",
   title: "The height of the latest block",
   description:
     "The current tip of the chain, answered in the purchase itself. Nothing is asked of the buyer: the question has no parameters.",
-  price: "0.001 USD",
+  price: "0.01 USD",
   result: {
     height: { type: "integer", title: "The block number at the tip" },
     as_of: { type: "string", title: "When the tip was read (ISO 8601)" },
@@ -79,7 +80,7 @@ const TOKEN_BALANCE: CardInput = {
   title: "The balance of one token in one wallet",
   description:
     "How much of a token an address holds, answered in the purchase itself. The buyer names the wallet and the token contract.",
-  price: "0.003 USD",
+  price: "0.03 USD",
   params: {
     wallet: { type: "string", required: true, title: "The address to look at" },
     token: { type: "string", required: true, title: "The token contract" },
@@ -96,7 +97,7 @@ const TRANSACTION: CardInput = {
   title: "One transaction, whole, by its hash",
   description:
     "Everything a transaction carries, answered in the purchase itself: who sent it, where to, what it moved and what it cost.",
-  price: "0.008 USD",
+  price: "0.08 USD",
   params: {
     hash: { type: "string", required: true, title: "The transaction hash" },
   },
@@ -120,20 +121,20 @@ export const TEMPLATES: readonly Template[] = [
   },
   {
     key: "chain_tip",
-    label: "Block height, 0.001",
+    label: "Block height, 0.01",
     about:
-      "A card that asks the buyer for nothing at all. The cheapest kind the catalogue carries.",
+      "A card that asks the buyer for nothing at all, at the smallest price Agentify sells at.",
     read: written(BLOCK_HEIGHT),
   },
   {
     key: "token_balance",
-    label: "Token balance, 0.003",
-    about: "Two required parameters, and the median price of the public catalogue.",
+    label: "Token balance, 0.03",
+    about: "Two required parameters.",
     read: written(TOKEN_BALANCE),
   },
   {
     key: "transaction",
-    label: "Transaction, 0.008",
+    label: "Transaction, 0.08",
     about: "An answer with five fields in it, so a delivery has a shape worth getting wrong.",
     read: written(TRANSACTION),
   },

@@ -2,7 +2,8 @@
  * What a page names that the build knows and no deployment decides: the
  * release of `@nuanu-ai/agentify` the pages describe, read from the package
  * in this repository, a parcel's purchase with the example address the
- * contract's own schema publishes, and every number Agentify publishes about its own
+ * contract's own schema publishes, the smallest price the contract's price
+ * rule sells at, and every number Agentify publishes about its own
  * behaviour, read from `@agentify/core/published`, whose constants the
  * gateway runs. A writer names one as
  * `{{sdk-version}}` or `{{quote-ttl}}`, and it is written into the page, its
@@ -35,7 +36,7 @@ import {
   unitsIn,
   WAITING_FOR_PAYMENT_AT_MOST,
 } from "@agentify/core/published";
-import { ShipToSchema } from "@nuanu-ai/agentify-contracts";
+import { ShipToSchema, SMALLEST_PRICE } from "@nuanu-ai/agentify-contracts";
 import { isSiteValueName } from "./site-values.js";
 import { APP } from "./where.server.js";
 
@@ -60,6 +61,7 @@ if (address === undefined) throw new Error("the contract's address schema publis
 const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "sdk-version": { text: sdk.version },
   "parcel-purchase": { text: JSON.stringify({ params: {}, ship_to: address }, null, 2) },
+  "smallest-price": { text: SMALLEST_PRICE },
   "quote-response": { ms: QUOTE_RESPONSE_MS, unit: "second" },
   "quote-ttl": { ms: QUOTE_TTL_MS, unit: "second" },
   "handler-answer": { ms: HANDLER_ANSWER_MS, unit: "second" },

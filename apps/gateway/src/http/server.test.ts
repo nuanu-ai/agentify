@@ -368,6 +368,8 @@ describe("what a call may carry", () => {
       [{ amount: "5", currency: "USD" }, "amount", "5"],
       [{ amount: "5.0", currency: "USD" }, "amount", "5.0"],
       [{ amount: "0.0000001", currency: "USD" }, "amount", "0.0000001"],
+      [{ amount: "0.009", currency: "USD" }, "amount", "0.009"],
+      [{ amount: "0.000001", currency: "USD" }, "amount", "0.000001"],
       [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
     ];
 
@@ -387,6 +389,30 @@ describe("what a call may carry", () => {
     }
   });
 
+  it("refuses a price answer under a cent and names the smallest price sold", async () => {
+    // The merchant's worker log is where a price handler's author learns that
+    // the answer priced nothing, and what to answer instead.
+    const { served } = await started();
+
+    const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
+      body: {
+        available: true,
+        price: { amount: "0.005", currency: "USDC" },
+        as_of: "2026-08-26T10:15:00Z",
+      },
+      headers: asMerchant,
+    });
+
+    expect(answered.status).toBe(400);
+    const { error } = answered.body as {
+      error: { code: string; message: string; problems: { path: string[] }[] };
+    };
+    expect(error.code).toBe("malformed_body");
+    expect(error.problems.map((finding) => finding.path.join("."))).toStrictEqual(["price.amount"]);
+    expect(error.message).toContain('"0.005"');
+    expect(error.message).toContain("0.01");
+  });
+
   it("takes a price answer a payment can be taken at, the portal's own example among them", async () => {
     // Nothing is held under prc_1, so each answer is taken and prices nothing:
     // `used: false`, which is not a refusal.
@@ -401,9 +427,8 @@ describe("what a call may carry", () => {
       portal,
       ...[
         { amount: "0.01", currency: "USD" },
-        { amount: "0.001", currency: "USD" },
+        { amount: "0.010001", currency: "USD" },
         { amount: "19.999", currency: "USD" },
-        { amount: "0.000001", currency: "USD" },
         { amount: "5.00", currency: "USDC" },
       ].map((price) => ({ available: true, price, as_of: "2026-08-26T10:15:00Z" })),
     ];
@@ -541,12 +566,12 @@ describe("the payment challenge", () => {
   });
 
   it("asks for the smallest price the door takes, exactly", async () => {
-    // The finest price publication accepts is one unit of the payment token,
-    // and the challenge must ask for exactly that unit.
+    // One cent is the smallest price publication accepts, ten thousand units
+    // of the payment token, and the challenge must ask for exactly that.
     const { served } = await started();
     const itemId = await publish(served, {
       ...syncCard,
-      price: { amount: "0.000001", currency: "USD" },
+      price: { amount: "0.01", currency: "USD" },
     });
 
     const answered = await served.call("GET", `/x402/${itemId}/purchase`);
@@ -555,7 +580,25 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    expect(challenge.accepts[0]?.amount).toBe("1");
+    expect(challenge.accepts[0]?.amount).toBe("10000");
+  });
+
+  it("asks for a price written past the cent exactly, to the last place", async () => {
+    // Six places are what USDC carries, so a price above the smallest one is
+    // charged as written, never rounded to the cent.
+    const { served } = await started();
+    const itemId = await publish(served, {
+      ...syncCard,
+      price: { amount: "0.010001", currency: "USD" },
+    });
+
+    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
+
+    expect(answered.status).toBe(402);
+    const challenge = decodePaymentRequiredHeader(
+      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    );
+    expect(challenge.accepts[0]?.amount).toBe("10001");
   });
 
   it("prices a POST against an order it opened, and names that order by its identifier", async () => {

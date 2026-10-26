@@ -65,17 +65,22 @@ const UNSELLABLE_PRICES: readonly [price: unknown, field: string, found: string]
   ["5 USD", "amount", "5"],
   [{ amount: "0.0000001", currency: "USD" }, "amount", "0.0000001"],
   ["19.9999999 USDC", "amount", "19.9999999"],
+  [{ amount: "0.009", currency: "USD" }, "amount", "0.009"],
+  [{ amount: "0.001", currency: "USD" }, "amount", "0.001"],
+  [{ amount: "0.000001", currency: "USD" }, "amount", "0.000001"],
+  ["0.0099 USDC", "amount", "0.0099"],
   [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
 ];
 
 /** Prices the same door takes, written each way a merchant writes them. */
 const SELLABLE_PRICES: readonly unknown[] = [
   { amount: "0.01", currency: "USD" },
+  { amount: "0.010", currency: "USD" },
+  { amount: "0.010001", currency: "USD" },
   { amount: "5.00", currency: "USD" },
-  { amount: "0.001", currency: "USD" },
   { amount: "19.999", currency: "USD" },
-  { amount: "0.000001", currency: "USD" },
   { amount: "5.00", currency: "USDC" },
+  "0.01 USDC",
   "5.00 USD",
 ];
 
@@ -130,8 +135,9 @@ describe("the catalog", () => {
     // A payment of nothing is not a sale, a currency other than the dollar has
     // no rate to be charged at, and an amount written without its cents is how
     // "500" meant as five dollars becomes a five-hundred-dollar card. An amount
-    // finer than the token a buyer pays in has no exact charge. The short
-    // spelling meets the same rule in the same words.
+    // finer than the token a buyer pays in has no exact charge, and one under a
+    // cent may be one the payment network will not carry. The short spelling
+    // meets the same rule in the same words.
     const harnessed = await started();
 
     for (const [price, field, found] of UNSELLABLE_PRICES) {
@@ -153,10 +159,50 @@ describe("the catalog", () => {
     expect((await harnessed.gateway.catalog()).items).toHaveLength(0);
   });
 
+  it("refuses a price under a cent and tells the merchant the smallest price it sells at", async () => {
+    // A merchant who priced a call at a fraction of a cent learns what to
+    // change it to from the refusal itself.
+    const harnessed = await started();
+
+    for (const amount of ["0.009", "0.000001"]) {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        price: { amount, currency: "USD" },
+      });
+
+      if (result.ok) throw new Error(`${amount} was published`);
+      const [finding] = result.error.problems;
+      expect(finding?.path).toStrictEqual(["price", "amount"]);
+      expect(finding?.message).toContain(JSON.stringify(amount));
+      expect(finding?.message).toContain("0.01");
+    }
+  });
+
+  it("tells a merchant about the smallest price before the places, so one correction is enough", async () => {
+    // An amount under a cent written past six places is refused once, for its
+    // size: fixing only its places would leave it refused again. An amount
+    // above the smallest price written past six places is refused for its
+    // places alone.
+    const harnessed = await started();
+    const findingFor = async (amount: string) => {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        price: { amount, currency: "USD" },
+      });
+      if (result.ok) throw new Error(`${amount} was published`);
+      expect(result.error.problems, amount).toHaveLength(1);
+      return result.error.problems[0]?.message ?? "";
+    };
+
+    expect(await findingFor("0.0000001")).toContain("0.01");
+    expect(await findingFor("0.00999999999")).toContain("0.01");
+    expect(await findingFor("5.0000001")).not.toContain("0.01");
+  });
+
   it("publishes every price a payment can be taken at", async () => {
-    // So the rule cannot grow past its purpose: a price below a cent is
-    // ordinary for a call priced per use, and a card priced in USDC is charged
-    // in USDC as it stands.
+    // So the rule cannot grow past its purpose: one cent is the smallest
+    // price sold, an amount may carry places past the cent, and a card priced
+    // in USDC is charged in USDC as it stands.
     const harnessed = await started();
 
     for (const [index, price] of SELLABLE_PRICES.entries()) {

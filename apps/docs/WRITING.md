@@ -190,7 +190,8 @@ code blocks and diagrams included. `{{sdk-version}}` is the release of
 `@nuanu-ai/agentify` in this repository, and `{{parcel-purchase}}` is a
 parcel's purchase with the example address the contracts' own schema
 publishes; a `json` block whose whole body is that value is the one payload a
-page may write in place, since the contract is its file. Every number Agentify publishes about
+page may write in place, since the contract is its file. `{{smallest-price}}`
+is the smallest price the contracts' price rule sells at, written `0.01`. Every number Agentify publishes about
 its own behaviour is read from the constants the gateway runs,
 `@agentify/core/published`, so a page names it rather than typing it:
 `{{quote-ttl}}` is how long a price holds, written "thirty seconds".
