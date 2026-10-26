@@ -229,8 +229,12 @@ describe("what the checks read from the markup real sites write", () => {
       '<link rel="alternate" type="application/rss+xml" title="Negozio &raquo; Feed Prodotti" href="https://example.com/acquista/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Feed de Produtos" href="https://example.com/loja/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Laden &raquo; Produkte-Feed" href="https://example.com/shop/feed/" />',
-      '<link rel="alternate" type="application/rss+xml" title="Tienda" href="https://example.com/tienda/feed/" />',
-      '<link rel="alternate" type="application/rss+xml" title="Toko Kain" href="https://example.com/toko/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Umpan Produk" href="https://example.com/toko/feed/" />',
+      // A product category's or tag's archive lists products, in the shop's
+      // language, and a path's escapes are read as what they escape.
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Category Feed" href="https://example.com/product-category/kain/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Umpan Kategori" href="https://example.com/kategori-produk/kain/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko" href="https://example.com/%70roduk/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Loja" href="https://example.com/cat%C3%A1logo/feed/" />',
     ])
       expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)).toMatchObject({
@@ -255,6 +259,23 @@ describe("what the checks read from the markup real sites write", () => {
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/%E0%A4%A/feed/" />',
       // A product's reviews feed, titled in Portuguese.
       '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Kain Tenun Ikat Feed de comentários" href="https://example.com/produto/kain-tenun-ikat/feed/" />',
+      // A site's name is not its feed's: the title counts after the last
+      // separator.
+      '<link rel="alternate" type="application/rss+xml" title="Green Valley Produce &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Blue Sky Productions &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Produk Lokal &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Catalog Living &raquo; Feed" href="https://example.com/feed/" />',
+      // WordPress installed under a shop's word links its posts' and
+      // comments' feeds there.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/shop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Umpan" href="https://example.com/toko/feed/" />',
+      // A blog's category and post feeds whose slugs hold a product's word.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Shop News Category Feed" href="https://example.com/category/shop-news/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/produce-guide/feed/" />',
+      // A sitemap or a list of stores is not a products feed.
+      '<link rel="alternate" type="application/xml" href="/product-sitemap.xml">',
+      '<link rel="alternate" type="application/xml" href="/sitemap_products_1.xml?from=1&amp;to=99">',
+      '<link rel="alternate" type="application/xml" href="/store-locator/stores.xml">',
       // A word of the address counts whole, not inside another word.
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/workshop/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/shopping-tips/feed/" />',
@@ -411,6 +432,43 @@ describe("what the checks read from the markup real sites write", () => {
       '<head><link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Products Feed" href="https://example.com/shop/feed/" /></head><body><h1>Shop</h1></body>',
     );
     expect(check(input, 15)).toMatchObject({ status: "pass", earnedWeight: 4 });
+  });
+
+  it("never takes a product page's own feed for a products feed, whatever its title or host", () => {
+    const product = {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      name: "Productivity Planner",
+      offers: {
+        "@type": "Offer",
+        price: "150000",
+        priceCurrency: "IDR",
+        availability: "http://schema.org/InStock",
+      },
+    };
+    // A Dutch title carries the product's name, which may hold a product's
+    // word; an install may write its own host or scheme differently.
+    for (const [address, feed] of [
+      [
+        "https://example.com/product/productivity-planner/",
+        '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Productivity Planner Reacties feed" href="https://example.com/product/productivity-planner/feed/" />',
+      ],
+      [
+        "https://example.com/product/productivity-planner/",
+        '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Reacties feed" href="https://www.example.com/product/productivity-planner/feed/" />',
+      ],
+      [
+        "https://example.com/product/productivity-planner",
+        '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Reacties feed" href="http://example.com/product/productivity-planner/feed/" />',
+      ],
+    ] as const) {
+      const input = withBase("<title>Winkel</title><p>Welkom.</p>");
+      input.representative = artifact(
+        address,
+        `<head>${feed}</head><body><h1>Productivity Planner</h1><script type="application/ld+json">${JSON.stringify(product)}</script></body>`,
+      );
+      expect(check(input, 15)).toMatchObject({ status: "partial", earnedWeight: 3 });
+    }
   });
 
   it("scores a Shopify product page by its Open Graph and JSON-LD facts", () => {
