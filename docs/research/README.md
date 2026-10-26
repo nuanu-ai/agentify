@@ -72,6 +72,7 @@ name. Notes written in Russian stay in Russian.
 | [84-nuanu-analytics-ingest](84-nuanu-analytics-ingest.md) | what Nuanu Analytics is relied on to do with a server-sent event, where that comes from, and the check still owed | ADR-0042 | English | current |
 | [85-operator-admin](85-operator-admin.md) | who the operator's admin serves and why, what it does and never does, how its actions are protected, how it is built, and its screens | ADR-0010, ADR-0014, ADR-0026, ADR-0040 | English | current |
 | [88-what-the-scanner-could-not-read](88-what-the-scanner-could-not-read.md) | how a scanner check tells a document it read from one it could not read, why an unsettled check lowers coverage and not the score, and how results name one cause | — | English | current |
+| [89-scanner-page-reading](89-scanner-page-reading.md) | how the scanner splits a page as the HTML standard does and recognises a price in any currency, why it does not use parse5, and what the reading still gets wrong | — | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,

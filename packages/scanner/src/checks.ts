@@ -1251,6 +1251,7 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       : baseSignals.textLength >= 500 && baseSignals.hasH1 && baseSignals.hasTitle;
   const maximumTextLength = Math.max(baseSignals.textLength, representativeSignals.textLength);
   const anyJsonLd = baseJsonLd || representativeJsonLd;
+  const price = representativeSignals.price ?? baseSignals.price;
   const partial = !pass && (maximumTextLength >= 150 || anyJsonLd);
   return result({
     id: 12,
@@ -1263,6 +1264,7 @@ const ssrCheck = (artifacts: ScanArtifacts): CheckResult => {
       has_title: baseSignals.hasTitle || representativeSignals.hasTitle,
       product_link_count: baseSignals.productLinkCount + representativeSignals.productLinkCount,
       has_price_signal: baseSignals.hasPrice || representativeSignals.hasPrice,
+      ...(price ? { price_signal: price.price, price_signal_source: price.source } : {}),
       has_jsonld: anyJsonLd,
       representative_checked: Boolean(usableRepresentative),
     },
