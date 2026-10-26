@@ -158,6 +158,9 @@ type PageReading = {
   jsonLdScripts: string[];
   microdata: MarkedPrice;
   meta: MarkedPrice;
+  productFeed: boolean;
+  product: boolean;
+  availability: boolean;
 };
 
 const PRODUCT_WORDS = ["product", "shop", "item"];
@@ -167,6 +170,60 @@ const META_AMOUNTS = ["product:price:amount", "og:price:amount"];
 const META_CURRENCIES = ["product:price:currency", "og:price:currency"];
 const SEEN = /\S/;
 const SHADOW_ROOT_MODES = ["open", "closed"];
+// A link declares a feed by its media type or by the file it names, and the
+// feed is the shop's products' when its address or its title names them, as
+// WooCommerce's does (`/shop/feed/`, `?post_type=product&feed=rss2`). A
+// title is the site's name too, which may hold "shop", so the title is held
+// to the plainer words.
+const FEED_TYPES = [
+  "application/rss+xml",
+  "application/atom+xml",
+  "application/xml",
+  "text/xml",
+  "text/csv",
+  "text/tab-separated-values",
+];
+const FEED_FILE = /\.(?:xml|rss|atom|csv|tsv)$/;
+const FEED_TITLE_WORDS = ["product", "catalog", "catalogue", "merchant"];
+const FEED_ADDRESS_WORDS = [...FEED_TITLE_WORDS, "shop", "collections"];
+// Microdata properties that identify a product.
+const PRODUCT_PROPERTIES = [
+  "sku",
+  "gtin",
+  "gtin8",
+  "gtin12",
+  "gtin13",
+  "gtin14",
+  "mpn",
+  "productID",
+];
+const PRODUCT_TYPE = /^https?:\/\/schema\.org\/product$/;
+
+// The path and query of an address, without its host, which may name the
+// shop rather than what the address leads to.
+const addressPath = (href: string): string => {
+  try {
+    const url = new URL(href, "https://page.invalid/");
+    return asciiLower(url.pathname + url.search);
+  } catch {
+    return "";
+  }
+};
+
+const declaresProductFeed = (attributes: ReadonlyMap<string, string>): boolean => {
+  if (!tokens(asciiLower(attributes.get("rel") ?? "")).includes("alternate")) return false;
+  const type =
+    asciiLower(attributes.get("type") ?? "")
+      .split(";")[0]
+      ?.trim() ?? "";
+  const path = addressPath(attributes.get("href") ?? "");
+  if (!FEED_TYPES.includes(type) && !FEED_FILE.test(path.split("?")[0] ?? "")) return false;
+  const title = asciiLower(attributes.get("title") ?? "");
+  return (
+    FEED_TITLE_WORDS.some((word) => title.includes(word)) ||
+    FEED_ADDRESS_WORDS.some((word) => path.includes(word))
+  );
+};
 const DIGIT = /\p{Nd}/u;
 
 const tokens = (value: string | undefined): string[] =>
@@ -189,6 +246,9 @@ const walkPage = (html: string): PageReading => {
     jsonLdScripts: [],
     microdata: {},
     meta: {},
+    productFeed: false,
+    product: false,
+    availability: false,
   };
   // Template content is inert, unless the template is a declarative shadow
   // root, which the browser attaches and shows. Navigation is not the page's
@@ -244,15 +304,35 @@ const walkPage = (html: string): PageReading => {
       ) {
         const hreflang = attributes.get("hreflang");
         if (hreflang) reading.hreflangs.push(hreflang);
+        if (declaresProductFeed(attributes)) reading.productFeed = true;
       }
       if (tag.name === "meta") {
         const property = asciiLower(attributes.get("property") ?? attributes.get("name") ?? "");
-        if (META_AMOUNTS.includes(property))
-          mark(reading.meta, "amount", attributes.get("content"));
-        if (META_CURRENCIES.includes(property))
-          mark(reading.meta, "currency", attributes.get("content"));
+        const content = attributes.get("content");
+        if (META_AMOUNTS.includes(property)) mark(reading.meta, "amount", content);
+        if (META_CURRENCIES.includes(property)) mark(reading.meta, "currency", content);
+        // Open Graph's product type, and the tags of its product namespace.
+        if (
+          (property === "og:type" &&
+            asciiLower(content ?? "")
+              .trim()
+              .startsWith("product")) ||
+          property.startsWith("product:")
+        )
+          reading.product = true;
+        if (
+          (property === "product:availability" || property === "og:availability") &&
+          SEEN.test(content ?? "")
+        )
+          reading.availability = true;
       }
       const itemprop = tokens(attributes.get("itemprop"));
+      if (
+        itemprop.some((name) => PRODUCT_PROPERTIES.includes(name)) ||
+        tokens(asciiLower(attributes.get("itemtype") ?? "")).some((type) => PRODUCT_TYPE.test(type))
+      )
+        reading.product = true;
+      if (itemprop.includes("availability")) reading.availability = true;
       const key = itemprop.some((name) => MICRODATA_PRICES.includes(name))
         ? "amount"
         : itemprop.includes("priceCurrency")
@@ -317,6 +397,27 @@ const jsonLdOf = (scripts: readonly string[]): { jsonLd: JsonLdResult; values: u
   return { jsonLd: { nodes, scriptCount: scripts.length, invalidCount }, values };
 };
 
+// Whether some object in the JSON-LD, at any depth, passes `test`.
+const jsonLdHolds = (
+  values: readonly unknown[],
+  test: (record: Record<string, unknown>) => boolean,
+): boolean => {
+  const pending: unknown[] = [...values];
+  for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
+    if (Array.isArray(value)) pending.push(...value);
+    else if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      if (test(record)) return true;
+      pending.push(...Object.values(record));
+    }
+  }
+  return false;
+};
+const isProduct = (record: Record<string, unknown>): boolean =>
+  jsonLdTypes(record).some((type) => /(?:^|[/:])Product(?:Group)?$/.test(type));
+const statesAvailability = (record: Record<string, unknown>): boolean =>
+  typeof record.availability === "string" && SEEN.test(record.availability);
+
 const signalsOf = (reading: PageReading, jsonLd: readonly unknown[]) => {
   const price =
     jsonLdPrice(jsonLd) ??
@@ -331,6 +432,15 @@ const signalsOf = (reading: PageReading, jsonLd: readonly unknown[]) => {
     price,
     productLinkCount: reading.productLinkCount,
     hreflangs: reading.hreflangs,
+    /** A link to a feed of the shop's products. */
+    productFeed: reading.productFeed,
+    /** A product declared in Open Graph, microdata or JSON-LD. */
+    describesProduct: reading.product || jsonLdHolds(jsonLd, isProduct),
+    /** A price or an availability stated in structured data. */
+    statesOffer:
+      (price !== undefined && price.source !== "text") ||
+      reading.availability ||
+      jsonLdHolds(jsonLd, statesAvailability),
   };
 };
 
