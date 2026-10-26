@@ -57,4 +57,20 @@ describe("the rule an address is held to", () => {
       expect(said, address).toMatch(/not saved/i);
     }
   });
+
+  it("tells a mistyped address to be copied again, never to drop the capitals that caught it", () => {
+    // Written in lower case, a typo passes as somebody else's valid address.
+    const said = whatIsWrongWithTheWallet(`0x${SHAPED.slice(2).toUpperCase()}`) ?? "";
+
+    expect(said).toMatch(/copy it again/i);
+    expect(said).not.toMatch(/lower ?case/i);
+  });
+
+  it("names what makes an address the wrong shape: its start, a character, or its length", () => {
+    expect(whatIsWrongWithTheWallet(SHAPED.slice(2))).toMatch(/starts with 0x/i);
+    expect(whatIsWrongWithTheWallet(`${SHAPED.slice(0, 20)}z${SHAPED.slice(21)}`)).toContain(
+      "“z” can't be in a wallet address.",
+    );
+    expect(whatIsWrongWithTheWallet(SHAPED.slice(0, -1))).toMatch(/41 characters/);
+  });
 });

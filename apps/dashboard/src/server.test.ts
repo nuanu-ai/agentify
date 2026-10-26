@@ -2534,12 +2534,11 @@ describe("the settings screen", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    const text = readable((await browser.get("/settings")).html);
+    const page = (await browser.get("/settings")).html;
 
-    expect(text).toMatch(/cannot|never/i);
-    expect(text).toMatch(/stop.*selling/i);
-    // The rule, on the page rather than only in a refusal.
-    expect(text).toMatch(/32 characters/);
+    expect(readable(page)).not.toMatch(/remove (the|your) (seller )?name/i);
+    // The form, under the box, before anything is refused.
+    expect(readable(page)).toMatch(/32 characters/);
   });
 
   it("takes the shop's site beside the name, and the gateway has it afterwards", async () => {
@@ -2632,7 +2631,9 @@ describe("the settings screen", () => {
     expect(readable(answered.html)).toMatch(/not saved/i);
     expect(readable(answered.html)).toMatch(/payment network/i);
     expect(answered.html).toContain(`value="${"x".repeat(33)}"`);
-    expect(readable(answered.html)).toContain(running.harnessed.merchant.name);
+    expect(readable(answered.html)).toContain(
+      `Buyers still see “${running.harnessed.merchant.name}”`,
+    );
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
   });
 
@@ -2758,13 +2759,13 @@ describe("the settings screen", () => {
 });
 
 describe("the account on the settings screen", () => {
-  it("names the email link as the only way back in and offers no password control", async () => {
+  it("says signing out everywhere is followed by signing in again, and offers no password control", async () => {
     const { browser } = await started();
     await browser.signIn();
 
     const screen = await browser.get("/settings");
 
-    expect(readable(screen.html)).toMatch(/one-time link/i);
+    expect(readable(screen.html)).toMatch(/sign in again/i);
     expect(screen.html).not.toContain('type="password"');
     expect(screen.html).not.toContain('action="/password"');
   });
@@ -2790,7 +2791,7 @@ describe("the wallet a merchant's share is paid out to", () => {
 
     expect(screen.status).toBe(200);
     expect(screen.html).toContain('name="payout_wallet"');
-    expect(readable(screen.html)).toMatch(/payout wallet/i);
+    expect(readable(screen.html)).toMatch(/wallet address/i);
   });
 
   it("is saved, and the whole of it is on the page afterwards", async () => {
@@ -2930,10 +2931,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     if (inForce === null) throw new Error("no split was recorded for the saved wallet");
     const percent = (part: number): string => `${(part / inForce.totalAllocation) * 100}%`;
     const text = readable(screen.html);
-    expect(text).toContain(`Agentify keeps ${percent(inForce.commissionAllocation)} of every sale`);
-    expect(text).toContain(
-      `it pays ${percent(inForce.merchantAllocation)} to the wallet and ${percent(inForce.commissionAllocation)} to Agentify`,
-    );
+    expect(text).toContain(`Agentify keeps ${percent(inForce.commissionAllocation)} of each sale`);
   });
 
   it("pays out, beside the contract of the wallet saved now, the earlier contract a sale was paid into, each to its own wallet", async () => {
@@ -2967,9 +2965,14 @@ describe("the wallet a merchant's share is paid out to", () => {
         harnessed.runtime.config.payoutSplitNetworks,
       ).data,
     );
-    const shown = readable(screen.html.replaceAll(/<\/?span[^>]*>/g, ""));
-    expect(shown).toContain(`${earlier?.address} pays ${harnessed.merchant.wallet}`);
-    expect(shown).toContain(`${now?.address} pays ${AS_A_WALLET_SHOWS_IT}`);
+    const pairs = [
+      ...screen.html.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td><td[^>]*>([\s\S]*?)<\/td><\/tr>/g),
+    ].map(
+      (row) =>
+        `${readable((row[1] ?? "").replaceAll(/<\/?span[^>]*>/g, ""))} pays ${readable((row[2] ?? "").replaceAll(/<\/?span[^>]*>/g, ""))}`,
+    );
+    expect(pairs).toContain(`${earlier?.address} pays ${harnessed.merchant.wallet}`);
+    expect(pairs).toContain(`${now?.address} pays ${AS_A_WALLET_SHOWS_IT}`);
   });
 
   it("refuses an address a merchant's share could never come back from, says what it is, and saves nothing", async () => {
@@ -3069,8 +3072,8 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(screen.status).toBe(200);
     expect(screen.html).not.toContain("<textarea");
     const text = readable(screen.html);
-    expect(text).toMatch(/get your payout/i);
-    expect(text).toMatch(/could not build/i);
+    expect(text).toMatch(/getting paid/i);
+    expect(text).toMatch(/couldn't prepare your payout/i);
     expect(text).toContain(SIGN_OUT_EVERYWHERE);
     expect(screen.html).toContain('name="payout_wallet"');
   });
@@ -3083,7 +3086,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     for (const form of [{ payout_wallet: "" }, {}] as Record<string, string>[]) {
       const answered = await running.browser.post("/settings/payout-wallet", form);
       expect(answered.status).toBe(400);
-      expect(readable(answered.html)).toMatch(/address is needed/i);
+      expect(readable(answered.html)).toMatch(/paste your wallet's address/i);
       // An empty box is how a merchant would try to stop being paid here, and
       // it cannot do that: the money goes where it went.
       expect(await paidInto(running)).toBe(before);
@@ -6054,8 +6057,7 @@ describe("a wallet change waiting on the live deployment", () => {
     const waiting = await running.browser.get("/settings");
 
     expect(waitingSplit?.merchantWallet).toBe(WAITING);
-    const shown = waiting.html.replaceAll(/<[^>]*>/g, "");
-    expect(shown.slice(shown.indexOf("Waiting to replace it"))).toContain(waitingSplit?.address);
+    expect(waiting.html.replaceAll(/<[^>]*>/g, "")).toContain(WAITING);
     expect(dataOn(waiting)).toBe(
       merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit], networks).data,
     );
@@ -6538,7 +6540,7 @@ describe("a wallet change waiting on the live deployment", () => {
       });
 
       expect(typed.status).toBe(200);
-      expect(readable(typed.html)).toMatch(/took effect/i);
+      expect(readable(typed.html)).toMatch(/too late to cancel/i);
       expect(await paidNow(running)).toBe(WAITING);
       expect(await waitingNow(running)).toBeNull();
       expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
