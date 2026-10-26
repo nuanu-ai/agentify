@@ -124,11 +124,18 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   robots_partially_parseable:
     "robots.txt is present, but some directives are malformed or ambiguous.",
   robots_unavailable: "robots.txt could not be assessed during this scan.",
-  sitemap_invalid:
-    "A sitemap was found, but its format or entries could not be validated reliably.",
+  sitemap_doctype:
+    "The sitemap declares an XML document type, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
+  sitemap_empty: "A sitemap was found, but it lists no addresses.",
+  sitemap_entries_missing:
+    "A sitemap was found, but a sitemap that robots.txt or a sitemap index lists is missing, empty or not a sitemap. The evidence names which.",
   sitemap_missing:
     "No public sitemap could be discovered from robots.txt or the standard location.",
-  sitemap_partial: "A sitemap was found, but part of the sitemap set is incomplete or invalid.",
+  sitemap_no_lastmod: "A sitemap was found, but none of its entries carries a lastmod date.",
+  sitemap_not_sitemap:
+    "The sitemap address answers with something that is not a sitemap, such as a web page.",
+  sitemap_stale:
+    "A sitemap was found, but more than four in five of its lastmod dates are older than 180 days or are not dates. The evidence gives the counts.",
   sitemap_unavailable: "Sitemap discovery could not be assessed.",
   sitemap_valid: "A valid public sitemap was discovered.",
   ssr_content_substantive:
@@ -185,9 +192,12 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   robots_invalid: "Your crawler rules cannot be interpreted reliably",
   robots_missing: "Crawler access rules are missing at the standard location",
   robots_partially_parseable: "Part of your crawler policy is malformed or ambiguous",
-  sitemap_invalid: "Your sitemap cannot be used reliably",
+  sitemap_empty: "Your sitemap lists no pages",
+  sitemap_entries_missing: "A sitemap your site lists is missing",
   sitemap_missing: "No sitemap was found in robots.txt or the standard location",
-  sitemap_partial: "Your sitemap can lead crawlers to incomplete entries",
+  sitemap_no_lastmod: "Your sitemap does not say when pages changed",
+  sitemap_not_sitemap: "Your sitemap address does not serve a sitemap",
+  sitemap_stale: "Most of your sitemap's dates are old",
   ssr_content_thin: "Your initial HTML gives automated readers too little to work with",
   ssr_shell_only: "Your core content is unavailable until JavaScript runs",
   ucp_absent: "No public UCP commerce profile is declared",
@@ -296,6 +306,9 @@ const IMPACT_COPY: Readonly<Record<string, string>> = {
 const FIX_COPY: Readonly<Record<string, string>> = {
   add_markdown_negotiation:
     "Add standards-based HTTP content negotiation for a fact-equivalent Markdown representation.",
+  add_sitemap_entries: "List the site's canonical public pages in the sitemap.",
+  add_sitemap_lastmod:
+    "Give each sitemap entry a lastmod date taken from when the page last changed.",
   allow_agent_user_agents:
     "If AI agents are meant to read this site, look for a rule that treats their tokens differently; a common one is a CDN's or firewall's setting that blocks AI bots. The scanner's requests come from its own addresses, so a rule that lets the real agents through by address can still turn it away. If the difference is intended, nothing needs to change.",
   complete_mcp_card:
@@ -308,7 +321,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Add the missing business-specific JSON-LD fields using facts already visible and maintained on the site.",
   declare_ai_policy:
     "Declare an explicit allow or disallow policy for each supported AI crawler group in robots.txt.",
-  improve_sitemap: "Repair incomplete sitemap entries and keep only canonical, public URLs.",
+  fix_listed_sitemaps:
+    "Make every sitemap that robots.txt or a sitemap index lists answer with a sitemap, or remove the entries that lead nowhere.",
   publish_content_signal:
     "Publish a valid Content-Signal declaration in robots.txt that reflects the site's actual policy.",
   publish_mcp_card:
@@ -327,6 +341,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Add the appropriate business-specific JSON-LD type and its key public fields.",
   reduce_page_weight_latency:
     "Reduce public response time and transfer size without hiding critical facts behind client-only rendering.",
+  refresh_sitemap_lastmod:
+    "Keep each lastmod date equal to when its page last changed, in W3C date format. If most pages have not changed in six months, nothing needs to change.",
   render_substantive_html:
     "Render the core public facts in the initial HTML and preserve progressive enhancement.",
   repair_a2a_card:
@@ -343,8 +359,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Return the correct Markdown media type, Vary header, and fact-equivalent content for negotiated requests.",
   repair_robots:
     "Repair malformed robots.txt directives and validate the final crawler groups and sitemap declarations.",
-  repair_sitemap:
-    "Repair the sitemap format and remove invalid, private, redirected, or non-canonical entries.",
+  serve_sitemap:
+    "Serve a sitemap at this address, or declare the address of the real sitemap in robots.txt.",
 };
 
 const FALLBACK_ACRONYMS: Readonly<Record<string, string>> = {

@@ -10,6 +10,7 @@ import {
   jsonLdTypes,
   parseJsonLd,
   parseSitemap,
+  type SitemapResult,
   visibleText,
 } from "./parsers.js";
 import {
@@ -84,22 +85,7 @@ export const BASE_BLOCKED = "base_blocked";
 
 const inaccessible = (artifact?: FetchArtifact): boolean =>
   !artifact || Boolean(artifact.errorCode) || artifact.status === 0 || artifact.status >= 500;
-const missing = (artifact?: FetchArtifact): boolean =>
-  !artifact || artifact.status === 404 || artifact.status === 410;
-
 const ROBOTS_CODES = new Set(["robots_disallowed", "robots_unavailable"]);
-const robotsCode = (artifact?: FetchArtifact): string | undefined =>
-  artifact?.errorCode && ROBOTS_CODES.has(artifact.errorCode) ? artifact.errorCode : undefined;
-// Why none of several documents could be read: robots.txt first, since the
-// owner can act on it, then whatever else stopped the first one.
-const unreadReason = (artifacts: readonly FetchArtifact[], fallback: string): string => {
-  const unread = artifacts.filter((artifact) => inaccessible(artifact));
-  return (
-    unread.map(robotsCode).find(Boolean) ??
-    unread.find((artifact) => artifact.errorCode)?.errorCode ??
-    fallback
-  );
-};
 
 type Unknown = Extract<Reading | DocumentReading, { state: "cut" | "unread" }>;
 const isUnknown = (reading: Reading | DocumentReading): reading is Unknown =>
@@ -340,65 +326,149 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   return [robots, ai, contentSignal];
 };
 
+// What one sitemap request came to. A cut answer whose part read already
+// holds entries is judged by them; one that does not is as unknown as an
+// answer that never came.
+type SitemapOutcome = Readonly<
+  { artifact: FetchArtifact } & (
+    | { kind: "sitemap"; parsed: SitemapResult; readLimit?: string }
+    | { kind: "unread"; reading: Unknown }
+    | { kind: "doctype" }
+    | { kind: "missing"; status: number }
+    | { kind: "empty" | "not_sitemap" }
+  )
+>;
+
+const sitemapOutcome = (artifact: FetchArtifact): SitemapOutcome => {
+  const reading = readingOf(artifact, "sitemap_unavailable");
+  if (reading.state === "absent") return { artifact, kind: "missing", status: reading.status };
+  if (reading.state === "unread") return { artifact, kind: "unread", reading };
+  if (isWebPage(artifact.body)) return { artifact, kind: "not_sitemap" };
+  const parsed = sitemapOf(artifact);
+  // The scanner does not read XML that declares a document type, whose
+  // entities could expand without bound.
+  if (parsed.errorCode === "xml_entity_blocked") return { artifact, kind: "doctype" };
+  if (parsed.valid)
+    return {
+      artifact,
+      kind: "sitemap",
+      parsed,
+      ...(reading.state === "cut" ? { readLimit: reading.readLimit } : {}),
+    };
+  if (reading.state === "cut") return { artifact, kind: "unread", reading };
+  return { artifact, kind: parsed.errorCode === "sitemap_empty" ? "empty" : "not_sitemap" };
+};
+
+const SITEMAP_FIXES: Readonly<Record<string, string>> = {
+  sitemap_entries_missing: "fix_listed_sitemaps",
+  sitemap_no_lastmod: "add_sitemap_lastmod",
+  sitemap_stale: "refresh_sitemap_lastmod",
+};
+
 const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
-  const available = artifacts.sitemap.filter(
-    (artifact) => !inaccessible(artifact) && !missing(artifact),
-  );
-  if (!available.length) {
-    // Absent only when every sitemap asked for answered that it is not there.
-    if (artifacts.sitemap.length && artifacts.sitemap.every((artifact) => missing(artifact)))
+  const durationMs = artifacts.sitemap.reduce((sum, artifact) => sum + artifact.durationMs, 0);
+  const outcomes = artifacts.sitemap.map(sitemapOutcome);
+  const sitemaps = outcomes.flatMap((outcome) => (outcome.kind === "sitemap" ? [outcome] : []));
+  if (!sitemaps.length) {
+    // That no usable sitemap exists is said only once every sitemap asked
+    // for has been read.
+    const unknown = outcomes.length
+      ? firstUnknown(
+          outcomes.flatMap((outcome) => (outcome.kind === "unread" ? [outcome.reading] : [])),
+        )
+      : ({ state: "unread", errorCode: "sitemap_unavailable" } as const);
+    if (unknown)
+      return unjudged(4, unknown, {
+        summaryCode: "sitemap_unavailable",
+        userImpactCode: "sitemap_not_assessed",
+      });
+    if (outcomes.some((outcome) => outcome.kind === "doctype"))
       return result({
         id: 4,
-        status: "fail",
+        status: "unavailable",
         earnedWeight: 0,
-        summaryCode: "sitemap_missing",
-        userImpactCode: "sitemap_discovery_gap",
-        fixCode: "publish_sitemap",
+        summaryCode: "sitemap_doctype",
+        userImpactCode: "sitemap_not_assessed",
+        errorCode: "sitemap_doctype",
+        durationMs,
       });
-    return result({
-      id: 4,
-      status: "unavailable",
-      earnedWeight: 0,
-      summaryCode: "sitemap_unavailable",
-      userImpactCode: "sitemap_not_assessed",
-      errorCode: unreadReason(artifacts.sitemap, "sitemap_unavailable"),
-    });
-  }
-  const parsed = available.map(sitemapOf);
-  const valid = parsed.filter((entry) => entry.valid);
-  if (!valid.length)
+    const [summaryCode, fixCode] = outcomes.some((outcome) => outcome.kind === "empty")
+      ? ["sitemap_empty", "add_sitemap_entries"]
+      : outcomes.some((outcome) => outcome.kind === "not_sitemap")
+        ? ["sitemap_not_sitemap", "serve_sitemap"]
+        : ["sitemap_missing", "publish_sitemap"];
     return result({
       id: 4,
       status: "fail",
       earnedWeight: 0,
-      summaryCode: "sitemap_invalid",
-      evidence: { files_checked: available.length },
+      summaryCode,
       userImpactCode: "sitemap_discovery_gap",
-      fixCode: "repair_sitemap",
+      fixCode,
+      durationMs,
     });
-  const lastmods = valid.flatMap((entry) => entry.lastmods);
+  }
+  // A sitemap is named by where it was listed, since its address cannot be
+  // shown in the evidence.
+  const indexes = sitemaps.filter(({ parsed }) => parsed.isIndex).map(({ parsed }) => parsed.urls);
+  const declared = readRobots(artifacts.robots).parsed.sitemaps;
+  const named = (outcome: SitemapOutcome): string => {
+    const listed = indexes.map((urls) => urls.indexOf(outcome.artifact.url)).find((at) => at >= 0);
+    const place =
+      listed !== undefined
+        ? `entry ${listed + 1} of the sitemap index`
+        : declared.includes(outcome.artifact.url)
+          ? `sitemap ${declared.indexOf(outcome.artifact.url) + 1} declared in robots.txt`
+          : "the sitemap address";
+    const reason =
+      outcome.kind === "missing"
+        ? `HTTP ${outcome.status}`
+        : outcome.kind === "unread"
+          ? outcome.reading.state === "cut"
+            ? `larger than ${outcome.reading.readLimit}`
+            : outcome.reading.status
+              ? `HTTP ${outcome.reading.status}`
+              : outcome.reading.errorCode
+          : outcome.kind === "doctype"
+            ? "declares a document type"
+            : outcome.kind === "empty"
+              ? "no entries"
+              : "not a sitemap";
+    return `${place}: ${reason}`;
+  };
+  const missing = outcomes
+    .filter(({ kind }) => kind === "missing" || kind === "empty" || kind === "not_sitemap")
+    .map(named);
+  const unread = outcomes.filter(({ kind }) => kind === "unread" || kind === "doctype").map(named);
+  const lastmods = sitemaps.flatMap(({ parsed }) => parsed.lastmods);
   const staleCutoff = Date.now() - 180 * 86_400_000;
   const stale = lastmods.filter(
     (value) => !Number.isFinite(Date.parse(value)) || Date.parse(value) < staleCutoff,
   ).length;
-  const childUnavailable =
-    valid.some((entry) => entry.isIndex) && artifacts.sitemap.some(inaccessible);
-  const staleRatio = lastmods.length ? stale / lastmods.length : 1;
-  const partial = childUnavailable || !lastmods.length || staleRatio > 0.8;
+  const cause = missing.length
+    ? "sitemap_entries_missing"
+    : !lastmods.length
+      ? "sitemap_no_lastmod"
+      : stale * 5 > lastmods.length * 4
+        ? "sitemap_stale"
+        : undefined;
+  const readLimit = sitemaps.find((sitemap) => sitemap.readLimit)?.readLimit;
   return result({
     id: 4,
-    status: partial ? "partial" : "pass",
-    earnedWeight: partial ? (childUnavailable ? 2 : 4) : 6,
-    summaryCode: partial ? "sitemap_partial" : "sitemap_valid",
+    status: cause ? "partial" : "pass",
+    earnedWeight: cause === "sitemap_entries_missing" ? 2 : cause ? 4 : 6,
+    summaryCode: cause ?? "sitemap_valid",
     evidence: {
       files_checked: artifacts.sitemap.length,
-      url_count: valid.flatMap((entry) => entry.urls).length,
+      entries_read: sitemaps.flatMap(({ parsed }) => parsed.urls).length,
       lastmod_count: lastmods.length,
-      stale_ratio_percent: Math.round(staleRatio * 100),
+      stale_lastmod_count: stale,
+      ...(missing.length ? { sitemaps_missing: missing } : {}),
+      ...(unread.length ? { sitemaps_unread: unread } : {}),
+      ...(readLimit ? { truncated: true, read_limit: readLimit } : {}),
     },
     userImpactCode: "sitemap_discovery",
-    fixCode: partial ? "improve_sitemap" : undefined,
-    durationMs: artifacts.sitemap.reduce((sum, artifact) => sum + artifact.durationMs, 0),
+    fixCode: cause ? SITEMAP_FIXES[cause] : undefined,
+    durationMs,
   });
 };
 
