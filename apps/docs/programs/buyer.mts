@@ -42,7 +42,12 @@ async function buy(): Promise<void> {
     items: Card[]
   }
   const card = catalogue.items.find((item) => item.id === ITEM_ID)
-  if (card === undefined) throw new Error(`${ITEM_ID} is not in the catalogue.`)
+  if (card === undefined) {
+    throw new Error(
+      `${ITEM_ID} is not in the catalogue. A card is listed only once it is published, ` +
+        'and only while the process from step 4 is running and polling.',
+    )
+  }
 
   // Asking to buy is answered 402, with a payment request. Nothing is charged yet.
   const purchase = {
