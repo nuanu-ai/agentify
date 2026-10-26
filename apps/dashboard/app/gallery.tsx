@@ -436,9 +436,9 @@ const seenBy = (mode: SurfaceMode, more: Partial<Viewer> = {}): Viewer => ({
   ...more,
 });
 
-/** The banner the merchant's layout reads for this viewer, selling through their code unless told. */
+/** The banner the merchant's layout reads for this viewer, selling unless told. */
 const bannerOf = (viewer: Viewer, read: AccountRead = {}) =>
-  accountOf(viewer, { selling: "open", through: "api", ...read });
+  accountOf(viewer, { selling: "open", ...read });
 
 type Status =
   | "in_progress"
@@ -1115,6 +1115,94 @@ const WHOLE_CATALOGUE = MerchantCardListSchema.parse({
 });
 
 /**
+ * A shop's whole catalogue short of a page, as an eSIM and VPN seller lists
+ * it: plans per region and size, VPN by the month and the year, numbers by
+ * country priced at purchase, and a router by parcel; some paused.
+ */
+const MANY = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    ...(
+      [
+        ["Europe", "eu", 39, ["4.50", "13.00", "21.00"]],
+        ["Asia", "asia", 14, ["4.00", "11.50", "19.00"]],
+        ["United States", "us", 1, ["5.00", "15.00", "24.00"]],
+        ["Latin America", "latam", 18, ["7.50", "24.00", "39.00"]],
+        ["Middle East", "me", 12, ["8.00", "26.00", "45.00"]],
+        ["Africa", "africa", 20, ["11.00", "36.00", "59.00"]],
+        ["Global", "global", 120, ["9.00", "32.00", "55.00"]],
+      ] as const
+    ).flatMap(([region, code, countries, prices]) =>
+      (
+        [
+          [1, 7, prices[0]],
+          [5, 30, prices[1]],
+          [10, 30, prices[2]],
+        ] as const
+      ).map(([gigabytes, days, price]) => ({
+        merchant_item_id: `esim-${code}-${gigabytes}gb-${days}d`,
+        title: `eSIM ${region}, ${gigabytes} GB for ${days} days`,
+        description: `A data plan for ${countries} ${countries === 1 ? "country" : "countries"}, delivered as a profile after the purchase`,
+        price: { amount: price, currency: "USD" },
+        result: { iccid: { type: "string" } },
+        fulfillment: "async",
+        fulfill_deadline_seconds: region === "Global" ? 900 : 14_400,
+      })),
+    ),
+    ...[
+      ["one month", "1m", "5.00"],
+      ["three months", "3m", "13.50"],
+      ["six months", "6m", "24.00"],
+      ["one year", "12m", "45.00"],
+    ].map(([span, code, price]) => ({
+      merchant_item_id: `vpn-${code}`,
+      title: `VPN, ${span}`,
+      description: "Access from the moment it is delivered",
+      price: { amount: price, currency: "USD" },
+      result: { access_url: { type: "string" } },
+      fulfillment: "sync",
+    })),
+    ...["United Kingdom", "Germany", "Netherlands"].map((country) => ({
+      merchant_item_id: `number-sms-${country.toLowerCase().replaceAll(" ", "-")}`,
+      title: `A virtual number in ${country}, inbound SMS`,
+      description: `Rent a ${country} phone number for inbound SMS for thirty days.`,
+      price: { amount: "2.00", currency: "USD" },
+      result: { number: { type: "string" } },
+      fulfillment: "sync",
+      price_check: "handler",
+    })),
+    {
+      merchant_item_id: "travel-router",
+      title: "A pocket travel router",
+      description: "A router for a hotel room, sent by post",
+      price: { amount: "39.00", currency: "USD" },
+      fulfillment: "ship",
+      ship_within_seconds: 172_800,
+      price_check: "handler",
+    },
+    {
+      merchant_item_id: "esim-jp-3gb-15d",
+      title: "eSIM Japan, 3 GB for 15 days",
+      description: "A data plan delivered as a profile after the purchase",
+      price: { amount: "8.00", currency: "USD" },
+      result: { iccid: { type: "string" } },
+      fulfillment: "async",
+    },
+  ].map((card) => {
+    const paused = ["esim-me-10gb-30d", "vpn-6m", "number-sms-germany"].includes(
+      card.merchant_item_id,
+    );
+    return {
+      id: idOf("itm", card.merchant_item_id),
+      as_of: "2026-10-01T09:00:00Z",
+      card,
+      selling: paused ? "paused" : "open",
+      paused,
+    };
+  }),
+});
+
+/**
  * A parcel, which names its time to reach a carrier, and a data plan sent
  * later that names no window of its own, beside one that names its window.
  */
@@ -1253,7 +1341,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A merchant opens Cards while twenty purchases of theirs are priced and unpaid.",
       cause:
-        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so; each place comes free when its purchase is paid or its price runs out.",
+        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so and that sales resume by themselves; each place comes free when its purchase is paid or its price runs out.",
     },
     cardsView(CATALOGUE, ORIGIN.live),
     "live",
@@ -1263,46 +1351,13 @@ const CARDS: GalleryState[] = [
     {
       id: "dashboard-cards-many",
       screen: "Cards",
-      when: "A merchant with a whole catalogue opens Cards.",
-      cause: "The gateway lists eight cards, one of them paused by the merchant.",
+      when: "A merchant with a whole catalogue of data plans, VPN and numbers opens Cards.",
+      cause:
+        "The gateway lists thirty cards, short of a page: plans delivered later within their own window, VPN and numbers delivered at once, numbers priced at purchase, a router sent by parcel, and three cards the merchant paused.",
     },
-    cardsView(
-      cardsOf("open", [
-        "esimEurope",
-        "esimAsia",
-        "esimUnitedStates",
-        "esimGlobal",
-        "esimWeek",
-        { product: "vpn", paused: true },
-        "vpnYear",
-        "number",
-      ]),
-      ORIGIN.live,
-    ),
+    cardsView(MANY, ORIGIN.live),
     "live",
   ),
-  {
-    ...cards(
-      {
-        id: "dashboard-cards-opened-row",
-        screen: "Cards",
-        when: "A merchant taps a card's price to read since when it holds.",
-        cause:
-          "A row shows the title, the price, the state, the delivery and the product code; a fixed price opens to the moment it holds from, which no row prints, on every width.",
-      },
-      cardsView(CATALOGUE, ORIGIN.live),
-      "live",
-    ),
-    scene: {
-      steps: [
-        {
-          shows: "On the card since",
-          does: (page) => page.querySelector("details.price-since")?.setAttribute("open", ""),
-        },
-      ],
-      shows: "On the card since",
-    },
-  },
   cards(
     {
       id: "dashboard-cards-windows",
@@ -1519,7 +1574,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A new merchant on the live site pressed Pause all sales before Agentify approved them or they set a payout wallet.",
       cause:
-        "Three things hold the whole account at once, so the one banner names each of them, broadest first.",
+        "Three things hold the whole account at once, so the one banner heads them once and lists each, those the merchant puts right first, then the approval Agentify gives.",
     },
     cardsView(cardsOf("paused", ON_SALE), ORIGIN.live),
     "live",
@@ -1548,16 +1603,30 @@ const CARDS: GalleryState[] = [
     {
       id: "dashboard-cards-selling-through-shop",
       screen: "Cards",
-      when: "A merchant who switched to their WooCommerce shop looks at the cards their code published.",
+      when: "A merchant who switched to their WooCommerce shop looks at their cards.",
       cause:
-        "The merchant sells through the shop, so the code's cards are off sale until they switch back.",
+        "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, and each of those rows says why.",
     },
-    cardsView(CATALOGUE, ORIGIN.test, true, {
-      through: "woocommerce",
-      offSale: CATALOGUE.cards.map((entry) => entry.id),
-    }),
+    ((shop) =>
+      cardsView(shop, ORIGIN.test, true, {
+        through: "woocommerce",
+        offSale: CATALOGUE.cards.map((entry) => entry.id),
+      }))(
+      MerchantCardListSchema.parse({
+        selling: "open",
+        cards: [
+          ...["Coffee & Brunch Gift Card", "Coffee beans, one kilogram"].map((title) => ({
+            id: idOf("itm", title),
+            as_of: "2026-10-01T09:00:00Z",
+            card: imported(title).card,
+            selling: "open",
+            paused: false,
+          })),
+          ...CATALOGUE.cards.map((entry) => ({ ...entry, selling: "paused" })),
+        ],
+      }),
+    ),
     "test",
-    { account: bannerOf(seenBy("test"), { through: "woocommerce" }) },
   ),
   cards(
     {
@@ -1812,7 +1881,7 @@ const ORDERS: GalleryState[] = [
       return {
         path: "/orders",
         mode: "live",
-        account: bannerOf(seenBy("live"), { through: "woocommerce", selling: "open" }),
+        account: bannerOf(seenBy("live")),
         loaded: {
           "routes/orders": {
             ...view,
@@ -2239,10 +2308,6 @@ const INTEGRATIONS: GalleryState[] = [
   ),
 ];
 
-/**
- * The banner over a WooCommerce screen: the shop's when the merchant sells
- * through it, and all sales paused where the example says so.
- */
 /** What the merchant's layout reads beside a WooCommerce example, where it is not as usual. */
 interface ShopAccount {
   readonly selling?: AccountRead["selling"];
@@ -2250,14 +2315,9 @@ interface ShopAccount {
   readonly noWallet?: true;
 }
 
-const shopBanner = (
-  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
-  { selling = "open", noWallet }: ShopAccount,
-) =>
-  bannerOf(seenBy("test", noWallet ? { payout: { wallet: null } } : {}), {
-    through: view.screen === "shop" && view.connectSwitches ? "api" : "woocommerce",
-    selling,
-  });
+/** The banner over a WooCommerce screen: all sales paused, or no wallet, where the example says so. */
+const shopBanner = ({ selling = "open", noWallet }: ShopAccount) =>
+  bannerOf(seenBy("test", noWallet ? { payout: { wallet: null } } : {}), { selling });
 
 const shop = (
   told: Told,
@@ -2267,7 +2327,7 @@ const shop = (
   at(told, {
     path,
     mode: "test",
-    account: shopBanner(view, account),
+    account: shopBanner(account),
     loaded: { "routes/woocommerce": view },
   });
 
@@ -2281,7 +2341,7 @@ const shopPress = (
   at(told, {
     path: `/woocommerce/${press}`,
     mode: "test",
-    account: shopBanner(view, account),
+    account: shopBanner(account),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
@@ -2594,7 +2654,7 @@ const RECOVERY_SALE = {
 const RECOVERY_FRAME = {
   path: `/integrations/woocommerce/recover/${RECOVERY_SALE.orderId}`,
   mode: "test" as const,
-  account: bannerOf(seenBy("test"), { through: "woocommerce", selling: "open" }),
+  account: bannerOf(seenBy("test")),
 };
 
 /** A recovery page as the server draws it: drawn on opening, or answering a press. */

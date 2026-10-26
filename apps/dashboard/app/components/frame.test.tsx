@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accountOf } from "../../src/account-banner.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
+import { headingOf } from "../../src/words.js";
 import type { Gated } from "../answer.js";
 import { shouldRevalidate } from "../routes/merchant-only.js";
 import { OrdersScreen } from "../screens/orders.js";
@@ -280,31 +281,43 @@ describe("the banner about the account", () => {
   };
 
   it("is not drawn while the account sells as usual", async () => {
-    framed("cards", { account: accountOf(LIVE, { selling: "open", through: "api" }) });
+    framed("cards", { account: accountOf(LIVE, { selling: "open" }) });
     await screen.findByText("The screen");
 
     expect(banner()).toBeNull();
   });
 
-  it("says each reason with its title and sentence, and the way on from it", async () => {
-    framed("orders", { account: accountOf({ ...LIVE, sellerName: null, liveApproval: false }) });
+  it("heads several reasons once and lists each with the way on from it", async () => {
+    const notes = accountOf({ ...LIVE, sellerName: null, liveApproval: false });
+    framed("orders", { account: notes });
     await screen.findByText("The screen");
     const drawn = banner();
     if (drawn === null) throw new Error("no banner was drawn");
 
-    expect(within(drawn).getByText("Not approved for live sales yet")).toBeTruthy();
-    expect(within(drawn).getByText("No seller name yet")).toBeTruthy();
-    expect(drawn.textContent).toContain("until you choose the name buyers see");
-    // The approval is nobody's to set on a page, so it leads on to the test
-    // channel, where the first sale is made, and not to a page of this one.
-    expect(
-      within(drawn)
-        .getAllByRole("link")
-        .map((link) => [link.textContent, link.getAttribute("href")]),
-    ).toStrictEqual([
-      ["Open the test dashboard", TEST_DASHBOARD],
-      ["Choose it in Settings", "/settings"],
+    const items = within(drawn).getAllByRole("listitem");
+    expect(items.map((item) => item.dataset.reason)).toStrictEqual([
+      "no_seller_name",
+      "not_approved",
     ]);
+    expect(drawn.textContent).toContain(headingOf(notes));
+    // The approval is nobody's to set on a page, so it leads on to the test
+    // channel, where test sales need none, and not to a page of this one.
+    expect(items.map((item) => within(item).getByRole("link").getAttribute("href"))).toStrictEqual([
+      "/settings",
+      TEST_DASHBOARD,
+    ]);
+  });
+
+  it("heads a single reason with its own title, as a line and not a list", async () => {
+    const notes = accountOf({ ...LIVE, sellerName: null });
+    framed("orders", { account: notes });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    expect(within(drawn).queryByRole("list")).toBeNull();
+    expect(drawn.textContent).toContain(notes[0]?.title);
+    expect(within(drawn).getByRole("link").getAttribute("href")).toBe("/settings");
   });
 
   it("leads a live merchant not yet approved to the test channel's own dashboard, and nobody else", async () => {
@@ -339,58 +352,18 @@ describe("the banner about the account", () => {
     const onCards = banner();
     if (onCards === null) throw new Error("no banner was drawn");
 
-    expect(within(onCards).getByText("All sales are paused")).toBeTruthy();
+    expect(onCards.querySelector("[data-reason]")?.getAttribute("data-reason")).toBe("paused");
     expect(within(onCards).queryByRole("link")).toBeNull();
 
     cleanup();
     framed("orders", { account: accountOf(LIVE, { selling: "paused" }) });
     await screen.findByText("The screen");
 
-    expect(screen.getByRole("link", { name: "Resume on Cards" }).getAttribute("href")).toBe(
-      "/cards",
-    );
-  });
-});
-
-describe("the banner on the pages that say a reason themselves", () => {
-  const SHOP: Viewer = {
-    base: "",
-    mode: "test",
-    who: PERSON,
-    confirmed: true,
-    sellerName: "Freeland",
-    payout: { wallet: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
-  };
-  const selling = accountOf(SHOP, { selling: "paused", through: "woocommerce" });
-
-  it.each(["woocommerce", "woocommerce/import"])(
-    "leaves out selling through the shop on %s, and keeps the other reasons",
-    async (at) => {
-      framed("integrations", { account: selling }, at);
-      await screen.findByText("The screen");
-      const drawn = banner();
-      if (drawn === null) throw new Error("no banner was drawn");
-
-      expect(within(drawn).getByText("All sales are paused")).toBeTruthy();
-      expect(within(drawn).queryByText("Selling through your WooCommerce shop")).toBeNull();
-    },
-  );
-
-  it("says it, with the way to the shop's page, everywhere else", async () => {
-    framed("cards", { account: selling });
-    await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
-
-    expect(within(drawn).getByText("Selling through your WooCommerce shop")).toBeTruthy();
-    expect(within(drawn).getByRole("link", { name: "Open WooCommerce" })).toBeTruthy();
-  });
-
-  it("draws no banner on the shop's page when selling through the shop is all there is", async () => {
-    framed("integrations", { account: accountOf(SHOP, { through: "woocommerce" }) }, "woocommerce");
-    await screen.findByText("The screen");
-
-    expect(banner()).toBeNull();
+    expect(
+      within(banner() as HTMLElement)
+        .getByRole("link")
+        .getAttribute("href"),
+    ).toBe("/cards");
   });
 });
 
@@ -532,6 +505,6 @@ describe("the banner, read by the merchant's layout", () => {
 
     act(() => dashboard.releaseAll());
     await screen.findByText("The orders");
-    expect(banner()?.textContent).toContain("All sales are paused");
+    expect(banner()?.querySelector("[data-reason]")?.getAttribute("data-reason")).toBe("paused");
   });
 });

@@ -513,24 +513,29 @@ describe("the state of each card", () => {
     expect(wordsOf(list)).toStrictEqual(["On sale", "Paused by you", "Off sale"]);
   });
 
-  it("says beside a card the shop published that it is off sale while the code sells", () => {
-    // The banner names no reason for it: only this card's row can say which
-    // of the merchant's cards came from the shop.
-    const list = listOf("open", { selling: "paused", paused: false });
-    const html = served(() => (
-      <CardsScreen
-        view={cardsView(list, "https://agentify.ad", false, {
-          through: "api",
-          offSale: ["itm_0"],
-        })}
-        base=""
-      />
-    ));
-    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+  it.each([
+    ["the shop published, while the code sells", "api", /your code/i],
+    ["the code published, while the shop sells", "woocommerce", /WooCommerce/],
+  ] as const)(
+    "says beside a card %s why it is off sale, with no switch",
+    (_which, through, says) => {
+      // The banner names no reason for it: only this card's row can say which
+      // of the merchant's cards came from the integration not in use.
+      const list = listOf("open", { selling: "paused", paused: false });
+      const html = served(() => (
+        <CardsScreen
+          view={cardsView(list, "https://agentify.ad", false, { through, offSale: ["itm_0"] })}
+          base=""
+        />
+      ));
+      const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
 
-    expect(readable(row)).toMatch(/off sale while you sell through your own code/i);
-    expect(row).not.toContain("<form");
-  });
+      expect(
+        readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? ""),
+      ).toMatch(says);
+      expect(row).not.toContain("<form");
+    },
+  );
 
   it("does not call a card paused by the merchant while the other integration holds it", () => {
     // Resuming it would not put it on sale, so "Paused by you" would send the
@@ -598,7 +603,7 @@ describe("how a card is delivered", () => {
     ));
     const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
 
-    expect(readable(fact)).toBe("Later, within Agentify's default window");
+    expect(readable(fact)).toMatch(/^Later, \S/);
     expect(fact).toContain('href="/docs/cards#goods-that-leave-later-than-the-answer"');
   });
 
@@ -625,49 +630,22 @@ describe("a card's row on a phone", () => {
     expect(readable(fact)).toContain("price asked at purchase");
   });
 
-  it("does not repeat under every title the moment a fixed price holds from", () => {
-    // On a real catalogue every fixed-price row would carry the same line.
-    const html = served(() => (
-      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
-    ));
-    const main =
-      /<div class="cell cell-main">([\s\S]*?)<div class="cell cell-amount"/.exec(html)?.[1] ?? "";
-
-    expect(readable(main)).toContain("A room for the night");
-    expect(readable(main)).not.toMatch(/since/i);
-  });
-
-  it("opens the price, at a press or a key, to the moment it holds from, on every width", () => {
-    // A title on a span is reached by a resting pointer alone; a disclosure
-    // the browser opens itself is reached by a key and a tap as well, without
-    // the page's script.
-    const html = served(() => (
-      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
-    ));
-    const price =
-      /<div class="cell cell-amount"><details[^>]*><summary[^>]*>([^<]*)<\/summary>([\s\S]*?)<\/details>/.exec(
-        html,
-      );
-
-    expect(price?.[1]).toBe("80.00 USD");
-    expect(readable(price?.[2] ?? "")).toBe("On the card since 2026-08-26 09:00:00 UTC");
-    expect(html).not.toContain('class="cell-more');
-  });
-
-  it("leaves a price asked at purchase as it is, with nothing to open", () => {
+  it("shows the price as a figure with nothing to open, fixed or asked at purchase", () => {
     const entry = cards.cards[0];
     if (entry === undefined) throw new Error("the example catalogue has no card");
-    const asked = MerchantCardListSchema.parse({
+    const both = MerchantCardListSchema.parse({
       selling: "open",
-      cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
+      cards: [entry, { ...entry, id: "itm_2", card: { ...entry.card, price_check: "handler" } }],
     });
     const html = served(() => (
-      <CardsScreen view={cardsView(asked, "https://agentify.ad")} base="" />
+      <CardsScreen view={cardsView(both, "https://agentify.ad")} base="" />
     ));
-    const price = /<div class="cell cell-amount">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+    const prices = [...html.matchAll(/<div class="cell cell-amount">([\s\S]*?)<\/div>/g)].map(
+      ([, price = ""]) => price,
+    );
 
-    expect(price).not.toContain("<details");
-    expect(readable(price)).toBe("80.00 USD");
+    expect(prices.map(readable)).toStrictEqual(["80.00 USD", "80.00 USD"]);
+    expect(prices.join("")).not.toContain("<details");
   });
 });
 

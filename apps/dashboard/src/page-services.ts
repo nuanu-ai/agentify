@@ -1492,7 +1492,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 },
                 {
                   selling: standing.value.selling,
-                  through: standing.value.through,
                   busy: standing.value.busy,
                   ...(standing.value.withdrawn === null
                     ? {}

@@ -80,17 +80,6 @@ const countOf = (many: number, thing: string): string => `${many} ${thing}${many
 
 // --- cards -------------------------------------------------------------------
 
-/**
- * What the price beside a card means. A price asked at purchase may not be the
- * one paid, so that is said wherever the price is; a price that stands on the
- * card holds from `as_of`, the one place that moment is shown: a merchant
- * working out why a sale went through at an old price has nowhere else to look.
- */
-export type CardPrice = Readonly<{ asked: true }> | Readonly<{ since: MomentView }>;
-
-const cardPrice = (entry: MerchantCard): CardPrice =>
-  entry.card.price_check === undefined ? { since: momentView(entry.as_of) } : { asked: true };
-
 /** A span of seconds in the largest whole unit that says it exactly. */
 export const spanOf = (seconds: number): string => {
   const [count, unit] =
@@ -106,17 +95,19 @@ export const spanOf = (seconds: number): string => {
 
 /**
  * How the goods come and the window they are owed within: a promise the
- * merchant answers for; an order still without goods at its end is unfulfilled. A card whose goods come later and that names no
- * window is held to Agentify's own, which the merchant's list of cards does
- * not carry, so the words say whose window it is and the link where it is
- * written, rather than reading as no window at all. A parcel's window is the
- * time to hand it to a carrier, not the time it arrives.
+ * merchant answers for; an order still without goods at its end is
+ * unfulfilled. A card whose goods come later and that names no window is held
+ * to Agentify's default deadline, whose length the merchant's list of cards
+ * does not carry, so the words name it and link to where it is written rather
+ * than print a length the gateway may not be using, or read as no window at
+ * all. A parcel's window is the time to hand it to a carrier, not the time it
+ * arrives.
  */
 type Delivery = Readonly<{ says: string; byDefault: Rest | null }>;
 
 const DEFAULT_WINDOW: Rest = {
   href: "/docs/cards#goods-that-leave-later-than-the-answer",
-  words: "Agentify's default window",
+  words: "default deadline",
 };
 
 const deliveryOf = (card: MerchantCard["card"]): Delivery => {
@@ -131,21 +122,19 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
     return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
   }
   return card.fulfillment === "async"
-    ? { says: `${word}, within`, byDefault: DEFAULT_WINDOW }
+    ? { says: `${word},`, byDefault: DEFAULT_WINDOW }
     : { says: word, byDefault: null };
 };
 
 /**
- * What stands in a card's last column: the card's own switch, or nothing where
- * pressing it now would mean nothing the merchant could act on. A card the
- * shop published while the merchant's code sells is the one with words of its
- * own: the banner names no reason for it, and only its row can say which of
- * the cards came from the shop.
+ * What stands in a card's last column: the card's own switch, or why it has
+ * none. A card published by the integration not in use is the one with words
+ * of its own: the banner names no reason for it, and only its row can say
+ * which of the cards came from which integration.
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
-  | Readonly<{ kind: "reason"; text: string }>
-  | Readonly<{ kind: "none" }>;
+  | Readonly<{ kind: "reason"; text: string }>;
 
 /**
  * The integration the merchant sells through, and their cards that are off
@@ -157,20 +146,22 @@ export interface CardsIntegration {
 }
 
 /**
- * Every card keeps its own switch whatever holds the whole account, because those holds lift at once, the moment the
- * approval lands or a name or a wallet is set: a card paused before then stays
- * paused, and a Resume pressed meanwhile can be taken back. A card published
- * by the integration not in use is offered none, and its word does not say
- * its own pause either: the move between integrations is made on the
- * WooCommerce page, coming back to the code puts none of its cards on sale at
- * once (all sales come back paused here if any would sell), and going to the
- * shop puts the shop's cards on sale as they stand.
+ * Every card keeps its own switch whatever holds the whole account, because
+ * those holds lift at once, the moment the approval lands or a name or a
+ * wallet is set: a card paused before then stays paused, and a Resume pressed
+ * meanwhile can be taken back. A card published by the integration not in use
+ * is offered none, and its word does not say its own pause either: the move
+ * between integrations is made on the WooCommerce page.
  */
 const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
   if (integration.offSale.includes(entry.id)) {
-    return integration.through === "woocommerce"
-      ? { kind: "none" }
-      : { kind: "reason", text: "Off sale while you sell through your own code" };
+    return {
+      kind: "reason",
+      text:
+        integration.through === "woocommerce"
+          ? "WooCommerce sells instead"
+          : "Your code sells instead",
+    };
   }
   return { kind: "switch", verb: entry.paused ? "resume" : "pause" };
 };
@@ -204,7 +195,8 @@ interface CardRow {
   /** Off sale for whatever reason, which the screen draws as a quieter row. */
   readonly off: boolean;
   readonly title: string;
-  readonly priced: CardPrice;
+  /** The price shown may not be the one paid, so that is said wherever the price is. */
+  readonly priceAsked: boolean;
   /** The address an agent buys the card at. */
   readonly buy: string;
   readonly itemId: string;
@@ -267,7 +259,7 @@ export const cardsView = (
       id: entry.id,
       off: state !== CARD_WORDS.onSale,
       title: entry.card.title,
-      priced: cardPrice(entry),
+      priceAsked: entry.card.price_check !== undefined,
       buy: buyingAddress(origin, entry),
       itemId: entry.card.merchant_item_id,
       price: money(entry.card.price),
@@ -322,21 +314,19 @@ const WHAT_A_PAUSE_DOES: Rest = {
 };
 
 /**
- * A pause leaves accepted orders to play out, which the banner says while all
- * sales are paused, so then the line says what resuming leaves alone.
+ * A pause stops new orders and leaves the accepted ones to be delivered;
+ * while all sales are paused, the line says instead what resuming leaves
+ * alone.
  */
 const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] => {
   switch (selling) {
     case "paused":
       return {
-        says: `Cards you paused yourself stay paused when you press ${RESUME_ALL_SELLING}.`,
+        says: `Cards you paused one by one stay paused when you press ${RESUME_ALL_SELLING}.`,
         rest: WHAT_A_PAUSE_DOES,
       };
     case "open":
-      return {
-        says: "A pause takes a card off sale; orders you have already accepted play out as usual.",
-        rest: WHAT_A_PAUSE_DOES,
-      };
+      return { says: "A pause stops new orders only.", rest: WHAT_A_PAUSE_DOES };
   }
 };
 
