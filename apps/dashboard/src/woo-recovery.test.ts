@@ -858,6 +858,38 @@ describe("merchant recovery pages", () => {
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
   });
 
+  it("offers nothing on a parcel its shop never got once its fulfillment is closed", async () => {
+    const facts: WooOrderFacts = { ...FACTS, kind: "parcel" };
+    const shops = await setup("precreate_refused", facts);
+    const test = parts(shops, {}, facts);
+    test.becomes("fulfillment_closed");
+
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "unavailable", unavailable: { shopOrder: "none", instead: "nothing" } },
+    });
+  });
+
+  it("names the shop's order of a placed parcel and offers nothing once its fulfillment is closed", async () => {
+    const facts: WooOrderFacts = { ...FACTS, kind: "parcel" };
+    const shops = await setup("create_unknown", facts);
+    await shops.recordOrder(
+      "ord_1",
+      { id: "30", number: "30", permission: null, total: "0.01" },
+      NOW,
+    );
+    const test = parts(shops, {}, facts);
+    test.becomes("fulfillment_closed");
+
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: {
+        mode: "unavailable",
+        unavailable: { shopOrder: { id: "30" }, instead: "nothing" },
+      },
+    });
+  });
+
   it("only reads our saved sale on GET and tells the merchant which exact shop ID to enter", async () => {
     const shops = await setup("create_unknown");
     const test = parts(shops);
