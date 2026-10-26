@@ -1333,7 +1333,7 @@ describe("the transaction that paid an order", () => {
     }
   });
 
-  it("is not said, nor the way to sending money back, on an order with no transaction", () => {
+  it("is not said on an order with no transaction, and no way to sending money back is offered where nothing was paid", () => {
     for (const [status, payment] of [
       ["in_progress", "not_paid"],
       ["payment_unresolved", "unresolved"],
@@ -1344,6 +1344,11 @@ describe("the transaction that paid an order", () => {
       expect(text, status).not.toContain("Transfer");
       expect(details, status).not.toContain(EXPLORER);
     }
-    expect(drawn(one("in_progress", "not_paid")).details).not.toContain(REFUND);
+    for (const orders of [
+      one("in_progress", "not_paid"),
+      one("fulfillment_closed", "not_paid", undefined, "2026-10-19T09:30:00Z"),
+    ]) {
+      expect(drawn(orders).details).not.toContain(REFUND);
+    }
   });
 });
