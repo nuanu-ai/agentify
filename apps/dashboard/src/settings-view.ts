@@ -179,7 +179,7 @@ export const PAYOUT_NOTES = Object.freeze({
   // Agentify's own payout refuses every contract the merchant's refuses, and
   // refuses as a whole, so it does not cover this one in the meantime.
   unbuilt:
-    "Agentify could not build your payout transaction because of a fault on its side. Until the fault is fixed, Agentify's next payout cannot move what is in your payout contracts either, so write to admin@agentify.ad.",
+    "Agentify could not build your payout transaction. The fault is on Agentify's side, and until it is fixed Agentify's own payouts cannot move what is in your payout contracts either. Write to admin@agentify.ad about it.",
 });
 
 const sameAddress = (one: string, other: string): boolean =>
