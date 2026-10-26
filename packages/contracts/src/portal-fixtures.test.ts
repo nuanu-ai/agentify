@@ -169,10 +169,18 @@ describe("the portal's examples are files, and every file is checked", () => {
 
   it.each(pages)("%s writes no payload inline", (page) => {
     // A payload written back into a fence passes no schema and belongs to no
-    // file.
-    const inline = textOf(page)
-      .split("\n")
-      .filter((line) => /^```(json|http)\b/.test(line.trim()));
+    // file. A fence whose whole body is a value the build writes in, such as
+    // `{{parcel-purchase}}`, is rendered from the contract, and the
+    // documentation's own tests hold what it renders to the schema.
+    const lines = textOf(page).split("\n");
+    const inline = lines.filter(
+      (line, index) =>
+        /^```(json|http)\b/.test(line.trim()) &&
+        !(
+          /^\{\{[a-z-]+\}\}$/.test(lines[index + 1]?.trim() ?? "") &&
+          lines[index + 2]?.trim() === "```"
+        ),
+    );
 
     expect(
       inline,

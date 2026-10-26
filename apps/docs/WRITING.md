@@ -183,8 +183,11 @@ After writing or changing a diagram, run
 Chromium and deletes what no page uses, and commit the drawings with the page.
 
 What the build knows is written in by the build: `{{sdk-version}}` is the
-release of `@nuanu-ai/agentify` in this repository, filled everywhere a page
-names it, code blocks included.
+release of `@nuanu-ai/agentify` in this repository, and `{{parcel-purchase}}`
+is a parcel's purchase with the example address the contracts' own schema
+publishes. Each is filled everywhere a page names it, code blocks included,
+and a `json` block whose whole body is one of them is the one payload a page
+may write in place, since the contract is its file.
 
 What a deployment decides is not written into a page but named: `{{origin}}`
 for the site's address, `{{abuse-email}}` and `{{operator}}` for the scanner's

@@ -29,6 +29,21 @@ and what the moment of charging means for the owner of the business is on
 A parcel's order is the asynchronous one with an address in it and a shipment
 at its end; what its card asks of you is on [Cards](/cards).
 
+The agent sends the address under `ship_to`, beside the purchase parameters.
+Here is the purchase of a parcel's card that asks for no parameters, with the
+example address the contract's own schema publishes:
+
+```json
+{{parcel-purchase}}
+```
+
+`name`, `line_one`, `city`, `country` and `phone_number` are required, and
+`line_two`, `state` and `postal_code` are given where the address has them.
+`country` is two capital letters, ISO 3166-1 alpha-2, and `state` is the
+subdivision code without the country in front. A parcel's purchase without
+the address is refused, and so is an address sent for a card that is not a
+parcel.
+
 Your price handler is asked the price for the place the parcel goes: its
 `ship_to` holds the country and the city, the state and the postal code where
 the buyer gave them, and nothing about who receives it. Once the order is

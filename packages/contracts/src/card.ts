@@ -933,21 +933,10 @@ const purchaseBodySchemaOf = (card: Card): Record<string, unknown> => {
   return body as Record<string, unknown>;
 };
 
-/**
- * Where a parcel goes in a listing's example purchase: Agentify's own office,
- * with the phone number blanked out, so that the example is a real place and
- * nobody's home.
- */
-const LISTED_SHIP_TO: ShipTo = {
-  name: "Agentify",
-  line_one: "Jl. Raya Kediri, Beraban",
-  line_two: "Nuanu Creative City",
-  city: "Tabanan",
-  state: "BA",
-  postal_code: "82121",
-  country: "ID",
-  phone_number: "+62 000 0000 0000",
-};
+/** Where a parcel goes in a listing's example purchase: the address schema's own example. */
+const LISTED_SHIP_TO: ShipTo = ShipToSchema.parse(
+  (ShipToSchema.meta()?.examples as readonly unknown[] | undefined)?.[0],
+);
 
 /**
  * The instant a listing's examples stand on: the start of the clock, rather
