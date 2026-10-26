@@ -14,8 +14,15 @@ const Control = ({
   id,
   control,
   place,
-}: Readonly<{ id: string; control: CardControl; place: Place }>) => {
-  if (control.kind === "reason") return <Cell at="note">{control.text}</Cell>;
+  base,
+}: Readonly<{ id: string; control: CardControl; place: Place; base: string }>) => {
+  if (control.kind === "reason") {
+    return (
+      <Cell at="note">
+        <a href={`${base}${control.to}`}>{control.text}</a>
+      </Cell>
+    );
+  }
   return (
     <Cell at="action">
       <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
@@ -122,7 +129,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
               <Cell at="state">
                 <Word word={row.state} />
               </Cell>
-              <Control id={row.id} control={row.control} place={listing.place} />
+              <Control id={row.id} control={row.control} place={listing.place} base={base} />
             </Row>
           ))}
         </List>
