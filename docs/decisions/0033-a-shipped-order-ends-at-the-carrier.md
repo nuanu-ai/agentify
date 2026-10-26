@@ -2,7 +2,7 @@
 
 Date: 2026-09-28
 Status: accepted (the product owner, 2026-09-28 and 2026-10-09). Built, and
-sold on the test channel only.
+sold on every channel (the product owner, 2026-10-26).
 
 ## Context
 
@@ -45,14 +45,14 @@ merchant outside our control ran a published SDK then.
 
 A lost parcel and any refund or agreement remain the merchant's (ADR-0028),
 who can close fulfillment until the shipment is recorded; a shipped parcel
-keeps its shipment and receipt. That closure was this decision's condition
-for live parcels, and it is built. The live channel still refuses a `ship`
-card, with words, until the product owner admits parcels there after the
-questions in `docs/research/00-open-questions.md`: for every parcel, erasing
-the buyer's address from backups taken before the erasure (ADR-0029); for a
-WooCommerce shop's, also the connector's fixed seven days to ship, region codes
-the shop writes its own way, the guest session a price question leaves in the
-shop, and how slow a shop may be. Who may read a parcel's tracking is
+keeps its shipment and receipt. Parcels sell on the live channel as on the
+test one (the product owner, 2026-10-26). The questions in
+`docs/research/00-open-questions.md` stay open as known limits rather than a
+condition: for every parcel, the copies of the database taken before an
+address's erasure, which keep it (ADR-0029); for a WooCommerce shop's, the
+connector's fixed seven days to ship, region codes the shop writes its own
+way, the guest session a price question leaves in the shop, and how slow a
+shop may be. Who may read a parcel's tracking is
 ADR-0011's rule: the holder of the buyer's key in the order's status address,
 which reaches only the agent that bought.
 

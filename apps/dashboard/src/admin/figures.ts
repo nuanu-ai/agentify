@@ -585,7 +585,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
     }
   }
 
-  if (channel.surface !== "live" && reads.uncertainShopOrders !== null) {
+  if (reads.uncertainShopOrders !== null) {
     const uncertain = foundIn(reads.uncertainShopOrders);
     if (uncertain === null) unread.push("the WooCommerce orders");
     else if (uncertain > 0) {
@@ -1195,16 +1195,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
             },
   );
 
-  if (channel.surface === "live") {
-    rows.push({
-      part: "WooCommerce",
-      badge: { tone: "quiet", word: "Not offered" },
-      fact: [
-        "The connector is offered on the test channel only, until its orders pass end to end there.",
-      ],
-      read: now,
-    });
-  } else if (reads.shops === null) {
+  if (reads.shops === null) {
     rows.push({
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not on this deployment" },

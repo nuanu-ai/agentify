@@ -302,7 +302,7 @@ describe("the banner about the account", () => {
         .getAllByRole("link")
         .map((link) => [link.textContent, link.getAttribute("href")]),
     ).toStrictEqual([
-      ["Open the test dashboard", TEST_DASHBOARD],
+      ["Make a test sale", TEST_DASHBOARD],
       ["Choose it in Settings", "/settings"],
     ]);
   });

@@ -63,7 +63,7 @@ product:
 | --- | --- | --- |
 | Handed over at once by your system: a key, a link, access | after you have delivered, as the last step of the purchase | the purchase does not happen and the buyer pays nothing |
 | Takes longer to prepare: a profile to set up, a supplier to ask | at the moment of purchase, before you deliver | the paid order is recorded as unfulfilled: you deliver late or close it, and any refund is yours to arrange |
-| A parcel a carrier takes, on the test channel only | at the moment of purchase, before you ship | as above: you ship late or close the order, and any refund is yours to arrange |
+| A parcel a carrier takes | at the moment of purchase, before you ship | as above: you ship late or close the order, and any refund is yours to arrange |
 
 A WooCommerce shop's products are all charged at the moment of purchase, and
 the choice is not yours there: the connector publishes a download as a product
@@ -94,8 +94,9 @@ connecting, since nothing in the dashboard asks it. The same order can reach
 you twice, and access, a key or a link go out a second time without loss,
 while a unit off a shelf does not. During the pilot we take on goods of the
 first kind only, because how money goes back to a buyer is not settled yet
-([Money](/money#if-the-buyer-did-not-get-the-goods)); a parcel on the test
-channel, where the money is not real, is the one exception.
+([Money](/money#if-the-buyer-did-not-get-the-goods)). A parcel is the one
+exception, which Agentify has chosen to make: the buyer pays before you ship,
+and if it does not arrive, any refund is yours to arrange.
 
 ## Your code or your WooCommerce shop
 
@@ -103,7 +104,7 @@ channel, where the money is not real, is the one exception.
 | --- | --- | --- |
 | Who builds it | your engineer, with the Agentify SDK, following [The first test sale](/quickstart) | nobody: the dashboard connects the shop and imports its products as cards |
 | What it sells | anything your systems can deliver | downloads and parcels from the shop ([what can be imported](/woocommerce#what-can-be-imported)) |
-| Where it sells | the test channel, then the live one | the test channel, until its orders have gone through there end to end |
+| Where it sells | the test channel, then the live one | the test channel, then the live one |
 
 You sell through one of the two at a time. A third way, an order sent to you as
 a message that you confirm by hand before the buyer pays, is not available.
@@ -150,9 +151,11 @@ dispute — are in the [common questions](/faq).
    the test channel with test USDC, as [the guide's sixth
    step](/quickstart#_6-make-your-first-test-purchase) shows.
 5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
-   as a separate account, save a wallet for real money there, and have your
-   cards published again with a live key. An Agentify operator approves your
-   merchant before anything sells live.
+   as a separate account and save a wallet for real money there. Nothing is
+   published live until an Agentify operator approves your business, which
+   you ask for by writing to admin@agentify.ad; once they have, have your
+   cards published again with a live key, or connect your shop there and
+   import it.
 
 What changes between the two channels:
 
@@ -164,14 +167,12 @@ What changes between the two channels:
 | Wallet | receives test USDC on Base Sepolia, which is worth nothing; a replacement applies at once | receives real USDC on Base; replacing a saved one takes forty-eight hours |
 | API key | starts with `csk_test_` | starts with `csk_live_` |
 | Your first purchase | you make it yourself, with test USDC | — |
-| Agentify's operator | not involved | approves your merchant before anything sells |
+| Agentify's operator | not involved | approves your business before anything sells; ask at admin@agentify.ad |
 | Cards | published with a test key | published again with a live key; nothing is copied |
-| WooCommerce | available | not yet |
-| Parcels | sold | not sold yet |
+| WooCommerce | available | available: the shop is connected again under the live account |
 
 ## What is not settled yet
 
-- A public way to ask for the operator's approval of the live channel.
 - Reconciling the money. Orders are visible in the dashboard, but a receipt is
   written at the moment the goods are delivered, so an order that is paid for
   and not yet delivered appears among the orders and not among the receipts.

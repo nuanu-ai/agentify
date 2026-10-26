@@ -45,10 +45,11 @@ and git keeps the entries that were here.
 | Who pays for the purchase that first lists a card in the Bazaar, which at a real price sends the merchant its own price from Agentify's wallet | product owner, when a merchant with expensive goods arrives | `04-spike-bazaar-listing.md` |
 | Whether an Indonesian merchant may accept USDC through Agentify for goods priced in rupiah, given the Currency Law's requirement of the rupiah for payments in Indonesia and Bank Indonesia's position that crypto assets are not a means of payment, and what that makes of Agentify's own part; answered before an Indonesian shop sells on the live channel | product owner, with legal counsel | `58-woo-shop-currency.md` |
 
-## Before parcels sell on the live channel
+## Known limits of parcels
 
-The test channel can put these off and the live one cannot; each is the product
-owner's to decide before a WooCommerce shop's parcels sell for real money.
+Parcels sell on the live channel as on the test one (the product owner,
+2026-10-26), so these no longer hold them off it. Each stays the product
+owner's to decide, and until then is a limit a parcel sells with.
 
 | Question | Who decides | Read |
 | --- | --- | --- |
@@ -56,7 +57,7 @@ owner's to decide before a WooCommerce shop's parcels sell for real money.
 | Whether to translate a region's code by the shop's own list, since WooCommerce writes the regions of 37 of its 69 listed countries its own way and an agent naming such a region is told "not available" | product owner | `41-woo-parcel-probe.md` |
 | Whether the guest session each price question leaves in the merchant's shop for 48 hours, with the destination in it, is acceptable, and whether the connection screen says so | product owner | `41-woo-parcel-probe.md` |
 | How slow a shop may be: a parcel's price is several requests to the shop within five seconds, 0.9–2.8 seconds each from outside, so a slow shop loses sales to "not available" | product owner | `41-woo-parcel-probe.md` |
-| The promise to erase a buyer's address against the backups taken before the erasure, which have no upper bound: a caveat in the documentation, or a retention that bounds every copy | product owner | ADR-0029 |
+| The backups taken before a buyer's address is erased, which keep it with no upper bound: the portal and the contract say so since 2026-10-26, and whether a retention bounds every copy is open | product owner | ADR-0029 |
 
 ## Engineering
 

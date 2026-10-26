@@ -3700,7 +3700,7 @@ describe("a card held off sale by what its merchant lacks", () => {
     const settings = readable((await running.browser.get("/settings")).html);
 
     expect(settings.split("Not approved for live sales yet")).toHaveLength(2);
-    expect(settings).not.toMatch(/has not approved your merchant/);
+    expect(settings).not.toMatch(/has not approved your business/);
   });
 
   it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
@@ -3728,8 +3728,8 @@ describe("a card held off sale by what its merchant lacks", () => {
     const settings = readable((await running.browser.get("/settings")).html);
     const screen = await running.browser.get("/cards");
 
-    expect(settings).toMatch(/approved your merchant/);
-    expect(settings).not.toMatch(/not approved your merchant/);
+    expect(settings).toMatch(/approved your business/);
+    expect(settings).not.toMatch(/not approved your business/);
     expect(reasonsIn(screen.html)).toStrictEqual([]);
     expect(readable(rowsIn(screen.html)[0] ?? "")).toContain("On sale");
   });

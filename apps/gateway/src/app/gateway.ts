@@ -34,7 +34,6 @@ import {
   type Acceptance,
   CARD_REJECTED,
   type CallError,
-  type Card,
   CardSchema,
   CONTRACT_VERSION,
   type Delivery,
@@ -407,7 +406,6 @@ const REASON_OF_FINDING: Readonly<Record<string, ReasonCode>> = {
   [NOT_THE_INTEGRATION_IN_USE.api.code]: "integration_mismatch",
   [NOT_THE_INTEGRATION_IN_USE.woocommerce.code]: "integration_mismatch",
   published_by_the_other_integration: "integration_mismatch",
-  not_sold_yet: "unsupported_channel",
 };
 
 /**
@@ -768,7 +766,6 @@ export class Gateway {
     // rule in the same words as one written as two fields.
     const unsellable = [
       ...priceProblemsOf(parsed.data.price),
-      ...notOnThisChannel(parsed.data, this.runtime.config.environment),
       ...oversizedChallenge(this.runtime.widestChallenge(parsed.data)),
     ];
     const lacking = [...missing, ...parcelWithoutSite];
@@ -3316,24 +3313,6 @@ function canonical(value: unknown): string {
         )
       : inner,
   );
-}
-
-/**
- * A card in a mode this channel does not sell yet, refused as a finding at
- * publication rather than discovered by the first buyer. A parcel sells only
- * on the test channel until its readiness gates have been accepted.
- */
-function notOnThisChannel(card: Card, environment: Environment): Problem[] {
-  return card.fulfillment === "ship" && environment === "live"
-    ? [
-        {
-          path: ["fulfillment"],
-          code: "not_sold_yet",
-          message:
-            'a parcel\'s card, fulfillment "ship", is not sold on the live channel yet; publish it on the test channel, where the money is not real',
-        },
-      ]
-    : [];
 }
 
 /**

@@ -2,11 +2,10 @@
  * Starts the dashboard inside the process it shares with the gateway: its
  * listeners, the scanner's route where its secret is set, the WooCommerce
  * worker, which fills paid orders for merchants who connected a shop instead of
- * writing code, and the loop that reports to the ad tracker what a person its
- * ad sent went on to do. The worker does not start on the live channel, where
- * the connector is not offered. The reports' loop starts everywhere: switched
- * on it reports, and switched off it only settles what the time left. So does
- * the loop that sends product analytics to Nuanu Analytics.
+ * writing code, the loop that reports to the ad tracker what a person its ad
+ * sent went on to do, and the loop that sends product analytics to Nuanu
+ * Analytics. Each starts on every channel; a loop switched off only settles
+ * what the time left.
  *
  * Migrations are not run here: a process that migrates on boot migrates once
  * per replica and races itself.
@@ -31,7 +30,7 @@ import type { Pages } from "./pages.js";
 import { startReportIdentityServer } from "./report-identity-server.js";
 import { buildApp } from "./server.js";
 import { type Teller, tellerFor } from "./teller.js";
-import { postgresWooShops, wooOfferedOn } from "./woo-shops.js";
+import { postgresWooShops } from "./woo-shops.js";
 import { startWooWorker } from "./woo-worker.js";
 
 export { builtPages, type Pages, pagesFromSource } from "./pages.js";
@@ -135,14 +134,12 @@ function started(
       ? app.listen(DASHBOARD_PORT, listening)
       : app.listen(DASHBOARD_PORT, pages.host, listening);
 
-  const worker = !wooOfferedOn(config.surfaceMode)
-    ? { stop: async () => {} }
-    : startWooWorker({
-        shops: wooShops,
-        identity,
-        clientFor: (acting) => gatewayFor(application, acting),
-        now: () => new Date(),
-      });
+  const worker = startWooWorker({
+    shops: wooShops,
+    identity,
+    clientFor: (acting) => gatewayFor(application, acting),
+    now: () => new Date(),
+  });
 
   const reports = startAdReports({ pool, target: config.registrationPostback });
   const analytics = startNuanuAnalytics({ pool, target: config.nuanuAnalytics });

@@ -51,21 +51,20 @@ Disconnecting a shop when the code's cards would come back on sale leaves the
 merchant's selling paused until they start it again: an asynchronous order is
 paid before the code answers, and the code may not be running.
 
-The live channel offers no connector (ADR-0023), so every merchant there sells
-through the SDK, and a connection made there earlier switches nothing. Cards
-already published are recorded by their merchant item id, whose `woo_` shape
-only the import produces, and a merchant with an imported card starts on the
-shop; the shop screen offers the way back to the SDK whenever a merchant sells
-through the shop, connected or not.
+The rule is the same on every channel, since every channel offers the
+connector (ADR-0023). Cards already published are recorded by their merchant
+item id, whose `woo_` shape only the import produces, and a merchant with an
+imported card starts on the shop; the shop screen offers the way back to the
+SDK whenever a merchant sells through the shop, connected or not.
 
 ## Consequences
 
 A merchant cannot sell imported products and products from their own code at
 once; the Connect screen says so before anything changes, and the Cards screen
 says it beside every card that is off sale for this reason. ADR-0023 no longer
-calls the connector experimental (the product owner, 2026-10-11); it stays off
-the live channel until its orders pass end to end on the test channel. The
-contract and the SDK do not change.
+calls the connector experimental (the product owner, 2026-10-11), and the
+connector is offered on the live channel as a production option (the product
+owner, 2026-10-26). The contract and the SDK do not change.
 
 Rejected: routing by the publishing integration, for the cost and the two gaps
 above; refusing a second integration with no way to switch, which strands a
