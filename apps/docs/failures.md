@@ -30,7 +30,7 @@ is recorded as unfulfilled after.
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
 | {{Waiting-for-payment-at-most}} of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses {{quote-ttl}} after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps {{waiting-for-payment-at-most}} unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
 | No process of yours has polled for {{silent-after}} | nothing changes: a purchase nobody answers ends with nothing charged | a new purchase is refused with `seller_not_taking_orders` before payment, and so is a payment for a price named before the silence; nothing is charged, and the agent tries again later | as in the asynchronous mode | keep a process running and polling: its first poll lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected |
-| Ten paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the tenth such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than ten remain, the next purchase goes through with nothing switched back on |
+| {{Unserved-at-most}} paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the {{unserved-at-most:ordinal}} such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than {{unserved-at-most}} remain, the next purchase goes through with nothing switched back on |
 
 Silence from a price check is any of three things: no answer within
 {{quote-response}}, a server error or a network failure in place of an answer, or an
@@ -79,13 +79,13 @@ it created. Under Needs you on Orders, each order that counts says so.
 
 The rule covers every purchase of yours, a synchronous one too, whether you
 sell through the SDK or a WooCommerce shop, and it is asked again when a
-payment arrives, so a price named just before the tenth order is not charged
+payment arrives, so a price named just before the {{unserved-at-most:ordinal}} order is not charged
 after. A payment for goods you already made and that wait for their buyer's
 payment goes through, since that order was served, and so does a buyer's
 payment presented again for an order already paid. While the rule holds, your
 cards are not in the catalogue and a look at one of them is refused too.
 Nothing is stored: it lifts by itself when a late delivery or a closure leaves
-fewer than ten, and your dashboard says so while it holds, paused or not. It is
+fewer than {{unserved-at-most}}, and your dashboard says so while it holds, paused or not. It is
 not retryable, because only you can lift it and nothing says when, and it
 charges nothing either.
 

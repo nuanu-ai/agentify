@@ -29,6 +29,7 @@ import {
   SILENT_AFTER_MS,
   SYNC_BUDGET_MS,
   SYNC_RESPONSE_MS,
+  UNSERVED_AT_MOST,
   type Unit,
   unitsIn,
   WAITING_FOR_PAYMENT_AT_MOST,
@@ -63,6 +64,7 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "default-async-fulfillment": { ms: DEFAULT_ASYNC_FULFILLMENT_MS, unit: "day" },
   "redelivery-max-attempts": { count: REDELIVERY_MAX_ATTEMPTS },
   "waiting-for-payment-at-most": { count: WAITING_FOR_PAYMENT_AT_MOST },
+  "unserved-at-most": { count: UNSERVED_AT_MOST },
   "silent-after": { ms: SILENT_AFTER_MS, unit: "minute" },
   "lapsed-kept": { ms: LAPSED_KEPT_MS, unit: "day" },
   commission: {
