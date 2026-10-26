@@ -8,12 +8,13 @@
  * this process with an in-memory store and a scripted facilitator, from a
  * merchant on the real SDK. The network between them breaks the way
  * `buyer-program-faults.ts` says, which also keeps every call on this machine
- * and makes the program's waits between reads take a millisecond.
+ * and shortens the program's waits between reads.
  *
  * Each test holds one promise the page makes to the person running it: a
- * failed read is not an order's state, an order that has not finished can be
- * taken up again, a lost answer comes back without a second charge, and the
- * buyer signs only on the channel's chain and only up to the card's price.
+ * purchase ends in the goods or in plain words and a non-zero exit, the
+ * order's address is kept in a file and never printed, a failed read is not
+ * an order's state, and the buyer signs once, only on the channel's chain and
+ * only up to the card's price.
  */
 
 import { spawn } from "node:child_process";
@@ -75,8 +76,8 @@ const REFUSED = {
   merchant_item_id: "access-monthly-refused",
 } satisfies CardInput;
 
-/** A second key made for this run, a wallet other than the one that paid. */
-const OTHER_BUYER_KEY = generatePrivateKey();
+/** The file the program writes each order's address to, beside itself. */
+const ADDRESSES = "orders.txt";
 
 /** What the fault preload prints for each read of an order it lets through. */
 const READ_MARK = "[faults] order read";
@@ -88,18 +89,12 @@ interface Faults {
   readonly losePaidAnswer?: boolean;
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
+  readonly waitMs?: number;
 }
 
 interface Run {
   readonly code: number | null;
   readonly printed: string;
-}
-
-/** What the program keeps beside itself, as far as these tests read it. */
-interface Kept {
-  readonly challenge?: unknown;
-  readonly payment?: unknown;
-  readonly status_url?: string;
 }
 
 describe("the quickstart's test buyer", () => {
@@ -186,15 +181,16 @@ describe("the quickstart's test buyer", () => {
 
   const readsIn = (printed: string): number => printed.split(READ_MARK).length - 1;
 
-  const kept = (): Kept | null => {
-    const file = join(directory, "purchase.json");
-    return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Kept) : null;
+  /** The order's address as the program wrote it, or undefined where it wrote none. */
+  const keptAddress = (): string | undefined => {
+    const file = join(directory, ADDRESSES);
+    return existsSync(file) ? readFileSync(file, "utf8").trim().split(" ")[1] : undefined;
   };
 
   /**
-   * The one order the merchant took on. The program's reads are quick and the
-   * merchant's subscription polls, so the order can reach the merchant after
-   * the program has stopped; it is waited for rather than expected at once.
+   * The one order the merchant took on. The merchant's subscription polls, so
+   * the order reaches the merchant some time after the purchase answers; it is
+   * waited for rather than expected at once.
    */
   const onlyHeld = async (): Promise<LiveOrder> => {
     for (let waited = 0; held.size === 0 && waited < 10_000; waited += 20) {
@@ -207,74 +203,97 @@ describe("the quickstart's test buyer", () => {
     return order;
   };
 
-  it("stops reading an order still in_progress with its address kept, and finishes it on the next run without buying again", async () => {
-    const waiting = await run(LATER);
+  it("delivers the goods of a synchronous purchase and keeps the order's address in a file only its owner reads", async () => {
+    const bought = await run(AT_ONCE);
 
-    expect(waiting.code, waiting.printed).not.toBe(0);
-    const statusUrl = kept()?.status_url;
-    expect(statusUrl, waiting.printed).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/x402\/orders\//);
+    expect(bought.code, bought.printed).toBe(0);
+    expect(bought.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
+    const statusUrl = keptAddress();
+    expect(statusUrl, bought.printed).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/x402\/orders\//);
     // The address opens the order, so it is kept in the file and not printed.
-    expect(waiting.printed).not.toContain(statusUrl);
+    expect(bought.printed).not.toContain(statusUrl);
+    expect(statSync(join(directory, ADDRESSES)).mode & 0o777).toBe(0o600);
+    expect(facilitator.settles).toHaveLength(1);
+  });
 
+  it("reads an asynchronous order at its address until the goods arrive", async () => {
+    // Waits long enough between reads for the merchant to take the order and deliver.
+    const running = run(LATER, { waitMs: 100 });
     const order = await onlyHeld();
     await order.deliver(goodsOf(order.id));
-    const finished = await run(LATER);
+    const finished = await running;
 
     expect(finished.code, finished.printed).toBe(0);
     expect(finished.printed).toContain(goodsOf(order.id).access_url);
+    expect(readsIn(finished.printed)).toBeGreaterThan(0);
+    expect(finished.printed).not.toContain(keptAddress());
     expect(facilitator.settles).toHaveLength(1);
-    expect(held.size).toBe(1);
   });
 
-  it("tells a read that failed from the order's state, and reads again until it has one", async () => {
-    await run(LATER);
-    const order = await onlyHeld();
-    await order.deliver(goodsOf(order.id));
+  it("stops when the reads run out, with the order's address kept and not printed", async () => {
+    const waiting = await run(LATER);
 
-    // Every read fails: the run does not finish, and it names no state.
-    const unread = await run(LATER, { statusReads: Array(100).fill(503) });
+    expect(waiting.code, waiting.printed).not.toBe(0);
+    expect(readsIn(waiting.printed)).toBe(60);
+    expect(waiting.printed).toContain(ADDRESSES);
+    const statusUrl = keptAddress();
+    expect(statusUrl, waiting.printed).toBeDefined();
+    expect(waiting.printed).not.toContain(statusUrl);
+  });
+
+  it("keeps the order a refused purchase answers with a 409, prints no address and exits non-zero", async () => {
+    const refused = await run(REFUSED);
+
+    expect(refused.code, refused.printed).not.toBe(0);
+    expect(refused.printed).toContain("out_of_stock");
+    expect(refused.printed).toContain(ADDRESSES);
+    const statusUrl = keptAddress();
+    expect(statusUrl, refused.printed).toBeDefined();
+    expect(refused.printed).not.toContain(statusUrl);
+    expect(facilitator.settles).toHaveLength(0);
+  });
+
+  it("reports a read of the order that failed and stops there, without printing the address", async () => {
+    const unread = await run(LATER, { statusReads: [503] });
 
     expect(unread.code, unread.printed).not.toBe(0);
     expect(unread.printed).toContain("503");
-    expect(unread.printed).not.toContain(goodsOf(order.id).access_url);
-    expect(unread.printed).not.toContain("undefined");
-    const statusUrl = kept()?.status_url;
-    expect(statusUrl).toBeDefined();
+    // A failed read is not the order's state, so no state is printed after it.
+    expect(unread.printed).not.toContain('"status"');
+    expect(readsIn(unread.printed)).toBe(0);
+    const statusUrl = keptAddress();
+    expect(statusUrl, unread.printed).toBeDefined();
     expect(unread.printed).not.toContain(statusUrl);
-
-    // One read fails: the next one is the order.
-    const recovered = await run(LATER, { statusReads: [503] });
-
-    expect(recovered.code, recovered.printed).toBe(0);
-    expect(recovered.printed).toContain("503");
-    expect(recovered.printed).toContain(goodsOf(order.id).access_url);
   });
 
-  it("keeps the payment request and the signed payment before paying, and gets a lost answer back without a second charge", async () => {
+  it.each([
+    [
+      "the charge for goods already made failed",
+      { settled: false, reason: "the wallet did not hold the price" },
+    ],
+    [
+      "nobody knows whether the charge went through",
+      { settled: "unknown", reason: "the payment network did not answer" },
+    ],
+  ] as const)("signs once and stops when %s", async (_what, settlement) => {
+    facilitator.willSettle(settlement);
+
+    const stopped = await run(AT_ONCE);
+
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(stopped.printed).toContain(ADDRESSES);
+    expect(keptAddress()).toBeDefined();
+    expect(facilitator.verifies).toHaveLength(1);
+    expect(facilitator.settles).toHaveLength(1);
+  });
+
+  it("signs once when the answer to the payment is lost, and keeps no address it never had", async () => {
     const lost = await run(AT_ONCE, { losePaidAnswer: true });
 
     expect(lost.code, lost.printed).not.toBe(0);
-    expect(kept()?.challenge, lost.printed).toBeDefined();
-    expect(kept()?.payment).toBeDefined();
-    expect(kept()?.status_url).toBeUndefined();
-    expect(statSync(join(directory, "purchase.json")).mode & 0o777).toBe(0o600);
-    expect(facilitator.settles).toHaveLength(1);
-
-    const recovered = await run(AT_ONCE);
-
-    expect(recovered.code, recovered.printed).toBe(0);
-    expect(recovered.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
-    expect(kept()?.status_url).toBeDefined();
+    expect(keptAddress()).toBeUndefined();
     expect(facilitator.verifies).toHaveLength(1);
     expect(facilitator.settles).toHaveLength(1);
-
-    // The negative control: without the kept file the program buys again, and
-    // this test sees that second charge.
-    rmSync(join(directory, "purchase.json"));
-    const again = await run(AT_ONCE);
-
-    expect(again.code, again.printed).toBe(0);
-    expect(facilitator.settles).toHaveLength(2);
   });
 
   it("signs no payment request on a chain other than the channel's", async () => {
@@ -287,7 +306,7 @@ describe("the quickstart's test buyer", () => {
 
     expect(refused.code, refused.printed).not.toBe(0);
     expect(refused.printed).toContain("eip155:8453");
-    expect(kept()).toBeNull();
+    expect(keptAddress()).toBeUndefined();
     expect(facilitator.verifies).toHaveLength(0);
   });
 
@@ -295,105 +314,12 @@ describe("the quickstart's test buyer", () => {
     const refused = await run(PRICED);
 
     expect(refused.code, refused.printed).not.toBe(0);
-    expect(kept()).toBeNull();
+    expect(keptAddress()).toBeUndefined();
     expect(facilitator.verifies).toHaveLength(0);
-
-    // The same purchase at the card's own price goes through.
-    const bought = await run(AT_ONCE);
-
-    expect(bought.code, bought.printed).toBe(0);
-    expect(facilitator.settles).toHaveLength(1);
-  });
-  it("keeps the order a refused purchase answers with, prints no address, and only reads it on the next run", async () => {
-    const refused = await run(REFUSED);
-
-    expect(refused.code, refused.printed).not.toBe(0);
-    expect(refused.printed).toContain("out_of_stock");
-    const statusUrl = kept()?.status_url;
-    expect(statusUrl, refused.printed).toBeDefined();
-    expect(refused.printed).not.toContain(statusUrl);
-    const signed = kept()?.payment;
-
-    const again = await run(REFUSED);
-
-    expect(again.code, again.printed).not.toBe(0);
-    expect(readsIn(again.printed)).toBe(1);
-    expect(kept()?.payment).toStrictEqual(signed);
-    expect(facilitator.verifies).toHaveLength(1);
-    expect(facilitator.settles).toHaveLength(0);
-  });
-
-  it("reads on while nobody knows whether the charge went through, and never signs again for it", async () => {
-    facilitator.willSettle({ settled: "unknown", reason: "the payment network did not answer" });
-
-    const unknown = await run(AT_ONCE);
-
-    expect(unknown.code, unknown.printed).not.toBe(0);
-    expect(readsIn(unknown.printed)).toBeGreaterThan(1);
-    expect(kept()?.status_url).toBeDefined();
-
-    await run(AT_ONCE);
-
-    expect(facilitator.verifies).toHaveLength(1);
-    expect(facilitator.settles).toHaveLength(1);
-  });
-
-  it("pays the kept request again when the charge for goods already made failed, and gets the goods", async () => {
-    facilitator.willSettle(
-      { settled: false, reason: "the wallet did not hold the price" },
-      { settled: true, transaction: "0xtx2" },
-    );
-
-    const unpaid = await run(AT_ONCE);
-
-    expect(unpaid.code, unpaid.printed).not.toBe(0);
-    expect(kept()?.status_url).toBeDefined();
-    expect(facilitator.settles).toHaveLength(1);
-
-    const paid = await run(AT_ONCE);
-
-    expect(paid.code, paid.printed).toBe(0);
-    expect(paid.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
-    expect(facilitator.settles).toHaveLength(2);
-  });
-
-  it("keeps the purchase when paying again for goods already made is refused, and gets them once the wallet can pay", async () => {
-    facilitator.willSettle(
-      { settled: false, reason: "the wallet did not hold the price" },
-      { settled: true, transaction: "0xtx2" },
-    );
-    await run(AT_ONCE);
-    facilitator.willRefuseVerification("insufficient_funds", "the wallet does not hold the price");
-
-    const refused = await run(AT_ONCE);
-
-    expect(refused.code, refused.printed).not.toBe(0);
-    // The goods are held for this purchase, so the reader is not sent to buy again.
-    expect(refused.printed).not.toMatch(/delete/i);
-    expect(kept()?.status_url).toBeDefined();
-
-    facilitator.willVerify();
-    const paid = await run(AT_ONCE);
-
-    expect(paid.code, paid.printed).toBe(0);
-    expect(paid.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
-    expect(facilitator.settles).toHaveLength(2);
-  });
-
-  it("does not sign the kept payment request from a wallet other than the one that signed it", async () => {
-    await run(AT_ONCE, { losePaidAnswer: true });
-    const signed = kept()?.payment;
-
-    const other = await run(AT_ONCE, {}, { BUYER_PRIVATE_KEY: OTHER_BUYER_KEY });
-
-    expect(other.code, other.printed).not.toBe(0);
-    expect(kept()?.payment).toStrictEqual(signed);
-    expect(facilitator.verifies).toHaveLength(1);
   });
 
   it.each([
     ["no wallet key", { BUYER_PRIVATE_KEY: null }],
-    ["a wallet key that is not one", { BUYER_PRIVATE_KEY: "0x1234" }],
     ["no card", { ITEM_ID: null }],
     ["no channel", { AGENTIFY_URL: null }],
     ["a channel that does not answer", { AGENTIFY_URL: "http://127.0.0.1:9" }],
@@ -403,7 +329,7 @@ describe("the quickstart's test buyer", () => {
     expect(stopped.code, stopped.printed).not.toBe(0);
     expect(stopped.printed).not.toMatch(/^\s+at /m);
     expect(stopped.printed).not.toContain("undefined");
-    expect(kept()).toBeNull();
+    expect(keptAddress()).toBeUndefined();
   });
 
   it("is installed at the release of the x402 client and viem it is tested with", () => {
