@@ -81,7 +81,7 @@ const decisions = (product: boolean, ads: boolean): Partial<ConsentCategories> =
 /**
  * The dialog edits its own copy of the choice in force, taken each time it is
  * drawn, so a box ticked and then cancelled is gone, and only Save hands a
- * choice back.
+ * choice back. The banner draws it anew when the choice in force changes.
  */
 function ConsentPreferencesPanel(props: {
   inForce: Readonly<{ productAnalytics: boolean; adsMeasurement: boolean }>;
@@ -378,6 +378,9 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       ) : null}
       {preferencesOpen ? (
         <ConsentPreferencesPanel
+          // A choice changed in another tab while the dialog is open replaces
+          // the draft, so Save cannot grant again what was just withdrawn.
+          key={`${productAnalytics}:${adsMeasurement}`}
           error={error}
           inForce={{ productAnalytics, adsMeasurement }}
           onClose={closePreferences}
