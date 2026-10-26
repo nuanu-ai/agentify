@@ -47,13 +47,13 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
         <>
           <h1>This report belongs to another address</h1>
           <p>
-            You are signed in as <strong>{page.email}</strong>. Sign in with the address the report
-            was sent to.
+            You are signed in as <strong>{page.email}</strong>. Open the report from the email it
+            was sent in, or sign out and sign in with that address.
           </p>
-          {/* The dashboard's own sign-out, which ends this session and opens its sign-in. */}
+          {/* The dashboard's own sign-out, which ends this browser's session on the whole site. */}
           <form action="/dashboard/sign-out" className="message-actions" method="post">
             <button className="button button-primary" type="submit">
-              Sign in with another address
+              Sign out
             </button>
           </form>
         </>
