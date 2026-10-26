@@ -393,7 +393,7 @@ describe("a paid order left unfulfilled", () => {
             unfulfilled,
             unfulfilled,
             undefined,
-            { ord_unfulfilled: "deadline_passed" },
+            { ord_unfulfilled: { unfulfilled: "deadline_passed", paidAt: null, deadline: null } },
             { ord_unfulfilled: SPLIT },
           )}
         />
@@ -421,7 +421,13 @@ describe("a paid order left unfulfilled", () => {
             unfulfilled,
             unfulfilled,
             undefined,
-            { ord_unfulfilled: "charge_confirmed_late" },
+            {
+              ord_unfulfilled: {
+                unfulfilled: "charge_confirmed_late",
+                paidAt: null,
+                deadline: null,
+              },
+            },
             { ord_unfulfilled: SPLIT },
           )}
         />

@@ -80,6 +80,7 @@ import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
+  type LapsedAttempt,
   ordersView,
   receiptsView,
 } from "../src/views.js";
@@ -1665,11 +1666,30 @@ const OWING = ordersOf([
   ["esimWeek", "unfulfilled"],
 ]);
 
-/** The first unfulfilled order ran out of time, the second was refused by the merchant's code. */
-const OWED_BECAUSE = Object.fromEntries(
+const secondsAfter = (iso: string, seconds: number) =>
+  new Date(Date.parse(iso) + seconds * 1_000).toISOString();
+
+/**
+ * The first unfulfilled order was paid five seconds after its price was set
+ * and its hour to deliver ran out; the second was refused by the merchant's
+ * code after payment.
+ */
+const OWED_BECAUSE: Parameters<typeof ordersView>[5] = Object.fromEntries(
   OWING.orders
     .filter((order) => order.status === "unfulfilled")
-    .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"] as const),
+    .map((order, at) => {
+      const paidAt = secondsAfter(order.price.at, 5);
+      return [
+        order.id,
+        at === 0
+          ? {
+              unfulfilled: "deadline_passed",
+              paidAt,
+              deadline: { at: secondsAfter(paidAt, 3_600), passed: true },
+            }
+          : { unfulfilled: "refused", paidAt, deadline: null },
+      ] as const;
+    }),
 );
 
 /** A season of sales, one every 37 minutes back from the latest. */
@@ -1713,6 +1733,21 @@ const PAID_AFTER_CLOSURE = OrderListSchema.parse({
       : order,
   ),
 });
+
+/** Two purchases priced and never paid, and one the price check refused before any price. */
+const LAPSED: readonly LapsedAttempt[] = ordersOf([
+  ["number", "expired"],
+  ["vpn", "expired"],
+  ["esimEurope", "rejected"],
+]).orders.map((order, at) => ({
+  id: order.id,
+  merchant_item_id: order.merchant_item_id,
+  status: order.status,
+  price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
+  asked_at: secondsAfter(order.price.at, -2),
+  priced_at: at === 2 ? null : order.price.at,
+  test: order.test,
+}));
 
 const ORDERS: GalleryState[] = [
   {
@@ -1878,6 +1913,18 @@ const ORDERS: GalleryState[] = [
   ),
   orders(
     {
+      id: "dashboard-orders-unfulfilled-details",
+      screen: "Orders",
+      when: "A merchant follows Close fulfillment from an order whose delivery deadline passed.",
+      cause:
+        "The order's details say when it was paid and when its deadline passed, that a late delivery still counts, and how to close fulfillment instead.",
+    },
+    OWING,
+    `/orders?${new URLSearchParams({ details: OWING.orders[0]?.id ?? "" })}`,
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
       id: "dashboard-orders-needs-you-list",
       screen: "Orders",
       when: "A merchant chooses Needs you over the list, or Show all under a cut Needs you.",
@@ -2020,24 +2067,22 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     "/orders?show=lapsed",
+    { lapsed: { page: LAPSED, of: LAPSED.length } },
+  ),
+  orders(
     {
-      lapsed: {
-        page: ordersOf([
-          ["number", "expired"],
-          ["vpn", "expired"],
-          ["esimEurope", "rejected"],
-        ]).orders.map((order, at) => ({
-          id: order.id,
-          merchant_item_id: order.merchant_item_id,
-          status: order.status,
-          // The last was refused by the merchant's price check before any price.
-          price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
-          at: order.price.at,
-          test: order.test,
-        })),
-        of: 3,
-      },
+      id: "dashboard-orders-lapsed-unpriced",
+      screen: "Orders",
+      when: "A merchant opens a lapsed purchase that the price check refused before naming any price.",
+      cause:
+        "The attempt was never priced, so its row says Not priced and its details say when it was asked for, with no moment for a price.",
     },
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+    ]),
+    `/orders?${new URLSearchParams({ show: "lapsed", details: LAPSED[2]?.id ?? "" })}`,
+    { lapsed: { page: LAPSED, of: LAPSED.length } },
   ),
   orders(
     {

@@ -37,9 +37,9 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
 /**
  * An order that needs saying in full, in a row of its own: its state, its
  * product and its sum, then what happened and what is the merchant's to do,
- * then its ID and when its price was set, and the way to its details or its
- * closure; where `closure` is given, the closure opens in the row itself in
- * place of that way.
+ * then its ID, its facts, and the way to its details or its closure; where
+ * `closure` is given, the closure opens in the row itself in place of that
+ * way.
  */
 const Told = ({
   order,
@@ -67,13 +67,20 @@ const Told = ({
           {order.opens.words}
         </Link>
       ) : null}
-      <span>
-        Price set <Moment at={order.priceSet} />
-      </span>
+      <OrderFactsSaid facts={order.facts} />
     </div>
     {closure}
   </li>
 );
+
+const OrderFactsSaid = ({
+  facts,
+}: Readonly<{ facts: OrdersView["listing"]["rows"][number]["facts"] }>) =>
+  facts.map((fact) => (
+    <span key={fact.label}>
+      {fact.label} <Moment at={fact.at} />
+    </span>
+  ));
 
 /** Orders told in full, a row of their own each, each with the closure `closing` draws for it. */
 const ToldRows = ({
@@ -208,9 +215,11 @@ const OrderDetails = ({
             {row.payment}
             <TestMark test={row.test} />
           </Fact>
-          <Fact label="Price set">
-            <Moment at={row.priceSet} />
-          </Fact>
+          {row.facts.map((fact) => (
+            <Fact key={fact.label} label={fact.label}>
+              <Moment at={fact.at} />
+            </Fact>
+          ))}
           {row.inTheShop === null ? null : <Fact label="In your shop">{row.inTheShop}</Fact>}
           {row.shopTotal === null ? null : (
             <Fact label="Shop's order total">
@@ -224,17 +233,18 @@ const OrderDetails = ({
               {row.shares.commission} to Agentify
             </Fact>
           )}
-          {row.closure === null ? null : (
-            <Fact label="Closed by you">
-              <Moment at={row.closure.at} />
-            </Fact>
-          )}
           {row.closure?.message === undefined ? null : (
             <Fact label="Your explanation">
               <span className="words">{row.closure.message}</span>
             </Fact>
           )}
         </Facts>
+        {row.why === null ? null : (
+          <p className={styles.help}>
+            {row.why}
+            {row.rest === null ? null : <Rest rest={row.rest} />}
+          </p>
+        )}
         {row.paymentUnresolved ? (
           <p className={styles.help}>
             This payment may still complete. Closing fulfillment does not cancel it, and Agentify
@@ -290,7 +300,11 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
               {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
               <Row>
                 <Cell at="fact">
-                  {"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}
+                  {row.priced === null
+                    ? "Not priced"
+                    : "time" in row.priced
+                      ? row.priced.time
+                      : row.priced.text}
                 </Cell>
                 <Cell at="title">{row.product}</Cell>
                 <Cell at="amount">

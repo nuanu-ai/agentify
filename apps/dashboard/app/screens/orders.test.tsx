@@ -994,7 +994,9 @@ describe("the purchases that lapsed unpaid", () => {
 describe("an order's facts", () => {
   /** The opened part of one order's row, read apart from the rest of the page. */
   const detailsText = (html: string, id: string) =>
-    readable(new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "");
+    readable(
+      new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "",
+    );
 
   const lapsedPage = (attempts: LapsedAttempt[]) =>
     ordersView(
@@ -1104,7 +1106,7 @@ describe("an order's facts", () => {
     const text = readable(opened(FIRST));
 
     expect(text).toMatch(
-      /delivery window ran out[^]*Delivering late[^]*Delivery deadline passed 2026-10-12 17:40:05 UTC/,
+      /delivery window ran out[\s\S]*Delivering late[\s\S]*Delivery deadline passed 2026-10-12 17:40:05 UTC/,
     );
   });
 });

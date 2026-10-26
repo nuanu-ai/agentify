@@ -670,7 +670,11 @@ describe("what an order's record says beside its document", () => {
     expect(running).toStrictEqual({
       ok: true,
       document: {
-        [id]: { unfulfilled: null, paidAt: iso(paidAt), deadline: { at: iso(paidAt + HOUR), passed: false } },
+        [id]: {
+          unfulfilled: null,
+          paidAt: iso(paidAt),
+          deadline: { at: iso(paidAt + HOUR), passed: false },
+        },
       },
     });
     expect(passed).toStrictEqual({

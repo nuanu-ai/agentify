@@ -2344,6 +2344,13 @@ describe("merchant delivery recovery", () => {
     const own = await sale(running, running.accountId, true);
     const orders = await running.get("/orders");
     expect(orders.html).toContain(`href="${own.path}"`);
+    // The order's details, where Close fulfillment leads, offer the same way on.
+    const opened = (await running.get(`/orders?details=${own.orderId}`)).html;
+    const details =
+      new RegExp(`<details[^>]*id="details-${own.orderId}"[\\s\\S]*?</details>`).exec(
+        opened,
+      )?.[0] ?? "";
+    expect(details).toContain(`href="${own.path}"`);
     const page = await running.get(own.path);
     expect(page.status).toBe(200);
     expect(formTo(page.html, "post", own.path)?.fields.has("woo_order_id")).toBe(false);
