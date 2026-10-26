@@ -261,7 +261,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
             ? "No older rows."
             : view.query !== "" || view.kind !== "all"
               ? view.query === ""
-                ? "No action of this kind on this channel."
+                ? "No action of this kind here."
                 : view.searchedAs === "merchant"
                   ? `No row is about the merchant ${view.query}.`
                   : view.searchedAs === "address"

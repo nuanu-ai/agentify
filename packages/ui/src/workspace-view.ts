@@ -29,6 +29,15 @@ export const CHANNEL_NAMES: Readonly<Record<ChannelMode, string>> = {
   sandbox: "Sandbox",
 };
 
+/**
+ * A channel named in running text: "in production", "in the test
+ * environment", "in the sandbox". A page names its own channel once, in its
+ * band, and its sentences then say "here"; a message, which has no band, and a
+ * sentence about another channel than the page's, name it with this.
+ */
+export const inChannel = (mode: ChannelMode): string =>
+  mode === "live" ? "in production" : `in the ${CHANNEL_NAMES[mode].toLowerCase()}`;
+
 export interface ChannelView {
   readonly mode: ChannelMode;
   /** One of `CHANNEL_NAMES`. */

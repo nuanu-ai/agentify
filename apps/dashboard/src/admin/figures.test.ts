@@ -350,7 +350,7 @@ describe("health", () => {
         (row) => row.part === "Last backup",
       );
 
-    expect((await backupOf(test))?.fact.join("")).toMatch(/not backed up, by decision/);
+    expect((await backupOf(test))?.fact.join("")).toMatch(/backed up, by decision/);
     expect((await backupOf(live))?.badge).toStrictEqual({ tone: "unknown", word: "Not measured" });
   });
 

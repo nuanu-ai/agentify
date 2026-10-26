@@ -21,7 +21,7 @@ import type {
   JournalSubject,
 } from "@agentify/gateway/journal";
 import type { MoneyHistory } from "@agentify/gateway/operator";
-import type { SectionCounts } from "@agentify/ui/workspace-view";
+import { inChannel, type SectionCounts } from "@agentify/ui/workspace-view";
 import { adminDestinationIn } from "../dashboard-entry.js";
 import { type Identity, OperatorMailRefused } from "../identity.js";
 import { askedIn, type Listing, listingOf, PAGE_ROWS, type SegmentRule } from "../listing.js";
@@ -210,11 +210,11 @@ const REFUSALS: Readonly<Record<string, string>> = {
   last_operator: "it is the last operator here; nothing changed",
   holds_flag: "the account holds the operator flag; remove the flag first; nothing changed",
   mail_not_handed: "the notice to operators could not be sent, so the flag was not changed",
-  live_channel: "accounts are forgotten only in the test environment; nothing changed",
+  live_channel: `accounts are forgotten only ${inChannel("test")}; nothing changed`,
   money_history: "the merchant has orders or receipts, which are never deleted; nothing changed",
   shared_merchant: "another account names the same merchant; nothing changed",
   history_unread: "whether the merchant has orders or receipts could not be read; nothing changed",
-  not_live_channel: "admission is decided in production only; nothing changed",
+  not_live_channel: `admission is decided ${inChannel("live")} only; nothing changed`,
   no_such_merchant: "no merchant has that identifier; nothing changed",
   no_such_key: "the key is not one of this merchant's; nothing changed",
 };
