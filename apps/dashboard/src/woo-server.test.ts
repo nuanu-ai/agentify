@@ -2572,6 +2572,25 @@ describe("one integration at a time", () => {
     expect(readable(page.html)).toContain("Sell through this shop");
   });
 
+  it("leaves the code selling when the shop's keys arrive short of Read/Write", async () => {
+    // Every purchase through such a shop is refused before payment, so a
+    // switch would take the code's products off sale for nothing.
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody(tokenIn(pressed.to ?? ""), "read"),
+    );
+
+    expect(callback.status).toBe(200);
+    expect((await running.shops.connectionOf(running.accountId))?.permissions).toBe("read");
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+  });
+
   it("changes nothing for a Connect whose approval never comes", async () => {
     const running = await started();
     await running.signIn();
