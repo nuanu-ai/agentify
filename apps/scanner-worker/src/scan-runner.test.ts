@@ -325,13 +325,14 @@ describe("bounded scan graph", () => {
         appBaseUrl: "https://agentify.ad",
       }).run(job);
       // Checks 1 to 3 read robots.txt itself; every other check needs a
-      // request robots.txt rules on.
+      // request robots.txt rules on, check 11 the cards that would say
+      // whether a sign-in is declared.
       return evaluation.checks
         .filter((check) => check.id > 3 && check.status === "unavailable")
         .map((check) => [check.id, check.errorCode]);
     };
     const everyRobotsCheck = (code: string) =>
-      [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18].map((id) => [id, code]);
+      [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18].map((id) => [id, code]);
     expect(await reasons("User-agent: agentify-scanner\nDisallow: /\n", 200)).toEqual(
       everyRobotsCheck("robots_disallowed"),
     );
