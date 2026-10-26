@@ -459,11 +459,13 @@ describe("an answer worth asking again", () => {
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
   });
 
-  it("goes back to its usual pace once the status reads again", async () => {
+  it("goes back to its usual pace once the status reads again, and starts its waits afresh", async () => {
     apiAnswers(
       () => json(503, refusal("busy", true)),
       () => json(503, refusal("busy", true)),
       () => json(200, scan({})),
+      () => json(200, scan({})),
+      () => json(503, refusal("busy", true)),
     );
 
     visit();
@@ -475,6 +477,27 @@ describe("an answer worth asking again", () => {
 
     await timePasses(1_000);
     expect(statusAsks).toHaveLength(4);
+    await timePasses(1_000);
+    expect(statusAsks).toHaveLength(5);
+    expect(screen.getByText(/asks again in 2 s/)).toBeTruthy();
+  });
+
+  it.each([
+    ["a rate limit", 429],
+    ["a timeout", 408],
+  ])("keeps asking after %s in no envelope the page knows", async (_what, status) => {
+    apiAnswers(
+      () => new Response("<html>Wait</html>", { status }),
+      () => json(200, scan({})),
+    );
+
+    visit();
+    await timePasses(0);
+    expect(screen.getByText(/asks again in 2 s/)).toBeTruthy();
+    await timePasses(2_000);
+
+    expect(statusAsks).toHaveLength(2);
+    expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
   });
 });
 
