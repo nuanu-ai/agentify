@@ -795,8 +795,8 @@ describe("18-check engine", () => {
     ),
   });
 
-  it.each([401, 403, 429])(
-    "gives no Markdown verdict when the site refused the request with %i, and names the status",
+  it.each([408, 429])(
+    "gives no Markdown verdict when the request for it was answered with %i, and names the status",
     (status) => {
       const checked = check(markdownAnswer(status), 7);
       expect(checked).toMatchObject({
@@ -808,13 +808,14 @@ describe("18-check engine", () => {
     },
   );
 
-  it.each([404, 406])(
-    "does not award Markdown credit to an HTTP error representation: %i",
+  it.each([401, 403, 404, 406])(
+    "does not award Markdown credit to an answer of %i, which an agent asking meets too",
     (status) => {
       expect(check(markdownAnswer(status), 7)).toMatchObject({
         status: "fail",
         earnedWeight: 0,
         summaryCode: "markdown_negotiation_absent",
+        evidence: { status },
       });
     },
   );
@@ -1015,38 +1016,39 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     mcp: [first, notFound("mcp/server-card.json")],
   });
 
-  it("judges a card of exactly the read limit, and leaves one byte more unjudged with the limit named", () => {
+  it("judges a card of exactly the read limit, and calls one byte more too large, naming the limit", () => {
     expect(check(withMcp(json("mcp.json", sized(card, MIB))), 9)).toMatchObject({
       status: "pass",
     });
-    const cut = check(withMcp(json("mcp.json", "", cutAt(sized(card, MIB + 1), MIB))), 9);
-    expect(cut).toMatchObject({
-      status: "unavailable",
-      earnedWeight: 0,
-      summaryCode: "document_truncated",
-      evidence: { truncated: true, read_limit: "1 MiB" },
-    });
-    expect(cut?.fixCode).toBeUndefined();
+    expect(check(withMcp(json("mcp.json", "", cutAt(sized(card, MIB + 1), MIB))), 9)).toMatchObject(
+      {
+        status: "fail",
+        earnedWeight: 0,
+        summaryCode: "document_too_large",
+        evidence: { truncated: true, read_limit: "1 MiB" },
+        fixCode: "shrink_document",
+      },
+    );
   });
 
   it.each([
-    ["a UCP profile", 10, "store"],
-    ["an A2A card", 17, "owner"],
-  ] as const)("does not call %s cut at the read limit absent", (_, id, segment) => {
+    ["a UCP profile", 10, "store", "fail"],
+    ["an A2A card", 17, "owner", "partial"],
+  ] as const)("calls %s cut at the read limit too large, not absent", (_, id, segment, status) => {
     const input = makeArtifacts(segment);
     const cut = json("document", "", cutAt(`{"name":"${"x".repeat(MIB)}"}`, MIB));
     if (id === 10) input.ucp = cut;
     else input.a2a = cut;
-    const evaluation = evaluateScan(input);
-    expect(evaluation.checks.find((each) => each.id === id)).toMatchObject({
-      status: "unavailable",
-      summaryCode: "document_truncated",
+    expect(check(input, id)).toMatchObject({
+      status,
+      earnedWeight: 0,
+      summaryCode: "document_too_large",
       evidence: { read_limit: "1 MiB" },
+      fixCode: "shrink_document",
     });
-    expect(evaluation.findings.negativeCheckIds).not.toContain(id);
   });
 
-  it("does not call OAuth metadata cut at the read limit absent", () => {
+  it("calls OAuth metadata cut at the read limit too large, not absent", () => {
     const input = {
       ...makeArtifacts("owner"),
       mcp: [json("mcp.json", '{"name":"x","endpoint":"https://example.com/mcp","auth":"oauth2"}')],
@@ -1056,14 +1058,14 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
       ],
     };
     expect(check(input, 11)).toMatchObject({
-      status: "unavailable",
-      summaryCode: "document_truncated",
+      status: "fail",
+      summaryCode: "document_too_large",
     });
   });
 
   it.each([
-    ["cut", (body: string) => json("mcp.json", "", cutAt(body, MIB))],
-    ["refused", () => json("mcp.json", "Forbidden", { status: 403 })],
+    ["cut at the read limit", (body: string) => json("mcp.json", "", cutAt(body, MIB))],
+    ["not answered", () => json("mcp.json", "", { status: 503 })],
   ] as const)(
     "does not say no sign-in is declared when the card that would declare it was %s, and says why",
     (_, card) => {
@@ -1076,6 +1078,12 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
       expect(checked?.evidence).toEqual({});
     },
   );
+
+  it("takes a card refused to the scanner as declaring no sign-in, as it declares none to an agent", () => {
+    expect(check(withMcp(json("mcp.json", "Forbidden", { status: 403 })), 11)?.status).toBe(
+      "not_applicable",
+    );
+  });
 
   it.each([
     ["an MCP server card", 9, "mcp_card_unparseable", "fail"],
@@ -1126,16 +1134,45 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     expect(check(input, 8)).toMatchObject({ status: "not_applicable", summaryCode: "llms_absent" });
   });
 
-  it.each([401, 403, 429, 503])(
-    "does not call a document the site answered with %i absent or malformed",
+  const answeredWith = (status: number): ScanArtifacts => {
+    const input = makeArtifacts("store");
+    const answer = (path: string) =>
+      artifact(`https://example.com/${path}`, "<Error>AccessDenied</Error>", { status });
+    input.mcp = [answer(".well-known/mcp.json"), notFound("mcp/server-card.json")];
+    input.ucp = answer(".well-known/ucp");
+    input.a2a = answer(".well-known/agent-card.json");
+    input.llms = answer("llms.txt");
+    return input;
+  };
+
+  it.each([401, 403, 451])(
+    "takes a document the site refuses with %i for the absence it is to an agent, and says so",
     (status) => {
-      const input = makeArtifacts("store");
-      const refused = (path: string) =>
-        artifact(`https://example.com/${path}`, "Forbidden", { status });
-      input.mcp = [refused(".well-known/mcp.json"), notFound("mcp/server-card.json")];
-      input.ucp = refused(".well-known/ucp");
-      input.a2a = refused(".well-known/agent-card.json");
-      input.llms = refused("llms.txt");
+      const input = answeredWith(status);
+      for (const id of [9, 10])
+        expect(check(input, id)).toMatchObject({
+          status: "fail",
+          earnedWeight: 0,
+          summaryCode: "document_refused",
+          evidence: { status },
+          fixCode: "allow_document",
+        });
+      for (const id of [8, 17]) {
+        const checked = check(input, id);
+        expect(checked).toMatchObject({
+          status: "not_applicable",
+          summaryCode: "document_refused",
+          evidence: { status },
+        });
+        expect(checked?.fixCode).toBeUndefined();
+      }
+    },
+  );
+
+  it.each([408, 429, 503])(
+    "does not judge a document the site answered with %i, and names the status",
+    (status) => {
+      const input = answeredWith(status);
       for (const id of [8, 9, 10, 17]) {
         const checked = check(input, id);
         expect(checked).toMatchObject({ status: "unavailable", evidence: { status } });
@@ -1144,7 +1181,7 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     },
   );
 
-  it("keeps an llms.txt heading and link read before the limit, and does not judge a cut one without them", () => {
+  it("keeps an llms.txt heading and link read before the limit, and calls a cut one without them too large", () => {
     const head = "# Store\n\n- [Catalog](https://example.com/catalog)\n";
     const proven = makeArtifacts("store");
     proven.llms = artifact("https://example.com/llms.txt", head, {
@@ -1158,9 +1195,10 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
       decodedBytes: 512 * 1024,
     });
     expect(check(unproven, 8)).toMatchObject({
-      status: "unavailable",
-      summaryCode: "document_truncated",
+      status: "partial",
+      summaryCode: "document_too_large",
       evidence: { read_limit: "512 KiB" },
+      fixCode: "shrink_document",
     });
   });
 
@@ -1413,11 +1451,14 @@ describe("a robots.txt result names its one cause", () => {
     });
   });
 
-  it("names the status of a server error that kept robots.txt from being read", () => {
-    const checked = check(withRobots("", { status: 503 }), 1);
-    expect(checked).toMatchObject({ status: "unavailable", evidence: { status: 503 } });
-    expect(checked?.fixCode).toBeUndefined();
-  });
+  it.each([408, 429, 503])(
+    "names the status of an answer of %i that kept robots.txt from being read",
+    (status) => {
+      const checked = check(withRobots("", { status }), 1);
+      expect(checked).toMatchObject({ status: "unavailable", evidence: { status } });
+      expect(checked?.fixCode).toBeUndefined();
+    },
+  );
 
   it("still reports malformed directives and an unparseable file as they were", () => {
     expect(check(withRobots(`${robots}\nDisalow /x`), 1)).toMatchObject({
