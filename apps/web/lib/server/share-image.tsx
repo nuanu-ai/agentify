@@ -132,13 +132,23 @@ const fits = async (copy: ShareCopy, tone: Tone, size: number): Promise<boolean>
 /**
  * `host` cut to about `kept` characters with an ellipsis in its middle. The
  * end it keeps starts at a label, because a label shown from its middle would
- * read as another site's name; only a cut inside the last label stays where
- * it falls.
+ * read as another site's name. A label the cut falls in is kept whole when it
+ * fits in `kept`, and the start gives way to it; a label too long for that is
+ * left out, and only a cut inside the last label stays where it falls. The
+ * dot before the end is left out with the middle, so the ellipsis is never
+ * read as one more dot.
  */
 const shortened = (host: string, kept: number): string => {
   const cut = host.length - Math.floor(kept / 2);
+  const labelStart = host.lastIndexOf(".", cut - 1) + 1;
   const nextDot = host.indexOf(".", cut);
-  const end = host.slice(nextDot >= 0 ? nextDot : cut);
+  const endStart =
+    labelStart > 0 && host.length - labelStart <= kept
+      ? labelStart
+      : nextDot >= 0
+        ? nextDot + 1
+        : cut;
+  const end = host.slice(endStart);
   const start = host.slice(0, Math.max(0, kept - end.length));
   return `${start}${ELLIPSIS}${end}`;
 };
