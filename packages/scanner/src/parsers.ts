@@ -177,7 +177,7 @@ const isJsonLd = (tag: StartTag): boolean =>
     .split(";")[0]
     ?.trim() === "application/ld+json";
 
-const readPage = (html: string): PageReading => {
+const walkPage = (html: string): PageReading => {
   const pieces: string[] = [];
   let joined = false;
   const reading: PageReading = {
@@ -299,36 +299,27 @@ const readPage = (html: string): PageReading => {
   return reading;
 };
 
-const jsonLdOf = (scripts: readonly string[]): JsonLdResult => {
+// The JSON-LD of a page's scripts, and each script's value as parsed, which
+// is walked once where the flattened nodes would repeat a nested graph's
+// members once for each graph around them.
+const jsonLdOf = (scripts: readonly string[]): { jsonLd: JsonLdResult; values: unknown[] } => {
+  const values: unknown[] = [];
   const nodes: Record<string, unknown>[] = [];
   let invalidCount = 0;
   for (const script of scripts) {
     const parsed = parseSafeJson(script, 524_288);
     if (parsed === undefined) invalidCount += 1;
-    else for (const node of flattenJsonLd(parsed)) nodes.push(node);
+    else {
+      values.push(parsed);
+      for (const node of flattenJsonLd(parsed)) nodes.push(node);
+    }
   }
-  return { nodes, scriptCount: scripts.length, invalidCount };
+  return { jsonLd: { nodes, scriptCount: scripts.length, invalidCount }, values };
 };
 
-/**
- * The JSON-LD of every `<script type="application/ld+json">` whose end the
- * page reaches. A script the page ends inside is not counted, since its JSON
- * is cut.
- */
-export const parseJsonLd = (html: string): JsonLdResult => jsonLdOf(readPage(html).jsonLdScripts);
-
-/**
- * The text a reader that runs no scripts sees: character data and the text
- * of `title` and `textarea`, without scripts, styles, comments, template
- * content, SVG or MathML, or navigation.
- */
-export const visibleText = (html: string): string => readPage(html).text;
-
-// `text` is the page's visible text, for a caller that has read it already.
-export const htmlSignals = (html: string, text = visibleText(html)) => {
-  const reading = readPage(html);
+const signalsOf = (reading: PageReading, text: string, jsonLd: readonly unknown[]) => {
   const price =
-    jsonLdPrice(jsonLdOf(reading.jsonLdScripts).nodes) ??
+    jsonLdPrice(jsonLd) ??
     markedPrice("microdata", reading.microdata) ??
     markedPrice("meta", reading.meta) ??
     textPrice(text);
@@ -341,6 +332,37 @@ export const htmlSignals = (html: string, text = visibleText(html)) => {
     productLinkCount: reading.productLinkCount,
     hreflangs: reading.hreflangs,
   };
+};
+
+/**
+ * The JSON-LD of every `<script type="application/ld+json">` whose end the
+ * page reaches. A script the page ends inside is not counted, since its JSON
+ * is cut.
+ */
+export const parseJsonLd = (html: string): JsonLdResult =>
+  jsonLdOf(walkPage(html).jsonLdScripts).jsonLd;
+
+/**
+ * The text a reader that runs no scripts sees: character data and the text
+ * of `title` and `textarea`, without scripts, styles, comments, template
+ * content, SVG or MathML, or navigation.
+ */
+export const visibleText = (html: string): string => walkPage(html).text;
+
+// `text` is the page's visible text, for a caller that has read it already.
+export const htmlSignals = (html: string, text?: string) => {
+  const reading = walkPage(html);
+  return signalsOf(reading, text ?? reading.text, jsonLdOf(reading.jsonLdScripts).values);
+};
+
+/**
+ * What `visibleText`, `htmlSignals` and `parseJsonLd` say of a page, from one
+ * pass over it and one parse of its JSON-LD.
+ */
+export const readPage = (html: string) => {
+  const reading = walkPage(html);
+  const { jsonLd, values } = jsonLdOf(reading.jsonLdScripts);
+  return { text: reading.text, signals: signalsOf(reading, reading.text, values), jsonLd };
 };
 
 // A bot challenge served in place of the page: a 401, 403 or 429, or a

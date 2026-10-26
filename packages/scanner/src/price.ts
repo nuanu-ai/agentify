@@ -258,9 +258,9 @@ const stated = (
 
 const PRICE_KEYS = ["price", "lowPrice", "highPrice"];
 
-/** A price an offer in the JSON-LD states, at any depth. */
-export const jsonLdPrice = (nodes: readonly Record<string, unknown>[]): PriceSignal | undefined => {
-  const pending: unknown[] = [...nodes];
+/** A price an offer in the JSON-LD states, at any depth of its scripts' values. */
+export const jsonLdPrice = (values: readonly unknown[]): PriceSignal | undefined => {
+  const pending: unknown[] = [...values];
   for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
     if (Array.isArray(value)) {
       pending.push(...value);
