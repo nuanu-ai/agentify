@@ -3,7 +3,7 @@ import type { CheckResult, Segment } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
-import { visibleText } from "./parsers.js";
+import { readPage } from "./parsers.js";
 import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
 
 const artifact = (
@@ -461,7 +461,7 @@ describe("a scan of a truncated HTML response", () => {
   it("keeps sufficient content and successful comparisons already proved by the prefix", () => {
     const input = withBase(html);
     input.base = artifact("https://example.com/", html, { truncated: true });
-    input.markdown = artifact("https://example.com/", visibleText(html), {
+    input.markdown = artifact("https://example.com/", readPage(html).text, {
       headers: { "content-type": "text/markdown", vary: "Accept" },
     });
     for (const id of [7, 12, 13, 18]) {

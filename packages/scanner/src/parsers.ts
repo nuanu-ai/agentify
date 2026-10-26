@@ -317,14 +317,14 @@ const jsonLdOf = (scripts: readonly string[]): { jsonLd: JsonLdResult; values: u
   return { jsonLd: { nodes, scriptCount: scripts.length, invalidCount }, values };
 };
 
-const signalsOf = (reading: PageReading, text: string, jsonLd: readonly unknown[]) => {
+const signalsOf = (reading: PageReading, jsonLd: readonly unknown[]) => {
   const price =
     jsonLdPrice(jsonLd) ??
     markedPrice("microdata", reading.microdata) ??
     markedPrice("meta", reading.meta) ??
-    textPrice(text);
+    textPrice(reading.text);
   return {
-    textLength: text.length,
+    textLength: reading.text.length,
     hasH1: reading.hasH1,
     hasTitle: reading.hasTitle,
     hasPrice: price !== undefined,
@@ -343,26 +343,16 @@ export const parseJsonLd = (html: string): JsonLdResult =>
   jsonLdOf(walkPage(html).jsonLdScripts).jsonLd;
 
 /**
- * The text a reader that runs no scripts sees: character data and the text
- * of `title` and `textarea`, without scripts, styles, comments, template
- * content, SVG or MathML, or navigation.
- */
-export const visibleText = (html: string): string => walkPage(html).text;
-
-// `text` is the page's visible text, for a caller that has read it already.
-export const htmlSignals = (html: string, text?: string) => {
-  const reading = walkPage(html);
-  return signalsOf(reading, text ?? reading.text, jsonLdOf(reading.jsonLdScripts).values);
-};
-
-/**
- * What `visibleText`, `htmlSignals` and `parseJsonLd` say of a page, from one
- * pass over it and one parse of its JSON-LD.
+ * What the checks read of a page, from one pass over it and one parse of its
+ * JSON-LD: the text a reader that runs no scripts sees (character data and
+ * the text of `title` and `textarea`, without scripts, styles, comments,
+ * template content, SVG or MathML, or navigation), the page's signals, and
+ * its JSON-LD as `parseJsonLd` reads it.
  */
 export const readPage = (html: string) => {
   const reading = walkPage(html);
   const { jsonLd, values } = jsonLdOf(reading.jsonLdScripts);
-  return { text: reading.text, signals: signalsOf(reading, reading.text, values), jsonLd };
+  return { text: reading.text, signals: signalsOf(reading, values), jsonLd };
 };
 
 // A bot challenge served in place of the page: a 401, 403 or 429, or a

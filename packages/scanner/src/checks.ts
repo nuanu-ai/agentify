@@ -4,14 +4,12 @@ import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.
 import { type FetchArtifact, type ScanArtifacts, SITEMAP_FILE_LIMIT } from "./model.js";
 import {
   comparableTexts,
-  htmlSignals,
   isChallenge,
   type JsonLdResult,
   jsonLdTypes,
-  parseJsonLd,
   parseSitemap,
+  readPage,
   type SitemapResult,
-  visibleText,
 } from "./parsers.js";
 import {
   byteSize,
@@ -177,14 +175,12 @@ const scannerVerdict = (reading: RobotsReading, path: string): boolean | undefin
 };
 
 // The same scan is evaluated several times over the same artifacts, and
-// several checks read the same page: each artifact's visible text, signals,
-// JSON-LD and sitemap are read once, since a page of up to 2 MiB can cost a
-// reader a noticeable part of a second.
+// several checks read the same page: each artifact is read once, its visible
+// text, signals and JSON-LD from one pass over it, since a page of up to
+// 2 MiB can cost a reader a noticeable part of a second.
 type PageReading = {
-  text?: string;
+  page?: ReturnType<typeof readPage>;
   markdown?: string;
-  signals?: ReturnType<typeof htmlSignals>;
-  jsonLd?: JsonLdResult;
   sitemap?: ReturnType<typeof parseSitemap>;
 };
 const pageReadings = new WeakMap<FetchArtifact, PageReading>();
@@ -196,18 +192,17 @@ const pageReadingOf = (artifact: FetchArtifact): PageReading => {
   }
   return reading;
 };
-const textOf = (artifact: FetchArtifact): string =>
-  (pageReadingOf(artifact).text ??= visibleText(artifact.body));
-const signalsOf = (artifact: FetchArtifact) =>
-  (pageReadingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
-const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
-  (pageReadingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+const pageOf = (artifact: FetchArtifact) =>
+  (pageReadingOf(artifact).page ??= readPage(artifact.body));
+const textOf = (artifact: FetchArtifact): string => pageOf(artifact).text;
+const signalsOf = (artifact: FetchArtifact) => pageOf(artifact).signals;
+const jsonLdOf = (artifact: FetchArtifact): JsonLdResult => pageOf(artifact).jsonLd;
 // A Markdown answer is text, whatever markup its prose or code names.
 const markdownTextOf = (artifact: FetchArtifact): string =>
   (pageReadingOf(artifact).markdown ??= artifact.body.replace(/\s+/g, " ").trim());
 const sitemapOf = (artifact: FetchArtifact) =>
   (pageReadingOf(artifact).sitemap ??= parseSitemap(artifact.body));
-const NO_SIGNALS = htmlSignals("");
+const NO_SIGNALS = readPage("").signals;
 
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
