@@ -24,9 +24,10 @@ one ([Selling through a WooCommerce shop](/woocommerce)).
 
 A card can describe a table, a room night or a pass, as long as your own system
 can hold the booking and answer for it when the order arrives. During the
-pilot we take on only goods that survive being delivered twice, and live
-publication waits for our approval, so start on the test channel ([What the
-dashboard asks for](/#what-the-dashboard-asks-for)).
+pilot we take on only goods that survive being delivered twice, with parcels
+as the one exception we have chosen to make, and live publication waits for
+our approval, which you ask for at admin@agentify.ad, so start on the test
+channel ([What the dashboard asks for](/#what-the-dashboard-asks-for)).
 
 ### What does it cost?
 

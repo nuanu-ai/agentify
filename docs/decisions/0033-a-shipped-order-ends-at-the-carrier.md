@@ -48,8 +48,8 @@ who can close fulfillment until the shipment is recorded; a shipped parcel
 keeps its shipment and receipt. Parcels sell on the live channel as on the
 test one (the product owner, 2026-10-26). The questions in
 `docs/research/00-open-questions.md` stay open as known limits rather than a
-condition: for every parcel, the backups taken before an address's erasure,
-which keep it until they expire (ADR-0029); for a WooCommerce shop's, the
+condition: for every parcel, the copies of the database taken before an
+address's erasure, which keep it (ADR-0029); for a WooCommerce shop's, the
 connector's fixed seven days to ship, region codes the shop writes its own
 way, the guest session a price question leaves in the shop, and how slow a
 shop may be. Who may read a parcel's tracking is

@@ -38,10 +38,10 @@ state and the postal code where the buyer gave them. Store the address before
 you take the order on: the moment you answer `accepted`, or the order ends
 without you, Agentify erases its copy, the order reads only
 `ship_to: { erased_at }` from then on, and it is never handed to your handler
-again. Erasing removes the address from Agentify's database. Backups of the
-live channel taken before the erasure keep it until they expire: most of it
-leaves them about sixty days after the erasure, and no upper bound is set yet
-for all of it.
+again. Erasing removes the address from Agentify's database. Copies of the
+database taken before the erasure keep it: the live channel's backups, usually
+for about sixty days, with no upper bound set yet, and the restore point each
+release takes, on either channel, until five newer releases replace it.
 
 When a carrier has the parcel, record the shipment with the same `deliver`
 call that delivers goods elsewhere, or answer your handler with it as

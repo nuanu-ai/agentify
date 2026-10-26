@@ -577,10 +577,8 @@ wallet set for your share of the sales wherever a payment settles
 (`no_payout_wallet`), on the live channel only, no approval from the operator
 yet (`no_operator_approval`), and on a parcel's card alone, no site set for
 your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
-your side cannot see either which channel a card is published on, so it passes
-a parcel's card that the live channel then refuses. Nor can it measure the
-header a card is paid through, so a card it passes can still be refused for its
-size ([how large a card may be](#how-large-a-card-may-be)).
+your side cannot measure the header a card is paid through either, so a card it
+passes can still be refused for its size ([how large a card may be](#how-large-a-card-may-be)).
 
 ## Your seller name and site
 

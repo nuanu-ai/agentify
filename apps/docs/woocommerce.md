@@ -10,8 +10,9 @@ The connector runs on the test channel, where the money is not real, and on
 the live channel, where buyers pay in real USDC on Base. Each channel has its
 own dashboard and its own account, so you connect the shop on each one. On
 the live channel nothing is published until an Agentify operator has approved
-your merchant: Import says so and reads nothing from your shop, and you import
-again once you are approved ([How to start](/#how-to-start)). A purchase on the
+your merchant, which you ask for at admin@agentify.ad: Import says so and reads
+nothing from your shop, and you import again once you are approved
+([How to start](/#how-to-start)). A purchase on the
 test channel makes a paid order in the shop connected there, as a live one
 does. Its Agentify lines say it came from the test channel and was paid in
 test USDC, which is not real money, so do not ship goods for it.

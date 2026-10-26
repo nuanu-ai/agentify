@@ -95,8 +95,8 @@ you twice, and access, a key or a link go out a second time without loss,
 while a unit off a shelf does not. During the pilot we take on goods of the
 first kind only, because how money goes back to a buyer is not settled yet
 ([Money](/money#if-the-buyer-did-not-get-the-goods)). A parcel is the one
-exception: the buyer pays before you ship, and if it does not arrive, any
-refund is yours to arrange.
+exception, which Agentify has chosen to make: the buyer pays before you ship,
+and if it does not arrive, any refund is yours to arrange.
 
 ## Your code or your WooCommerce shop
 
@@ -152,9 +152,10 @@ dispute — are in the [common questions](/faq).
    step](/quickstart#_6-make-your-first-test-purchase) shows.
 5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
    as a separate account and save a wallet for real money there. Nothing is
-   published live until an Agentify operator approves your merchant; once
-   they have, have your cards published again with a live key, or connect
-   your shop there and import it.
+   published live until an Agentify operator approves your merchant, which
+   you ask for by writing to admin@agentify.ad; once they have, have your
+   cards published again with a live key, or connect your shop there and
+   import it.
 
 What changes between the two channels:
 
@@ -166,13 +167,12 @@ What changes between the two channels:
 | Wallet | receives test USDC on Base Sepolia, which is worth nothing; a replacement applies at once | receives real USDC on Base; replacing a saved one takes forty-eight hours |
 | API key | starts with `csk_test_` | starts with `csk_live_` |
 | Your first purchase | you make it yourself, with test USDC | — |
-| Agentify's operator | not involved | approves your merchant before anything sells |
+| Agentify's operator | not involved | approves your merchant before anything sells; ask at admin@agentify.ad |
 | Cards | published with a test key | published again with a live key; nothing is copied |
 | WooCommerce | available | available: the shop is connected again under the live account |
 
 ## What is not settled yet
 
-- A public way to ask for the operator's approval of the live channel.
 - Reconciling the money. Orders are visible in the dashboard, but a receipt is
   written at the moment the goods are delivered, so an order that is paid for
   and not yet delivered appears among the orders and not among the receipts.

@@ -256,7 +256,7 @@ US dollar buys, and publishes nothing from it until one is set (H-18). Every
 product in the realistic profiles is physical, so what they sell is a parcel:
 the shop ships to Indonesia alone, at one flat rate of Rp 24.000 or 1.50 US
 dollars, a parcel's card is published only once the merchant's site is set in
-Settings, and parcels sell on the test channel only. Both run the census's
+Settings, and parcels sell on every channel. Both run the census's
 common plugins, unconfigured, and let a person order as a customer with mail
 caught by the lab. Stories marked “realistic profile” need one of them.
 

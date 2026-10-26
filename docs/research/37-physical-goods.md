@@ -74,8 +74,10 @@ The money back is decided and not built. ADR-0028 chose that late goods settle
 a debt until a refund is recorded, and none of its three pieces exists: the
 operator's command, the operator's pause, the merchant's view of the payer's
 address. For digital goods a refund owed is rare; for parcels it is an ordinary
-ending (the stock the shop system showed was not on the shelf). This is why a
-`ship` card stays off the live channel until the command exists.
+ending (the stock the shop system showed was not on the shelf). A `ship` card
+was held off the live channel for this reason until the product owner admitted
+parcels there on 2026-10-26, with no such command built (ADR-0028 leaves any
+refund to the merchant).
 
 The rest is smaller. The three-second answer budget is not named on the portal,
 and a handler that books a courier inside it spends its five attempts in about

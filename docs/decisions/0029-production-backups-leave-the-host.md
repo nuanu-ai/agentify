@@ -51,6 +51,6 @@ release lock, is only logged today, one line at priority err in the journal,
 and nothing alerts anybody. The bucket key and the Hetzner project account can
 each destroy every copy in the bucket, and the password is what reads them.
 An erasure the product promises elsewhere, such as the portal's about a
-buyer's address, does not reach these copies, and the portal and the contract
-say so; whether the retention changes to bound every copy is an open question
+buyer's address, does not reach these copies or the restore points a release
+takes, and the portal and the contract say so; whether the retention changes to bound every copy is an open question
 (`docs/research/00-open-questions.md`). The runbook is `deploy/README.md`.
