@@ -952,6 +952,49 @@ describe("a refusal the gateway put into words", () => {
     expect(second.ok === false && second.error.message).not.toMatch(/may be made again/);
   });
 
+  it("does not tell a merchant that a call Agentify failed while handling did not go through", async () => {
+    // A failure inside the gateway may come after the delivery was recorded,
+    // so the words in front of the gateway's own say only where it failed.
+    const agentify = await gatewayServing({
+      deliver_order: () => ({
+        status: 500,
+        text: JSON.stringify({
+          error: {
+            code: "gateway_failed",
+            message: "this call failed partway, and whether it changed anything is not known",
+            retryable: true,
+          },
+        }),
+      }),
+    });
+
+    const result = await agentify.orders.forId("order-1").deliver({
+      access_url: "https://a.example",
+    });
+
+    const message = result.ok === false ? result.error.message : "";
+    expect(message).toMatch(/Agentify failed while handling it/);
+    expect(message).not.toMatch(/did not go through/);
+    expect(message).toMatch(/whether it changed anything is not known/);
+  });
+
+  it("tells a merchant that a call Agentify refused did not go through", async () => {
+    const agentify = await gatewayServing({
+      deliver_order: () => ({
+        status: 404,
+        text: JSON.stringify({
+          error: { code: "no_such_order", message: "there is no such order", retryable: false },
+        }),
+      }),
+    });
+
+    const result = await agentify.orders.forId("order-1").deliver({
+      access_url: "https://a.example",
+    });
+
+    expect(result.ok === false && result.error.message).toMatch(/did not go through/);
+  });
+
   it("says a call it could not read may be worth making again", async () => {
     // Nothing readable came back, so there is no gateway answer to defer to,
     // and "do not call again" would be invented from a failure to parse.

@@ -2402,7 +2402,7 @@ describe("a call that fails inside the gateway", () => {
     return answered;
   };
 
-  it("does not tell a buyer whose payment was settled that nothing was decided, and points to the order's address and the same payment request", async () => {
+  it("does not tell a buyer whose payment was settled that nothing was decided, and sends it back to the same payment request", async () => {
     const { served, harnessed } = await started();
     // Charged as the order opens, inside the purchase call itself.
     const itemId = await publish(served, {
@@ -2430,7 +2430,8 @@ describe("a call that fails inside the gateway", () => {
     expect(failed.error.code).toBe("gateway_failed");
     expect(failed.error.message).not.toContain("nothing was decided");
     expect(failed.error.message).toContain("whether it was charged is not known");
-    expect(failed.error.message).toContain("status_url");
+    // Only a paid answer carries status_url, so this buyer never holds one.
+    expect(failed.error.message).not.toContain("status_url");
     expect(failed.error.message).toContain("same payment request again from the same wallet");
     // Sending the very same call again is not the way back to the order:
     // a fresh signature of the kept request is.
@@ -2443,14 +2444,47 @@ describe("a call that fails inside the gateway", () => {
 
     const answered = await quietly(() => served.call("GET", "/v0/cards", { headers: asMerchant }));
 
-    expect(failedWith(answered)).toStrictEqual({
-      status: 500,
-      error: {
-        code: "gateway_failed",
-        message: "this call did not complete and nothing was decided",
-        retryable: true,
-      },
+    const failed = failedWith(answered);
+    expect(failed.status).toBe(500);
+    expect(failed.error.code).toBe("gateway_failed");
+    expect(failed.error.message).toContain("nothing was decided");
+    expect(failed.error.retryable).toBe(true);
+  });
+
+  // A purchase is paid only by a payment that can be read and names an order;
+  // anything else is priced again, and nothing about it can have been charged.
+  const purchaseFailingBeforePayment = async (headers: Record<string, string>) => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    harnessed.gateway.beginPurchase = () => Promise.reject(new Error("the store went away"));
+
+    const answered = await quietly(() =>
+      served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} }, headers }),
+    );
+
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    return failedWith(answered);
+  };
+
+  it("tells a buyer whose unpaid purchase failed that nothing was charged and the price may be asked again", async () => {
+    const failed = await purchaseFailingBeforePayment({});
+
+    expect(failed.status).toBe(500);
+    expect(failed.error.code).toBe("gateway_failed");
+    expect(failed.error.message).toContain("nothing was charged");
+    expect(failed.error.message).not.toContain("not known");
+    expect(failed.error.retryable).toBe(true);
+  });
+
+  it("tells a buyer whose payment could not be read and whose purchase then failed that nothing was charged", async () => {
+    const failed = await purchaseFailingBeforePayment({
+      [PAYMENT_SIGNATURE_HEADER]: "not a payment at all",
     });
+
+    expect(failed.status).toBe(500);
+    expect(failed.error.message).toContain("nothing was charged");
+    expect(failed.error.message).not.toContain("whether it was charged is not known");
+    expect(failed.error.retryable).toBe(true);
   });
 
   it("tells a merchant whose change failed after it was made that the outcome is not known", async () => {
@@ -2475,8 +2509,8 @@ describe("a call that fails inside the gateway", () => {
     expect(failed.error.code).toBe("gateway_failed");
     expect(failed.error.message).not.toContain("nothing was decided");
     expect(failed.error.message).toContain("whether it changed anything is not known");
-    // Every merchant call either does its work once or answers what already
-    // happened, so repeating it after a look is the way through.
+    // Marked the way the SDK marks its own unknown outcome: a call worth
+    // making again once its subject has been read.
     expect(failed.error.retryable).toBe(true);
   });
 });
