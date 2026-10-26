@@ -373,7 +373,7 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(block)).not.toMatch(/delivers/);
   });
 
-  it("asks to try again now, claiming no order in progress, where no order it named is listed open", () => {
+  it("asks to try again in a moment, claiming no order in progress, where no order it named is listed open", () => {
     const block = blockOf(
       shopPage(
         {},
@@ -382,7 +382,7 @@ describe("where the shop screen says why a press was refused", () => {
       "/woocommerce/connect",
     );
 
-    expect(readable(block)).toMatch(/Try again now/);
+    expect(readable(block)).toMatch(/Try again in a moment/);
     expect(readable(block)).not.toMatch(/in progress|within a minute/);
     expect(readable(block)).not.toMatch(/\b0 orders?\b/);
   });

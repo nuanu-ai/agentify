@@ -2702,7 +2702,7 @@ describe("one integration at a time", () => {
     expect(order).toBeDefined();
     expect(refused.status).toBe(409);
     // Not priced yet, it is not on the open list, so nothing is claimed of it.
-    expect(readable(refused.html)).toMatch(/Try again now/);
+    expect(readable(refused.html)).toMatch(/Try again in a moment/);
     expect(readable(refused.html)).toMatch(/try again/i);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 
