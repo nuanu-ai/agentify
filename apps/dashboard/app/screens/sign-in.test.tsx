@@ -224,7 +224,7 @@ describe("what a merchant is served after asking for a link", () => {
 
   it("does not round its words differently from the number on the button", () => {
     // A sixty-one-second wait must not read "2 minutes" over a button counting
-    // "(61 s)": a page that argues with itself is believed at its worst number.
+    // "in 61 s": a page that argues with itself is believed at its worst number.
     const said = readable(served({ wall: "hourly", seconds: 61 }));
 
     expect(said).toContain("Try again in 61 seconds");
@@ -330,6 +330,9 @@ describe("the link's page", () => {
 
     expect(buttons.map((button) => [button.name, button.value])).toStrictEqual([["", ""]]);
     expect([...sent]).toStrictEqual([["token", "a".repeat(32)]]);
+    // The press itself names the address, so nobody signs in as somebody else
+    // without reading whose address it is.
+    expect(buttons[0]?.textContent).toContain(PERSON);
     expect(container.textContent).toContain(PERSON);
   });
 });

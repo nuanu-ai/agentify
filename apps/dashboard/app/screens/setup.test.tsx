@@ -8,8 +8,9 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
@@ -66,7 +67,8 @@ describe("opening a seller dashboard", () => {
   it("names who is signed in, and makes nothing until the press, which carries that address", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
 
-    expect(readable(html)).toContain(WHO);
+    // On the card, not only in the header, which hides the address on a phone.
+    expect(readable(/<main[\s\S]*<\/main>/.exec(html)?.[0] ?? "")).toContain(WHO);
     expect(formTo(html, "post", "/merchant")?.fields.get(DRAWN_FOR)).toBe(WHO);
     expect(html).not.toContain('class="problem"');
   });
@@ -163,6 +165,24 @@ describe("the button that takes the seller name", () => {
 
     fireEvent.change(box, { target: { value: "   " } });
     expect(button.disabled).toBe(true);
+  });
+
+  it("is pressable once the script arrives for a name typed before it did", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    host.innerHTML = served(choosing);
+    const box = host.querySelector<HTMLInputElement>('input[name="seller_name"]');
+    if (box === null) throw new Error("no name box was served");
+    box.value = "Tea & Co";
+
+    const root = await act(async () => hydrateRoot(host, gatedPage(choosing)));
+    const button = [...host.querySelectorAll("button")].find(
+      (one) => one.textContent === "Use this name",
+    );
+
+    expect(button?.disabled).toBe(false);
+    await act(async () => root.unmount());
+    host.remove();
   });
 
   it("is pressable at once for a refused name given back in the box", () => {

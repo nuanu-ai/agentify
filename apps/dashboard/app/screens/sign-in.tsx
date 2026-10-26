@@ -320,11 +320,8 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
         reloadDocument
       >
         <h1>Sign in</h1>
-        <p>
-          You are signing in as <strong>{view.email}</strong>.
-        </p>
         <input type="hidden" name="token" value={view.token} />
-        <Button>Sign in</Button>
+        <Button>Sign in as {view.email}</Button>
       </Form>
     </GatePage>
   );
