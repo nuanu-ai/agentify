@@ -3670,7 +3670,8 @@ describe("a card held off sale by what its merchant lacks", () => {
 
     const settings = readable((await running.browser.get("/settings")).html);
 
-    expect(settings).not.toMatch(/approv/i);
+    // "Approve" is also what a buyer does to a payment, which the name's line says.
+    expect(settings).not.toMatch(/approved|not approved|approval/i);
   });
 
   it("on live, before Agentify approves, says so once on Settings, in the banner", async () => {
