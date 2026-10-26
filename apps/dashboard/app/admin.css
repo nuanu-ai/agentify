@@ -765,3 +765,12 @@
 .op-cols-splits {
   --columns: minmax(9rem, 1fr) 11rem 11rem 8rem 9rem;
 }
+
+/* --- a page that says one thing ----------------------------------------- */
+
+/* The site's one message panel, inside the workspace's frame: under the bar
+   at a section's distance, as wide as it stands on a page of its own. */
+.app-content > .message-panel {
+  max-width: 40rem;
+  margin-top: var(--space-section);
+}

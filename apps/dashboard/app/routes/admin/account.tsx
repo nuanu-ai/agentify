@@ -8,6 +8,7 @@
 
 import { type LoaderFunctionArgs, Outlet, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
+import { readFailedIn } from "../../components/admin/read-failed.js";
 import { AdminFrame } from "../../components/admin-frame.js";
 import { AccountScreen } from "../../screens/admin/accounts.js";
 import { workspaceIn } from "../../services.js";
@@ -21,6 +22,13 @@ export async function loader(asked: LoaderFunctionArgs) {
     asked,
   );
 }
+
+/** A read that failed, said in the workspace's frame. */
+export const ErrorBoundary = readFailedIn({
+  section: "accounts",
+  title: "Account",
+  back: { to: "/admin/accounts", words: "All accounts" },
+});
 
 export default function Account() {
   const view = useLoaderData<typeof loader>();

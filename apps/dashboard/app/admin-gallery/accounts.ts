@@ -307,8 +307,9 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
     cause: "The read of the accounts failed, so the page says so and offers itself again.",
     path: "/admin/accounts",
     mode: "live",
+    loaded: { "routes/admin/accounts": null },
     failed: {
-      "routes/gate": new ErrorResponseImpl(500, "", {
+      "routes/admin/accounts": new ErrorResponseImpl(500, "", {
         kind: "unread",
         chrome: chromeIn("live"),
         again: "/admin/accounts",

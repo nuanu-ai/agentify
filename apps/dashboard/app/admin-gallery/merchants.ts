@@ -540,8 +540,9 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       "The read failed, so the page says it could not be read rather than drawing no merchants.",
     path: "/admin/merchants",
     mode: "live",
+    loaded: { "routes/admin/merchants": null },
     failed: {
-      "routes/gate": new ErrorResponseImpl(500, "", {
+      "routes/admin/merchants": new ErrorResponseImpl(500, "", {
         kind: "unread",
         chrome: chromeIn("live"),
         again: "/admin/merchants",

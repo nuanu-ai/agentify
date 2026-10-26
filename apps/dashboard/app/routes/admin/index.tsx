@@ -6,6 +6,7 @@
 
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
+import { readFailedIn } from "../../components/admin/read-failed.js";
 import { AdminFrame } from "../../components/admin-frame.js";
 import { OverviewScreen } from "../../screens/admin/figures.js";
 import { workspaceIn } from "../../services.js";
@@ -15,6 +16,9 @@ export async function loader(asked: LoaderFunctionArgs) {
   const { url } = asked;
   return await readOnly(() => admin.figures.overview(operator, url.searchParams), asked);
 }
+
+/** A read that failed, said in the workspace's frame. */
+export const ErrorBoundary = readFailedIn({ section: "overview", title: "Overview" });
 
 export default function Overview() {
   const view = useLoaderData<typeof loader>();
