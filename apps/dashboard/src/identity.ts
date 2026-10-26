@@ -26,6 +26,7 @@ import {
   type SendReportLinkResponse,
   sessionCookieName,
 } from "@agentify/scanner-contracts/report-identity";
+import { inChannel } from "@agentify/ui/workspace-view";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
@@ -563,7 +564,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
               typeof claim.destination !== "string"
                 ? reportLinkMessage(email, action.toString())
                 : claim.stepUp === true
-                  ? stepUpLinkMessage(email, action.toString())
+                  ? stepUpLinkMessage(email, action.toString(), inChannel(config.surfaceMode))
                   : dashboardLinkMessage(email, action.toString()),
             );
           },
@@ -2393,8 +2394,9 @@ function registerInMemory(rows: MemoryRows, reports: readonly AdReport[]): void 
  * The link an operator asks for from the workspace to confirm an action. It
  * signs in the browser it is opened in and returns there to the page it was
  * asked on, where the action is pressed again; it carries out nothing itself.
+ * `where` is the environment it was asked in, such as "in production".
  */
-function stepUpLinkMessage(to: string, link: string): Message {
+function stepUpLinkMessage(to: string, link: string, where: string): Message {
   const title = "Confirm it is you";
   const lead =
     "An administrative action in the Agentify operator's workspace asked for a fresh sign-in." +
@@ -2404,7 +2406,7 @@ function stepUpLinkMessage(to: string, link: string): Message {
     "This link opens once and expires an hour after it was sent. It changes nothing by itself.";
   const unasked =
     "If you did not ask for this, do not open the link: somebody may be using a session of" +
-    " yours. Tell the other operators of this channel, who can end every session of your account.";
+    ` yours. Tell the other operators ${where}, who can end every session of your account.`;
   return {
     to,
     subject: "Confirm an administrative action on Agentify",
