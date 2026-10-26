@@ -8,9 +8,10 @@ to your shop, your cards and your money.
 
 The connector runs on the test channel, where the money is not real, and on
 the live channel, where buyers pay in real USDC on Base. Each channel has its
-own dashboard and its own account, so you connect the shop on each one, and
-on the live channel your products sell only once an Agentify operator has
-approved your merchant ([How to start](/#how-to-start)). A purchase on the
+own dashboard and its own account, so you connect the shop on each one. On
+the live channel nothing is published until an Agentify operator has approved
+your merchant: Import says so and reads nothing from your shop, and you import
+again once you are approved ([How to start](/#how-to-start)). A purchase on the
 test channel makes a paid order in the shop connected there, as a live one
 does. Its Agentify lines say it came from the test channel and was paid in
 test USDC, which is not real money, so do not ship goods for it.
@@ -429,8 +430,8 @@ WooCommerce → Settings → Advanced → REST API.
 
 ## What is not settled yet
 
-- Parcels on the live channel. A parcel sells on the test channel only, and
-  how a live parcel's time to ship is set is not decided.
+- How long a parcel has to ship. The connector gives every parcel seven days,
+  a number of Agentify's own, because WooCommerce has no field for it.
 - How a buyer reaches your support to arrange a remedy outside Agentify.
 - Whether a merchant in Indonesia may accept USDC through Agentify for goods
   priced in rupiah, given the country's Currency Law; Agentify has not settled
