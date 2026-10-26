@@ -29,7 +29,6 @@ output
 /apps/browser-observer-actor
 /apps/scanner-worker
 /packages/contracts
-/packages/core
 /packages/sdk
 /packages/slice
 /apps/docs
