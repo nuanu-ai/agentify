@@ -18,12 +18,15 @@ export function AdminFrame({
   section,
   title,
   heading = title,
+  lookup = true,
   children,
 }: Readonly<{
   /** Absent on a page that is none of the sections, such as the lookup's. */
   section?: AdminSection;
   title: string;
   heading?: string;
+  /** False on the lookup's own page, which draws its own box. */
+  lookup?: boolean;
   children: ReactNode;
 }>) {
   const chrome = useChrome();
@@ -46,7 +49,7 @@ export function AdminFrame({
         counts={frame.counts}
         section={section}
         heading={heading}
-        find={`${chrome.base}/admin/find`}
+        find={lookup ? `${chrome.base}/admin/find` : undefined}
         note={<SurfaceNote surface={chrome.surface} />}
       >
         {children}

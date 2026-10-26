@@ -1,13 +1,13 @@
 /**
  * The frame every page of the operator's workspace is drawn in, by whichever
  * application serves the page: the working header with the operator's mark
- * beside the lockup, and under it the workspace's sidebar headed by the
- * channel, so an admission is never given on the wrong one, with its sections
- * in three groups, each carrying its count where something waits. The bar
- * over the page holds its title and the one box that finds any record by what
- * an operator has in hand. Where there is no room for the sidebar, the menu at
- * the end of the header's row holds the channel and the sections, and the
- * live channel, which draws no band, stands at the head of the page.
+ * beside the lockup, and under it the workspace's sidebar with its sections
+ * in three groups, each carrying its count where something waits. The channel
+ * is named once, so an admission is never given on the wrong one: by the
+ * stack's band on a test stack, and on the live one, which draws no band, at
+ * the head of the sidebar, or of the page and the menu where there is no
+ * room for the sidebar. The bar over the page holds its title and the one box
+ * that finds any record by what an operator has in hand.
  *
  * The seller dashboard serves every section but one, the scanner's, which the
  * scanner serves at its own `/admin`; a section the drawing application does
@@ -108,7 +108,7 @@ function Lookup({ find }: Readonly<{ find: string }>) {
           type="search"
           name="q"
           aria-label="Find a record"
-          placeholder="Find a record"
+          placeholder="ID, email, site or transaction"
         />
       </form>
     </search>
@@ -120,8 +120,9 @@ function Lookup({ find }: Readonly<{ find: string }>) {
  * the header holds beside the workspace's. `counts` are the sections' counts
  * where the drawing application can read them; without them no section
  * carries one, since a count left out claims nothing while a zero would claim
- * that nothing waits. `find` is the address
- * the lookup reads. `note` stands at the head of the workspace, over the bar.
+ * that nothing waits. `find` is the address the lookup reads, absent on the
+ * lookup's own page, which has its box. `note` stands at the head of the
+ * workspace, over the bar.
  */
 export function WorkspaceFrame({
   who,
@@ -141,10 +142,11 @@ export function WorkspaceFrame({
     /** Absent on a page that is none of the sections, such as the lookup's. */
     section?: AdminSection;
     heading: string;
-    find: string;
+    find?: string;
     note?: ReactNode;
     children: ReactNode;
   }>) {
+  const live = channel.mode === "live";
   return (
     <div className="page app-frame">
       <WorkHeader
@@ -154,7 +156,7 @@ export function WorkspaceFrame({
         visitor={{ status: "signed_in", email: who, operator: true }}
         contents={
           <>
-            <p className="op-menu-channel">{channel.name}</p>
+            {live && <p className="op-menu-channel">{channel.name}</p>}
             <Sections current={section} counts={counts} {...drawn} />
           </>
         }
@@ -162,9 +164,11 @@ export function WorkspaceFrame({
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-inner">
-            <div className={channel.mode === "live" ? "op-channel" : "op-channel test"}>
-              <span className="badge">{channel.name}</span>
-            </div>
+            {live && (
+              <div className="op-channel">
+                <span className="badge">{channel.name}</span>
+              </div>
+            )}
             <Sections current={section} counts={counts} {...drawn} />
           </div>
         </aside>
@@ -174,12 +178,11 @@ export function WorkspaceFrame({
             <div className="top">
               <div className="top-inner">
                 <h1 className="top-title">{heading}</h1>
-                <Lookup find={find} />
+                {find !== undefined && <Lookup find={find} />}
               </div>
             </div>
             <div className="app-content">
-              {/* Elsewhere the stack's band above already names the channel. */}
-              {channel.mode === "live" && (
+              {live && (
                 <p className="op-channel-line">
                   <span className="badge">{channel.name}</span>
                 </p>

@@ -23,7 +23,7 @@ export const ErrorBoundary = readFailedIn({ title: "Find a record" });
 export default function Find() {
   const view = useLoaderData<typeof loader>();
   return (
-    <AdminFrame title="Find a record">
+    <AdminFrame title="Find a record" lookup={false}>
       <FindScreen view={view} />
     </AdminFrame>
   );

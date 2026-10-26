@@ -23,11 +23,12 @@ const channelOf = (config: DashboardConfig): ChannelView => ({
 });
 
 /**
- * The channel as a message names it: a letter has no address bar, so it
- * carries the site's host and the chain beside the name.
+ * The channel as a message names it, such as "agentify.ad (production, Base)":
+ * a letter has no address bar, so it leads with the site's host and carries
+ * the chain beside the name.
  */
 export const channelWrittenOf = (config: DashboardConfig): string =>
-  `${CHANNEL_NAMES[config.surfaceMode].toLowerCase()} (${new URL(config.publicBaseUrl).host} · ${
+  `${new URL(config.publicBaseUrl).host} (${CHANNEL_NAMES[config.surfaceMode].toLowerCase()}, ${
     config.walletChain === null
       ? "no chain"
       : (CHAINS[config.walletChain] ?? `chain ${config.walletChain}`)
