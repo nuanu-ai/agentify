@@ -663,7 +663,8 @@ against it play out in the ordinary way. Nothing removes a card altogether.
   handler has neither question — the subscription channel is authenticated when
   it connects.
 - The smallest payment the live payment network carries. It does not publish
-  its minimum, and `0.01` has been carried only on the test network, so a price
-  at or above `{{smallest-price}}` could still be refused when a buyer pays. The
+  its minimum, and a payment of `0.01` has not been tried on the live network,
+  so a price at or above `{{smallest-price}}` could still be refused when a
+  buyer pays. The
   buyer is then told that the payment network will not carry that amount and
   that neither paying again nor buying again at that price will pass.
