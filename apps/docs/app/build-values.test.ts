@@ -93,6 +93,7 @@ describe("the build stops", () => {
     expect(() => writtenIn("{{release:words}}", VALUES)).toThrow(/release:words/);
     expect(() => writtenIn("{{waiting-at-most:number}}", VALUES)).toThrow(/waiting-at-most:number/);
     expect(() => writtenIn("{{price-holds:long}}", VALUES)).toThrow(/price-holds:long/);
+    expect(() => writtenIn("{{silent-after:short}}", VALUES)).toThrow(/silent-after:short/);
   });
 
   it("on a name neither the build nor a deployment knows, in a code block as anywhere else", () => {
