@@ -5366,6 +5366,8 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const bar = barOf(answered.html);
     expect(readable(bar)).toContain(PERSON);
     expect(formTo(bar, "post", "/sign-out")).toBeDefined();
+    // Products' old address is answered the same way.
+    expect((await browser.get("/cards")).status).toBe(404);
   });
 
   it("treats a cookie it cannot read as nobody being signed in", async () => {
