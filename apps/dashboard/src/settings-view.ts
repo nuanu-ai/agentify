@@ -53,6 +53,8 @@ export type PayoutView =
       /** On which one chain, from what, the raw transaction is sent. */
       sentOn: string;
       to: string;
+      /** What `to` is, said beside it. */
+      toIs: string;
       data: string;
       /** Each split it pays out, beside the wallet written into it. */
       pays: readonly Readonly<{ split: string; wallet: string }>[];
@@ -150,22 +152,22 @@ const PAID_IN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
 const OPTIONAL = "Nothing is settled or paid out here, so this address is optional.";
 
 /**
- * The one chain a payout is sent on, and what its sender pays the fee with.
- * Multicall3 is at the same address on most chains, and sent on another one
- * the transaction can succeed and pay out nothing.
- */
-const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
-  test: "Send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
-  live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
-};
-
-/**
  * Every note Getting paid says, by the state it is in, so each is written once
  * and one test reads them all. The page reads which payout contracts there
  * are and never what they hold, so no note says there is money in one: a
  * merchant with no sale yet reads the same words.
  */
 export const PAYOUT_NOTES = Object.freeze({
+  /**
+   * The one chain a payout is sent on, and what its sender pays the fee with.
+   * Multicall3 is at the same address on most chains, and sent on another one
+   * the transaction can succeed and pay out nothing.
+   */
+  sentOn: {
+    test: "Send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
+    live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
+  } satisfies Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>>,
+  multicall3: "Multicall3, a public contract, not ours.",
   toYourWallet: (contracts: number): string =>
     `One transaction pays out your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
   toEachWallet: "One transaction pays out each payout contract to the wallet written into it.",
@@ -223,8 +225,9 @@ const payoutView = (
   return {
     kind: "send",
     said: `${goes} ${PAYOUT_NOTES.orAgentify}`,
-    sentOn: SENT_ON[mode],
+    sentOn: PAYOUT_NOTES.sentOn[mode],
     to: payout.to,
+    toIs: PAYOUT_NOTES.multicall3,
     data: payout.data,
     pays,
     after: PAYOUT_NOTES.fromTheSender,

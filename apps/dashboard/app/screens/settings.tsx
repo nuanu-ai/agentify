@@ -326,7 +326,7 @@ function AnotherWallet({ payout }: Readonly<{ payout: Extract<PayoutView, { kind
             <dt>To</dt>
             <dd>
               <Address address={payout.to} />
-              <span className={styles.quiet}>Multicall3, a public contract, not ours.</span>
+              <span className={styles.quiet}>{payout.toIs}</span>
             </dd>
           </div>
           <div>
