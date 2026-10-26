@@ -6,13 +6,13 @@
  */
 
 import { readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
+import { type CommissionRate, percentagesOf } from "@agentify/core/published";
 import type { RecordedPayoutSplit } from "@agentify/gateway";
 import { MERCHANT_FINDINGS, type PayoutWallet } from "@nuanu-ai/agentify-contracts";
 import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { nameRefusedSaying } from "./seller-name.js";
-import { type CommissionRate, percentagesOf } from "./shares.js";
 import { type MomentView, momentView } from "./views.js";
 
 /**

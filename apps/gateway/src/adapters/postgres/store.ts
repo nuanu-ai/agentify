@@ -75,6 +75,7 @@ import { failingWithoutValues } from "../database-failure.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 import { journalAlong, readJournal, readStandingWithdrawal } from "./journal.js";
 import {
+  answeredFor,
   cards,
   merchantContact,
   merchantKeys,
@@ -1031,6 +1032,36 @@ export class PostgresStore implements Store {
         .as("waiting"),
     );
     return counted?.waiting ?? 0;
+  }
+
+  /** Read through the partial index's own predicate; it reads at most `atMost` rows. */
+  async unservedOrders(merchantId: string, atMost: number): Promise<number> {
+    const [counted] = await this.#db.select({ unserved: sql<number>`count(*)::int` }).from(
+      this.#db
+        .select({ one: sql`1` })
+        .from(orders)
+        .where(and(eq(orders.merchantId, merchantId), answeredFor(orders.state, orders.record)))
+        .limit(atMost)
+        .as("unserved"),
+    );
+    return counted?.unserved ?? 0;
+  }
+
+  /** Grouped over the partial index, so it reads only the orders that count. */
+  async stoppedSellers(
+    merchantIds: readonly string[],
+    atLeast: number,
+  ): Promise<ReadonlySet<string>> {
+    if (merchantIds.length === 0) return new Set();
+    const rows = await this.#db
+      .select({ merchantId: orders.merchantId })
+      .from(orders)
+      .where(
+        and(inArray(orders.merchantId, [...merchantIds]), answeredFor(orders.state, orders.record)),
+      )
+      .groupBy(orders.merchantId)
+      .having(sql`count(*) >= ${atLeast}`);
+    return new Set(rows.map((row) => row.merchantId));
   }
 
   async orderById(id: string): Promise<StoredOrder | null> {

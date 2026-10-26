@@ -1,7 +1,9 @@
+import { durationInWords, LAPSED_KEPT_MS } from "@agentify/core/published";
 import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ClosurePressed, ClosureUnlisted, OrdersView, ToldOrders } from "../../src/views.js";
+import { COUNTS_TOWARD_THE_STOP } from "../../src/words.js";
 import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
@@ -60,6 +62,12 @@ const Told = ({
     </div>
     <p className={styles.why}>
       {order.why}
+      {order.stops ? (
+        <>
+          {" "}
+          <b data-stops={order.id}>{COUNTS_TOWARD_THE_STOP}</b>
+        </>
+      ) : null}
       {order.rest === null ? null : <Rest rest={order.rest} />}
     </p>
     <div className={styles.way}>
@@ -426,7 +434,10 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
       {lapsed ? (
         <>
           <OrderList view={view} />
-          <p className="note">Nothing was charged for these. Each is kept for thirty days.</p>
+          <p className="note">
+            Nothing was charged for these, and each is deleted{" "}
+            {durationInWords(LAPSED_KEPT_MS, "day")} after it was last written.
+          </p>
         </>
       ) : here?.key === "needs" ? (
         <Group title="Needs you" count={view.needsYou.of} warn aside={closureHelp}>

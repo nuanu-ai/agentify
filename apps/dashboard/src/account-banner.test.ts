@@ -59,15 +59,18 @@ describe("the account banner", () => {
     expect([since?.fix, never?.fix]).toStrictEqual([null, null]);
   });
 
-  it("names how many purchases wait for payment while new ones are refused for them, and offers nothing to press", () => {
-    const [note] = accountOf(READY, { selling: "open", busy: true });
+  it("names a merchant whose purchases waiting for payment fill the limit, with nothing to switch on", () => {
+    const notes = accountOf(READY, { selling: "open", busy: true });
 
-    expect(note?.reason).toBe("busy");
-    expect(note?.says).toContain("20");
-    expect(note?.fix).toBeNull();
-    // How long the places stay taken depends on how long a price holds, which
-    // the dashboard does not read, and on whoever holds them; no time is promised.
-    expect(note?.says).not.toMatch(/minute|second|hour/);
+    expect(notes.map((note) => note.reason)).toStrictEqual(["busy"]);
+    expect(notes[0]?.fix).toBeNull();
+  });
+
+  it("says new purchases are refused while ten paid orders are left unserved, and leads to the orders that need the merchant", () => {
+    const [note] = accountOf(READY, { selling: "open", unserved: true });
+
+    expect(note?.reason).toBe("unserved");
+    expect(note?.fix?.to).toBe("/orders?show=needs");
   });
 
   it("heads purchases refused for both silence and the unpaid ones by the refusal that covers every product", () => {

@@ -11,6 +11,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { percentOf } from "@agentify/core/published";
 import {
   type Money,
   type Shipment,
@@ -19,7 +20,7 @@ import {
   type ShipToLocality,
 } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
-import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
+import { type SplitTerms, sharesOf } from "./shares.js";
 import {
   DECIMALS_ARE_EVERY_CUSTOMERS,
   decimalOfMinorUnits,

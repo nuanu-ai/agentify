@@ -14,18 +14,18 @@
 ```mermaid
 flowchart TB
     accTitle: Where a buyer's payment goes
-    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: 99.9 percent to your wallet, and 0.1 percent kept in the warehouse for Agentify. A refund, if you make one, goes from your wallet to the buyer outside Agentify, and closing fulfillment of an order moves no money.
+    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: {{merchant-share:words}} to your wallet, and {{commission:words}} kept in the warehouse for Agentify. A refund, if you make one, goes from your wallet to the buyer outside Agentify, and closing fulfillment of an order moves no money.
     B["Buyer's wallet"] -- "each sale: the whole<br/>price, in USDC" --> C["Your payout contract<br/>made from your<br/>wallet's address,<br/>with no owner"]
     C -- "one payout for every<br/>sale since the last,<br/>sent by you at any time<br/>or by Agentify when it<br/>collects its share" --> W["0xSplits warehouse"]
-    W -- "99.9%" --> Y["Your wallet"]
-    W -- "0.1%, kept there<br/>for Agentify" --> F["Agentify"]
+    W -- "{{merchant-share}}" --> Y["Your wallet"]
+    W -- "{{commission}}, kept there<br/>for Agentify" --> F["Agentify"]
     Y -. "a refund, if you<br/>make one, outside<br/>Agentify" .-> R["The buyer"]
 ```
 
 The buyer — a program, buying on behalf of a person — pays into your payout
 contract: a smart contract on the Base network, made from your wallet's
-address, which keeps the money until it is paid out and then sends 99.9% to
-your wallet and 0.1% to Agentify. Nobody owns it. Neither Agentify nor anybody
+address, which keeps the money until it is paid out and then sends {{merchant-share}} to
+your wallet and {{commission}} to Agentify. Nobody owns it. Neither Agentify nor anybody
 else can change whom it pays or in what shares, and no account of ours holds
 your money at any point. The money is USDC, which is issued by Circle, and
 Circle can freeze USDC at any address, your payout contract and the shared
@@ -167,15 +167,15 @@ shop. A charge already on its way when you closed can still go through; if it
 does, the order shows again among those that need you on Orders, and your
 integration is sent a notice.
 
-Agentify retains its 0.1% commission on the original payment, and neither the
+Agentify retains its {{commission}} commission on the original payment, and neither the
 payout contract nor the shared warehouse gives it back. Agentify has no staff
 who handle refunds and does not pay a buyer back from its own funds.
 
 ## What we take
 
-We take 0.1% of every payment, and it is inside your price. The buyer pays the
+We take {{commission}} of every payment, and it is inside your price. The buyer pays the
 price of your product and nothing on top of it, and your payout contract sends
-99.9% of it to you and 0.1% to us. If you want what reaches you to be the
+{{merchant-share}} of it to you and {{commission}} to us. If you want what reaches you to be the
 whole of a price you have in mind, raise the product's price yourself. There
 is no subscription and no monthly fee. The Settings screen of your dashboard
 names the commission, and saving your wallet there is how you accept it.
@@ -183,7 +183,7 @@ names the commission, and saving your wallet there is how you accept it.
 The contract divides what has accumulated in it, not each sale on its own, and
 rounds each share down to the smallest unit of USDC, a millionth of a dollar.
 It also leaves one such unit behind on a balance rather than pay the network
-fee of emptying it. So a payout gives you about 99.9% of what came in and
+fee of emptying it. So a payout gives you about {{merchant-share}} of what came in and
 never more, and what the rounding leaves over is divided in a later payout.
 For the same reason there is no exact commission to read off a single order.
 

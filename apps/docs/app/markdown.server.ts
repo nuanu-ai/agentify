@@ -240,7 +240,7 @@ async function renderer(): Promise<MarkdownIt> {
 
 /** A page's Markdown as the build reads it, with what the build knows written in. */
 export const sourceOf = async (page: Pick<Page, "file">): Promise<string> =>
-  withBuildValues(await readFile(join(APP, page.file), "utf8"));
+  withBuildValues(await readFile(join(APP, page.file), "utf8"), page.file);
 
 async function renderAll(): Promise<ReadonlyMap<string, RenderedPage>> {
   const md = await renderer();

@@ -12,6 +12,7 @@
  * writes a journal row.
  */
 
+import { percentOf } from "@agentify/core/published";
 import {
   type AnalyticsOutbox,
   CHART_DAYS,
@@ -132,10 +133,6 @@ const usd = (amount: string) => `${amount} USD`;
 
 const sumOf = (...amounts: readonly string[]): string =>
   dollarsOf(amounts.reduce((all, amount) => all + microsOf(amount), 0n));
-
-/** The share of every payment a split pays Agentify, as "0.1%". */
-const shareWritten = (commission: number, total: number): string =>
-  `${Number(((commission / total) * 100).toFixed(4))}%`;
 
 // --- the views -------------------------------------------------------------
 
@@ -738,7 +735,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
   const orders = foundIn(reads.orders);
   const week = foundIn(reads.week);
   const live = channel.surface === "live";
-  const share = shareWritten(channel.share.commission, channel.share.total);
+  const share = percentOf(channel.share.commission, channel.share.total);
   const tiles: TileView[] = [
     {
       label: "Merchants selling",
@@ -908,7 +905,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
   const money = foundIn(reads.money);
   const unknown = foundIn(reads.unknown);
   const within = PERIODS.find(([key]) => key === period)?.[2] ?? "";
-  const share = shareWritten(channel.share.commission, channel.share.total);
+  const share = percentOf(channel.share.commission, channel.share.total);
   const tiles: TileView[] = [
     {
       label: "Settled sales",

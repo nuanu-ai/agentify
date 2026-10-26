@@ -6,6 +6,7 @@
  * dashboard, where the deciding screen is) and nothing that opens anything.
  */
 
+import type { CommissionRate } from "@agentify/core/published";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import type { Announcement } from "@agentify/gateway/announcements";
 import { describe, expect, it } from "vitest";
@@ -14,7 +15,6 @@ import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
 import { inViewersZone } from "./moments.js";
-import type { CommissionRate } from "./shares.js";
 import { tellerFor } from "./teller.js";
 
 const MERCHANT = "mch_the_shop";

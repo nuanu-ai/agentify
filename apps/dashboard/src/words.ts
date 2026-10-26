@@ -114,10 +114,11 @@ export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import a
  * Why the account as a whole is not as usual: a change of the payout wallet
  * waits to apply, all sales are paused, something publishing needs is
  * missing, purchases charged before delivery are refused while their
- * integration is not connected, or new purchases are refused while twenty
- * wait for payment; or that what would say so could not be read. Selling
+ * integration is not connected, or new purchases are refused while as many
+ * wait for payment as Agentify allows or while as many paid orders are left
+ * unserved as it allows; or that what would say so could not be read. Selling
  * through a WooCommerce shop is not among them: it holds nothing, and the
- * cards it leaves off sale say so on their own rows.
+ * products it leaves off sale say so on their own rows.
  */
 export type AccountReason =
   | "wallet_change"
@@ -127,6 +128,7 @@ export type AccountReason =
   | "no_payout_wallet"
   | "out_of_touch"
   | "busy"
+  | "unserved"
   | "unread";
 
 /**
@@ -185,9 +187,14 @@ export const ACCOUNT_WORDS: Readonly<
     fix: null,
   },
   busy: {
-    title: "Agents cannot buy right now",
-    says: "20 purchases are waiting for payment, the most Agentify allows at once. Sales resume by themselves as they are paid or their price expires.",
+    title: "New purchases are refused",
+    says: "As many purchases as Agentify allows are waiting for payment, so new ones are refused until one is paid or its price runs out.",
     fix: null,
+  },
+  unserved: {
+    title: "All new purchases are refused",
+    says: "As many paid orders you were given as Agentify allows are left without delivery or closure, so agents cannot buy anything from you until you deliver or close some of them. Under Needs you, each order that counts says so.",
+    fix: { to: "/orders?show=needs", words: "See them on Orders" },
   },
   unread: {
     title: "We could not check your account",
@@ -207,8 +214,9 @@ const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
 /**
  * The banner's heading. One reason is headed by its own title; several by
  * what they come to together where one of them keeps every product off sale,
- * otherwise by the unpaid purchases where they hold, since they refuse every
- * product and silence only those delivered later, and otherwise by the first.
+ * otherwise by the refused purchases where they hold, since those refuse every
+ * product where a lost connection silences only those delivered later, and
+ * otherwise by the first.
  * Here rather than beside the reasons, so the page's script that draws the
  * banner does not carry the rules that find them.
  */
@@ -219,8 +227,17 @@ export const headingOf = (
   if (first === undefined) return "";
   if (notes.length === 1) return first.title;
   if (notes.some((note) => KEEP_OFF_SALE.has(note.reason))) return "Your products are off sale";
-  return (notes.find((note) => note.reason === "busy") ?? first).title;
+  return (notes.find((note) => note.reason === "busy" || note.reason === "unserved") ?? first)
+    .title;
 };
+
+/**
+ * Said beside an order under Needs you that counts toward the stop on new
+ * purchases: the merchant must find exactly those, since closing an order that
+ * does not count lifts nothing.
+ */
+export const COUNTS_TOWARD_THE_STOP =
+  "This order counts toward the stop on your new purchases until you deliver or close it.";
 
 /** The banner's title while Agentify's withdrawal of the merchant's admission stands. */
 export const LIVE_SALES_STOPPED = "Live sales are stopped";

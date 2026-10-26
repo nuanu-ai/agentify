@@ -1,9 +1,10 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { percentOf } from "@agentify/core/published";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import { MerchantCardListSchema, type OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { percentOf, sharesOf } from "./shares.js";
+import { sharesOf } from "./shares.js";
 import { merchantItemIdFor } from "./woo-catalog.js";
 import { recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
 import { type WooRecoveryPageParts, wooRecoveryPagesFor } from "./woo-recovery-pages.js";
