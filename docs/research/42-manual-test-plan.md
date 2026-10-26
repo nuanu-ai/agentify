@@ -196,15 +196,21 @@ the merchant's dashboard shows a banner while it applies. A run that leaves
 many unpaid attempts on one merchant, on purpose as in J-09 or by abandoning
 challenges, reaches it.
 
-Whatever the integration, a merchant with ten or more orders paid for and with
-nothing delivered (`unfulfilled`) is refused every new purchase, synchronous
-ones included, with HTTP 409 seller_not_fulfilling, not retryable and with
-nothing charged. The door asks before the price is asked and again when a
-payment arrives. An order whose fulfillment the merchant closed, one whose
-payment outcome is unknown, goods held unpaid and a purchase that ended with
-nothing charged do not count. The gateway writes a line about it at most once a
-minute for each merchant, and the merchant's dashboard shows a banner leading
-to the orders under Needs you while it applies. A late delivery or a closure
+Whatever the integration and on either channel, a merchant with ten or more
+paid orders they took on and left without delivery or closure (`unfulfilled`)
+is refused every new purchase, synchronous ones included, with HTTP 409
+seller_not_fulfilling, not retryable and with nothing charged. The door asks
+before the price is asked and again when a payment arrives, a look at one of
+the merchant's products is refused the same way, and their cards leave the
+catalogue. An order counts where the merchant's code refused it or was handed
+it and let its deadline pass, or where a WooCommerce shop took it on. An order
+the merchant closed, one Agentify never handed over (a charge confirmed only
+after the deadline among them), a shop order the connector refused before
+creating it or could not confirm creating, and a purchase that ended with
+nothing charged do not count. A payment that releases goods already made goes
+through. The gateway writes a line about it at most once a minute for each
+merchant, and the merchant's dashboard shows a banner leading to the orders
+under Needs you while it applies, paused or not. A late delivery or a closure
 that leaves fewer than ten lifts it with nothing to switch back on. Stories
 that leave paid orders unfulfilled on one merchant, through refusals after
 payment or missed deadlines, reach it at the tenth, so a run delivers or closes

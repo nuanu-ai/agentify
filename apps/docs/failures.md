@@ -30,7 +30,7 @@ is recorded as unfulfilled after.
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
 | Fifty of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses thirty seconds after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps fifty unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
 | No process of yours has polled for ten minutes | nothing changes: a purchase nobody answers ends with nothing charged | a new purchase is refused with `seller_not_taking_orders` before payment, and so is a payment for a price named before the silence; nothing is charged, and the agent tries again later | as in the asynchronous mode | keep a process running and polling: its first poll lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected |
-| Ten of your paid orders have nothing delivered | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the tenth such order; nothing is charged, and the agent is told that trying again will not help | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, which your dashboard lists under Needs you on Orders: once fewer than ten remain, the next purchase goes through with nothing switched back on |
+| Ten paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the tenth such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, which your dashboard lists under Needs you on Orders: once fewer than ten remain, the next purchase goes through with nothing switched back on |
 
 Silence from a price check is any of three things: no answer within five
 seconds, a server error or a network failure in place of an answer, or an
@@ -58,17 +58,30 @@ WooCommerce is never refused for it, because its orders are filled inside
 Agentify; a shop that fails answers its price question with the failure.
 Both refusals are retryable, and neither charges anything.
 
-The rule about orders with nothing delivered counts only an order a buyer paid
-for and received nothing for (`unfulfilled`), so nobody can set it off without
-paying. An order whose fulfillment you closed does not count, and neither does
-one whose payment outcome is unknown, goods held while their payment did not
-go through, or a purchase that ended with nothing charged. It covers every
-purchase of yours, a synchronous one too, whether you sell through the SDK or
-a WooCommerce shop, and it is asked again when a payment arrives, so a price
-named just before the tenth order is not charged after. Nothing is stored: it
-lifts by itself when a late delivery or a closure leaves fewer than ten, and
-your dashboard says so while it holds. It is not retryable, because only you
-can lift it, and it charges nothing either.
+The rule about orders left without delivery or closure counts only an order a
+buyer paid for, that you were given, and that has nothing delivered
+(`unfulfilled`), so nobody can set it off without paying. An order you refused
+after the charge counts, and so does one your process was handed and let run
+past its deadline, for as long as it is neither delivered nor closed; closing
+it, with an explanation to the buyer if you like, takes it out. They are
+counted in total, however old, on the test channel as on the live one. An
+order whose fulfillment you closed does not count, and neither does a purchase
+that ended with nothing charged. Nor does an order Agentify never handed to you,
+such as one whose charge was confirmed only after its deadline, or, for a
+WooCommerce shop, an order the shop never took on because Agentify's connector
+refused it before creating the shop's order or could not tell whether it did.
+
+The rule covers every purchase of yours, a synchronous one too, whether you
+sell through the SDK or a WooCommerce shop, and it is asked again when a
+payment arrives, so a price named just before the tenth order is not charged
+after. A payment for goods you already made and that wait for their buyer's
+payment goes through, since that order was served, and so does a buyer's
+payment presented again for an order already paid. While the rule holds, your
+cards are not in the catalogue and a look at one of them is refused too.
+Nothing is stored: it lifts by itself when a late delivery or a closure leaves
+fewer than ten, and your dashboard says so while it holds, paused or not. It is
+not retryable, because only you can lift it and nothing says when, and it
+charges nothing either.
 
 An order your package cannot read, one carrying a field or an address shape
 that the contract version it speaks does not allow, goes the way of a handler

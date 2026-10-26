@@ -243,7 +243,10 @@ await order.refuse({
 The buyer has already been charged for an order you took on, so a refusal
 makes it `unfulfilled` straight away. It stays on the open list, and a late
 delivery still counts. A refusal does not stop Agentify accepting deliveries;
-closing fulfillment does.
+closing fulfillment does. Until you deliver it or close it, a refused or missed
+paid order also counts toward the stop on ten such orders, under which every
+new purchase of yours is refused ([What can go wrong](/failures)); closing it,
+with an explanation to the buyer, takes it out.
 
 ## Closing fulfillment
 
@@ -403,7 +406,7 @@ flowchart LR
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
 | `rejected` | nothing was charged: your price check said there is none, or stayed silent on an asynchronous card or a parcel; a charge before the goods failed; or you refused a synchronous order | no | — |
 | `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
-| `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to; otherwise leave it, or close fulfillment |
+| `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to, or closes fulfillment: until one or the other, an order you were given counts toward the stop on ten such orders |
 | `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
 | `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and not once you closed fulfillment | skips it: Agentify settles it when the payment is known |
 | `fulfillment_closed` | you closed fulfillment; `payment_status` says what became of the payment | only when a payment went through after you closed, until you close it again | skips delivering, which is refused; closes it again once you have settled with the buyer |
