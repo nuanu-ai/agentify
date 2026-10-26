@@ -4,9 +4,8 @@ import { acceptedScanIn } from "../lib/api-answers";
 import { captureLandingAttribution } from "../lib/attribution-client";
 import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
 import { press } from "../lib/press";
-import { Brand } from "./brand";
 import styles from "./pending-scan-experience.module.css";
-import { SiteDoors, SiteFooter } from "./site-chrome";
+import { SiteFooter, SiteTop } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
@@ -20,8 +19,8 @@ type StartState =
   | "missing";
 
 /**
- * What the page calls each state: its heading, and the word beside the card's
- * name, short enough to stay on that line on a small phone.
+ * What the page calls each state: its heading, and the word beside the
+ * panel's name, short enough to stay on that line on a small phone.
  */
 const SAID: Readonly<Record<StartState, { label: string; title: string }>> = {
   starting: { label: "starting", title: "Your report is getting ready" },
@@ -32,6 +31,21 @@ const SAID: Readonly<Record<StartState, { label: string; title: string }>> = {
   error: { label: "failed", title: "The scan could not start" },
   missing: { label: "no scan", title: "No scan request in this tab" },
 };
+
+/**
+ * The time on the visitor's own clock when a wait ends, rounded up to the
+ * minute so it never names a moment before the scanner frees up; with the
+ * day when that is not today.
+ */
+function freeAt(waitSeconds: number): string {
+  const at = new Date(Math.ceil((Date.now() + waitSeconds * 1000) / 60_000) * 60_000);
+  const today = at.toDateString() === new Date().toDateString();
+  return at.toLocaleString([], {
+    ...(today ? {} : { weekday: "short" }),
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function PendingScanExperience({
   turnstileSiteKey,
@@ -84,7 +98,7 @@ export function PendingScanExperience({
       // with the answer starts another, which is harmless.
       setState("unreachable");
       setMessage(
-        "No answer came back, so we cannot tell whether the scan started. Retrying is safe: you get the scan that started, or a new one.",
+        "No answer came back, so we cannot tell whether the scan started. Retry: you get that scan if it did, or a new one.",
       );
       return;
     }
@@ -98,7 +112,12 @@ export function PendingScanExperience({
     }
     if (code === "hard_rate_limit") {
       setState("hard-limit");
-      setMessage("This network or target reached the hard scan limit. Try again later.");
+      const wait = outcome.refusal.retry_after_seconds;
+      setMessage(
+        wait === undefined
+          ? "Scans from this network or for this website are used up for now. Try again later."
+          : `Scans from this network or for this website are used up until ${freeAt(wait)}.`,
+      );
       return;
     }
     if (code === "temporarily_busy") {
@@ -121,7 +140,7 @@ export function PendingScanExperience({
     const pending = readPendingScan(window.sessionStorage);
     if (!pending) {
       setState("missing");
-      setMessage("This scan request is missing or expired. Submit the site again.");
+      setMessage("This tab holds no scan request, or it has expired. Enter the website again.");
       return;
     }
     setRequest(pending);
@@ -146,45 +165,40 @@ export function PendingScanExperience({
   const starting = state === "starting";
   return (
     <>
-      <main className={styles.page}>
-        <div className={styles.brandWrap}>
-          <Brand />
-          <SiteDoors />
-        </div>
-        <section className={styles.card}>
-          <header className={styles.header}>
+      <SiteTop />
+      <main className="message-page" id="main">
+        <section className="message-panel">
+          <div className="message-meta">
             <span>Private website diagnostic</span>
             <span className={styles.status} data-state={state}>
               {SAID[state].label}
             </span>
-          </header>
-          <div className={styles.body}>
-            <h1>{SAID[state].title}</h1>
-            <p aria-live="polite" className={styles.message} role="status">
-              {message}
-            </p>
-            {state === "challenge" ? (
-              <div className={styles.challenge}>
-                <TurnstileChallenge action="scan" siteKey={turnstileSiteKey} />
-              </div>
-            ) : null}
-            {!starting && state !== "challenge" ? (
-              <div className={styles.actions}>
-                {request && state !== "hard-limit" && retryable ? (
-                  <button
-                    className="button button-primary"
-                    onClick={() => void startScan(request)}
-                    type="button"
-                  >
-                    Retry scan
-                  </button>
-                ) : null}
-                <SiteLink className="button button-secondary" to="/">
-                  Enter another website
-                </SiteLink>
-              </div>
-            ) : null}
           </div>
+          <h1>{SAID[state].title}</h1>
+          <p aria-live="polite" role="status">
+            {message}
+          </p>
+          {state === "challenge" ? (
+            <div className="message-actions">
+              <TurnstileChallenge action="scan" siteKey={turnstileSiteKey} />
+            </div>
+          ) : null}
+          {!starting && state !== "challenge" ? (
+            <div className="message-actions">
+              {request && state !== "hard-limit" && retryable ? (
+                <button
+                  className="button button-primary"
+                  onClick={() => void startScan(request)}
+                  type="button"
+                >
+                  Retry scan
+                </button>
+              ) : null}
+              <SiteLink className="button button-secondary" to="/">
+                Enter another website
+              </SiteLink>
+            </div>
+          ) : null}
         </section>
       </main>
       <SiteFooter>

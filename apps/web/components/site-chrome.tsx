@@ -42,8 +42,10 @@ export function SiteDoors() {
 export function SiteTop({ end }: Readonly<{ end?: ReactNode }>) {
   return (
     <header className={styles.top}>
-      <Brand />
-      {end === undefined ? <SiteDoors /> : end}
+      <div className={`${styles.row} container`}>
+        <Brand />
+        {end === undefined ? <SiteDoors /> : end}
+      </div>
     </header>
   );
 }

@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import layout from "./result-layout.module.css";
 import { SiteFooter, SiteTop } from "./site-chrome";
 import { SiteLink } from "./site-link";
 
@@ -14,18 +13,16 @@ export type ReportLockedData =
   | Readonly<{ kind: "stranger" }>
   | Readonly<{ kind: "not_yours"; email: string }>;
 
-/** A report's address that opens no report, in the report's own page. */
+/** A report's address that opens no report, in the site's message panel. */
 function Locked({ children, doors = true }: Readonly<{ children: ReactNode; doors?: boolean }>) {
   return (
-    <div className={layout.page}>
+    <>
       <SiteTop end={doors ? undefined : null} />
-      <main className={layout.body}>
-        <div className={`${layout.sheet} ${layout.single}`}>
-          <section className={layout.message}>{children}</section>
-        </div>
+      <main className="message-page" id="main">
+        <section className="message-panel">{children}</section>
       </main>
       <SiteFooter />
-    </div>
+    </>
   );
 }
 
@@ -36,9 +33,8 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
         <>
           <h1>We cannot tell who is visiting right now</h1>
           <p>
-            This report opens for the address it is filed under, and the part of the site that knows
-            who is signed in did not answer. Nothing is wrong with the report. Try again in a
-            moment.
+            The sign-in service did not answer, so we cannot check that this report is yours. Try
+            again in a moment.
           </p>
           <SiteLink
             className="button button-primary"
@@ -49,18 +45,24 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
         </>
       ) : page.kind === "not_yours" ? (
         <>
-          <h1>This report is not filed under {page.email}</h1>
+          <h1>This report belongs to another address</h1>
           <p>
-            A report opens for the address it was asked for with. If that is another address of
-            yours, sign out and sign in with it.
+            You are signed in as <strong>{page.email}</strong>. Sign in with the address the report
+            was sent to.
           </p>
+          {/* The dashboard's own sign-out, which ends this session and opens its sign-in. */}
+          <form action="/dashboard/sign-out" className="message-actions" method="post">
+            <button className="button button-primary" type="submit">
+              Sign in with another address
+            </button>
+          </form>
         </>
       ) : (
         <>
-          <h1>Private report access required</h1>
+          <h1>Sign in to open this report</h1>
           <p>
-            This report opens for the address it is filed under. Sign in with that address and open
-            this page again; the link that was sent after the scan does both.
+            It opens for the address it was sent to. The link in that email signs you in and opens
+            it.
           </p>
           <a className="button button-primary" href="/dashboard/sign-in">
             Sign in
@@ -81,8 +83,8 @@ export function LatestReportUnknown() {
     <Locked doors={false}>
       <h1>We cannot tell who is visiting right now</h1>
       <p>
-        The part of the site that knows who is signed in did not answer, so we cannot tell which
-        report is yours. Try again in a moment.
+        The sign-in service did not answer, so we cannot tell which report is yours. Try again in a
+        moment.
       </p>
       <SiteLink className="button button-primary" to="/report/latest">
         Try again

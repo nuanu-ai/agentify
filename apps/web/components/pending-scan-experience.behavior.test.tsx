@@ -2,7 +2,7 @@
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type PendingScanRequest, readPendingScan, savePendingScan } from "../lib/pending-scan";
 import { onSite } from "../testing/on-site";
@@ -49,6 +49,40 @@ describe("pending scan acceptance", () => {
   afterEach(() => {
     cleanup();
     window.sessionStorage.clear();
+  });
+
+  it("says at what time of the visitor's day scans free up, from the wait the scanner gave, never earlier", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-26T10:00:00Z"));
+    savePendingScan(window.sessionStorage, pending("hard-wait"));
+    installNetwork(
+      response(
+        { error: { ...errorEnvelope("hard_rate_limit", true).error, retry_after_seconds: 1_790 } },
+        429,
+      ),
+    );
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "Too many scans for now" });
+    const freesAt = new Date("2026-10-26T10:30:00Z").toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    expect(screen.getByRole("status").textContent).toContain(freesAt);
+    vi.useRealTimers();
+  });
+
+  it("says only 'later' when the scanner gave no wait, naming no time it does not know", async () => {
+    savePendingScan(window.sessionStorage, pending("hard-none"));
+    installNetwork(response(errorEnvelope("hard_rate_limit", true), 429));
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
+
+    await screen.findByRole("heading", { name: "Too many scans for now" });
+    const said = screen.getByRole("status").textContent ?? "";
+    expect(said).toMatch(/later/i);
+    expect(said).not.toMatch(/\d:\d\d/);
   });
 
   it("shows an unretryable missing state when no private request exists", async () => {

@@ -8,7 +8,7 @@ export function NotFoundPage() {
   return (
     <SystemMessagePage
       actionLabel="Start a scan"
-      description="The page may have moved, expired, or never been published."
+      description="There is no page at this address. It may have moved or expired."
       title={NOT_FOUND_TITLE}
     />
   );

@@ -780,7 +780,7 @@ const SCANNING: GalleryState[] = [
       status: 429,
       body: refusal("hard_rate_limit", "The scan limit has been reached.", true, 1_800),
     },
-    "This network or target reached the hard scan limit.",
+    "are used up until",
   ),
   pending(
     {
@@ -821,7 +821,7 @@ const SCANNING: GalleryState[] = [
       cause: "The tab holds no scan request to send.",
     },
     null,
-    "This scan request is missing or expired.",
+    "This tab holds no scan request",
   ),
   scan(
     {
@@ -1082,7 +1082,7 @@ const SCANNING: GalleryState[] = [
       when: "Somebody opens a scan's address without the private link that started it.",
       cause: "The tab holds no token for the scan, so its progress is not shown.",
     },
-    { token: false, shows: "Open the original private scan link" },
+    { token: false, shows: "Open the scan from its private link" },
   ),
   scan(
     {
@@ -1091,7 +1091,7 @@ const SCANNING: GalleryState[] = [
       when: "Somebody opens a scan's private link after it stopped working.",
       cause: "The API refuses the token the link carried.",
     },
-    { status: { status: 401 }, shows: "This scan link is no longer valid" },
+    { status: { status: 401 }, shows: "This scan link no longer works" },
   ),
   scan(
     {
@@ -1101,7 +1101,7 @@ const SCANNING: GalleryState[] = [
       cause:
         "The API answered the page's poll with no status it could read; the page keeps asking.",
     },
-    { status: { status: 503 }, shows: "Live status is temporarily unreachable" },
+    { status: { status: 503 }, shows: "We cannot read this scan's status right now" },
   ),
 ];
 
@@ -1410,7 +1410,7 @@ const ACCOUNT: GalleryState[] = [
           does: (page) => press(page, "Unsubscribe from marketing"),
         },
       ],
-      shows: "Request recorded.",
+      shows: "Unsubscribed from marketing email.",
     },
   ),
   account(
