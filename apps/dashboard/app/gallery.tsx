@@ -972,6 +972,7 @@ const SIGNING_IN: GalleryState[] = [
           screen: "open",
           token: "the token from the email",
           email: WHO,
+          destination: "default",
         },
       },
     },
@@ -986,7 +987,7 @@ const SIGNING_IN: GalleryState[] = [
     {
       path: "/sign-in/open?token=…",
       mode: "live",
-      loaded: { "routes/sign-in-open": { screen: "refused" } },
+      loaded: { "routes/sign-in-open": { screen: "refused", destination: "default" } },
     },
   ),
 ];

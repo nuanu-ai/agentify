@@ -43,6 +43,7 @@ import {
   ACCOUNTS_FOUND_MAX,
   type AttachMerchantResult,
   adminDestinationIn,
+  asksForSellerDashboard,
   type DashboardDestination,
   type DashboardIdentity,
   type DashboardLinkResult,
@@ -545,9 +546,15 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             if (stored === null || stored === undefined) {
               throw new Error("dashboard_link_storage_missing");
             }
-            // Only the token rides in the link.
+            // The token is all the link carries that opens anything. A link
+            // that makes no merchant also says so, so the page for a link that
+            // no longer works asks for the next one without making one either;
+            // that mark can only keep a merchant from being made.
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
+            if (!asksForSellerDashboard(claim.destination)) {
+              action.searchParams.set("destination", "reports");
+            }
             active.handed = await postman(
               typeof claim.destination !== "string"
                 ? reportLinkMessage(email, action.toString())

@@ -22,8 +22,9 @@ wait for perfection: the road's order is ADR-0010's.
 
 An account comes into being at a successful sign-in: a person consumes the link
 mailed to their address or uses an eligible Google account (ADR-0026 §1); a
-merchant, when that person asks the dashboard for one (§1). No command at a server's terminal makes an account, a merchant or a
-key, and no deployed channel's gateway seeds a merchant at start-up: the release
+merchant, when that person asks the dashboard for one (§1). No command at a
+server's terminal makes an account, a merchant or a key, and no deployed
+channel's gateway seeds a merchant at start-up: the release
 refuses a channel configured to. An operator looks after what exists — lists
 merchants, keys and accounts, disables a key, ends a
 person's sessions, moves the operator flag, admits a merchant to live sales and
@@ -85,8 +86,8 @@ nobody has decided to refuse; the way back in is the mailed link.
 The dashboard is multi-tenant; the process-wide client and its variable are
 gone. A person who has only signed in to read a report owns no merchant yet
 (ADR-0026 §4); one who has asked the dashboard for one owns exactly one, and a
-merchant who has only ever signed in has no keys. Not built and not pretended: a second person at
-a merchant, roles, deleting a merchant.
+merchant who has only ever signed in has no keys. Not built and not pretended:
+a second person at a merchant, roles, deleting a merchant.
 
 ## Alternatives rejected
 

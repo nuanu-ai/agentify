@@ -1028,7 +1028,7 @@ describe("the passwordless dashboard door", () => {
 
     const switching = await running.browser.from(running.url).post("/dashboard/sign-out");
     expect(switching.status).toBe(303);
-    expect(switching.to).toBe("/dashboard/sign-in");
+    expect(switching.to).toBe("/dashboard/sign-in?destination=reports");
     expect(running.rows.dashboard_sessions).toStrictEqual([]);
   });
 

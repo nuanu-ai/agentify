@@ -75,14 +75,18 @@ async function sendReport(one: ReturnType<typeof fixture>, email = EMAIL) {
 
 describe("a report link asked for by the scanner", () => {
   it("lands on the dashboard's one-control page and makes nobody until it is pressed", async () => {
-    // Nothing in the link but the token is read: the destination and the
-    // request were recorded with the token when the link was asked for.
+    // The destination and the request were recorded with the token when the
+    // link was asked for. Beside the token the link says only that it makes no
+    // merchant, so a page for it once it is dead asks for one that makes none.
     const one = fixture();
     const { action, token } = await sendReport(one);
 
     expect(one.messages[0]).toMatchObject({ to: EMAIL, subject: "Unlock your Agentify report" });
     expect(`${action.origin}${action.pathname}`).toBe("https://agentify.ad/dashboard/sign-in/open");
-    expect([...action.searchParams.keys()]).toStrictEqual(["token"]);
+    expect(Object.fromEntries(action.searchParams)).toStrictEqual({
+      token,
+      destination: "reports",
+    });
     expect(action.hash).toBe("");
     expect(one.messages[0]?.body).not.toContain(SCAN);
     expect(one.messages[0]?.body).not.toContain(REQUEST);

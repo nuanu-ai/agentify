@@ -313,6 +313,7 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
         >
           <h1>That link no longer works</h1>
           <p>A sign-in link works once, within an hour.</p>
+          <Destination destination={view.destination} />
           <Button>Get a new link</Button>
         </Form>
       </GatePage>
@@ -328,6 +329,7 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
       >
         <h1>Sign in</h1>
         <input type="hidden" name="token" value={view.token} />
+        <Destination destination={view.destination} />
         <Button>Sign in as {view.email}</Button>
       </Form>
     </GatePage>

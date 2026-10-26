@@ -89,7 +89,7 @@ Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in), enter
 your email address, open the link in the message and press the confirmation
 button. That first sign-in sets up your business and asks for the name buyers
 will see. You reach the same dashboard the same way when you come back. If you
-first signed in to read a scanner report, the dashboard offers one button
+are already signed in from a scanner report, the dashboard offers one button
 instead, "Open my seller dashboard", which sets up your business the same way.
 
 In Settings, save the wallet where your share of the sales arrives: an address

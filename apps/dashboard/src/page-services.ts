@@ -226,8 +226,8 @@ export type LinkAnswer =
   | Readonly<{ wall: LinkWall; seconds: number }>;
 
 export type OpenLinkView =
-  | Readonly<{ screen: "open"; token: string; email: string }>
-  | Readonly<{ screen: "refused" }>;
+  | Readonly<{ screen: "open"; token: string; email: string; destination: DashboardDestination }>
+  | Readonly<{ screen: "refused"; destination: DashboardDestination }>;
 
 /**
  * The one control that makes a merchant. `unavailable` is a press, or a
@@ -447,6 +447,15 @@ const SIGNED_OUT_EVERYWHERE = "You signed out on every device, this one included
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
 const textOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
+
+/**
+ * What the page of a link carries from the link's address: whether that link
+ * makes no merchant, so the next link asked for from there makes none either.
+ * It can only keep a merchant from being made; the link's own record decides
+ * whether its press makes one.
+ */
+const readingIn = (named: URLSearchParams | FormData): DashboardDestination =>
+  once(named.getAll("destination")) === "reports" ? "reports" : "default";
 
 /**
  * The click an address or a form names once, in the tracker's form; null for
@@ -979,7 +988,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
    * on who the browser is and never on whose the link was. Anybody else gets
    * one refusal for a spent, expired or unknown link.
    */
-  const refuseLink = async (cookie: string | undefined): Promise<Outcome<OpenLinkView>> => {
+  const refuseLink = async (
+    cookie: string | undefined,
+    destination: DashboardDestination,
+  ): Promise<Outcome<OpenLinkView>> => {
     const signedIn = await identity.whoIs(cookie);
     if (signedIn !== null) {
       return {
@@ -989,7 +1001,12 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         setCookies: signedIn.setCookies,
       };
     }
-    return { kind: "view", view: { screen: "refused" }, status: 401, headers: LINK_HEADERS };
+    return {
+      kind: "view",
+      view: { screen: "refused", destination },
+      status: 401,
+      headers: LINK_HEADERS,
+    };
   };
 
   /**
@@ -1008,11 +1025,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     destination: LinkDestination,
     setCookies: readonly string[],
   ): Promise<Readonly<{ location: string; setCookies: readonly string[] }>> => {
+    // A note left by an earlier sign-in in this browser, perhaps somebody
+    // else's, is not this one's to show.
+    const signedIn = [...setCookies, unopenedLine(false)];
     if (typeof destination !== "string") {
-      return { location: `/report/${encodeURIComponent(destination.report)}`, setCookies };
+      return {
+        location: `/report/${encodeURIComponent(destination.report)}`,
+        setCookies: signedIn,
+      };
     }
     if (person.merchant !== null || !asksForSellerDashboard(destination)) {
-      return { location: pathAfterSignIn(base, person, destination), setCookies };
+      return { location: pathAfterSignIn(base, person, destination), setCookies: signedIn };
     }
     // The session is already written, so a failure here must not take its
     // cookie away: the link that made it is spent.
@@ -1022,7 +1045,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     });
     return made === null
       ? { location: `${base}/merchant`, setCookies: [...setCookies, unopenedLine(true)] }
-      : { location: made.location, setCookies: [...setCookies, ...made.setCookies] };
+      : { location: made.location, setCookies: [...signedIn, ...made.setCookies] };
   };
 
   const ordersScreen = async (
@@ -1213,11 +1236,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           // Decided here: the page drawn has no press, so nothing after it
           // records this refusal again.
           observe(LINK_REFUSED);
-          return await refuseLink(cookie);
+          return await refuseLink(cookie, readingIn(query));
         }
         return {
           kind: "view",
-          view: { screen: "open", token, email: link.email },
+          view: { screen: "open", token, email: link.email, destination: readingIn(query) },
           headers: LINK_HEADERS,
         };
       },
@@ -1230,7 +1253,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const opened =
           token === "" ? { status: "refused" as const } : await identity.openLink(token);
         if (opened.status === "refused") {
-          return await refuseLink(cookie);
+          return await refuseLink(cookie, readingIn(form));
         }
         // The new session replaces the old one rather than sitting beside it;
         // otherwise the old row would live on with nothing holding its cookie
@@ -1302,10 +1325,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async signOut(cookie) {
         await identity.signOut(cookie);
         console.log("[dashboard] a session was signed out");
+        // The site's sign-out is pressed on the scanner's pages too, so the
+        // sign-in it leads to makes no merchant; somebody who has one is sent
+        // on to it all the same.
         return {
           kind: "redirect",
-          location: `${base}/sign-in`,
-          setCookies: clearingLines(identity, config.cookieSecure),
+          location: `${base}/sign-in?destination=reports`,
+          setCookies: [...clearingLines(identity, config.cookieSecure), unopenedLine(false)],
         };
       },
     },

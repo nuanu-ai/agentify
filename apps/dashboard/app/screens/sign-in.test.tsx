@@ -320,7 +320,7 @@ describe("the link's page", () => {
       routed(() => (
         <OpenLinkScreen
           chrome={chromeIn("live")}
-          view={{ screen: "open", token: "a".repeat(32), email: PERSON }}
+          view={{ screen: "open", token: "a".repeat(32), email: PERSON, destination: "default" }}
         />
       )),
     );

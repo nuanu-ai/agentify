@@ -71,9 +71,10 @@ people in too, and somebody who signs in only to read a report does not become
 a merchant. A sign-in asked for on the dashboard's sign-in page is itself the
 request: the page records it with the link's token or the Google state, and
 that sign-in, finished in any browser, creates the merchant of a person who has
-none. The scanner's doors open the same page marked as a sign-in to read
-reports, which creates nothing, and nothing the end of a sign-in carries
-changes what was recorded. A person signed in any other way without a merchant
+none. The scanner's doors, the site's sign-out and the page of a dead link that
+made no merchant open the same page marked as a sign-in to read reports, which
+creates nothing, and nothing the end of a sign-in carries changes what was
+recorded. A person signed in any other way without a merchant
 sees one control, and only its same-origin POST is the request. Either asks the
 gateway inside the shared process (`docs/research/35-one-process.md`) to create
 one (ADR-0014); a failure leaves the person signed in, on that control.
