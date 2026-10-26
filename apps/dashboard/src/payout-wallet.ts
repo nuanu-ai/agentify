@@ -21,7 +21,7 @@ import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
  * their own check is the only one there is.
  */
 export const WALLET_RULE =
-  "0x followed by forty letters and digits. We check its spelling, not its owner, so copy it from your wallet.";
+  "0x followed by forty letters and digits. We check its spelling, not its network or owner, so copy it from your wallet.";
 
 /**
  * So a change that does not apply at once is not read as one that failed, and

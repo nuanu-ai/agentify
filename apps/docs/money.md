@@ -5,8 +5,8 @@
 - A buyer pays the whole price, in USDC, into your payout contract: a contract
   made for your wallet that nobody owns.
 - A payout sends 99.9% of it to your wallet and 0.1% to Agentify.
-- You can pay out from Settings at any time. Otherwise Agentify pays out, on no
-  fixed date.
+- From Settings you can usually send a payout yourself. Otherwise Agentify
+  pays out, on no fixed date.
 - A payment is final: a buyer cannot reverse it, and a refund is yours to give.
 
 ## Where the money arrives

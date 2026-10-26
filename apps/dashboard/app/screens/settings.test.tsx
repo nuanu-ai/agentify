@@ -408,6 +408,26 @@ describe("the payout wallet on the settings screen", () => {
     expect(asCopied(html)).toContain(shouted);
   });
 
+  it("names the wallet paid before when a cancel came too late, so it can be set again", () => {
+    const html = walletPanel({
+      mode: "live",
+      wallet: WAITING,
+      press: {
+        kind: "wallet-notice",
+        notice: {
+          kind: "landed",
+          wallet: WAITING,
+          at: "2026-08-28T12:00:00Z",
+          before: SHAPED,
+          askedBack: false,
+        },
+      },
+    });
+
+    expect(asCopied(html.slice(0, html.indexOf("<h2")))).toContain(SHAPED);
+    expect(html).toContain('action="/cards?selling=pause"');
+  });
+
   it("shows what was wrong with an address just refused", () => {
     const html = walletPanel({
       wallet: SHAPED,

@@ -157,10 +157,6 @@ const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
   live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
 };
 
-/** When a merchant who sends nothing is paid: Agentify's own payout pays out every contract, whenever it is sent. */
-export const PAID_ON_NO_SET_DATE =
-  "If you don't, Agentify's next payout pays it out. It has no fixed date.";
-
 const sameAddress = (one: string, other: string): boolean =>
   one.toLowerCase() === other.toLowerCase();
 

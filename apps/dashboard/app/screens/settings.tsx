@@ -177,7 +177,13 @@ function Notice({ notice }: Readonly<{ notice: WalletNoticeView }>) {
       ) : (
         <p>
           If nobody at your business asked for this, pause all sales now, then set your previous
-          wallet again below. That change takes forty-eight hours.
+          wallet
+          {notice.before === null ? null : (
+            <>
+              , <Address address={notice.before} />,
+            </>
+          )}{" "}
+          again below. That change takes forty-eight hours.
         </p>
       )}
       <p>Every other session on your account was signed out.</p>
@@ -425,8 +431,8 @@ function Account({ view }: Readonly<{ view: SettingsView }>) {
             <input type="hidden" name="analytics" value={off ? "on" : "off"} />
             <p className={styles.purpose}>
               {off
-                ? "Product analytics are off for you and your business."
-                : "Product analytics are on for you and your business. They never include names, email addresses or wallets."}{" "}
+                ? "Product analytics are off for your account, and with it for your whole business."
+                : "Product analytics are on for your account. Turning them off stops them for your whole business. They never include names, email addresses or wallets."}{" "}
               <a href="/privacy">Privacy policy</a>
             </p>
             <Button variant="secondary" pending={pending}>
