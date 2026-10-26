@@ -20,10 +20,7 @@ const draw = (
     wooOrderId: mode === "link" ? "" : "13",
     message: null,
     unknown: false,
-    unavailable:
-      mode === "unavailable"
-        ? { why: "Your shop never received this order.", instead: "close" }
-        : null,
+    unavailable: mode === "unavailable" ? { shopOrder: "none", instead: "close" } : null,
     typedRefusal,
     ...more,
   };
@@ -75,7 +72,7 @@ describe("the merchant's recovery controls", () => {
 
   it("leads a sale waiting for its shop to be connected again to the WooCommerce page", () => {
     const html = draw("unavailable", null, {
-      unavailable: { why: "Connect your shop again first.", instead: "reconnect" },
+      unavailable: { shopOrder: "none", instead: "reconnect" },
     });
 
     expect(formTo(html, "post", PATH)).toBeUndefined();
@@ -89,6 +86,15 @@ describe("the merchant's recovery controls", () => {
 
   it("leads an unavailable recovery to closing fulfillment on the order", () => {
     expect(draw("unavailable")).toContain('href="/dashboard/orders?q=ord_1"');
+  });
+
+  it("says a shop order nobody knows of differently from one the shop never got", () => {
+    for (const instead of ["close", "nothing"] as const) {
+      const unknown = draw("unavailable", null, { unavailable: { shopOrder: "unknown", instead } });
+      const none = draw("unavailable", null, { unavailable: { shopOrder: "none", instead } });
+
+      expect(unknown, instead).not.toBe(none);
+    }
   });
 
   it("offers a reload rather than a second press while what the last press did is unknown", () => {
