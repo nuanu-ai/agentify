@@ -648,8 +648,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return Object.fromEntries(
         Object.entries(held).map(([id, sale]): [string, ConnectorSale] => [
           id,
-          sale === "parcel"
-            ? { kind: "parcel" }
+          sale === "parcel" || sale === "unplaced_parcel"
+            ? { kind: "parcel", placed: sale === "parcel" }
             : {
                 kind: "download",
                 recover:

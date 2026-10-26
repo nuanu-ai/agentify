@@ -1690,8 +1690,9 @@ const OWED_BECAUSE: Parameters<typeof ordersView>[5] = Object.fromEntries(
               unfulfilled: "deadline_passed",
               paidAt,
               deadline: { at: secondsAfter(paidAt, 3_600), passed: true },
+              soldThrough: "api",
             }
-          : { unfulfilled: "refused", paidAt, deadline: null },
+          : { unfulfilled: "refused", paidAt, deadline: null, soldThrough: "api" },
       ] as const;
     }),
 );

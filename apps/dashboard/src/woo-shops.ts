@@ -330,12 +330,14 @@ export interface WooShops {
 }
 
 /**
- * A sale the connector holds, as a late delivery can still reach it: a parcel,
- * which the shop ships; a download whose shop order is unknown or placed with
- * its file, which recovery can still deliver; or a download that can no longer
- * be delivered, such as one the shop was never asked to create.
+ * A sale the connector holds, as a late delivery can still reach it: a parcel
+ * whose shop order is placed, which marking it Completed still ships; any
+ * other parcel, whose shop order was never confirmed or has ended; a download
+ * whose shop order is unknown or placed with its file, which recovery can
+ * still deliver; or a download that can no longer be delivered, such as one
+ * the shop was never asked to create.
  */
-export type HeldSale = "parcel" | "recoverable" | "unrecoverable";
+export type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "unrecoverable";
 
 /** A sale whose sold facts were never written cannot be recovered: nothing says what to deliver. */
 const heldSaleOf = (
@@ -344,7 +346,9 @@ const heldSaleOf = (
   withFile: boolean,
 ): HeldSale =>
   facts?.kind === "parcel"
-    ? "parcel"
+    ? phase === "placed"
+      ? "parcel"
+      : "unplaced_parcel"
     : facts !== null && (phase === "create_unknown" || (phase === "placed" && withFile))
       ? "recoverable"
       : "unrecoverable";

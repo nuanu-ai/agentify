@@ -109,6 +109,11 @@ export interface OrderRecord {
    * the order unfulfilled; null for every other order.
    */
   readonly deadline: Readonly<{ at: string; passed: boolean }> | null;
+  /**
+   * The integration whose card the sale was made on, which is the one that
+   * can still deliver it; null where the card cannot be read.
+   */
+  readonly soldThrough: Integration | null;
 }
 
 /**
@@ -521,7 +526,11 @@ const moneyMovedAt = (record: StoredOrder, receipted: string | null): string | n
  * is unfulfilled: an order refused after payment may have been refused well
  * inside it.
  */
-const orderRecordOf = (record: StoredOrder, receipted: string | null): OrderRecord => {
+const orderRecordOf = (
+  record: StoredOrder,
+  receipted: string | null,
+  soldThrough: Integration | null,
+): OrderRecord => {
   const { order } = record;
   const unfulfilled =
     order.state === "unfulfilled" ? (UNFULFILLED_BY[order.closure?.cause ?? ""] ?? null) : null;
@@ -532,6 +541,7 @@ const orderRecordOf = (record: StoredOrder, receipted: string | null): OrderReco
     unfulfilled,
     paidAt: moneyMovedAt(record, receipted),
     deadline: due === undefined ? null : { at: new Date(due.at).toISOString(), passed: !running },
+    soldThrough,
   };
 };
 
@@ -635,6 +645,12 @@ export const gatewayFor = (
             one.paid_at,
           ]),
         );
+        const publishedBy = new Map(
+          (await application.runtime.store.cards(merchantId)).map((card) => [
+            card.id,
+            card.integration,
+          ]),
+        );
         return done({
           orders: API_ROUTES.list_orders.response.document.parse(
             merchantOrderList(read),
@@ -642,7 +658,11 @@ export const gatewayFor = (
           records: Object.fromEntries(
             read.map((record) => [
               record.order.id,
-              orderRecordOf(record, paid.get(record.order.id) ?? null),
+              orderRecordOf(
+                record,
+                paid.get(record.order.id) ?? null,
+                publishedBy.get(record.itemId) ?? null,
+              ),
             ]),
           ),
         });

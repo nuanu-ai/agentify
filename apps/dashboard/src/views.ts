@@ -730,7 +730,12 @@ export const ordersView = (
     ...(reopened(order)
       ? { why: PAID_AFTER_CLOSURE, rest: null }
       : needsYou(order.status) || waitsOnTheBuyer(order.status)
-        ? wayOn(order, records[order.id]?.unfulfilled ?? null, connector[order.id])
+        ? wayOn(
+            order,
+            records[order.id]?.unfulfilled ?? null,
+            connector[order.id],
+            records[order.id]?.soldThrough ?? null,
+          )
         : { why: null, rest: null }),
   });
   // Newest first, whatever order the gateway lists them in, so the page a long
@@ -971,11 +976,12 @@ const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
 
 /**
  * How an order the shop connector holds can still be delivered: a parcel by
- * marking its shop order Completed in WooCommerce, a download by the
- * connector's recovery, where it can still deliver one.
+ * marking its shop order Completed in WooCommerce, where that order was
+ * placed; a download by the connector's recovery, where it can still deliver
+ * one.
  */
 export type ConnectorSale =
-  | Readonly<{ kind: "parcel" }>
+  | Readonly<{ kind: "parcel"; placed: boolean }>
   | Readonly<{ kind: "download"; recover: string | null }>;
 
 const CLOSE = "close fulfillment with an explanation to the buyer";
@@ -993,6 +999,7 @@ const wayOn = (
   order: OrderList["orders"][number],
   cause: UnfulfilledCause | null,
   sale: ConnectorSale | undefined,
+  soldThrough: OrderRecord["soldThrough"],
 ): Readonly<{ why: string; rest: Rest | null }> => {
   if (order.status !== "unfulfilled") {
     return {
@@ -1006,9 +1013,10 @@ const wayOn = (
   const said =
     cause === null ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause];
   if (sale?.kind === "parcel") {
-    // Only a parcel whose seven days ran out can still be marked Completed;
-    // one the connector refused may hold a shop order it could not confirm.
-    return cause === "deadline_passed"
+    // Only a placed parcel whose seven days ran out can still be marked
+    // Completed; one the connector refused or never confirmed may hold a shop
+    // order it could not confirm.
+    return cause === "deadline_passed" && sale.placed
       ? {
           why: `${said} You can still ship it: mark the order Completed in WooCommerce within thirty days of it being placed, or ${CLOSE}.`,
           rest: PARCELS,
@@ -1017,6 +1025,12 @@ const wayOn = (
           why: `${said} Do not ship it: ${CLOSE}, and settle any order your shop holds for it by your own policy.`,
           rest: PARCELS,
         };
+  }
+  // A sale made through the shop that the connector never received, such as
+  // a charge confirmed after Agentify stopped waiting, has nothing to deliver
+  // it with.
+  if (sale === undefined && soldThrough === "woocommerce") {
+    return { why: `${said} Close fulfillment with an explanation to the buyer.`, rest: null };
   }
   if (sale?.kind === "download") {
     return sale.recover === null
