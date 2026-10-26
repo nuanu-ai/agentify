@@ -14,12 +14,8 @@ export const action = loader;
 export default function NoSuchAdminPage() {
   return (
     <AdminFrame title="There is no such page">
-      <div className="lede">
-        <div>
-          <p>The link may have a typo or be out of date. Every section is in the sidebar.</p>
-        </div>
-      </div>
-      <div className="connect-actions">
+      <div className="message-panel">
+        <p>The link may have a typo or be out of date.</p>
         <Link className="button button-primary" to="/admin">
           Back to the overview
         </Link>

@@ -55,17 +55,18 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
     screen: "There is no such page",
     when: "Somebody signed in without the operator flag opens any page of the workspace.",
     cause:
-      "The workspace's layout reads the flag before any page runs and answers as for a page that is not there.",
+      "The workspace's layout reads the flag before any page runs and answers as the dashboard answers an address it does not have; an account with no merchant is sent to make one instead.",
     path: "/admin/merchants",
     mode: "live",
     // Signed in as a merchant, whose header has no door into the workspace.
     loaded: { "routes/gate": { who: "owner@example.com" } },
     failed: {
-      // Drawn by the gate's boundary, the nearest above the layout that threw.
+      // Drawn by the gate's boundary, the nearest above the layout that threw,
+      // as the dashboard's own page for an address it does not have.
       "routes/gate": new ErrorResponseImpl(404, "", {
-        kind: "problem",
+        kind: "no-such-page",
         chrome: chromeIn("live"),
-        said: "There is no such page.",
+        drawn: { who: "owner@example.com", framed: { account: [] } },
       } satisfies Trouble),
     },
   },

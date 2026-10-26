@@ -58,16 +58,8 @@ export function MerchantPressed() {
   if ("unread" in view) {
     return (
       <AdminFrame section="merchants" title="The merchant's page could not be read again">
-        <div className="lede">
-          <div>
-            <p>{view.said}</p>
-            <p>
-              The merchant's page could not be read again after the press. Open it to see where the
-              merchant stands now.
-            </p>
-          </div>
-        </div>
-        <div className="connect-actions">
+        <div className="message-panel" role="status">
+          <p>{view.said}</p>
           <Link
             className="button button-primary"
             to={`/admin/merchants/${encodeURIComponent(view.merchantId)}`}
