@@ -17,6 +17,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import type { Integration } from "../ports/store.js";
 import { type Harness, harness, workOnce, workUntilStopped } from "../testing/harness.js";
+import { anOrder } from "../testing/store-contract.js";
 
 /** A card charged at the purchase, its goods to follow within a second. */
 const prepaidCard: Card = CardSchema.parse({
@@ -154,6 +155,29 @@ describe("a merchant's own code", () => {
     const record = await stored(harnessed, orderId);
     expect(record.order.state).toBe("unfulfilled");
     expect(record.answerable).toBe(false);
+  });
+
+  it("is not decided for an order that was unfulfilled before the fact was kept, whatever happens to it later", async () => {
+    // Such an order counts for nobody: what made it unfulfilled is no longer
+    // on hand to decide by.
+    const harnessed = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = (await harnessed.store.publishCard(merchantId, prepaidCard, harnessed.now())).id;
+    const base = anOrder("ord_before", "unfulfilled", { merchantId });
+    await harnessed.store.addOrder({
+      ...base,
+      itemId,
+      order: {
+        ...base.order,
+        payment: "settled",
+        closure: { cause: "merchant_refused", ...REFUSAL },
+        timestamps: { ...base.order.timestamps, dispatchedAt: 2_000 },
+      },
+    });
+
+    await harnessed.gateway.refuseOrder(merchantId, "ord_before", REFUSAL);
+
+    expect((await stored(harnessed, "ord_before")).answerable).toBeUndefined();
   });
 
   it("keeps nothing of it once the order is delivered late", async () => {
