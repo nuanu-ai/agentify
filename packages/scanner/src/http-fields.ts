@@ -6,7 +6,7 @@
  * the empty elements HTTP allows dropped. A comma inside a quoted string stays
  * in its element.
  */
-export const headerList = (value: string | undefined): string[] => {
+const headerList = (value: string | undefined): string[] => {
   const text = value ?? "";
   const elements: string[] = [];
   let element = "";
