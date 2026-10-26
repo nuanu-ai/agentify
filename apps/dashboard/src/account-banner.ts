@@ -8,6 +8,7 @@
 import type { MerchantFinding, SellingState } from "@nuanu-ai/agentify-contracts";
 import { moment } from "./moments.js";
 import { readinessSeenBy, type Viewer } from "./viewer.js";
+import { type MomentView, momentView } from "./views.js";
 import {
   ACCOUNT_WORDS,
   type AccountReason,
@@ -17,12 +18,27 @@ import {
   type Way,
 } from "./words.js";
 
+/**
+ * A change of the payout wallet that waits to apply: the address it goes to,
+ * when, and the wallet paid now, which its cancel carries back with the
+ * change, so a press that arrives after the change applied is not taken for
+ * a cancel.
+ */
+export interface WalletChangeNote {
+  readonly wallet: string;
+  readonly from: MomentView;
+  readonly takesEffectAt: string;
+  readonly paid: string | null;
+}
+
 /** One reason as the banner says it. */
 export interface AccountNote {
   readonly reason: AccountReason;
   readonly title: string;
   readonly says: string;
   readonly fix: Way | null;
+  /** On the waiting change of the wallet alone. */
+  readonly change?: WalletChangeNote;
 }
 
 /** What was read beside the viewer; absent is not read. */
@@ -43,6 +59,8 @@ export interface AccountRead {
    * sales stands: when, as an ISO instant, and the note written for them.
    */
   readonly withdrawn?: { readonly at: string; readonly note: string | null };
+  /** Present while a change of the payout wallet waits: to what, and when it applies, as an ISO instant. */
+  readonly walletChange?: { readonly wallet: string; readonly takesEffectAt: string };
 }
 
 /**
@@ -61,11 +79,13 @@ const FROM_SELLING: Readonly<Record<SellingState, AccountReason | null>> = {
 };
 
 /**
- * The order the banner says them in: what the merchant puts right themselves
- * first, then what Agentify lifts, then what lifts by itself, and last that
- * something could not be read.
+ * The order the banner says them in: a waiting change of the wallet first,
+ * since it is the one a stranger with a session would want unseen, then what
+ * the merchant puts right themselves, then what Agentify lifts, then what
+ * lifts by itself, and last that something could not be read.
  */
 const ORDER: readonly AccountReason[] = [
+  "wallet_change",
   "paused",
   "no_seller_name",
   "no_payout_wallet",
@@ -75,7 +95,15 @@ const ORDER: readonly AccountReason[] = [
   "unread",
 ];
 
-const noteOf = (reason: AccountReason, read: AccountRead): AccountNote => {
+const noteOf = (reason: AccountReason, read: AccountRead, paid: string | null): AccountNote => {
+  const change = read.walletChange;
+  if (reason === "wallet_change" && change !== undefined) {
+    return {
+      reason,
+      ...ACCOUNT_WORDS[reason],
+      change: { ...change, from: momentView(change.takesEffectAt), paid },
+    };
+  }
   const since = read.outOfTouch?.since;
   if (reason === "out_of_touch" && typeof since === "string") {
     return { reason, ...ACCOUNT_WORDS[reason], says: notConnectedSince(moment(since)) };
@@ -105,5 +133,8 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   if (read.outOfTouch !== undefined) found.add("out_of_touch");
   if (read.busy === true) found.add("busy");
   if (read.unread === true) found.add("unread");
-  return ORDER.filter((reason) => found.has(reason)).map((reason) => noteOf(reason, read));
+  if (read.walletChange !== undefined) found.add("wallet_change");
+  return ORDER.filter((reason) => found.has(reason)).map((reason) =>
+    noteOf(reason, read, viewer.payout?.wallet ?? null),
+  );
 };

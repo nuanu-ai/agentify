@@ -67,6 +67,23 @@ describe("the account banner", () => {
     expect(note?.fix).toBeNull();
   });
 
+  it("names a waiting change of the payout wallet before every other reason, with the address, the moment it applies and the wallet paid now", () => {
+    const waiting = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+    const notes = accountOf(READY, {
+      selling: "paused",
+      walletChange: { wallet: waiting, takesEffectAt: "2026-10-28T16:05:00.000Z" },
+    });
+
+    expect(notes.map((note) => note.reason)).toStrictEqual(["wallet_change", "paused"]);
+    // What the cancel carries back, so a press that arrives after the change
+    // applied is told apart from a cancel.
+    expect(notes[0]?.change).toMatchObject({
+      wallet: waiting,
+      takesEffectAt: "2026-10-28T16:05:00.000Z",
+      paid: WALLET,
+    });
+  });
+
   it("names every reason that holds at once, those the merchant puts right first", () => {
     const viewer: Viewer = { ...READY, sellerName: null, payout: { wallet: null } };
 

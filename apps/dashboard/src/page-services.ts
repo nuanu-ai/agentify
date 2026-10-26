@@ -47,7 +47,6 @@ import {
 } from "./gateway.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
-import { moment } from "./moments.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
@@ -59,7 +58,12 @@ import {
   whatIsWrongWithTheName,
   whatIsWrongWithTheSite,
 } from "./seller-name.js";
-import { type SettingsPress, type SettingsView, settingsView } from "./settings-view.js";
+import {
+  type SettingsPress,
+  type SettingsView,
+  settingsView,
+  type WalletNotice,
+} from "./settings-view.js";
 import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
@@ -384,9 +388,19 @@ export interface PageParts {
 const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
   `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
 
+/**
+ * On a problem page, whose heading says what is known of the press and whose
+ * button the way on: the gateway's own sentence for nothing answered in time
+ * advises a reload, which sends a press again.
+ */
+const NOT_ANSWERED = "Agentify didn't answer in time.";
+
 export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
   kind: "problem",
-  problem: { status: answer.status === 0 ? 504 : answer.status, said: saidOf(answer) },
+  problem:
+    answer.status === 0
+      ? { status: 504, said: NOT_ANSWERED }
+      : { status: answer.status, said: saidOf(answer) },
 });
 
 /**
@@ -417,6 +431,8 @@ const SIGNED_OUT_EVERYWHERE = "You signed out on every device, this one included
  * nobody's choice, and is read as not named at all.
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
+
+const textOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
 /**
  * The click an address or a form names once, in the tracker's form; null for
@@ -536,21 +552,44 @@ export interface Shown {
   readonly paid: string | null;
 }
 
-/** What a cancel did to the merchant's sessions, said on the page it answers with. */
-const SIGNED_OUT_BUT_THIS_BROWSER =
-  "Every session of your merchant was signed out, a copy of this browser's included; this browser stays signed in on a new one.";
-
 /** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
-export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ${SIGNED_OUT_BUT_THIS_BROWSER}`;
+export const cancelledByTyping = (applies: string): WalletNotice => ({
+  kind: "cancelled",
+  paid: applies,
+});
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
-export const landedBeforePress = (shown: Shown): string =>
-  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your share is now paid out to it. ` +
-  (shown.paid === null
-    ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-    : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-  SIGNED_OUT_BUT_THIS_BROWSER;
+export const landedBeforePress = (shown: Shown): WalletNotice => ({
+  kind: "landed",
+  wallet: shown.waiting,
+  at: shown.from,
+  before: shown.paid,
+  askedBack: false,
+});
+
+/** Stands for this dashboard's own origin while a page's own path is read. */
+const HERE = "http://dashboard.invalid";
+
+/**
+ * The page a cancel pressed from the banner returns to: a path of this
+ * dashboard with its query, or null for anything else, another site included,
+ * since the form can carry anything and a redirect elsewhere would hand the
+ * person to whoever wrote it.
+ */
+const pageToReturnTo = (form: FormData): string | null => {
+  const back = once(form.getAll("back"));
+  if (typeof back !== "string" || !back.startsWith("/")) return null;
+  let read: URL;
+  try {
+    read = new URL(back, HERE);
+  } catch {
+    return null;
+  }
+  // Taken only as written: a path whose dots or doubled slashes resolve to
+  // something else can resolve to `//`, which a browser reads as another site.
+  const page = `${read.pathname}${read.search}`;
+  return read.origin === HERE && page === back && !page.startsWith("//") ? page : null;
+};
 
 /**
  * Each value is held to its shape before anything reads it: the post can carry
@@ -577,7 +616,7 @@ const shownIn = (form: FormData): Shown | null => {
  */
 export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (label === "") {
-    return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
+    return "Enter a name for the key.";
   }
   const unfit = NewKeyLabelSchema.safeParse(label);
   if (unfit.success) return null;
@@ -764,6 +803,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
   const toSettings: Outcome<never> = { kind: "redirect", location: `${base}/settings` };
 
+  /** The page a cancel was pressed on, or Settings where it named none of the dashboard's. */
+  const backTo = (back: string | null): Outcome<never> =>
+    back === null ? toSettings : { kind: "redirect", location: `${base}${back}` };
+
   /**
    * Every session of every account at the merchant ends, the presser's own
    * included, since the change may have come from any of them, a copy of the
@@ -816,6 +859,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     applies: string,
     pending: PendingPayoutWallet,
     byTyping: boolean,
+    back: string | null = null,
   ): Promise<Outcome<SettingsView>> => {
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) return problemOf(cancelled);
@@ -825,12 +869,12 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         person,
         `cancelled a waiting change of the wallet their share is paid out to; ${ended} sessions of the merchant were ended and this browser was given a new one`,
       );
-      if (!byTyping) return await renewing(async () => toSettings);
+      if (!byTyping) return await renewing(async () => backTo(back));
       return await renewing(
         async () =>
           await settingsDrawn(person, {
             kind: "wallet-notice",
-            notice: cancelledByTyping(applies, pending.payout_wallet),
+            notice: cancelledByTyping(applies),
           }),
       );
     }
@@ -842,10 +886,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async () =>
         await settingsDrawn(person, {
           kind: "wallet-notice",
-          notice:
-            `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-            `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-            SIGNED_OUT_BUT_THIS_BROWSER,
+          notice: {
+            kind: "landed",
+            wallet: pending.payout_wallet,
+            at: pending.takes_effect_at,
+            before: applies,
+            askedBack: true,
+          },
         }),
     );
   };
@@ -1488,6 +1535,16 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 {
                   selling: standing.value.selling,
                   busy: standing.value.busy,
+                  ...(standing.value.pendingPayoutWallet === null
+                    ? {}
+                    : {
+                        walletChange: {
+                          wallet: standing.value.pendingPayoutWallet.address,
+                          takesEffectAt: new Date(
+                            standing.value.pendingPayoutWallet.takesEffectAt,
+                          ).toISOString(),
+                        },
+                      }),
                   ...(standing.value.withdrawn === null
                     ? {}
                     : {
@@ -1643,14 +1700,20 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const read = await gateway.payoutWallet();
         if (!read.ok) return problemOf(read);
         const shown = shownIn(form);
+        const back = pageToReturnTo(form);
         const { payout_wallet: applies, pending } = read.document;
-        if (pending !== null && applies !== null) {
-          return await cancelWaiting(person, cookie, gateway, applies, pending, false);
-        }
+        // A change that applied before the press is answered on Settings
+        // wherever it was pressed, since what to do next is done there. It is
+        // asked first: a change waiting now is then one the page never showed,
+        // such as the change back asked for since, which a cancel sent again by
+        // a reload would otherwise take away.
         if (shown !== null && applies === shown.waiting) {
           return await tookEffectBeforePress(person, cookie, shown, "pressed cancel");
         }
-        return toSettings;
+        if (pending !== null && applies !== null) {
+          return await cancelWaiting(person, cookie, gateway, applies, pending, false, back);
+        }
+        return backTo(back);
       },
     },
 
@@ -1689,7 +1752,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (!keys.ok) return problemOf(keys);
         return {
           kind: "view",
-          view: keysView(keys.document, { startNew: once(query.getAll("new")) === "key" }),
+          view: keysView(keys.document, {
+            startNew: once(query.getAll("new")) === "key",
+            confirming: textOf(once(query.getAll("revoke"))),
+          }),
         };
       },
 
@@ -1703,7 +1769,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           // looking at.
           const keys = await gateway.keys();
           if (!keys.ok) return problemOf(keys);
-          return { kind: "view", status: 400, view: keysView(keys.document, { problem }) };
+          return {
+            kind: "view",
+            status: 400,
+            view: keysView(keys.document, { problem, typed: label }),
+          };
         }
         const issued = await gateway.issueKey(label);
         if (!issued.ok) return problemOf(issued);

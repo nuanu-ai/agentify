@@ -1,57 +1,63 @@
-import { Button } from "@agentify/ui";
+import { Button, Field } from "@agentify/ui";
 import { useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
-import type { KeysView, NewKeyView } from "../../src/keys.js";
+import type { KeysView, NewKeyView, NoCall } from "../../src/keys.js";
 import { Ident } from "../components/copy.js";
-import { Cell, Fact, Facts, List, ListEmpty, Row, RowMore } from "../components/list.js";
+import { Cell, List, Row } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
+import styles from "./keys.module.css";
+
+/** A row's last call where none is recorded, by which of the two blanks it is. */
+const NO_CALL: Readonly<Record<NoCall, string>> = {
+  never: "Never used",
+  unrecorded: "No call recorded",
+};
 
 /**
- * Named once because the note under the list quotes it, and that note is the
- * only thing explaining what the blank covers.
+ * "Revoke", not "Disable", because it does not come back. Two presses: the
+ * first, a link, asks for the question through the address, so the server
+ * draws it inside the row and a stray tap or a page whose script did not load
+ * revokes nothing; the second answers it. A revoked key gets no control at
+ * all, since anything there would promise an undo the gateway does not make.
  */
-const NO_CALLS_RECORDED = "No calls recorded";
-
-/**
- * "Revoke", not "Disable", because it does not come back. Two presses, the
- * first only opening the second: a details element does that without a script,
- * so a stray tap or a page whose script did not load cannot revoke anything. A
- * revoked key gets no control at all, since anything there would promise an
- * undo the gateway does not make.
- */
-const Revoke = ({ id }: Readonly<{ id: string }>) => (
-  <details className="confirm-revoke">
-    <summary className="confirm-open button button-compact button-secondary">Revoke</summary>
-    <div className="confirm-pop">
-      <p>This key will stop working for good.</p>
-      <PostForm className="inline" action={`/keys/${encodeURIComponent(id)}/disable`}>
+function ConfirmRevoke({ id }: Readonly<{ id: string }>) {
+  return (
+    <div className={styles.confirm} id="revoke">
+      <p>Code that uses this key stops working at once. You can't undo this.</p>
+      <PostForm className={styles.revokeForm} action={`/keys/${encodeURIComponent(id)}/disable`}>
         {(pending) => (
-          <Button compact pending={pending}>
-            Yes, revoke
+          <Button variant="secondary" compact pending={pending}>
+            Revoke key
           </Button>
         )}
       </PostForm>
+      <Link to="/keys" preventScrollReset className={styles.quietAction}>
+        Keep it
+      </Link>
     </div>
-  </details>
-);
+  );
+}
 
 export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
+  const none = view.rows.length === 0;
   return (
     <>
       <div className="lede">
         <div>
-          <p>{view.lede}</p>
+          <p>
+            {none
+              ? "No keys yet. Your code needs a key to connect to Agentify."
+              : "Your code connects to Agentify with these keys."}
+          </p>
         </div>
       </div>
-      {view.rows.length === 0 ? (
-        <ListEmpty>No keys yet.</ListEmpty>
-      ) : (
+      {none ? null : (
         <List
           label="API keys"
-          columns="minmax(12rem, 1fr) 8.5rem 8.5rem minmax(8rem, 11rem) 7rem"
+          columns="minmax(12rem, 1fr) 9rem 9rem minmax(8rem, 11rem) 6rem"
           head={["Name", "Created", "Last call", "State", ""]}
         >
           {view.rows.map((row) => (
@@ -67,7 +73,7 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
               </Cell>
               <Cell at="fact">
                 {row.lastCall === null ? (
-                  NO_CALLS_RECORDED
+                  NO_CALL[row.noCall ?? "unrecorded"]
                 ) : (
                   <>
                     <span className="said-on-narrow">Last call </span>
@@ -78,73 +84,69 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
               <Cell at="state">
                 <Word word={row.state} />
                 {row.revoked === null ? null : (
-                  <>
+                  <span className={styles.when}>
                     {" "}
                     <Moment at={row.revoked} />
-                  </>
+                  </span>
                 )}
               </Cell>
-              {row.revoked === null ? (
+              {row.revoked !== null || view.confirming === row.id ? null : (
                 <Cell at="action">
-                  <Revoke id={row.id} />
+                  <Link
+                    to={`/keys?revoke=${encodeURIComponent(row.id)}#revoke`}
+                    preventScrollReset
+                    className={styles.quietAction}
+                    aria-label={`Revoke ${row.label}`}
+                  >
+                    Revoke…
+                  </Link>
                 </Cell>
-              ) : null}
-              <RowMore summary="Created" of={row.label}>
-                <Facts>
-                  <Fact label="Created">
-                    <Moment at={row.created} />
-                  </Fact>
-                </Facts>
-              </RowMore>
+              )}
+              {/* A wide row has a column for this; a narrow one has none. */}
+              <div className={`cell cell-note ${styles.created}`}>
+                Created <Moment at={row.created} />
+              </div>
+              {view.confirming === row.id ? <ConfirmRevoke id={row.id} /> : null}
             </Row>
           ))}
         </List>
       )}
-      {view.rows.length === 0 ? null : (
-        <>
-          {/* Beside the Revoke buttons, where the decision is made. */}
-          <p className="note">
-            A revoked key stops working at once and for good. Your other keys keep working, and your
-            dashboard sign-in does not change. You can create a new key to replace it.
-          </p>
-          <p className="note">
-            This list is what the gateway returned, and it does not say whether that is every key.
-            The number above counts the rows below, nothing more.
-          </p>
-          <p className="note">
-            {`The last call time updates every few minutes, so it can lag a little behind. "${NO_CALLS_RECORDED}" does not mean the key was never used: we started recording calls recently, so for an older key this page cannot tell which it is until the key is used again.`}
-          </p>
-        </>
+      {none ? null : (
+        <p className="note">
+          A last call can be up to five minutes old.
+          {view.unrecorded
+            ? ` “${NO_CALL.unrecorded}”: for a key this old we can't tell whether it was ever used.`
+            : null}
+        </p>
       )}
-      <div className="lede">
-        <div>
-          <h2>A new key</h2>
-          <p>
-            The name helps you tell keys apart. The key itself is shown only once, right after you
-            create it.
-          </p>
+      <section className={`settings-panel ${styles.newKey}`} aria-labelledby="new-key">
+        <div className="lede">
+          <div>
+            <h2 id="new-key">New key</h2>
+            <p>Name it after the code that will use it.</p>
+          </div>
         </div>
-      </div>
-      <PostForm className="issue key-name" action="/keys" replace={false}>
-        {(pending) => (
-          <>
-            <div>
-              <label htmlFor="label">What this key is for</label>
-              <input
+        <PostForm className="issue" action="/keys" replace={false}>
+          {(pending) => (
+            <>
+              <Field
+                label="Key name"
                 id="label"
                 name="label"
                 type="text"
                 autoComplete="off"
-                // biome-ignore lint/a11y/noAutofocus: only the explicit new-key action asks this field to take focus
+                placeholder="Order worker, production"
+                maxLength={100}
+                defaultValue={view.typed}
                 autoFocus={view.startNew}
                 required
+                {...(view.problem === null ? {} : { error: view.problem })}
               />
-            </div>
-            <Button pending={pending}>Issue a key</Button>
-            {view.problem === null ? null : <p className="problem">{view.problem}</p>}
-          </>
-        )}
-      </PostForm>
+              <Button pending={pending}>Create key</Button>
+            </>
+          )}
+        </PostForm>
+      </section>
     </>
   );
 }
@@ -186,9 +188,7 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
     <>
       <div className="lede">
         <div>
-          <p>
-            {`This is the key for "${view.label}". It is shown only here and only once: we do not keep a readable copy. If you do not copy it now, you will have to create a new one.`}
-          </p>
+          <p>{`Copy the key for “${view.label}” now. We show it only once and keep no readable copy.`}</p>
         </div>
       </div>
       <div className="scroller">
@@ -201,8 +201,10 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
         <span role="status">{said}</span>
       </p>
       <p className="note">
-        Save the key where your code reads it from before you leave this page. If your browser asks
-        to resend the form, cancel: resending creates another key.
+        If your browser offers to send the form again, cancel: that creates a second key.{" "}
+        <a href="/docs/quickstart#_2-install-the-package-and-build-a-client">
+          How your code uses the key
+        </a>
       </p>
       <p className="quiet">
         {/* Followed inside the application, it takes the page's place in

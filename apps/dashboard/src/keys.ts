@@ -13,16 +13,25 @@ import type { MerchantKey } from "@agentify/gateway";
 import { type MomentView, momentView } from "./views.js";
 import { KEY_WORDS, type Word } from "./words.js";
 
+/**
+ * When every deployment had begun recording each key's last call. A key made
+ * since that has none recorded was never called; one made before may have
+ * been called before recording began, and the row says only that there is no
+ * record. Set later than the release that began recording, so an error can
+ * only make a key read "Not recorded", never "Never used".
+ */
+const CALLS_RECORDED_SINCE = Date.parse("2026-09-26T00:00:00Z");
+
+/** What a row says in place of a last call it has none of. */
+export type NoCall = "never" | "unrecorded";
+
 interface KeyRow {
   readonly id: string;
   readonly label: string;
   readonly created: MomentView;
-  /**
-   * Null where the gateway holds no record of a call. A key made before it
-   * started recording has the same blank as a key never used, and the wire
-   * does not say which, so the screen claims only a missing record.
-   */
+  /** Null where the gateway holds no record of a call; `noCall` then says which blank it is. */
   readonly lastCall: MomentView | null;
+  readonly noCall: NoCall | null;
   /** Null while the key works. */
   readonly revoked: MomentView | null;
   readonly state: Word;
@@ -30,10 +39,15 @@ interface KeyRow {
 
 export interface KeysView {
   readonly screen: "list";
-  readonly lede: string;
   readonly rows: readonly KeyRow[];
-  /** Why the press that drew this page issued nothing; drawn under the form. */
+  /** Whether a row says "Not recorded", which the line under the list explains. */
+  readonly unrecorded: boolean;
+  /** The working key whose revoke the address asks to confirm; null otherwise. */
+  readonly confirming: string | null;
+  /** Why the press that drew this page issued nothing; drawn under the box. */
   readonly problem: string | null;
+  /** The name a refused press carried, back in the box to correct. */
+  readonly typed: string;
   /**
    * Opened from a link to the new-key form, which then takes the focus and is
    * scrolled to; a #fragment in the address would switch the focus off.
@@ -48,33 +62,44 @@ export interface NewKeyView {
   readonly secret: string;
 }
 
-/**
- * Said whether or not there are rows, so an empty list is answered by what the
- * list is rather than by what is missing.
- */
-const WHAT_A_KEY_IS = "Your code uses these keys to connect to Agentify.";
+const noCallOf = (entry: MerchantKey): NoCall | null => {
+  if (entry.last_used_at !== null) return null;
+  return Date.parse(entry.created_at) >= CALLS_RECORDED_SINCE ? "never" : "unrecorded";
+};
 
 export const keysView = (
   keys: readonly MerchantKey[],
-  { problem = null, startNew = false }: { problem?: string | null; startNew?: boolean } = {},
+  {
+    problem = null,
+    typed = "",
+    startNew = false,
+    confirming = null,
+  }: {
+    problem?: string | null;
+    typed?: string;
+    startNew?: boolean;
+    confirming?: string | null;
+  } = {},
 ): KeysView => {
-  const working = keys.filter((entry) => entry.disabled_at === null).length;
+  const rows = keys.map((entry) => ({
+    id: entry.id,
+    label: entry.label,
+    created: momentView(entry.created_at),
+    lastCall: entry.last_used_at === null ? null : momentView(entry.last_used_at),
+    noCall: noCallOf(entry),
+    revoked: entry.disabled_at === null ? null : momentView(entry.disabled_at),
+    state: entry.disabled_at === null ? KEY_WORDS.works : KEY_WORDS.revoked,
+  }));
   return {
     screen: "list",
-    lede:
-      keys.length === 0
-        ? `You haven't created any API keys yet. ${WHAT_A_KEY_IS}`
-        : `${working} of the ${keys.length} ${keys.length === 1 ? "key" : "keys"} below` +
-          `${working === 1 ? " works" : " work"}. ${WHAT_A_KEY_IS}`,
-    rows: keys.map((entry) => ({
-      id: entry.id,
-      label: entry.label,
-      created: momentView(entry.created_at),
-      lastCall: entry.last_used_at === null ? null : momentView(entry.last_used_at),
-      revoked: entry.disabled_at === null ? null : momentView(entry.disabled_at),
-      state: entry.disabled_at === null ? KEY_WORDS.works : KEY_WORDS.revoked,
-    })),
+    rows,
+    unrecorded: rows.some((row) => row.noCall === "unrecorded"),
+    // Only a key that still works can be revoked, and only one on the list.
+    confirming: rows.some((row) => row.id === confirming && row.revoked === null)
+      ? confirming
+      : null,
     problem,
+    typed,
     startNew,
   };
 };

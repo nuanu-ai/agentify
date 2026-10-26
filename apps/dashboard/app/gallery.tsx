@@ -261,6 +261,9 @@ const WALLET_CHAINS: Readonly<Record<SurfaceMode, number | null>> = {
 /** The example addresses from the checksum's own specification. */
 const PAID_INTO = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const ASKED_FOR = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+/** A change to `ASKED_FOR` waiting on the live site, as the merchant's layout reads it. */
+const WALLET_CHANGING = { wallet: ASKED_FOR, takesEffectAt: "2026-10-28T16:05:00Z" } as const;
+
 /** The first with its last letter's case flipped, which the checksum catches. */
 const MISTYPED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAeD";
 
@@ -1431,6 +1434,18 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-wallet-changing",
+      screen: "Cards",
+      when: "A merchant on the live site opens Cards while a change of their payout wallet waits to apply.",
+      cause:
+        "A replacement wallet applies forty-eight hours after every account is told, and until then every screen says so and offers to cancel it from there.",
+    },
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live"), { walletChange: WALLET_CHANGING }) },
+  ),
+  cards(
+    {
       id: "dashboard-cards-many",
       screen: "Cards",
       when: "A merchant with a whole catalogue of data plans, VPN and numbers opens Cards.",
@@ -2023,6 +2038,29 @@ const ORDERS: GalleryState[] = [
     `/orders?${new URLSearchParams({ details: PAID_AFTER_CLOSURE.orders[0]?.id ?? "" })}`,
     {
       open: OrderListSchema.parse({ orders: PAID_AFTER_CLOSURE.orders.slice(0, 1) }),
+    },
+  ),
+  at(
+    {
+      id: "dashboard-orders-wallet-changing",
+      screen: "Orders",
+      when: "A merchant on the live site opens Orders while a change of their payout wallet waits to apply, and all sales are paused.",
+      cause:
+        "The waiting change is said first among the reasons in the banner, with its cancel, which brings the merchant back to Orders.",
+    },
+    {
+      path: "/orders",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: "paused", walletChange: WALLET_CHANGING }),
+      loaded: {
+        "routes/orders": ordersAt(
+          "/orders",
+          ordersOf([
+            ["vpn", "delivered"],
+            ["esimEurope", "delivered"],
+          ]),
+        ),
+      },
     },
   ),
   orders(
@@ -2959,6 +2997,39 @@ const WOO_RECOVERY: GalleryState[] = [
 const keys = (told: Told, list: readonly MerchantKey[], options = {}, path = "/keys") =>
   at(told, { path, mode: "live", loaded: { "routes/keys": keysView(list, options) } });
 
+/** Six keys of one merchant, two of them revoked, one older than the record of calls. */
+const MANY_KEYS = [
+  WORKER,
+  keyOf("Price checks for the virtual numbers", "2026-09-10T11:30:00Z", "2026-10-12T16:39:58Z"),
+  keyOf("Nightly catalogue sync", "2026-09-11T02:00:00Z", "2026-10-12T02:00:07Z"),
+  keyOf("Staging", "2026-09-15T13:45:00Z", null),
+  OLD_WORKER,
+  keyOf(
+    "A laptop that was lost",
+    "2026-08-21T10:00:00Z",
+    "2026-08-30T18:22:10Z",
+    "2026-08-31T07:03:00Z",
+  ),
+];
+
+/** Clipboard access as a browser grants it to a page on https. */
+const clipboardGranted = (page: Document) => {
+  Object.defineProperty(page.defaultView?.navigator ?? navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async () => undefined },
+  });
+};
+
+/** Presses the button that says `words`, once `before` has set the browser up for it. */
+const pressIn = (page: Document, words: string, before: (page: Document) => void = () => {}) => {
+  before(page);
+  const button = [...page.querySelectorAll("button")].find(
+    (one) => one.textContent?.trim() === words,
+  );
+  if (button === undefined) throw new Error(`the page has no button that says ${words}`);
+  button.click();
+};
+
 const KEYS: GalleryState[] = [
   keys(
     {
@@ -2974,7 +3045,8 @@ const KEYS: GalleryState[] = [
       id: "dashboard-keys-one-never-used",
       screen: "API keys",
       when: "A merchant has created a key their code has not used yet.",
-      cause: "One key, with no call recorded against it.",
+      cause:
+        "One key made since every call is recorded, with none recorded against it, so it was never used.",
     },
     [keyOf("The order worker on our server", "2026-10-12T15:02:00Z", null)],
   ),
@@ -2992,20 +3064,42 @@ const KEYS: GalleryState[] = [
       id: "dashboard-keys-many",
       screen: "API keys",
       when: "A merchant with several services, each with its own key, opens API keys.",
-      cause: "The gateway lists six keys, two of them revoked.",
+      cause:
+        "The gateway lists six keys, two of them revoked, and one made before every call was recorded, which no call is recorded against.",
+    },
+    MANY_KEYS,
+  ),
+  keys(
+    {
+      id: "dashboard-keys-revoke-asked",
+      screen: "API keys",
+      when: "A merchant presses Revoke beside a key.",
+      cause:
+        "The address asks to revoke that key, so the row says what revoking does and offers the press that does it, or a way to keep the key.",
+    },
+    MANY_KEYS,
+    { confirming: idOf("key", "Nightly catalogue sync") },
+    `/keys?revoke=${idOf("key", "Nightly catalogue sync")}`,
+  ),
+  keys(
+    {
+      id: "dashboard-keys-long-names",
+      screen: "API keys",
+      when: "A merchant who names keys after where they run opens API keys.",
+      cause: "Key names run to the hundred characters a name may have, and wrap in their column.",
     },
     [
-      WORKER,
-      keyOf("Price checks for the virtual numbers", "2026-09-10T11:30:00Z", "2026-10-12T16:39:58Z"),
-      keyOf("Nightly catalogue sync", "2026-09-11T02:00:00Z", "2026-10-12T02:00:07Z"),
-      keyOf("Staging", "2026-09-15T13:45:00Z", null),
-      OLD_WORKER,
       keyOf(
-        "A laptop that was lost",
-        "2026-08-21T10:00:00Z",
-        "2026-08-30T18:22:10Z",
-        "2026-08-31T07:03:00Z",
+        "WooCommerce order sync on the production VPS in Frankfurt (eu-central-1), replaced 2026-10",
+        "2026-10-01T09:12:00Z",
+        "2026-10-12T16:40:02Z",
       ),
+      keyOf(
+        "Price checks for the virtual numbers, staging server behind the office VPN",
+        "2026-10-03T14:00:00Z",
+        null,
+      ),
+      WORKER,
     ],
   ),
   keys(
@@ -3023,7 +3117,7 @@ const KEYS: GalleryState[] = [
     {
       id: "dashboard-keys-name-refused",
       screen: "API keys",
-      when: "A merchant presses Issue a key with the name box empty.",
+      when: "A merchant presses Create key with the name box empty.",
       cause:
         "A key with no name is refused, because it could not be told from the others when revoking.",
     },
@@ -3040,7 +3134,7 @@ const KEYS: GalleryState[] = [
     {
       id: "dashboard-keys-issued",
       screen: "The new key",
-      when: "A merchant presses Issue a key.",
+      when: "A merchant presses Create key.",
       cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
     },
     {
@@ -3050,6 +3144,27 @@ const KEYS: GalleryState[] = [
       pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
     },
   ),
+  {
+    ...at(
+      {
+        id: "dashboard-keys-issued-copied",
+        screen: "The new key",
+        when: "A merchant presses Copy key on the new key's page.",
+        cause:
+          "The page's script puts the key on the clipboard, which the browser allows, and says so beside the button.",
+      },
+      {
+        path: "/keys",
+        mode: "live",
+        loaded: { "routes/keys": null },
+        pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+      },
+    ),
+    scene: {
+      steps: [{ shows: "Copy key", does: (page) => pressIn(page, "Copy key", clipboardGranted) }],
+      shows: "Copied.",
+    },
+  },
 ];
 
 const settings = (
@@ -3082,6 +3197,45 @@ const SETTINGS: GalleryState[] = [
     },
     settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
   ),
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-scripted",
+        screen: "Settings",
+        when: "A merchant who has set everything opens Settings in a browser that runs the page's script.",
+        cause:
+          "The script draws Coinbase Wallet's two buttons, one that fills the wallet box and one that sends the payout, which a page without script leaves out.",
+      },
+      settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
+    ),
+    scene: { shows: "Pay out with Coinbase Wallet" },
+  },
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-another-wallet",
+        screen: "Settings",
+        when: "A merchant opens Send it from another wallet and presses Copy the data.",
+        cause:
+          "The raw transaction is drawn whole under the main way to send it, and the page's script puts its data on the clipboard, which the browser allows.",
+      },
+      settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Send it from another wallet",
+          does: (page) => {
+            [...page.querySelectorAll("main details")]
+              .find((one) => one.textContent?.includes("Send it from another wallet"))
+              ?.setAttribute("open", "");
+            pressIn(page, "Copy the data", clipboardGranted);
+          },
+        },
+      ],
+      shows: "Copied.",
+    },
+  },
   settings(
     {
       id: "dashboard-settings-new-merchant",
@@ -3103,6 +3257,31 @@ const SETTINGS: GalleryState[] = [
       account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
     },
   ),
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-new-merchant-scripted",
+        screen: "Settings",
+        when: "A new merchant with no wallet opens Settings in a browser that runs the page's script.",
+        cause:
+          "The script draws the button that creates or connects a Coinbase Wallet and fills the box with its address, the way in for a merchant who has no wallet.",
+      },
+      settingsView("test", WHO, {
+        sellerName: null,
+        sellerSite: null,
+        payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
+        payoutSplits: splitsOf("test", null),
+        addressPage: ADDRESSES.test,
+        walletChain: WALLET_CHAINS.test,
+        analyticsOptedOut: false,
+      }),
+      {
+        mode: "test",
+        account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
+      },
+    ),
+    scene: { shows: "Create or connect a Coinbase Wallet" },
+  },
   settings(
     {
       id: "dashboard-settings-not-approved",
@@ -3128,6 +3307,11 @@ const SETTINGS: GalleryState[] = [
       }),
       liveApproval: true,
     }),
+    {
+      account: bannerOf(seenBy("live"), {
+        walletChange: { wallet: ASKED_FOR, takesEffectAt: "2026-10-14T16:05:00Z" },
+      }),
+    },
   ),
   settings(
     {
@@ -3325,7 +3509,7 @@ const SETTINGS: GalleryState[] = [
       "live",
       WHO,
       { ...settingsOf(), liveApproval: true },
-      { kind: "wallet-notice", notice: cancelledByTyping(PAID_INTO, ASKED_FOR) },
+      { kind: "wallet-notice", notice: cancelledByTyping(PAID_INTO) },
     ),
     { path: "/settings/payout-wallet" },
   ),
@@ -3429,9 +3613,10 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-press-not-answered",
-      screen: "Something went wrong",
-      when: "A merchant presses Pause on a card while Agentify is not answering.",
-      cause: "The gateway did not answer the press in time, so whether it was done is not known.",
+      screen: "A press that failed",
+      when: "A merchant presses Pause on a product while Agentify is not answering.",
+      cause:
+        "The gateway did not answer the press in time, so whether it was done is not known, and the way on is the screen it was pressed on, to look there.",
     },
     {
       path: `/cards?pause=${idOf("itm", "vpn")}`,
@@ -3448,7 +3633,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-not-drawn-for-you",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "A merchant presses a button on a page drawn before they signed in as somebody else in another tab.",
       cause:
         "The form was drawn for another address than the one signed in now, so it was refused.",
@@ -3469,7 +3654,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-form-from-elsewhere",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "A form is sent to the dashboard from another site.",
       cause:
         "The post's origin is not the dashboard's host, so it is refused before any page reads it.",
@@ -3485,7 +3670,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-broken",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "Something inside the dashboard fails while answering a press.",
       cause:
         "An exception in the dashboard itself, not a refusal; the page does not claim the press failed.",
@@ -3493,7 +3678,9 @@ const PROBLEMS: GalleryState[] = [
     {
       path: "/settings",
       mode: "live",
-      failed: { "routes/gate": thrown(500, { kind: "broken", chrome: chromeIn("live") }) },
+      failed: {
+        "routes/gate": thrown(500, { kind: "broken", chrome: chromeIn("live"), pressed: true }),
+      },
     },
   ),
 ];

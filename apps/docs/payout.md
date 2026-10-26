@@ -37,10 +37,9 @@ that first payout arrives when Agentify next pays out every payout contract.
 
 ## With any other wallet
 
-The Settings screen gives the payout as three values for a transaction you
-send yourself: the address it goes to, which is Multicall3; an amount of zero;
-and its data. These steps were checked on 2026-10-15 by sending payouts from
-MetaMask on the test channel and on Base itself.
+Under Send it from another wallet, the Settings screen gives the payout as
+three values for a transaction you send yourself: the address it goes to,
+which is Multicall3; the ETH to send, which is zero; and its data.
 
 1. Use a wallet that holds a little ETH for the fee: ETH on Base on the live
    channel, or test ETH on Base Sepolia on the test channel, which is worth

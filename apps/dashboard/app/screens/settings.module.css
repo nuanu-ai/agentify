@@ -1,0 +1,246 @@
+/*
+ * Settings: four sections one under another, in a column narrow enough to
+ * read, each a panel whose parts stand an action's distance apart. Every
+ * sentence in a panel is the quiet size; the boxes take the form's width, so a
+ * wallet address is seen whole.
+ */
+.page {
+  display: grid;
+  gap: var(--space-card);
+  max-width: 48rem;
+  padding-block: var(--space-card) var(--space-section);
+}
+
+:global(.settings-panel).section {
+  display: grid;
+  gap: var(--gap-actions);
+  padding: var(--space-card);
+}
+
+/* Inside the section's own inset, which the shared panel rule for a form
+   would add again. */
+:global(.settings-panel).section > :global(.issue) {
+  padding: 0;
+}
+
+.section p {
+  margin: 0;
+}
+
+.head h2 {
+  margin: 0 0 var(--gap-heading);
+}
+
+.head p,
+.section .purpose,
+.section .caption,
+.section .quiet,
+.section .echo,
+.coinbase > p:last-child {
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.head p + p {
+  margin-top: var(--gap-paragraph);
+}
+
+/* The current wallet and the contract it is paid through, a label over them. */
+.current {
+  display: grid;
+  gap: var(--space-tight);
+}
+
+.label {
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+
+.whole {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+}
+
+/* The link beside an address, in the page's own face and size. */
+.balance {
+  margin-left: var(--space-tight);
+  font-family: var(--font-sans);
+  font-size: var(--text-small);
+}
+
+.whole + .label {
+  margin-top: var(--space-tight);
+}
+
+/* The wallet's own box is set in the address's face, at the size a phone
+   does not zoom into. */
+.wallet :global(.field-input) {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+}
+
+.coinbase {
+  display: grid;
+  gap: var(--space-tight);
+}
+
+.coinbase :global(.copy-row) {
+  margin: 0;
+}
+
+/* A sentence a press left in the section, inside its padding: a change still
+   waiting or a cancel too late in the notice's colours, a cancel that worked
+   in the pass colours. */
+.notice {
+  display: grid;
+  gap: var(--space-tight);
+  padding: var(--space-block) 20px;
+  border-radius: var(--radius-card);
+  font-size: var(--text-small);
+}
+
+.warn {
+  border: var(--hairline) solid color-mix(in srgb, var(--notice-ink) 24%, var(--line));
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+}
+
+.done {
+  border: var(--hairline) solid color-mix(in srgb, var(--pass) 24%, var(--line));
+  background: var(--pass-soft);
+  color: var(--pass);
+}
+
+.notice .noticeHead {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.noticeAction {
+  margin-top: var(--space-tight);
+}
+
+/* The raw transaction, kept closed under the main way to send it. */
+.another > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.anotherBody {
+  display: grid;
+  gap: var(--space-block);
+  margin-top: var(--space-block);
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+
+.transaction {
+  display: grid;
+  gap: var(--space-block);
+  margin: 0;
+}
+
+.transaction > div {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: var(--space-control);
+  align-items: baseline;
+}
+
+.transaction dt {
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-weight: 600;
+}
+
+.transaction dd {
+  display: grid;
+  gap: var(--space-tight);
+  min-width: 0;
+  margin: 0;
+}
+
+.transaction dd > :global(.address) {
+  overflow-wrap: anywhere;
+}
+
+.figure {
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+  font-variant-numeric: tabular-nums;
+}
+
+.data {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  resize: vertical;
+}
+
+.anotherBody :global(.copy-row) {
+  margin: 0;
+}
+
+/* Each contract the payout pays out beside the wallet it pays. */
+.pays {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pays th {
+  padding: 0 0 var(--space-tight);
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-weight: 600;
+  text-align: left;
+}
+
+.pays td {
+  padding: var(--space-tight) var(--space-control) var(--space-tight) 0;
+  border-top: var(--hairline) solid var(--line-soft);
+  vertical-align: top;
+}
+
+@media (max-width: 760px) {
+  .transaction > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-snug);
+  }
+
+  .pays thead {
+    display: none;
+  }
+
+  .pays tr,
+  .pays td {
+    display: block;
+  }
+
+  .pays td {
+    padding: var(--space-tight) 0 0;
+    border-top: 0;
+  }
+
+  .pays tr + tr {
+    margin-top: var(--space-block);
+    border-top: var(--hairline) solid var(--line-soft);
+  }
+
+  .pays td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: var(--text-label);
+    font-weight: 600;
+  }
+}

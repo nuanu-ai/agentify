@@ -19,3 +19,9 @@
 .reasons > li + li {
   margin-top: var(--space-snug);
 }
+
+/* The cancel of a waiting wallet change, on a line of its own under the
+   sentence it answers. */
+.cancel {
+  margin-top: var(--space-tight);
+}

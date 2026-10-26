@@ -88,8 +88,8 @@ sequenceDiagram
 Open the [test dashboard](https://test.agentify.ad/dashboard/sign-in), enter
 your email address, open the link in the message and press the confirmation
 button. The dashboard then offers one button, "Open my seller dashboard",
-whose press creates your merchant and asks for the name buyers will see. A
-returning merchant reaches the same dashboard the same way.
+whose press sets up your business and asks for the name buyers will see. You
+reach the same dashboard the same way when you come back.
 
 In Settings, save the wallet where your share of the sales arrives: an address
 on Base, `0x` followed by forty letters and digits. On the test channel it only
@@ -98,15 +98,15 @@ your business has no wallet yet, [Money](/money#if-you-have-no-wallet-yet) says
 how to get one. The wallet is set there and nowhere else: no key and no call
 can change it.
 
-Then open API Keys, press "Issue a key", give it a name of at most 100
-characters that tells it from the next one, and copy it: the secret is shown
+Then open API keys, give a new key a name of at most 100 characters that
+tells it from the next one, press Create key, and copy it: the secret is shown
 once. Keep it with your other secrets and out of source control.
 
 Any key you issue can do everything your code can: publish cards, read orders
 and receipts, take a card or all selling off sale and put it back, and set your
 seller name and site. None of them can change the wallet, issue another key or
 revoke one; only the dashboard does those. So if a key leaks, revoke it on API
-Keys and issue a fresh one for your code: once revoked it can do nothing more,
+keys and create a fresh one for your code: once revoked it can do nothing more,
 and it cannot have left another key of its own behind.
 
 This step worked if Settings shows your seller name and your wallet and you

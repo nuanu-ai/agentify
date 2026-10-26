@@ -36,7 +36,11 @@ export type Trouble =
   | Readonly<{ kind: "no-such-page"; chrome: Chrome; drawn: DrawnFor }>
   | Readonly<{ kind: "unread"; chrome: Chrome; again: string }>
   | Readonly<{ kind: "not-drawn-for-you"; chrome: Chrome; who: string; start: string }>
-  | Readonly<{ kind: "broken"; chrome: Chrome }>;
+  /**
+   * Something inside the dashboard failed: during a press, which may have been
+   * done, where `pressed` says so; otherwise before anything was done.
+   */
+  | Readonly<{ kind: "broken"; chrome: Chrome; pressed?: true }>;
 
 /** What the gate's loader reads for every page behind it. */
 export interface Gated {
@@ -187,10 +191,13 @@ export async function acted<View>(run: () => Promise<Outcome<View>>, asked: Aske
     outcome = await run();
   } catch (thrown) {
     console.error("[dashboard] a request failed");
-    throw data({ kind: "broken", chrome: chromeOf(asked.context) } satisfies Trouble, {
-      status: 500,
-      headers: headersOf(undefined, cookiesCarriedBy(thrown)),
-    });
+    throw data(
+      { kind: "broken", chrome: chromeOf(asked.context), pressed: true } satisfies Trouble,
+      {
+        status: 500,
+        headers: headersOf(undefined, cookiesCarriedBy(thrown)),
+      },
+    );
   }
   return answer(outcome, asked);
 }

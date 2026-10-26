@@ -19,6 +19,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
   useMatches,
   useRouteError,
   useRouteLoaderData,
@@ -135,10 +136,58 @@ export default function App() {
   return <Outlet />;
 }
 
-/** The chrome comes with the trouble wherever the page's own loaders did not run. */
+/**
+ * The screen a press was made on, read off the address it posted to, which
+ * is that screen's or one under it, and named as the sidebar names it; the
+ * dashboard's start for anything else, which leads wherever the person
+ * begins.
+ */
+const PRESSED_ON: Readonly<Record<string, readonly [string, string]>> = {
+  cards: ["/cards", "Products"],
+  orders: ["/orders", "Orders"],
+  receipts: ["/receipts", "Receipts"],
+  integrations: ["/integrations", "Integrations"],
+  woocommerce: ["/woocommerce", "WooCommerce"],
+  keys: ["/keys", "API keys"],
+  settings: ["/settings", "Settings"],
+  admin: ["/admin", "Admin"],
+};
+
+const screenOf = (path: string): readonly [string, string] =>
+  PRESSED_ON[path.split("/")[1] ?? ""] ?? ["/", "the dashboard"];
+
+/** One message panel: whether anything changed, why, and the one way on. */
+function MessagePage({
+  chrome,
+  title,
+  said,
+  way,
+}: Readonly<{ chrome: Chrome; title: string; said: ReactNode; way: readonly [string, string] }>) {
+  return (
+    <GatePage chrome={chrome} title={title}>
+      <div className="message-panel">
+        <h1>{title}</h1>
+        <p>{said}</p>
+        <a className="button button-primary" href={way[0]}>
+          {way[1]}
+        </a>
+      </div>
+    </GatePage>
+  );
+}
+
+/**
+ * The chrome comes with the trouble wherever the page's own loaders did not
+ * run. The heading answers whether anything changed: a read changed nothing
+ * and is offered again; a press refused changed nothing; a press that broke or
+ * went unanswered may have been done, so the page sends the person to the
+ * screen they pressed on to look before they press again, never to reload
+ * an answer to a form, which would send the press a second time.
+ */
 export function ErrorBoundary() {
   const error = useRouteError();
   const root = useRouteLoaderData<typeof loader>("root");
+  const { pathname } = useLocation();
   const trouble = isRouteErrorResponse(error) ? (error.data as Trouble | undefined) : undefined;
   const chrome = trouble?.chrome ?? root;
   if (chrome === undefined) {
@@ -147,46 +196,73 @@ export function ErrorBoundary() {
   if (trouble?.kind === "no-such-page") {
     return <NoSuchPage drawn={{ ...trouble.drawn, chrome }} />;
   }
+  const [path, name] = screenOf(pathname);
+  const open = [`${chrome.base}${path}`, `Open ${name}`] as const;
   if (trouble?.kind === "not-drawn-for-you") {
+    // The gate's start is Products for somebody who sells, and the scanner's
+    // latest report for somebody who does not, whom no screen here is for.
+    const way =
+      trouble.start === `${chrome.base}/cards`
+        ? open
+        : ([trouble.start, "Open your latest report"] as const);
     return (
-      <GatePage chrome={chrome} title="Nothing was changed">
-        <div className="message-panel">
-          <h1>Nothing was changed</h1>
-          <p>
-            What you pressed was not done, because the page it came from could not be matched to the
-            address signed in on this browser now, <strong>{trouble.who}</strong>. Open the screen
-            again to make the change as this address.
-          </p>
-          <a className="button button-primary" href={trouble.start}>
-            Continue
-          </a>
-        </div>
-      </GatePage>
+      <MessagePage
+        chrome={chrome}
+        title="Nothing was changed"
+        said={
+          <>
+            You are signed in as <strong>{trouble.who}</strong>, and the page you pressed was not
+            opened for this sign-in. Open it again to make the change.
+          </>
+        }
+        way={way}
+      />
     );
   }
-  // A page that failed to draw is tried again at its own address, so the
-  // merchant keeps their place; a form that failed cannot be sent again from
-  // here, so its way on is the dashboard's first screen, named as that.
-  const again = trouble?.kind === "problem" ? trouble.again : undefined;
+  const again =
+    trouble?.kind === "problem" || trouble?.kind === "unread" ? trouble.again : undefined;
+  if (again !== undefined) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="This page could not be loaded"
+        said={trouble?.kind === "problem" ? trouble.said : "Something broke on our side."}
+        way={[again, "Try again"]}
+      />
+    );
+  }
+  if (trouble?.kind === "problem" && isRouteErrorResponse(error) && error.status !== 504) {
+    return (
+      <MessagePage chrome={chrome} title="Nothing was changed" said={trouble.said} way={open} />
+    );
+  }
+  // The gate failing is before anything below it ran.
+  if (trouble?.kind === "broken" && trouble.pressed !== true) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="Nothing was changed"
+        said="Something broke on our side before anything was done. Try again in a moment."
+        way={open}
+      />
+    );
+  }
+  if (trouble === undefined) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="This page could not be shown"
+        said={`Something broke on our side. If you pressed a button, check ${name} before you try again.`}
+        way={open}
+      />
+    );
+  }
   return (
-    <GatePage chrome={chrome} title="Something went wrong">
-      <div className="message-panel">
-        <h1>Something went wrong</h1>
-        <p>
-          {trouble?.kind === "problem"
-            ? trouble.said
-            : "Something in the dashboard is broken. Check the page you were on before deciding whether it went through."}
-        </p>
-        {again === undefined ? (
-          <a className="button button-primary" href={`${chrome.base}/cards`}>
-            Back to Cards
-          </a>
-        ) : (
-          <a className="button button-primary" href={again}>
-            Try again
-          </a>
-        )}
-      </div>
-    </GatePage>
+    <MessagePage
+      chrome={chrome}
+      title="We don't know if this was done"
+      said={`${trouble.kind === "problem" ? trouble.said : "Something broke on our side."} Check ${name} before you try again.`}
+      way={open}
+    />
   );
 }

@@ -40,9 +40,7 @@ export const NAME_NEEDED = "Enter a name, or choose one later.";
  * it reaches a buyer as a request to pay somebody it does not name. Coming off
  * sale is the control that does what somebody emptying the box wants.
  */
-export const NAME_CANNOT_BE_TAKEN_AWAY =
-  `The seller name cannot be empty once you have an account. To stop selling, use ${STOP_ALL_SELLING}` +
-  " on the Cards screen; your cards stay there until you resume.";
+export const NAME_CANNOT_BE_TAKEN_AWAY = `A seller name can't be removed, only changed. To stop selling, use ${STOP_ALL_SELLING} on Products.`;
 
 /**
  * The listing's own limits are checks of length and character; what is left
@@ -57,20 +55,34 @@ export const whatIsWrongWithTheName = (name: string): string | null => {
 };
 
 /**
- * The form is the contract's `SellerSiteSchema`, applied by asking it. The
- * sentence says what agents do with the address and that nobody checks it,
- * because a merchant would otherwise assume both the other way.
+ * The form is the contract's `SellerSiteSchema`, applied by asking it. It
+ * says that nobody checks the address, because a merchant would otherwise
+ * assume we do.
  */
 export const SITE_RULE =
-  "The address of your shop's own website: https:// and your domain, with nothing after it," +
-  " such as https://yourshop.com. Agents read it beside your seller name on every card and order," +
-  " as where to go with what an order cannot answer — goods that did not arrive, a return, your" +
-  " terms. Agentify does not check it.";
+  "https:// and your domain only, such as https://yourshop.com. We don't check it.";
 
 const SITE_REFUSED =
-  "Write the address as https:// and your shop's domain name, with nothing after it:" +
-  " https://yourshop.com, in lower case, with no page, query, port or slash at the end." +
+  "Use https:// and your domain only, such as https://yourshop.com, with nothing after it." +
   " Your site was not saved.";
+
+/**
+ * The same address cut to what the rule takes, where cutting it gives one:
+ * what a person meant who pasted a page of their shop. A domain written in
+ * another script is not offered, since the rule takes it only in the encoded
+ * form a person would not recognise as theirs.
+ */
+const domainOf = (site: string): string | null => {
+  let read: URL;
+  try {
+    read = new URL(site.includes("://") ? site : `https://${site}`);
+  } catch {
+    return null;
+  }
+  const domain = `https://${read.hostname.toLowerCase()}`;
+  const encoded = domain.includes("xn--") && !site.toLowerCase().includes("xn--");
+  return !encoded && SellerSiteSchema.safeParse(domain).success ? domain : null;
+};
 
 /**
  * Refused for the reason the gateway refuses it: an agent holding an order that
@@ -78,7 +90,28 @@ const SITE_REFUSED =
  * nowhere.
  */
 export const SITE_CANNOT_BE_TAKEN_AWAY =
-  "A site cannot be removed once given, only changed: type the address your shop has moved to.";
+  "A site can't be removed, only changed. Enter the address your shop has moved to.";
 
-export const whatIsWrongWithTheSite = (site: string): string | null =>
-  SellerSiteSchema.safeParse(site).success ? null : SITE_REFUSED;
+export const whatIsWrongWithTheSite = (site: string): string | null => {
+  if (SellerSiteSchema.safeParse(site).success) return null;
+  const domain = domainOf(site);
+  return domain === null
+    ? SITE_REFUSED
+    : `Use the domain only: ${domain}. Your site was not saved.`;
+};
+
+/**
+ * The characters a refused name holds that the listing cannot carry, each
+ * named once in the order typed, so the person sees which to change.
+ */
+const outsideTheListing = (name: string): string[] => [
+  ...new Set(name.match(/[^\x20-\x7e]/gu) ?? []),
+];
+
+/** A refusal of `typed`, led by the characters in it that cannot be used, where there are any. */
+export const nameRefusedSaying = (typed: string, problem: string): string => {
+  const culprits = outsideTheListing(typed);
+  return culprits.length === 0
+    ? problem
+    : `${culprits.map((one) => `“${one}”`).join(", ")} can't be used. ${problem}`;
+};

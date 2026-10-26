@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { whatIsWrongWithTheName } from "./seller-name.js";
+import { whatIsWrongWithTheName, whatIsWrongWithTheSite } from "./seller-name.js";
 
 const NETWORK = /payment network/i;
 
@@ -29,5 +29,24 @@ describe("whose rule a refused seller name broke", () => {
       expect(refusal, name).not.toBeNull();
       expect(refusal, name).not.toMatch(NETWORK);
     }
+  });
+});
+
+describe("a refused shop's site", () => {
+  it("offers the domain alone where the address carried a page after it", () => {
+    expect(whatIsWrongWithTheSite("https://freeland.example/shop")).toContain(
+      "Use the domain only: https://freeland.example.",
+    );
+  });
+
+  it("offers no domain a person would not recognise, as one written in another script", () => {
+    expect(whatIsWrongWithTheSite("https://магазин.рф/")).not.toMatch(/xn--/);
+  });
+
+  it("says the rule where no domain can be taken from what was typed", () => {
+    const said = whatIsWrongWithTheSite("my shop") ?? "";
+
+    expect(said).toMatch(/https:\/\/ and your domain only/);
+    expect(said).toMatch(/not saved/);
   });
 });

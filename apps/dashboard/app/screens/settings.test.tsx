@@ -296,6 +296,9 @@ const settingsPage = (looking: Looking): string =>
 
 const asCopied = (html: string): string => html.replaceAll(/<[^>]*>/g, "");
 
+/** An address with its middle left out, the one form a wrong address and the right one share. */
+const ELIDED = /0x[0-9a-fA-F]{2,}\s*…/;
+
 /** The text a person reads, with each address whole as it copies off the page. */
 const shownText = (html: string): string => readable(html.replaceAll(/<\/?span[^>]*>/g, ""));
 
@@ -328,7 +331,7 @@ describe("the payout wallet on the settings screen", () => {
     // No ellipsis for the middle: that is the one presentation under which a
     // wrong address and the right one look identical.
     expect(asCopied(html)).toContain(SHAPED);
-    expect(html).not.toContain("…");
+    expect(asCopied(html)).not.toMatch(ELIDED);
   });
 
   it("leaves no space inside the address, so copying it off the page pastes an address", () => {
@@ -351,7 +354,7 @@ describe("the payout wallet on the settings screen", () => {
   it("says a sandbox address is optional because nothing settles", () => {
     const text = readable(walletPanel({ wallet: null }));
 
-    expect(text).toMatch(/does not settle/i);
+    expect(text).toMatch(/nothing is settled/i);
     expect(text).toMatch(/optional/i);
   });
 
@@ -375,7 +378,7 @@ describe("the payout wallet on the settings screen", () => {
 
     expect(text).toContain("Base Sepolia");
     expect(text).toContain("test USDC");
-    expect(text).toMatch(/your share of every test sale/i);
+    expect(text).toMatch(/your share of each sale/i);
   });
 
   it("says a different address waits forty-eight hours only on live, where it does", () => {
@@ -405,6 +408,26 @@ describe("the payout wallet on the settings screen", () => {
     expect(asCopied(html)).toContain(shouted);
   });
 
+  it("names the wallet paid before when a cancel came too late, so it can be set again", () => {
+    const html = walletPanel({
+      mode: "live",
+      wallet: WAITING,
+      press: {
+        kind: "wallet-notice",
+        notice: {
+          kind: "landed",
+          wallet: WAITING,
+          at: "2026-08-28T12:00:00Z",
+          before: SHAPED,
+          askedBack: false,
+        },
+      },
+    });
+
+    expect(asCopied(html.slice(0, html.indexOf("<h2")))).toContain(SHAPED);
+    expect(html).toContain('action="/cards?selling=pause"');
+  });
+
   it("shows what was wrong with an address just refused", () => {
     const html = walletPanel({
       wallet: SHAPED,
@@ -420,7 +443,7 @@ describe("a change of the payout wallet on its way", () => {
   const pressed = (looking: Looking): HTMLFormElement => {
     render(routed(() => <PayoutWalletPanel wallet={viewOf(looking).wallet} />));
     document.addEventListener("submit", (event) => event.preventDefault(), { once: true });
-    const box = screen.getByLabelText(/payout wallet address/i);
+    const box = screen.getByLabelText(/wallet address/i);
     fireEvent.change(box, { target: { value: WAITING } });
     const form = box.closest("form") as HTMLFormElement;
     fireEvent.submit(form);
@@ -431,11 +454,11 @@ describe("a change of the payout wallet on its way", () => {
     const form = pressed({ mode: "live", wallet: SHAPED });
 
     const said = within(form).getByRole("status").textContent ?? "";
-    expect(said).toMatch(/every account of your merchant is sent a message/i);
+    expect(said).toMatch(/emailing everyone on your account/i);
     expect(said).toMatch(/30 seconds/);
-    expect(
-      screen.getByRole("button", { name: "Change the address" }).hasAttribute("disabled"),
-    ).toBe(true);
+    expect(screen.getByRole("button", { name: "Change wallet" }).hasAttribute("disabled")).toBe(
+      true,
+    );
   });
 
   it("says nothing of the kind where a change applies at once", () => {
@@ -453,7 +476,7 @@ describe("a change of the payout wallet on its way", () => {
 
   it("is not served with the page, where no press has happened", () => {
     expect(readable(walletPanel({ mode: "live", wallet: SHAPED }))).not.toMatch(
-      /is sent a message about a different address/,
+      /emailing everyone/i,
     );
   });
 });
@@ -462,13 +485,30 @@ describe("the name the products are sold under, over the settings", () => {
   const settings = (looking: Looking): string =>
     readable(renderToString(routed(() => <SettingsScreen view={viewOf(looking)} />)));
 
-  it("says which name buyers read, and leaves a missing one to the banner", () => {
+  it("holds the name buyers read in its box, and leaves a missing one to the banner", () => {
     // The banner over every page says no seller name is set and what that
     // holds back; said again here it would be the same sentence twice.
-    expect(settings({ sellerName: "Freeland" })).toContain(
-      "Your products are sold under Freeland.",
+    const page = renderToString(
+      routed(() => <SettingsScreen view={viewOf({ sellerName: "Freeland" })} />),
     );
+    expect(page).toMatch(/<input(?=[^>]*name="seller_name")(?=[^>]*value="Freeland")[^>]*>/);
     expect(settings({ sellerName: null })).not.toMatch(/not set a seller name|cannot be published/);
+  });
+
+  it("says a name cannot be removed only to a merchant who has one, and asks one without for a name", () => {
+    const emptied = { kind: "name", problem: "it was refused", typed: "" } as const;
+
+    expect(settings({ sellerName: "Freeland", press: emptied })).toContain("it was refused");
+    expect(settings({ sellerName: null, press: emptied })).not.toContain("it was refused");
+    expect(settings({ sellerName: null, press: emptied })).toMatch(/enter a seller name/i);
+  });
+
+  it("names the characters of a refused name that cannot be used", () => {
+    const text = settings({
+      press: { kind: "name", problem: "Your name was not saved.", typed: "Freeland — eSIM & VPN" },
+    });
+
+    expect(text).toContain("“—” can't be used.");
   });
 });
 
@@ -482,13 +522,15 @@ describe("whether a live merchant is approved", () => {
     const approved = settings({ mode: "live", wallet: SHAPED, liveApproval: true });
     const waiting = settings({ mode: "live", wallet: SHAPED, liveApproval: false });
 
-    expect(approved).toMatch(/Agentify has approved your merchant for live sales/);
-    expect(waiting).not.toMatch(/approv/i);
+    expect(approved).toMatch(/Agentify has approved your business for live sales/);
+    expect(waiting).not.toMatch(/approved your business/i);
   });
 
   it("says nothing about the approval off the live channel, where nobody needs it", () => {
     for (const mode of ["sandbox", "test"] as const) {
-      expect(settings({ mode, wallet: SHAPED, liveApproval: false }), mode).not.toMatch(/approv/i);
+      expect(settings({ mode, wallet: SHAPED, liveApproval: false }), mode).not.toMatch(
+        /approved your business/i,
+      );
     }
   });
 });
@@ -501,33 +543,21 @@ const AT_THREE_PERCENT = { commissionAllocation: 30_000, totalAllocation: 1_000_
 
 describe("the commission, before a merchant saves their first wallet", () => {
   // Saving the wallet on a screen that names the commission is the merchant's
-  // consent to it, so it is said above the box, before anything is saved. It
+  // consent to it, so it is said in the form that saves, by its button. It
   // covers a sale given back, since the merchant refunds the whole price and
-  // the commission stays, and it says the contract pays nothing out by itself:
-  // the payout panel that says so is drawn only once a wallet is saved.
-  for (const mode of ["test", "live"] as const) {
-    it(`names on ${mode} the rate, a refunded sale included, how it is taken, that the money waits for a payout, and that saving agrees to it, above the form`, () => {
-      const network = networkOf(mode);
-      const html = walletPanel({ mode, wallet: null });
-      const beforeTheForm = readable(html.slice(0, html.indexOf("<form")));
-      const commission = percent(network.commissionAllocation, network.totalAllocation);
-      const share = percent(
-        network.totalAllocation - network.commissionAllocation,
-        network.totalAllocation,
-      );
+  // the commission stays.
+  /** The wallet's form, as the page sends it. */
+  const walletFormIn = (html: string): string =>
+    /<form[^>]*action="\/settings\/payout-wallet"[^>]*>[\s\S]*?<\/form>/.exec(html)?.[0] ?? "";
 
-      expect(beforeTheForm).toContain(
-        `Agentify keeps ${commission} of every sale, a refunded one included`,
-      );
-      expect(beforeTheForm).toMatch(/buyers pay into a payout contract made for this wallet/i);
-      expect(beforeTheForm).toContain(
-        `it pays ${share} to the wallet and ${commission} to Agentify, and nobody can change that`,
-      );
-      expect(beforeTheForm).toMatch(
-        /the money waits in the contract until somebody pays it out: you, at any time, or Agentify, on no set date/i,
-      );
-      expect(beforeTheForm).toMatch(/saving a wallet here is your agreement/i);
-      expect(html.indexOf('name="payout_wallet"')).toBeGreaterThan(html.indexOf("<form"));
+  for (const mode of ["test", "live"] as const) {
+    it(`names on ${mode} the rate, a refunded sale included, and that saving agrees to it, in the form that saves`, () => {
+      const network = networkOf(mode);
+      const form = readable(walletFormIn(walletPanel({ mode, wallet: null })));
+      const commission = percent(network.commissionAllocation, network.totalAllocation);
+
+      expect(form).toContain(`Agentify keeps ${commission} of each sale, refunded sales included`);
+      expect(form).toMatch(/saving a wallet means you agree to this fee/i);
     });
   }
 
@@ -552,19 +582,18 @@ describe("the commission, before a merchant saves their first wallet", () => {
       }),
     );
 
-    expect(text).toContain("Agentify keeps 3% of every sale");
-    expect(text).toContain("it pays 97% to the wallet and 3% to Agentify");
+    expect(text).toContain("Agentify keeps 3% of each sale");
     expect(text).not.toContain("99.9%");
     expect(text).not.toContain("0.1%");
   });
 
-  it("says in the sandbox that nothing is deployed and no money moves", () => {
+  it("says in the sandbox that nothing is settled or paid out there", () => {
     const text = readable(walletPanel({ mode: "sandbox", wallet: null }));
 
-    expect(text).toMatch(/Agentify keeps \S+% of every sale/);
-    expect(text).toMatch(/in the sandbox nothing is deployed and no money moves/i);
+    expect(text).toMatch(/Agentify keeps \S+% of each sale/);
+    expect(text).toMatch(/nothing is settled or paid out here/i);
     expect(readable(walletPanel({ mode: "test", wallet: null }))).not.toMatch(
-      /nothing is deployed/,
+      /nothing is settled/i,
     );
   });
 });
@@ -577,7 +606,7 @@ describe("the payout contract buyers pay into", () => {
     const html = walletPanel({ mode: "test", wallet: W });
 
     expect(asCopied(html)).toContain(split);
-    expect(html).not.toContain("…");
+    expect(asCopied(html)).not.toMatch(ELIDED);
     expect(html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
     // The wallet holds nothing that waits for a payout; the contract does.
     expect(html).not.toContain(`/address/${W}`);
@@ -597,7 +626,7 @@ describe("the payout contract buyers pay into", () => {
 
     expect(asCopied(html)).toContain(split);
     expect(html).not.toContain("basescan");
-    expect(readable(html)).not.toMatch(/see what it holds/i);
+    expect(readable(html)).not.toMatch(/see its balance/i);
   });
 
   it("names no contract beside a saved wallet the gateway recorded none for", () => {
@@ -621,12 +650,12 @@ describe("the payout contract buyers pay into", () => {
     expect(asCopied(html)).not.toContain(splitOf("test", WAITING).address);
   });
 
-  it("shows a waiting wallet's contract beside the waiting wallet", () => {
+  it("shows a waiting wallet whole, first in its section, with the press that cancels it", () => {
     const html = walletPanel({ mode: "live", wallet: W, pending: WAITING });
-    const waiting = html.slice(html.indexOf("Waiting to replace it"));
+    const first = html.slice(0, html.indexOf("<h2"));
 
-    expect(asCopied(waiting)).toContain(WAITING);
-    expect(asCopied(waiting)).toContain(splitOf("live", WAITING).address);
+    expect(asCopied(first)).toContain(WAITING);
+    expect(first).toContain('action="/settings/payout-wallet/cancel"');
   });
 });
 
@@ -654,7 +683,7 @@ describe("the links into the money page", () => {
       ].flatMap((html) => [...html.matchAll(/href="\/docs\/money#([^"]+)"/g)].map(([, at]) => at)),
     );
 
-    expect(linked.size).toBeGreaterThan(2);
+    expect(linked.size).toBeGreaterThan(1);
     expect([...linked].filter((at) => !sections.has(at ?? ""))).toStrictEqual([]);
   });
 });
@@ -672,7 +701,7 @@ describe("the payout instruction", () => {
 
     expect(text).toContain(`To ${MULTICALL3}`);
     expect(text).toMatch(/Multicall3, a public contract, not ours/);
-    expect(text).toMatch(/Amount 0\b/);
+    expect(text).toMatch(/ETH to send 0\b/);
   });
 
   it("gives the whole data the builder makes for the merchant's recorded split, never cut", () => {
@@ -685,7 +714,7 @@ describe("the payout instruction", () => {
 
     expect(dataIn(html)).toBe(built);
     expect(dataIn(html)).toHaveLength(3_146);
-    expect(html).not.toContain("…");
+    expect(asCopied(html)).not.toMatch(ELIDED);
   });
 
   it("puts the whole data on the clipboard and says so", async () => {
@@ -718,24 +747,22 @@ describe("the payout instruction", () => {
     const onTest = readable(settingsPage({ mode: "test", wallet: W }));
     const onLive = readable(settingsPage({ mode: "live", wallet: W }));
 
-    expect(onTest).toMatch(/send this transaction on Base Sepolia only/);
+    expect(onTest).toMatch(/send this transaction on Base Sepolia only/i);
     expect(onTest).toMatch(/test ETH/);
-    expect(onLive).toMatch(/send this transaction on Base only/);
+    expect(onLive).toMatch(/send this transaction on Base only/i);
     expect(onLive).not.toMatch(/Base Sepolia|test ETH/);
     expect(dataIn(settingsPage({ mode: "live", wallet: W }))).toBe(
       merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
     );
   });
 
-  it("links to how to send it, and says that otherwise the merchant is paid on no set date", () => {
-    // Whether a wallet shows a field for the data, and where, is the money
+  it("links to how to send it from another wallet, and says that otherwise Agentify pays it out on no fixed date", () => {
+    // Whether a wallet shows a field for the data, and where, is the payout
     // page's to say: it is written from what sending one shows.
     const html = settingsPage({ mode: "test", wallet: W });
 
-    expect(html).toMatch(/<a href="\/docs\/money#getting-paid-out"[^>]*>How to send it<\/a>/);
-    expect(readable(html)).toMatch(
-      /Otherwise you are paid when Agentify next pays out every contract, on no set date/,
-    );
+    expect(html).toContain('href="/docs/payout#with-any-other-wallet"');
+    expect(readable(html)).toMatch(/Agentify's next payout pays it out\. It has no fixed date/);
   });
 
   it("is not drawn in the sandbox, where nothing is ever deployed", () => {
@@ -743,7 +770,7 @@ describe("the payout instruction", () => {
 
     expect(html).not.toContain(MULTICALL3);
     expect(html).not.toContain("<textarea");
-    expect(readable(html)).not.toMatch(/get your payout/i);
+    expect(readable(html)).not.toMatch(/getting paid/i);
   });
 
   it("is not drawn where no split can hold the merchant's money", () => {
@@ -754,7 +781,7 @@ describe("the payout instruction", () => {
     });
 
     expect(html).not.toContain("<textarea");
-    expect(readable(html)).not.toMatch(/get your payout/i);
+    expect(readable(html)).not.toMatch(/getting paid/i);
   });
 
   it("is not drawn beside no saved wallet, even where the splits were read after one was saved", () => {
@@ -784,17 +811,17 @@ describe("the payout instruction", () => {
       splits: splitsFor("live", W, { toPayOut: [earlier, now] }),
     });
     const pairs = [
-      ...shownText(html).matchAll(/(0x[0-9a-fA-F]{40}) pays (0x[0-9a-fA-F]{40})/g),
-    ].map((pair) => [pair[1], pair[2]]);
+      ...html.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td><td[^>]*>([\s\S]*?)<\/td><\/tr>/g),
+    ].map((row) => [asCopied(row[1] ?? ""), asCopied(row[2] ?? "")]);
     const data = dataIn(html).toLowerCase();
 
     expect(pairs).toStrictEqual([
       [earlier.address, W1],
       [now.address, W],
     ]);
-    expect(shownText(html)).toMatch(/each share arrives in the wallet beside its contract/);
+    expect(shownText(html)).toMatch(/each share arrives in the wallet beside its contract/i);
     expect(shownText(settingsPage({ mode: "live", wallet: W }))).toMatch(
-      /your share arrives in the same transaction/,
+      /your share arrives in the same transaction/i,
     );
     // Each wallet is the owner of a withdrawal in the data: `withdraw(owner, token)`.
     for (const [, wallet] of pairs) {
@@ -811,7 +838,7 @@ describe("the payout instruction", () => {
     const text = readable(html);
 
     expect(text).toMatch(/21 payout contracts/);
-    expect(text).toMatch(/You are paid when Agentify next pays out every contract, on no set date/);
+    expect(text).toMatch(/Agentify's next payout pays them all out\. It has no fixed date/);
     expect(html).not.toContain(MULTICALL3);
     expect(html).not.toContain("<textarea");
   });
@@ -820,7 +847,7 @@ describe("the payout instruction", () => {
 describe("creating or connecting a Coinbase Wallet from the settings", () => {
   const CHECKSUMMED = checksummedAddressOf(coinbase.account);
   const button = () => screen.getByRole("button", { name: WALLET_WORDS.connect });
-  const box = () => screen.getByLabelText("Payout wallet address") as HTMLInputElement;
+  const box = () => screen.getByLabelText(/wallet address/i) as HTMLInputElement;
   const press = async (control: HTMLElement) => {
     await act(async () => {
       fireEvent.click(control);
@@ -1033,7 +1060,10 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(box().getAttribute("aria-invalid")).toBeNull();
     expect(box().getAttribute("aria-describedby")).toBeNull();
     expect(screen.getByText(refused).hidden).toBe(true);
-    expect(document.getElementById("payout_wallet-refused")?.hidden).toBe(true);
+    // What is shown under the box in groups is the address now in it.
+    expect(asCopied(document.getElementById("payout_wallet-entered")?.innerHTML ?? "")).toContain(
+      CHECKSUMMED,
+    );
   });
 
   it("links to where the merchant manages the wallet and to how Coinbase recovers it", () => {
