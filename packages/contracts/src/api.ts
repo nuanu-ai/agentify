@@ -38,6 +38,7 @@ import { PayoutWalletSchema, SellerNameRequestSchema, SellerNameSchema } from ".
 import { OrderSchema } from "./order.js";
 import { OrderEndingReasonSchema, OrderStatusSchema, PaymentStatusSchema } from "./order-status.js";
 import { ParamNameSchema } from "./param-spec.js";
+import { SMALLEST_PRICE } from "./price-rule.js";
 import {
   IdentifierSchema,
   OpenWordSchema,
@@ -800,8 +801,7 @@ export const API_ROUTES = Object.freeze({
     method: "POST",
     path: "/v0/quotes/:price_id/answer",
     auth: "merchant_key",
-    description:
-      "The price and availability for a question that came off the worker stream, against the price_id that question carried. The acknowledgement says whether the answer arrived in time to price the purchase; when it did not, stock held against the question can be released. A price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot is refused as malformed_body with the reason as its message, and the question stays open for a corrected answer.",
+    description: `The price and availability for a question that came off the worker stream, against the price_id that question carried. The acknowledgement says whether the answer arrived in time to price the purchase; when it did not, stock held against the question can be released. A price below ${SMALLEST_PRICE}, zero included, a price not in USD or USDC, and one written with fewer than two or more than six digits after the dot are refused as malformed_body with the reason as its message, and the question stays open for a corrected answer.`,
     request: QuoteResponseSchema,
     response: { document: QuoteAnswerAckSchema },
   },

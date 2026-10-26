@@ -18,6 +18,7 @@ import {
   paramSpecToValidator,
 } from "./param-spec.js";
 import { notPlainTextIn, type TextLines } from "./plain-text.js";
+import { SMALLEST_PRICE } from "./price-rule.js";
 import type { Money } from "./primitives.js";
 import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
 import { SellerSiteSchema } from "./seller-site.js";
@@ -350,8 +351,7 @@ const CardFieldsSchema = z
      * schema so that a stored card stays readable.
      */
     price: CardPriceSchema.meta({
-      description:
-        'Publishing refuses a price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot ("5.00", "0.001"), so that a price the catalog shows is one a payment can be taken at. On a "ship" card it is the goods without shipping or a tax that depends on the buyer\'s place: the price a purchase goes through at is the merchant\'s price handler\'s answer, which includes shipping to the buyer\'s place and that tax.',
+      description: `Publishing refuses a price below ${SMALLEST_PRICE}, zero included, a price not in USD or USDC, and one written with fewer than two or more than six digits after the dot ("5.00", "0.015"), so that a price the catalog shows is one a payment can be taken at. On a "ship" card it is the goods without shipping or a tax that depends on the buyer's place: the price a purchase goes through at is the merchant's price handler's answer, which includes shipping to the buyer's place and that tax.`,
     }),
 
     /** What the agent has to supply to buy. Absent when the purchase needs no input. */
