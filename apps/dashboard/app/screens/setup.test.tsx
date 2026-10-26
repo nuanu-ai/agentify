@@ -73,10 +73,12 @@ describe("opening a seller dashboard", () => {
     expect(html).not.toContain('class="problem"');
   });
 
-  it("offers one way out, the header's", () => {
+  it("offers the way out in the header alone", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
+    const signOut = /<form\b[^>]*action="[^"]*\/sign-out"/;
 
-    expect(html.match(/<form\b[^>]*action="[^"]*\/sign-out"/g)).toHaveLength(1);
+    expect(html).toMatch(signOut);
+    expect(html.replace(/<header class="site-header[\s\S]*?<\/header>/, "")).not.toMatch(signOut);
   });
 
   it("says a press that made nothing failed on our side, and offers the press again", () => {
@@ -211,11 +213,13 @@ describe("the door into the operator's workspace on the setup screens", () => {
     ),
   };
 
-  it("stands beside the address in the header of an account the gate gave the door", () => {
+  it("stands among the header's doors for an account the gate gave the door", () => {
     for (const [name, screen] of Object.entries(SCREENS)) {
-      const html = served(screen, { who: WHO, admin: "/dashboard/admin" });
+      const html = served(screen, { who: WHO, operator: true });
+      const doors = /<nav aria-label="Docs and dashboard"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1];
 
-      expect(html, name).toMatch(/<a href="\/dashboard\/admin">Admin<\/a><a class="site-who"/);
+      // The workspace's address is the dashboard's own, under whatever prefix it is drawn at.
+      expect(doors, name).toMatch(/<a [^>]*href="[^"]*\/admin"[^>]*>Admin<\/a>/);
     }
   });
 

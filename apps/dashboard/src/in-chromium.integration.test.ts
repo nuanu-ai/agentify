@@ -540,7 +540,7 @@ describe("the working header over the frame", () => {
     [911, "bar"],
     [1440, "bar"],
   ] as const)(
-    "keeps one row at %ipx with the documentation, the address and the way out in its %s, the sections in the sidebar or the menu, never both, and no public section or door to the dashboard",
+    "keeps one row at %ipx with the documentation and the dashboard, the address and the way out in its %s, the sections in the sidebar or the menu, never both, and none of the site's offers",
     async (width, where) => {
       const page = await onTheCards({ width, height: 700 });
       expect(await inTheSiteFace(page)).toBe(true);
@@ -549,20 +549,24 @@ describe("the working header over the frame", () => {
       const bar = await theBar(header);
       expect(bar.spread).toBeLessThanOrEqual(1);
       expect(bar.sections).toEqual([]);
-      expect(bar.doors).toEqual(where === "bar" ? ["Docs"] : []);
-      expect(bar.visitor).toBe(where === "bar" ? 2 : 0);
+      expect(bar.doors).toEqual(["Docs", "Dashboard"]);
+      expect(bar.visitor).toBe(where === "bar" ? 1 : 0);
       expect(bar.button).toBe(where === "menu");
       expect(await page.locator(".app-sidebar nav.tabs").isVisible()).toBe(where === "bar");
 
       if (where === "menu") {
         await header.locator(".site-menu > summary").click();
         await header.locator(".site-menu-panel").waitFor({ state: "visible" });
+      } else {
+        await header.locator(".site-account > summary").click();
+        await header.locator(".site-account-panel").waitFor({ state: "visible" });
       }
       expect(await inSight(page.getByRole("link", { name: "Orders", exact: true }))).toBe(1);
       expect(await inSight(header.locator('a[href="/docs/"]'))).toBe(1);
+      expect(await inSight(header.getByRole("link", { name: "Dashboard", exact: true }))).toBe(1);
       expect(await inSight(page.getByText(PERSON))).toBe(1);
       expect(await inSight(page.getByRole("button", { name: "Sign out" }))).toBe(1);
-      for (const name of ["Dashboard", "Sell to agents", "Scanner", "Methodology", "Privacy"]) {
+      for (const name of ["Sell to agents", "Scanner"]) {
         expect(await inSight(header.getByRole("link", { name, exact: true })), name).toBe(0);
       }
       await page.context().close();
@@ -584,7 +588,7 @@ describe("the working header over the frame", () => {
         return {
           lockup: box("header .brand")?.left,
           sidebarWords: section === null ? undefined : words.getBoundingClientRect().left,
-          rowEnd: box("header .site-sign-out button")?.right,
+          rowEnd: box("header .site-account > summary")?.right,
           contentEnd: box(".app-content")?.right,
         };
       });
@@ -604,12 +608,12 @@ describe("the site header over the pages outside the frame", () => {
   it.each([
     [320, []],
     [390, []],
-    [600, ["Methodology", "Privacy"]],
-    [700, ["Scanner", "Methodology", "Privacy"]],
-    [768, ["Sell to agents", "Scanner", "Methodology", "Privacy"]],
-    [1440, ["Sell to agents", "Scanner", "Methodology", "Privacy"]],
+    [768, []],
+    [910, []],
+    [911, ["Scanner", "Sell to agents"]],
+    [1440, ["Scanner", "Sell to agents"]],
   ] as const)(
-    "keeps one row on the sign-in at %ipx with the site's sections %j and its doors, and no menu",
+    "keeps one row on the sign-in at %ipx with the site's offers %j and its doors, and the menu where the offers do not fit",
     async (width, sections) => {
       const context = await browser.newContext({ viewport: { width, height: 700 } });
       const page = await context.newPage();
@@ -621,7 +625,7 @@ describe("the site header over the pages outside the frame", () => {
       expect(bar.spread).toBeLessThanOrEqual(1);
       expect(bar.sections).toEqual(sections);
       expect(bar.doors).toEqual(["Docs", "Dashboard"]);
-      expect(bar.button).toBe(false);
+      expect(bar.button).toBe(sections.length === 0);
       await context.close();
     },
   );

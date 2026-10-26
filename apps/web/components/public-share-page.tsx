@@ -2,15 +2,15 @@ import type { PublicResultPreview } from "../lib/share-copy";
 import styles from "./public-share-page.module.css";
 import { ResultHead } from "./result-head";
 import layout from "./result-layout.module.css";
-import { SiteFooter, SiteTop } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { UrlScanForm } from "./url-scan-form";
 
 /** A published result at its public link, with the way to scan one's own site under it. */
 export function PublicSharePage({ preview }: Readonly<{ preview: PublicResultPreview }>) {
   return (
     <div className={layout.page}>
-      <SiteTop end={<span className={layout.quiet}>Public result</span>} />
-      <main className={layout.body}>
+      <SiteHeader current="scanner" />
+      <main className={layout.body} id="main">
         <div className={`${layout.sheet} ${layout.single}`}>
           <section aria-label="Public result">
             <ResultHead

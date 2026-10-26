@@ -86,7 +86,7 @@ export default function AgenticShopPage() {
   const { research } = opportunity;
   return (
     <>
-      <SiteHeader />
+      <SiteHeader current="sell" />
       <main className={styles.page} id="main">
         <section className={`container ${styles.hero}`}>
           <div>

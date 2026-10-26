@@ -50,7 +50,6 @@ function renderBlock(block: EditorialBlock, index: number): ReactNode {
 export function PublicEditorialPage({ page }: Readonly<{ page: PublicEditorialPageModel }>) {
   return (
     <EditorialPage
-      eyebrow={page.eyebrow}
       intro={page.intro}
       sections={page.sections.map((section) => ({
         id: section.id,

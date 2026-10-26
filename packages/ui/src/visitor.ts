@@ -1,5 +1,7 @@
 /**
- * Who is visiting, asked from the browser, for the header and the report form.
+ * Who is visiting, asked from the browser, by the pages that are the same for
+ * everybody, the scanner's and the documentation's: for their header and for
+ * the scanner's forms that act on the account.
  *
  * The page itself carries no address because a shared cache may keep it; only
  * `/api/v2/session`, which no shared cache stores, answers with one and passes

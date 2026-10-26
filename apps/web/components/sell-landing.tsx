@@ -1,20 +1,17 @@
 import "./sell-landing.css";
 
-import { BrandMark } from "@agentify/ui";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment } from "react";
 import { LANDING_SHARED_CONTENT } from "../content/landing";
 import type { SellLanding } from "../content/sell";
-import { SiteFooter } from "./site-chrome";
-import { SiteLink } from "./site-link";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 
 const SIGN_IN = "/dashboard/sign-in";
 const { agentDoor } = LANDING_SHARED_CONTENT;
 
 /**
- * The merchant landing, drawn from its words with its own stylesheet and
- * ended by the site's footer; the doors to the dashboard and the
- * documentation are other processes, so they are plain anchors, and the way
- * home is the scanner's own link.
+ * The merchant landing, drawn from its words with its own stylesheet under
+ * the site's bar and over its footer; the doors to the dashboard and the
+ * documentation are other processes, so they are plain anchors.
  */
 export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>) {
   const { hero, sale, journey, card, connect, money, pricing, dashboard, questions, closing } =
@@ -22,9 +19,9 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
   const { links } = content;
   return (
     <>
+      <SiteHeader current="sell" />
       <div className="sell">
-        <Masthead content={content} />
-        <main>
+        <main id="main">
           <section className="hero">
             <div>
               <p className="eyebrow">{hero.eyebrow}</p>
@@ -341,103 +338,6 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
       </div>
       <SiteFooter />
     </>
-  );
-}
-
-/**
- * The header: the page's sections and the doors to the documentation and the
- * dashboard. Below the desktop width the sections fold into a menu the burger
- * opens; a chosen link, Escape, or growing back to the desktop width closes it.
- */
-function Masthead({ content }: Readonly<{ content: SellLanding }>) {
-  const { links } = content;
-  const [open, setOpen] = useState(false);
-  const burger = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const desktop = matchMedia("(min-width: 1001px)");
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setOpen(false);
-      burger.current?.focus();
-    };
-    const closeOnDesktop = (event: MediaQueryListEvent) => {
-      if (event.matches) setOpen(false);
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    desktop.addEventListener("change", closeOnDesktop);
-    return () => {
-      document.removeEventListener("keydown", closeOnEscape);
-      desktop.removeEventListener("change", closeOnDesktop);
-    };
-  }, [open]);
-
-  const close = () => setOpen(false);
-  const sections: readonly (readonly [string, string])[] = [
-    ["#how", links.howItWorks],
-    ["#connect", links.integrations],
-    ["#money", links.payments],
-    ...(content.pricing.options.length > 0 ? [["#pricing", links.pricing] as const] : []),
-  ];
-  return (
-    <header className="masthead">
-      <Wordmark />
-      <nav aria-label="Sections" className="masthead__links">
-        {sections.map(([href, label]) => (
-          <a href={href} key={href}>
-            {label}
-          </a>
-        ))}
-      </nav>
-      <nav aria-label="Account and help" className="masthead__nav">
-        <a href="/docs/">{links.documentation}</a>
-        <a href={SIGN_IN}>{links.signIn}</a>
-        <a className="button button-compact button-primary" href={SIGN_IN}>
-          {links.signUp}
-        </a>
-      </nav>
-      <button
-        aria-controls="masthead-menu"
-        aria-expanded={open}
-        aria-label={open ? "Close menu" : "Open menu"}
-        className="masthead__burger"
-        onClick={() => setOpen(!open)}
-        ref={burger}
-        type="button"
-      >
-        <span />
-        <span />
-        <span />
-      </button>
-      <nav aria-label="Menu" className="masthead__menu" hidden={!open} id="masthead-menu">
-        {sections.map(([href, label]) => (
-          <a href={href} key={href} onClick={close}>
-            {label}
-          </a>
-        ))}
-        <a href="/docs/" onClick={close}>
-          {links.documentation}
-        </a>
-        <a href={SIGN_IN} onClick={close}>
-          {links.signIn}
-        </a>
-        <a className="button button-primary" href={SIGN_IN} onClick={close}>
-          {links.signUp}
-        </a>
-      </nav>
-    </header>
-  );
-}
-
-function Wordmark() {
-  return (
-    <SiteLink aria-label="Agentify home" className="wordmark" to="/">
-      <span className="wordmark__mark">
-        <BrandMark />
-      </span>
-      <span className="wordmark__name">Agentify</span>
-    </SiteLink>
   );
 }
 

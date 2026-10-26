@@ -53,7 +53,7 @@ export const dragUp = async (
 
 /**
  * What a header's bar shows: how far apart the middles of its items lie (one
- * row where it is a pixel at most), the section links it keeps, the doors it
+ * row where it is a pixel at most), the site's offers it keeps, the doors it
  * keeps, how many parts of who is visiting it shows, and whether the menu's
  * button is there.
  */
@@ -71,7 +71,7 @@ export const theBar = (
   header.evaluate((element) => {
     const items = [
       ...element.querySelectorAll(
-        ".brand, .site-nav > a, .site-doors > a, .site-doors .site-visitor > *, .site-menu > summary",
+        ".brand, .site-nav > a, .site-doors > a, .site-header-end > .site-visitor > *, .site-menu > summary",
       ),
     ].filter((item) => item.getBoundingClientRect().width > 0);
     const middles = items.map((item) => {
