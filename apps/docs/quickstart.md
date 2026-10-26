@@ -374,7 +374,7 @@ payment is an authorisation the buyer signs and the facilitator executes.
 Install the x402 client and the library that signs with the key:
 
 ```sh
-npm install @x402/core @x402/evm @x402/fetch viem
+npm install @x402/core @x402/evm viem
 ```
 
 Make the buyer's wallet key with that library, in the same directory. The command
@@ -397,9 +397,10 @@ all the buyer needs.
 Now buy the card by the catalogue identifier step 3 returned, with the
 purchase parameters the card asks for, and read the order until it has
 finished. The program below is TypeScript whose types Node 24 can simply
-erase, so save it as `buyer.mts` and run it with
-`node --env-file=.env buyer.mts`, with two more lines in `.env`, the first of
-them the one the command above printed:
+erase, so save it as `buyer.mts` beside the `.env` from step 2, whose
+`AGENTIFY_URL` it buys from, and run it with `node --env-file=.env buyer.mts`.
+It needs two more lines in `.env`, the first of them the one the command above
+printed:
 
 ```sh
 BUYER_PRIVATE_KEY=0x...
@@ -410,13 +411,35 @@ ITEM_ID=item_...
 
 The purchase is a POST of the card's purchase parameters, `{"params":{}}` for
 a card that asks for none, to the purchase address the catalogue gives for
-the card. The client meets the 402 that names the price and your payout
-contract, signs the payment and sends the same call again, and the answer is
-the order: `status` says where it stands, `delivered` holds the goods once
-they are the buyer's, and `status_url` is where it is read again. That address
-carries the buyer's key, the only thing that opens the order and its goods, so
-a real agent keeps it to itself; `order_id` in the same answer is the order's
-ordinary reference, the one your handler saw as `order.id`.
+the card. The first answer is a 402 whose payment request names the price and
+your payout contract, and nothing is charged by it. The program signs that
+request only on Base Sepolia, the test channel's chain, and only up to the
+price on the card. A payment request for another chain or for more is refused
+before anything is signed, and so is a card whose price check at purchase
+answers more than the card says. The program writes the payment request and
+the signed payment to `purchase.json` before it sends the same call again with
+the payment.
+
+The answer to that call is the order: `status` says where it stands,
+`delivered` holds the goods once they are the buyer's, and `status_url` is
+where it is read again. That address carries the buyer's key, the only thing
+that opens the order and its goods, so the program writes it into
+`purchase.json` rather than to the screen, and a real agent keeps it to
+itself. `order_id` in the same answer is the order's ordinary reference, the
+one your handler saw as `order.id`, and the program prints it.
+
+While the goods have not come, the program reads the order every five seconds
+for five minutes. A read that fails, such as an answer of 503 or a broken
+connection, is printed as a failed read and read again, and is never taken
+for the order's status. When the five minutes pass, or the answer to the
+payment is lost on the way, the program says so and stops with a non-zero
+exit code. Run it again: it finds `purchase.json` and takes the same purchase
+up again. With the order's address kept, it goes on reading; without it, it
+signs the kept payment request again from the same wallet, which returns the
+paid order with no second charge ([Telling a repeat
+apart](/orders#telling-a-repeat-apart)). The program exits with `0` only when
+the goods are delivered, and `purchase.json` stays until you delete it, which
+is how you buy again.
 
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the
