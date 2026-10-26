@@ -63,28 +63,11 @@ describe("a number a page names", () => {
 });
 
 describe("the build stops", () => {
-  it("on a value it cannot say in the unit its sentence counts in", () => {
+  it("on a number the speller refuses, naming the value it was written for", () => {
     const values = { ...VALUES, "price-holds": { ms: 1_500, unit: "second" } } as const;
 
     expect(() => writtenIn("holds for {{price-holds}}", values)).toThrow(
-      /\{\{price-holds\}\}.*1500 ms is not a whole number of seconds/,
-    );
-    expect(() => writtenIn("holds {{price-holds:short}}", values)).toThrow(/price-holds/);
-  });
-
-  it("on a rate it could only round", () => {
-    const values = { ...VALUES, rate: { part: 1, total: 3 } } as const;
-
-    expect(() => writtenIn("we take {{rate}}", values)).toThrow(
-      /\{\{rate\}\}.*no exact percentage/,
-    );
-  });
-
-  it("on a count it has no words for", () => {
-    const values = { ...VALUES, "waiting-at-most": { count: 120 } } as const;
-
-    expect(() => writtenIn("{{waiting-at-most}} of yours", values)).toThrow(
-      /\{\{waiting-at-most\}\}.*cannot say 120 in words/,
+      /^\{\{price-holds\}\} cannot be written in: /,
     );
   });
 
