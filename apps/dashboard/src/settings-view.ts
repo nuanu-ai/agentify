@@ -190,13 +190,13 @@ const payoutView = (
   if (payout === "unbuilt") {
     return {
       kind: "unbuilt",
-      said: "We couldn't prepare your payout transaction. The fault is on our side. Your money stays in your payout contracts until it is paid out.",
+      said: "We couldn't prepare your payout transaction. The fault is on our side. Whatever your payout contracts hold stays there until it is paid out.",
     };
   }
   if ("tooMany" in payout) {
     return {
       kind: "too_many",
-      said: `Your money is in ${payout.tooMany} payout contracts, more than one transaction can pay out. Agentify's next payout pays them all out. It has no fixed date.`,
+      said: `You have ${payout.tooMany} payout contracts, more than one transaction can pay out. Agentify's next payout covers them all. It has no fixed date.`,
     };
   }
   const pays = payout.splits.map((split) => ({
