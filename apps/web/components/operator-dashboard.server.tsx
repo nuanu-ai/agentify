@@ -2,6 +2,7 @@ import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { ChannelView } from "@agentify/ui/workspace-view";
+import { dayIn, momentIn } from "@agentify/ui/zone";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -38,12 +39,32 @@ const MONTHS = [
 
 /**
  * Moments and days as the operator's workspace writes them, so the scanner's
- * page reads like the rest of it: a moment in UTC to the second, a day written
- * out, and a chart's day as the workspace's charts label it.
+ * page reads like the rest of it: a moment to the second in the operator's
+ * zone with the zone named, or in UTC, said as UTC, where their browser named
+ * none, and a day written out in their calendar.
  */
-const moment = (at: Date): string => `${at.toISOString().slice(0, 19).replace("T", " ")} UTC`;
-const day = (at: Date): string =>
-  `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
+const moment = (at: Date, zone: string | null): ReactNode => {
+  const parts = momentIn(at, zone);
+  // Two halves a line may break between and nowhere else, as the dashboard
+  // draws a moment, with nothing added to the text a reader copies.
+  return parts === null ? (
+    "—"
+  ) : (
+    <span className="when">
+      <span>{parts.date}</span> <span>{`${parts.time} ${parts.zone}`}</span>
+    </span>
+  );
+};
+const day = (at: Date, zone: string | null): string => {
+  const parts = dayIn(at, zone);
+  return parts === null ? "—" : `${parts.day} ${MONTHS[parts.month - 1]} ${parts.year}`;
+};
+
+/**
+ * A chart's day as the workspace's charts label it, and the clock beside the
+ * last one. The days are counted by UTC day, so both stay UTC whatever the
+ * operator's zone.
+ */
 const chartDay = (at: Date): string =>
   `${at.getUTCDate()} ${(MONTHS[at.getUTCMonth()] ?? "").slice(0, 3)}`;
 const clock = (at: Date): string => at.toISOString().slice(11, 16);
@@ -334,7 +355,10 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
 }
 
 /** Everything on the page under the workspace's bar, from the numbers the loader read. */
-export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardData }>) {
+export function OperatorDashboard({
+  data,
+  zone,
+}: Readonly<{ data: OperatorDashboardData; zone: string | null }>) {
   const { overview, selfScan, dataAccess } = data;
   const shown = data.recentScans.length;
   const total = Math.max(shown, overview.scansTotal);
@@ -342,8 +366,8 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
   return (
     <>
       <p className="op-asof">
-        Last 30 days · read {moment(new Date(data.generatedAt))} · contact details and raw evidence
-        are not shown
+        Last 30 days · read {moment(new Date(data.generatedAt), zone)} · contact details and raw
+        evidence are not shown
       </p>
 
       <div className="summary op-figures">
@@ -372,7 +396,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
           figure={number.format(dataAccess.waiting)}
           aside={
             dataAccess.waiting > 0 && dataAccess.oldestAt !== null
-              ? `Oldest ${day(new Date(dataAccess.oldestAt))}. Nothing records an answer, so a request stays counted until its address is deleted.`
+              ? `Oldest ${day(new Date(dataAccess.oldestAt), zone)}. Nothing records an answer, so a request stays counted until its address is deleted.`
               : "None waiting."
           }
         />
@@ -405,7 +429,9 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
         <section className="op-panel" aria-labelledby="self-title">
           <div className="op-panel-head">
             <h2 id="self-title">Can agents read agentify.ad?</h2>
-            {selfScan ? <p>The latest self-scan, {moment(new Date(selfScan.acceptedAt))}</p> : null}
+            {selfScan ? (
+              <p>The latest self-scan, {moment(new Date(selfScan.acceptedAt), zone)}</p>
+            ) : null}
           </div>
           <div className="op-panel-body">
             {selfScan ? (
@@ -525,7 +551,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
                 </div>
                 <div className="cell cell-fact">
                   <span className="said-on-narrow">Accepted </span>
-                  {moment(new Date(scan.acceptedAt))}
+                  {moment(new Date(scan.acceptedAt), zone)}
                 </div>
               </li>
             ))}
@@ -569,7 +595,13 @@ export function drawOperatorPage({
   data,
   who,
   channel,
-}: Readonly<{ data: OperatorDashboardData; who: string; channel: ChannelView }>): string {
+  zone,
+}: Readonly<{
+  data: OperatorDashboardData;
+  who: string;
+  channel: ChannelView;
+  zone: string | null;
+}>): string {
   return renderToStaticMarkup(
     <MemoryRouter initialEntries={["/admin"]}>
       <WorkspaceFrame
@@ -590,7 +622,7 @@ export function drawOperatorPage({
           />
         }
       >
-        <OperatorDashboard data={data} />
+        <OperatorDashboard data={data} zone={zone} />
       </WorkspaceFrame>
     </MemoryRouter>,
   );

@@ -50,6 +50,7 @@ import {
 } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
+import { inViewersZone } from "../src/moments.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -1960,6 +1961,23 @@ const ORDERS: GalleryState[] = [
       ["number", "delivered"],
       ["esimEurope", "delivered"],
     ]),
+  ),
+  inViewersZone("Asia/Makassar", () =>
+    orders(
+      {
+        id: "dashboard-orders-in-reader-zone",
+        screen: "Orders",
+        when: "A merchant whose browser named its time zone, here Bali's, opens Orders.",
+        cause:
+          "Each time is in the zone the browser named, with its offset after it, and the orders fall under the days of that zone's calendar.",
+      },
+      ordersOf([
+        ["vpn", "delivered"],
+        ["esimEurope", "in_progress"],
+        ["number", "delivered"],
+        ["esimEurope", "delivered"],
+      ]),
+    ),
   ),
   orders(
     {

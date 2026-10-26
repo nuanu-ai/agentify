@@ -108,7 +108,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
                 <DayHeading level={2}>{row.day}</DayHeading>
               )}
               <Row needsYou={row.needsYou}>
-                <Cell at="fact">{"time" in row.paid ? row.paid.time : row.paid.text}</Cell>
+                <Cell at="fact">{row.time}</Cell>
                 <Cell at="title">{row.product}</Cell>
                 <Cell at="amount">
                   <span className={styles.sum}>

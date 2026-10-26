@@ -17,8 +17,9 @@ import type {
   OrdersPage,
   OrdersShown,
 } from "@agentify/gateway/operator";
+import { moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
-import { FULFILLMENT_WORDS, moment, money, ORDER_WORDS, type Word } from "../words.js";
+import { FULFILLMENT_WORDS, money, ORDER_WORDS, type Word } from "../words.js";
 
 /** The segments in the order the list shows them, with their names. */
 const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [

@@ -47,6 +47,7 @@ import {
 } from "./gateway.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
+import { moment } from "./moments.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
@@ -80,7 +81,6 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =

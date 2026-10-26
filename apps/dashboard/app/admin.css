@@ -512,7 +512,7 @@
 }
 
 .op-cols-health {
-  --columns: minmax(10rem, 13rem) 11rem minmax(14rem, 1fr) 7rem;
+  --columns: minmax(10rem, 13rem) 11rem minmax(14rem, 1fr) 8rem;
 }
 
 .op-cols-journal {

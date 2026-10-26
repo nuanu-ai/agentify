@@ -296,6 +296,11 @@
   font-size: var(--text-small);
 }
 
+/* A moment breaks between its date and its time and nowhere else. */
+.when > span {
+  white-space: nowrap;
+}
+
 /* --- lists -------------------------------------------------------------- */
 
 /*

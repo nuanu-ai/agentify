@@ -18,6 +18,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
+import { inViewersZone } from "../../src/moments.js";
 import { readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import { cardsView, ordersView, receiptsView } from "../../src/views.js";
@@ -139,6 +140,18 @@ const openedIn = (html: string): string[] =>
   );
 
 describe("the receipts of sales that went out", () => {
+  it("puts each payment under its day in the viewer's calendar, the heading naming the zone its time is in", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [{ ...receipt("rcp_1", false), paid_at: "2026-08-26T20:15:03Z" }],
+    });
+
+    const html = inViewersZone("Asia/Makassar", () => receiptsPage(receipts));
+
+    expect(html).toMatch(/<h2>27 August 2026 · UTC\+8<\/h2>/);
+    expect(readable(html)).toContain("04:15:03");
+    expect(readable(receiptsPage(receipts))).toContain("26 August 2026 · UTC");
+  });
+
   it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
     // A shipped parcel is counted with the delivered ones, under a label that
     // does not call a parcel with a carrier delivered.

@@ -289,9 +289,7 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
             <Fragment key={row.id}>
               {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
               <Row>
-                <Cell at="fact">
-                  {"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}
-                </Cell>
+                <Cell at="fact">{row.time}</Cell>
                 <Cell at="title">{row.product}</Cell>
                 <Cell at="amount">
                   <span className={styles.sum}>

@@ -11,6 +11,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
+import { inViewersZone } from "../../src/moments.js";
 import { formsIn, readable } from "../../src/testing/html.js";
 import {
   CLOSURE_NOTES,
@@ -420,7 +421,23 @@ describe("a long list of orders", () => {
       (day) => day[1],
     );
 
-    expect(days).toStrictEqual(["12 October 2026", "11 October 2026"]);
+    expect(days).toStrictEqual(["12 October 2026 · UTC", "11 October 2026 · UTC"]);
+  });
+
+  it("puts them under the days of the viewer's calendar, the heading naming the zone each time is in", () => {
+    // Every order here falls between 07:00 and 09:00 in Bali, on the twelfth.
+    const html = inViewersZone("Asia/Makassar", () =>
+      served(() => (
+        <OrdersScreen view={ordersView("live", CARDS, many, many, new URLSearchParams("page=2"))} />
+      )),
+    );
+
+    const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
+      (day) => day[1],
+    );
+
+    expect(days).toStrictEqual(["12 October 2026 · UTC+8"]);
+    expect(readable(html)).toContain("08:09:00");
   });
 });
 

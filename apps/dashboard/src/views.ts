@@ -32,14 +32,13 @@ import {
   placeOf,
   type SegmentRule,
 } from "./listing.js";
+import { moment, withinDay } from "./moments.js";
 import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
 import type { Viewer } from "./viewer.js";
 import type { ShopTotal } from "./woo-shops.js";
 import {
   CARD_WORDS,
-  dayOf,
   FULFILLMENT_WORDS,
-  moment,
   money,
   needsYou,
   ORDER_WORDS,
@@ -48,9 +47,10 @@ import {
 } from "./words.js";
 
 /**
- * An instant as the screens print it: UTC to the second, the date and the time
- * as two halves a line may break between and nowhere else. A timestamp that
- * could not be read is shown as it came.
+ * An instant as the screens print it, to the second in the viewer's zone with
+ * the zone named after the time: the date and the time as two halves a line
+ * may break between and nowhere else. A timestamp that could not be read is
+ * shown as it came.
  */
 export type MomentView = Readonly<{ date: string; time: string }> | Readonly<{ text: string }>;
 
@@ -348,8 +348,10 @@ interface OrderRow {
   readonly shares: Shares | null;
   readonly state: Word;
   readonly priceSet: MomentView;
-  /** The day of `priceSet`, for the heading over that day's orders. */
+  /** The day of `priceSet` and its zone, for the heading over that day's orders. */
   readonly day: string;
+  /** The time of `priceSet` within that day, in the zone its heading names. */
+  readonly time: string;
   readonly payment: string;
   readonly paymentUnresolved: boolean;
   readonly opened: boolean;
@@ -670,7 +672,7 @@ export const ordersView = (
         : money({ amount: shopTotals[order.id]?.total ?? "", currency: order.price.currency }),
     inTheShop: inTheShopOf(order.price.amount, shopTotals[order.id]),
     priceSet: momentView(order.price.at),
-    day: dayOf(order.price.at),
+    ...withinDay(order.price.at),
   });
   // Newest first, whatever order the gateway lists them in, so the page a long
   // list opens on holds what just happened and a day's orders sit together.
@@ -721,7 +723,7 @@ export const ordersView = (
           shopTotal: null,
           inTheShop: null,
           priceSet: momentView(attempt.at),
-          day: dayOf(attempt.at),
+          ...withinDay(attempt.at),
           payment: "Not paid",
           paymentUnresolved: false,
           opened: query.get("details") === attempt.id,
@@ -974,8 +976,10 @@ interface ReceiptRow {
   readonly paid: MomentView;
   readonly priceSet: MomentView;
   readonly priceAsOf: MomentView;
-  /** The day of `paid`, for the heading over that day's receipts. */
+  /** The day of `paid` and its zone, for the heading over that day's receipts. */
   readonly day: string;
+  /** The time of `paid` within that day, in the zone its heading names. */
+  readonly time: string;
   readonly transfer: TransferView;
 }
 
@@ -1023,7 +1027,7 @@ export const receiptsView = (
         paid: momentView(receipt.paid_at),
         priceSet: momentView(receipt.price.at),
         priceAsOf: momentView(receipt.price.as_of),
-        day: dayOf(receipt.paid_at),
+        ...withinDay(receipt.paid_at),
         transfer: transferOf(receipt.transaction, transactionPage),
       })),
   };

@@ -267,7 +267,7 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
         <section className="op-panel" aria-labelledby="story-title">
           <div className="op-panel-head">
             <h2 id="story-title">What happened</h2>
-            <p>Oldest first · times in UTC</p>
+            <p>Oldest first</p>
           </div>
           <div className="op-panel-body">
             <ol className="op-timeline">

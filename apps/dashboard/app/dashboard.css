@@ -83,11 +83,6 @@ textarea {
   font-size: var(--text-small);
 }
 
-/* A moment breaks between its date and its time and nowhere else. */
-.when > span {
-  white-space: nowrap;
-}
-
 /* Beside the amount rather than in its own column, so it cannot scroll out of
    sight while the number it qualifies stays visible. */
 .tag {

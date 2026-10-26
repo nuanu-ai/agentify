@@ -6,13 +6,13 @@
  */
 
 import type { MerchantFinding, SellingState } from "@nuanu-ai/agentify-contracts";
+import { moment } from "./moments.js";
 import { readinessSeenBy, type Viewer } from "./viewer.js";
 import {
   ACCOUNT_WORDS,
   type AccountReason,
   LIVE_SALES_STOPPED,
   liveSalesStoppedSince,
-  moment,
   notConnectedSince,
   type Way,
 } from "./words.js";
