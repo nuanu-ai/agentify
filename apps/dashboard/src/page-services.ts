@@ -384,9 +384,19 @@ export interface PageParts {
 const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
   `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
 
+/**
+ * On a problem page, whose heading says what is known of the press and whose
+ * button the way on: the gateway's own sentence for nothing answered in time
+ * advises a reload, which sends a press again.
+ */
+const NOT_ANSWERED = "Agentify didn't answer in time.";
+
 export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
   kind: "problem",
-  problem: { status: answer.status === 0 ? 504 : answer.status, said: saidOf(answer) },
+  problem:
+    answer.status === 0
+      ? { status: 504, said: NOT_ANSWERED }
+      : { status: answer.status, said: saidOf(answer) },
 });
 
 /**

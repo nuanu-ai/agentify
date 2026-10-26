@@ -43,7 +43,7 @@ const sameHost = (origin: string, host: string): boolean => {
   return here !== null && hostOf(origin) === here;
 };
 
-export const NOT_FROM_HERE = "This form did not come from the dashboard.";
+export const NOT_FROM_HERE = "This form came from another website, so it was ignored.";
 
 /** Why a post is refused before it is read, in the words its page says. */
 export type Refusal = Readonly<{ status: 403 | 413; said: string }>;

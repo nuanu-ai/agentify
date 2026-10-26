@@ -3301,9 +3301,10 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-press-not-answered",
-      screen: "Something went wrong",
-      when: "A merchant presses Pause on a card while Agentify is not answering.",
-      cause: "The gateway did not answer the press in time, so whether it was done is not known.",
+      screen: "A press that failed",
+      when: "A merchant presses Pause on a product while Agentify is not answering.",
+      cause:
+        "The gateway did not answer the press in time, so whether it was done is not known, and the way on is the screen it was pressed on, to look there.",
     },
     {
       path: `/cards?pause=${idOf("itm", "vpn")}`,
@@ -3320,7 +3321,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-not-drawn-for-you",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "A merchant presses a button on a page drawn before they signed in as somebody else in another tab.",
       cause:
         "The form was drawn for another address than the one signed in now, so it was refused.",
@@ -3341,7 +3342,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-form-from-elsewhere",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "A form is sent to the dashboard from another site.",
       cause:
         "The post's origin is not the dashboard's host, so it is refused before any page reads it.",
@@ -3357,7 +3358,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-broken",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "Something inside the dashboard fails while answering a press.",
       cause:
         "An exception in the dashboard itself, not a refusal; the page does not claim the press failed.",
