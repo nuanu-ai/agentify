@@ -1149,3 +1149,184 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     });
   });
 });
+
+describe("a sitemap's result names its one cause and the entries involved", () => {
+  const MIB = 1024 * 1024;
+  const now = new Date().toISOString();
+  const xml = (path: string, body: string, overrides: Partial<FetchArtifact> = {}) =>
+    artifact(`https://example.com/${path}`, body, {
+      headers: { "content-type": "application/xml" },
+      ...overrides,
+    });
+  const urlset = (lastmod: string | null, count = 3) =>
+    `<urlset>${Array.from(
+      { length: count },
+      (_, index) =>
+        `<url><loc>https://example.com/p/${index}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ""}</url>`,
+    ).join("")}</urlset>`;
+  const index = `<sitemapindex><sitemap><loc>https://example.com/sitemap-1.xml</loc><lastmod>${now}</lastmod></sitemap><sitemap><loc>https://example.com/sitemap-2.xml</loc><lastmod>${now}</lastmod></sitemap></sitemapindex>`;
+  const withSitemaps = (...sitemap: FetchArtifact[]): ScanArtifacts => ({
+    ...makeArtifacts("store"),
+    sitemap,
+  });
+
+  it("leaves a sitemap cut before any entry was read unjudged, and names the read limit", () => {
+    const cut = check(
+      withSitemaps(
+        xml("sitemap.xml", `<urlset><url><loc>https://example.com/${"a".repeat(64)}`, {
+          truncated: true,
+          decodedBytes: 5 * MIB,
+        }),
+      ),
+      4,
+    );
+    expect(cut).toMatchObject({
+      status: "unavailable",
+      summaryCode: "document_truncated",
+      evidence: { truncated: true, read_limit: "5 MiB" },
+    });
+    expect(cut?.fixCode).toBeUndefined();
+  });
+
+  it("judges a sitemap cut at the read limit by the entries read, and names the limit", () => {
+    expect(
+      check(
+        withSitemaps(xml("sitemap.xml", urlset(now), { truncated: true, decodedBytes: 5 * MIB })),
+        4,
+      ),
+    ).toMatchObject({
+      status: "pass",
+      evidence: { truncated: true, read_limit: "5 MiB", entries_read: 3 },
+    });
+  });
+
+  it.each([
+    [{ status: 503 }, "HTTP 503"],
+    [{ status: 0, errorCode: "fetch_timeout" }, "fetch_timeout"],
+  ])(
+    "names a listed sitemap that did not answer, and does not count it against the site: %j",
+    (failure, reason) => {
+      const checked = check(
+        withSitemaps(
+          xml("sitemap.xml", index),
+          xml("sitemap-1.xml", urlset(now)),
+          xml("sitemap-2.xml", "", failure),
+        ),
+        4,
+      );
+      expect(checked).toMatchObject({
+        status: "pass",
+        earnedWeight: 6,
+        evidence: { sitemaps_unread: [`entry 2 of the sitemap index: ${reason}`] },
+      });
+    },
+  );
+
+  it("reports a listed sitemap that is not there as a defect, and names it", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml", index),
+          xml("sitemap-1.xml", urlset(now)),
+          xml("sitemap-2.xml", "", { status: 404 }),
+        ),
+        4,
+      ),
+    ).toMatchObject({
+      status: "partial",
+      earnedWeight: 2,
+      summaryCode: "sitemap_entries_missing",
+      evidence: { sitemaps_missing: ["entry 2 of the sitemap index: HTTP 404"] },
+      fixCode: "fix_listed_sitemaps",
+    });
+  });
+
+  it("names stale dates as the cause, with the counts the rule was applied to", () => {
+    expect(check(withSitemaps(xml("sitemap.xml", urlset("2020-01-01", 5))), 4)).toMatchObject({
+      status: "partial",
+      earnedWeight: 4,
+      summaryCode: "sitemap_stale",
+      evidence: { lastmod_count: 5, stale_lastmod_count: 5 },
+      fixCode: "refresh_sitemap_lastmod",
+    });
+  });
+
+  it("counts a share of stale dates above four in five as stale, and not one at four in five", () => {
+    const mixed = (stale: number, fresh: number) =>
+      `<urlset>${[
+        ...Array.from({ length: stale }, () => "2020-01-01"),
+        ...Array.from({ length: fresh }, () => now),
+      ]
+        .map(
+          (date, at) =>
+            `<url><loc>https://example.com/p/${at}</loc><lastmod>${date}</lastmod></url>`,
+        )
+        .join("")}</urlset>`;
+    expect(check(withSitemaps(xml("sitemap.xml", mixed(4, 1))), 4)?.status).toBe("pass");
+    expect(check(withSitemaps(xml("sitemap.xml", mixed(401, 99))), 4)?.summaryCode).toBe(
+      "sitemap_stale",
+    );
+  });
+
+  it("names missing dates as the cause", () => {
+    expect(check(withSitemaps(xml("sitemap.xml", urlset(null))), 4)).toMatchObject({
+      status: "partial",
+      summaryCode: "sitemap_no_lastmod",
+      fixCode: "add_sitemap_lastmod",
+    });
+  });
+
+  it("takes a web page answered at the sitemap address for no sitemap", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml", "<!doctype html><html><body>App</body></html>", {
+            headers: { "content-type": "text/html" },
+          }),
+        ),
+        4,
+      ),
+    ).toMatchObject({
+      status: "fail",
+      summaryCode: "sitemap_not_sitemap",
+      fixCode: "serve_sitemap",
+    });
+  });
+
+  it("reports a sitemap without entries as empty", () => {
+    expect(check(withSitemaps(xml("sitemap.xml", "<urlset></urlset>")), 4)).toMatchObject({
+      status: "fail",
+      summaryCode: "sitemap_empty",
+      fixCode: "add_sitemap_entries",
+    });
+  });
+
+  it("does not judge a sitemap that declares a document type, and says why", () => {
+    const checked = check(withSitemaps(xml("sitemap.xml", `<!DOCTYPE urlset>${urlset(now)}`)), 4);
+    expect(checked).toMatchObject({ status: "unavailable", summaryCode: "sitemap_doctype" });
+    expect(checked?.fixCode).toBeUndefined();
+  });
+
+  it("gives no verdict of absence while a declared sitemap did not answer", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml", "<!doctype html><html></html>"),
+          xml("sitemap-b.xml", "", { status: 503 }),
+        ),
+        4,
+      ),
+    ).toMatchObject({ status: "unavailable", evidence: { status: 503 } });
+  });
+
+  it("still passes a whole, fresh sitemap and still reports none where there is none", () => {
+    expect(check(withSitemaps(xml("sitemap.xml", urlset(now))), 4)).toMatchObject({
+      status: "pass",
+      summaryCode: "sitemap_valid",
+    });
+    expect(check(withSitemaps(xml("sitemap.xml", "", { status: 404 })), 4)).toMatchObject({
+      status: "fail",
+      summaryCode: "sitemap_missing",
+    });
+  });
+});
