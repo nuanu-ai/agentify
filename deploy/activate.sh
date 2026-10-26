@@ -365,17 +365,28 @@ at "checking the cards on sale"
 # broke, and holds it against the release.
 python3 - "$origin" "$address" "$network" "$cards" <<'PY' \
   || refuse "the cards on sale do not answer as they did before the release, for the reason above, so $revision runs unverified."
-import base64, json, os, subprocess, sys, urllib.parse
+import base64, json, os, subprocess, sys, time, urllib.parse
 origin, address, network, before = sys.argv[1:5]
 def get(url, *flags):
     return subprocess.run(["curl", "-sS", "--max-time", "20", "--connect-to", f"{origin}:443:{address}", *flags, url],
                           capture_output=True, text=True, check=True).stdout
-cards = sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
+def listed():
+    return sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
+cards = listed()
 known = set(open(before).read().split()) if before else None
 leaving = set(os.environ.get("AGENTIFY_LEAVING", "").split())
 if leaving and known is None:
     sys.exit(f"activate: no catalog was read before the release, so the card(s) named as leaving cannot be checked: {' '.join(sorted(leaving))}")
 gone = known - set(cards) if known is not None else set()
+# A stop longer than the silence the gateway allows leaves every seller of
+# their own code silent, and their cards out of the catalog, until their worker
+# polls again; the SDK's worker tries again within thirty seconds. Cards gone
+# and not named are read again for that long and a margin. The tests shorten it.
+deadline = time.monotonic() + float(os.environ.get("AGENTIFY_RETURN_WAIT_SECONDS", "45"))
+while gone - leaving and time.monotonic() < deadline:
+    time.sleep(max(0.0, min(3.0, deadline - time.monotonic())))
+    cards = listed()
+    gone = known - set(cards)
 SELLERS_OWN_STATE = {"seller_not_fulfilling"}
 def refused_for(card):
     url = f"https://{origin}/x402/{urllib.parse.quote(card, safe='')}/purchase"
@@ -392,7 +403,9 @@ gone -= set(sellers)
 unnamed = sorted(gone - leaving)
 if unnamed:
     sys.exit(f"activate: {len(unnamed)} card(s) on sale before the release are gone from the catalog: {' '.join(unnamed)}; "
-             f"if the release takes them off sale on purpose, run it again with --leaving {','.join(sorted(gone))}")
+             f"if the release takes them off sale on purpose, run it again with --leaving {','.join(sorted(gone))}. "
+             f"A card is also left out while its seller's own process has not polled for ten minutes, which the admin's "
+             f"Health page names; such a card is not the release's doing, and naming it the same way lets the release through")
 stayed = sorted(leaving - gone)
 if stayed:
     sys.exit(f"activate: {len(stayed)} card(s) named as leaving did not leave the catalog, because they are still on sale "
