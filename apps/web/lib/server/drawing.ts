@@ -85,6 +85,9 @@ export async function drawPng(
   }
 }
 
+/** How long a cache may keep a picture: as long as it likes, asking again before showing it. */
+export const PICTURE_CACHE_CONTROL = "public, max-age=0, must-revalidate";
+
 /**
  * A drawn picture as an answer: a PNG a cache may keep but must ask about
  * again before showing.
@@ -96,7 +99,7 @@ export const pictureAnswer = (
   new Response(png, {
     headers: {
       "Content-Type": "image/png",
-      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Cache-Control": PICTURE_CACHE_CONTROL,
       ...headers,
     },
   });

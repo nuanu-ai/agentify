@@ -1,9 +1,17 @@
+import { createHash, randomUUID } from "node:crypto";
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 
 import { BrandMark } from "@agentify/ui";
 import { getPublicAppConfig } from "../app-config";
 import { cleanHost, type ShareCopy, type ShareTone, shareCopy } from "../share-copy";
-import { drawPng, HUMAN_FONT, laidOutSize, MONO_FONT } from "./drawing";
+import {
+  drawPng,
+  HUMAN_FONT,
+  laidOutSize,
+  MONO_FONT,
+  PICTURE_CACHE_CONTROL,
+  pictureAnswer,
+} from "./drawing";
 
 /**
  * The site's colours the picture draws with, named as the tokens in
@@ -387,4 +395,67 @@ export async function drawShareImage(
     </div>,
     SHARE_IMAGE_SIZE,
   );
+}
+
+type Png = Uint8Array<ArrayBuffer>;
+
+/**
+ * This process's own mark in every tag, so a picture drawn by an earlier
+ * build, which may look different, is never taken for the current one.
+ */
+const DRAWN_HERE = randomUUID();
+
+/** How many pictures the process keeps, about 160 KB each. */
+const KEPT_PICTURES = 32;
+
+/** The pictures drawn last, oldest first; a picture asked for again moves to the end. */
+const kept = new Map<string, Promise<Png>>();
+
+const tagOf = (snapshot: PublicShareSnapshot): string =>
+  `"${createHash("sha256").update(DRAWN_HERE).update(JSON.stringify(snapshot)).digest("base64url").slice(0, 32)}"`;
+
+const keptPicture = (tag: string, snapshot: PublicShareSnapshot): Promise<Png> => {
+  const known = kept.get(tag);
+  kept.delete(tag);
+  const picture =
+    known ??
+    drawShareImage(snapshot).catch((error: unknown) => {
+      kept.delete(tag);
+      throw error;
+    });
+  kept.set(tag, picture);
+  for (const oldest of kept.keys()) {
+    if (kept.size <= KEPT_PICTURES) break;
+    kept.delete(oldest);
+  }
+  return picture;
+};
+
+const holds = (ifNoneMatch: string | null, tag: string): boolean =>
+  (ifNoneMatch ?? "")
+    .split(",")
+    .map((held) => held.trim().replace(/^W\//, ""))
+    .some((held) => held === tag || held === "*");
+
+/**
+ * A published share's picture as the answer to `request`, as a file to save
+ * named after the site. A share's snapshot never changes, so the picture is
+ * tagged by it: a cache holding the tag is answered 304 with nothing to
+ * draw, and a picture drawn recently is answered from memory.
+ */
+export async function sharePictureAnswer(
+  request: Request,
+  snapshot: PublicShareSnapshot,
+): Promise<Response> {
+  const tag = tagOf(snapshot);
+  if (holds(request.headers.get("if-none-match"), tag))
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: tag, "Cache-Control": PICTURE_CACHE_CONTROL },
+    });
+  const name = snapshot.host.replace(/[^a-z0-9.-]/gi, "-");
+  return pictureAnswer(await keptPicture(tag, snapshot), {
+    ETag: tag,
+    "Content-Disposition": `attachment; filename="agentify-${name}.png"`,
+  });
 }
