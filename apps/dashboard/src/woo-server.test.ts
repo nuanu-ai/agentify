@@ -40,6 +40,7 @@ import {
   type WooOrderLookup,
 } from "./woo-shop.js";
 import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
+import { NO_SHOP } from "./woo-views.js";
 
 const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {
@@ -2799,7 +2800,7 @@ describe("one integration at a time", () => {
     await running.get("/woocommerce");
     await connectTheShop(running);
 
-    const stale = await running.post("/woocommerce/disconnect", { shop: "none" });
+    const stale = await running.post("/woocommerce/disconnect", { shop: NO_SHOP });
 
     expect(stale.status).toBe(409);
     expect(stale.to).toBeNull();
@@ -2807,7 +2808,10 @@ describe("one integration at a time", () => {
     expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe(
       "woocommerce",
     );
-    expect(readable(stale.html)).toContain(new URL(SHOP).host);
+    // Said inside the Disconnect it refused, opened, so the next press is one
+    // made with the shop in sight.
+    const opened = /<details[^>]*\bopen\b[^>]*>[\s\S]*?<\/details>/.exec(stale.html)?.[0] ?? "";
+    expect(readable(opened)).toContain(`Nothing was disconnected: ${new URL(SHOP).host}`);
     expect((await disconnectAsDrawn(running)).status).toBe(303);
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
   });
