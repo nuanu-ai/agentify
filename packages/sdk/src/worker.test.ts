@@ -1072,6 +1072,34 @@ describe("a gateway speaking another dialect", () => {
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "further polls");
   });
 
+  it("does not say another version answered when what failed names this SDK's own", async () => {
+    // A broken answer at the version this SDK speaks says nothing about the
+    // gateway being of another one; the remark would send a merchant to
+    // upgrade for nothing.
+    const problems: WorkerProblem[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: () => ({
+          status: 503,
+          text: JSON.stringify({ contract_version: contractVersion, error: "no worker here" }),
+        }),
+      },
+    });
+
+    running = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      { problem: (problem) => problems.push(problem) },
+      recordingClock(),
+    );
+
+    await waitUntil(() => problems.length > 0, "the problem to be reported");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
+    expect(problems[0]?.message).not.toContain("another version");
+  });
+
   it.each([
     ["a proxy's own page", { status: 502, text: "<html>bad gateway</html>" }],
     ["an error envelope somebody added", { text: JSON.stringify({ error: "no such worker" }) }],
