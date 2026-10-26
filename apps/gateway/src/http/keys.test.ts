@@ -64,7 +64,8 @@ const registered = async (harnessed: Harness): Promise<Registered> => {
 
 /**
  * Sets the seller name and the payout wallet, both required before a merchant
- * can publish. Their refusals are tested in `seller-name.test.ts` and
+ * can publish, and polls as their worker would, without which nothing of theirs
+ * is offered. Their refusals are tested in `seller-name.test.ts` and
  * `payout-wallet.test.ts`.
  */
 const readyToSell = async (harnessed: Harness, served: Served, made: Registered, name: string) => {
@@ -80,6 +81,7 @@ const readyToSell = async (harnessed: Harness, served: Served, made: Registered,
     SIGNED_IN,
   );
   expect(typeof paidAt, JSON.stringify(paidAt)).toBe("object");
+  await harnessed.gateway.poll(made.merchant_id, 0);
 };
 
 /** Whether a key still opens the door, asked with the smallest call there is. */

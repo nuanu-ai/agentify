@@ -61,12 +61,13 @@ const setSellerName = async (served: Served, key: string, name: string | null) =
 
 /**
  * A merchant listed under no name, as a real one is between signing up and
- * choosing. The harness names the merchants it seeds, because a merchant with
- * no name cannot publish.
+ * choosing, with their worker polling. The harness names the merchants it
+ * seeds, because a merchant with no name cannot publish.
  */
 const nameless = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
   const merchantId = await harnessed.gateway.registerMerchant();
   const issued = await harnessed.gateway.issueMerchantKey(merchantId, "their worker", SIGNED_IN);
+  await harnessed.gateway.poll(merchantId, 0);
   return { merchantId, key: issued.secret };
 };
 

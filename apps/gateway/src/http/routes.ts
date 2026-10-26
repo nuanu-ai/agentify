@@ -386,6 +386,9 @@ async function cardPaused(
  */
 const SELLER_NOT_FULFILLING = `this seller has ${UNSERVED_AT_MOST} or more paid orders they took on and left without delivery or closure, so Agentify takes no new purchase from them and nothing was charged; this lasts until the seller delivers or closes some of those orders, and nothing says when that will be, so do not try again soon`;
 
+/** Why a purchase of a seller whose own system has gone quiet is refused. */
+const SELLER_NOT_TAKING_ORDERS = `this seller is not taking orders right now, and nothing was charged: their system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}, so nobody would pick up the order; try again later`;
+
 function answeredOrder(
   response: RouteCall["response"],
   answered: { readonly ok: boolean } | null,
@@ -412,18 +415,25 @@ async function probeAnswer(
   if (offered === null) {
     return refusedWith(response, NO_SUCH_ITEM);
   }
-  if (offered.selling !== "open") {
-    // An off-sale card answers no challenge: the challenge carries the
-    // discovery declaration, and would keep inviting agents to a purchase that
-    // is always refused.
-    return written(
-      response,
-      CONFLICT,
-      refusal("not_selling", "this product is not on sale at the moment"),
-    );
-  }
-  if (await gateway.stoppedForUnserved(offered.stored.merchantId)) {
-    return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
+  // An off-sale card answers no challenge: the challenge carries the discovery
+  // declaration, and would keep inviting agents to a purchase that is refused.
+  switch (offered.offSale) {
+    case "not_selling":
+      return written(
+        response,
+        CONFLICT,
+        refusal("not_selling", "this product is not on sale at the moment"),
+      );
+    case "seller_not_fulfilling":
+      return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
+    case "seller_not_taking_orders":
+      return written(
+        response,
+        CONFLICT,
+        refusal("seller_not_taking_orders", SELLER_NOT_TAKING_ORDERS),
+      );
+    case null:
+      break;
   }
   response.setHeader(
     PAYMENT_REQUIRED_HEADER,
@@ -653,10 +663,7 @@ async function answerPurchase(
       return written(
         response,
         CONFLICT,
-        refusal(
-          "seller_not_taking_orders",
-          `this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}; try again later`,
-        ),
+        refusal("seller_not_taking_orders", SELLER_NOT_TAKING_ORDERS),
       );
 
     case "seller_not_fulfilling":

@@ -583,6 +583,11 @@ export interface CatalogEntry {
   readonly liveApprovedAt: number | null;
   /** The integration that merchant sells through, which their cards are read against. */
   readonly integration: Integration;
+  /**
+   * The latest poll recorded for that merchant (`lastContact`), or null where
+   * none ever was: a seller whose own code has gone quiet takes no purchase.
+   */
+  readonly lastContact: number | null;
 }
 
 /**

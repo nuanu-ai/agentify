@@ -89,8 +89,8 @@ const setPayoutWallet = (harnessed: Harness, merchantId: string, wallet: string)
 
 /**
  * A merchant with no wallet and no name, registered the way the dashboard does
- * it, with a key for their own code: a real merchant between signing up and
- * setting either.
+ * it, with a key for their own code and that code polling: a real merchant
+ * between signing up and setting either.
  */
 const fresh = async (harnessed: Harness): Promise<{ merchantId: string; key: string }> => {
   const merchantId = await harnessed.gateway.registerMerchant();
@@ -99,6 +99,7 @@ const fresh = async (harnessed: Harness): Promise<{ merchantId: string; key: str
     "the stock worker",
     SIGNED_IN,
   );
+  await harnessed.gateway.poll(merchantId, 0);
   return { merchantId, key: issued.secret };
 };
 
@@ -353,6 +354,7 @@ describe("who an agent is told to pay", () => {
       "their worker",
       SIGNED_IN,
     );
+    await harnessed.gateway.poll(golden.merchantId, 0);
     await named(served, secret, "A shop");
     await setPayoutWallet(harnessed, golden.merchantId, golden.merchantWallet);
     const itemId = await publish(served, secret, cardFor("a-room", "A room"));
