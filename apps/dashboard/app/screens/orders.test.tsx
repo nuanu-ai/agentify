@@ -841,7 +841,8 @@ describe("the purchases that lapsed unpaid", () => {
       merchant_item_id: "vpn-1m",
       status: at % 2 === 0 ? ("expired" as const) : ("rejected" as const),
       price: { amount: "5.00", currency: "USD" },
-      at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
+      asked_at: new Date(Date.parse("2026-10-11T22:59:00Z") - (from + at) * 60_000).toISOString(),
+      priced_at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
       test: false,
     }));
 
@@ -902,7 +903,8 @@ describe("the purchases that lapsed unpaid", () => {
       merchant_item_id: "vpn-1m",
       status: "rejected",
       price: null,
-      at: "2026-10-11T23:00:00Z",
+      asked_at: "2026-10-11T23:00:00Z",
+      priced_at: null,
       test: false,
     };
     const view = ordersView(
@@ -986,5 +988,123 @@ describe("the purchases that lapsed unpaid", () => {
 
     expect(view.none).toBe(false);
     expect(readable(served(() => <OrdersScreen view={view} />))).not.toContain("No orders yet");
+  });
+});
+
+describe("an order's facts", () => {
+  /** The opened part of one order's row, read apart from the rest of the page. */
+  const detailsText = (html: string, id: string) =>
+    readable(new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "");
+
+  const lapsedPage = (attempts: LapsedAttempt[]) =>
+    ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams({ show: "lapsed", details: attempts[0]?.id ?? "" }),
+      {},
+      {},
+      { page: attempts, of: attempts.length },
+    );
+
+  const UNPRICED: LapsedAttempt = {
+    id: idOf("0aa0", "beef"),
+    merchant_item_id: "vpn-1m",
+    status: "rejected",
+    price: null,
+    asked_at: "2026-10-11T23:00:00Z",
+    priced_at: null,
+    test: false,
+  };
+
+  it("say a purchase that ended before any price was set was not priced, and when it was asked for, never a price set", () => {
+    const html = served(() => <OrdersScreen view={lapsedPage([UNPRICED])} />);
+    const details = detailsText(html, UNPRICED.id);
+
+    expect(readable(html)).toContain("Not priced");
+    expect(readable(html)).not.toMatch(/Price set \d/);
+    expect(details).toContain("Asked to buy 2026-10-11 23:00:00 UTC");
+    expect(details).not.toContain("Price set");
+  });
+
+  it("say when a lapsed purchase's price was set, apart from when it was asked for", () => {
+    const priced: LapsedAttempt = {
+      ...UNPRICED,
+      status: "expired",
+      price: { amount: "5.00", currency: "USD" },
+      asked_at: "2026-10-11T22:59:58Z",
+      priced_at: "2026-10-11T23:00:00Z",
+    };
+    const html = served(() => <OrdersScreen view={lapsedPage([priced])} />);
+    const details = detailsText(html, priced.id);
+
+    expect(readable(html)).not.toContain("Not priced");
+    expect(details).toContain("Asked to buy 2026-10-11 22:59:58 UTC");
+    expect(details).toContain("Price set 2026-10-11 23:00:00 UTC");
+  });
+
+  const UNFULFILLED = ordersOf([
+    { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
+    { id: SAME_HEAD, status: "unfulfilled", at: "2026-10-12T16:41:00Z" },
+    { id: SAME_TAIL, status: "in_progress", at: "2026-10-12T16:42:00Z" },
+  ]);
+  const RECORDS = {
+    [FIRST]: {
+      unfulfilled: "deadline_passed",
+      paidAt: "2026-10-12T16:40:05Z",
+      deadline: { at: "2026-10-12T17:40:05Z", passed: true },
+    },
+    [SAME_HEAD]: {
+      unfulfilled: "refused",
+      paidAt: "2026-10-12T16:41:05Z",
+      deadline: null,
+    },
+    [SAME_TAIL]: {
+      unfulfilled: null,
+      paidAt: "2026-10-12T16:42:05Z",
+      deadline: { at: "2026-10-12T17:42:05Z", passed: false },
+    },
+  } as const;
+  const opened = (id: string) =>
+    served(() => (
+      <OrdersScreen
+        view={ordersView(
+          "live",
+          CARDS,
+          UNFULFILLED,
+          UNFULFILLED,
+          new URLSearchParams({ details: id }),
+          RECORDS,
+        )}
+      />
+    ));
+
+  it("say, in the details of an order its delivery deadline left unfulfilled, when it was paid, when the deadline passed, and both ways on", () => {
+    const details = detailsText(opened(FIRST), FIRST);
+
+    expect(details).toContain("Paid 2026-10-12 16:40:05 UTC");
+    expect(details).toContain("Delivery deadline passed 2026-10-12 17:40:05 UTC");
+    expect(details).toContain("You can still deliver it late");
+    expect(details).toContain("Delivering late");
+    expect(details).toContain("Close fulfillment");
+  });
+
+  it("say no deadline passed for an order its integration refused, and the deadline still running for one in progress", () => {
+    const refused = detailsText(opened(SAME_HEAD), SAME_HEAD);
+    const running = detailsText(opened(SAME_TAIL), SAME_TAIL);
+
+    expect(refused).toContain("your integration refused");
+    expect(refused).not.toContain("Delivery deadline");
+    expect(running).toContain("Delivery deadline 2026-10-12 17:42:05 UTC");
+    expect(running).not.toContain("Delivery deadline passed");
+  });
+
+  it("are told on the order's row in Needs you, where the deadline's passing is read beside its cause", () => {
+    const text = readable(opened(FIRST));
+
+    expect(text).toMatch(
+      /delivery window ran out[^]*Delivering late[^]*Delivery deadline passed 2026-10-12 17:40:05 UTC/,
+    );
   });
 });
