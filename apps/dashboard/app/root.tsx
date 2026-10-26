@@ -139,7 +139,7 @@ export function ErrorBoundary() {
   if (trouble?.kind === "not-drawn-for-you") {
     return (
       <GatePage chrome={chrome} title="Nothing was changed">
-        <div className="gate-card">
+        <div className="message-panel">
           <h1>Nothing was changed</h1>
           <p>
             What you pressed was not done, because the page it came from could not be matched to the
@@ -159,7 +159,7 @@ export function ErrorBoundary() {
   const again = trouble?.kind === "problem" ? trouble.again : undefined;
   return (
     <GatePage chrome={chrome} title="Something went wrong">
-      <div className="gate-card">
+      <div className="message-panel">
         <h1>Something went wrong</h1>
         <p>
           {trouble?.kind === "problem"

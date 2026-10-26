@@ -92,12 +92,15 @@ afterEach(() => {
 });
 
 describe("a report's page", () => {
-  it("names the address a signed-in person is not, where the report is filed under another", async () => {
+  it("names the address a signed-in person is, where the report is filed under another, and offers to sign in with another", async () => {
     world.page = { kind: "not_yours", email: "someone-else@shop.example" };
 
     const page = await drawn();
 
-    expect(page).toContain("This report is not filed under someone-else@shop.example");
+    expect(page).toContain("<strong>someone-else@shop.example</strong>");
+    expect(page).toMatch(
+      /<form[^>]*action="\/dashboard\/sign-out"[^>]*method="post"[^>]*>\s*<button[^>]*type="submit"/,
+    );
     expect(page).not.toContain("All 18 checks");
   });
 

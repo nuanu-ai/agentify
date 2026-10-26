@@ -716,7 +716,7 @@ export function WooPage({ view }: Readonly<{ view: WooShopView | WooImportView |
 export function WooReturnScreen({ chrome }: Readonly<{ chrome: Chrome }>) {
   return (
     <GatePage chrome={chrome} title="Back from your shop">
-      <form className="gate-card" method="get" action={`${chrome.base}/woocommerce`}>
+      <form className="message-panel" method="get" action={`${chrome.base}/woocommerce`}>
         <h1>Back from your shop</h1>
         <p>
           Continue to your dashboard to see whether access reached Agentify. If you chose not to

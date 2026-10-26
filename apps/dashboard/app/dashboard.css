@@ -463,66 +463,6 @@ form.inline {
   padding-top: 20px;
 }
 
-/* --- signing in --------------------------------------------------------- */
-
-/*
- * The pages outside the dashboard: sign in, check your mail, open the link,
- * choose a name, come back from a shop, and every error page. One card at the
- * scanner's measures (520px, the panel corner, the shared soft shadow, padding
- * that grows with the window), in the room the site header leaves, and each
- * page has its own `h1` at the hero step; inside the dashboard `.lede h1` is
- * the calmer one.
- */
-.gate {
-  flex: 1;
-  display: grid;
-  align-content: center;
-  justify-items: center;
-  gap: 28px;
-  padding: 48px 24px;
-}
-
-.gate-card {
-  width: min(100%, 520px);
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-  padding: clamp(28px, 6vw, 40px);
-  box-shadow: var(--shadow-soft);
-}
-
-.gate h1 {
-  font-size: clamp(2rem, 5vw, 2.5rem);
-  line-height: 1.1;
-  margin-bottom: 16px;
-}
-
-.gate p {
-  color: var(--muted);
-  margin-top: 8px;
-}
-
-/* The sentence that offers a second way in belongs to the button under it, so
-   it stands a field's distance from the one above. */
-.gate .or {
-  margin-top: 20px;
-}
-
-.gate label {
-  display: block;
-  margin: 20px 0 8px;
-}
-
-.gate .field {
-  margin-top: 20px;
-}
-
-@media (max-width: 760px) {
-  .gate-card {
-    padding: 28px 22px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -530,13 +470,6 @@ form.inline {
     scroll-behavior: auto;
     transition-duration: 0.01ms;
   }
-}
-
-/* A column, not a row: two controls side by side in a 520px card read as one
-   control cut in half. A second action is the secondary one under the first. */
-.gate .button {
-  margin-top: 12px;
-  width: 100%;
 }
 
 /* The fail colour on a sentence, for two things a merchant must not read past:
@@ -956,9 +889,6 @@ h2 {
   align-items: center;
   padding-bottom: 24px;
 }
-.gate-skip {
-  text-align: center;
-}
 /* Side by side only where each way has room for its buttons on one line; on a
    phone the insets shrink so the longest label still fits. */
 @media (max-width: 1180px) {
@@ -1008,4 +938,49 @@ h2 {
 .confirm-pop > p {
   margin: 0 0 8px;
   font-size: 0.875rem;
+}
+
+/* --- signing in --------------------------------------------------------- */
+
+/*
+ * The pages outside the dashboard: sign in, check your mail, open the link,
+ * choose a name, come back from a shop, and every error page. Each is the
+ * site's message panel (`.message-panel` in the shared tokens), so it stands
+ * where the scanner's do and spaces its text and buttons as they do. What
+ * is the dashboard's own is the forms inside: a box and the button under it
+ * are one group, a control's gap apart, and the group stands a card's gap
+ * from the text around it.
+ */
+/* A form drawn as the panel carries its hidden fields ahead of the heading. */
+.gate .message-panel > h1 {
+  margin-top: 0;
+}
+
+.gate .message-panel > form,
+.gate .message-panel > form + *,
+.gate .message-panel > .field {
+  margin-top: var(--space-card);
+}
+
+.gate label {
+  display: block;
+  margin: 20px 0 8px;
+}
+
+.gate .field ~ .button,
+.gate .field ~ .field {
+  margin-top: var(--space-control);
+}
+
+/* The sentence that offers a second way in belongs to the button under it,
+   and two buttons one under the other are one group. */
+.gate .message-panel > .or + form,
+.gate .message-panel > form:not(:has(.field)) + form:not(:has(.field)) {
+  margin-top: var(--space-control);
+}
+
+@media (max-width: 600px) {
+  .gate .message-panel .button {
+    width: 100%;
+  }
 }

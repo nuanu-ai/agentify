@@ -3,7 +3,6 @@ import type { ScanStatusResponse, ScanStopReason } from "@agentify/scanner-contr
 import { robotsHeadline } from "../lib/robots-notice";
 import layout from "./result-layout.module.css";
 import { RobotsNotice } from "./robots-notice";
-import styles from "./scan-experience.module.css";
 import { SiteLink } from "./site-link";
 
 // What the scanner knows stopped a scan, and what the person can do about it.
@@ -13,17 +12,17 @@ const STOPS: Readonly<Record<ScanStopReason, Readonly<{ headline: string; words:
   no_public_site: {
     headline: "No public website answers at this address",
     words:
-      "The scanner reads only public websites. The name of this address, or of a page it redirects to, does not lead to one: it finds no server on the public internet or points into a private network, and the scanner requested nothing there. Check the address you entered. Unless the domain was registered or its DNS changed very recently, scanning it again gives the same answer.",
+      "The address leads to no server on the public internet, or into a private network, so the scanner read nothing there. Check the address you entered.",
   },
   forbidden_redirect: {
     headline: "The site redirected the scanner where it does not go",
     words:
-      "The scanner follows a redirect only to an address it would accept to scan on its own, never from HTTPS down to plain HTTP, and at most five in a row. This site's redirect breaks one of those rules, for example by leading to a bare IP address or an internal name. Check where the address redirects, or scan the address it should lead to.",
+      "The scanner follows a redirect only to an address it would scan on its own, never down from HTTPS to HTTP, and at most five in a row. Scan the address the redirect should lead to.",
   },
   certificate_invalid: {
     headline: "The scanner could not verify the site's certificate",
     words:
-      "The scanner could not verify this site's HTTPS certificate: for example it has expired, is self-signed, does not cover this address, or the server does not send its intermediate certificate. A browser may still open the site, because browsers fetch a missing intermediate on their own; most programs, AI agents among them, do not. Check the certificate chain, then scan again.",
+      "The certificate may have expired, not cover this address, or lack its intermediate certificate. A browser may still open the site; most AI agents will not. Fix the certificate, then scan again.",
   },
 };
 
@@ -43,16 +42,16 @@ export function ScanFailed({
   const stop = !headline && !blocked && stopReason ? STOPS[stopReason] : undefined;
   if (stop)
     return (
-      <div className={`${layout.message} ${styles.state}`}>
+      <>
         <h1 data-stop-reason={stopReason}>{stop.headline}</h1>
         <p>{stop.words}</p>
         <SiteLink className="button button-primary" to="/">
           Start a new scan
         </SiteLink>
-      </div>
+      </>
     );
   return (
-    <div className={`${layout.message} ${styles.state}`}>
+    <>
       <h1
         data-access-blocked={!headline && blocked ? "" : undefined}
         data-robots-headline={headline ?? undefined}
@@ -62,25 +61,24 @@ export function ScanFailed({
           : headline === "unassessed"
             ? "The scanner could not assess your robots.txt"
             : blocked
-              ? "The site blocked our reader"
+              ? "The site turned the scanner away"
               : "No reliable diagnostic was produced"}
       </h1>
       <RobotsNotice checks={checks} className={layout.note} />
       {headline ? null : blocked ? (
         <p>
-          The site answered the scanner's request for its home page with a bot challenge or a
-          refusal. What could be read around it is what the site shows a reader it turns away, so no
-          score is given. <a href="/docs/scanner#identity">How the scanner identifies itself</a>
+          The site answered the scanner with a bot challenge or a refusal, so no score is given.{" "}
+          <a href="/docs/scanner#identity">How the scanner identifies itself</a>
         </p>
       ) : (
         <p>
-          Coverage stayed below the minimum for an honest result. This can happen after a timeout,
-          access block, or scanner failure.
+          The scanner could read too little of the site for an honest result, for example after a
+          timeout or a block.
         </p>
       )}
       <button className="button button-primary" onClick={onRetry} type="button">
         Try again
       </button>
-    </div>
+    </>
   );
 }

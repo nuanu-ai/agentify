@@ -23,7 +23,7 @@ export function MerchantScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
   }
   return (
     <GatePage chrome={chrome} title="Open a seller dashboard">
-      <div className="gate-card">
+      <div className="message-panel">
         <h1>Open a seller dashboard</h1>
         <p>
           You are signed in as <strong>{gate.who}</strong>.
@@ -69,7 +69,7 @@ export function ChooseNameScreen({
       : { error: view.problem };
   return (
     <GatePage chrome={chrome} title="The name your products are sold under">
-      <PostForm className="gate-card" action="/choose-name">
+      <PostForm className="message-panel" action="/choose-name">
         {(pending) => (
           <>
             <h1>Choose your seller name</h1>

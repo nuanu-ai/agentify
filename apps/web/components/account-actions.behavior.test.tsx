@@ -97,7 +97,7 @@ describe("the account requests on the site's own pages", () => {
       await screen.findByRole("button", { name: "Unsubscribe from marketing" }),
     );
 
-    expect(await screen.findByText("Request recorded.")).toBeTruthy();
+    expect(await screen.findByText(/unsubscribed/i)).toBeTruthy();
   });
 
   it("stop offering anything to press once the site says somebody else is signed in now", async () => {
