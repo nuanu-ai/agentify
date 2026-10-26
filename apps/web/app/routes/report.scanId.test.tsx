@@ -139,8 +139,7 @@ describe("a report's page", () => {
 
     const panel =
       /<section class="message-panel">([\s\S]*?)<\/section>/.exec(await drawn())?.[1] ?? "";
-    // A report's email link opens once and expires within the hour, so the
-    // page never leads back to it; the panel's one control is the way on.
+    // Each locked state has one way on, and it is the panel's only control.
     const controls = panel.match(/<(?:a|form|button)\b[^>]*>/g) ?? [];
 
     expect(controls.filter((tag) => !tag.startsWith("<button"))).toHaveLength(1);
