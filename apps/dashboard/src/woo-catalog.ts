@@ -245,8 +245,10 @@ export const cardsFromTheShop = (
       continue;
     }
     if (product.manage_stock) {
-      unsupported(
-        "Stock tracking is on for this product, and the connector imports only products without it.",
+      refused(
+        "Stock tracking is on for this product. Turn it off under Inventory in the product's" +
+          " settings (Manage stock, or Track stock quantity in recent WooCommerce versions) and" +
+          " import again.",
       );
       continue;
     }
