@@ -249,6 +249,24 @@ export function describeOperatorMerchants(
         ]);
       });
 
+      it("reads a page after the first by leaving out the rows before it, in the same order", async () => {
+        const under = await open();
+        const { store, merchants } = under;
+        await merchant(store, "mch_old_sale", 1_000, SELLS);
+        await merchant(store, "mch_new_sale", 2_000, SELLS);
+        await merchant(store, "mch_never", 3_000, SELLS);
+        await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
+        await store.addOrder(sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
+
+        const second = await merchants.list({ ...LIVE, limit: 2, offset: 1 });
+        const past = await merchants.list({ ...LIVE, limit: 2, offset: 3 });
+
+        expect(second.rows.map((row) => row.id)).toStrictEqual(["mch_old_sale", "mch_never"]);
+        expect(second.total).toBe(3);
+        expect(past.rows).toStrictEqual([]);
+        expect(past.total).toBe(3);
+      });
+
       it("finds a merchant by seller name, site or identifier ignoring case, and by identifiers the caller found", async () => {
         const under = await open();
         const { store, merchants } = under;
