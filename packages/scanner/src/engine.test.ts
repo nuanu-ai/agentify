@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import type { CheckResult, Segment } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import { evaluateScan } from "./engine.js";
@@ -1202,6 +1203,93 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     });
   });
 
+  it("does not say a card lacks fields while the other location went unanswered", () => {
+    const answered = (first: FetchArtifact): ScanArtifacts => ({
+      ...makeArtifacts("store"),
+      mcp: [first, json("mcp/server-card.json", "busy", { status: 503 })],
+    });
+    expect(check(answered(json("mcp.json", '{"name":"Store MCP"}')), 9)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "mcp_unavailable",
+      evidence: { status: 503 },
+    });
+    expect(check(answered(json("mcp.json", JSON.stringify(card))), 9)?.status).toBe("pass");
+  });
+
+  it("judges two incomplete cards by the more nearly complete one", () => {
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      mcp: [json("mcp.json", '{"version":"1"}'), json("mcp/server-card.json", '{"name":"Store"}')],
+    };
+    expect(check(input, 9)).toMatchObject({
+      status: "partial",
+      earnedWeight: 4,
+      evidence: { documents_found: 2, fields_missing: ["endpoint"] },
+    });
+  });
+
+  it("reads a card behind a byte order mark", () => {
+    expect(check(withMcp(json("mcp.json", `\uFEFF${JSON.stringify(card)}`)), 9)?.status).toBe(
+      "pass",
+    );
+  });
+
+  it.each([
+    ["a comment", `// MCP card\n${JSON.stringify(card)}`],
+    ["a guard against script inclusion", `)]}'\n${JSON.stringify(card)}`],
+    ["a line of text", "Not found"],
+  ])("reports a card that opens with %s as unparseable, not absent", (_, body) => {
+    expect(check(withMcp(json("mcp.json", body)), 9)).toMatchObject({
+      status: "fail",
+      summaryCode: "mcp_card_unparseable",
+    });
+  });
+
+  const oauthDeclared = (oauth: FetchArtifact[]): ScanArtifacts => ({
+    ...makeArtifacts("owner"),
+    mcp: [json("mcp.json", '{"name":"x","endpoint":"https://example.com/mcp","auth":"oauth2"}')],
+    oauth,
+  });
+  const authorizationServer = (issuer: string) =>
+    json(
+      "oauth-authorization-server",
+      JSON.stringify({ issuer, token_endpoint: `${issuer}/token` }),
+    );
+
+  it("keeps an address without HTTPS proven in one OAuth document though the other went unanswered", () => {
+    expect(
+      check(
+        oauthDeclared([
+          authorizationServer("http://example.com"),
+          json("oauth-protected-resource", "", { status: 0, errorCode: "fetch_timeout" }),
+        ]),
+        11,
+      ),
+    ).toMatchObject({
+      status: "partial",
+      summaryCode: "oauth_metadata_partial",
+      evidence: {
+        fields_not_https: ["issuer", "token_endpoint"],
+        documents_unread: ["protected resource metadata: fetch_timeout"],
+      },
+    });
+  });
+
+  it("names the OAuth document that is not there", () => {
+    expect(
+      check(
+        oauthDeclared([
+          authorizationServer("https://example.com"),
+          notFound("oauth-protected-resource"),
+        ]),
+        11,
+      ),
+    ).toMatchObject({
+      status: "partial",
+      evidence: { documents_missing: ["protected resource metadata: not found"] },
+    });
+  });
+
   it("still reports a card that is not there, and one that is there but incomplete", () => {
     const absent = makeArtifacts("store");
     absent.mcp = [notFound("mcp.json"), notFound("mcp/server-card.json")];
@@ -1269,7 +1357,7 @@ describe("a sitemap's result names its one cause and the entries involved", () =
     [{ status: 503 }, "HTTP 503"],
     [{ status: 0, errorCode: "fetch_timeout" }, "fetch_timeout"],
   ])(
-    "names a listed sitemap that did not answer, and does not count it against the site: %j",
+    "names a listed sitemap that did not answer, and gives the set no verdict without it: %j",
     (failure, reason) => {
       const checked = check(
         withSitemaps(
@@ -1280,12 +1368,105 @@ describe("a sitemap's result names its one cause and the entries involved", () =
         4,
       );
       expect(checked).toMatchObject({
-        status: "pass",
-        earnedWeight: 6,
-        evidence: { sitemaps_unread: [`entry 2 of the sitemap index: ${reason}`] },
+        status: "unavailable",
+        earnedWeight: 0,
+        summaryCode: "sitemap_partly_unread",
+        evidence: {
+          entries_read: 3,
+          sitemaps_unread: [`entry 2 of the sitemap index: ${reason}`],
+        },
       });
+      expect(checked?.fixCode).toBeUndefined();
     },
   );
+
+  it("does not pass an index on its own dates when none of the sitemaps it lists was read", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml", index),
+          xml("sitemap-1.xml", "", { status: 503 }),
+          xml("sitemap-2.xml", "", { status: 0, errorCode: "fetch_timeout" }),
+        ),
+        4,
+      ),
+    ).toMatchObject({
+      status: "unavailable",
+      summaryCode: "sitemap_partly_unread",
+      evidence: { entries_read: 0, lastmod_count: 0 },
+    });
+  });
+
+  it("keeps a defect proven by the sitemaps read though another went unread", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml", index),
+          xml("sitemap-1.xml", "", { status: 404 }),
+          xml("sitemap-2.xml", "", { status: 503 }),
+        ),
+        4,
+      ),
+    ).toMatchObject({
+      status: "partial",
+      summaryCode: "sitemap_entries_missing",
+      evidence: {
+        sitemaps_missing: ["entry 1 of the sitemap index: HTTP 404"],
+        sitemaps_unread: ["entry 2 of the sitemap index: HTTP 503"],
+      },
+    });
+  });
+
+  it("names a sitemap by where robots.txt or the standard address put it", () => {
+    const input = withSitemaps(
+      xml("a.xml", urlset(now)),
+      xml("b.xml", "", { status: 404 }),
+      xml("sitemap.xml", "", { status: 410 }),
+    );
+    input.robots = artifact(
+      "https://example.com/robots.txt",
+      `${robots}\nSitemap: https://example.com/a.xml\nSitemap: https://example.com/b.xml\n`,
+      { headers: { "content-type": "text/plain" } },
+    );
+    expect(check(input, 4)?.evidence.sitemaps_missing).toEqual([
+      "declared sitemap 2: HTTP 404",
+      "the sitemap address: HTTP 410",
+    ]);
+  });
+
+  it("does not take a sitemap compressed with gzip for no sitemap", () => {
+    // The fetch keeps a body as text, as it keeps a gzip file's bytes.
+    const compressed = (path: string) =>
+      xml(path, gzipSync(Buffer.from(urlset(now))).toString("utf8"), {
+        headers: { "content-type": "application/x-gzip" },
+      });
+    expect(check(withSitemaps(compressed("sitemap.xml.gz")), 4)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "sitemap_compressed",
+    });
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml", index.replace("sitemap-2.xml", "sitemap-2.xml.gz")),
+          xml("sitemap-1.xml", urlset(now)),
+          compressed("sitemap-2.xml.gz"),
+        ),
+        4,
+      ),
+    ).toMatchObject({
+      status: "unavailable",
+      evidence: { sitemaps_unread: ["entry 2 of the sitemap index: compressed with gzip"] },
+    });
+  });
+
+  it("takes a sitemap address the site refuses for the absence it is to an agent", () => {
+    expect(check(withSitemaps(xml("sitemap.xml", "Denied", { status: 403 })), 4)).toMatchObject({
+      status: "fail",
+      summaryCode: "document_refused",
+      evidence: { status: 403 },
+      fixCode: "allow_document",
+    });
+  });
 
   it("reports a listed sitemap that is not there as a defect, and names it", () => {
     expect(
@@ -1394,6 +1575,33 @@ describe("a sitemap's result names its one cause and the entries involved", () =
       summaryCode: "sitemap_missing",
     });
   });
+});
+
+describe("a web page answered where a document belongs, whatever comes before its opening", () => {
+  const pages = [
+    ["a comment", "<!-- built -->\n<!doctype html><html><body>App</body></html>"],
+    [
+      "a server warning",
+      "<br />\n<b>Warning</b>: session_start() failed<br />\n<!DOCTYPE html><html><body>x</body></html>",
+    ],
+    [
+      "an XML prolog",
+      '<?xml version="1.0"?>\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "x">\n<html xmlns="http://www.w3.org/1999/xhtml"><body>x</body></html>',
+    ],
+  ] as const;
+
+  it.each(pages)(
+    "counts a page that opens with %s as no robots.txt, llms.txt or sitemap",
+    (_, body) => {
+      const input = makeArtifacts("store");
+      input.robots = artifact("https://example.com/robots.txt", body);
+      input.llms = artifact("https://example.com/llms.txt", body);
+      input.sitemap = [artifact("https://example.com/sitemap.xml", body)];
+      expect(check(input, 1)?.summaryCode).toBe("robots_missing");
+      expect(check(input, 8)?.summaryCode).toBe("llms_absent");
+      expect(check(input, 4)?.summaryCode).toBe("sitemap_not_sitemap");
+    },
+  );
 });
 
 describe("a robots.txt result names its one cause", () => {
@@ -1605,6 +1813,21 @@ describe("a page check's result names its one cause and the items involved", () 
         policy_agents: ["gptbot", "claudebot"],
       },
     });
+  });
+
+  it("shows a language code written on the page no longer than a code can be", () => {
+    const input = withBase(
+      page(
+        ["en", "de", "x".repeat(200)]
+          .map(
+            (code) =>
+              `<link rel="alternate" hreflang="${code}" href="https://example.com/${code}">`,
+          )
+          .join(""),
+      ),
+    );
+    const [shown] = (check(input, 18)?.evidence.invalid_locales ?? []) as string[];
+    expect(shown?.length).toBeLessThanOrEqual(35);
   });
 
   it("names the language codes that are not valid and those declared twice", () => {
