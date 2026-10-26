@@ -166,6 +166,7 @@ const MICRODATA_PRICES = ["price", "lowPrice", "highPrice"];
 const META_AMOUNTS = ["product:price:amount", "og:price:amount"];
 const META_CURRENCIES = ["product:price:currency", "og:price:currency"];
 const SEEN = /\S/;
+const SHADOW_ROOT_MODES = ["open", "closed"];
 const DIGIT = /\p{Nd}/u;
 
 const tokens = (value: string | undefined): string[] =>
@@ -189,8 +190,11 @@ const readPage = (html: string): PageReading => {
     microdata: {},
     meta: {},
   };
-  // Template content is inert, navigation is not the page's own content, and
-  // a microdata value without a content attribute is the text of its element.
+  // Template content is inert, unless the template is a declarative shadow
+  // root, which the browser attaches and shows. Navigation is not the page's
+  // own content, and a microdata value without a content attribute is the
+  // text of its element.
+  const templates: boolean[] = [];
   let inert = 0;
   let nav = 0;
   let h1 = 0;
@@ -215,7 +219,15 @@ const readPage = (html: string): PageReading => {
     },
     startTag: (tag) => {
       joined = false;
-      if (tag.name === "template") inert += 1;
+      if (tag.name === "template") {
+        const shadow = SHADOW_ROOT_MODES.includes(
+          asciiLower(
+            tag.attributes.get("shadowrootmode") ?? tag.attributes.get("shadowroot") ?? "",
+          ),
+        );
+        templates.push(!shadow);
+        if (!shadow) inert += 1;
+      }
       if (inert > 0) return;
       if (capture?.name === tag.name && !VOID.has(tag.name)) capture.depth += 1;
       const { attributes } = tag;
@@ -254,7 +266,7 @@ const readPage = (html: string): PageReading => {
     },
     endTag: (name) => {
       joined = false;
-      if (name === "template" && inert > 0) inert -= 1;
+      if (name === "template" && templates.pop()) inert -= 1;
       if (inert > 0) return;
       if (name === "nav" && nav > 0) nav -= 1;
       if (name === "h1" && h1 > 0) h1 -= 1;
