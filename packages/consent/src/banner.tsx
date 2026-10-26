@@ -78,16 +78,20 @@ const decisions = (product: boolean, ads: boolean): Partial<ConsentCategories> =
   ads_measurement: ads,
 });
 
+/**
+ * The dialog edits its own copy of the choice in force, taken each time it is
+ * drawn, so a box ticked and then cancelled is gone, and only Save hands a
+ * choice back.
+ */
 function ConsentPreferencesPanel(props: {
-  productAnalytics: boolean;
-  adsMeasurement: boolean;
+  inForce: Readonly<{ productAnalytics: boolean; adsMeasurement: boolean }>;
   saving: boolean;
   error?: string;
-  onProductAnalytics: (allowed: boolean) => void;
-  onAdsMeasurement: (allowed: boolean) => void;
-  onSave: () => void;
+  onSave: (productAnalytics: boolean, adsMeasurement: boolean) => void;
   onClose: () => void;
 }) {
+  const [productAnalytics, setProductAnalytics] = useState(props.inForce.productAnalytics);
+  const [adsMeasurement, setAdsMeasurement] = useState(props.inForce.adsMeasurement);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape and Cancel close the dialog from the keyboard
     <div className="consent-backdrop" role="presentation" onMouseDown={props.onClose}>
@@ -114,8 +118,8 @@ function ConsentPreferencesPanel(props: {
         </label>
         <label className="consent-option">
           <input
-            checked={props.productAnalytics}
-            onChange={(event) => props.onProductAnalytics(event.target.checked)}
+            checked={productAnalytics}
+            onChange={(event) => setProductAnalytics(event.target.checked)}
             type="checkbox"
           />
           <strong>Product analytics</strong>
@@ -125,8 +129,8 @@ function ConsentPreferencesPanel(props: {
         </label>
         <label className="consent-option">
           <input
-            checked={props.adsMeasurement}
-            onChange={(event) => props.onAdsMeasurement(event.target.checked)}
+            checked={adsMeasurement}
+            onChange={(event) => setAdsMeasurement(event.target.checked)}
             type="checkbox"
           />
           <strong>Ads measurement</strong>
@@ -144,7 +148,7 @@ function ConsentPreferencesPanel(props: {
           <button
             className="button button-primary"
             disabled={props.saving}
-            onClick={props.onSave}
+            onClick={() => props.onSave(productAnalytics, adsMeasurement)}
             type="button"
           >
             {props.saving ? "Saving…" : "Save choices"}
@@ -179,6 +183,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
   const [visible, setVisible] = useState(true);
   const [read, setRead] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  // The choice in force: the one kept, or none allowed until one is.
   const [productAnalytics, setProductAnalytics] = useState(false);
   const [adsMeasurement, setAdsMeasurement] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -210,6 +215,12 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
     window.requestAnimationFrame(() => returnFocus(preferencesOpener.current));
   }, []);
 
+  // A failed save's words belong to the attempt, not to the next opening.
+  const openPreferences = useCallback(() => {
+    setError(undefined);
+    setPreferencesOpen(true);
+  }, []);
+
   // A choice made in another of the site's tabs holds in this one as well.
   useEffect(() => {
     const read = () => {
@@ -232,11 +243,11 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
     const open = () => {
       preferencesOpener.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setPreferencesOpen(true);
+      openPreferences();
     };
     window.addEventListener(OPEN_PRIVACY_CHOICES_EVENT, open);
     return () => window.removeEventListener(OPEN_PRIVACY_CHOICES_EVENT, open);
-  }, []);
+  }, [openPreferences]);
 
   useEffect(() => {
     if (!preferencesOpen) return;
@@ -355,7 +366,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
               disabled={saving}
               onClick={() => {
                 preferencesOpener.current = preferencesButton.current;
-                setPreferencesOpen(true);
+                openPreferences();
               }}
               ref={preferencesButton}
               type="button"
@@ -367,13 +378,10 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       ) : null}
       {preferencesOpen ? (
         <ConsentPreferencesPanel
-          adsMeasurement={adsMeasurement}
           error={error}
-          onAdsMeasurement={setAdsMeasurement}
+          inForce={{ productAnalytics, adsMeasurement }}
           onClose={closePreferences}
-          onProductAnalytics={setProductAnalytics}
-          onSave={() => void save(productAnalytics, adsMeasurement)}
-          productAnalytics={productAnalytics}
+          onSave={(product, ads) => void save(product, ads)}
           saving={saving}
         />
       ) : null}
