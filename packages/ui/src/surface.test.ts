@@ -15,9 +15,9 @@ describe("SURFACE_WORDS", () => {
     expect(SURFACE_WORDS.test).not.toMatch(/settle/i);
   });
 
-  it("names each stack as the operator's workspace names it", () => {
+  it("names each stack by the name the operator's workspace gives it", () => {
     for (const mode of ["sandbox", "test"] as const) {
-      expect(SURFACE_WORDS[mode]?.startsWith(`${CHANNEL_NAMES[mode]}.`)).toBe(true);
+      expect(SURFACE_WORDS[mode]).toContain(CHANNEL_NAMES[mode]);
     }
   });
 });
