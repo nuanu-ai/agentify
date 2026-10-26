@@ -6,19 +6,19 @@ their sales, synchronous ones included. They are counted in total, with no
 time window. A refused order counts until the merchant closes it, and the rule
 holds on the test channel as on the live one. Proposed and not yet his word:
 the HTTP 409 and the refusal being not retryable, letting through a payment
-for goods already made and held, and leaving out the orders Agentify never
-handed over.
+for goods already made and held, leaving out the orders Agentify never handed
+over, counting for a WooCommerce seller only the parcels the shop took on, and
+taking a stopped seller's cards out of the catalogue and refusing a look at
+them.
 
 ## Context
 
 An order is `unfulfilled` when the buyer's payment settled and no delivery is
-recorded. It stays open to a late delivery until the merchant closes
-fulfillment, and Agentify confirms no refund for it
-([ADR-0028](0028-late-goods-settle-a-refund-owed.md)). A merchant who goes on
-taking money and leaving orders like that costs one buyer after another real
-money, and nothing at the door stopped them. The product owner's principle for
-any such stop is that nobody may be able to stop a merchant's sales without
-paying, so the rule may count only what costs a buyer real money.
+recorded; it stays open to a late delivery until the merchant closes it, and
+Agentify confirms no refund ([ADR-0028](0028-late-goods-settle-a-refund-owed.md)).
+A merchant who keeps leaving orders like that costs one buyer after another
+real money. The product owner's principle is that nobody may be able to stop a
+merchant's sales without paying, so the rule counts only what costs a buyer.
 
 ## Decision
 
@@ -32,20 +32,24 @@ since that order was served. The code is `seller_not_fulfilling` with HTTP
 409, and it is not retryable: only the merchant can lift it, and nothing says
 when.
 
-An order counts when it is `unfulfilled` and the merchant was given it. That
-means their own code refused it, or was handed it and let its deadline pass,
-or they took it on. A WooCommerce shop's order counts only once the shop took
-it on. Agentify's connector draws every shop order and runs inside Agentify,
-so its refusal before the shop's order exists is Agentify's failure. So is a
-creation that never reported back, which is not known to be the merchant's.
-An order that was never handed over does not count, because the record cannot
-say whether the merchant or Agentify failed it. That covers an order whose
-charge settled only after the purchase was closed on that charge's silence. An
-order the merchant closed does not count, because closing is the merchant
-acting, and any remedy is then theirs to arrange with the buyer. Neither does
-a purchase that ended with nothing charged, which anybody can produce without
-paying. Nothing about the stop is stored. It lifts by itself once a late
-delivery or a closure leaves fewer than ten, with no operator involved.
+Whether the merchant answers for an order is decided once, as it becomes
+`unfulfilled`, and kept on it while it stays so. A merchant selling through
+their own code answers for an order their process was handed, and for one
+they refused themselves before any hand-over. A WooCommerce seller answers
+only for a parcel the shop took on. The connector inside Agentify delivers a
+download itself, so whatever stops a download is Agentify's, and so is a
+refusal before the shop's order exists or a creation that never reported
+back. Any other order whose deadline passed before Agentify handed it over
+does not count, because the record cannot say whether the merchant or
+Agentify failed it, an order whose charge's answer was lost and reported in
+late among them. An order the merchant closed does not count: any remedy is
+then theirs to arrange with the buyer. Neither does a purchase that ended with
+nothing charged. Nothing about the stop is stored; it lifts by itself once a
+late delivery or a closure leaves fewer than ten, with no operator involved.
+A known limit: a parcel the shop completed, whose shipment the connector could
+not read before its time to ship ran out, counts although the failure may be
+Agentify's, since no failed read is recorded. It heals once the shipment is
+read, because a shipment recorded late ends the order.
 
 ## Alternatives rejected
 

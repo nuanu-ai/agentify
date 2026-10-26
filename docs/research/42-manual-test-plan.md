@@ -203,14 +203,16 @@ seller_not_fulfilling, not retryable and with nothing charged. The door asks
 before the price is asked and again when a payment arrives, a look at one of
 the merchant's products is refused the same way, and their cards leave the
 catalogue. An order counts where the merchant's code refused it or was handed
-it and let its deadline pass, or where a WooCommerce shop took it on. An order
-the merchant closed, one Agentify never handed over (a charge confirmed only
-after the deadline among them), a shop order the connector refused before
-creating it or could not confirm creating, and a purchase that ended with
-nothing charged do not count. A payment that releases goods already made goes
+it and let its deadline pass, where the merchant refused it by a call before
+any hand-over, or where a WooCommerce shop took on a parcel. An order the
+merchant closed, one whose deadline passed before Agentify handed it over
+(a charge whose answer was lost and reported in late among them), a shop's
+download, a shop parcel the connector refused before creating it or could not
+confirm creating, and a purchase that ended with nothing charged do not
+count. A payment that releases goods already made goes
 through. The gateway writes a line about it at most once a minute for each
-merchant, and the merchant's dashboard shows a banner leading to the orders
-under Needs you while it applies, paused or not. A late delivery or a closure
+merchant, and the merchant's dashboard shows a banner leading to Needs you,
+where each order that counts says so, while it applies, paused or not. A late delivery or a closure
 that leaves fewer than ten lifts it with nothing to switch back on. Stories
 that leave paid orders unfulfilled on one merchant, through refusals after
 payment or missed deadlines, reach it at the tenth, so a run delivers or closes
