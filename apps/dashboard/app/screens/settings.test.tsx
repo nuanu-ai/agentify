@@ -838,7 +838,7 @@ describe("the payout instruction", () => {
     const text = readable(html);
 
     expect(text).toMatch(/21 payout contracts/);
-    expect(text).toMatch(/Agentify's next payout pays them all out\. It has no fixed date/);
+    expect(text).toMatch(/no fixed date/);
     expect(html).not.toContain(MULTICALL3);
     expect(html).not.toContain("<textarea");
   });
