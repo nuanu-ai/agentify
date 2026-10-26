@@ -5,8 +5,9 @@
  * currency are: a JSON-LD offer, a microdata `itemprop="price"`, or the
  * `product:price:amount` and `og:price:amount` meta tags. Failing that, the
  * page's visible text is read for an amount written next to a currency
- * marker, before it or after it. Scripts and markup are never read for a
- * price, since a `$1` there is code.
+ * marker, before it or after it. Scripts, comments, template content and
+ * other attributes are never read for a price, since a `$1` there is code or
+ * markup rather than an offer the page shows.
  *
  * The markers are every ISO 4217 code the runtime knows and the symbols its
  * locale data writes for each currency, in English and in the language of the

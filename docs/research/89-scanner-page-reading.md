@@ -30,7 +30,11 @@ reads doctypes and bogus comments up to their `>`. The content of `script`,
 script's escaped comment states included, so an older page's
 `<!-- document.write("<script>…</script>") -->` stays inside its script. An
 `svg` or `math` element opens foreign content, where none of that raw reading
-applies, and the start tags the standard lists close it again. Whatever the
+applies. The start tags the standard lists close it again, and so does the
+end tag of an HTML element that was open around it, which is how a browser
+recovers from an icon a theme left without its `</svg>`. The tokenizer
+counts the open elements by name rather than keeping the parser's stack of
+them, so an end tag costs the same however deep a page nests. Whatever the
 page ends inside of yields nothing: a tag, a comment, or the content of a raw
 element whose end tag never came. The page was cut there, and what it was
 about to say is unknown.
@@ -38,11 +42,18 @@ about to say is unknown.
 Of tree construction it keeps only what changes how the text is split. It
 leaves out implied end tags, foster parenting and the adoption agency, and it
 reads SVG's `foreignObject`, `title` and `desc` as SVG, where a browser reads
-HTML inside them. The readers in `parsers.ts` walk the tokens once per call.
-They treat template content as inert, leave navigation out of the visible
-text, and read `noscript` as markup, since the scanner sees a page as a reader
-that runs no scripts does. A heading counts when it holds text anywhere inside
-it, not only right after its tag.
+HTML inside them.
+
+The readers in `parsers.ts` take everything from one pass over the tokens.
+`readPage` gives the visible text, the signals and the JSON-LD of a page
+together, with one parse of its JSON-LD, so a check need not read a page
+three times. Template content is inert, unless the template is a declarative
+shadow root (`shadowrootmode` or the older `shadowroot`, open or closed),
+which the browser attaches and shows, and which a web component rendered on
+the server, as Lit renders one, writes its content into. Navigation is left
+out of the visible text, and `noscript` is read as markup, since the scanner
+sees a page as a reader that runs no scripts does. A heading counts when it
+holds text anywhere inside it, not only right after its tag.
 
 Character references are decoded with `entities` 8.1.0, the decoder the
 workspace already pins and parse5 itself uses. It carries the standard's table
@@ -77,11 +88,14 @@ the same inputs and read them wrongly. The tests hold each such shape to
 
 Structured data is read first, since it says what the amount and the currency
 are. That is an offer's `price`, `lowPrice` or `highPrice` at any depth of the
-JSON-LD, a microdata `itemprop="price"` from its `content` attribute or its
-text, and the `product:price:amount` and `og:price:amount` meta tags. Only
-when none of those states an amount is the visible text read, for an amount
+JSON-LD, a microdata `itemprop="price"` from its `content` or `value`
+attribute or its text, and the `content` of the `product:price:amount` and
+`og:price:amount` meta tags. The JSON-LD is walked once per script, as
+parsed, rather than through the nodes its graphs flatten to, which would
+repeat a nested graph's members once for each graph around them. Only when
+none of those states an amount is the visible text read, for an amount
 written next to a currency marker on either side. Scripts, comments,
-attributes and template content are never read for a price.
+template content and any other attribute are never read for a price.
 
 The markers come from the runtime's data. `Intl.supportedValuesOf("currency")`
 gives 162 ISO 4217 codes on Node 24, and each code is a marker. For each code,
@@ -90,9 +104,11 @@ English and in the language of the currency's own country. The country is
 the code's first two letters, and its language comes from the likely subtags
 of `Intl.Locale`; codes that begin with X belong to no country. That gives
 `Rp`, `zł`, `R$`, `₫`, `₹`, `₽`, `kr`, `Kč`, `Ft`, `лв.`, `S/`, `ر.س.` and
-the rest, from 634 formatters built once when the module loads, in about
-60 ms. Invisible marks some locales write into a symbol are removed, and the
-Cape Verdean escudo, whose symbol in the data is only such a mark, gets none.
+the rest, from 634 formatters built once, for the first page whose text is
+read for a price, in about 60 ms; a process that imports the scanner and
+never looks for a price does not pay for them. Invisible marks some locales
+write into a symbol are removed, and the Cape Verdean escudo, whose symbol in
+the data is only such a mark, gets none.
 A closing dot after a letter is optional in the text, so `kr.` and `kr`,
 `Rs.` and `Rs` all match.
 
@@ -113,16 +129,35 @@ locale data does not:
 An amount may be written in digits of any script and grouped any way: by
 commas, dots or apostrophes, by a space before three digits, or by the Arabic
 separators, with a dash for no cents as in `CHF 1'200.–`. Indian lakh
-grouping such as `₹1,20,000` reads as well. A few rules keep numbers that are
-not prices out. An amount followed by a percent sign is a share. A marker of
-one Latin letter, such as R for the rand or Q for the quetzal, counts only
-right before an amount of at least two digits, where the countries that use
-it write it; after a number such a letter is a unit or a size, and before one
-digit it is a quarter or a model. A marker in a script with letter case does
-not count inside a word, so `CARS 3` is not a price in Argentine pesos;
-Japanese, Chinese and Korean attach the next word to 円, 元 or 원, so for them
-the rule does not apply. A run of digits longer than 24 characters is not an
-amount, which also keeps what the evidence quotes short.
+grouping such as `₹1,20,000` reads as well. A run of digits longer than 24
+characters is not an amount, which also keeps what the evidence quotes short.
+
+A product page's own words carry markers too, so a few rules keep them out.
+An amount followed by a percent sign is a share. Some markers are also a
+size, a model, an abbreviation or an English word: one Latin letter (R for
+the rand, Q for the quetzal, but also Galaxy S24, an E27 bulb, an M10 bolt),
+two Latin capitals (FC, KM, RM, SR), and a short list of codes and symbols
+that are words or units where shops write them. The list is ALL, TOP, TRY,
+CUP, PEN, MAD, GEL, SOS, BOB, MOP, CAD, BAM and ZAR, which are English words
+or names; PHP, a programming language; COP, a climate conference; AWG, a
+wire gauge; AMD and NAD, makers of processors and amplifiers; RON, a fuel's
+octane rating; SAR, a phone's radiation rate; CRC, a checksum; Ft for feet
+in a title-cased name, kn for knots, and Le, a French article. Such a marker
+counts only next to an amount written the way money is, with its thousands
+grouped or a decimal part of two or three digits, so `R 1 299` and
+`50 000 Ft` count while `S24`, `TOP 10`, `PHP 8.2` and `FC 25` do not. One
+letter counts only right before the amount, where the countries that use it
+write it. Every other code and symbol takes any amount, so `AED 99`,
+`kr 199` and `€ 5` count.
+
+A marker of Latin letters next to a bare year, 19xx or 20xx, is a date or
+an edition: `Sale 2024 USD`, `WORLD CUP 2026`, `© 2025 ALL RIGHTS RESERVED`.
+円, 元 and 원 count only after the amount, where Japanese, Chinese and Korean
+shops write them; before a number they end a word, as in `고객지원 1588` or
+`公元2024`. A marker in a script with letter case does not count inside a
+word, so `CARS 3` is not a price in Argentine pesos and `2 CUPS` is not one
+in Cuban pesos; Japanese, Chinese and Korean attach the next word to a
+marker, so for them that rule does not apply.
 
 A price found in the text names no currency, since `$` alone belongs to
 thirty currencies. Structured data names the currency it states when that is
@@ -131,15 +166,18 @@ reports what it found as `price_signal` and where as `price_signal_source`.
 
 ### What it still gets wrong
 
-The price is a presence signal, and it errs in both directions. It takes
-`6 Ft` in a title-cased product name for Hungarian forints, `5 KM` in
-capitals for Bosnian marks, `TOP 10` for Tongan paʻanga and a French date
-such as `Le 10 mai` for Sierra Leonean leones, since those markers are also
-words or units. It misses a price whose currency is spelled out
-(`199 kronor`, `150 rubles`), a code written in lower case, a marker parted
-from the amount by anything other than a single space, and a one-letter
-currency's price under ten, such as `R5`. The evidence shows the words it matched, so a wrong
-signal can be seen in the report.
+The price is a presence signal, and it errs in both directions. It still takes
+a word for a price when the number beside it is written like money, such as
+`TOP 1,000 BESTSELLERS`, and it takes any amount next to a code or symbol that
+is not on the word list. It misses a price whose currency is spelled out (`199
+kronor`, `150 rubles`) or abbreviated in a way the data and the table do not
+hold (`150.000 VNĐ`, `S/. 59.90`, `Fr. 49.90`, `Dhs 50`), a code written in
+lower case, a marker parted from the amount by anything other than a single
+space, and a word-like marker's plain amount (`R150`, `RM 25`, `450 Ft`, `150
+TL`). A price that looks like a year is missed next to a marker of Latin
+letters (`1999 kr`), and so is a one-letter currency's price written after its
+amount. The evidence shows the words it matched, so a wrong signal can be seen
+in the report.
 
 ## Sitemaps
 
