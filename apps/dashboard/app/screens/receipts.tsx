@@ -1,16 +1,18 @@
 import { Fragment } from "react";
+import { Link } from "react-router";
 import type { ReceiptsView, TransferView } from "../../src/views.js";
 import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
   DayHeading,
+  DisclosedRow,
   Fact,
   Facts,
+  Group,
   List,
   ListEmpty,
-  Row,
-  RowMore,
 } from "../components/list.js";
+import { CutNote } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { Word } from "../components/word.js";
 import { TestMark } from "./orders.js";
@@ -48,116 +50,80 @@ const Transfer = ({ transfer }: Readonly<{ transfer: TransferView }>) =>
     </span>
   );
 
+/**
+ * When it was paid, the product, the outcome, the transfer, the amount and the
+ * chevron; the product takes what the others leave and wraps.
+ */
+const RECEIPT_COLUMNS = "7rem minmax(0, 1fr) 8rem 10.5rem 8.5rem 1rem";
+
 export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
+  const { listing } = view;
+  const marked = view.testWarning !== null;
   return (
     <>
-      <div className="lede">
-        <div>
-          {view.testWarning === null ? null : <p className="problem">{view.testWarning}</p>}
-        </div>
-      </div>
-      {/* Two tiles and not three. A third counting what is paid for and not yet
-          delivered would read nought forever — a receipt is written only when
-          goods are released — and a nought is a positive claim that there is
-          none, printed where a merchant looks for money they are owed. What
-          cannot be counted here is said in words under the tiles instead,
-          with the place it can be counted. */}
-      <div className="summary">
-        <div className="tile">
-          <div className="label">Receipts</div>
-          <div className="figure">{view.count}</div>
-          <div className="aside">{view.sums}</div>
-        </div>
-        <div className="tile">
-          <div className="label">Delivered or shipped</div>
-          <div className={view.delivered === 0 ? "figure" : "figure ok"}>{view.delivered}</div>
-          <div className="aside">{view.ofCount}</div>
-        </div>
-      </div>
-      <div className="summary-text">
-        <p>
-          A receipt appears when the product is released to the buyer, or a parcel is handed to a
-          carrier. It shows the amount and three times. Paid is when the payment went through. Price
-          set is when Agentify fixed the price for this sale. Price as of is when that price was
-          true: the moment your price check said it held from, or, for a card sold at its own price,
-          when the card was published with it. When the price is checked at the purchase, these
-          times can be minutes apart.{" "}
-          <a href="/docs/money#what-proves-a-sale-happened">
-            What a receipt records, and what each of its times is
-          </a>
-          .
-        </p>
-        <p>
-          This page does not show all of your money. Payments for products not yet delivered, and
-          orders that were not delivered or that you closed, are on Orders. A purchase that was
-          never paid leaves no receipt, and no receipt appears while it is unknown whether the buyer
-          was charged.
-        </p>
-      </div>
-      {view.rows.length === 0 ? (
-        <ListEmpty>No receipts yet. One appears when a product is released to the buyer.</ListEmpty>
-      ) : (
-        <List
-          label="Receipts"
-          columns="6rem minmax(11.5rem, 1fr) 9.5rem 9rem 11rem"
-          head={["Paid", "Product", { text: "Amount", end: true }, "Outcome", "Transfer"]}
-        >
-          {view.rows.map((row, at) => (
-            <Fragment key={row.id}>
-              {row.day === view.rows[at - 1]?.day ? null : (
-                <DayHeading level={2}>{row.day}</DayHeading>
-              )}
-              <Row needsYou={row.needsYou}>
-                <Cell at="fact">{row.time}</Cell>
-                <Cell at="title">{row.product}</Cell>
-                <Cell at="amount">
-                  <span className={styles.sum}>
-                    {row.amount}
-                    <TestMark test={row.test} />
-                  </span>
-                  {row.shares === null ? null : (
-                    <Cell at="aside">
-                      <div className={`under ${styles.sum}`}>{row.shares.merchant} to you</div>
-                    </Cell>
-                  )}
-                </Cell>
-                <Cell at="state">
-                  <Word word={row.outcome} />
-                </Cell>
-                <Cell at="ident">
-                  <Transfer transfer={row.transfer} />
-                </Cell>
-                <RowMore summary="Receipt, order and price times" of={row.product} wide>
-                  <Facts>
-                    <Fact label="Receipt">
-                      <Ident value={row.id} what="receipt ID" whole />
-                    </Fact>
-                    <Fact label="Order">
-                      <Ident value={row.orderId} what="order ID" whole />
-                    </Fact>
-                    {row.shares === null ? null : (
-                      <Fact label="Shares">
-                        {row.shares.merchant} to you
-                        <br />
-                        {row.shares.commission} to Agentify
+      {view.testWarning === null ? null : <p className="problem">{view.testWarning}</p>}
+      <Group title="All receipts" count={listing.segments[0]?.count ?? listing.rows.length}>
+        {listing.rows.length === 0 ? (
+          <ListEmpty>No receipts yet.</ListEmpty>
+        ) : (
+          <List
+            label="Receipts"
+            columns={RECEIPT_COLUMNS}
+            head={["Paid", "Product", "Outcome", "Transfer", { text: "Amount", end: true }, ""]}
+          >
+            {listing.rows.map((row, at) => (
+              <Fragment key={row.id}>
+                {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
+                <DisclosedRow
+                  of={`${row.product}, ${row.time}`}
+                  id={`details-${row.id}`}
+                  needsYou={row.needsYou}
+                  cells={
+                    <>
+                      <Cell at="fact">{row.time}</Cell>
+                      <Cell at="title">{row.product}</Cell>
+                      <Cell at="state">
+                        <Word word={row.outcome} />
+                      </Cell>
+                      <Cell at="ident">
+                        <Transfer transfer={row.transfer} />
+                      </Cell>
+                      <Cell at="amount">
+                        {row.amount}
+                        <TestMark test={marked && row.test} />
+                      </Cell>
+                    </>
+                  }
+                >
+                  <div className={styles.details}>
+                    <Facts>
+                      <Fact label="Receipt">
+                        <Ident value={row.id} what="receipt ID" whole />
                       </Fact>
-                    )}
-                    <Fact label="Paid">
-                      <Moment at={row.paid} />
-                    </Fact>
-                    <Fact label="Price set">
-                      <Moment at={row.priceSet} />
-                    </Fact>
-                    <Fact label="Price as of">
-                      <Moment at={row.priceAsOf} />
-                    </Fact>
-                  </Facts>
-                </RowMore>
-              </Row>
-            </Fragment>
-          ))}
-        </List>
-      )}
+                      <Fact label="Order">
+                        <Ident value={row.orderId} what="order ID" whole />
+                      </Fact>
+                      {row.share === null ? null : <Fact label="Your share">{row.share}</Fact>}
+                      <Fact label="Price set">
+                        <Moment at={row.priceSet} />
+                      </Fact>
+                      <Fact label="Price as of">
+                        <Moment at={row.priceAsOf} />
+                      </Fact>
+                    </Facts>
+                  </div>
+                </DisclosedRow>
+              </Fragment>
+            ))}
+          </List>
+        )}
+        <CutNote cut={listing.cut} />
+      </Group>
+      <p className="note">
+        Only delivered or shipped sales have a receipt. Paid orders still waiting for delivery are
+        on <Link to="/orders">Orders</Link>.{" "}
+        <a href="/docs/orders#the-receipt">What a receipt records</a>
+      </p>
     </>
   );
 }

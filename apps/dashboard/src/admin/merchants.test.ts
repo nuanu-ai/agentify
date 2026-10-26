@@ -68,6 +68,30 @@ describe("the Merchants list", () => {
     expect(text(answered.html)).toContain("Clear the search");
   });
 
+  it("leads past the first fifty merchants a page at a time, and draws the last for a page past it", async () => {
+    // An operator reaches every merchant a page at a time, not only by a search.
+    served = await adminServed();
+    for (let at = 0; at < 52; at += 1) {
+      await served.harnessed.addMerchant(`Shop ${String(at).padStart(2, "0")}`);
+    }
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const shops = (html: string) => text(html).match(/Shop \d{2}/g) ?? [];
+
+    const first = await operator.get("/admin/merchants");
+    const second = await operator.get("/admin/merchants?page=2");
+    const past = await operator.get("/admin/merchants?page=9");
+
+    // The channel holds the operator's own merchant besides the shops.
+    const of = Number(/Showing 1–50 of (\d+)/.exec(text(first.html))?.[1]);
+    expect(of).toBeGreaterThan(50);
+    expect(first.html).toMatch(/href="[^"]*\/admin\/merchants\?page=2"/);
+    expect(text(second.html)).toContain(`Showing 51–${of} of ${of}`);
+    expect([...shops(first.html), ...shops(second.html)].sort()).toStrictEqual(
+      Array.from({ length: 52 }, (_, at) => `Shop ${String(at).padStart(2, "0")}`),
+    );
+    expect(shops(past.html)).toStrictEqual(shops(second.html));
+  });
+
   it("answers anybody without the operator flag as a page that is not there", async () => {
     served = await adminServed();
     const merchant = await served.signedIn("owner@shop.example");

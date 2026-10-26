@@ -377,7 +377,8 @@
   background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
 }
 
-.list-row.needs-you {
+.list-row.needs-you,
+.list-opens.needs-you {
   background: color-mix(in oklab, var(--fail) 7%, var(--surface));
 }
 
@@ -475,6 +476,71 @@
   margin-top: var(--space-snug);
   color: var(--fg-2);
   font-size: var(--text-small);
+}
+
+/*
+ * A row that opens: the press is the whole line, drawn over it, and the
+ * chevron in the row's last column is only its sign. Whatever in a cell is a
+ * link or a button of its own stands over the press, and so does the opened
+ * part, so a press inside it does not close it.
+ */
+.list-opens {
+  position: relative;
+  /* Reached by its address, the row stands clear of the working header,
+     which stays 68px tall over the page on a laptop. */
+  scroll-margin-top: 80px;
+}
+
+.row-more > summary {
+  position: absolute;
+  inset: 0;
+  list-style: none;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.row-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-more > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.list-opens > .list-row :is(a, button, details, input, .copy-whole) {
+  position: relative;
+  z-index: 1;
+}
+
+.list-opens:has(> .row-more > summary:hover) > .list-row {
+  background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
+}
+
+.row-more > .more-body {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: var(--space-snug) 20px var(--space-card);
+}
+
+.cell-chevron {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--muted);
+}
+
+.cell-chevron svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 150ms ease;
+}
+
+.list-opens:has(> .row-more[open]) .cell-chevron svg {
+  transform: rotate(180deg);
 }
 
 /* A row's facts, a label beside each value; a box narrower than a label and an
@@ -581,6 +647,18 @@
     align-self: flex-start;
   }
 
+  /* Beside the amount, at the end of the row's first line. */
+  .cell-chevron {
+    order: 2;
+    flex: none;
+    align-self: flex-start;
+    margin-top: 4px;
+  }
+
+  .row-more > .more-body {
+    padding: var(--space-snug) 16px var(--space-block);
+  }
+
   .cell-aside {
     display: none;
   }
@@ -648,6 +726,99 @@
 
 .cut a {
   font-weight: 500;
+}
+
+/*
+ * The pager: the range read first, then the steps and the pages at the end of
+ * the line, under the list's right edge. Each way is a 36px target, the page
+ * shown is filled, and a step with nowhere to go stays in its place in grey,
+ * so the row does not shift from page to page.
+ */
+.pager {
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-tight) var(--space-block);
+  margin-top: var(--space-control);
+}
+
+.pager-ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-snug);
+}
+
+.pager-step,
+.pager-page,
+.pager-gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--fg-2);
+}
+
+.pager a.pager-step,
+.pager a.pager-page {
+  font-weight: 500;
+}
+
+.pager a:hover {
+  background: var(--raised);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.pager-page[aria-current="page"] {
+  background: var(--raised);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.pager-step[aria-disabled="true"] {
+  color: var(--na);
+}
+
+.pager-gap {
+  min-width: 20px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.pager-step.prev::before,
+.pager-step.next::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 0 1.5px 1.5px;
+}
+
+.pager-step.prev::before {
+  margin-right: var(--space-tight);
+  transform: rotate(45deg);
+}
+
+.pager-step.next::after {
+  margin-left: var(--space-tight);
+  transform: rotate(-135deg);
+}
+
+/* On a phone the steps stand at the two ends of their own line with the page
+   shown between them; the range over them says how far the list goes. */
+@media (max-width: 560px) {
+  .pager-ways {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pager-page:not([aria-current]),
+  .pager-gap {
+    display: none;
+  }
 }
 
 /* A heading over a group of rows, with its count in a pill. */

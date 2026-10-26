@@ -30,8 +30,10 @@ export interface Word {
 /**
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
- * the buyer and the original payment is recorded. Goods delivered and not paid wait
- * on the buyer, who can pay again.
+ * the buyer and the original payment is recorded. Goods the merchant delivered
+ * against a charge that then failed have not reached the buyer, who receives
+ * them only by paying again, which the word says, so it does not read as goods
+ * given away unpaid.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   in_progress: { text: "In progress", tone: "busy" },
@@ -42,7 +44,7 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   expired: { text: "Closed on time limit", tone: "quiet" },
   unfulfilled: { text: "Unfulfilled", tone: "warn" },
   fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
-  delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
+  delivered_unpaid: { text: "Held for payment", tone: "waiting" },
 });
 
 /**

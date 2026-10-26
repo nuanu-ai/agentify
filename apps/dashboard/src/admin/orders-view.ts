@@ -17,7 +17,7 @@ import type {
   OrdersPage,
   OrdersShown,
 } from "@agentify/gateway/operator";
-import { moment } from "../moments.js";
+import { dayOf, moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
 import { FULFILLMENT_WORDS, money, ORDER_WORDS, type Word } from "../words.js";
 
@@ -25,7 +25,7 @@ import { FULFILLMENT_WORDS, money, ORDER_WORDS, type Word } from "../words.js";
 const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
   ["payment_unknown", "Payment unknown"],
   ["unfulfilled", "Unfulfilled"],
-  ["delivered_unpaid", "Delivered, not paid"],
+  ["delivered_unpaid", "Held for payment"],
   ["in_progress", "In progress"],
   ["ended", "Ended"],
   ["lapsed", "Lapsed"],
@@ -36,7 +36,7 @@ const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
 const SEGMENT_NAMES: Readonly<Record<OrderSegment, string>> = {
   payment_unknown: "those whose payment is unknown",
   unfulfilled: "the unfulfilled",
-  delivered_unpaid: "those delivered and not paid",
+  delivered_unpaid: "those held for payment",
   in_progress: "those in progress",
   ended: "those that ended",
   lapsed: "the lapsed attempts",
@@ -45,7 +45,7 @@ const SEGMENT_NAMES: Readonly<Record<OrderSegment, string>> = {
 const EMPTY_SEGMENT: Readonly<Record<OrderSegment, string>> = {
   payment_unknown: "No order's payment outcome is unknown.",
   unfulfilled: "No order is unfulfilled.",
-  delivered_unpaid: "No order holds goods delivered and not paid.",
+  delivered_unpaid: "No order holds goods for payment.",
   in_progress: "No order is in progress.",
   ended: "No order has ended.",
   lapsed: "No lapsed attempt is kept: the gateway forgets them after thirty days.",
@@ -144,12 +144,16 @@ interface OrderRowView {
   readonly to: string;
   /** When the price was set; null where none was. */
   readonly priced: MomentView | null;
+  /**
+   * The day for the heading over the row: the day its price was set, or the
+   * day it was made where it has no price.
+   */
+  readonly day: string;
   readonly merchant: string;
   readonly product: string;
   readonly amount: string | null;
   readonly state: Word;
   readonly payment: Toned;
-  readonly test: boolean;
 }
 
 const at = (ms: number): MomentView => momentView(new Date(ms).toISOString());
@@ -158,12 +162,12 @@ const orderRowView = (row: OperatorOrderRow): OrderRowView => ({
   id: row.id,
   to: `/admin/orders/${encodeURIComponent(row.id)}`,
   priced: row.pricedAt === null ? null : at(row.pricedAt),
+  day: dayOf(new Date(row.pricedAt ?? row.createdAt).toISOString()),
   merchant: merchantName(row.merchant),
   product: row.product.title ?? row.product.merchantItemId,
   amount: row.price === null ? null : money(row.price),
   state: ORDER_WORDS[row.status],
   payment: paymentToned(row.payment),
-  test: row.test,
 });
 
 interface SegmentView {
@@ -179,7 +183,7 @@ type OrdersResult =
   | Readonly<{
       kind: "rows";
       rows: readonly OrderRowView[];
-      /** "Showing 1–50 of 61, newest first." */
+      /** "Showing 1–50 of 61, newest first". */
       cut: string;
       earlier: string | null;
       newest: string | null;
@@ -249,7 +253,7 @@ export function ordersListView(
     result: {
       kind: "rows",
       rows: page.rows.map(orderRowView),
-      cut: `Showing ${from}–${to} of ${of}, newest first.`,
+      cut: `Showing ${from}–${to} of ${of}, newest first`,
       earlier: page.earlier === null ? null : placeOf(asked, { before: page.earlier }),
       newest: asked.before === null ? null : placeOf(asked, { before: null }),
     },
@@ -284,7 +288,6 @@ export interface OrderView {
   readonly merchant: Readonly<{ name: string; to: string }>;
   /** "Card esim-7d · Later, within 1 hour". */
   readonly card: string;
-  readonly test: boolean;
   readonly agent: Readonly<{
     status: string;
     paymentStatus: string;
@@ -312,11 +315,15 @@ export interface OrderView {
   }>;
   readonly receipt: Readonly<{
     head: string;
-    facts: readonly Readonly<{ label: string; value: string }>[];
+    facts: readonly ReceiptFact[];
     said: string | null;
   }>;
   readonly withheld: string;
 }
+
+/** A fact on a receipt: an identifier shown short, a word, or a moment. */
+type ReceiptFact = Readonly<{ label: string }> &
+  (Readonly<{ ident: string }> | Readonly<{ text: string }> | Readonly<{ at: MomentView }>);
 
 export type OrderPageView =
   | OrderView
@@ -645,6 +652,30 @@ function withheldOf(order: OperatorOrder): string {
   return said.join(" ");
 }
 
+/**
+ * Why an order holds no receipt. One is written when the goods are released
+ * or the parcel's shipment is recorded, and never once the merchant closed
+ * fulfillment, so an order that ended without that will never have one.
+ */
+function noReceiptOf(order: OperatorOrder): Readonly<{ head: string; said: string }> {
+  if (order.agent.merchant_closure !== undefined || order.status === "fulfillment_closed") {
+    return {
+      head: "None",
+      said: "Fulfillment was closed, so the goods are never released and no receipt will be written.",
+    };
+  }
+  if (order.status === "rejected" || order.status === "expired") {
+    return {
+      head: "None",
+      said: "The order ended before any goods were released, so no receipt will be written.",
+    };
+  }
+  return {
+    head: "Not yet",
+    said: "One is written when the goods are released or the parcel ships.",
+  };
+}
+
 export function orderPageView(
   id: string,
   order: OperatorOrder | null | "unread",
@@ -664,7 +695,6 @@ export function orderPageView(
     amount: order.price === null ? null : money(order.price),
     merchant: { name: merchant, to: `/admin/merchants/${encodeURIComponent(order.merchant.id)}` },
     card: cardOf(order),
-    test: order.test,
     agent: {
       status: agent.status,
       paymentStatus: agent.payment_status,
@@ -679,20 +709,16 @@ export function orderPageView(
     payment: paymentPanelOf(order, explorer, readAt),
     receipt:
       order.receipt === null
-        ? {
-            head: "None",
-            facts: [],
-            said: "No receipt is issued yet: one is written once a delivered or shipped order's payment is recorded.",
-          }
+        ? { ...noReceiptOf(order), facts: [] }
         : {
             head: "Issued",
             facts: [
-              { label: "Receipt", value: order.receipt.id },
-              { label: "Outcome", value: order.receipt.outcome },
-              { label: "Paid at", value: moment(order.receipt.paid_at) },
+              { label: "Receipt", ident: order.receipt.id },
+              { label: "Outcome", text: ORDER_WORDS[order.receipt.outcome].text },
+              { label: "Paid at", at: momentView(order.receipt.paid_at) },
               ...(order.receipt.transaction === undefined
                 ? []
-                : [{ label: "Transaction", value: order.receipt.transaction }]),
+                : [{ label: "Transaction", ident: order.receipt.transaction }]),
             ],
             said: null,
           },

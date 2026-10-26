@@ -33,7 +33,7 @@ import { ActionForm } from "../../components/admin/action-form.js";
 import { StepUp } from "../../components/admin/step-up.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
-import { ListTools, NothingHere } from "../../components/listing.js";
+import { CutNote, ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
 import { JournalList } from "./journal.js";
@@ -172,8 +172,8 @@ export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
           )}
         </>
       )}
+      <CutNote cut={listing.cut} />
       <p className="cut">
-        <span>{view.cut}</span>
         <span>{SORTED}</span>
       </p>
       <p className="note">

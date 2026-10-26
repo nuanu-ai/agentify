@@ -12,6 +12,7 @@ import {
   type MerchantRecord,
   type MerchantRow,
   merchantLimitOf,
+  merchantOffsetOf,
   type OperatorMerchants,
   type OrderWorthALook,
   SELLING_DAYS,
@@ -145,7 +146,9 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
     const inSegment =
       query.segment === undefined ? found : found.filter((row) => row.segment === query.segment);
     return {
-      rows: [...inSegment].sort(listed).slice(0, merchantLimitOf(query)),
+      rows: [...inSegment]
+        .sort(listed)
+        .slice(merchantOffsetOf(query), merchantOffsetOf(query) + merchantLimitOf(query)),
       total: inSegment.length,
       segments,
     };

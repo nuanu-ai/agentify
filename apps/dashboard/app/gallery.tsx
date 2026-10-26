@@ -1677,6 +1677,28 @@ const CARDS: GalleryState[] = [
  * The orders the gateway's open list would hold among these: the ones still
  * owed goods or money, as near as a status can say it.
  */
+/**
+ * The products as a shop's catalogue names them, at the length a WooCommerce
+ * shop's titles reach, so the orders and receipts are drawn with the names
+ * real orders carry rather than short ones that hide a column too narrow.
+ */
+const SOLD_AS: Readonly<Record<string, string>> = {
+  "esim-eu-5gb-30d": "eSIM Europe – 39 Countries, 5 GB / 30 Days, 5G, Hotspot Allowed",
+  "vpn-1m": "VPN Premium – 1 Month, Unlimited Devices, WireGuard & OpenVPN",
+  "number-sms": "Virtual Phone Number for SMS Verification – Any Country, 30-Day Rental",
+};
+
+const soldAs = (list: ReturnType<typeof cardsOf>) =>
+  MerchantCardListSchema.parse({
+    ...list,
+    cards: list.cards.map((entry) => ({
+      ...entry,
+      card: { ...entry.card, title: SOLD_AS[entry.card.merchant_item_id] ?? entry.card.title },
+    })),
+  });
+
+const SOLD = soldAs(CATALOGUE);
+
 const openAmong = (listed: ReturnType<typeof ordersOf>) =>
   OrderListSchema.parse({
     orders: listed.orders.filter((order) =>
@@ -1695,7 +1717,7 @@ const ordersAt = (
   listed: ReturnType<typeof ordersOf>,
   {
     mode = "live",
-    cards = CATALOGUE,
+    cards = SOLD,
     open = openAmong(listed),
     owed = {},
     lapsed,
@@ -1787,7 +1809,10 @@ const CLOSED = OrderListSchema.parse({
     merchant_closure: {
       closed_at: "2026-10-19T09:30:00Z",
       ...(at === 0
-        ? { message: "The buyer and merchant arranged the remedy outside Agentify." }
+        ? {
+            message:
+              "We could not issue this eSIM, so we refunded 8.00 USDC to your wallet on 19 October. Sorry for the trouble.",
+          }
         : {}),
     },
   })),
@@ -1820,18 +1845,18 @@ const ORDERS: GalleryState[] = [
         screen: "Orders",
         when: "A merchant checks an order they closed and an original payment still unknown.",
         cause:
-          "Merchant closure is shown separately from the original payment. The explanation is attributed to the merchant; the unknown payment remains unknown.",
+          "Merchant closure is shown separately from the original payment. The note to the buyer is attributed to the merchant; the unknown payment remains unknown.",
       },
       CLOSED,
     ),
     scene: {
       steps: [
         {
-          shows: "Order details",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "All orders",
+          does: (page) => page.querySelector("details.row-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Your explanation",
+      shows: "Your note to the buyer",
     },
   },
   {
@@ -1848,11 +1873,11 @@ const ORDERS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Order details",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "All orders",
+          does: (page) => page.querySelector("details.row-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Close fulfillment",
+      shows: "Note to the buyer",
     },
   },
   closurePressed(
@@ -1861,7 +1886,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
       cause:
-        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the explanation typed is still in the box.",
+        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the note typed is still in the box.",
     },
     OWING,
     {
@@ -1873,15 +1898,15 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-close-refused",
       screen: "Orders",
-      when: "A merchant typed markup into the explanation and pressed Close fulfillment.",
+      when: "A merchant typed markup into the note to the buyer and pressed Close fulfillment.",
       cause:
-        "The explanation is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
+        "The note is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
     },
     OWING,
     {
       note: null,
       refusal:
-        "Your explanation carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
+        "Your note carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
       typed: "Your payment was <b>returned</b>.",
     },
   ),
@@ -2029,9 +2054,9 @@ const ORDERS: GalleryState[] = [
       {
         id: "dashboard-orders-opened-row",
         screen: "Orders",
-        when: "A merchant on a phone taps the first order's line to read what the narrow row leaves out.",
+        when: "A merchant taps the first order's line to read what the row leaves out.",
         cause:
-          "A phone's row shows the product, the amount, the state and the time; the whole order ID, both shares and the moment the price was set are in the row's opened part.",
+          "A row shows the time, the product, the state and the amount; the whole order ID, the payment and the merchant's share are in the row's opened part, on every width.",
       },
       OWING,
       "/orders",
@@ -2040,11 +2065,11 @@ const ORDERS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Order details",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "All orders",
+          does: (page) => page.querySelector("details.row-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Order details",
+      shows: "Order ID",
     },
   },
   orders(
@@ -2120,7 +2145,7 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     "/orders",
-    { cards: cardsOf("paused", ON_SALE) },
+    { cards: soldAs(cardsOf("paused", ON_SALE)) },
   ),
   orders(
     {
@@ -2169,7 +2194,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
       cause:
-        "Every order on the test site is a test purchase, one of them unfulfilled, and each sum carries the test mark.",
+        "Every order on the test site is a test purchase, one of them unfulfilled; the band over the page says so, and no sum repeats it.",
     },
     ordersOf(
       [
@@ -2199,7 +2224,7 @@ const RECEIPTS: GalleryState[] = [
     ((listed) =>
       receiptsView(
         seenBy("live"),
-        CATALOGUE,
+        SOLD,
         listed,
         TRANSACTIONS.live,
         paidIntoSplit(
@@ -2225,7 +2250,7 @@ const RECEIPTS: GalleryState[] = [
     },
     receiptsView(
       seenBy("live"),
-      CATALOGUE,
+      SOLD,
       receiptsOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
@@ -2247,7 +2272,7 @@ const RECEIPTS: GalleryState[] = [
       when: "A merchant opens Receipts before any product was released to a buyer.",
       cause: "The gateway lists no receipts.",
     },
-    receiptsView(seenBy("live"), CATALOGUE, receiptsOf([]), TRANSACTIONS.live),
+    receiptsView(seenBy("live"), SOLD, receiptsOf([]), TRANSACTIONS.live),
     "live",
   ),
   receipts(
@@ -2259,7 +2284,7 @@ const RECEIPTS: GalleryState[] = [
     },
     receiptsView(
       seenBy("test"),
-      CATALOGUE,
+      SOLD,
       receiptsOf(
         [
           ["vpn", "delivered"],
@@ -2270,6 +2295,35 @@ const RECEIPTS: GalleryState[] = [
       TRANSACTIONS.test,
     ),
     "test",
+  ),
+  at(
+    {
+      id: "dashboard-receipts-cut-short",
+      screen: "Receipts",
+      when: "A merchant with months of sales turns to the third page of their receipts.",
+      cause:
+        "The gateway lists 420 receipts and a page draws fifty, the latest payment first, so the pager says which fifty of how many, names the pages around this one and leads both ways.",
+    },
+    {
+      path: "/receipts?page=3",
+      mode: "live",
+      loaded: {
+        "routes/receipts": receiptsView(
+          seenBy("live"),
+          SOLD,
+          receiptsOf(
+            Array.from(
+              { length: 420 },
+              (_, at) =>
+                [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
+            ),
+          ),
+          TRANSACTIONS.live,
+          {},
+          new URLSearchParams("page=3"),
+        ),
+      },
+    },
   ),
 ];
 

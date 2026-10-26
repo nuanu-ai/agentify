@@ -14,6 +14,7 @@ import type { JournalLineView, JournalView } from "../../../src/admin/accounts.j
 import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
 import { shortened } from "../../components/copy.js";
 import { ListEmpty } from "../../components/list.js";
+import { Pager } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import styles from "./accounts.module.css";
 
@@ -279,20 +280,25 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
       ) : (
         <JournalList lines={view.lines} label="Administrative actions" />
       )}
-      <nav className="cut" aria-label="Pages">
-        <span>
-          {`${view.lines.length} of ${view.total} shown, newest first${
-            view.before === null ? "" : ", older than the page before"
-          } · read `}
-          <Moment at={view.readAt} />
-        </span>
-        {view.before === null ? null : (
-          <Link to={addressOf(view.kind, view.query, null)}>Newest</Link>
-        )}
-        {view.next === null ? null : (
-          <Link to={addressOf(view.kind, view.query, view.next)}>Older</Link>
-        )}
-      </nav>
+      <Pager
+        range={
+          <>
+            {`${view.lines.length} of ${view.total} shown, newest first${
+              view.before === null ? "" : ", older than the page before"
+            } · read `}
+            <Moment at={view.readAt} />
+          </>
+        }
+        previous={{
+          to: view.before === null ? null : addressOf(view.kind, view.query, null),
+          words: "Newest",
+          beside: false,
+        }}
+        next={{
+          to: view.next === null ? null : addressOf(view.kind, view.query, view.next),
+          words: "Older",
+        }}
+      />
       <p className="note">
         Reading is not journaled, and nothing that changes an order, a payment or a merchant's own
         settings appears here, because the workspace does none of those things.

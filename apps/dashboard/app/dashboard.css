@@ -241,6 +241,22 @@ form.inline {
   font-size: 0.9375rem;
 }
 
+/* A filter and its button beside the search stand at the search box's height. */
+.list-tools select.field-input {
+  min-height: 44px;
+  border-width: var(--hairline);
+  font-size: 0.9375rem;
+}
+
+.list-tools > .button {
+  min-height: 44px;
+}
+
+/* A merchant's name can be long, and the closed box shows only the start of it. */
+.list-tools > .field {
+  flex: 0 1 16rem;
+}
+
 .segments {
   display: inline-flex;
   padding: 3px;
