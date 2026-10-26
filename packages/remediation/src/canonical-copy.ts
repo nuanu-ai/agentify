@@ -53,6 +53,10 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "A Content-Signal declaration was found, but it is incomplete or inconsistent.",
   content_signal_unavailable:
     "The Content-Signal policy could not be assessed because robots.txt was unavailable.",
+  document_refused:
+    "This address answered with the status in the evidence, so an agent asking for the document is refused too and finds none. Allow it to be read, or answer 404 if there is no such document.",
+  document_too_large:
+    "The document is larger than the read limit in the evidence, more than an agent can be expected to fetch and parse to discover the site.",
   document_truncated:
     "The document this check reads is larger than the scanner's read limit, which the evidence names, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
   feed_discoverable: "A public product-feed declaration was found and could be read.",
@@ -131,22 +135,26 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   robots_partially_parseable:
     "robots.txt is present, but some directives are malformed or ambiguous.",
   robots_refused:
-    "robots.txt was not served: its address answered with the status in the evidence. Crawlers take such an answer as having no rules at all.",
+    "robots.txt was not served: its address answered with the status in the evidence. Without its rules the scanner read no other address of the site, and crawlers may take the site as having no rules at all.",
   robots_too_large:
     "robots.txt is longer than the scanner's read limit, which the evidence names. Crawlers are only required to read its first 500 KiB, so rules after that may be ignored.",
   robots_unavailable: "robots.txt could not be assessed during this scan.",
   robots_wrong_media_type:
     "robots.txt holds valid rules, but it is served with a web page's media type in place of text/plain.",
+  sitemap_compressed:
+    "The sitemap is compressed with gzip, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
   sitemap_doctype:
     "The sitemap declares an XML document type, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
   sitemap_empty: "A sitemap was found, but it lists no addresses.",
   sitemap_entries_missing:
-    "A sitemap was found, but a sitemap that robots.txt or a sitemap index lists is missing, empty or not a sitemap. The evidence names which.",
+    "A sitemap was found, but a sitemap that robots.txt or a sitemap index lists is missing, refused, empty or not a sitemap. The evidence names which.",
   sitemap_missing:
     "No public sitemap could be discovered from robots.txt or the standard location.",
   sitemap_no_lastmod: "A sitemap was found, but none of its entries carries a lastmod date.",
   sitemap_not_sitemap:
     "The sitemap address answers with something that is not a sitemap, such as a web page.",
+  sitemap_partly_unread:
+    "A sitemap was found, but not every sitemap of pages it lists was read, so the set was not judged as a whole. The evidence names any that did not answer and counts what was read.",
   sitemap_stale:
     "A sitemap was found, but more than four in five of its lastmod dates are older than 180 days or are not dates. The evidence gives the counts.",
   sitemap_unavailable: "Sitemap discovery could not be assessed.",
@@ -187,6 +195,8 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   ai_policy_partial: "Some supported AI crawler groups have no clear policy",
   content_signal_absent: "No Content-Signal policy is declared",
   content_signal_partial: "The Content-Signal declaration is incomplete or inconsistent",
+  document_refused: "Agents are refused at a discovery address",
+  document_too_large: "A discovery document is too large to read",
   feed_machine_signals_only: "Product signals exist, but no public feed declaration was found",
   feed_signals_absent: "No feed declaration or equivalent catalog signal was found",
   hreflang_partial: "Your language alternatives point inconsistently",
@@ -335,6 +345,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Give each sitemap entry a lastmod date taken from when the page last changed.",
   allow_agent_user_agents:
     "If AI agents are meant to read this site, look for a rule that treats their tokens differently; a common one is a CDN's or firewall's setting that blocks AI bots. The scanner's requests come from its own addresses, so a rule that lets the real agents through by address can still turn it away. If the difference is intended, nothing needs to change.",
+  allow_document:
+    "If the document exists, let anyone read it at this address. If there is none, answer the address with 404.",
   complete_mcp_card:
     "Complete the MCP server card with valid discovery fields, and label the convention experimental.",
   complete_oauth_metadata:
@@ -395,6 +407,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
   serve_sitemap:
     "Serve a sitemap at this address, or declare the address of the real sitemap in robots.txt.",
   shorten_robots: "Shorten robots.txt to under 500 KiB, the size every crawler must read.",
+  shrink_document:
+    "Bring the document under the read limit in the evidence by keeping only what agents read from it.",
 };
 
 const FALLBACK_ACRONYMS: Readonly<Record<string, string>> = {

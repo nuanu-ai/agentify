@@ -6,13 +6,15 @@ import { parseSafeJson } from "./parsers.js";
  * its content. An answer read whole speaks for the whole document. An answer
  * cut at the scanner's read limit speaks only for the part read, and carries
  * the limit so that the result can name it. A 404 or a 410 says the document
- * is not there. Any other outcome, from no answer at all to a server error, a
- * refusal or a rate limit, says nothing about the document.
+ * is not there. Any other 4xx refuses it, and an agent asking is refused too,
+ * so to an agent it is not there either. No answer at all, a timeout (408), a
+ * rate limit (429) or a server error says nothing about the document.
  */
 export type Reading =
   | Readonly<{ state: "whole"; artifact: FetchArtifact }>
   | Readonly<{ state: "cut"; artifact: FetchArtifact; readLimit: string }>
   | Readonly<{ state: "absent"; status: number }>
+  | Readonly<{ state: "refused"; status: number }>
   | Readonly<{ state: "unread"; errorCode: string; status?: number }>;
 
 const KIB = 1024;
@@ -35,6 +37,8 @@ export const readingOf = (artifact: FetchArtifact | undefined, unreadCode: strin
       ...(status ? { status } : {}),
     };
   if (status === 404 || status === 410) return { state: "absent", status };
+  if (status >= 400 && status < 500 && status !== 408 && status !== 429)
+    return { state: "refused", status };
   if (status < 200 || status >= 300)
     return { state: "unread", errorCode: `http_${status}`, status };
   // A cut answer holds exactly the limit it was cut at.
@@ -43,17 +47,15 @@ export const readingOf = (artifact: FetchArtifact | undefined, unreadCode: strin
     : { state: "whole", artifact };
 };
 
-const opening = (body: string): string =>
-  (body.charCodeAt(0) === 0xfeff ? body.slice(1) : body).trimStart();
-
 /**
  * Whether an answer is a web page: what a site that routes every address to
- * its application sends where a text document belongs. It is the site's way
- * of saying the document is not there.
+ * its application sends where a document belongs, and its way of saying the
+ * document is not there. A comment, a server warning or an XML prolog may
+ * come before the page's own opening, so the first KiB is searched for it.
  */
 export const isWebPage = (body: string): boolean => {
-  const start = opening(body.slice(0, 4096)).slice(0, 15).toLowerCase();
-  return start.startsWith("<!doctype html") || /^<html[\s>]/.test(start);
+  const start = body.slice(0, KIB).toLowerCase();
+  return start.includes("<!doctype html") || /<html[\s>]/.test(start);
 };
 
 /** A JSON discovery document as read: its object, or why there is none to judge. */
@@ -61,14 +63,15 @@ export type DocumentReading =
   | Readonly<{ state: "document"; value: Record<string, unknown> }>
   | Readonly<{ state: "malformed" }>
   | Readonly<{ state: "absent" }>
-  | Readonly<{ state: "cut"; readLimit: string }>
+  | Readonly<{ state: "refused"; status: number }>
+  | Readonly<{ state: "too_large"; readLimit: string }>
   | Readonly<{ state: "unread"; errorCode: string; status?: number }>;
 
 /**
- * An answer that does not open as a JSON object or array, a web page, a line
- * of text or nothing at all, is no document, whether it was read whole or cut.
- * One that does open as JSON is judged only when it was read whole, and is
- * malformed when it is not an object the scanner can parse.
+ * A web page or an empty answer is no document, whether it was read whole or
+ * cut. Anything else cut at the read limit is too large, a size that is known.
+ * Anything else read whole is judged, and is malformed unless it parses to a
+ * JSON object.
  */
 export const jsonDocumentOf = (
   artifact: FetchArtifact | undefined,
@@ -76,11 +79,12 @@ export const jsonDocumentOf = (
 ): DocumentReading => {
   const reading = readingOf(artifact, unreadCode);
   if (reading.state === "absent") return { state: "absent" };
-  if (reading.state === "unread") return reading;
-  const first = opening(reading.artifact.body.slice(0, 4096)).charAt(0);
-  if (first !== "{" && first !== "[") return { state: "absent" };
-  if (reading.state === "cut") return { state: "cut", readLimit: reading.readLimit };
-  const value = parseSafeJson(opening(reading.artifact.body));
+  if (reading.state === "refused" || reading.state === "unread") return reading;
+  const { body } = reading.artifact;
+  if (isWebPage(body) || body.trim() === "") return { state: "absent" };
+  if (reading.state === "cut") return { state: "too_large", readLimit: reading.readLimit };
+  // Trimming takes a byte order mark with the white space.
+  const value = parseSafeJson(body.trim());
   return value && typeof value === "object" && !Array.isArray(value)
     ? { state: "document", value: value as Record<string, unknown> }
     : { state: "malformed" };
