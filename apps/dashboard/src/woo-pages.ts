@@ -295,8 +295,9 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   /**
    * The rule is the gateway's own (`readinessOf` in the core). This dashboard
    * has its gateway's chain and facilitator, so its surface mode is the
-   * gateway's. The operator's approval goes in as unknown: the connector is not
-   * offered on live, the only place it is asked for.
+   * gateway's. The operator's approval goes in as unknown, since nobody sets it
+   * in Settings and `unsetIn` leaves it out: on live the banner over the page
+   * says it is missing, and the gateway's refusal of each card names it.
    */
   const unsetOf = async (gateway: GatewayClient): Promise<Answer<readonly Unset[]>> => {
     const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);

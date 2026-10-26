@@ -2166,11 +2166,10 @@ const INTEGRATIONS: GalleryState[] = [
     {
       id: "dashboard-integrations-live",
       screen: "Integrations",
-      when: "A merchant on the live site opens Integrations.",
-      cause:
-        "The live site does not offer the WooCommerce connector, so the SDK is the only way in.",
+      when: "A merchant on the live site opens Integrations without having connected a shop.",
+      cause: "The live site offers the SDK and the WooCommerce connector, as the test site does.",
     },
-    integrationsView(undefined),
+    integrationsView({ kind: "none" }),
     "live",
   ),
   integrations(

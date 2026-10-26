@@ -1198,16 +1198,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
             },
   );
 
-  if (channel.surface === "live") {
-    rows.push({
-      part: "WooCommerce",
-      badge: { tone: "quiet", word: "Not offered" },
-      fact: [
-        "The connector is offered on the test channel only, until its orders pass end to end there.",
-      ],
-      read: now,
-    });
-  } else if (reads.shops === null) {
+  if (reads.shops === null) {
     rows.push({
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not on this deployment" },

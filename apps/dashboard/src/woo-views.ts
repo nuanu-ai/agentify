@@ -104,8 +104,8 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
  * sentence naming an API route, which means nothing to a merchant with no code.
  * So the answer to a refused press names what was unset at that moment as
  * Settings does. Before a press the banner over the page says what is missing,
- * and the button does not say it again. The connector is not offered on live,
- * so the operator's approval never stands in the way here.
+ * and the button does not say it again. The operator's approval is not among
+ * them: nobody sets it in Settings, and on live the banner says it is missing.
  */
 interface BeforeImporting {
   /** The settings, in the words Settings uses for them. */
