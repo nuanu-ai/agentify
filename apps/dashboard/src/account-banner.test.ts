@@ -77,6 +77,13 @@ describe("the account banner", () => {
     expect(notes[0]?.fix).toBeNull();
   });
 
+  it("says new purchases are refused while ten paid orders are left unserved, and leads to the orders that need the merchant", () => {
+    const [note] = accountOf(READY, { selling: "open", through: "api", unserved: true });
+
+    expect(note?.reason).toBe("unserved");
+    expect(note?.fix?.to).toBe("/orders?show=needs");
+  });
+
   it("names every reason that holds at once, broadest first", () => {
     const viewer: Viewer = { ...READY, sellerName: null, payout: { wallet: null } };
 

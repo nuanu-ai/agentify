@@ -4065,6 +4065,33 @@ describe("the banner about the account", () => {
     expect(reasonsIn((await browser.get("/orders")).html)).toStrictEqual(["busy"]);
   });
 
+  it("says new purchases are refused while ten paid orders are left unserved, and no longer once one is closed", async () => {
+    const { browser, gateway, harnessed } = await started();
+    const itemId = await publish(gateway, esimCard);
+    const merchantId = harnessed.merchant.id;
+    const unserved: string[] = [];
+    for (let one = 0; one < 10; one += 1) {
+      const offered = await harnessed.gateway.beginPurchase(itemId, {});
+      if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+      const orderId = offered.order.order.id;
+      await harnessed.gateway.payPurchase(orderId, `PAYMENT-${one}`, `PAYMENT-${one}`);
+      await harnessed.gateway.refuseOrder(merchantId, orderId, {
+        code: "out_of_stock",
+        message: "the supplier has none",
+      });
+      unserved.push(orderId);
+    }
+    await browser.signIn();
+
+    const cards = (await browser.get("/cards")).html;
+    await harnessed.gateway.closeOrder(merchantId, unserved[0] ?? "", {});
+    const after = (await browser.get("/cards")).html;
+
+    expect(reasonsIn(cards)).toStrictEqual(["unserved"]);
+    expect(cards).toContain('href="/orders?show=needs"');
+    expect(reasonsIn(after)).toStrictEqual([]);
+  });
+
   it("does not say prepaid purchases are refused while the merchant sells only goods made in the answer", async () => {
     const { browser, gateway, harnessed } = await started();
     await publish(gateway, roomCard);

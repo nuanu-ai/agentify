@@ -77,6 +77,7 @@ import type {
   StoredOrder,
   WithTheOrder,
 } from "../ports/store.js";
+import { answerableFor } from "../ports/store.js";
 import { statusUrlOf } from "./addresses.js";
 import {
   type Channel,
@@ -216,6 +217,27 @@ function clocksFor(
       afterMs: Math.max(deadline.at - now, 0),
     }));
 }
+
+/**
+ * The order to save, carrying whether its merchant answers for it: decided as
+ * the order becomes unfulfilled, the one moment where the hand-over, the
+ * acceptance, the refusal and the integration it was sold through are all on
+ * the order, kept while it stays unfulfilled, and dropped once it is not.
+ * Every change after an order's birth comes through `OrderRunner#withOrder`.
+ * It reads nothing, because it runs inside the order's hold.
+ */
+const answering = (before: StoredOrder, after: StoredOrder): StoredOrder => {
+  if (after.order.state !== "unfulfilled") {
+    if (after.answerable === undefined) return after;
+    const { answerable: _, ...rest } = after;
+    return rest;
+  }
+  if (before.order.state === "unfulfilled") return after;
+  return {
+    ...after,
+    answerable: after.through !== undefined && answerableFor(after.order, after.through),
+  };
+};
 
 /**
  * Whether this effect runs after the order is written rather than being
@@ -787,7 +809,12 @@ export class OrderRunner {
     const actor: OrderActor = scope === undefined ? "system" : (scope.actor ?? "unknown");
     return this.#runtime.store.withOrder(
       orderId,
-      change,
+      async (found) => {
+        const decided = await change(found);
+        return decided.save === undefined
+          ? decided
+          : { ...decided, save: answering(found, decided.save) };
+      },
       scope === undefined
         ? undefined
         : {

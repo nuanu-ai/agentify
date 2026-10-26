@@ -3,6 +3,7 @@ import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ClosurePressed, ClosureUnlisted, OrdersView, ToldOrders } from "../../src/views.js";
+import { COUNTS_TOWARD_THE_STOP } from "../../src/words.js";
 import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
@@ -57,6 +58,12 @@ const Told = ({
     </div>
     <p className={styles.why}>
       {order.why}
+      {order.stops ? (
+        <>
+          {" "}
+          <b data-stops={order.id}>{COUNTS_TOWARD_THE_STOP}</b>
+        </>
+      ) : null}
       {order.rest === null ? null : <Rest rest={order.rest} />}
     </p>
     <div className={styles.meta}>

@@ -456,6 +456,7 @@ const FAILURES = [
 const AT_THE_DOOR = [
   "{{Waiting-for-payment-at-most}} of your purchases already wait for payment",
   "No process of yours has polled for {{silent-after}}",
+  "Ten paid orders you took on are left without delivery or closure",
 ] as const;
 
 function priceCheckedParcel(): Order {

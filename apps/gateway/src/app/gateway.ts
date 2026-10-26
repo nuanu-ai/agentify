@@ -294,6 +294,11 @@ export type PurchaseAttempt =
    * not polled for longer than `SILENT_AFTER_MS`; nothing was charged.
    */
   | { readonly step: "seller_not_taking_orders" }
+  /**
+   * As many of the seller's paid orders as `UNSERVED_AT_MOST` are left with
+   * nothing delivered, so no purchase of theirs is taken; nothing was charged.
+   */
+  | { readonly step: "seller_not_fulfilling" }
   /** This payment has already been presented for a different order. */
   | { readonly step: "payment_already_spent" }
   /** The machine would not take this payment on this order, and said why. */
@@ -318,6 +323,18 @@ interface HowTheySell {
 }
 
 /**
+ * How many of a seller's paid orders may be taken on and left with nothing
+ * delivered (`leftUnserved`) before every new purchase of theirs is refused, a
+ * synchronous one too, and their cards leave the catalogue. Only an order a
+ * buyer paid for counts, so nobody can stop a seller's sales without paying.
+ * Nothing is stored and nothing has to be resumed: a late delivery or a
+ * closure that leaves fewer lets the next purchase through. A constant rather
+ * than a setting, since a knob here could switch the guard off or stop a
+ * seller's every sale.
+ */
+export const UNSERVED_AT_MOST = 10;
+
+/**
  * How stale a seller's recorded poll may get in one process before a poll
  * writes it again, so a busy stream is not one more write per envelope. The
  * silence guard waits this long beyond its `SILENT_AFTER_MS`, so no seller
@@ -327,10 +344,11 @@ interface HowTheySell {
 export const CONTACT_WRITTEN_EVERY_MS = 30_000;
 
 /**
- * How seldom a seller turned away for their waiting purchases is said in the
- * log, so a flood of refusals is one line a minute rather than one a request.
+ * How seldom a seller turned away for their waiting purchases, or for their
+ * unserved orders, is said in the log, so a flood of refusals is one line a
+ * minute rather than one a request.
  */
-const SELLER_BUSY_LOGGED_EVERY_MS = 60_000;
+const SELLER_REFUSALS_LOGGED_EVERY_MS = 60_000;
 
 /** Whether a seller whose process last polled at `polled` is silent at `at`. */
 export const silentAt = (polled: number | null, at: number): boolean =>
@@ -528,6 +546,8 @@ export class Gateway {
   readonly #contactWritten = new Map<string, number>();
   /** When this process last logged each merchant's refusals for waiting purchases. */
   readonly #busyLogged = new Map<string, number>();
+  /** When this process last logged each merchant's refusals for unserved orders. */
+  readonly #unservedLogged = new Map<string, number>();
   readonly #edge: PaymentEdge;
 
   constructor(runtime: Runtime) {
@@ -783,22 +803,29 @@ export class Gateway {
   /**
    * The catalog an agent reads: the cards that are actually for sale. A paused
    * card is left out rather than listed and then refused, because an agent
-   * budgets against what it lists and would only find out at the till.
+   * budgets against what it lists and would only find out at the till, and so
+   * is every card of a seller stopped for their unserved orders, asked in one
+   * read for the sellers of the cards otherwise listed.
    */
   async catalog(): Promise<{ readonly items: ProjectedCard[] }> {
     const entries = await this.runtime.store.catalogEntries();
     const at = this.runtime.clock();
+    const forSale = entries.filter(
+      (entry) =>
+        sellingFor(
+          entry.merchant,
+          entry.card,
+          sellableBy({ ...entry, id: entry.card.merchantId }, this.runtime.config, at),
+          entry.integration,
+        ) === "open",
+    );
+    const stopped = await this.runtime.store.stoppedSellers(
+      [...new Set(forSale.map((entry) => entry.card.merchantId))],
+      UNSERVED_AT_MOST,
+    );
     return {
-      items: entries
-        .filter(
-          (entry) =>
-            sellingFor(
-              entry.merchant,
-              entry.card,
-              sellableBy({ ...entry, id: entry.card.merchantId }, this.runtime.config, at),
-              entry.integration,
-            ) === "open",
-        )
+      items: forSale
+        .filter((entry) => !stopped.has(entry.card.merchantId))
         .map((entry) =>
           publicCardOf(cardAsHeld(entry.card.card, this.runtime.config), {
             id: entry.card.id,
@@ -958,10 +985,11 @@ export class Gateway {
    * for live sales, and, while purchases of theirs that charge before their
    * goods are refused for that silence, when their process last polled (null
    * where it never has), and whether as many of their purchases wait for
-   * payment as the door allows, so that the next is refused; and, on the live
-   * channel while an operator's withdrawal of their admission stands, when it
-   * was withdrawn and the note the operator wrote for them. Each answer is the
-   * one the call that reads it alone gives.
+   * payment as the door allows, so that the next is refused, and whether as
+   * many of their paid orders are left unserved as the door allows; and, on
+   * the live channel while an operator's withdrawal of their admission stands,
+   * when it was withdrawn and the note the operator wrote for them. Each answer
+   * is the one the call that reads it alone gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
@@ -971,6 +999,7 @@ export class Gateway {
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly busy: boolean;
+    readonly unserved: boolean;
     readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
   }> {
     const merchant = await this.runtime.store.merchantById(merchantId);
@@ -992,6 +1021,8 @@ export class Gateway {
           at,
           WAITING_FOR_PAYMENT_AT_MOST,
         )) >= WAITING_FOR_PAYMENT_AT_MOST,
+      // Read while paused too, so a seller learns of it before resuming into it.
+      unserved: await this.#unserved(merchant.id),
       withdrawn: await this.#standingWithdrawal(merchant),
     };
   }
@@ -1670,6 +1701,12 @@ export class Gateway {
       return { step: "not_selling", message: created.rejection.message };
     }
 
+    // Before the order is written or the price asked, and in every mode, a
+    // synchronous purchase too.
+    if (await this.#stoppedForUnserved(stored.merchantId, at)) {
+      return { step: "seller_not_fulfilling" };
+    }
+
     // Before the order is written or the price asked: a purchase charged
     // before its goods would take the buyer's money with nothing running to
     // make them. A synchronous one ends uncharged on its own when nobody
@@ -1713,6 +1750,7 @@ export class Gateway {
       paymentWords: [],
       paymentWordsDropped: 0,
       openDeliveryId: null,
+      through: stored.integration,
     };
     // Written only while the merchant still sells through the card's
     // integration, since a switch landing between the word above and this
@@ -1836,6 +1874,18 @@ export class Gateway {
     // Where that split is one the merchant has left, the payment is fit only
     // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+
+    // Asked again before the payment is verified, so a price named before the
+    // seller was stopped is not charged after. Only a purchase being paid for
+    // the first time is refused: a payment for goods already made and held
+    // buys an order that was served.
+    if (
+      payingMerchant !== null &&
+      before.order.state === "quoted" &&
+      (await this.#stoppedForUnserved(payingMerchant.id, arrivedAt))
+    ) {
+      return { step: "seller_not_fulfilling" };
+    }
 
     // Asked again here, before the payment is verified, because a price named
     // just before the seller went quiet holds on into the silence.
@@ -2242,7 +2292,7 @@ export class Gateway {
    */
   async #sayBusy(merchantId: string, at: number): Promise<void> {
     const said = this.#busyLogged.get(merchantId);
-    if (said !== undefined && at - said < SELLER_BUSY_LOGGED_EVERY_MS) {
+    if (said !== undefined && at - said < SELLER_REFUSALS_LOGGED_EVERY_MS) {
       return;
     }
     this.#busyLogged.set(merchantId, at);
@@ -2254,6 +2304,41 @@ export class Gateway {
     console.warn(
       `[gateway] ${merchantId} has ${waiting} purchases waiting for payment, so new purchases of theirs are refused as seller_busy`,
     );
+  }
+
+  /**
+   * Whether every purchase of this merchant is refused for the paid orders
+   * they left unserved. Read alone, for a look at one of their products, which
+   * must not carry a challenge to a purchase that is always refused.
+   */
+  async stoppedForUnserved(merchantId: string): Promise<boolean> {
+    return await this.#unserved(merchantId);
+  }
+
+  /** Whether as many of this merchant's paid orders are left unserved as the door allows. */
+  async #unserved(merchantId: string): Promise<boolean> {
+    return (
+      (await this.runtime.store.unservedOrders(merchantId, UNSERVED_AT_MOST)) >= UNSERVED_AT_MOST
+    );
+  }
+
+  /**
+   * Whether this merchant's purchases are refused for their unserved orders,
+   * logged at most once a minute per merchant while they are: nothing else
+   * tells the operator. Nothing about the buyer goes in it.
+   */
+  async #stoppedForUnserved(merchantId: string, at: number): Promise<boolean> {
+    if (!(await this.#unserved(merchantId))) {
+      return false;
+    }
+    const said = this.#unservedLogged.get(merchantId);
+    if (said === undefined || at - said >= SELLER_REFUSALS_LOGGED_EVERY_MS) {
+      this.#unservedLogged.set(merchantId, at);
+      console.warn(
+        `[gateway] ${merchantId} has ${UNSERVED_AT_MOST} or more paid orders left unfulfilled, so new purchases of theirs are refused as seller_not_fulfilling`,
+      );
+    }
+    return true;
   }
 
   /**
