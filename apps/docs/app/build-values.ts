@@ -19,6 +19,7 @@ import {
   HANDLER_ANSWER_MS,
   inWords,
   LAPSED_KEPT_MS,
+  ordinalInWords,
   percentOf,
   QUOTE_RESPONSE_MS,
   QUOTE_TTL_MS,
@@ -78,8 +79,9 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
  * A value as its sentence asks for it. With no form, a stretch of time is in
  * words with its unit and a rate is a percentage. A stretch of time also has
  * `number`, the count of its unit in words alone, and one counted in seconds
- * has `short`, digits as a drawing writes them, "30 s"; a rate has `words`, as
- * a screen reader reads it.
+ * has `short`, digits as a drawing writes them, "30 s"; a count has
+ * `ordinal`, its place in a row, "tenth"; a rate has `words`, as a screen
+ * reader reads it.
  */
 function said(value: BuildValue, form: string | undefined): string {
   if ("ms" in value) {
@@ -96,8 +98,13 @@ function said(value: BuildValue, form: string | undefined): string {
     if (form === "words") return percent.replace(/%$/, " percent");
     throw new Error("a rate is written with no form, or as :words");
   }
-  if (form !== undefined) throw new Error("a count or a text is written with no form");
-  return "count" in value ? inWords(value.count) : value.text;
+  if ("count" in value) {
+    if (form === undefined) return inWords(value.count);
+    if (form === "ordinal") return ordinalInWords(value.count);
+    throw new Error("a count is written with no form, or as :ordinal");
+  }
+  if (form !== undefined) throw new Error("a text is written with no form");
+  return value.text;
 }
 
 /** A name, with a capital where its sentence opens on it, and a form after a colon. */

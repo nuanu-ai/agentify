@@ -103,6 +103,26 @@ export function inWords(count: number): string {
   return ones === "" ? tens : `${tens}-${ones}`;
 }
 
+/** The ordinals that are not their number's word with "th" after it. */
+const ORDINALS: Readonly<Record<string, string>> = {
+  one: "first",
+  two: "second",
+  three: "third",
+  five: "fifth",
+  eight: "eighth",
+  nine: "ninth",
+  twelve: "twelfth",
+};
+
+/** A whole number from one to ninety-nine as a place in a row, such as "tenth" or "twenty-first". */
+export function ordinalInWords(count: number): string {
+  const words = inWords(count);
+  const at = words.lastIndexOf("-") + 1;
+  const last = words.slice(at);
+  const ordinal = ORDINALS[last] ?? (last.endsWith("y") ? `${last.slice(0, -1)}ieth` : `${last}th`);
+  return `${words.slice(0, at)}${ordinal}`;
+}
+
 /** The units a published stretch of time is counted in. */
 export type Unit = "second" | "minute" | "day";
 
