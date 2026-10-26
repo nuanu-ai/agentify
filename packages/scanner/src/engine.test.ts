@@ -1043,12 +1043,21 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     });
   });
 
-  it("does not say no sign-in is declared when the card that would declare it was cut", () => {
-    const input = withMcp(
-      json("mcp.json", "", cutAt(`{"auth":"oauth2","x":"${"x".repeat(MIB)}"}`, MIB)),
-    );
-    expect(check(input, 11)).toMatchObject({ status: "unavailable" });
-  });
+  it.each([
+    ["cut", (body: string) => json("mcp.json", "", cutAt(body, MIB))],
+    ["refused", () => json("mcp.json", "Forbidden", { status: 403 })],
+  ] as const)(
+    "does not say no sign-in is declared when the card that would declare it was %s, and says why",
+    (_, card) => {
+      const checked = check(withMcp(card(`{"auth":"oauth2","x":"${"x".repeat(MIB)}"}`)), 11);
+      expect(checked).toMatchObject({
+        status: "unavailable",
+        summaryCode: "oauth_declaration_unknown",
+      });
+      // The card's answer is not the OAuth metadata's, so it is not shown as such.
+      expect(checked?.evidence).toEqual({});
+    },
+  );
 
   it.each([
     ["an MCP server card", 9, "mcp_card_unparseable", "fail"],
