@@ -248,7 +248,7 @@ function mount(
       } catch (thrown) {
         console.error(`[gateway] ${name} failed: ${failureNamed(thrown)}`);
         if (!response.headersSent) {
-          const failed = failedPartway(method, request);
+          const failed = failedPartway(name, method, request);
           response
             .status(FAILED)
             .json(refusal("gateway_failed", failed.message, { retryable: failed.retryable }));
@@ -275,30 +275,39 @@ function mount(
 
 /**
  * What a call that threw may say about itself, by what it could have done
- * before it threw. Only a read is known to have decided nothing. A purchase
- * carrying a payment may have been charged, and any other call may have
- * changed what it acts on, so their answers say the outcome is not known and
- * how to find it out.
+ * before it threw. Only a read is known to have decided nothing. A purchase is
+ * paid only by a payment that can be read and names an order, and such a
+ * purchase may have been charged; any other purchase cannot have been. Any
+ * other call may have changed what it acts on, so its answer says the outcome
+ * is not known.
  */
 function failedPartway(
+  name: RouteName,
   method: HttpMethod,
   request: Request,
 ): { readonly message: string; readonly retryable: boolean } {
   if (method === "GET") {
     return { message: GATEWAY_FAILED.message, retryable: true };
   }
-  if (presentedPayment(request.headers) !== null) {
-    // Not retryable: the payment it carried may already be spent, so the way
-    // back to the order is a fresh signature, not this call again.
+  if (name === "purchase_item") {
+    const presented = presentedPayment(request.headers);
+    if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
+      // Not retryable: the payment it carried may already be spent, so the way
+      // back to the order is a fresh signature, not this call again.
+      return {
+        message:
+          "this purchase failed after its payment arrived, and whether it was charged is not known. Sign the same payment request again from the same wallet: that is answered with the order or with where its payment stands, and it never charges twice. Asking for a new price starts a new purchase, which is charged again once paid",
+        retryable: false,
+      };
+    }
     return {
       message:
-        "this purchase failed after its payment arrived, and whether it was charged is not known. If an earlier answer gave you the order's status_url, read the order there. Otherwise sign the same payment request again from the same wallet: that is answered with the order or with where its payment stands, and it never charges twice. Asking for a new price starts a new purchase, which is charged again once paid",
-      retryable: false,
+        "this purchase did not complete and nothing was charged; ask for the price again to buy",
+      retryable: true,
     };
   }
-  // Retryable: a merchant's call made again does its work once or answers with
-  // what already happened, and a purchase with no payment made again only opens
-  // another unpaid order, which lapses.
+  // Retryable, as the SDK marks a call whose outcome it does not know: worth
+  // making again once its subject has been read.
   return {
     message:
       "this call failed partway, and whether it changed anything is not known; read what it acts on before making it again",
