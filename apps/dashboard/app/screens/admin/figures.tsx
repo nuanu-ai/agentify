@@ -171,19 +171,24 @@ function StartRefused({ refused }: Readonly<{ refused: StartRefusedView }>) {
       <span className="badge badge-fail">Restart would fail</span>
       <span className="t">The gateway would refuse to start</span>
       <span className="a" />
-      <p className="why">
-        It runs now. Its next start or release stops on the recorded payout splits, so no release
-        goes out until they agree with this code.
-      </p>
-      <details className="op-why">
-        <summary>The gateway's reason</summary>
-        <p>{refused.why}</p>
-      </details>
+      <div className="why">
+        <p>
+          It runs now. Its next start or release stops on the recorded payout splits, so no release
+          goes out until they agree with this code.
+        </p>
+        <details className="op-why">
+          <summary>The gateway's reason</summary>
+          <p>{refused.why}</p>
+        </details>
+      </div>
       <div className="meta">
         {refused.merchant === null ? null : (
-          <Link to={`/admin/merchants/${refused.merchant.id}`}>
-            {refused.merchant.name ?? refused.merchant.id}
-          </Link>
+          <span>
+            The split of{" "}
+            <Link to={`/admin/merchants/${refused.merchant.id}`}>
+              {refused.merchant.name ?? refused.merchant.id}
+            </Link>
+          </span>
         )}
         <Link to="/admin/money">See the splits in Money</Link>
       </div>

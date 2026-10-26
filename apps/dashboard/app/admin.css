@@ -185,18 +185,17 @@
 }
 
 /* The gateway's own words behind a fact, opened only when wanted. */
-.op-told > .op-why {
-  grid-column: 1 / -1;
+.op-told .op-why {
+  margin-top: var(--space-tight);
   color: var(--muted);
-  font-size: var(--text-small);
 }
 
-.op-told > .op-why > summary {
+.op-told .op-why > summary {
+  width: fit-content;
   cursor: pointer;
 }
 
-.op-told > .op-why > p {
-  max-width: 72ch;
+.op-told .op-why > p {
   margin-top: var(--space-snug);
   overflow-wrap: anywhere;
 }
@@ -351,6 +350,14 @@
   }
 }
 
+/* Two columns of panels stacked on a narrow screen stand as far apart as the
+   panels inside one column. */
+@media (max-width: 1100px) {
+  .op-two > div + div > .op-panel:first-child {
+    margin-top: calc(var(--space-section) - var(--space-card));
+  }
+}
+
 /* --- an action and the answer to its press ------------------------------ */
 
 /* The one line that answers a press. */
@@ -397,7 +404,7 @@
   flex: none;
   width: 18px;
   height: 18px;
-  margin-top: calc((var(--leading-text) * 1em - 18px) / 2);
+  margin: calc((var(--leading-text) * 1em - 18px) / 2) 0 0;
   accent-color: var(--accent);
 }
 
@@ -447,9 +454,13 @@
   color: var(--fail);
 }
 
+/* The dashed mark in the line, the sentence running on after it. */
 .op-answer-unknown {
-  flex-wrap: wrap;
-  align-items: baseline;
+  display: block;
+}
+
+.op-answer-unknown > .badge {
+  margin-right: var(--space-tight);
 }
 
 /* An action opened in place under the thing it acts on. */
@@ -701,7 +712,7 @@
    moment or an address never runs into the fact beside it. */
 .op-kv {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
   gap: var(--space-block);
   margin: 0;
 }
@@ -1020,18 +1031,10 @@
   margin-top: var(--gap-caption);
 }
 
-/* The lookup's own page: its box as tall as its button, what it reads clear
-   under them, and the bar's box, which would be a second one, put away. */
+/* The lookup's own page: its box, what it reads clear under it, and the
+   bar's box, which would be a second one, put away. */
 .op-find .search {
   max-width: 30rem;
-}
-
-.op-find .search input {
-  min-height: 48px;
-}
-
-.op-find .search > svg {
-  top: 15px;
 }
 
 .op-find + .op-find-note {
@@ -1044,4 +1047,11 @@
 
 .list-empty > p + p {
   margin-top: var(--space-tight);
+}
+
+/* On a phone a decision takes its check's whole width, the mark's column included. */
+@media (max-width: 560px) {
+  .op-checks .what > .op-decide {
+    grid-column: 1 / -1;
+  }
 }

@@ -341,7 +341,6 @@ function Admission({ view, path }: Readonly<{ view: MerchantView; path: string }
             <ActionForm
               action={`${path}/withdraw`}
               page={path}
-              title="Withdraw admission"
               button="Withdraw admission"
               consequence={`All of ${called}'s products go off sale now. Open orders carry on; nothing is refunded.`}
               reason
