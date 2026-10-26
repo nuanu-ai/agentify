@@ -12,8 +12,12 @@ import express from "express";
 import type { ServerBuild } from "react-router";
 import { builtPages } from "./pages.js";
 
-/** A little above what the heaviest page loads, so a page that grows is caught here. */
-const SCRIPT_BUDGET = 100 * 1024;
+/**
+ * A little above what the heaviest page loads, so a page that grows is caught
+ * here. Every page carries the words for a page that could not load or a press
+ * whose answer was lost, which must be there before the network fails.
+ */
+const SCRIPT_BUDGET = 102 * 1024;
 
 const pages = await builtPages();
 const build = pages.build as ServerBuild;
