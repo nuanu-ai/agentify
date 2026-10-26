@@ -91,7 +91,7 @@ const reads = (method: string): boolean => method === "GET" || method === "HEAD"
  * changed nothing and is offered again at its address, search and all; a press
  * may or may not have been done.
  */
-export const failedAt = (method: string, url: URL, chrome?: Chrome): Trouble => {
+const failedAt = (method: string, url: URL, chrome?: Chrome): Trouble => {
   const at = `${url.pathname}${url.search}`;
   const drawn = chrome === undefined ? {} : { chrome };
   return reads(method)

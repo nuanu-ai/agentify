@@ -337,7 +337,7 @@ export interface WooShops {
  * still deliver; or a download that can no longer be delivered, such as one
  * the shop was never asked to create.
  */
-export type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "unrecoverable";
+type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "unrecoverable";
 
 /** A sale whose sold facts were never written cannot be recovered: nothing says what to deliver. */
 const heldSaleOf = (
