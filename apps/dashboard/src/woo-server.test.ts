@@ -2735,7 +2735,28 @@ describe("one integration at a time", () => {
     for (const row of rows) {
       expect(readable(row)).toContain("Off sale");
       expect(readable(row)).toMatch(/WooCommerce/);
+      expect(row).toContain('href="/woocommerce"');
       expect(row).not.toMatch(/<form/);
+    }
+  });
+
+  it("does not claim the shop sells, which a Connect never approved leaves untrue", async () => {
+    // Pressing Connect switches selling to the shop before the shop has given
+    // any keys, so the code's cards are off sale and nothing sells at all.
+    const running = await started();
+    await running.signIn();
+    await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(pressed.status).toBe(303);
+
+    const rows = [
+      ...(await running.get("/cards")).html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g),
+    ].map(([, row = ""]) => readable(row));
+
+    expect(rows).not.toHaveLength(0);
+    for (const row of rows) {
+      expect(row).toContain("Off sale");
+      expect(row).not.toMatch(/\bsells\b/);
     }
   });
 });

@@ -65,6 +65,17 @@ describe("the account banner", () => {
     expect(note?.reason).toBe("busy");
     expect(note?.says).toContain("20");
     expect(note?.fix).toBeNull();
+    // How long the places stay taken depends on how long a price holds, which
+    // the dashboard does not read, and on whoever holds them; no time is promised.
+    expect(note?.says).not.toMatch(/minute|second|hour/);
+  });
+
+  it("heads purchases refused for both silence and the unpaid ones by the refusal that covers every product", () => {
+    const both = accountOf(READY, { selling: "open", busy: true, outOfTouch: { since: null } });
+    const busy = accountOf(READY, { selling: "open", busy: true });
+
+    expect(both.map((note) => note.reason)).toStrictEqual(["out_of_touch", "busy"]);
+    expect(headingOf(both)).toBe(headingOf(busy));
   });
 
   it("names every reason that holds at once, those the merchant puts right first", () => {
