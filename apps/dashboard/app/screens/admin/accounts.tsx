@@ -108,12 +108,12 @@ export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
         />
       </div>
       {none ? (
-        <ListEmpty>No account on this channel made a merchant or holds the flag.</ListEmpty>
+        <ListEmpty>No account here made a merchant or holds the flag.</ListEmpty>
       ) : listing.rows.length === 0 ? (
         <NothingHere listing={listing} />
       ) : (
         <div className="list-box op-cols-accounts">
-          <ul className="list" aria-label="Accounts on this channel">
+          <ul className="list" aria-label="Accounts">
             <li className="list-head" aria-hidden="true">
               <span>Account</span>
               <span>Merchant</span>

@@ -111,7 +111,7 @@ describe("the orders over HTTP", () => {
 
     const none = await browser.get("/admin/find?q=ord_nothing_here");
     expect(none.status).toBe(200);
-    expect(readable(none.html)).toContain("Nothing on this channel matches “ord_nothing_here”.");
+    expect(readable(none.html)).toContain("Nothing here matches “ord_nothing_here”.");
     expect(none.html).toMatch(/name="q"[^>]*value="ord_nothing_here"/);
   });
 });

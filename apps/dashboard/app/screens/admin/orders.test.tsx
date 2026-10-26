@@ -61,7 +61,7 @@ describe("the orders screens", () => {
     const view = ordersListView(ordersAskedIn(new URLSearchParams()), aPage(), READ_AT);
 
     expect(readable(drawn(() => <OrdersScreen view={view} />))).toContain(
-      "No order has been made on this channel yet.",
+      "No order has been made here yet.",
     );
   });
 
@@ -100,7 +100,7 @@ describe("the orders screens", () => {
     if (view.kind === "open") throw new Error("nothing was found, so nothing opens");
     const html = drawn(() => <FindScreen view={view} />);
 
-    expect(readable(html)).toContain("Nothing on this channel matches “ord_nothing”.");
+    expect(readable(html)).toContain("Nothing here matches “ord_nothing”.");
     expect(html).toMatch(/value="ord_nothing"/);
   });
 });

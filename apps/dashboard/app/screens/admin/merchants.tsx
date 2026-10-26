@@ -128,7 +128,6 @@ function Row({ row }: Readonly<{ row: MerchantListRow }>) {
 }
 
 export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
-  const live = view.mode === "live";
   const { listing } = view;
   return (
     <>
@@ -141,17 +140,14 @@ export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
       {view.accountsUnread ? <p className="problem">{ACCOUNTS_UNREAD}</p> : null}
       {view.accountsCut ? <p className="search-cut">{ACCOUNTS_CUT}</p> : null}
       {listing.rows.length === 0 && listing.nothing === null ? (
-        <p className="quiet">No merchant has been made on this channel yet.</p>
+        <p className="quiet">No merchant has been made here yet.</p>
       ) : (
         <>
           <NothingHere listing={listing} />
           {listing.rows.length === 0 ? null : (
             <>
               <div className="list-box op-cols-merchants">
-                <ul
-                  className="list"
-                  aria-label={live ? "Merchants on the live channel" : "Merchants on this channel"}
-                >
+                <ul className="list" aria-label="Merchants">
                   <li className="list-head" aria-hidden="true">
                     <span>Merchant</span>
                     <span>Integration</span>

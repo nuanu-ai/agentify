@@ -232,9 +232,9 @@ export function ordersListView(
     const said =
       page.counts.all === 0
         ? !narrowed
-          ? "No order has been made on this channel yet."
+          ? "No order has been made here yet."
           : asked.q === ""
-            ? "This merchant has no order on this channel."
+            ? "This merchant has no order here."
             : `No order matches “${asked.q}”.`
         : asked.before !== null || asked.shown === "all"
           ? "No earlier order is in this segment."
@@ -826,7 +826,7 @@ export function findView(
     return {
       kind: "none",
       q,
-      said: `No order on this channel names the transaction “${q}” yet.`,
+      said: `No order here names the transaction “${q}” yet.`,
       unknown: "Orders with an unknown payment may have no transaction yet.",
       merchants: null,
     };
@@ -845,7 +845,7 @@ export function findView(
   return {
     kind: "none",
     q,
-    said: `Nothing on this channel matches “${q}”. An ID from another environment is not found here.`,
+    said: `Nothing here matches “${q}”. An ID from another environment is not found here.`,
     unknown: null,
     merchants: null,
   };

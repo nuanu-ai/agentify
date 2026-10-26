@@ -316,7 +316,7 @@ describe("forgetting an account", () => {
 
     const pressed = await operator.post(`/admin/accounts/${account}/forget`, asOperator);
 
-    expect(readable(pressed.html)).toContain("only on the test channel");
+    expect(readable(pressed.html)).toContain("only in the test environment");
     expect(await workspace.identity.byEmail(MERCHANT)).not.toBeNull();
   });
 

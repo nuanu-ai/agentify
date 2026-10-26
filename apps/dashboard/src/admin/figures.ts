@@ -603,7 +603,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
         unknown.oldestSince === null ? "" : `oldest ${durationWritten(at - unknown.oldestSince)}`,
       why: reads.recovery.configured
         ? "The facilitator did not say whether the money moved. Recovery reads the chain and settles each one; nobody settles them by hand."
-        : "The facilitator did not say whether the money moved, and recovery is off on this channel, so these stay unknown until the facilitator answers.",
+        : "The facilitator did not say whether the money moved, and recovery is off here, so these stay unknown until the facilitator answers.",
       links: [
         { label: `See the ${unknown.count === 1 ? "order" : "orders"}`, href: UNKNOWN_ORDERS },
       ],
@@ -619,7 +619,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
   if (!reads.recovery.configured && channel.surface !== "sandbox") {
     items.push({
       badge: { tone: "fail", word: "Recovery off" },
-      title: "Payment recovery is not configured on this channel",
+      title: "Payment recovery is not configured here",
       aside: "",
       why: "No chain endpoint is set, so a payment whose answer is lost stays unknown until the facilitator answers.",
       links: [{ label: "See Health", href: "/admin/health" }],
@@ -710,7 +710,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
           },
           title: `${word}: ${links[purpose]} of ${LINK_CHANNEL_LIMIT} this hour`,
           aside: "",
-          why: "At the ceiling nobody on the channel gets an emailed link until the hour clears; Google sign-in does not pass through it.",
+          why: "At the ceiling nobody here gets an emailed link until the hour clears; Google sign-in does not pass through it.",
           links: [{ label: "See Health", href: "/admin/health" }],
           meta: [],
         });
@@ -815,7 +815,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
             kind: "read",
             value: {
               lines: journal.lines,
-              cut: `${journal.lines.length} of ${plural(journal.total, "action")} on this channel`,
+              cut: `${journal.lines.length} of ${plural(journal.total, "action")} here`,
             },
           },
   };
@@ -1098,7 +1098,7 @@ export function listingRowOf(
       ...base,
       badge: { tone: "quiet", word: "Not checked here yet" },
       fact: [
-        "Whether Coinbase's x402 validator would take the channel's paid resources. Check now asks it; nothing is bought.",
+        "Whether Coinbase's x402 validator would take the paid resources here. Check now asks it; nothing is bought.",
       ],
     };
   }
@@ -1314,7 +1314,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not offered" },
       fact: [
-        "The connector is offered on the test channel only, until its orders pass end to end there.",
+        "The connector is offered in the test environment only, until its orders pass end to end there.",
       ],
     });
   } else if (reads.shops === null) {
@@ -1441,7 +1441,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
           badge: { tone: "quiet", word: "Not backed up" },
           fact: [
             channel.surface === "test"
-              ? "The test channel is not backed up, by decision."
+              ? "The test environment is not backed up, by decision."
               : "A sandbox runs on one machine and is not backed up.",
           ],
         },

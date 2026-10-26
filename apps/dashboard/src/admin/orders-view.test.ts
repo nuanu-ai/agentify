@@ -47,7 +47,7 @@ describe("the orders list", () => {
   it("tells a channel with no order from a search that matched none", () => {
     expect(ordersListView(asked(), aPage(), READ_AT).result).toMatchObject({
       kind: "none",
-      said: "No order has been made on this channel yet.",
+      said: "No order has been made here yet.",
       clear: null,
     });
     expect(ordersListView(asked("q=esim"), aPage(), READ_AT).result).toMatchObject({
@@ -329,12 +329,12 @@ describe("the lookup", () => {
     expect(findView("ord_zz", [], false)).toMatchObject({
       kind: "none",
       q: "ord_zz",
-      said: expect.stringContaining("Nothing on this channel matches “ord_zz”."),
+      said: expect.stringContaining("Nothing here matches “ord_zz”."),
       unknown: null,
       merchants: null,
     });
     expect(findView("0xabc", [], true)).toMatchObject({
-      said: "No order on this channel names the transaction “0xabc” yet.",
+      said: "No order here names the transaction “0xabc” yet.",
       unknown: expect.stringContaining("may have no transaction yet"),
     });
   });

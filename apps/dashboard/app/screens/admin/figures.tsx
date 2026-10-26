@@ -324,7 +324,7 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
       )}
 
       {view.empty ? (
-        <p className="op-sub op-empty">No merchant on this channel yet.</p>
+        <p className="op-sub op-empty">No merchant here yet.</p>
       ) : (
         <>
           <Tiles tiles={view.tiles} />
@@ -393,7 +393,7 @@ function JournalTail({ journal }: Readonly<{ journal: OverviewView["journal"] }>
       {journal.kind === "unread" ? (
         <Unread what="The journal" />
       ) : journal.value.lines.length === 0 ? (
-        <p className="op-sub">No administrative action has been taken on this channel.</p>
+        <p className="op-sub">No administrative action has been taken here.</p>
       ) : (
         <>
           <JournalList lines={journal.value.lines} label="Latest administrative actions" />
@@ -473,7 +473,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
         {view.splits.kind === "unread" ? (
           <Unread what="The splits" />
         ) : view.splits.value.count === 0 ? (
-          <p className="op-sub">No payout split is recorded on this channel.</p>
+          <p className="op-sub">No payout split is recorded here.</p>
         ) : (
           <>
             <div className="list-box op-cols-splits">
@@ -489,7 +489,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
                   <li className="list-row" key={row.split}>
                     <div className="cell cell-title">
                       {row.merchant === null ? (
-                        <span className="soft">A merchant no longer on this channel</span>
+                        <span className="soft">A merchant no longer here</span>
                       ) : (
                         <Link to={`/admin/merchants/${row.merchantId}`}>{row.merchant}</Link>
                       )}

@@ -106,7 +106,7 @@ function What({ line, onItsPage }: Readonly<{ line: JournalLineView; onItsPage: 
         <>Asked to forget {account}</>
       );
     case "first_operator":
-      return <>Gave {account} the flag as the channel's first operator</>;
+      return <>Gave {account} the flag as the first operator here</>;
   }
 }
 
@@ -201,7 +201,7 @@ const addressOf = (kind: JournalView["kind"], q: string, before: number | null):
 
 const UNSEARCHED: Readonly<Record<NonNullable<JournalView["unsearched"]>, string>> = {
   "no-such-account":
-    "No account on this channel has that email address now. A forgotten account is searched by its ID, which its rows keep.",
+    "No account here has that email address now. A forgotten account is searched by its ID, which its rows keep.",
   "not-searchable":
     "The journal is searched by a merchant ID (mch_…), an account's email address or an account ID. Reasons are not searched.",
 };
@@ -267,7 +267,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
                   : view.searchedAs === "address"
                     ? `No row is about the account at ${view.query}.`
                     : `No row is about an account with the ID “${view.query}”.`
-              : "No administrative action on this channel yet."}
+              : "No administrative action here yet."}
         </ListEmpty>
       ) : (
         <JournalList lines={view.lines} label="Administrative actions" />
