@@ -106,9 +106,12 @@ order, and a repeat already running in this process shares that attempt.
 Once all four places are occupied, polling waits for one to finish; price
 questions can still expire under saturation. `stop()` draws nothing more and
 waits for work already started, including events waiting on their order, and
-sends the answers its handlers return. It waits fifty seconds at most, and each
+sends the answers its handlers return. It waits eight seconds at most, and each
 message still unfinished then gets a `batch_abandoned` problem saying whether
-anything was sent for it.
+anything was sent for it. A process manager that kills the process sooner cuts
+the wait short and nothing is reported: an order whose answer was not sent
+comes again, and one whose answer was on its way may or may not be closed by
+it.
 
 A card we would not publish comes back as `ok: false`, with a code, a sentence a
 person can read, whether repeating could change the outcome, and its findings

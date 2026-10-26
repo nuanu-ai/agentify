@@ -21,9 +21,9 @@
  * here is of a poll that failed, with the backoff in `backoff.ts`.
  *
  * A stop takes no more work and lets what was taken finish, answers included,
- * for as long as one poll may take. Each message it then gives up on is
- * reported by where it stood, because only that says whether its answer may
- * have arrived.
+ * for `STOP_WAIT_MS` at most. Each message it then gives up on is reported
+ * by where it stood, because only that says whether its answer may have
+ * arrived.
  */
 
 import {
@@ -132,8 +132,9 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   /**
    * The worker stopped with work unfinished: part of a batch it never took,
    * reported once for the batch, or a message it gave up waiting for,
-   * reported on its own with its identifier as the subject, saying where the
-   * message stood and so whether anything was sent for it.
+   * reported on its own with the order or price question it is about as the
+   * subject, saying where the message stood and so whether anything was sent
+   * for it.
    */
   BATCH_ABANDONED: "batch_abandoned",
   /** The loop itself failed in a way nothing here anticipated. A defect in this SDK. */
@@ -474,9 +475,20 @@ export const POLL_WAIT_SECONDS = 25;
 export const POLL_DEADLINE_MS = POLL_WAIT_SECONDS * 2 * 1_000;
 
 /**
+ * How long a stop waits for the work it already took before giving up on it.
+ * It ends inside the ten seconds Docker allows a container between asking it
+ * to stop and killing it, so the report of what the stop cut short reaches
+ * the merchant's log on a default deployment. A longer wait buys little: the
+ * gateway stops waiting for a handler's answer well before this and sends
+ * the order out again.
+ */
+export const STOP_WAIT_MS = 8_000;
+
+/**
  * Where a message the worker took stands. Before `sending`, nothing of its
- * answer has left this process; during it, the answer may have arrived. That
- * is all that decides what can be said about a message the stop gives up on.
+ * answer has left this process; during it, the answer is on its way and may
+ * have arrived. That is all that decides what can be said about a message
+ * the stop gives up on.
  */
 type Phase = "waiting" | "in_handler" | "sending";
 
@@ -490,13 +502,13 @@ interface Taken {
 
 /**
  * What is said about a message the stop gave up on, chosen by its phase. An
- * order that had not reached sending comes again; one whose answer had left
- * may be closed by it, and nobody here knows which.
+ * order that had not reached sending comes again; one whose answer was on
+ * its way may be closed by it, and nobody here knows which.
  */
-const gaveUpOn = ({ envelope, phase }: Taken, waitedMs: number): WorkerProblem => {
-  const stopped = `the worker stopped after waiting ${waitedMs} ms`;
+const gaveUpOn = ({ envelope, phase }: Taken): WorkerProblem => {
+  const stopped = `the worker stopped after waiting ${STOP_WAIT_MS} ms`;
   const unconfirmed =
-    "which had left this process and was not confirmed, so whether it arrived is not known here";
+    "which was on its way and was not confirmed, so whether it arrived is not known here";
   const problem = (subject: string | undefined, message: string): WorkerProblem => ({
     kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
     fatal: false,
@@ -562,8 +574,8 @@ export interface RunningWorker {
   /**
    * Stops the loop and waits for it to finish. Safe to call twice. It takes
    * no more work and drops a parked poll; what it took finishes, and the
-   * answers its handlers return are sent. It waits as long as a poll may
-   * take and no longer, and reports each message still unfinished then.
+   * answers its handlers return are sent. It waits `STOP_WAIT_MS` at most,
+   * and reports each message still unfinished then.
    */
   stop(): Promise<void>;
   /** Whether the loop is still going. False once it has stopped for any reason. */
@@ -574,7 +586,7 @@ export const startWorker = (
   gateway: Gateway,
   handlers: HandlerRegistry,
   clock: WorkerClock = systemClock,
-  /** A parameter so a test can see the deadline work without waiting it out. */
+  /** A parameter so a test can see a poll's deadline work without waiting it out. */
   deadlineMs: number = POLL_DEADLINE_MS,
 ): RunningWorker => {
   /** Ends the parked poll and the waits between polls, at the start of a stop. */
@@ -926,7 +938,7 @@ export const startWorker = (
   /**
    * What was taken may have issued goods, so its answers go out before the
    * loop ends; but a handler that never returns must not hold the stop for
-   * ever, so the wait is as long as a poll may take and no longer.
+   * ever, so the wait ends after `STOP_WAIT_MS`.
    */
   const finishOrGiveUp = async (): Promise<void> => {
     if (taken.size === 0) return;
@@ -934,13 +946,13 @@ export const startWorker = (
     const waited = new AbortController();
     const finished = await Promise.race([
       Promise.all(taken.values()).then(() => true),
-      clock.sleep(deadlineMs, waited.signal).then(() => false),
+      clock.sleep(STOP_WAIT_MS, waited.signal).then(() => false),
     ]);
     waited.abort();
     if (finished) return;
 
     for (const one of taken.keys()) {
-      report(gaveUpOn(one, deadlineMs));
+      report(gaveUpOn(one));
       one.abandoned = true;
     }
     answering.abort();

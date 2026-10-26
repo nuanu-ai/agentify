@@ -689,13 +689,17 @@ it finishes, or in another instance, the order can call your handler again.
 Your fulfillment still needs idempotency by the order's identifier. `stop()`
 fetches no more work. It waits for the handlers already taken on, including
 events waiting on their order, and sends the answers they return, since the
-goods may already be issued. It waits fifty seconds at most, and each message
+goods may already be issued. It waits eight seconds at most, which ends inside
+the ten seconds Docker allows a container to stop by default, and each message
 still unfinished then gets a `batch_abandoned` problem of its own, with the
-message's identifier as its `subject`. An order still waiting or still in your
-handler had nothing sent for it and comes again while it has attempts left and
-its deadline allows; whatever your handler returns after that is not sent. An
-answer that was already on its way may have arrived, and nothing on your side
-knows whether it did, so the order may be closed by it or may come again.
+order or price question it is about as its `subject`. An order still waiting
+or still in your handler had nothing sent for it and comes again while it has
+attempts left and its deadline allows; whatever your handler returns after that
+is not sent. An answer that was already on its way may have arrived, and
+nothing on your side knows whether it did, so the order may be closed by it or
+may come again. A process manager that kills your process sooner cuts the wait
+short and nothing is reported: an order whose answer was not sent comes again,
+and one whose answer was on its way may or may not be closed by it.
 
 ## Test orders
 
@@ -825,7 +829,7 @@ before anything else in a poll answer, so your subscription stops at the first
 one Agentify sends in another version, whatever the messages inside it carry,
 with a `contract_version_mismatch` problem naming both versions. It stops the
 way `stop()` does, once the work already in your handlers has finished and
-sent its answers, or after fifty seconds with a `batch_abandoned` problem for
+sent its answers, or after eight seconds with a `batch_abandoned` problem for
 each message still unfinished. Only an answer shaped as a poll answer, a
 version beside a list of messages, stops it. Anything else that comes back,
 such as a proxy's error page that happens to name a version, is reported as

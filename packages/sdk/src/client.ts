@@ -329,11 +329,14 @@ export interface AgentifyClient {
    * events waiting for earlier work on their order, and the answers its
    * handlers return are sent, because goods may already have been issued.
    *
-   * It waits fifty seconds at most. Each message still unfinished then is
-   * reported as a `batch_abandoned` problem with the message's identifier as
-   * its `subject`: an order still waiting or in its handler had nothing sent
-   * for it and comes again, and for an answer already on its way nobody on
-   * this side knows whether it arrived.
+   * It waits eight seconds at most. Each message still unfinished then is
+   * reported as a `batch_abandoned` problem with the order or price question
+   * it is about as its `subject`: an order still waiting or in its handler
+   * had nothing sent for it and comes again, and for an answer already on
+   * its way nobody on this side knows whether it arrived. A process manager
+   * that kills the process sooner cuts the wait short and nothing is
+   * reported: an order whose answer was not sent comes again, and one whose
+   * answer was on its way may or may not be closed by it.
    */
   stop(): Promise<void>;
 }
