@@ -178,7 +178,7 @@ const NUMBERS: Numbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  dataAccess: { waiting: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
+  dataCopies: { unsent: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   daily: [
     { day: "2026-10-11", landingViews: 70, scans: 21 },
     { day: "2026-10-12", landingViews: 0, scans: 0 },
@@ -382,16 +382,13 @@ describe("the operator's dashboard, drawn", () => {
     expect(workerVerdict(silent)).toContain("Degraded");
   });
 
-  it("counts the data access requests waiting for an answer, with the oldest", () => {
-    expect(tile(drawn, "Data access requests")).toMatch(
-      /Data access requests 2 Oldest 30 September 2026/,
+  it("counts the data copies every try failed to send, with the oldest, as needing attention", () => {
+    expect(tile(drawn, "Data copies not sent")).toMatch(
+      /Data copies not sent 2 Oldest asked for 30 September 2026/,
     );
     expect(
-      tile(
-        draw({ ...NUMBERS, dataAccess: { waiting: 0, oldestAt: null } }),
-        "Data access requests",
-      ),
-    ).toContain("None waiting");
+      tile(draw({ ...NUMBERS, dataCopies: { unsent: 0, oldestAt: null } }), "Data copies not sent"),
+    ).toContain("Every copy asked for was sent or is still being tried");
   });
 
   it("draws a scan's state as a badge in words", () => {
@@ -418,14 +415,14 @@ describe("the moments on the operator's dashboard", () => {
   it("are written in the zone the operator's browser named, and name it", () => {
     const zoned = text(
       draw(
-        { ...NUMBERS, dataAccess: { waiting: 1, oldestAt: "2026-09-30T20:15:00.000Z" } },
+        { ...NUMBERS, dataCopies: { unsent: 1, oldestAt: "2026-09-30T20:15:00.000Z" } },
         "Asia/Makassar",
       ),
     );
 
     expect(zoned).toContain("read 2026-10-13 16:00:00 UTC+8");
     expect(zoned).toContain("Accepted 2026-10-13 15:58:00 UTC+8");
-    expect(zoned).toContain("Oldest 1 October 2026");
+    expect(zoned).toContain("Oldest asked for 1 October 2026");
   });
 
   it("are written in UTC, said as UTC, where the operator's browser named no zone", () => {

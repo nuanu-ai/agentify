@@ -3,7 +3,9 @@ import {
   deleteUnattachedPersonResponseSchema,
   type ReadSessionResponse,
   readSessionResponseSchema,
+  type SendDataCopyResponse,
   type SendReportLinkResponse,
+  sendDataCopyResponseSchema,
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import type { z } from "zod";
@@ -18,6 +20,11 @@ const REPORT_IDENTITY_TIMEOUT_MS = 15_000;
  * hanging dashboard must turn into "we cannot tell who is visiting" in seconds.
  */
 const SESSION_QUESTION_TIMEOUT_MS = 3_000;
+/**
+ * A copy is read from the dashboard's tables and handed to the mail provider,
+ * whose own deadline is ten seconds, while the person who pressed waits.
+ */
+const DATA_COPY_TIMEOUT_MS = 30_000;
 
 class DashboardIdentityUnavailableError extends Error {
   constructor() {
@@ -49,6 +56,12 @@ type Client = Readonly<{
     operationId: string;
     email: string;
   }): Promise<DeleteUnattachedPersonResponse>;
+  /** For an access request: mail this address a copy of its data, with the scanner's part. */
+  sendDataCopy(input: {
+    request: string;
+    email: string;
+    scanner: Record<string, unknown>;
+  }): Promise<SendDataCopyResponse>;
 }>;
 
 export function createDashboardReportIdentityClient(options: ClientOptions): Client {
@@ -105,6 +118,12 @@ export function createDashboardReportIdentityClient(options: ClientOptions): Cli
       post(
         { operation: "delete", operation_id: operationId, email },
         deleteUnattachedPersonResponseSchema,
+      ),
+    sendDataCopy: ({ request, email, scanner }) =>
+      post(
+        { operation: "copy", request, email, scanner },
+        sendDataCopyResponseSchema,
+        DATA_COPY_TIMEOUT_MS,
       ),
   };
 }

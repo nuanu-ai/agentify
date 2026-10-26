@@ -95,6 +95,25 @@ describe("a dashboard with no mail provider", () => {
     expect(said).toMatch(/not sent|no mail provider/i);
   });
 
+  it("names an attached file and its size without writing what the file holds", async () => {
+    // An attachment is a person's copy of their own data; the log is read by
+    // whoever runs the host.
+    const postman = postmanFor({ mailUrl: SANDBOX_MAIL, mailApiKey: null, mailFrom: "x" });
+
+    const said = await logged(async () => {
+      await postman({
+        ...MESSAGE,
+        attachments: [
+          { filename: "copy.json", contentType: "application/json", content: '{"phone":"+62"}' },
+        ],
+      });
+    });
+
+    expect(said).toContain("copy.json");
+    expect(said).toContain("15 bytes");
+    expect(said).not.toContain("+62");
+  });
+
   it("is what the dashboard is in without a provider, and is told apart by name", () => {
     expect(isSandboxMail(SANDBOX_MAIL)).toBe(true);
     expect(isSandboxMail("https://api.resend.com")).toBe(false);
@@ -128,6 +147,32 @@ describe("a dashboard with a mail provider", () => {
     expect(document.subject).toBe(MESSAGE.subject);
     expect(document.text).toBe(MESSAGE.body);
     expect(document.html).toBe(MESSAGE.html);
+  });
+
+  it("sends an attached file as the provider takes one: its name and its bytes in base64", async () => {
+    const sending = await provider();
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+    const content = '{"about":"owner@example.com","name":"Café"}';
+
+    await postman({
+      ...MESSAGE,
+      attachments: [{ filename: "copy.json", contentType: "application/json", content }],
+    });
+
+    const document = JSON.parse(sending.asked[0]?.body ?? "{}") as {
+      attachments?: { filename: string; content: string; content_type?: string }[];
+    };
+    expect(document.attachments).toEqual([
+      {
+        filename: "copy.json",
+        content: Buffer.from(content, "utf8").toString("base64"),
+        content_type: "application/json",
+      },
+    ]);
   });
 
   it("records provider acceptance without the recipient or action URL", async () => {

@@ -538,7 +538,7 @@ const NUMBERS: OperatorNumbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  dataAccess: { waiting: 0, oldestAt: null },
+  dataCopies: { unsent: 0, oldestAt: null },
   daily: DAYS,
   recentScans: [
     {
@@ -603,7 +603,7 @@ const NUMBERS: OperatorNumbers = {
 /**
  * The same page on a bad morning: the worker has gone quiet with a scan
  * waiting, the challenge is off, nothing has checked the site yet, and two
- * people wait for a copy of their data.
+ * copies of people's data could not be sent.
  */
 /** The live channel the operator's examples open /admin on. */
 const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live };
@@ -611,7 +611,7 @@ const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live };
 const TROUBLED: OperatorNumbers = {
   ...NUMBERS,
   turnstileEnforced: false,
-  dataAccess: { waiting: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
+  dataCopies: { unsent: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   selfScan: null,
   worker: {
     heartbeat: {
@@ -1266,17 +1266,57 @@ const ACCOUNT: GalleryState[] = [
   ),
   account(
     {
-      id: "scanner-data-request-recorded",
+      id: "scanner-data-request-copy-sent",
       screen: "Data request",
-      when: "A signed-in person presses Request data access.",
-      cause: "The request was recorded for the signed-in address.",
+      when: "A signed-in person presses Request data access, and the mail service takes the copy.",
+      cause: "The copy was emailed to the signed-in address while the person waited.",
     },
     "/data-request",
     "routes/data-request",
     {
-      answers: { ...visitor(true), [DATA_REQUEST]: { status: 200, body: { status: "requested" } } },
+      answers: {
+        ...visitor(true),
+        [DATA_REQUEST]: {
+          status: 200,
+          body: {
+            status: "sent",
+            type: "access",
+            sent_to: WHO,
+            fresh: true,
+            minutes_ago: 0,
+          },
+        },
+      },
       steps: [{ shows: "Request data access", does: (page) => press(page, "Request data access") }],
-      shows: "Request recorded.",
+      shows: "A copy of your data was emailed",
+    },
+  ),
+  account(
+    {
+      id: "scanner-data-request-copy-retrying",
+      screen: "Data request",
+      when: "A signed-in person presses Request data access, and the mail service does not take the copy.",
+      cause:
+        "The first try failed; the page says for how long the copy is tried again and where to write after.",
+    },
+    "/data-request",
+    "routes/data-request",
+    {
+      answers: {
+        ...visitor(true),
+        [DATA_REQUEST]: {
+          status: 200,
+          body: {
+            status: "pending",
+            type: "access",
+            sent_to: WHO,
+            outcome: "refused",
+            within_minutes: 52,
+          },
+        },
+      },
+      steps: [{ shows: "Request data access", does: (page) => press(page, "Request data access") }],
+      shows: "did not take the copy",
     },
   ),
   account(

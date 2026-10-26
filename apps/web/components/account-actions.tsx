@@ -4,23 +4,78 @@ import { press } from "../lib/press";
 import { READING_SIGN_IN } from "../lib/reading-sign-in";
 
 type Action = "unsubscribe" | "access" | "deletion";
-type Done = "requested" | "completed" | "unsubscribed";
+
+/** How a request for a copy stands once the press is answered, as the route says it. */
+type Copy =
+  | Readonly<{ status: "sent"; sent_to: string; fresh: boolean; minutes_ago: number }>
+  | Readonly<{
+      status: "pending";
+      sent_to: string;
+      outcome: "refused" | "no_answer" | "in_progress";
+      within_minutes: number;
+    }>
+  | Readonly<{ status: "failed"; sent_to: string }>;
+
+type Done = "requested" | "completed" | "unsubscribed" | Copy;
+
+const isWhole = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0;
+
+function copyIn(answer: Record<string, unknown>): Copy | null {
+  if (typeof answer.sent_to !== "string") return null;
+  if (answer.status === "sent" && typeof answer.fresh === "boolean" && isWhole(answer.minutes_ago))
+    return answer as Copy;
+  if (
+    answer.status === "pending" &&
+    (answer.outcome === "refused" ||
+      answer.outcome === "no_answer" ||
+      answer.outcome === "in_progress") &&
+    isWhole(answer.within_minutes)
+  )
+    return answer as Copy;
+  return answer.status === "failed" ? (answer as Copy) : null;
+}
 
 function doneIn(answer: unknown): Done | null {
-  const status = (answer as { status?: unknown } | null)?.status;
+  if (typeof answer !== "object" || answer === null) return null;
+  const read = answer as Record<string, unknown>;
+  if (read.type === "access") return copyIn(read);
+  const status = read.status;
   return status === "requested" || status === "completed" || status === "unsubscribed"
     ? status
     : null;
 }
 
+const minutes = (count: number): string => (count === 1 ? "1 minute" : `${count} minutes`);
+
+/** What the page says of a request for a copy, from how it stands. */
+function copySaid(copy: Copy, privacyEmail: string): string {
+  const writeAfter = `If nothing has arrived by then, write to ${privacyEmail}.`;
+  if (copy.status === "sent")
+    return copy.fresh
+      ? `A copy of your data was emailed to ${copy.sent_to} just now. It is a JSON file attached to the message.`
+      : `A copy was emailed to ${copy.sent_to} ${copy.minutes_ago === 0 ? "less than a minute" : minutes(copy.minutes_ago)} ago, so it was not sent again. It is the JSON file attached to that message, and you can ask for a new one ten minutes after it was sent.`;
+  if (copy.status === "failed")
+    return `Every try to email the copy to ${copy.sent_to} failed, so it was not sent. Write to ${privacyEmail}, or ask again later.`;
+  const within = minutes(copy.within_minutes);
+  if (copy.outcome === "refused")
+    return `The mail service did not take the copy just now. It is tried again automatically for the next ${within}, and goes to ${copy.sent_to} as soon as a try works. ${writeAfter}`;
+  if (copy.outcome === "no_answer")
+    return `No answer came back from sending the copy, so we cannot tell whether it went to ${copy.sent_to}. It is tried again automatically for the next ${within}, so it may arrive twice. ${writeAfter}`;
+  return `A copy for ${copy.sent_to} is already being sent. Tries go on for the next ${within}. ${writeAfter}`;
+}
+
 /**
  * What a press whose answer never came, or could not be read, is told: the
- * site may have done it, so the words say how to find out. Asking for access
- * and unsubscribing only set a date, so pressing again is harmless.
+ * site may have done it, so the words say how to find out. Unsubscribing only
+ * sets a date, and a copy is not mailed twice within ten minutes, so pressing
+ * either again is harmless.
  */
 function unansweredFor(action: Action, email: string): string {
   if (action === "deletion")
     return `No answer came back, so we cannot tell whether the deletion went through. Reload this page to find out: if it did, your reports are gone and the page asks you to sign in. If it still shows ${email} as signed in, press Delete my data again, and the answer says whether anything is left to delete.`;
+  if (action === "access")
+    return `No answer came back, so we cannot tell whether a copy was emailed to ${email}. Pressing again is safe: a copy sent in the last ten minutes is not sent again.`;
   return "No answer came back, so we cannot tell whether this went through. Pressing again is safe: the same request is recorded once.";
 }
 
@@ -33,7 +88,10 @@ function unansweredFor(action: Action, email: string): string {
  * would otherwise act on whoever the cookie names now. The routes refuse a
  * press that names another address, or none.
  */
-export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
+export function AccountActions(
+  props: Readonly<{ mode: "unsubscribe" }> | Readonly<{ mode: "data"; privacyEmail: string }>,
+) {
+  const { mode } = props;
   const visitor = useVisitor();
   const [message, setMessage] = useState("");
   const [confirmingDeletion, setConfirmingDeletion] = useState(false);
@@ -74,14 +132,16 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
     setBusy(false);
     if (outcome.kind === "done") {
       setConfirmingDeletion(false);
+      if (typeof outcome.answer === "object") {
+        setMessage(copySaid(outcome.answer, props.mode === "data" ? props.privacyEmail : ""));
+        return;
+      }
       setMessage(
         outcome.answer === "completed"
           ? "Deletion completed. Your reports, shares, and personal data were anonymized; your sign-in was removed unless it holds a seller dashboard."
           : action === "deletion"
             ? "Report access is closed. Deletion was requested and will finish automatically."
-            : action === "unsubscribe"
-              ? "Unsubscribed from marketing email."
-              : "Request recorded.",
+            : "Unsubscribed from marketing email.",
       );
       return;
     }
@@ -151,7 +211,7 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
             onClick={() => void act("access")}
             type="button"
           >
-            Request data access
+            {busy ? "Sending…" : "Request data access"}
           </button>
           {/* Irreversible, so never the primary press until it is confirmed. */}
           <button

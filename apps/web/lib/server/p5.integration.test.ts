@@ -2,9 +2,11 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { fileURLToPath } from "node:url";
 
 import {
+  analyticsEvents,
   consentSnapshots,
   createDatabase,
   createUuidV7,
+  dataCopyRequests,
   leadScans,
   leads,
   migrateDatabase,
@@ -20,12 +22,13 @@ import {
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { action as dataRequestRoute } from "../../app/routes/api/v1/account.data-request";
 import { visitorOf } from "./auth";
 import { encryptSensitiveValue, hmacHex } from "./crypto";
+import { COPY_RETRY_DELAYS_MS, retryDueDataCopies, runDataCopy } from "./data-copy";
 import { getDatabase } from "./database";
 import { getOperatorDashboard } from "./operator-dashboard";
 import { executeRetentionCleanup } from "./privacy";
-import { updateAccountState } from "./reporting";
 import {
   requestScannerIdentityDeletion,
   retryPendingScannerIdentityDeletions,
@@ -57,6 +60,15 @@ let dashboardServer: Server | undefined;
 let sellerDashboardMode: "unavailable" | "retained" | "deleted" = "retained";
 let dashboardDelayMs = 0;
 let sellerDashboardDeleteRequests = 0;
+
+/**
+ * The copies the stand-in dashboard was asked to mail, and how it answers:
+ * the provider took it, refused it, or no answer came back at all.
+ */
+type AskedCopy = { email: string; request: string; scanner: Record<string, unknown> };
+const copiesAsked: AskedCopy[] = [];
+let copyAnswer: "accepted" | "unavailable" | "no_answer" = "accepted";
+let copyDelayMs = 0;
 
 /**
  * The sessions the stand-in dashboard answers for, by cookie value. A privacy
@@ -168,7 +180,18 @@ beforeAll(async () => {
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
       operation?: string;
       cookie?: string;
-    };
+    } & Partial<AskedCopy>;
+    if (body.operation === "copy") {
+      copiesAsked.push({
+        email: body.email ?? "",
+        request: body.request ?? "",
+        scanner: body.scanner ?? {},
+      });
+      if (copyDelayMs) await new Promise((resolve) => setTimeout(resolve, copyDelayMs));
+      if (copyAnswer === "no_answer") respondJson(response, 503, {});
+      else respondJson(response, 200, { status: copyAnswer });
+      return;
+    }
     if (body.operation === "session") {
       const value = (body.cookie ?? "").split(`${SESSION_COOKIE}=`)[1]?.split(";")[0] ?? "";
       const email = dashboardSessions.get(value);
@@ -482,26 +505,226 @@ describe("the operator page", () => {
     expect((await getOperatorDashboard()).overview.verifiedRegistrations30d).toBe(before + 1);
   });
 
-  it("counts a data access request as waiting until its address is deleted", async () => {
-    const waiting = async () => (await getOperatorDashboard()).dataAccess.waiting;
-    const { leadId } = await createLeadFixture("operator-counted-access-request");
-    const before = await waiting();
+  it("counts a copy every try failed to send until a later copy to its address is sent", async () => {
+    const unsent = async () => (await getOperatorDashboard()).dataCopies.unsent;
+    const { email } = await createLeadFixture("operator-counted-copy");
+    const before = await unsent();
 
-    await updateAccountState(leadId, "access");
-    expect(await waiting()).toBe(before + 1);
-    const { oldestAt } = (await getOperatorDashboard()).dataAccess;
-    expect(oldestAt).not.toBeNull();
-    // Asking again does not make the wait look shorter.
-    await getDatabase()
-      .db.update(leads)
-      .set({ dataAccessRequestedAt: new Date(Date.parse(oldestAt ?? "") - 86_400_000 * 400) })
-      .where(eq(leads.id, leadId));
-    const asked = (await getOperatorDashboard()).dataAccess.oldestAt;
-    await updateAccountState(leadId, "access");
-    expect(await waiting()).toBe(before + 1);
-    expect((await getOperatorDashboard()).dataAccess.oldestAt).toBe(asked);
+    copyAnswer = "unavailable";
+    await askForACopy(signedInAs(email), email);
+    const [asked] = await copyRequestsOf(email);
+    if (asked === undefined) throw new Error("no copy request was recorded");
+    for (let tried = 1; tried <= COPY_RETRY_DELAYS_MS.length; tried += 1) {
+      await makeDue(asked.id);
+      await expect(runDataCopy({ id: asked.id })).resolves.toBe("refused");
+    }
+    expect((await copyRequestsOf(email))[0]).toMatchObject({
+      state: "failed",
+      attempts: COPY_RETRY_DELAYS_MS.length + 1,
+      emailNormalizedCiphertext: null,
+    });
+    expect(await unsent()).toBe(before + 1);
+    expect((await getOperatorDashboard()).dataCopies.oldestAt).not.toBeNull();
 
-    await requestScannerIdentityDeletion({ leadId });
-    expect(await waiting()).toBe(before);
+    copyAnswer = "accepted";
+    await askForACopy(signedInAs(email), email);
+    expect(await unsent()).toBe(before);
+  });
+});
+
+/** A press of Request data access on the data request page, by this browser, for this address. */
+async function askForACopy(cookie: string | null, signedInAs: string) {
+  const answered = await dataRequestRoute({
+    request: new Request("http://localhost:3000/api/v1/account/data-request", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+        ...(cookie === null ? {} : { cookie }),
+      },
+      body: JSON.stringify({ type: "access", signed_in_as: signedInAs }),
+    }),
+    params: {},
+  });
+  return { status: answered.status, body: (await answered.json()) as Record<string, unknown> };
+}
+
+async function copyRequestsOf(email: string) {
+  return await getDatabase()
+    .db.select()
+    .from(dataCopyRequests)
+    .where(eq(dataCopyRequests.emailLookupHash, hmacHex(tokenHmacSecret, "email", email)));
+}
+
+/** Moves a request's next try to now, as though its wait had passed. */
+async function makeDue(id: string) {
+  await getDatabase()
+    .db.update(dataCopyRequests)
+    .set({ nextAttemptAt: new Date(Date.now() - 1) })
+    .where(eq(dataCopyRequests.id, id));
+}
+
+/** One of the lead's own events, in its own session, that analytics recorded. */
+async function anEventOf(fixture: Awaited<ReturnType<typeof createLeadFixture>>, name: string) {
+  await getDatabase().db.insert(analyticsEvents).values({
+    id: createUuidV7(),
+    eventId: createUuidV7(),
+    name,
+    occurredAt: new Date(),
+    sessionId: fixture.sessionId,
+    leadId: fixture.leadId,
+    scanId: fixture.scanId,
+    segment: "owner",
+    landingVariant: "default",
+    consentSnapshotId: fixture.consentId,
+  });
+}
+
+describe("a request for a copy of an address's data", () => {
+  it("emails a copy of the signed-in person's data to that address, and says it was sent just now", async () => {
+    copyAnswer = "accepted";
+    const fixture = await createLeadFixture("copy-owner");
+    const asked = copiesAsked.length;
+
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    expect(answered).toEqual({
+      status: 200,
+      body: { status: "sent", type: "access", sent_to: fixture.email, fresh: true, minutes_ago: 0 },
+    });
+    expect(copiesAsked.slice(asked)).toHaveLength(1);
+    const copy = copiesAsked.at(-1);
+    expect(copy?.email).toBe(fixture.email);
+    expect(copy?.scanner).toMatchObject({
+      address: fixture.email,
+      lead: { email: fixture.email, role: "business_owner" },
+      reports: { total: 1, rows: [{ scan_id: fixture.scanId, site_ownership_claim: true }] },
+    });
+    // Once mailed, the request keeps no address.
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({
+      state: "sent",
+      attempts: 1,
+      emailNormalizedCiphertext: null,
+    });
+  });
+
+  it("carries the person's own reports, visits and events, and nothing of another address or any secret", async () => {
+    copyAnswer = "accepted";
+    const owner = await createLeadFixture("copy-own-data");
+    const other = await createLeadFixture("copy-someone-else");
+    await anEventOf(owner, "registration_completed");
+    await anEventOf(other, "registration_completed");
+
+    await askForACopy(signedInAs(owner.email), owner.email);
+
+    const scanner = copiesAsked.at(-1)?.scanner ?? {};
+    expect(scanner).toMatchObject({
+      analytics_events: { total: 1, rows: [{ name: "registration_completed", visit: "visit-1" }] },
+      visits: [{ visit: "visit-1", privacy_choices: [{ policy_version: "phase-a-v2" }] }],
+    });
+    const text = JSON.stringify(scanner);
+    for (const theirs of [other.email, other.scanId, other.leadId, other.sessionId]) {
+      expect(text, theirs).not.toContain(theirs);
+    }
+    for (const secret of [
+      `access-copy-own-data-${owner.scanId}`,
+      `idem-copy-own-data-${owner.scanId}`,
+      `p5-copy-own-data-${owner.sessionId}`,
+      hmacHex(tokenHmacSecret, "email", owner.email),
+    ]) {
+      expect(text, secret).not.toContain(secret);
+    }
+  });
+
+  it("sends nothing to a visitor who is not signed in, or for a page loaded for another address", async () => {
+    const fixture = await createLeadFixture("copy-refused");
+    const other = await createLeadFixture("copy-refused-other");
+    const asked = copiesAsked.length;
+
+    expect((await askForACopy(null, fixture.email)).status).toBe(404);
+    expect((await askForACopy(signedInAs(other.email), fixture.email)).status).toBe(409);
+
+    expect(copiesAsked).toHaveLength(asked);
+    expect(await copyRequestsOf(fixture.email)).toEqual([]);
+    expect(await copyRequestsOf(other.email)).toEqual([]);
+  });
+
+  it("does not send a second copy for a press within ten minutes of the first, at once or after", async () => {
+    copyAnswer = "accepted";
+    const fixture = await createLeadFixture("copy-twice");
+    const cookie = signedInAs(fixture.email);
+    const asked = copiesAsked.length;
+    copyDelayMs = 75;
+
+    const both = await Promise.all([
+      askForACopy(cookie, fixture.email),
+      askForACopy(cookie, fixture.email),
+    ]);
+    copyDelayMs = 0;
+    const again = await askForACopy(cookie, fixture.email);
+
+    expect(copiesAsked.slice(asked)).toHaveLength(1);
+    expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
+    expect(both.map(({ status }) => status)).toEqual([200, 200]);
+    expect(again.body).toMatchObject({ status: "sent", fresh: false, minutes_ago: 0 });
+  });
+
+  it("tries again a copy the mail service did not take, and sends it on a later try", async () => {
+    const fixture = await createLeadFixture("copy-retried");
+    copyAnswer = "unavailable";
+
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    const minutes = Math.ceil(
+      (COPY_RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0) + 30_000) / 60_000,
+    );
+    expect(answered.body).toMatchObject({
+      status: "pending",
+      outcome: "refused",
+      within_minutes: minutes,
+    });
+    const [pending] = await copyRequestsOf(fixture.email);
+    if (pending === undefined) throw new Error("no copy request was recorded");
+    expect(pending).toMatchObject({ state: "pending", attempts: 1, lastOutcome: "refused" });
+    // Not due yet: the background retry leaves it for its time.
+    copyAnswer = "accepted";
+    const asked = copiesAsked.length;
+    await retryDueDataCopies();
+    expect(copiesAsked).toHaveLength(asked);
+
+    await makeDue(pending.id);
+    await expect(retryDueDataCopies()).resolves.toBeGreaterThanOrEqual(1);
+
+    expect(copiesAsked.slice(asked).map(({ email }) => email)).toEqual([fixture.email]);
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({ state: "sent", attempts: 2 });
+  });
+
+  it("says it cannot tell whether a copy went when no answer came back, and tries again", async () => {
+    const fixture = await createLeadFixture("copy-unanswered");
+    copyAnswer = "no_answer";
+
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    expect(answered.body).toMatchObject({ status: "pending", outcome: "no_answer" });
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({
+      state: "pending",
+      lastOutcome: "no_answer",
+    });
+    copyAnswer = "accepted";
+  });
+
+  it("goes with the address when the address is deleted", async () => {
+    const fixture = await createLeadFixture("copy-then-deleted");
+    copyAnswer = "unavailable";
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+    expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
+    copyAnswer = "accepted";
+    sellerDashboardMode = "retained";
+
+    await expect(requestScannerIdentityDeletion({ leadId: fixture.leadId })).resolves.toBe(
+      "completed",
+    );
+
+    expect(await copyRequestsOf(fixture.email)).toEqual([]);
   });
 });
