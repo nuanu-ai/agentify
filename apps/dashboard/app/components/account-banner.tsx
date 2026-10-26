@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router";
-import { type AccountNote, headingOf } from "../../src/account-banner.js";
+import type { AccountNote } from "../../src/account-banner.js";
+import { headingOf } from "../../src/words.js";
 import styles from "./account-banner.module.css";
 
 /** The page itself or one under it. */
@@ -39,7 +40,7 @@ export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[
         <path d="M12 8v5M12 16.5v.5" />
       </svg>
       <div>
-        <b>{headingOf(notes)}</b>
+        <b className={styles.heading}>{headingOf(notes)}</b>
         {notes.length === 1 ? (
           notes.map((note) => (
             <p key={note.reason} data-reason={note.reason}>

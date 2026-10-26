@@ -5,8 +5,8 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
-  margin-top: 16px;
+  gap: var(--space-control);
+  margin-top: var(--space-block);
 }
 
 .ways > :global(.button) {
@@ -34,15 +34,14 @@
 /* Over the rows a search found by a whole product code, so the list is not
    read as every card that holds the search. */
 .byCode {
-  margin: 14px 0 0;
+  margin: var(--space-control) 0 0;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 /* The line under the cards about what their switches do. */
 .note {
-  margin: 0 0 32px;
+  margin: 0 0 var(--space-section);
   color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.55;
+  font-size: var(--text-small);
 }
