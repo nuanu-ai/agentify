@@ -17,6 +17,7 @@ import {
   POLL_DEADLINE_MS,
   POLL_WAIT_SECONDS,
   QUIET_POLL_FLOOR_MS,
+  STOP_WAIT_MS,
   startWorker,
   systemClock,
   WORKER_PROBLEM_KINDS,
@@ -79,20 +80,29 @@ const recordingClock = (): WorkerClock & { readonly waits: number[]; elapse(ms: 
  * unfinished work runs out at the moment a test chooses, and no poll times
  * out because the machine running the tests was slow.
  */
-const handClock = (): WorkerClock & { waitsAskedFor(): number; runOut(): void } => {
+const handClock = (): WorkerClock & {
+  readonly asked: number[];
+  waitsAskedFor(): number;
+  runOut(): void;
+} => {
   const waiting: (() => void)[] = [];
-  let asked = 0;
+  const asked: number[] = [];
 
   return {
-    waitsAskedFor: () => asked,
+    asked,
+    waitsAskedFor: () => asked.length,
     runOut: () => {
       for (const end of waiting.splice(0)) end();
     },
     now: () => performance.now(),
     random: () => 1,
-    sleep: (_ms, signal) =>
+    sleep: (ms, signal) =>
       new Promise<void>((resolve) => {
-        asked += 1;
+        asked.push(ms);
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
         waiting.push(resolve);
         signal.addEventListener("abort", () => resolve(), { once: true });
       }),
@@ -1265,6 +1275,14 @@ describe("a poll that goes quiet", () => {
   });
 });
 
+describe("how long a stop waits", () => {
+  it("ends before a container's default grace runs out, so what it cut short reaches the log", () => {
+    // Docker kills a container ten seconds after asking it to stop; a stop
+    // that waited longer would be killed before reporting anything.
+    expect(STOP_WAIT_MS).toBeLessThan(10_000);
+  });
+});
+
 describe("what the worker asks of a poll", () => {
   it("names the wait window the decision gave it", async () => {
     // The worker asks for a window of about twenty-five seconds, so a gateway
@@ -1699,6 +1717,8 @@ describe("stopping", () => {
     await inTheHandler.promise;
     await stopGivingUp(worker, clock);
 
+    // One wait, of the stop's own length, and no other.
+    expect(clock.asked).toStrictEqual([STOP_WAIT_MS]);
     expect(problems.map((problem) => [problem.kind, problem.subject])).toStrictEqual([
       [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, order.id],
     ]);
@@ -1713,9 +1733,11 @@ describe("stopping", () => {
     expect(problems).toHaveLength(1);
   });
 
-  it("says an answer that had left when the wait ran out may have arrived, and says it once", async () => {
+  it("says an answer on its way when the wait ran out may have arrived, says it once, and lets go of it", async () => {
     // An abort carries no code to say whether the request was fully written,
     // so neither "it was sent" nor "nothing was sent" is a fact anybody has.
+    // The request is let go of, or its connection would keep the merchant's
+    // process alive for minutes after the stop returned.
     const problems: WorkerProblem[] = [];
     const clock = handClock();
 
@@ -1738,13 +1760,18 @@ describe("stopping", () => {
 
     await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
     await stopGivingUp(worker, clock);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitUntil(
+      () => (gateway?.leftUnanswered("answer_order").length ?? 0) === 1,
+      "the answer's request to be let go of",
+    );
 
     expect(problems.map((problem) => [problem.kind, problem.subject])).toStrictEqual([
       [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, order.id],
     ]);
     expect(problems[0]?.message).toMatch(/not known/);
-    expect(problems[0]?.message).not.toMatch(/nothing was sent|is sent again|it was sent/);
+    expect(problems[0]?.message).not.toMatch(
+      /nothing was sent|is sent again|it was sent|left this process/,
+    );
   });
 
   it("says for each message the wait gave up on what follows for it, by where it stood", async () => {
