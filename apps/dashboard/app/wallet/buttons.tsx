@@ -25,24 +25,21 @@ const LIMIT = `${WALLET_ANSWERS_WITHIN_MS / 60_000} minutes`;
 export const WALLET_WORDS = {
   connect: "Create or connect a Coinbase Wallet",
   connectLead:
-    "Coinbase's window opens over this page, where you create a wallet or connect a Coinbase Wallet you already have, and its address comes into the box below. Nothing is saved until you press the button beside the box.",
+    "Coinbase's window opens over this page. The wallet's address then comes into the box below, for you to save.",
   yours:
-    "The wallet is yours alone: nothing leaves it without your approval in Coinbase's window. Coinbase keeps no copy of your passkey or recovery key and cannot recover them, so keeping a way back into it is up to you.",
+    "Only you can move money out of it. Coinbase can't recover it for you, so set up a way back in.",
   manageAt: "https://wallet.coinbase.com",
   recoveryAt: "https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery",
   waiting: "Waiting for Coinbase Wallet…",
-  addressInTheBox:
-    "Your Coinbase Wallet's address is in the box. Check it against the wallet, then save it; nothing has changed yet.",
+  addressInTheBox: "The address is in the box. Check it against your wallet, then save it.",
   connectClosed: "Coinbase Wallet was closed. The box is as you left it.",
   connectLost:
     "Coinbase Wallet's answer was lost, as happens when another of its buttons is pressed while its window is open. Press again.",
-  connectUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page stopped waiting. The box is as you left it; press again.`,
-  connectFailed: "Coinbase Wallet gave no address. You can still enter one by hand.",
-  connectNotOpened:
-    "This page could not open Coinbase Wallet. Press again, or enter an address by hand.",
+  connectUnanswered: `Coinbase Wallet didn't answer within ${LIMIT}, so this page stopped waiting. The box is as you left it. Press again.`,
+  connectFailed: "Coinbase Wallet gave no address. You can still paste one.",
+  connectNotOpened: "This page couldn't open Coinbase Wallet. Press again, or paste an address.",
   payOut: "Pay out with Coinbase Wallet",
-  payoutLead:
-    "With a Coinbase Wallet you send it in one step: Coinbase's window asks you to approve it, and nothing is sent until you do.",
+  payoutLead: "Coinbase's window asks you to approve the payout. Nothing is sent until you do.",
   payoutSent:
     "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out.",
   payoutClosed: "Coinbase Wallet was closed before the payout was asked for. Nothing was sent.",
@@ -92,7 +89,11 @@ function usePresses(): [
 const UNCOUNTED = () => true;
 
 /** Fills the box whose id is `box` with the wallet's address and leaves saving to the merchant. */
-export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; box: string }>) {
+export function CoinbaseAddress({
+  chainId,
+  box,
+  className,
+}: Readonly<{ chainId: number; box: string; className?: string }>) {
   const runs = useScriptRuns();
   const [said, press] = usePresses();
   if (!runs) return null;
@@ -113,13 +114,14 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
       const field = document.getElementById(box);
       if (field instanceof HTMLInputElement) {
         field.value = asked.address;
+        // What follows the box, the address shown in groups under it, hears
+        // of the new value as it hears of typing.
+        field.dispatchEvent(new Event("input", { bubbles: true }));
         // A refusal of the address typed before would be read out against
         // this one, so it comes off the box until the next save is answered.
         if (field.getAttribute("aria-invalid") === "true") {
           const line = field.getAttribute("aria-describedby");
-          for (const shown of [line, `${box}-refused`]) {
-            if (shown !== null) document.getElementById(shown)?.setAttribute("hidden", "");
-          }
+          if (line !== null) document.getElementById(line)?.setAttribute("hidden", "");
           field.removeAttribute("aria-invalid");
           field.removeAttribute("aria-describedby");
         }
@@ -143,31 +145,29 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
     );
   };
   return (
-    <div className="lede">
-      <div>
-        <p className="copy-row">
-          <Button
-            type="button"
-            variant="secondary"
-            onPointerEnter={() => void coinbase().catch(() => undefined)}
-            onFocus={() => void coinbase().catch(() => undefined)}
-            onClick={() => void ask()}
-          >
-            {WALLET_WORDS.connect}
-          </Button>
-        </p>
-        <p role="status">{said}</p>
-        <p className="quiet">
-          {WALLET_WORDS.connectLead} {WALLET_WORDS.yours}{" "}
-          <a href={WALLET_WORDS.manageAt} rel="noreferrer">
-            Manage your wallet
-          </a>{" "}
-          ·{" "}
-          <a href={WALLET_WORDS.recoveryAt} rel="noreferrer">
-            How recovery works
-          </a>
-        </p>
-      </div>
+    <div className={className}>
+      <p className="copy-row">
+        <Button
+          type="button"
+          variant="secondary"
+          onPointerEnter={() => void coinbase().catch(() => undefined)}
+          onFocus={() => void coinbase().catch(() => undefined)}
+          onClick={() => void ask()}
+        >
+          {WALLET_WORDS.connect}
+        </Button>
+        <span role="status">{said}</span>
+      </p>
+      <p>
+        {WALLET_WORDS.connectLead} {WALLET_WORDS.yours}{" "}
+        <a href={WALLET_WORDS.manageAt} rel="noreferrer">
+          Manage your wallet
+        </a>{" "}
+        ·{" "}
+        <a href={WALLET_WORDS.recoveryAt} rel="noreferrer">
+          How recovery works
+        </a>
+      </p>
     </div>
   );
 }
@@ -176,7 +176,12 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
 export function CoinbasePayout({
   chainId,
   payout,
-}: Readonly<{ chainId: number; payout: Readonly<{ to: string; data: string }> }>) {
+  className,
+}: Readonly<{
+  chainId: number;
+  payout: Readonly<{ to: string; data: string }>;
+  className?: string;
+}>) {
   const runs = useScriptRuns();
   const [said, press] = usePresses();
   if (!runs) return null;
@@ -237,21 +242,19 @@ export function CoinbasePayout({
     );
   };
   return (
-    <div className="lede">
-      <div>
-        <p>{WALLET_WORDS.payoutLead}</p>
-        <p className="copy-row">
-          <Button
-            type="button"
-            onPointerEnter={() => void coinbase().catch(() => undefined)}
-            onFocus={() => void coinbase().catch(() => undefined)}
-            onClick={() => void send()}
-          >
-            {WALLET_WORDS.payOut}
-          </Button>
-        </p>
-        <p role="status">{said}</p>
-      </div>
+    <div className={className}>
+      <p className="copy-row">
+        <Button
+          type="button"
+          onPointerEnter={() => void coinbase().catch(() => undefined)}
+          onFocus={() => void coinbase().catch(() => undefined)}
+          onClick={() => void send()}
+        >
+          {WALLET_WORDS.payOut}
+        </Button>
+        <span role="status">{said}</span>
+      </p>
+      <p>{WALLET_WORDS.payoutLead}</p>
     </div>
   );
 }

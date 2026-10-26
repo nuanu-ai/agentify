@@ -3031,6 +3031,43 @@ const SETTINGS: GalleryState[] = [
     },
     settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
   ),
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-scripted",
+        screen: "Settings",
+        when: "A merchant who has set everything opens Settings in a browser that runs the page's script.",
+        cause:
+          "The script draws Coinbase Wallet's two buttons, one that fills the wallet box and one that sends the payout, which a page without script leaves out.",
+      },
+      settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
+    ),
+    scene: { shows: "Pay out with Coinbase Wallet" },
+  },
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-another-wallet",
+        screen: "Settings",
+        when: "A merchant opens Send it from another wallet and presses Copy the data.",
+        cause:
+          "The raw transaction is drawn whole under the main way to send it, and the page's script puts its data on the clipboard, which the browser allows.",
+      },
+      settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Send it from another wallet",
+          does: (page) => {
+            page.querySelector("details")?.setAttribute("open", "");
+            pressIn(page, "Copy the data", clipboardGranted);
+          },
+        },
+      ],
+      shows: "Copied.",
+    },
+  },
   settings(
     {
       id: "dashboard-settings-new-merchant",
@@ -3052,6 +3089,31 @@ const SETTINGS: GalleryState[] = [
       account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
     },
   ),
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-new-merchant-scripted",
+        screen: "Settings",
+        when: "A new merchant with no wallet opens Settings in a browser that runs the page's script.",
+        cause:
+          "The script draws the button that creates or connects a Coinbase Wallet and fills the box with its address, the way in for a merchant who has no wallet.",
+      },
+      settingsView("test", WHO, {
+        sellerName: null,
+        sellerSite: null,
+        payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
+        payoutSplits: splitsOf("test", null),
+        addressPage: ADDRESSES.test,
+        walletChain: WALLET_CHAINS.test,
+        analyticsOptedOut: false,
+      }),
+      {
+        mode: "test",
+        account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
+      },
+    ),
+    scene: { shows: "Create or connect a Coinbase Wallet" },
+  },
   settings(
     {
       id: "dashboard-settings-not-approved",
@@ -3274,7 +3336,7 @@ const SETTINGS: GalleryState[] = [
       "live",
       WHO,
       { ...settingsOf(), liveApproval: true },
-      { kind: "wallet-notice", notice: cancelledByTyping(PAID_INTO, ASKED_FOR) },
+      { kind: "wallet-notice", notice: cancelledByTyping(PAID_INTO) },
     ),
     { path: "/settings/payout-wallet" },
   ),

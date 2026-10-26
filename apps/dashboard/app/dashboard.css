@@ -77,12 +77,6 @@ textarea {
   overflow-x: auto;
 }
 
-.under {
-  margin-top: var(--space-snug);
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
 /* A moment breaks between its date and its time and nowhere else. */
 .when > span {
   white-space: nowrap;
@@ -538,34 +532,16 @@ h2 {
   overflow-wrap: anywhere;
 }
 
-/* --- the payout address on the settings screen -------------------------- */
+/* --- a wallet's address -------------------------------------------------- */
 
 /*
- * Forty characters is more than anybody reads in a run, so the address is set in
+ * Forty characters is more than anybody reads in a run, so an address is set in
  * groups of four. The gaps are this rule's, not the text's: the groups are spans
  * with nothing between them, so a copied address pastes as an address. It wraps
- * between groups, because this block has no scroller and an unbroken run would
+ * between groups, because no box around it scrolls and an unbroken run would
  * scroll the page sideways on a phone.
  */
-/* A saved address and its contract, a part of the panel set apart by a
-   hairline over it rather than a box inside the box. */
-.saved {
-  margin: 0 0 var(--space-card);
-  padding: var(--space-block) 0 0;
-  border-top: var(--hairline) solid var(--line);
-}
-
-.saved .label {
-  color: var(--muted);
-  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-/* Whole and in fours: the saved address, and the one a refusal hands back under
-   the form, which must be readable against a wallet beyond the box's width. */
 .address {
-  margin-top: var(--space-tight);
   font-family: var(--font-mono);
   font-size: var(--text-code);
   overflow-wrap: anywhere;
@@ -585,95 +561,6 @@ h2 {
 /* An address in a sentence is followed by its punctuation, not by a gap. */
 .address .quad:last-child {
   margin-right: 0;
-}
-
-.saved .under {
-  margin-top: var(--space-tight);
-  color: var(--muted);
-  font-size: var(--text-small);
-}
-
-/* The contract buyers pay into, under the wallet it pays, inside the same box. */
-.saved .split-label {
-  margin-top: var(--space-card);
-}
-
-/*
- * The payout transaction as a wallet asks for it: each field's name over its
- * value on a phone, beside it where the panel has room. Every value wraps
- * inside the panel, the data included, which sits whole in its own box rather
- * than scrolling the page.
- */
-.payout {
-  display: grid;
-  grid-template-columns: minmax(0, 8rem) minmax(0, 1fr);
-  gap: 14px 18px;
-  margin: 0;
-  padding: 20px 24px 8px;
-}
-
-.payout dt {
-  padding-top: 2px;
-  color: var(--muted);
-  font: 500 var(--text-caption) / var(--leading-text) var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.payout dd {
-  min-width: 0;
-  margin: 0;
-}
-
-.payout dd > .address {
-  margin-top: 0;
-}
-
-.payout-data {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  border: 1.5px solid var(--line-strong);
-  border-radius: var(--radius-control);
-  padding: 10px 14px;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-  overflow-wrap: anywhere;
-  word-break: break-all;
-  resize: vertical;
-}
-
-.payout .copy-row {
-  margin: var(--space-control) 0 0;
-}
-
-.pays {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* Each contract over the wallet it pays, so neither address runs into the other. */
-.pays li > .address {
-  display: block;
-  margin-top: 0;
-}
-
-.pays li + li {
-  margin-top: 12px;
-}
-
-@media (max-width: 560px) {
-  .payout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-
-  .payout dd + dt {
-    margin-top: 10px;
-  }
 }
 
 /* Panels keep their explanations and controls together and use the frame's
@@ -707,21 +594,9 @@ h2 {
   padding-top: 0;
 }
 
-.settings-panel > .saved {
-  margin: var(--space-block) var(--space-card) var(--space-tight);
-}
-
-/*
- * Every sentence in a panel is the quiet size. The payout panel's rule is a
- * second lede continuing the first, so it takes no inset of its own.
- */
+/* Every sentence in a panel is the quiet size. */
 .settings-panel .lede p {
   font-size: var(--text-small);
-}
-
-.settings-panel > .lede + .lede,
-.settings-panel > .saved + .lede {
-  padding-top: 0;
 }
 
 /* A panel that ends in words ends the same distance from its edge as one that
@@ -753,26 +628,6 @@ h2 {
 .settings-panel {
   display: flex;
   flex-direction: column;
-}
-.settings-pair > .issue {
-  padding-bottom: 0;
-}
-.panel-top > .lede {
-  padding: var(--space-card) var(--space-card) 0;
-}
-.panel-top > .lede + .lede,
-.panel-top > .saved + .lede {
-  padding-top: 0;
-}
-.panel-top > .saved {
-  margin: var(--space-block) var(--space-card) var(--space-tight);
-}
-/* The name panel's own second subject, its shop's site, follows its form. */
-.panel-follow > h2 {
-  margin: var(--space-card) 0 var(--gap-heading);
-}
-.panel-follow > .quiet {
-  margin-top: 0;
 }
 .panel-messages {
   padding: 0 var(--space-card) var(--space-card);
@@ -830,9 +685,6 @@ h2 {
   margin-top: auto;
   padding-top: var(--gap-actions);
 }
-.settings-account > .lede {
-  align-items: center;
-}
 /* Side by side only where each way has room for its buttons on one line; on a
    phone the insets shrink so the longest label still fits. */
 @media (max-width: 1180px) {
@@ -863,25 +715,6 @@ h2 {
     padding-inline: 12px;
     font-size: 0.9375rem;
   }
-}
-
-/* Revoking a key is two presses: the first opens the question inside the row,
-   the second answers it. Inside the row rather than over it, because the list's
-   rounded frame clips anything hanging out of its last row. */
-.confirm-open {
-  list-style: none;
-  cursor: pointer;
-}
-.confirm-open::-webkit-details-marker {
-  display: none;
-}
-.confirm-pop {
-  margin-top: var(--space-tight);
-  text-align: right;
-}
-.confirm-pop > p {
-  margin: 0 0 var(--space-tight);
-  font-size: var(--text-small);
 }
 
 /* --- signing in --------------------------------------------------------- */

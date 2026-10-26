@@ -58,7 +58,12 @@ import {
   whatIsWrongWithTheName,
   whatIsWrongWithTheSite,
 } from "./seller-name.js";
-import { type SettingsPress, type SettingsView, settingsView } from "./settings-view.js";
+import {
+  type SettingsPress,
+  type SettingsView,
+  settingsView,
+  type WalletNotice,
+} from "./settings-view.js";
 import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
@@ -80,7 +85,6 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -548,21 +552,20 @@ export interface Shown {
   readonly paid: string | null;
 }
 
-/** What a cancel did to the merchant's sessions, said on the page it answers with. */
-const SIGNED_OUT_BUT_THIS_BROWSER =
-  "Every session of your merchant was signed out, a copy of this browser's included; this browser stays signed in on a new one.";
-
 /** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
-export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ${SIGNED_OUT_BUT_THIS_BROWSER}`;
+export const cancelledByTyping = (applies: string): WalletNotice => ({
+  kind: "cancelled",
+  paid: applies,
+});
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
-export const landedBeforePress = (shown: Shown): string =>
-  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your share is now paid out to it. ` +
-  (shown.paid === null
-    ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-    : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-  SIGNED_OUT_BUT_THIS_BROWSER;
+export const landedBeforePress = (shown: Shown): WalletNotice => ({
+  kind: "landed",
+  wallet: shown.waiting,
+  at: shown.from,
+  before: shown.paid,
+  askedBack: false,
+});
 
 /** Stands for this dashboard's own origin while a page's own path is read. */
 const HERE = "http://dashboard.invalid";
@@ -868,7 +871,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         async () =>
           await settingsDrawn(person, {
             kind: "wallet-notice",
-            notice: cancelledByTyping(applies, pending.payout_wallet),
+            notice: cancelledByTyping(applies),
           }),
       );
     }
@@ -880,10 +883,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async () =>
         await settingsDrawn(person, {
           kind: "wallet-notice",
-          notice:
-            `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-            `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-            SIGNED_OUT_BUT_THIS_BROWSER,
+          notice: {
+            kind: "landed",
+            wallet: pending.payout_wallet,
+            at: pending.takes_effect_at,
+            before: applies,
+            askedBack: true,
+          },
         }),
     );
   };
