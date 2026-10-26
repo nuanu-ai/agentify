@@ -242,9 +242,9 @@ and it covers every attempt we make to deliver that order to you. Name it, and
 the agent sees it before it buys.
 
 Leaving it out does not leave you off a clock. {{Default-async-fulfillment}} applies instead, the
-agent sees that day on your card in the catalog as if you had named it, and an
+agent sees that deadline on your card in the catalog as if you had named it, and an
 order that runs past it is unfulfilled exactly as one past a number of your
-own would. That day is ours to set rather than the card's, so naming your own
+own would. That deadline is ours to set rather than the card's, so naming your own
 is the way to keep the time yours.
 
 A synchronous card has no such field, because how long to wait for a
