@@ -98,6 +98,21 @@ const pagesOf = (page: number, pages: number, at: (page: number) => string): Pag
   });
 };
 
+/**
+ * The cut under page `page` of a list of `of` rows read a page of
+ * `PAGE_ROWS` at a time, where they are read by another and not found among
+ * the list's own; null where one page holds them all. `at` is a page's
+ * address.
+ */
+export const cutOfPage = (
+  page: number,
+  of: number,
+  at: (page: number) => string,
+): CutView | null => {
+  const pages = Math.max(1, Math.ceil(of / PAGE_ROWS));
+  return of <= PAGE_ROWS ? null : cutOf(Math.min(page, pages), pages, of, at);
+};
+
 /** The cut under page `page` of `pages`, holding `of` rows a page of `PAGE_ROWS` at a time. */
 const cutOf = (page: number, pages: number, of: number, at: (page: number) => string): CutView => {
   const start = (page - 1) * PAGE_ROWS;

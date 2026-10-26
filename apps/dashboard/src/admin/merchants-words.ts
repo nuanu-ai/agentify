@@ -44,13 +44,6 @@ export const checksSaid = (missing: readonly string[], asked: number): string =>
 export const NO_SELLER_NAME = "Seller name not set";
 
 /** Under the list: which rows of how many. */
-export const cutSaid = (shown: number, total: number): string =>
-  total === 0
-    ? "No merchant is in this segment"
-    : shown === total
-      ? `${total} of ${total} shown`
-      : `${shown} of ${total} shown · search to find the rest`;
-
 export const SORTED = "Sorted by what needs you, then by the last sale";
 
 export const DOTS_EXPLAINED_LIVE =
