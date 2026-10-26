@@ -95,15 +95,12 @@ const markersFromLocaleData = (): Set<string> => {
   return markers;
 };
 
-const MARKERS: ReadonlySet<string> = markersFromLocaleData();
-
 // An amount in any locale's grammar: digits of any script, grouped by a
 // comma, a dot, an apostrophe or the Arabic and full-width separators, or by
 // a space before three digits, and a decimal part that may be a dash, as in
 // 1'200.– or 5,-.
 const AMOUNT =
   /\p{Nd}+(?:[.,'\u2019\u066b\u066c\uff0c]\p{Nd}+|[ \u00a0\u202f\u2009]\p{Nd}{3}(?!\p{Nd}))*(?:[.,](?:--?|\u2013|\u2014))?/gu;
-const DIGIT = /\p{Nd}/gu;
 // A run of digits longer than any price is written with is not taken for an
 // amount, which also keeps what the evidence quotes short.
 const LONGEST_AMOUNT = 24;
@@ -114,11 +111,14 @@ const firstAmount = (text: string): string | undefined => {
   return amount && amount.length <= LONGEST_AMOUNT ? amount : undefined;
 };
 
-// Each marker's lengths by its last and by its first character, the longest
+// Each marker's lengths by its last or its first character, the longest
 // first, so a number next to no marker's character costs one lookup.
-const lengthsBy = (edge: (marker: string) => string): Map<string, number[]> => {
+const lengthsBy = (
+  markers: ReadonlySet<string>,
+  edge: (marker: string) => string,
+): Map<string, number[]> => {
   const lengths = new Map<string, number[]>();
-  for (const marker of MARKERS) {
+  for (const marker of markers) {
     const key = edge(marker);
     const known = lengths.get(key) ?? [];
     if (!known.includes(marker.length)) known.push(marker.length);
@@ -127,8 +127,10 @@ const lengthsBy = (edge: (marker: string) => string): Map<string, number[]> => {
   for (const known of lengths.values()) known.sort((a, b) => b - a);
   return lengths;
 };
-const BY_LAST = lengthsBy((marker) => marker.charAt(marker.length - 1));
-const BY_FIRST = lengthsBy((marker) => marker.charAt(0));
+
+const MARKERS: ReadonlySet<string> = markersFromLocaleData();
+const BY_LAST = lengthsBy(MARKERS, (marker) => marker.charAt(marker.length - 1));
+const BY_FIRST = lengthsBy(MARKERS, (marker) => marker.charAt(0));
 const NONE: number[] = [];
 
 // The marker that ends at `end`, the longest first, that does not begin
@@ -152,10 +154,40 @@ const markerAfter = (text: string, start: number): string | undefined => {
   return undefined;
 };
 
-// A marker of one Latin letter, such as R or Q, is also a size, a unit or an
-// initial, so it counts only right before an amount of at least two digits,
-// where the countries that write it put it: R 1 299, Q150.00.
+// Markers that are also everyday words, abbreviations or units where shops
+// write them. ALL, TOP, TRY, CUP, PEN, MAD, GEL, SOS, BOB, MOP, CAD, BAM and
+// ZAR are English words or names; PHP is a programming language, COP a
+// climate conference, AWG a wire gauge, AMD and NAD makers of processors and
+// amplifiers, RON a fuel's octane rating, SAR a phone's radiation rate and
+// CRC a checksum. Ft is feet in a title-cased name, kn is knots, and Le is a
+// French article.
+const WORDS = new Set(
+  "ALL TOP TRY CUP PEN MAD GEL SOS BOB MOP CAD BAM ZAR PHP COP AWG AMD NAD RON SAR CRC Ft kn Le".split(
+    " ",
+  ),
+);
+
+// A marker of one Latin letter, such as R for the rand or Q for the quetzal,
+// is also a size, a model or an initial, and two Latin capitals such as FC,
+// KM or RM are an abbreviation as often. Such a marker, and one that is a
+// word, counts only next to an amount written the way money is, with its
+// thousands grouped or a decimal part of two or three digits; one letter
+// counts only right before it, where the countries that use it write it.
 const oneLetter = (marker: string): boolean => /^[A-Za-z]$/.test(marker);
+const wordLike = (marker: string): boolean =>
+  oneLetter(marker) || /^[A-Z]{2}$/.test(marker) || WORDS.has(marker);
+const MONEY =
+  /^\p{Nd}{1,3}(?:[.,'\u2019\u066b\u066c\uff0c \u00a0\u202f\u2009]\p{Nd}{2,3})+(?:[.,](?:--?|\u2013|\u2014))?$|^\p{Nd}+[.,](?:\p{Nd}{2,3}|--?|\u2013|\u2014)$/u;
+// A marker of Latin letters next to a year is a date or an edition: Sale 2024
+// USD, WORLD CUP 2026.
+const LATIN = /^\p{Script=Latin}+$/u;
+const YEAR = /^(?:19|20)\d{2}$/;
+// Japanese, Chinese and Korean shops write 円, 元 and 원 after the amount; before
+// a number they end a word, as in 고객지원 1588 or 公元2024.
+const AFTER_ONLY = new Set(["円", "元", "원"]);
+
+const counts = (marker: string, amount: string): boolean =>
+  !(wordLike(marker) && !MONEY.test(amount)) && !(LATIN.test(marker) && YEAR.test(amount));
 
 /**
  * The first amount in the visible text written next to a currency marker:
@@ -176,12 +208,14 @@ export const textPrice = (text: string): PriceSignal | undefined => {
     const prefix = markerBefore(text, before);
     if (
       prefix &&
-      (!oneLetter(prefix) || (before === spaced && (amount.match(DIGIT)?.length ?? 0) >= 2))
+      !AFTER_ONLY.has(prefix) &&
+      !(oneLetter(prefix) && before !== spaced) &&
+      counts(prefix, amount)
     )
       return { source: "text", price: text.slice(before - prefix.length, end) };
     const after = text[end] === " " ? end + 1 : end;
     const suffix = markerAfter(text, after);
-    if (suffix && !oneLetter(suffix))
+    if (suffix && !oneLetter(suffix) && counts(suffix, amount))
       return { source: "text", price: text.slice(start, after + suffix.length) };
   }
   return undefined;
