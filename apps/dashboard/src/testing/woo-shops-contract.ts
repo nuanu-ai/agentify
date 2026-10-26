@@ -261,6 +261,12 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.other, "ord_foreign", FACTS, NOW);
         await shops.claimOrder(accounts.one, "ord_parcel", { ...FACTS, kind: "parcel" }, NOW);
         await shops.recordPrecreateRefusal(accounts.one, "ord_refused", FACTS, NOW);
+        await shops.recordPrecreateRefusal(
+          accounts.one,
+          "ord_refused_parcel",
+          { ...FACTS, kind: "parcel" },
+          NOW,
+        );
 
         expect(
           await shops.recoverableOrders(accounts.one, [
@@ -269,9 +275,10 @@ export const wooShopsContract = (
             "ord_foreign",
             "ord_parcel",
             "ord_refused",
+            "ord_refused_parcel",
             "ord_missing",
           ]),
-        ).toEqual(["ord_placed", "ord_unknown"]);
+        ).toEqual(["ord_placed", "ord_refused", "ord_unknown"]);
         expect(await shops.recoverableOrders(accounts.one, [])).toEqual([]);
       });
     });
@@ -899,6 +906,25 @@ export const wooShopsContract = (
           number: "WOO-13",
           permission: PERMISSION,
         });
+      });
+    });
+
+    it("reopens a refusal before creation once, and only under a shop connected again", async () => {
+      await using(async (shops, accounts) => {
+        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, NOW);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_1", LATER)).toBe(false);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_2", LATER)).toBe(true);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_2", LATER)).toBe(false);
+        expect(await shops.beginPrecreateRecovery("ord_1", "grant_3", LATER)).toBe(false);
+
+        expect(await shops.recoveryOrder("ord_1")).toMatchObject({
+          orderId: "ord_1",
+          accountId: accounts.one,
+          phase: "create_unknown",
+          facts: { connectionRevision: "grant_2" },
+          placed: null,
+        });
+        expect(await shops.knownOrder("ord_1")).toEqual({ kind: "unknown", attemptedAt: LATER });
       });
     });
   });

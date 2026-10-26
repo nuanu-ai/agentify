@@ -34,7 +34,9 @@ import {
   catalogueOf,
   inspectProductInTheShop,
   inspectProductsInTheShop,
+  type OrderMade,
   type ProductInspection,
+  type SoldItem,
   type WooOrderLookup,
 } from "./woo-shop.js";
 import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
@@ -161,6 +163,8 @@ interface Standing {
     merchantItemId: string,
   ) => Promise<ProductInspection>;
   readonly readOrder?: (orderId: string) => Promise<WooOrderLookup>;
+  /** The shop's answer to creating an order; no test reaches a shop otherwise. */
+  readonly placeOrder?: (sold: SoldItem) => Promise<OrderMade>;
   /**
    * Fails every read of the connections table, as an unreachable Postgres
    * would. Only the screens' reads break; the Connect path's writes still work,
@@ -349,6 +353,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       ...(standing.readOrder === undefined
         ? {}
         : { readOrder: (_keys, id) => standing.readOrder?.(id) as Promise<WooOrderLookup> }),
+      placeOrder: async (_keys, sold) => {
+        if (standing.placeOrder === undefined) {
+          throw new Error("this test's shop is never asked to create an order");
+        }
+        return await standing.placeOrder(sold);
+      },
     },
   });
 
@@ -2289,7 +2299,7 @@ describe("merchant delivery recovery", () => {
       consumerSecret: "cs_recovery",
       permissions: "read_write",
       // A shop connected again since the refusal: the one condition under
-      // which the operator's command would create the order.
+      // which its merchant's recovery page creates the order.
       revision: neverAsked ? "grant_again" : "grant_recovery",
       connectedAt: now,
       currency: null,
@@ -2335,35 +2345,57 @@ describe("merchant delivery recovery", () => {
     expect((await running.get("/orders")).html).not.toContain(`href="${own.path}"`);
   });
 
-  it("turns away a press for a sale its shop was never asked to create, without asking the shop anything", async () => {
-    let inspected = 0;
+  it("creates a download refused before creation once from its recovery page, and delivers it", async () => {
+    const sold: SoldItem[] = [];
     const running = await started({
-      inspectProduct: async (_keys, merchantItemId) => {
-        inspected += 1;
+      placeOrder: async (item) => {
+        sold.push(item);
         return {
           ok: true,
-          product: {
-            kind: "download",
-            productId: merchantItemId.split("_").at(-1) ?? "",
-            downloadId: "dl_guide",
-            fileName: "Guide",
-            price: { amount: "25.00", currency: "USD" },
-            fingerprint: "accepted-download-fingerprint",
-            tax: { mode: "off" as const },
-          },
+          id: "13",
+          number: "WOO-13",
+          orderKey: "wc_order_13",
+          downloadId: "dl_guide",
+          total: "25.00",
         };
       },
     });
     await running.signIn();
     const own = await sale(running, running.accountId, false, true);
+    expect((await running.get("/orders")).html).toContain(`href="${own.path}"`);
     const page = await running.get(own.path);
-    expect(formTo(page.html, "post", own.path)).toBeUndefined();
+    expect(formTo(page.html, "post", own.path)?.fields.has("woo_order_id")).toBe(false);
 
     const pressed = await running.post(own.path);
+    const again = await running.post(own.path);
 
-    expect(pressed.status).toBe(409);
+    expect(pressed.status).toBe(200);
     expect(formTo(pressed.html, "post", own.path)).toBeUndefined();
-    expect(inspected).toBe(0);
+    expect(again.status).toBe(200);
+    expect(sold).toHaveLength(1);
+    expect(sold[0]?.price).toStrictEqual({ amount: "25.00", currency: "USD" });
+    expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("placed");
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
+  });
+
+  it("creates nothing from a create form drawn for another address", async () => {
+    let asked = 0;
+    const running = await started({
+      placeOrder: async () => {
+        asked += 1;
+        return { ok: false, why: "never called", again: true };
+      },
+    });
+    await running.signIn();
+    const own = await sale(running, running.accountId, false, true);
+    await running.get(own.path);
+
+    const elsewhere = await running.post(own.path, { [DRAWN_FOR]: "another@example.com" });
+    const drawnForNobody = await running.post(own.path, { [DRAWN_FOR]: "" });
+
+    expect(elsewhere.status).toBe(409);
+    expect(drawnForNobody.status).toBe(409);
+    expect(asked).toBe(0);
     expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("precreate_refused");
     expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
   });

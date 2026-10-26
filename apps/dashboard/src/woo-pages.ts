@@ -51,9 +51,11 @@ import {
   catalogueOf,
   inspectProductInTheShop,
   inspectProductsInTheShop,
+  type OrderMade,
   PRODUCTS_AT_MOST,
   type ProductInspection,
   type ShopKeys,
+  type SoldItem,
   type WooOrderLookup,
 } from "./woo-shop.js";
 import type { ShopCurrency, ShopTotal, WooConnection, WooShops } from "./woo-shops.js";
@@ -94,6 +96,8 @@ export interface ShopCalls {
     merchantItemIds: readonly string[],
   ) => Promise<readonly ProductInspection[]>;
   readonly readOrder?: (keys: ShopKeys, orderId: string) => Promise<WooOrderLookup>;
+  /** The shop's own creation where a deployment passes nothing. */
+  readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
 }
 
 export interface WooPages {
@@ -348,6 +352,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     gatewayFor: parts.clientFor,
     inspectProduct,
     ...(parts.shop?.readOrder === undefined ? {} : { readOrder: parts.shop.readOrder }),
+    ...(parts.shop?.placeOrder === undefined ? {} : { placeOrder: parts.shop.placeOrder }),
     now: () => new Date(),
   });
 

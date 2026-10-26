@@ -59,6 +59,29 @@ describe("the merchant's recovery controls", () => {
     expect(retry?.fields.has("woo_order_id")).toBe(false);
   });
 
+  it("offers one create press with no shop order ID box for a sale its shop never received", () => {
+    const form = formTo(draw("create", null, { wooOrderId: "" }), "post", PATH);
+
+    expect(form).toBeDefined();
+    expect(form?.fields.has("woo_order_id")).toBe(false);
+  });
+
+  it("offers no create press while what the last press did is unknown", () => {
+    const html = draw("create", null, { wooOrderId: "", message: "We don't know.", unknown: true });
+
+    expect(formTo(html, "post", PATH)).toBeUndefined();
+    expect(html).toContain(`href="/dashboard${PATH}"`);
+  });
+
+  it("leads a sale waiting for its shop to be connected again to the WooCommerce page", () => {
+    const html = draw("unavailable", null, {
+      unavailable: { why: "Connect your shop again first.", instead: "reconnect" },
+    });
+
+    expect(formTo(html, "post", PATH)).toBeUndefined();
+    expect(html).toContain('href="/dashboard/woocommerce"');
+  });
+
   it("removes the action after confirmed delivery or when recovery is unavailable", () => {
     expect(formTo(draw("delivered"), "post", PATH)).toBeUndefined();
     expect(formTo(draw("unavailable"), "post", PATH)).toBeUndefined();

@@ -386,6 +386,18 @@ check, your Orders screen offers **Recover WooCommerce delivery** on that
 order. The recovery page shows the Agentify order ID, the product, the amount
 and the shop the sale came from.
 
+When the connector refused a download before it sent anything to your shop,
+your shop holds no order for it. This happens, for example, when the shop did
+not answer the product check at the time of the sale, or when the product had
+changed since its price was given. Connect the same shop again on the WooCommerce page, put
+the product back the way it was sold if it changed, and press **Create shop
+order** on the recovery page. Agentify then makes the order in your shop once,
+at the price the buyer paid, and delivers the download when the shop places
+it. If the shop refuses before anything is sent, the page says why, and you can
+press again once that is fixed. If the shop's answer to the create does not
+arrive, nobody knows whether the order exists, so the page never offers the
+create again: find the order in your shop and link it, as described next.
+
 When the shop's answer to creating the order never arrived, find the order in
 that same shop whose Transaction ID is this Agentify order ID, and enter its
 **Shop order ID**: the internal number in the order's address in WooCommerce,
@@ -404,9 +416,11 @@ confirms the delivery. A check that could
 not be made leaves the result unknown, which is not proof that nothing was
 recorded, and a saved order cannot be replaced by a different one.
 
-Recovery delivers the download and does nothing else. To stop delivery
-instead, close fulfillment on Orders; a closed order has no recovery action,
-and neither has a parcel or a download refused before a shop order was created.
+Recovery makes or links the download's one shop order and delivers the
+download, and does nothing else. To stop delivery instead, close fulfillment on
+Orders; a closed order has no recovery action, and neither has a parcel. A
+parcel refused before its shop order was made cannot be made later, because
+Agentify does not keep its delivery address.
 
 ## Disconnecting
 

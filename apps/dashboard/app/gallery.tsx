@@ -83,6 +83,7 @@ import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import { gapOf } from "../src/woo-money.js";
 import { findingsOf, rateFarSays } from "../src/woo-pages.js";
+import { CREATE_UNKNOWN, PARCEL_NOT_CREATED, RECONNECT_FIRST } from "../src/woo-recovery.js";
 import { RECOVERY_UNKNOWN, type WooRecoveryView } from "../src/woo-recovery-pages.js";
 import {
   type Said,
@@ -2962,18 +2963,77 @@ const WOO_RECOVERY: GalleryState[] = [
   ),
   recovery(
     {
+      id: "dashboard-woo-recovery-create",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a download their shop never received, after connecting the same shop again.",
+      cause:
+        "The connector refused the sale before sending anything to the shop, so the page offers one press that creates the shop order at the price paid and delivers its download.",
+    },
+    { mode: "create", wooOrderId: "", message: null },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-create-refused",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant presses Create shop order, and the shop's product check says no before anything is sent.",
+      cause:
+        "Nothing reached the shop, so the shop's reason is said at the top and the same press stays offered for once it is fixed.",
+    },
+    {
+      mode: "create",
+      wooOrderId: "",
+      message:
+        "The product no longer matches the accepted WooCommerce sale. The shop has no product 11 any more.",
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-create-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant pressed Create shop order, and the shop's answer did not arrive.",
+      cause:
+        "Whether the shop holds the order is not known, so the create is never offered again; the page asks for the shop order to link instead.",
+    },
+    {
+      mode: "link",
+      wooOrderId: "",
+      message: CREATE_UNKNOWN,
+    },
+    true,
+  ),
+  recovery(
+    {
       id: "dashboard-woo-recovery-unavailable",
       screen: "Recover WooCommerce delivery",
-      when: "A merchant opens recovery for a download whose shop was never asked to create the order.",
+      when: "A merchant opens recovery for a download their shop never received, before connecting the shop again.",
       cause:
-        "This page cannot create a shop order, so it offers no press and leads to closing fulfillment instead.",
+        "A create waits for the same shop to be connected again, so the page offers no press and leads to the WooCommerce page.",
     },
     {
       mode: "unavailable",
       wooOrderId: "",
       message: null,
       unavailable: {
-        why: "Your shop never received this order, and this page can't create it.",
+        why: `Your shop never got this order. ${RECONNECT_FIRST}`,
+        instead: "reconnect",
+      },
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-parcel-refused",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a parcel their shop never received.",
+      cause:
+        "Nothing of where a parcel goes is kept, so its shop order cannot be made later; the page says so and leads to closing fulfillment.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: {
+        why: PARCEL_NOT_CREATED,
         instead: "close",
       },
     },

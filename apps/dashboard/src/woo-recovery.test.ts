@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
 import { MerchantCardListSchema, type OrderWithStatus } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { percentOf, sharesOf } from "./shares.js";
 import { merchantItemIdFor } from "./woo-catalog.js";
 import { recoverWooOrderAs, type WooRecoveryParts } from "./woo-recovery.js";
@@ -10,7 +10,9 @@ import { type WooRecoveryPageParts, wooRecoveryPagesFor } from "./woo-recovery-p
 import {
   type EligibleWooProduct,
   inspectProductInTheShop,
+  type OrderMade,
   readTheOrderInTheShop,
+  type SoldItem,
   type WooOrderRead,
 } from "./woo-shop.js";
 import { memoryWooShops, type WooOrderFacts } from "./woo-shops.js";
@@ -150,7 +152,18 @@ const parts = (
 ) => {
   let delivered = 0;
   let read = 0;
-  let status: "unfulfilled" | "delivered" = "unfulfilled";
+  let created = 0;
+  let status: OrderWithStatus["status"] = "unfulfilled";
+  /** What each create asked the shop's order to hold. */
+  const sold: SoldItem[] = [];
+  const made: OrderMade = {
+    ok: true,
+    id: "13",
+    number: "WOO-13",
+    orderKey: "wc_order_13",
+    downloadId: PRODUCT.downloadId,
+    total: facts.amount,
+  };
   const value: Parts = {
     shops,
     gatewayFor: () => ({
@@ -168,9 +181,15 @@ const parts = (
           document: { ok: true as const, result: "delivered_late" as const },
         };
       },
+      paidInto: async () => ({ ok: true as const, document: PAID_INTO }),
       cards: async () => ({ ok: true as const, document: CARDS }),
     }),
     inspectProduct: async () => ({ ok: true, product: PRODUCT }),
+    placeOrder: async (_keys, item) => {
+      created += 1;
+      sold.push(item);
+      return made;
+    },
     readOrder: async () => {
       read += 1;
       return { ok: true, order: shopOrder() };
@@ -178,7 +197,16 @@ const parts = (
     now: () => NOW,
     ...overrides,
   };
-  return { value, counts: () => ({ delivered, read }) };
+  return {
+    value,
+    counts: () => ({ delivered, read }),
+    created: () => created,
+    sold,
+    /** The Agentify order as the merchant's own actions, or a delivery, left it. */
+    becomes: (now: OrderWithStatus["status"]) => {
+      status = now;
+    },
+  };
 };
 
 const OWNER = {
@@ -225,18 +253,6 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
       await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
     ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
     expect(test.counts()).toEqual({ delivered: 1, read: 1 });
-  });
-
-  it("does not expose pre-create retry as a merchant recovery action", async () => {
-    const shops = await setup("precreate_refused");
-    const test = parts(shops);
-
-    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
-      ok: false,
-      state: "refused",
-    });
-    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
-    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
   });
 
   it("replays the same exact binding after a lost answer without reading or creating in the shop again", async () => {
@@ -299,6 +315,257 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
   });
 });
 
+describe("a merchant creating the shop order of a download refused before creation", () => {
+  it("creates the shop order once and delivers the download when the shop places it", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toEqual({
+      ok: true,
+      state: "delivered",
+      orderId: "ord_1",
+      wooOrderId: "13",
+    });
+    expect(test.created()).toBe(1);
+    expect(test.counts()).toEqual({ delivered: 1, read: 0 });
+    expect(await shops.recoveryOrder("ord_1")).toMatchObject({
+      phase: "placed",
+      placed: { id: "13" },
+    });
+  });
+
+  it("puts on the shop's order what the buyer paid, the merchant's email and the split the payment went to", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+
+    await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value);
+
+    expect(test.sold).toStrictEqual([
+      {
+        orderId: "ord_1",
+        productId: FACTS.productId,
+        email: EMAIL,
+        price: { amount: FACTS.amount, currency: FACTS.currency },
+        download: { id: PRODUCT.downloadId, name: PRODUCT.fileName },
+        paidInto: PAID_INTO,
+        tax: PRODUCT.tax,
+      },
+    ]);
+  });
+
+  it("creates nothing more on a second press, a double click or a press from a stale page", async () => {
+    const shops = await setup("precreate_refused");
+    const waiting: ((made: OrderMade) => void)[] = [];
+    const test = parts(shops, {
+      placeOrder: async () => await new Promise<OrderMade>((resolve) => waiting.push(resolve)),
+    });
+
+    // Two presses at once: whichever moves the ledger first sends the one
+    // request, and the other meets the moved ledger without waiting for it.
+    const presses = [
+      recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value),
+      recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value),
+    ];
+    const first = await Promise.race([
+      ...presses,
+      new Promise((resolve) => setTimeout(() => resolve("both presses are still waiting"), 500)),
+    ]);
+    await vi.waitFor(() => expect(waiting.length).toBeGreaterThan(0));
+    for (const answer of waiting) {
+      answer({
+        ok: true,
+        id: "13",
+        number: "WOO-13",
+        orderKey: "wc_order_13",
+        downloadId: PRODUCT.downloadId,
+        total: FACTS.amount,
+      });
+    }
+    expect(first).toMatchObject({ ok: false });
+    expect((await Promise.all(presses)).filter((outcome) => outcome.ok)).toHaveLength(1);
+    // A third press, from the page drawn before any of them.
+    const stale = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData());
+
+    expect(stale).toMatchObject({ kind: "view", view: { mode: "delivered", wooOrderId: "13" } });
+    expect(waiting).toHaveLength(1);
+  });
+
+  it("leaves a create whose answer was lost to linking, and never sends it again", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      placeOrder: async () => ({ ok: false, why: "no answer", again: true }),
+    });
+    const pages = wooRecoveryPagesFor(test.value);
+
+    const pressed = await pages.recover(OWNER, "ord_1", new FormData());
+    const again = await pages.recover(OWNER, "ord_1", new FormData());
+
+    expect(pressed).toMatchObject({
+      kind: "view",
+      view: { mode: "link", message: expect.stringMatching(/don't know/i) },
+    });
+    expect(pressed.kind === "view" && pressed.view.message).not.toMatch(/fail/i);
+    expect(again).toMatchObject({ kind: "view", status: 400, view: { mode: "link" } });
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
+  });
+
+  it("creates nothing until the same shop is connected again, and says so", async () => {
+    const shops = await setup("precreate_refused");
+    const sameGrant = await shops.connectionOf("acc_1");
+    if (sameGrant === null) throw new Error("the test shop was not connected");
+    await shops.connect({ ...sameGrant, revision: FACTS.connectionRevision });
+    const test = parts(shops);
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringMatching(/connect/i),
+    });
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "unavailable", unavailable: { instead: "reconnect" } },
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+
+  it("creates nothing in another shop connected since", async () => {
+    const shops = await setup("precreate_refused");
+    const connected = await shops.connectionOf("acc_1");
+    if (connected === null) throw new Error("the test shop was not connected");
+    await shops.forget("acc_1");
+    await shops.connect({ ...connected, shopUrl: "https://other-shop.example.com" });
+    const test = parts(shops);
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
+    expect(test.created()).toBe(0);
+  });
+
+  it("creates nothing through a shop connected with read access alone", async () => {
+    const shops = await setup("precreate_refused");
+    const connected = await shops.connectionOf("acc_1");
+    if (connected === null) throw new Error("the test shop was not connected");
+    await shops.connect({ ...connected, permissions: "read" });
+    const test = parts(shops);
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringMatching(/read/i),
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+
+  it("creates nothing at a price the shop changed since the sale, and can be pressed again once it matches", async () => {
+    const shops = await setup("precreate_refused");
+    let price = "0.02";
+    const test = parts(shops, {
+      inspectProduct: async () => ({
+        ok: true,
+        product: { ...PRODUCT, price: { amount: price, currency: "USD" } },
+      }),
+    });
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+    price = FACTS.amount;
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: true,
+    });
+    expect(test.created()).toBe(1);
+  });
+
+  it("says the shop's own reason when it no longer sells the product", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: async () => ({
+        ok: false,
+        why: "The shop has no product 22 any more.",
+        again: false,
+        saidNo: true,
+      }),
+    });
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringContaining("The shop has no product 22 any more."),
+    });
+    expect(test.created()).toBe(0);
+  });
+
+  it("makes no order where it cannot read where the payment went, and can be pressed again", async () => {
+    const shops = await setup("precreate_refused");
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        paidInto: async () => ({ ok: false as const, status: 0, why: "nothing answered" }),
+      }),
+    });
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "unresolved",
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+
+  it("takes no shop order ID for a sale its shop never received", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+
+    expect(
+      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
+    ).toMatchObject({ ok: false, state: "refused" });
+    expect(test.created()).toBe(0);
+    expect(test.counts()).toEqual({ delivered: 0, read: 0 });
+  });
+
+  for (const status of ["fulfillment_closed", "delivered"] as const) {
+    it(`offers no create for an order that is ${status.replace("_", " ")}, and a press creates nothing`, async () => {
+      const shops = await setup("precreate_refused");
+      const test = parts(shops);
+      test.becomes(status);
+      const pages = wooRecoveryPagesFor(test.value);
+
+      expect(await pages.page(OWNER, "ord_1")).toMatchObject({
+        kind: "view",
+        view: { mode: "unavailable" },
+      });
+      expect(await pages.recover(OWNER, "ord_1", new FormData())).toMatchObject({
+        kind: "view",
+        status: 409,
+      });
+      expect(test.created()).toBe(0);
+      expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+    });
+  }
+
+  it("answers another account's refused sale like a missing one, creating nothing", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+    const pages = wooRecoveryPagesFor(test.value);
+    const stranger = { ...OWNER, id: "acc_other", merchant: { id: "m_other" } };
+
+    expect(await pages.page(stranger, "ord_1")).toEqual(await pages.page(stranger, "ord_missing"));
+    expect(await pages.recover(stranger, "ord_1", new FormData())).toEqual(
+      await pages.recover(stranger, "ord_missing", new FormData()),
+    );
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+});
+
 describe("merchant recovery pages", () => {
   it("hides unknown and other-account sales before any gateway or shop call", async () => {
     const shops = await setup("create_unknown");
@@ -321,6 +588,85 @@ describe("merchant recovery pages", () => {
       problem: { status: 404 },
     });
     expect(test.counts()).toEqual({ delivered: 0, read: 0 });
+  });
+
+  it("offers the create for a download refused before creation once its shop is connected again", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops);
+    const pages = wooRecoveryPagesFor(test.value);
+
+    expect(await pages.page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "create", wooOrderId: "", unavailable: null },
+    });
+    expect(await pages.recover(OWNER, "ord_1", new FormData())).toMatchObject({
+      kind: "view",
+      view: { mode: "delivered", wooOrderId: "13", message: null },
+    });
+    expect(test.created()).toBe(1);
+  });
+
+  it("says the shop's reason at the top and keeps the create offered when the shop refuses again before creating", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: async () => ({
+        ok: false,
+        why: "The shop has no product 22 any more.",
+        again: false,
+        saidNo: true,
+      }),
+    });
+
+    expect(
+      await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData()),
+    ).toMatchObject({
+      kind: "view",
+      status: 409,
+      view: { mode: "create", message: expect.stringContaining("no product 22") },
+    });
+    expect(test.created()).toBe(0);
+  });
+
+  it("offers no create for an order whose create is unknown, only linking", async () => {
+    const shops = await setup("create_unknown");
+    const test = parts(shops);
+    const pages = wooRecoveryPagesFor(test.value);
+
+    expect(await pages.page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "link" },
+    });
+    expect(await pages.recover(OWNER, "ord_1", new FormData())).toMatchObject({
+      kind: "view",
+      status: 400,
+      view: { mode: "link" },
+    });
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
+  });
+
+  it("offers no create for a parcel refused before creation, and says its address is gone", async () => {
+    const shops = await setup("precreate_refused", { ...FACTS, kind: "parcel" });
+    const test = parts(shops, {}, { ...FACTS, kind: "parcel" });
+    const pages = wooRecoveryPagesFor(test.value);
+
+    const page = await pages.page(OWNER, "ord_1");
+    expect(page).toMatchObject({
+      kind: "view",
+      view: {
+        mode: "unavailable",
+        unavailable: { why: expect.stringMatching(/address/i), instead: "close" },
+      },
+    });
+    expect(await pages.recover(OWNER, "ord_1", new FormData())).toMatchObject({
+      kind: "view",
+      status: 409,
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
   });
 
   it("only reads our saved sale on GET and tells the merchant which exact shop ID to enter", async () => {
@@ -767,8 +1113,13 @@ describe("a parcel's order", () => {
 
     const outcome = await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value);
 
-    expect(outcome).toMatchObject({ ok: false, state: "refused" });
+    expect(outcome).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringMatching(/address/i),
+    });
     expect(test.counts()).toEqual({ delivered: 0, read: 0 });
+    expect(test.created()).toBe(0);
   });
 });
 
