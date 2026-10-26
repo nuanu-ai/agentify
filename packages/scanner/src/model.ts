@@ -38,7 +38,6 @@ export type ScanArtifacts = {
   ucp?: FetchArtifact;
   oauth: FetchArtifact[];
   a2a?: FetchArtifact;
-  noncanonicalA2aHint?: boolean;
 };
 
 export type ScanScore = {

@@ -9,10 +9,16 @@ import {
   type JsonLdResult,
   jsonLdTypes,
   parseJsonLd,
-  parseSafeJson,
   parseSitemap,
   visibleText,
 } from "./parsers.js";
+import {
+  type DocumentReading,
+  isWebPage,
+  jsonDocumentOf,
+  type Reading,
+  readingOf,
+} from "./reading.js";
 import {
   explicitAiPolicies,
   isPathAllowed,
@@ -95,6 +101,53 @@ const unreadReason = (artifacts: readonly FetchArtifact[], fallback: string): st
   );
 };
 
+type Unknown = Extract<Reading | DocumentReading, { state: "cut" | "unread" }>;
+const isUnknown = (reading: Reading | DocumentReading): reading is Unknown =>
+  reading.state === "cut" || reading.state === "unread";
+// Why none of several documents can be judged: robots.txt first, since the
+// owner can act on it, then a document cut at the read limit, then whatever
+// else kept the first one from being read.
+const firstUnknown = (readings: readonly (Reading | DocumentReading)[]): Unknown | undefined => {
+  const unknown = readings.filter(isUnknown);
+  return (
+    unknown.find((reading) => reading.state === "unread" && ROBOTS_CODES.has(reading.errorCode)) ??
+    unknown.find((reading) => reading.state === "cut") ??
+    unknown[0]
+  );
+};
+
+/**
+ * The result of a check that needed a document the scanner did not read
+ * whole: cut at the read limit, which the result names, or not answered, with
+ * the status the site answered when there was one. Either way no verdict is
+ * given, so the check lowers coverage, not the score.
+ */
+const unjudged = (
+  id: number,
+  reading: Unknown,
+  unread: Readonly<{ summaryCode: string; userImpactCode: string }>,
+  evidence: CheckResult["evidence"] = {},
+): CheckResult =>
+  reading.state === "cut"
+    ? result({
+        id,
+        status: "unavailable",
+        earnedWeight: 0,
+        summaryCode: "document_truncated",
+        userImpactCode: unread.userImpactCode,
+        errorCode: "document_truncated",
+        evidence: { ...evidence, truncated: true, read_limit: reading.readLimit },
+      })
+    : result({
+        id,
+        status: "unavailable",
+        earnedWeight: 0,
+        summaryCode: unread.summaryCode,
+        userImpactCode: unread.userImpactCode,
+        errorCode: reading.errorCode,
+        evidence: { ...evidence, ...(reading.status ? { status: reading.status } : {}) },
+      });
+
 // A scan evaluates its checks several times as its requests complete, all
 // over one robots.txt artifact, which the site may have filled to the fetch
 // limit: it is parsed, and each path decided, once per artifact.
@@ -125,7 +178,7 @@ type PageReading = {
   sitemap?: ReturnType<typeof parseSitemap>;
 };
 const pageReadings = new WeakMap<FetchArtifact, PageReading>();
-const readingOf = (artifact: FetchArtifact): PageReading => {
+const pageReadingOf = (artifact: FetchArtifact): PageReading => {
   let reading = pageReadings.get(artifact);
   if (!reading) {
     reading = {};
@@ -134,13 +187,13 @@ const readingOf = (artifact: FetchArtifact): PageReading => {
   return reading;
 };
 const textOf = (artifact: FetchArtifact): string =>
-  (readingOf(artifact).text ??= visibleText(artifact.body));
+  (pageReadingOf(artifact).text ??= visibleText(artifact.body));
 const signalsOf = (artifact: FetchArtifact) =>
-  (readingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
+  (pageReadingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
 const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
-  (readingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+  (pageReadingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
 const sitemapOf = (artifact: FetchArtifact) =>
-  (readingOf(artifact).sitemap ??= parseSitemap(artifact.body));
+  (pageReadingOf(artifact).sitemap ??= parseSitemap(artifact.body));
 const NO_SIGNALS = htmlSignals("");
 
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
@@ -612,7 +665,11 @@ const linksAbsolutely = (text: string): boolean => {
 };
 
 const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
-  if (!artifact || missing(artifact))
+  const reading = readingOf(artifact, "llms_unavailable");
+  if (
+    reading.state === "absent" ||
+    ((reading.state === "whole" || reading.state === "cut") && isWebPage(reading.artifact.body))
+  )
     return result({
       id: 8,
       status: "not_applicable",
@@ -621,52 +678,71 @@ const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
       userImpactCode: "llms_optional",
       applicable: false,
     });
-  if (inaccessible(artifact))
-    return result({
-      id: 8,
-      status: "unavailable",
-      earnedWeight: 0,
+  if (reading.state === "unread")
+    return unjudged(8, reading, {
       summaryCode: "llms_unavailable",
       userImpactCode: "llms_not_assessed",
-      errorCode: artifact.errorCode ?? "llms_unavailable",
     });
-  const h1 = /^#\s+\S+/m.test(artifact.body);
-  const links = linksAbsolutely(artifact.body);
+  const h1 = /^#\s+\S+/m.test(reading.artifact.body);
+  const links = linksAbsolutely(reading.artifact.body);
+  // The part read proves a heading and a link it holds, not their absence.
+  if (reading.state === "cut" && !(h1 && links))
+    return unjudged(8, reading, {
+      summaryCode: "llms_unavailable",
+      userImpactCode: "llms_not_assessed",
+    });
   return result({
     id: 8,
     status: h1 && links ? "pass" : "partial",
     earnedWeight: h1 && links ? 2 : 1,
     summaryCode: h1 && links ? "llms_valid" : "llms_malformed",
-    evidence: { has_h1: h1, has_links: links },
+    evidence: {
+      has_h1: h1,
+      has_links: links,
+      ...(reading.state === "cut" ? { truncated: true, read_limit: reading.readLimit } : {}),
+    },
     userImpactCode: "llms_informational",
     fixCode: h1 && links ? undefined : "repair_llms",
   });
 };
 
-const validDiscovery = (
-  artifact: FetchArtifact | undefined,
-): Record<string, unknown> | undefined => {
-  if (!artifact || artifact.status < 200 || artifact.status >= 300) return undefined;
-  const parsed = parseSafeJson(artifact.body);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : undefined;
+const documentsOf = (artifacts: readonly FetchArtifact[], unreadCode: string) => {
+  const readings = artifacts.map((artifact) => jsonDocumentOf(artifact, unreadCode));
+  return {
+    readings,
+    documents: readings.flatMap((reading) => (reading.state === "document" ? [reading.value] : [])),
+    // A verdict that no usable document exists needs every location answered.
+    unknown: readings.length
+      ? firstUnknown(readings)
+      : ({ state: "unread", errorCode: unreadCode } as const),
+    malformed: readings.some((reading) => reading.state === "malformed"),
+  };
 };
 
+const unparseable = (
+  id: number,
+  status: "fail" | "partial",
+  summaryCode: string,
+  userImpactCode: string,
+): CheckResult =>
+  result({
+    id,
+    status,
+    earnedWeight: 0,
+    summaryCode,
+    userImpactCode,
+    fixCode: "repair_document_json",
+  });
+
 const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
-  const documents = artifacts.mcp
-    .map(validDiscovery)
-    .filter((value): value is Record<string, unknown> => Boolean(value));
+  const { documents, unknown, malformed } = documentsOf(artifacts.mcp, "mcp_unavailable");
   if (!documents.length) {
-    if (artifacts.mcp.some((artifact) => inaccessible(artifact)))
-      return result({
-        id: 9,
-        status: "unavailable",
-        earnedWeight: 0,
+    if (unknown)
+      return unjudged(9, unknown, {
         summaryCode: "mcp_unavailable",
         userImpactCode: "mcp_not_assessed",
-        errorCode: unreadReason(artifacts.mcp, "mcp_unavailable"),
       });
+    if (malformed) return unparseable(9, "fail", "mcp_card_unparseable", "mcp_callable_gap");
     return result({
       id: 9,
       status: "fail",
@@ -676,11 +752,14 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
       fixCode: "publish_mcp_card",
     });
   }
-  const valid = documents.some(
-    (document) =>
-      Boolean(document.endpoint ?? document.url ?? document.transport) &&
-      Boolean(document.name ?? document.server ?? document.id),
-  );
+  // The fields of the most nearly complete card found.
+  const fieldsMissing = documents
+    .map((document) => [
+      ...((document.name ?? document.server ?? document.id) ? [] : ["name"]),
+      ...((document.endpoint ?? document.url ?? document.transport) ? [] : ["endpoint"]),
+    ])
+    .reduce((fewest, missing) => (missing.length < fewest.length ? missing : fewest));
+  const valid = fieldsMissing.length === 0;
   return result({
     id: 9,
     status: valid ? "pass" : "partial",
@@ -688,12 +767,7 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
     summaryCode: valid ? "mcp_card_valid" : "mcp_card_incomplete",
     evidence: {
       documents_found: documents.length,
-      identity_present: documents.some((document) =>
-        Boolean(document.name ?? document.server ?? document.id),
-      ),
-      endpoint_present: documents.some((document) =>
-        Boolean(document.endpoint ?? document.url ?? document.transport),
-      ),
+      ...(valid ? {} : { fields_missing: fieldsMissing }),
     },
     userImpactCode: "mcp_callable_readiness",
     fixCode: valid ? undefined : "complete_mcp_card",
@@ -710,17 +784,15 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "ucp_store_only",
       applicable: false,
     });
-  const document = validDiscovery(artifacts.ucp);
-  if (!document) {
-    if (artifacts.ucp && inaccessible(artifacts.ucp))
-      return result({
-        id: 10,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "ucp_unavailable",
-        userImpactCode: "ucp_not_assessed",
-        errorCode: artifacts.ucp.errorCode ?? "ucp_unavailable",
-      });
+  const reading = jsonDocumentOf(artifacts.ucp, "ucp_unavailable");
+  if (isUnknown(reading))
+    return unjudged(10, reading, {
+      summaryCode: "ucp_unavailable",
+      userImpactCode: "ucp_not_assessed",
+    });
+  if (reading.state === "malformed")
+    return unparseable(10, "fail", "ucp_profile_unparseable", "ucp_commerce_gap");
+  if (reading.state === "absent")
     return result({
       id: 10,
       status: "fail",
@@ -729,7 +801,7 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "ucp_commerce_gap",
       fixCode: "publish_ucp_profile",
     });
-  }
+  const document = reading.value;
   const fields = ["version", "services", "capabilities"].filter((field) =>
     fieldPresent(document, field),
   );
@@ -738,6 +810,10 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
     fieldPresent(document, "transport") ||
     fieldPresent(document, "services.shopping.endpoint");
   const complete = fields.length === 3 && endpoint;
+  const fieldsMissing = [
+    ...["version", "services", "capabilities"].filter((field) => !fields.includes(field)),
+    ...(endpoint ? [] : ["endpoint"]),
+  ];
   return result({
     id: 10,
     status: complete ? "pass" : "partial",
@@ -745,7 +821,7 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
     summaryCode: complete ? "ucp_valid" : "ucp_incomplete",
     evidence: {
       fields_present: fields,
-      endpoint_present: endpoint,
+      ...(complete ? {} : { fields_missing: fieldsMissing }),
       signing_keys_present: fieldPresent(document, "signing_keys"),
     },
     userImpactCode: "ucp_commerce_readiness",
@@ -753,23 +829,32 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
+const DECLARES_AUTH = /oauth|bearer|authorization/i;
+const authCards = (artifacts: Pick<ScanArtifacts, "mcp" | "ucp">): FetchArtifact[] => [
+  ...artifacts.mcp,
+  ...(artifacts.ucp ? [artifacts.ucp] : []),
+];
+
 /** Whether a discovery document or an HTTP challenge declares authorization. */
-export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean => {
-  const documents = [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])]
-    .map(validDiscovery)
-    .filter(Boolean);
-  return (
-    documents.some((document) => /oauth|bearer|authorization/i.test(JSON.stringify(document))) ||
-    [artifacts.base, ...artifacts.mcp].some((artifact) =>
-      authSchemes(artifact?.headers["www-authenticate"]).some(
-        (scheme) => scheme === "bearer" || scheme === "oauth",
-      ),
-    )
+export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean =>
+  documentsOf(authCards(artifacts), "card_unavailable").documents.some((document) =>
+    DECLARES_AUTH.test(JSON.stringify(document)),
+  ) ||
+  [artifacts.base, ...artifacts.mcp].some((artifact) =>
+    authSchemes(artifact?.headers["www-authenticate"]).some(
+      (scheme) => scheme === "bearer" || scheme === "oauth",
+    ),
   );
-};
 
 const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
-  if (!declaresAuth(artifacts))
+  if (!declaresAuth(artifacts)) {
+    // A card the scanner could not read may declare a sign-in it cannot see.
+    const unread = documentsOf(authCards(artifacts), "card_unavailable").readings.find(isUnknown);
+    if (unread)
+      return unjudged(11, unread, {
+        summaryCode: "oauth_unavailable",
+        userImpactCode: "oauth_not_assessed",
+      });
     return result({
       id: 11,
       status: "not_applicable",
@@ -778,10 +863,12 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "oauth_conditional",
       applicable: false,
     });
-  const documents = artifacts.oauth
-    .map(validDiscovery)
-    .filter((value): value is Record<string, unknown> => Boolean(value));
-  if (artifacts.oauth.length < 2 || artifacts.oauth.some((artifact) => inaccessible(artifact)))
+  }
+  const { readings, documents, unknown, malformed } = documentsOf(
+    artifacts.oauth,
+    "oauth_fetch_incomplete",
+  );
+  if (artifacts.oauth.length < 2)
     return result({
       id: 11,
       status: "unavailable",
@@ -789,35 +876,54 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
       summaryCode: "oauth_unavailable",
       evidence: { documents_found: documents.length },
       userImpactCode: "oauth_not_assessed",
-      errorCode: unreadReason(artifacts.oauth, "oauth_fetch_incomplete"),
+      errorCode: "oauth_fetch_incomplete",
     });
-  if (!documents.length) {
-    return result({
-      id: 11,
-      status: "fail",
-      earnedWeight: 0,
-      summaryCode: "oauth_metadata_absent",
-      userImpactCode: "oauth_discovery_gap",
-      fixCode: "publish_oauth_metadata",
-    });
-  }
-  const httpsFields = documents
-    .flatMap((document) => [
-      document.issuer,
-      document.resource,
-      document.authorization_endpoint,
-      document.token_endpoint,
-    ])
-    .filter((value): value is string => typeof value === "string");
-  const consistent =
-    httpsFields.length > 0 && httpsFields.every((value) => value.startsWith("https://"));
+  if (unknown)
+    return unjudged(
+      11,
+      unknown,
+      { summaryCode: "oauth_unavailable", userImpactCode: "oauth_not_assessed" },
+      { documents_found: documents.length },
+    );
+  if (!documents.length)
+    return malformed
+      ? unparseable(11, "fail", "oauth_metadata_unparseable", "oauth_discovery_gap")
+      : result({
+          id: 11,
+          status: "fail",
+          earnedWeight: 0,
+          summaryCode: "oauth_metadata_absent",
+          userImpactCode: "oauth_discovery_gap",
+          fixCode: "publish_oauth_metadata",
+        });
+  const httpsFields = documents.flatMap((document) =>
+    ["issuer", "resource", "authorization_endpoint", "token_endpoint"].flatMap((field) =>
+      typeof document[field] === "string" ? [[field, document[field] as string] as const] : [],
+    ),
+  );
+  const notHttps = httpsFields
+    .filter(([, value]) => !value.startsWith("https://"))
+    .map(([field]) => field);
+  const consistent = httpsFields.length > 0 && notHttps.length === 0;
+  const documentsMissing = artifacts.oauth
+    .filter((_, index) => readings[index]?.state !== "document")
+    .map((artifact) =>
+      artifact.url.includes("oauth-protected-resource")
+        ? "protected resource metadata"
+        : "authorization server metadata",
+    );
   const complete = documents.length >= 2 && consistent;
   return result({
     id: 11,
     status: complete ? "pass" : "partial",
     earnedWeight: complete ? 4 : documents.length >= 2 ? 3 : 1,
     summaryCode: complete ? "oauth_metadata_valid" : "oauth_metadata_partial",
-    evidence: { documents_found: documents.length, https_fields: consistent },
+    evidence: {
+      documents_found: documents.length,
+      https_fields: consistent,
+      ...(documentsMissing.length ? { documents_missing: documentsMissing } : {}),
+      ...(notHttps.length ? { fields_not_https: notHttps } : {}),
+    },
     userImpactCode: "oauth_discovery",
     fixCode: complete ? undefined : "complete_oauth_metadata",
   });
@@ -1114,26 +1220,15 @@ const fingerprintCheck = (): CheckResult =>
   });
 
 const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
-  const document = validDiscovery(artifacts.a2a);
-  if (!document) {
-    if (artifacts.a2a && inaccessible(artifacts.a2a))
-      return result({
-        id: 17,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "a2a_unavailable",
-        userImpactCode: "a2a_not_assessed",
-        errorCode: artifacts.a2a.errorCode ?? "a2a_unavailable",
-      });
-    if (artifacts.noncanonicalA2aHint || (artifacts.a2a && !missing(artifacts.a2a)))
-      return result({
-        id: 17,
-        status: "partial",
-        earnedWeight: 0,
-        summaryCode: "a2a_noncanonical_or_malformed",
-        userImpactCode: "a2a_informational",
-        fixCode: "repair_a2a_card",
-      });
+  const reading = jsonDocumentOf(artifacts.a2a, "a2a_unavailable");
+  if (isUnknown(reading))
+    return unjudged(17, reading, {
+      summaryCode: "a2a_unavailable",
+      userImpactCode: "a2a_not_assessed",
+    });
+  if (reading.state === "malformed")
+    return unparseable(17, "partial", "a2a_card_unparseable", "a2a_informational");
+  if (reading.state === "absent")
     return result({
       id: 17,
       status: "not_applicable",
@@ -1142,22 +1237,20 @@ const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "a2a_optional",
       applicable: false,
     });
-  }
-  const valid =
-    ["name", "version", "skills"].every((field) => fieldPresent(document, field)) &&
-    (fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces"));
+  const document = reading.value;
+  const fieldsMissing = [
+    ...["name", "version", "skills"].filter((field) => !fieldPresent(document, field)),
+    ...(fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces")
+      ? []
+      : ["url or supportedInterfaces"]),
+  ];
+  const valid = fieldsMissing.length === 0;
   return result({
     id: 17,
     status: valid ? "pass" : "partial",
     earnedWeight: valid ? 1 : 0,
-    summaryCode: valid ? "a2a_valid" : "a2a_malformed",
-    evidence: {
-      name_present: fieldPresent(document, "name"),
-      version_present: fieldPresent(document, "version"),
-      interface_present:
-        fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces"),
-      skills_present: fieldPresent(document, "skills"),
-    },
+    summaryCode: valid ? "a2a_valid" : "a2a_card_incomplete",
+    evidence: valid ? {} : { fields_missing: fieldsMissing },
     userImpactCode: "a2a_informational",
     fixCode: valid ? undefined : "repair_a2a_card",
   });

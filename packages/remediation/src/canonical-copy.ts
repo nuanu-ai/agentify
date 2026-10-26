@@ -22,9 +22,10 @@ const CHECK_LABELS: Readonly<Record<string, string>> = {
 const SUMMARY_COPY: Readonly<Record<string, string>> = {
   a2a_absent:
     "No A2A agent card was found. This optional signal does not reduce the core readiness score.",
-  a2a_malformed: "An A2A agent card was found, but it is not valid enough to use reliably.",
-  a2a_noncanonical_or_malformed:
-    "An A2A declaration was found outside the canonical location or could not be parsed reliably.",
+  a2a_card_incomplete:
+    "An A2A agent card was found, but it lacks fields an agent needs to use it. The evidence lists them.",
+  a2a_card_unparseable:
+    "A document is served at the A2A agent-card location, but it is not a JSON object that can be parsed.",
   a2a_unavailable: "The A2A agent-card surface could not be assessed during this scan.",
   a2a_valid: "A valid A2A agent card was found at the canonical public location.",
   agent_ua_blocked:
@@ -52,6 +53,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "A Content-Signal declaration was found, but it is incomplete or inconsistent.",
   content_signal_unavailable:
     "The Content-Signal policy could not be assessed because robots.txt was unavailable.",
+  document_truncated:
+    "The document here is larger than the scanner's read limit, which the evidence names, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
   feed_discoverable: "A public product-feed declaration was found and could be read.",
   feed_machine_signals_only:
     "Product-like machine-readable signals exist, but no public feed declaration was found.",
@@ -90,13 +93,18 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   mcp_absent:
     "No public MCP server-card declaration was found at the experimental discovery location.",
   mcp_card_incomplete:
-    "An MCP server card was found, but required discovery fields are missing or invalid.",
+    "An MCP server card was found, but required discovery fields are missing. The evidence lists them.",
+  mcp_card_unparseable:
+    "A document is served at the MCP server-card location, but it is not a JSON object that can be parsed.",
   mcp_card_valid:
     "A usable MCP server card was found at the experimental public discovery location.",
   mcp_unavailable: "The MCP server-card surface could not be assessed.",
   oauth_metadata_absent:
     "The site declares an authenticated agent surface, but no OAuth authorization-server metadata was found.",
-  oauth_metadata_partial: "OAuth discovery metadata was found, but required fields are incomplete.",
+  oauth_metadata_partial:
+    "OAuth discovery metadata was found, but a document is missing or an address in it does not use HTTPS. The evidence names which.",
+  oauth_metadata_unparseable:
+    "A document is served at an OAuth discovery location, but it is not a JSON object that can be parsed.",
   oauth_metadata_valid:
     "OAuth discovery metadata is present and contains the required public fields.",
   oauth_not_declared:
@@ -131,7 +139,9 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   ssr_unavailable: "The initial HTML response could not be assessed.",
   ucp_absent: "No public UCP commerce profile was found for this store scan.",
   ucp_incomplete:
-    "A UCP commerce profile was found, but required fields are incomplete or invalid.",
+    "A UCP commerce profile was found, but required fields are missing. The evidence lists them.",
+  ucp_profile_unparseable:
+    "A document is served at the UCP profile location, but it is not a JSON object that can be parsed.",
   ucp_not_store: "UCP commerce discovery does not apply to this scan segment.",
   ucp_unavailable: "The UCP commerce profile could not be assessed.",
   ucp_valid: "A usable public UCP commerce profile was found.",
@@ -147,8 +157,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
 };
 
 const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
-  a2a_malformed: "Your declared A2A card cannot be used reliably",
-  a2a_noncanonical_or_malformed: "Your A2A declaration is misplaced or unreadable",
+  a2a_card_incomplete: "Your A2A card lacks fields an agent needs",
+  a2a_card_unparseable: "Your A2A card is not valid JSON",
   agent_ua_blocked: "Your site turns away requests that carry AI agents' tokens",
   agent_ua_partial: "Your site answers one AI agent's token differently",
   ai_policy_absent: "Supported AI crawler groups have no clear robots.txt policy",
@@ -164,9 +174,11 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   markdown_negotiation_absent: "No alternate machine-readable Markdown view was found",
   markdown_negotiation_partial: "Your machine-readable text view is incomplete",
   mcp_absent: "No MCP declaration was found at the assessed locations",
-  mcp_card_incomplete: "Your MCP discovery card cannot be used reliably",
+  mcp_card_incomplete: "Your MCP discovery card lacks fields an agent needs",
+  mcp_card_unparseable: "Your MCP discovery card is not valid JSON",
   oauth_metadata_absent: "Your declared agent surface has no discoverable authorization setup",
   oauth_metadata_partial: "Your authorization discovery metadata is incomplete",
+  oauth_metadata_unparseable: "Your authorization discovery metadata is not valid JSON",
   page_performance_limit_exceeded: "The page exceeds the scanner's safe response budget",
   page_performance_partial: "Page weight or response time raises agent cost",
   page_performance_slow_heavy: "A slow, heavy page increases automated-reader timeout risk",
@@ -180,6 +192,7 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   ssr_shell_only: "Your core content is unavailable until JavaScript runs",
   ucp_absent: "No public UCP commerce profile is declared",
   ucp_incomplete: "Your UCP commerce profile is incomplete",
+  ucp_profile_unparseable: "Your UCP commerce profile is not valid JSON",
   vertical_jsonld_incomplete: "Business-specific structured data is missing key public facts",
   vertical_jsonld_missing: "No segment-specific structured-data type was found",
   vertical_jsonld_wrong_type: "Your structured data describes the wrong kind of business",
@@ -320,6 +333,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Repair the A2A agent card only if the site exposes a real A2A-compatible agent endpoint.",
   repair_content_signal:
     "Make the Content-Signal declaration parseable, complete, and consistent with the site's policy.",
+  repair_document_json:
+    "Serve the document as one valid JSON object and check it with a JSON parser before publishing it. If no such document is meant to exist, answer its address with 404.",
   repair_hreflang:
     "Repair locale codes and reciprocal hreflang links across equivalent language or market pages.",
   repair_llms:
