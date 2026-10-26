@@ -8,7 +8,7 @@ import styles from "./integrations.module.css";
 const IN_USE: WordView = { text: "In use", tone: "ok" };
 const IN_USE_UNSOLD: WordView = { text: "In use", tone: "warn" };
 const CONNECTED: WordView = { text: "Connected", tone: "ok" };
-const READ_ONLY: WordView = { text: "Read-only access", tone: "warn" };
+const NO_READ_WRITE: WordView = { text: "No Read/Write access", tone: "warn" };
 
 /** A way in: its name, the mark where sales go through it, its words and its one action. */
 function Way({
@@ -67,7 +67,7 @@ function ShopTile({
       return (
         <>
           <p className={styles.state}>
-            <Word word={tile.readOnly ? READ_ONLY : CONNECTED} />
+            <Word word={tile.readOnly ? NO_READ_WRITE : CONNECTED} />
             <span className={styles.shop}>{tile.shop}</span>
             <span>
               since <Moment at={tile.connectedAt} />
@@ -75,7 +75,7 @@ function ShopTile({
           </p>
           {tile.readOnly ? (
             <p>
-              Agents can't buy: your shop gave read-only access. Connect again and approve
+              Agents can't buy: your shop didn't grant Read/Write access. Connect again and approve
               Read/Write.
             </p>
           ) : sellsElsewhere ? (

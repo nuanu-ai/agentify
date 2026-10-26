@@ -1961,7 +1961,7 @@ describe("what the integrations screen says about a shop", () => {
     const text = await settings(running);
 
     expect(text).toContain(new URL(SHOP).host);
-    expect(text).toContain("Read-only access");
+    expect(text).toContain("No Read/Write access");
     expect(text).not.toMatch(/\bConnected\b/);
   });
 

@@ -28,7 +28,7 @@ const GUIDE = "/docs/woocommerce";
 const CONNECTED: WordView = { text: "Connected", tone: "ok" };
 
 /** Every purchase is refused before payment, so the connection is not a success to show green. */
-const READ_ONLY: WordView = { text: "Read-only access", tone: "warn" };
+const NO_READ_WRITE: WordView = { text: "No Read/Write access", tone: "warn" };
 
 /** The same words wherever a switch is about the products the merchant's own code published. */
 const codeProducts = (count: number | null): string =>
@@ -231,7 +231,7 @@ function Status({
   return (
     <div className={styles.status}>
       <p className={styles.state}>
-        <Word word={connection.readOnly ? READ_ONLY : CONNECTED} />
+        <Word word={connection.readOnly ? NO_READ_WRITE : CONNECTED} />
         <span className={styles.shop}>{connection.shop}</span>
         <span className={styles.since}>
           since <Moment at={connection.connectedAt} />
@@ -278,8 +278,8 @@ function ReadOnlyPanel({
         said={<Problem said={view.problem} base={base} />}
       >
         <p>
-          Your shop gave read-only access, so Agentify can't create orders there and agents can't
-          buy. Connect again and approve Read/Write.
+          Your shop didn't grant Read/Write access, so Agentify can't create orders there and agents
+          can't buy. Connect again and approve Read/Write.
           {connection.onCode
             ? ` When the new keys arrive, ${offSaleOnKeys(view.codeProducts)}.`
             : null}

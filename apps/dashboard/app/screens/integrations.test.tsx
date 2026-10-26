@@ -106,7 +106,7 @@ describe("the WooCommerce block on the integrations screen", () => {
     const [, narrow] = waysIn(drawn(connected("read"), ON_THE_SHOP));
     const [, full] = waysIn(drawn(connected("read_write"), ON_THE_SHOP));
 
-    expect(readable(narrow)).toContain("Read-only access");
+    expect(readable(narrow)).toContain("didn't grant Read/Write access");
     expect(readable(narrow)).not.toContain("Connected");
     expect(readable(narrow)).toContain("Connect again");
     expect(readable(full)).toContain("Connected");

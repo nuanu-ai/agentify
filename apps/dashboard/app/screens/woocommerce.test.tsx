@@ -524,19 +524,22 @@ describe("what the shop screen holds before it is pressed", () => {
     }
   });
 
-  it("says a read-only grant as a warning rather than as connected", () => {
-    const text = readable(
-      shopPage({
-        state: {
-          kind: "connected",
-          shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date() },
-        },
-        through: "woocommerce",
-      }),
-    );
+  it("says a grant short of Read/Write as a warning rather than as connected, and never calls a write grant read-only", () => {
+    for (const permissions of ["read", "write"]) {
+      const text = readable(
+        shopPage({
+          state: {
+            kind: "connected",
+            shop: { shopUrl: SHOP, permissions, connectedAt: new Date() },
+          },
+          through: "woocommerce",
+        }),
+      );
 
-    expect(text).toContain("Read-only access");
-    expect(text).not.toContain("Connected");
+      expect(text, permissions).toContain("didn't grant Read/Write access");
+      expect(text, permissions).not.toMatch(/read-only/i);
+      expect(text, permissions).not.toContain("Connected");
+    }
   });
 });
 
