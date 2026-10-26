@@ -71,6 +71,13 @@ export const shopNameOf = (address: string): string => {
   }
 };
 
+/**
+ * What a Disconnect form drawn with no shop connected carries in place of the
+ * shop's address, so a press from a page drawn before one was connected
+ * forgets nothing.
+ */
+export const NO_SHOP = "none";
+
 /** Why nothing is connected although a Connect was started. */
 export interface NoKeysYet {
   readonly what: string;

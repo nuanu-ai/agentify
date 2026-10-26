@@ -1,14 +1,15 @@
 import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router";
-import type {
-  ConnectionView,
-  ImportHeld,
-  NoKeysYet,
-  RateView,
-  Refusal,
-  WooImportView,
-  WooShopView,
+import {
+  type ConnectionView,
+  type ImportHeld,
+  NO_SHOP,
+  type NoKeysYet,
+  type RateView,
+  type Refusal,
+  type WooImportView,
+  type WooShopView,
 } from "../../src/woo-views.js";
 import type { Word as WordView } from "../../src/words.js";
 import { type Chrome, useChrome } from "../answer.js";
@@ -163,9 +164,12 @@ function WayBackPanel({ view, base }: Readonly<{ view: WooShopView; base: string
       </PanelHead>
       <PostForm action="/woocommerce/disconnect" className="issue">
         {(pending) => (
-          <Button variant="secondary" pending={pending}>
-            Use my own code
-          </Button>
+          <>
+            <input type="hidden" name="shop" value={NO_SHOP} autoComplete="off" />
+            <Button variant="secondary" pending={pending}>
+              Use my own code
+            </Button>
+          </>
         )}
       </PostForm>
     </section>
@@ -237,9 +241,12 @@ function Status({
           </p>
           <PostForm action="/woocommerce/disconnect" className={styles.confirmPress}>
             {(pending) => (
-              <Button variant="secondary" pending={pending}>
-                <span className={styles.leave}>Disconnect shop</span>
-              </Button>
+              <>
+                <input type="hidden" name="shop" value={connection.shopUrl} autoComplete="off" />
+                <Button variant="secondary" pending={pending}>
+                  <span className={styles.leave}>Disconnect shop</span>
+                </Button>
+              </>
             )}
           </PostForm>
         </div>

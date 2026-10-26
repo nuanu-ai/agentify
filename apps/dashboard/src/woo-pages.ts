@@ -61,6 +61,7 @@ import {
   groupedRate,
   type Held,
   type ImportOutcome,
+  NO_SHOP,
   referenceShown,
   type Said,
   type ShopAnswer,
@@ -122,7 +123,11 @@ export interface WooPages {
     cookie: string | undefined,
   ): Promise<Outcome<WooShopView | WooImportView>>;
   switchToShop(person: Person): Promise<Outcome<WooShopView>>;
-  disconnect(person: Person): Promise<Outcome<WooShopView>>;
+  /**
+   * Refused, with the page drawn as it stands, where the form names another
+   * shop than the one connected now, or none where one is.
+   */
+  disconnect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
   /**
    * Where the shop sends the browser back to, in front of the gate. It reads
    * the session and nothing else, and answers anybody without one alike.
@@ -1049,7 +1054,22 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return { kind: "redirect", location: `${base}/woocommerce` };
     },
 
-    async disconnect(person) {
+    async disconnect(person, form) {
+      // A page drawn before keys arrived, or before another tab connected
+      // another shop, would forget a shop its reader never saw.
+      const connected = await shops.connectionOf(person.id);
+      if (once(form.getAll("shop")) !== (connected?.shopUrl ?? NO_SHOP)) {
+        return await drawTheShop(
+          person,
+          {
+            leaving:
+              connected === null
+                ? "Nothing was changed: the shop this page showed is no longer connected."
+                : `Nothing was disconnected: ${shopNameOf(connected.shopUrl)} was connected after this page loaded. Disconnect it here if you meant to.`,
+          },
+          409,
+        );
+      }
       // Back to the merchant's own code first, and the keys forgotten only
       // once that held: a shop forgotten while one of its orders still waits
       // would leave that order to nobody, since a parcel's shipment is read
