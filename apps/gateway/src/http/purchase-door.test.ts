@@ -1,9 +1,9 @@
 /**
  * What a purchase meets at the door, before any price is asked and before
  * anything is charged: how many of one seller's purchases may wait for payment
- * at once, whether a purchase that charges before its goods is taken from a
- * seller whose own process has gone quiet, and whether anything is taken from a
- * seller who has left paid orders unserved.
+ * at once, whether anything is taken from a seller whose own process has gone
+ * quiet or who has left paid orders unserved, and which cards the catalogue
+ * lists while each of these holds.
  *
  * Each test puts its card in the store directly, so that a test is about the
  * purchase and not the publishing door.
@@ -128,6 +128,12 @@ const sellingThrough = async (
   const stored = await harnessed.store.publishCard(merchantId, card, harnessed.now(), through);
   return stored.id;
 };
+
+/** The identifiers the public catalogue lists, as an agent reads them. */
+const listedIn = async (served: Served): Promise<string[]> =>
+  ((await served.call("GET", "/x402/catalog")).body as { items: { id: string }[] }).items.map(
+    (item) => item.id,
+  );
 
 /** Fifty purchases priced and left unpaid, the seller answering each price. */
 const fiftyWaiting = async (
@@ -263,6 +269,21 @@ describe("purchases waiting for payment", () => {
 
     expect(busy.busy).toBe(true);
     expect(free.busy).toBe(false);
+  });
+
+  it("leave the seller's cards in the catalogue, and a look at one still offers the price", async () => {
+    // A place frees within a minute, and anybody can fill the fifty without
+    // paying, so a full limit must not empty a seller's listing.
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
+
+    const looked = await served.call("GET", `/x402/${itemId}/purchase`);
+
+    expect(await listedIn(served)).toStrictEqual([itemId]);
+    expect(looked.status).toBe(402);
+    expect(looked.headers.get("payment-required")).not.toBeNull();
   });
 
   it("are counted for each seller apart, so one seller's fifty hold up nobody else", async () => {
@@ -418,7 +439,7 @@ describe("a purchase that charges before its goods", () => {
 });
 
 describe("a seller's standing", () => {
-  it("says since when prepaid purchases are refused for silence, only while they are", async () => {
+  it("says since when purchases are refused for silence, only while they are", async () => {
     const { harnessed } = await started();
     const merchantId = harnessed.merchant.id;
     const seeded = harnessed.now();
@@ -435,9 +456,22 @@ describe("a seller's standing", () => {
     expect(paused.outOfTouch).toBeNull();
   });
 
-  it("says nothing of silence to a seller with no card that charges before its goods", async () => {
+  it("says since when purchases are refused for silence to a seller whose only card is synchronous", async () => {
     const { harnessed } = await started();
+    const seeded = harnessed.now();
     await selling(harnessed, syncCard);
+
+    harnessed.advance(11 * MINUTE);
+
+    expect((await harnessed.gateway.standingOf(harnessed.merchant.id)).outOfTouch).toStrictEqual({
+      since: seeded,
+    });
+  });
+
+  it("says nothing of silence to a seller whose every card is paused", async () => {
+    const { harnessed } = await started();
+    const itemId = await selling(harnessed, syncCard);
+    await harnessed.store.setCardPaused(harnessed.merchant.id, itemId, true);
 
     harnessed.advance(11 * MINUTE);
 
@@ -446,16 +480,26 @@ describe("a seller's standing", () => {
 });
 
 describe("a synchronous purchase", () => {
-  it("is priced for a seller who has not polled for ten minutes, since nothing is charged before their answer", async () => {
+  it("is refused for a seller who has not polled for ten minutes, though nothing would be charged before their answer, and taken again at their first poll", async () => {
+    // Nobody would draw the order, so it could only lapse after the buyer had
+    // signed and waited.
     const { harnessed, served } = await started();
     const itemId = await selling(harnessed, syncCard);
 
     harnessed.advance(11 * MINUTE);
-    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
     });
+    await workOnce(harnessed, {}, 0);
+    const taken = await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } });
 
-    expect(answered.status).toBe(402);
+    expect(refused.status).toBe(409);
+    const { error } = refused.body as Refused;
+    expect(error.code).toBe("seller_not_taking_orders");
+    expect(error.retryable).toBe(true);
+    expect(error.message).toContain("nothing was charged");
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
+    expect(taken.status).toBe(402);
   });
 });
 
@@ -865,24 +909,140 @@ describe("a stopped seller's products", () => {
     expect(looked.headers.get("payment-required")).toBeNull();
   });
 
-  it("leave the catalogue while the stop holds, and come back once it lifts, beside another seller's", async () => {
+  it.each<"closes" | "delivers">(["closes", "delivers"])(
+    "leave the catalogue while the stop holds, and come back once the seller %s one of the ten, beside another seller's",
+    async (lifting) => {
+      const { harnessed, served } = await started();
+      const merchantId = harnessed.merchant.id;
+      const itemId = await sellingThrough(harnessed, merchantId, "api");
+      const other = await harnessed.addMerchant();
+      const otherItem = await sellingThrough(harnessed, other.id, "api");
+      const [first] = await leftUnserved(harnessed, itemId, 10);
+      if (first === undefined) throw new Error("no order was left unserved");
+
+      const stopped = await listedIn(served);
+      if (lifting === "closes") {
+        await harnessed.gateway.closeOrder(merchantId, first, {});
+      } else {
+        await harnessed.gateway.deliverOrder(merchantId, first, { activation_code: "LATE-1" });
+      }
+      const lifted = await listedIn(served);
+
+      expect(stopped).toStrictEqual([otherItem]);
+      expect([...lifted].sort()).toStrictEqual([itemId, otherItem].sort());
+    },
+  );
+});
+
+describe("a silent seller's products", () => {
+  it("leave the catalogue, whatever their mode, and come back at the seller's first poll, beside another seller's", async () => {
     const { harnessed, served } = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    const prepaid = await selling(harnessed, prepaidCard);
+    const room = await selling(harnessed, syncCard);
+    harnessed.advance(11 * MINUTE);
     const other = await harnessed.addMerchant();
-    const otherItem = await sellingThrough(harnessed, other.id, "api");
-    const [first] = await leftUnserved(harnessed, itemId, 10);
-    if (first === undefined) throw new Error("no order was left unserved");
-    const listed = async () =>
-      ((await served.call("GET", "/x402/catalog")).body as { items: { id: string }[] }).items.map(
-        (item) => item.id,
-      );
+    const otherItem = await sellingThrough(harnessed, other.id, "api", prepaidCard);
 
-    const stopped = await listed();
-    await harnessed.gateway.closeOrder(merchantId, first, {});
-    const lifted = await listed();
+    const silent = await listedIn(served);
+    await workOnce(harnessed, {}, 0);
+    const back = await listedIn(served);
 
-    expect(stopped).toStrictEqual([otherItem]);
-    expect([...lifted].sort()).toStrictEqual([itemId, otherItem].sort());
+    expect(silent).toStrictEqual([otherItem]);
+    expect([...back].sort()).toStrictEqual([prepaid, room, otherItem].sort());
   });
+});
+
+/**
+ * One way a card can stand when an agent comes to it: what is done once the
+ * card is on sale, and what the door answers an unpaid purchase of it with,
+ * null where it names a price.
+ */
+interface Standing {
+  readonly card: Card;
+  readonly through?: Integration;
+  readonly after?: (harnessed: Harness, itemId: string) => Promise<void>;
+  readonly refused: string | null;
+}
+
+const STANDINGS: Readonly<Record<string, Standing>> = {
+  "a card charged before its goods, its seller in touch": { card: prepaidCard, refused: null },
+  "a synchronous card, its seller in touch": { card: syncCard, refused: null },
+  "a card charged before its goods, its seller silent": {
+    card: prepaidCard,
+    after: async (harnessed) => harnessed.advance(11 * MINUTE),
+    refused: "seller_not_taking_orders",
+  },
+  "a synchronous card, its seller silent": {
+    card: syncCard,
+    after: async (harnessed) => harnessed.advance(11 * MINUTE),
+    refused: "seller_not_taking_orders",
+  },
+  "a shop's card, nothing having polled for an hour": {
+    card: prepaidCard,
+    through: "woocommerce",
+    after: async (harnessed) => harnessed.advance(60 * MINUTE),
+    refused: null,
+  },
+  "a card of a seller who paused all selling": {
+    card: prepaidCard,
+    after: async (harnessed) => {
+      await harnessed.store.setSelling(harnessed.merchant.id, "paused");
+    },
+    refused: "not_selling",
+  },
+  "a card of a silent seller who paused all selling": {
+    card: syncCard,
+    after: async (harnessed) => {
+      await harnessed.store.setSelling(harnessed.merchant.id, "paused");
+      harnessed.advance(11 * MINUTE);
+    },
+    refused: "not_selling",
+  },
+  "a card its seller paused": {
+    card: prepaidCard,
+    after: async (harnessed, itemId) => {
+      await harnessed.store.setCardPaused(harnessed.merchant.id, itemId, true);
+    },
+    refused: "not_selling",
+  },
+  "a card published through the integration its seller left": {
+    card: prepaidCard,
+    after: async (harnessed) => {
+      await harnessed.store.switchIntegration(harnessed.merchant.id, "woocommerce");
+    },
+    refused: "not_selling",
+  },
+  "a card of a seller with ten paid orders left unserved": {
+    card: syncCard,
+    after: async (harnessed) => {
+      const unservedItem = await sellingThrough(harnessed, harnessed.merchant.id, "api");
+      await leftUnserved(harnessed, unservedItem, 10);
+    },
+    refused: "seller_not_fulfilling",
+  },
+};
+
+describe("the catalogue and the door", () => {
+  it.each(Object.entries(STANDINGS))(
+    "agree on %s: the card is listed exactly when a look and a purchase are offered a price",
+    async (_, { card, through = "api", after, refused }) => {
+      const { harnessed, served } = await started();
+      const itemId = await sellingThrough(harnessed, harnessed.merchant.id, through, card);
+      await after?.(harnessed, itemId);
+
+      const listed = (await listedIn(served)).includes(itemId);
+      const looked = await served.call("GET", `/x402/${itemId}/purchase`);
+      const bought = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {} },
+      });
+      const answer = (call: typeof looked) =>
+        call.status === 402 ? null : (call.body as Refused).error.code;
+
+      expect({ listed, looked: answer(looked), bought: answer(bought) }).toStrictEqual({
+        listed: refused === null,
+        looked: refused,
+        bought: refused,
+      });
+    },
+  );
 });
