@@ -44,19 +44,23 @@ const resvgStarted = (): Promise<void> =>
   }));
 
 /**
- * How tall `element` is when laid out `width` wide with nothing limiting its
- * height, by the same layout and fonts that draw it.
+ * The size `element` takes when laid out at most `width` wide with nothing
+ * limiting its height, by the same layout and fonts that draw it.
  */
-export async function laidOutHeight(element: ReactNode, width: number): Promise<number> {
-  let bottom = 0;
+export async function laidOutSize(
+  element: ReactNode,
+  width: number,
+): Promise<{ width: number; height: number }> {
+  const size = { width: 0, height: 0 };
   await satori(element, {
     width,
     fonts: FONTS,
     onNodeDetected: (node) => {
-      bottom = Math.max(bottom, node.top + node.height);
+      size.width = Math.max(size.width, node.left + node.width);
+      size.height = Math.max(size.height, node.top + node.height);
     },
   });
-  return bottom;
+  return size;
 }
 
 /** `element` drawn as a PNG of this size, in the brand's fonts. */

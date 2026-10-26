@@ -27,9 +27,12 @@ export function cleanHost(host: string): string {
 /**
  * Public-safe copy for the immutable share/social preview. It describes the
  * measured HTTP baseline without claiming a model answer or verified action.
+ * `host` is the host as the copy shows it, already cleaned.
  */
-export function shareCopy(snapshot: PublicShareSnapshot): ShareCopy {
-  const host = cleanHost(snapshot.host);
+export function shareCopy(
+  snapshot: PublicShareSnapshot,
+  host: string = cleanHost(snapshot.host),
+): ShareCopy {
   const score = snapshot.score;
 
   switch (snapshot.level) {

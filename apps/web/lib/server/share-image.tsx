@@ -3,7 +3,7 @@ import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 import { BrandMark } from "@agentify/ui";
 import { getPublicAppConfig } from "../app-config";
 import { cleanHost, type ShareCopy, type ShareTone, shareCopy } from "../share-copy";
-import { drawPng, HUMAN_FONT, laidOutHeight, MONO_FONT } from "./drawing";
+import { drawPng, HUMAN_FONT, laidOutSize, MONO_FONT } from "./drawing";
 
 /**
  * The site's colours the picture draws with, named as the tokens in
@@ -41,6 +41,7 @@ const HEADER_HEIGHT = 40;
 const BAND_GAP = 24;
 const FOOT_HEIGHT = 114;
 const RING_SIZE = 256;
+const RING_STROKE = 20;
 const RING_GAP = 48;
 
 const STATEMENT_WIDTH =
@@ -56,6 +57,15 @@ const STATEMENT_HEIGHT =
 const SMALLEST_HEADLINE = 30;
 const HEADLINE_SIZES = [52, 46, 40, 35, SMALLEST_HEADLINE];
 const ELLIPSIS = "…";
+
+/** Score sizes, largest first; the smallest holds 100 inside the ring. */
+const SCORE_SIZES = [98, 90, 82, 74, 66];
+/**
+ * How wide the score may be: the clear space inside the stroke, less a margin
+ * on each side, since figures as wide as that space would touch the stroke
+ * with their corners.
+ */
+const SCORE_WIDTH = RING_SIZE - 3 * RING_STROKE - 2 * 14;
 
 const ZONES = [
   { key: "invisible", name: "Invisible", range: "0–24" },
@@ -108,11 +118,44 @@ function Statement({ copy, tone, size }: { copy: ShareCopy; tone: Tone; size: nu
 }
 
 const fits = async (copy: ShareCopy, tone: Tone, size: number): Promise<boolean> =>
-  (await laidOutHeight(<Statement copy={copy} tone={tone} size={size} />, STATEMENT_WIDTH)) <=
+  (await laidOutSize(<Statement copy={copy} tone={tone} size={size} />, STATEMENT_WIDTH)).height <=
   STATEMENT_HEIGHT;
 
-const shortened = (host: string, kept: number): string =>
-  `${host.slice(0, Math.ceil(kept / 2))}${ELLIPSIS}${host.slice(host.length - Math.floor(kept / 2))}`;
+/**
+ * `host` cut to about `kept` characters with an ellipsis in its middle. The
+ * end it keeps starts at a label, because a label shown from its middle would
+ * read as another site's name; only a cut inside the last label stays where
+ * it falls.
+ */
+const shortened = (host: string, kept: number): string => {
+  const cut = host.length - Math.floor(kept / 2);
+  const nextDot = host.indexOf(".", cut);
+  const end = host.slice(nextDot >= 0 ? nextDot : cut);
+  const start = host.slice(0, Math.max(0, kept - end.length));
+  return `${start}${ELLIPSIS}${end}`;
+};
+
+function Score({ score, tone, size }: { score: number; tone: Tone; size: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline" }}>
+      <strong style={{ fontSize: size, fontWeight: 600, lineHeight: 1, color: tone.color }}>
+        {score}
+      </strong>
+      <span style={{ fontSize: Math.round((size * 2) / 7), color: INK.faint }}>/100</span>
+    </div>
+  );
+}
+
+/** The largest score size whose figures fit inside the ring. */
+async function scoreSize(score: number, tone: Tone): Promise<number> {
+  for (const size of SCORE_SIZES)
+    if (
+      (await laidOutSize(<Score score={score} tone={tone} size={size} />, RING_SIZE)).width <=
+      SCORE_WIDTH
+    )
+      return size;
+  return SCORE_SIZES[SCORE_SIZES.length - 1] ?? 0;
+}
 
 /**
  * The statement at the largest headline size that holds it. A host the
@@ -128,7 +171,7 @@ async function fittedStatement(
 
   const size = SMALLEST_HEADLINE;
   const host = cleanHost(snapshot.host);
-  const copyKeeping = (kept: number) => shareCopy({ ...snapshot, host: shortened(host, kept) });
+  const copyKeeping = (kept: number) => shareCopy(snapshot, shortened(host, kept));
   let kept = 0;
   let tooMany = host.length;
   while (tooMany - kept > 1) {
@@ -147,8 +190,9 @@ export async function drawShareImage(
   const tone = TONE[shareCopy(snapshot).tone];
   const { copy, size } = await fittedStatement(snapshot, tone);
   const score = Math.max(0, Math.min(100, snapshot.score));
+  const scoreFontSize = await scoreSize(score, tone);
   const pct = score / 100;
-  const radius = RING_SIZE / 2 - 20;
+  const radius = RING_SIZE / 2 - RING_STROKE;
   const circumference = 2 * Math.PI * radius;
   const dash = circumference * pct;
   const date = new Date(snapshot.generated_at).toISOString().slice(0, 10);
@@ -257,7 +301,7 @@ export async function drawShareImage(
                 r={radius}
                 fill="none"
                 stroke={INK.line}
-                strokeWidth="20"
+                strokeWidth={RING_STROKE}
               />
               <circle
                 cx={RING_SIZE / 2}
@@ -265,25 +309,13 @@ export async function drawShareImage(
                 r={radius}
                 fill="none"
                 stroke={tone.color}
-                strokeWidth="20"
+                strokeWidth={RING_STROKE}
                 strokeLinecap="round"
                 strokeDasharray={`${dash} ${circumference - dash}`}
                 transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
               />
             </svg>
-            <div style={{ display: "flex", alignItems: "baseline" }}>
-              <strong
-                style={{
-                  fontSize: 98,
-                  fontWeight: 600,
-                  lineHeight: 1,
-                  color: tone.color,
-                }}
-              >
-                {score}
-              </strong>
-              <span style={{ fontSize: 28, color: INK.faint }}>/100</span>
-            </div>
+            <Score score={score} tone={tone} size={scoreFontSize} />
           </div>
         </div>
 
