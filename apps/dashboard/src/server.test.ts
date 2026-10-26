@@ -4423,7 +4423,7 @@ describe("the keys screen", () => {
 
     expect(inColumn(page, UNUSED.id, /last/i)).toMatch(/never used/i);
     // No row says there is no record, so nothing under the list explains one.
-    expect(readable(page)).not.toMatch(/record/i);
+    expect(readable(page)).not.toMatch(/can't tell whether it was ever used/i);
   });
 
   it("says under the table what a missing record means, where a row has one", async () => {
@@ -4435,7 +4435,7 @@ describe("the keys screen", () => {
 
     const text = readable((await browser.get("/keys")).html);
 
-    expect(text).toMatch(/older than our record of calls/i);
+    expect(text).toMatch(/can't tell whether it was ever used/i);
   });
 
   it("issues a key, shows its secret once, and says that is the only time", async () => {
@@ -5755,6 +5755,29 @@ describe("a press that fails in a way nobody planned for", () => {
   /** The panel's one way on, and where it leads. */
   const wayOnIn = (html: string): string | undefined =>
     /<a class="button button-primary" href="([^"]*)"/.exec(html)?.[1]?.replaceAll("&amp;", "&");
+
+  it("says nothing was changed where the dashboard broke before anything ran, a read included", async () => {
+    // The gate reads the session before any page or press runs; a failure
+    // there did nothing, and a page saying nobody knows would send a person
+    // looking for a press they never made.
+    const { browser } = await started({
+      identity: (real) => ({
+        ...real,
+        whoIs: async () => {
+          throw new Error("the session store stopped answering");
+        },
+      }),
+    });
+
+    const failed = await said(async () => {
+      const read = await browser.get("/cards");
+      expect(read.status).toBe(500);
+      expect(readable(read.html)).toContain("Nothing was changed");
+      expect(readable(read.html)).not.toContain("We don't know if this was done");
+    });
+
+    expect(failed).toMatch(/request failed/i);
+  });
 
   it("answers on the dashboard's own page, which says to look before pressing again and leads on", async () => {
     // A press can fail after its work was done, so the page cannot say

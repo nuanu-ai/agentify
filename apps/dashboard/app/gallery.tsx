@@ -3581,7 +3581,9 @@ const PROBLEMS: GalleryState[] = [
     {
       path: "/settings",
       mode: "live",
-      failed: { "routes/gate": thrown(500, { kind: "broken", chrome: chromeIn("live") }) },
+      failed: {
+        "routes/gate": thrown(500, { kind: "broken", chrome: chromeIn("live"), pressed: true }),
+      },
     },
   ),
 ];

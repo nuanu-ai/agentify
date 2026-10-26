@@ -115,7 +115,7 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
         <p className="note">
           A last call can be up to five minutes old.
           {view.unrecorded
-            ? ` “${NO_CALL.unrecorded}” means the key is older than our record of calls.`
+            ? ` “${NO_CALL.unrecorded}”: for a key this old we can't tell whether it was ever used.`
             : null}
         </p>
       )}

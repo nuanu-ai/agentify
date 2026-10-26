@@ -211,8 +211,8 @@ export function ErrorBoundary() {
         title="Nothing was changed"
         said={
           <>
-            This page was opened before you signed in as <strong>{trouble.who}</strong>. Open it
-            again to make the change.
+            You are signed in as <strong>{trouble.who}</strong>, and the page you pressed was not
+            opened for this sign-in. Open it again to make the change.
           </>
         }
         way={way}
@@ -236,11 +236,32 @@ export function ErrorBoundary() {
       <MessagePage chrome={chrome} title="Nothing was changed" said={trouble.said} way={open} />
     );
   }
+  // The gate failing is before anything below it ran.
+  if (trouble?.kind === "broken" && trouble.pressed !== true) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="Nothing was changed"
+        said="Something broke on our side before anything was done. Try again in a moment."
+        way={open}
+      />
+    );
+  }
+  if (trouble === undefined) {
+    return (
+      <MessagePage
+        chrome={chrome}
+        title="This page could not be shown"
+        said={`Something broke on our side. If you pressed a button, check ${name} before you try again.`}
+        way={open}
+      />
+    );
+  }
   return (
     <MessagePage
       chrome={chrome}
       title="We don't know if this was done"
-      said={`${trouble?.kind === "problem" ? trouble.said : "Something broke on our side."} Check ${name} before you try again.`}
+      said={`${trouble.kind === "problem" ? trouble.said : "Something broke on our side."} Check ${name} before you try again.`}
       way={open}
     />
   );
