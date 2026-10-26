@@ -7,7 +7,8 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import { CONTACT_WRITTEN_EVERY_MS, SILENT_AFTER_MS } from "./app/gateway.js";
+import { SILENT_AFTER_MS } from "@agentify/core/published";
+import { CONTACT_WRITTEN_EVERY_MS } from "./app/gateway.js";
 import type { GatewayConfig } from "./config.js";
 
 export interface GatewayHealthFacts {

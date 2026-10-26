@@ -24,6 +24,11 @@ import {
   outcomeFor,
 } from "@agentify/core";
 import {
+  LAPSED_KEPT_MS,
+  SILENT_AFTER_MS,
+  WAITING_FOR_PAYMENT_AT_MOST,
+} from "@agentify/core/published";
+import {
   type Acceptance,
   CARD_REJECTED,
   type CallError,
@@ -225,13 +230,6 @@ const SWEEP_CLAIMS = "agentify_forget_old_claims";
 const FORGET_LAPSED = "agentify_forget_lapsed_attempts";
 
 /**
- * How long an attempt that lapsed unpaid is kept after it ended: long enough
- * for its buyer or merchant to ask about a failed purchase, after which
- * nothing it records is anybody's money or goods.
- */
-const LAPSED_KEPT_MS = 30 * 24 * 60 * 60 * 1_000;
-
-/**
  * How many lapsed attempts one statement forgets, so a run over a long
  * backlog is many short statements rather than one that holds the table.
  */
@@ -319,33 +317,10 @@ interface HowTheySell {
 }
 
 /**
- * How many of one seller's purchases may be priced and waiting for payment at
- * once, counted at the birth of each. Every unpaid purchase opens an order and
- * can ask the seller's code or shop its price, and a shop asked a price is
- * called a dozen times over, so without a limit anyone could load a seller's
- * shop through Agentify until its firewall turned Agentify away. The cost is
- * named here: whoever keeps fifty unpaid purchases open stops this seller's
- * sales through Agentify while they do, but not their shop. A
- * constant rather than a setting, since a knob here either lets that load
- * back through or stops a seller's every sale.
- */
-const WAITING_FOR_PAYMENT_AT_MOST = 50;
-
-/**
- * How long a seller's own process may go without polling before a purchase
- * that charges before its goods is refused: past it, a buyer would pay for
- * goods nothing is there to make. Nothing is paused and nothing has to be
- * resumed; the first poll lets the next purchase through. A constant rather
- * than a setting: a knob here could switch the guard off, or refuse every
- * prepaid sale of a seller whose process is running.
- */
-export const SILENT_AFTER_MS = 10 * 60_000;
-
-/**
  * How stale a seller's recorded poll may get in one process before a poll
  * writes it again, so a busy stream is not one more write per envelope. The
- * guard above waits this long beyond its ten minutes, so no seller is refused
- * before ten minutes without a poll, and every one is within half a minute
+ * silence guard waits this long beyond its `SILENT_AFTER_MS`, so no seller
+ * is refused before that silence, and every one is within half a minute
  * after.
  */
 export const CONTACT_WRITTEN_EVERY_MS = 30_000;
@@ -1740,7 +1715,10 @@ export class Gateway {
     // integration, since a switch landing between the word above and this
     // write would leave an order nothing will draw, and only while the
     // seller's purchases waiting for payment are fewer than the limit. Both
-    // are decided before the price question below is asked.
+    // are decided before the price question below is asked. The limit keeps
+    // anyone from loading a seller's shop with price questions for purchases
+    // nobody pays; while somebody holds that many open, the seller's sales
+    // through Agentify wait, though their shop does not.
     const born = await this.runner.create(record, created.effects, at, {
       through: stored.integration,
       waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
