@@ -169,7 +169,6 @@ async function aChannel() {
       mails.push(message);
       return handover;
     },
-    () => AT,
     "https://agentify.ad/privacy#rights",
   );
   return {
@@ -182,7 +181,13 @@ async function aChannel() {
       handover = "refused";
     },
     copy: (email = OWNER, scanner: Record<string, unknown> = {}) =>
-      copy({ operation: "copy", request: REQUEST, email, scanner } as SendDataCopyRequest),
+      copy({
+        operation: "copy",
+        request: REQUEST,
+        requested_at: AT.toISOString(),
+        email,
+        scanner,
+      } as SendDataCopyRequest),
   };
 }
 
@@ -209,7 +214,7 @@ describe("a copy of an address's data", () => {
     expect(copy).toMatchObject({
       about: OWNER,
       request: REQUEST,
-      prepared_at: AT.toISOString(),
+      requested_at: AT.toISOString(),
       scanner: { lead: { email: OWNER } },
     });
     // The message says what is attached, so a person whose client hides
@@ -236,9 +241,10 @@ describe("a copy of an address's data", () => {
         linked_at: AT.toISOString(),
       },
     ]);
-    expect(dashboard.sessions).toEqual([
-      expect.objectContaining({ ip_address: "203.0.113.7", started_at: AT.toISOString() }),
-    ]);
+    expect(dashboard.sessions).toEqual({
+      total: 1,
+      rows: [expect.objectContaining({ ip_address: "203.0.113.7", started_at: AT.toISOString() })],
+    });
     expect(dashboard.ad_reports).toEqual([
       expect.objectContaining({ event: "reg", state: "delivered" }),
     ]);
@@ -334,6 +340,20 @@ describe("a copy of an address's data", () => {
     const journal = attachedCopy(channel.mails).copy.dashboard.operator_journal;
     expect(journal.rows).toHaveLength(JOURNAL_ROWS_MAX);
     expect(journal.total).toBe(JOURNAL_ROWS_MAX + 2);
+  });
+
+  it("is one message to the provider on every try of one request, named by the request", async () => {
+    // A try whose answer was lost may have been mailed; the provider sends a
+    // repeat with the same key and the same message only once.
+    const channel = await aChannel();
+
+    await channel.copy();
+    await channel.copy();
+
+    const [first, second] = channel.mails;
+    expect(first?.idempotencyKey).toBe(`data-copy/${REQUEST}`);
+    expect(second?.idempotencyKey).toBe(first?.idempotencyKey);
+    expect(second?.attachments).toEqual(first?.attachments);
   });
 
   it("is answered unavailable where the mail provider does not take it", async () => {

@@ -392,11 +392,11 @@ export function OperatorDashboard({
           aside={`${ratio(overview.verifiedRegistrations30d, overview.scans30d)} of scans; ${counted(overview.shares30d, "report", "reports")} shared by visitors who allowed measurement`}
         />
         <Tile
-          label="Data copies not sent"
-          figure={number.format(dataCopies.unsent)}
+          label="Data copies not confirmed"
+          figure={number.format(dataCopies.unconfirmed)}
           aside={
-            dataCopies.unsent > 0 && dataCopies.oldestAt !== null
-              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. The mail service took none of five tries over an hour; each stays counted until a later copy to its address is sent.`
+            dataCopies.unconfirmed > 0 && dataCopies.oldestAt !== null
+              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. None of five tries was confirmed by the mail service, or the copy was too large to email; each stays counted until a later copy to its address is sent, or for 30 days.`
               : "Every copy asked for was sent or is still being tried."
           }
         />

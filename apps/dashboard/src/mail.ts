@@ -27,6 +27,11 @@ export interface Message {
   readonly body: string;
   readonly html: string;
   readonly attachments?: readonly Attachment[];
+  /**
+   * Names one message across tries: the provider sends a repeat carrying the
+   * same key and the same message once, within a day of the first.
+   */
+  readonly idempotencyKey?: string;
 }
 
 const bytesOf = (attachment: Attachment): number => Buffer.byteLength(attachment.content, "utf8");
@@ -87,6 +92,9 @@ function throughResend(config: MailConfig): Postman {
         headers: {
           authorization: `Bearer ${config.mailApiKey ?? ""}`,
           "content-type": "application/json",
+          ...(message.idempotencyKey === undefined
+            ? {}
+            : { "idempotency-key": message.idempotencyKey }),
         },
         body: JSON.stringify({
           from: config.mailFrom,

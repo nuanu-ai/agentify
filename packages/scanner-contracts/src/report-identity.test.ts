@@ -48,6 +48,7 @@ const requests = [
     value: {
       operation: "copy",
       request: requestId,
+      requested_at: timestamp,
       email: "owner@example.com",
       scanner: { lead: { email: "owner@example.com" } },
     },

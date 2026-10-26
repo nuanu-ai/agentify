@@ -19,8 +19,9 @@ import {
  * says so beside it. Scans and registrations are read from their own records.
  * Days are UTC days, as the browser budget's are, whatever the zone of the
  * database session or of this process.
- * A copy of a person's data the mail service never took after every try is
- * counted until a later copy to the same address is mailed.
+ * A copy of a person's data that no try confirmed as taken by the mail
+ * service, or that was too large to email, is counted until a later copy to
+ * the same address is mailed or the request is forgotten after thirty days.
  */
 const UNANSWERED_COPY = `failed.state = 'failed' and not exists (
       select 1 from public.data_copy_requests later
@@ -41,7 +42,7 @@ const OVERVIEW = `
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '24 hours') as accepted_requests_24h,
     (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_1h,
     (select coalesce(sum(usage_usd), 0)::numeric(12, 6) from public.browser_observations where budget_day = (now() at time zone 'UTC')::date) as browser_usage_usd_today,
-    (select count(*)::bigint from public.data_copy_requests failed where ${UNANSWERED_COPY}) as data_copies_unsent,
+    (select count(*)::bigint from public.data_copy_requests failed where ${UNANSWERED_COPY}) as data_copies_unconfirmed,
     (select min(requested_at) from public.data_copy_requests failed where ${UNANSWERED_COPY}) as data_copies_oldest_at`;
 
 const DAILY = `
@@ -169,8 +170,8 @@ export type OperatorDashboard = {
   generatedAt: string;
   turnstileEnforced: boolean;
   overview: OperatorOverview;
-  /** Data copies every try failed to mail, and when the oldest of them was asked for. */
-  dataCopies: { unsent: number; oldestAt: string | null };
+  /** Data copies no try confirmed, and when the oldest of them was asked for. */
+  dataCopies: { unconfirmed: number; oldestAt: string | null };
   /** The last thirty days, oldest first; the last is today, read part of the way through. */
   daily: OperatorDay[];
   recentScans: OperatorRecentScan[];
@@ -216,7 +217,7 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
       browserUsageUsdToday: asNumber(overview.browser_usage_usd_today),
     },
     dataCopies: {
-      unsent: asNumber(overview.data_copies_unsent),
+      unconfirmed: asNumber(overview.data_copies_unconfirmed),
       oldestAt:
         overview.data_copies_oldest_at === null ? null : asIso(overview.data_copies_oldest_at),
     },

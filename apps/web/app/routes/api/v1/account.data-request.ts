@@ -22,7 +22,8 @@ function copyAnswer(answer: CopyAnswer, sentTo: string) {
       fresh: answer.fresh,
       minutes_ago: Math.max(0, Math.floor((now - answer.sentAt.getTime()) / MINUTE_MS)),
     } as const;
-  if (answer.status === "failed") return { status: "failed", type: "access", sent_to: sentTo };
+  if (answer.status !== "pending")
+    return { status: answer.status, type: "access", sent_to: sentTo } as const;
   return {
     status: "pending",
     type: "access",

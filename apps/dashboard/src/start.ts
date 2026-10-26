@@ -111,7 +111,6 @@ function started(
     copierFor(
       { people: postgresPersonRecords(pool), store: application.runtime.store, wooShops },
       postmanFor(config),
-      () => new Date(),
       `${config.publicBaseUrl}/privacy#rights`,
     ),
   );

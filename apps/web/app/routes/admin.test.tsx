@@ -178,7 +178,7 @@ const NUMBERS: Numbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  dataCopies: { unsent: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
+  dataCopies: { unconfirmed: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   daily: [
     { day: "2026-10-11", landingViews: 70, scans: 21 },
     { day: "2026-10-12", landingViews: 0, scans: 0 },
@@ -383,11 +383,14 @@ describe("the operator's dashboard, drawn", () => {
   });
 
   it("counts the data copies every try failed to send, with the oldest, as needing attention", () => {
-    expect(tile(drawn, "Data copies not sent")).toMatch(
-      /Data copies not sent 2 Oldest asked for 30 September 2026/,
+    expect(tile(drawn, "Data copies not confirmed")).toMatch(
+      /Data copies not confirmed 2 Oldest asked for 30 September 2026/,
     );
     expect(
-      tile(draw({ ...NUMBERS, dataCopies: { unsent: 0, oldestAt: null } }), "Data copies not sent"),
+      tile(
+        draw({ ...NUMBERS, dataCopies: { unconfirmed: 0, oldestAt: null } }),
+        "Data copies not confirmed",
+      ),
     ).toContain("Every copy asked for was sent or is still being tried");
   });
 
@@ -415,7 +418,7 @@ describe("the moments on the operator's dashboard", () => {
   it("are written in the zone the operator's browser named, and name it", () => {
     const zoned = text(
       draw(
-        { ...NUMBERS, dataCopies: { unsent: 1, oldestAt: "2026-09-30T20:15:00.000Z" } },
+        { ...NUMBERS, dataCopies: { unconfirmed: 1, oldestAt: "2026-09-30T20:15:00.000Z" } },
         "Asia/Makassar",
       ),
     );

@@ -5,7 +5,7 @@
  * the scanner gathers what its own database holds, and the dashboard adds
  * what it holds and mails the whole to that address. A try that fails is made
  * again on a fixed schedule by the background retry; once every try has
- * failed, the request is failed and the operator's page counts it.
+ * failed, the request has given up and the operator's page counts it.
  *
  * The address is the one value that decides both whose data is gathered and
  * where it is mailed, so a copy can reach nobody but the person it describes.
@@ -13,7 +13,6 @@
 
 import {
   analyticsEvents,
-  consentSnapshots,
   createUuidV7,
   dataCopyRequests,
   deliveryOutbox,
@@ -23,60 +22,84 @@ import {
   scanChecks,
   scanShares,
   scans,
-  sessions,
   waitlistEntries,
 } from "@agentify/scanner-database";
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { PRIVACY_RETRY_INTERVAL_MS } from "../../server/privacy-retries";
 import { getServerConfig } from "./config";
 import { decryptSensitiveValue, encryptSensitiveValue, hmacHex, normalizeEmail } from "./crypto";
-import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
+import {
+  DATA_COPY_TIMEOUT_MS,
+  DashboardRequestTooLarge,
+  getDashboardReportIdentityClient,
+} from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 
 /**
  * How long after each failed try the next one is made. Once the last of these
- * has passed and its try failed too, the request has failed: five tries in
- * all, the last within an hour of the first.
+ * has passed and its try failed too, the request has given up: five tries in
+ * all.
  */
 export const COPY_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000] as const;
+const COPY_TRIES = COPY_RETRY_DELAYS_MS.length + 1;
+/**
+ * The longest one try can run past its due moment: a turn of the background
+ * retry before it is taken, the scanner's own reading of its part, and the
+ * dashboard's thirty seconds to answer.
+ */
+const TRY_SLACK_MS = PRIVACY_RETRY_INTERVAL_MS + 30_000 + DATA_COPY_TIMEOUT_MS;
 /** A copy mailed this recently answers a second press, instead of a second copy. */
 const RECENT_COPY_MS = 10 * 60_000;
-/** Longer than a try takes: the dashboard is given thirty seconds to answer. */
+/** Longer than a try takes, so a try in progress is never taken over. */
 const CLAIM_LEASE_MS = 2 * 60_000;
 const RETRY_BATCH_SIZE = 10;
+/** How long a request is kept once it was sent or gave up: a fingerprint of its address and its dates. */
+export const SETTLED_COPY_RETENTION_MS = 30 * 86_400_000;
 
 /** The most of each list the scanner's part carries; each list says how many there are. */
-const SCANNER_COPY_ROWS_MAX = { reports: 200, analyticsEvents: 1_000, requests: 50 };
+const SCANNER_COPY_ROWS_MAX = {
+  reports: 200,
+  analyticsEvents: 1_000,
+  registrations: 200,
+  requests: 50,
+};
 
 type Request = typeof dataCopyRequests.$inferSelect;
+type Ended = "sent" | "refused" | "no_answer" | "too_large";
 
 /** What a press is told, from the request as it stands once the press is done. */
 export type CopyAnswer =
   | Readonly<{ status: "sent"; sentAt: Date; fresh: boolean }>
   /**
    * Tries remain. `outcome` is how the last one ended, or `in_progress` while
-   * one is being made; `lastTryBy` is when the last try will have been made.
+   * one is being made; `lastTryBy` is when the last try will have ended.
    */
   | Readonly<{
       status: "pending";
       outcome: "refused" | "no_answer" | "in_progress";
       lastTryBy: Date;
     }>
-  | Readonly<{ status: "failed" }>;
+  /** Every try ended without the mail provider confirming it took the copy. */
+  | Readonly<{ status: "unconfirmed" }>
+  /** The copy is larger than the dashboard takes; nothing was mailed. */
+  | Readonly<{ status: "too_large" }>
+  /** The address's data was deleted while the request was answered, and the request with it. */
+  | Readonly<{ status: "deleted" }>;
 
 const iso = (value: Date | null): string | null => (value === null ? null : value.toISOString());
 
 const addressHash = (email: string): string =>
   hmacHex(getServerConfig().hmacSecret, "email", normalizeEmail(email));
 
-/**
- * When the last try of a request still pending will have been made: its next
- * try, the delays after that one, and one turn of the background retry.
- */
+/** When the last try of a request still pending will have ended, each try allowed its slack. */
 function lastTryBy(request: Request): Date {
   const next = request.nextAttemptAt?.getTime() ?? Date.now();
-  const after = COPY_RETRY_DELAYS_MS.slice(request.attempts).reduce((sum, delay) => sum + delay, 0);
-  return new Date(next + after + PRIVACY_RETRY_INTERVAL_MS);
+  const delays = COPY_RETRY_DELAYS_MS.slice(request.attempts).reduce(
+    (sum, delay) => sum + delay,
+    0,
+  );
+  const tries = COPY_TRIES - request.attempts;
+  return new Date(next + delays + tries * TRY_SLACK_MS);
 }
 
 function answerOf(request: Request, pressedAt: Date): CopyAnswer {
@@ -86,7 +109,8 @@ function answerOf(request: Request, pressedAt: Date): CopyAnswer {
       sentAt: request.settledAt,
       fresh: request.settledAt.getTime() >= pressedAt.getTime(),
     };
-  if (request.state === "failed") return { status: "failed" };
+  if (request.state === "failed")
+    return { status: request.lastOutcome === "too_large" ? "too_large" : "unconfirmed" };
   const leased = request.leaseExpiresAt !== null && request.leaseExpiresAt.getTime() > Date.now();
   return {
     status: "pending",
@@ -147,8 +171,25 @@ async function requestFor(email: string, now: Date): Promise<Request> {
   });
 }
 
-/** Takes one due request no other try holds, for one try; `id` names the one to take. */
-async function claim(id?: string): Promise<(Request & { leaseToken: string }) | undefined> {
+/** What ends a request for good, with its address forgotten. */
+const settledAs = (state: "sent" | "failed", now: Date) => ({
+  state,
+  settledAt: now,
+  nextAttemptAt: null,
+  leaseToken: null,
+  leaseExpiresAt: null,
+  emailNormalizedCiphertext: null,
+});
+
+/**
+ * Takes one due request no other try holds, and counts the try as it takes
+ * it, so a process that dies mid-try still spends one. A request whose tries
+ * were all spent that way gives up here, unconfirmed. `id` names the one to
+ * take.
+ */
+async function claim(
+  id?: string,
+): Promise<(Request & { leaseToken: string }) | "spent" | undefined> {
   return await getDatabase().db.transaction(async (tx) => {
     const now = new Date();
     const [due] = await tx
@@ -166,39 +207,39 @@ async function claim(id?: string): Promise<(Request & { leaseToken: string }) | 
       .limit(1)
       .for("update", { skipLocked: true });
     if (due === undefined) return undefined;
+    if (due.attempts >= COPY_TRIES) {
+      await tx
+        .update(dataCopyRequests)
+        .set({ ...settledAs("failed", now), lastOutcome: "no_answer" })
+        .where(eq(dataCopyRequests.id, due.id));
+      return "spent";
+    }
     const leaseToken = createUuidV7();
+    const attempts = due.attempts + 1;
     await tx
       .update(dataCopyRequests)
-      .set({ leaseToken, leaseExpiresAt: new Date(now.getTime() + CLAIM_LEASE_MS) })
+      .set({ attempts, leaseToken, leaseExpiresAt: new Date(now.getTime() + CLAIM_LEASE_MS) })
       .where(eq(dataCopyRequests.id, due.id));
-    return { ...due, leaseToken };
+    return { ...due, attempts, leaseToken };
   });
 }
 
 /** Writes how a try ended, if this try still holds the request. */
-async function settleTry(
-  claimed: Request & { leaseToken: string },
-  ended: "sent" | "refused" | "no_answer",
-): Promise<void> {
+async function settleTry(claimed: Request & { leaseToken: string }, ended: Ended): Promise<void> {
   const now = new Date();
-  const attempts = claimed.attempts + 1;
-  const delay = COPY_RETRY_DELAYS_MS[attempts - 1];
-  const finished = ended === "sent" || delay === undefined;
+  const delay = COPY_RETRY_DELAYS_MS[claimed.attempts - 1];
+  const finished = ended === "sent" || ended === "too_large" || delay === undefined;
   await getDatabase()
     .db.update(dataCopyRequests)
     .set({
-      attempts,
-      leaseToken: null,
-      leaseExpiresAt: null,
       lastOutcome: ended === "sent" ? null : ended,
       ...(finished
-        ? {
-            state: ended === "sent" ? "sent" : "failed",
-            settledAt: now,
-            nextAttemptAt: null,
-            emailNormalizedCiphertext: null,
-          }
-        : { nextAttemptAt: new Date(now.getTime() + delay) }),
+        ? settledAs(ended === "sent" ? "sent" : "failed", now)
+        : {
+            leaseToken: null,
+            leaseExpiresAt: null,
+            nextAttemptAt: new Date(now.getTime() + delay),
+          }),
     })
     .where(
       and(
@@ -213,12 +254,11 @@ async function settleTry(
  * One try of one due request, or of the one named: gathers the scanner's part
  * and asks the dashboard to mail the copy. `none` where nothing was due.
  */
-export async function runDataCopy(
-  input: { id?: string } = {},
-): Promise<"sent" | "refused" | "no_answer" | "none"> {
+export async function runDataCopy(input: { id?: string } = {}): Promise<Ended | "none"> {
   const claimed = await claim(input.id);
   if (claimed === undefined) return "none";
-  let ended: "sent" | "refused" | "no_answer";
+  if (claimed === "spent") return "no_answer";
+  let ended: Ended;
   try {
     const config = getServerConfig();
     const email = normalizeEmail(
@@ -228,14 +268,15 @@ export async function runDataCopy(
       throw new Error("data_copy_address_mismatch");
     const answered = await getDashboardReportIdentityClient().sendDataCopy({
       request: claimed.id,
+      requestedAt: claimed.requestedAt,
       email,
       scanner: await scannerCopyOf(email),
     });
     ended = answered.status === "accepted" ? "sent" : "refused";
-  } catch {
-    // The dashboard may have mailed the copy before its answer was lost, so a
-    // repeat can deliver a second one; that is the cost of not losing one.
-    ended = "no_answer";
+  } catch (thrown) {
+    // Without an answer the dashboard may have mailed the copy. A later try
+    // carries the same request, which the mail provider takes as a repeat.
+    ended = thrown instanceof DashboardRequestTooLarge ? "too_large" : "no_answer";
   }
   await settleTry(claimed, ended);
   return ended;
@@ -250,19 +291,35 @@ export async function requestDataCopy(email: string): Promise<CopyAnswer> {
     .db.select()
     .from(dataCopyRequests)
     .where(eq(dataCopyRequests.id, request.id));
-  // A deletion of the address in between removes the request with everything else.
-  if (now === undefined) return { status: "failed" };
+  // Deleting the address removes its requests with everything else.
+  if (now === undefined) return { status: "deleted" };
   return answerOf(now, pressedAt);
+}
+
+/** Forgets the requests sent or given up more than thirty days ago. */
+async function forgetSettledCopies(now: Date): Promise<void> {
+  await getDatabase()
+    .db.delete(dataCopyRequests)
+    .where(
+      and(
+        ne(dataCopyRequests.state, "pending"),
+        lt(dataCopyRequests.settledAt, new Date(now.getTime() - SETTLED_COPY_RETENTION_MS)),
+      ),
+    );
 }
 
 let retryRunning = false;
 
-/** The background retry's turn: the requests whose next try is due, a batch at a time. */
+/**
+ * The background retry's turn: the requests whose next try is due, a batch at
+ * a time, and then the settled requests past their thirty days.
+ */
 export async function retryDueDataCopies(): Promise<number> {
   if (retryRunning) return 0;
   retryRunning = true;
   let sent = 0;
   try {
+    await forgetSettledCopies(new Date());
     for (let index = 0; index < RETRY_BATCH_SIZE; index += 1) {
       const ended = await runDataCopy();
       if (ended === "none") break;
@@ -276,9 +333,9 @@ export async function retryDueDataCopies(): Promise<number> {
 
 /**
  * What the scanner's database holds for this address, as the copy carries it.
- * The person's reports are the scans their lead is linked to; a scan's own
- * session is left out, because whoever submitted the site may be somebody
- * else. The visits are the lead's first session and those of its own events.
+ * The person's reports are the scans their lead is linked to. Browser
+ * sessions are left out: the browser that scanned a site and registered for
+ * its report can be somebody else's, since anyone can type any address.
  */
 async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
   const { db } = getDatabase();
@@ -286,22 +343,20 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
   const hash = addressHash(email);
   const decrypted = (value: string | null): string | null =>
     value === null ? null : decryptSensitiveValue(value, config.encryptionKey);
+  const counted = async (table: typeof registrationIntents | typeof dataCopyRequests) =>
+    (await db.select({ total: count() }).from(table).where(eq(table.emailLookupHash, hash)))[0]
+      ?.total ?? 0;
   const [lead] = await db
     .select()
     .from(leads)
-    .where(
-      and(
-        eq(leads.emailLookupHash, hash),
-        isNull(leads.anonymizedAt),
-        isNull(leads.deletionRequestedAt),
-      ),
-    )
+    .where(and(eq(leads.emailLookupHash, hash), isNull(leads.anonymizedAt)))
     .limit(1);
   const intents = await db
     .select()
     .from(registrationIntents)
     .where(eq(registrationIntents.emailLookupHash, hash))
-    .orderBy(desc(registrationIntents.createdAt));
+    .orderBy(desc(registrationIntents.createdAt))
+    .limit(SCANNER_COPY_ROWS_MAX.registrations);
   const asked = await db
     .select({
       requestedAt: dataCopyRequests.requestedAt,
@@ -316,27 +371,45 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
     address: normalizeEmail(email),
     left_out: [
       "The evidence each check gathered about your website, which the report itself shows at its report_url.",
-      "The browser session that submitted a scan, which can be somebody else's: anyone can scan any site.",
-      `Reports beyond the newest ${SCANNER_COPY_ROWS_MAX.reports} and analytics events beyond the newest ${SCANNER_COPY_ROWS_MAX.analyticsEvents.toLocaleString("en-US")}; each list's "total" says how many there are in all.`,
+      "Browser visits and the privacy choices made in them: the browser that scanned a site and registered for its report can be somebody else's, since anyone can type any address.",
+      "A phone number typed with this address on a registration that was never confirmed from this address's mailbox, for the same reason.",
+      `Beyond the newest ${SCANNER_COPY_ROWS_MAX.reports} reports, ${SCANNER_COPY_ROWS_MAX.registrations} registrations, ${SCANNER_COPY_ROWS_MAX.analyticsEvents.toLocaleString("en-US")} analytics events and ${SCANNER_COPY_ROWS_MAX.requests} copy requests; each list's "total" says how many there are in all.`,
     ],
-    registrations: intents.map((intent) => ({
-      scan_id: intent.scanId,
-      role: intent.role,
-      phone: decrypted(intent.phoneE164Ciphertext),
-      site_ownership_claim: intent.siteOwnershipClaim,
-      marketing_email_opt_in: intent.marketingEmailOptIn,
-      dataset_reuse_acknowledged: intent.datasetReuseAcknowledged,
-      asked_at: iso(intent.createdAt),
-      expires_at: iso(intent.expiresAt),
-      used_at: iso(intent.consumedAt),
-    })),
-    data_requests: asked.map((one) => ({
-      requested_at: iso(one.requestedAt),
-      state: one.state,
-      settled_at: iso(one.settledAt),
-    })),
+    registrations: {
+      total: await counted(registrationIntents),
+      rows: intents.map((intent) => ({
+        scan_id: intent.scanId,
+        role: intent.role,
+        phone: intent.consumedAt === null ? null : decrypted(intent.phoneE164Ciphertext),
+        site_ownership_claim: intent.siteOwnershipClaim,
+        marketing_email_opt_in: intent.marketingEmailOptIn,
+        dataset_reuse_acknowledged: intent.datasetReuseAcknowledged,
+        asked_at: iso(intent.createdAt),
+        expires_at: iso(intent.expiresAt),
+        confirmed_at: iso(intent.consumedAt),
+      })),
+    },
+    data_requests: {
+      total: await counted(dataCopyRequests),
+      rows: asked.map((one) => ({
+        requested_at: iso(one.requestedAt),
+        state: one.state,
+        settled_at: iso(one.settledAt),
+      })),
+    },
   };
   if (lead === undefined) return { ...base, lead: null };
+  // The reports of an address whose deletion was asked for are already closed
+  // and are being erased; they are not copied, and the copy says why.
+  if (lead.deletionRequestedAt !== null)
+    return {
+      ...base,
+      lead: {
+        email: normalizeEmail(email),
+        deletion_requested_at: iso(lead.deletionRequestedAt),
+        held: "Being deleted: the reports, registrations and events filed under this address are not copied.",
+      },
+    };
 
   const [{ reportTotal } = { reportTotal: 0 }] = await db
     .select({ reportTotal: count() })
@@ -394,7 +467,6 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
       eventId: analyticsEvents.eventId,
       name: analyticsEvents.name,
       occurredAt: analyticsEvents.occurredAt,
-      sessionId: analyticsEvents.sessionId,
       scanId: analyticsEvents.scanId,
       segment: analyticsEvents.segment,
       landingVariant: analyticsEvents.landingVariant,
@@ -420,16 +492,6 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
           ),
         )
     : [];
-  const sessionIds = [...new Set([lead.firstSessionId, ...events.map((event) => event.sessionId)])];
-  // A session's identifier joins the site's own records and tells the person
-  // nothing, so the copy numbers the visits instead.
-  const visitOf = (sessionId: string) => `visit-${sessionIds.indexOf(sessionId) + 1}`;
-  const visits = await db.select().from(sessions).where(inArray(sessions.id, sessionIds));
-  const consents = await db
-    .select()
-    .from(consentSnapshots)
-    .where(inArray(consentSnapshots.sessionId, sessionIds))
-    .orderBy(asc(consentSnapshots.capturedAt));
 
   return {
     ...base,
@@ -478,41 +540,11 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
           })),
       })),
     },
-    visits: visits.map((visit) => ({
-      visit: visitOf(visit.id),
-      first_seen_at: iso(visit.createdAt),
-      last_seen_at: iso(visit.lastSeenAt),
-      first_landing: {
-        variant: visit.firstLandingVariant,
-        utm_source: visit.firstUtmSource,
-        utm_medium: visit.firstUtmMedium,
-        utm_campaign: visit.firstUtmCampaign,
-        utm_content: visit.firstUtmContent,
-        utm_term: visit.firstUtmTerm,
-      },
-      last_landing: {
-        variant: visit.lastLandingVariant,
-        utm_source: visit.lastUtmSource,
-        utm_medium: visit.lastUtmMedium,
-        utm_campaign: visit.lastUtmCampaign,
-        utm_content: visit.lastUtmContent,
-        utm_term: visit.lastUtmTerm,
-      },
-      privacy_choices: consents
-        .filter((consent) => consent.sessionId === visit.id)
-        .map((consent) => ({
-          policy_version: consent.policyVersion,
-          categories: consent.categories,
-          source: consent.source,
-          captured_at: iso(consent.capturedAt),
-        })),
-    })),
     analytics_events: {
       total: eventTotal,
       rows: events.map((event) => ({
         name: event.name,
         occurred_at: iso(event.occurredAt),
-        visit: visitOf(event.sessionId),
         scan_id: event.scanId,
         segment: event.segment,
         landing_variant: event.landingVariant,

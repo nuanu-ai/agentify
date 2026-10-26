@@ -31,7 +31,7 @@ const logged = async (during: () => Promise<void>): Promise<string> => {
 
 interface Provider {
   readonly url: string;
-  readonly asked: { path: string; authorization: string; body: string }[];
+  readonly asked: { path: string; authorization: string; idempotency: string; body: string }[];
   close(): Promise<void>;
 }
 
@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 
 const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
-  const asked: { path: string; authorization: string; body: string }[] = [];
+  const asked: { path: string; authorization: string; idempotency: string; body: string }[] = [];
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -59,6 +59,7 @@ const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
       asked.push({
         path: request.url ?? "",
         authorization: request.headers.authorization ?? "",
+        idempotency: String(request.headers["idempotency-key"] ?? ""),
         body,
       });
       const answer = () => {
@@ -173,6 +174,20 @@ describe("a dashboard with a mail provider", () => {
         content_type: "application/json",
       },
     ]);
+  });
+
+  it("names a message's idempotency key to the provider, so a repeat of it is sent once", async () => {
+    const sending = await provider();
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+
+    await postman({ ...MESSAGE, idempotencyKey: "data-copy/019b41a0" });
+    await postman(MESSAGE);
+
+    expect(sending.asked.map(({ idempotency }) => idempotency)).toEqual(["data-copy/019b41a0", ""]);
   });
 
   it("records provider acceptance without the recipient or action URL", async () => {

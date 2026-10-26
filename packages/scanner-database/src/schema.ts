@@ -441,7 +441,11 @@ export const dataCopyRequests = pgTable(
     nextAttemptAt: utcTimestamp("next_attempt_at"),
     leaseToken: uuid("lease_token"),
     leaseExpiresAt: utcTimestamp("lease_expires_at"),
-    /** How the last try ended: `refused` by the mail provider, or `no_answer`, not known. */
+    /**
+     * How the last try ended: `refused` by the mail provider; `no_answer`,
+     * which may have been mailed; or `too_large` for the dashboard to take,
+     * which nothing was mailed for and no later try changes.
+     */
     lastOutcome: text("last_outcome"),
     settledAt: utcTimestamp("settled_at"),
   },
@@ -461,7 +465,7 @@ export const dataCopyRequests = pgTable(
     ),
     check(
       "data_copy_requests_last_outcome",
-      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('refused', 'no_answer')`,
+      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('refused', 'no_answer', 'too_large')`,
     ),
     // One request in progress per address, so a second press joins the first.
     uniqueIndex("data_copy_requests_one_pending_uidx")

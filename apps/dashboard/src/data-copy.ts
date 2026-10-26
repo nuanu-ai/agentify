@@ -16,7 +16,7 @@ import type {
   SendDataCopyRequest,
   SendDataCopyResponse,
 } from "@agentify/scanner-contracts/report-identity";
-import { asc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { Message, Postman } from "./mail.js";
@@ -28,6 +28,8 @@ import type { WooShops } from "./woo-shops.js";
 const COPY_ROWS_MAX = 2_000;
 /** The most journal rows a copy lists of an account and of a merchant, the journal's own page. */
 export const JOURNAL_ROWS_MAX = 200;
+/** The most sessions a copy lists of an account, the newest. */
+export const SESSIONS_MAX = 200;
 
 /**
  * What a copy deliberately does not carry, in the words the person reads in
@@ -41,7 +43,7 @@ const LEFT_OUT = [
   "What a buyer received for an order, which can be a code or a download link that works for whoever holds it.",
   "Keyed fingerprints of your address and your browser, which mean nothing outside Agentify.",
   "The seller dashboard's product analytics events, which describe your merchant's sales together with its buyers' orders and leave Agentify only as keyed hashes; they are deleted within 37 days.",
-  `In the dashboard part, lists longer than ${COPY_ROWS_MAX.toLocaleString("en-US")} cards or orders, or ${JOURNAL_ROWS_MAX} journal rows, carry the newest ones; "total" says how many there are in all.`,
+  `In the dashboard part, lists longer than ${COPY_ROWS_MAX.toLocaleString("en-US")} cards or orders, ${SESSIONS_MAX} sessions or ${JOURNAL_ROWS_MAX} journal rows carry the newest ones; "total" says how many there are in all.`,
 ];
 
 const iso = (value: unknown): string | null =>
@@ -56,7 +58,10 @@ interface PersonRecord {
   readonly merchantId: string | null;
   readonly account: Readonly<Record<string, unknown>>;
   readonly google: readonly Readonly<Record<string, unknown>>[];
-  readonly sessions: readonly Readonly<Record<string, unknown>>[];
+  readonly sessions: Readonly<{
+    total: number;
+    rows: readonly Readonly<Record<string, unknown>>[];
+  }>;
   readonly adReports: readonly Readonly<Record<string, unknown>>[];
 }
 
@@ -107,7 +112,7 @@ const recordOf = (
   row: Row,
   related: Readonly<{
     google: readonly Row[];
-    sessions: readonly Row[];
+    sessions: Readonly<{ total: number; rows: readonly Row[] }>;
     adReports: readonly Row[];
   }>,
 ): PersonRecord => ({
@@ -115,7 +120,7 @@ const recordOf = (
   merchantId: typeof row.merchantId === "string" ? row.merchantId : null,
   account: accountOf(row),
   google: related.google.map(googleOf),
-  sessions: related.sessions.map(sessionOf),
+  sessions: { total: related.sessions.total, rows: related.sessions.rows.map(sessionOf) },
   adReports: related.adReports.map(adReportOf),
 });
 
@@ -132,7 +137,18 @@ export const memoryPersonRecords = (
       google: theirs("dashboard_credentials", "userId").filter(
         (one) => one.providerId === "google",
       ),
-      sessions: theirs("dashboard_sessions", "userId"),
+      sessions: (() => {
+        const all = theirs("dashboard_sessions", "userId");
+        return {
+          total: all.length,
+          rows: [...all]
+            .sort(
+              (a, b) =>
+                new Date(b.createdAt as Date).getTime() - new Date(a.createdAt as Date).getTime(),
+            )
+            .slice(0, SESSIONS_MAX),
+        };
+      })(),
       adReports: theirs("dashboard_ad_reports", "accountId"),
     });
   },
@@ -179,7 +195,12 @@ export const postgresPersonRecords = (pool: Pool): PersonRecords => ({
           })
           .from(sessions)
           .where(eq(sessions.userId, row.id))
-          .orderBy(asc(sessions.createdAt));
+          .orderBy(desc(sessions.createdAt))
+          .limit(SESSIONS_MAX);
+        const [{ sessionTotal } = { sessionTotal: 0 }] = await tx
+          .select({ sessionTotal: count() })
+          .from(sessions)
+          .where(eq(sessions.userId, row.id));
         const reported = await tx
           .select({
             event: adReports.event,
@@ -195,7 +216,7 @@ export const postgresPersonRecords = (pool: Pool): PersonRecords => ({
           .where(eq(adReports.accountId, row.id));
         return recordOf(row, {
           google: google.filter((one) => one.providerId === "google"),
-          sessions: signedIn,
+          sessions: { total: sessionTotal, rows: signedIn },
           adReports: reported,
         });
       },
@@ -384,14 +405,15 @@ function copyMessage(to: string, filename: string, document: string, privacyUrl:
  * cannot know, and it tries again.
  */
 export const copierFor =
-  (sources: CopySources, postman: Postman, now: () => Date, privacyUrl: string) =>
+  (sources: CopySources, postman: Postman, privacyUrl: string) =>
   async (request: SendDataCopyRequest): Promise<SendDataCopyResponse> => {
-    const preparedAt = now();
+    // Built from the request and the data alone, so every try of one request
+    // is one message to the provider unless the data changed in between.
     const document = JSON.stringify(
       {
         about: request.email,
         request: request.request,
-        prepared_at: preparedAt.toISOString(),
+        requested_at: request.requested_at,
         left_out: LEFT_OUT,
         scanner: request.scanner,
         dashboard: await dashboardCopyOf(request.email, sources),
@@ -399,7 +421,10 @@ export const copierFor =
       null,
       2,
     );
-    const filename = `agentify-data-${preparedAt.toISOString().slice(0, 10)}.json`;
-    const handed = await postman(copyMessage(request.email, filename, document, privacyUrl));
+    const filename = `agentify-data-${request.requested_at.slice(0, 10)}.json`;
+    const handed = await postman({
+      ...copyMessage(request.email, filename, document, privacyUrl),
+      idempotencyKey: `data-copy/${request.request}`,
+    });
     return { status: handed === "accepted" ? "accepted" : "unavailable" };
   };

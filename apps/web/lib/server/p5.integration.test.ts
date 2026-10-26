@@ -25,7 +25,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { action as dataRequestRoute } from "../../app/routes/api/v1/account.data-request";
 import { visitorOf } from "./auth";
 import { encryptSensitiveValue, hmacHex } from "./crypto";
-import { COPY_RETRY_DELAYS_MS, retryDueDataCopies, runDataCopy } from "./data-copy";
+import {
+  COPY_RETRY_DELAYS_MS,
+  retryDueDataCopies,
+  runDataCopy,
+  SETTLED_COPY_RETENTION_MS,
+} from "./data-copy";
 import { getDatabase } from "./database";
 import { getOperatorDashboard } from "./operator-dashboard";
 import { executeRetentionCleanup } from "./privacy";
@@ -67,7 +72,7 @@ let sellerDashboardDeleteRequests = 0;
  */
 type AskedCopy = { email: string; request: string; scanner: Record<string, unknown> };
 const copiesAsked: AskedCopy[] = [];
-let copyAnswer: "accepted" | "unavailable" | "no_answer" = "accepted";
+let copyAnswer: "accepted" | "unavailable" | "no_answer" | "too_large" = "accepted";
 let copyDelayMs = 0;
 
 /**
@@ -189,6 +194,7 @@ beforeAll(async () => {
       });
       if (copyDelayMs) await new Promise((resolve) => setTimeout(resolve, copyDelayMs));
       if (copyAnswer === "no_answer") respondJson(response, 503, {});
+      else if (copyAnswer === "too_large") respondJson(response, 413, {});
       else respondJson(response, 200, { status: copyAnswer });
       return;
     }
@@ -505,10 +511,10 @@ describe("the operator page", () => {
     expect((await getOperatorDashboard()).overview.verifiedRegistrations30d).toBe(before + 1);
   });
 
-  it("counts a copy every try failed to send until a later copy to its address is sent", async () => {
-    const unsent = async () => (await getOperatorDashboard()).dataCopies.unsent;
+  it("counts a copy no try confirmed until a later copy to its address is sent", async () => {
+    const unconfirmed = async () => (await getOperatorDashboard()).dataCopies.unconfirmed;
     const { email } = await createLeadFixture("operator-counted-copy");
-    const before = await unsent();
+    const before = await unconfirmed();
 
     copyAnswer = "unavailable";
     await askForACopy(signedInAs(email), email);
@@ -523,12 +529,12 @@ describe("the operator page", () => {
       attempts: COPY_RETRY_DELAYS_MS.length + 1,
       emailNormalizedCiphertext: null,
     });
-    expect(await unsent()).toBe(before + 1);
+    expect(await unconfirmed()).toBe(before + 1);
     expect((await getOperatorDashboard()).dataCopies.oldestAt).not.toBeNull();
 
     copyAnswer = "accepted";
     await askForACopy(signedInAs(email), email);
-    expect(await unsent()).toBe(before);
+    expect(await unconfirmed()).toBe(before);
   });
 });
 
@@ -608,7 +614,7 @@ describe("a request for a copy of an address's data", () => {
     });
   });
 
-  it("carries the person's own reports, visits and events, and nothing of another address or any secret", async () => {
+  it("carries the person's own reports and events, and no browser session, nothing of another address and no secret", async () => {
     copyAnswer = "accepted";
     const owner = await createLeadFixture("copy-own-data");
     const other = await createLeadFixture("copy-someone-else");
@@ -619,10 +625,13 @@ describe("a request for a copy of an address's data", () => {
 
     const scanner = copiesAsked.at(-1)?.scanner ?? {};
     expect(scanner).toMatchObject({
-      analytics_events: { total: 1, rows: [{ name: "registration_completed", visit: "visit-1" }] },
-      visits: [{ visit: "visit-1", privacy_choices: [{ policy_version: "phase-a-v2" }] }],
+      analytics_events: { total: 1, rows: [{ name: "registration_completed" }] },
     });
     const text = JSON.stringify(scanner);
+    // The browser that scanned and registered can be somebody else's.
+    for (const browser of [owner.sessionId, owner.consentId, "phase-a-v2"]) {
+      expect(text, browser).not.toContain(browser);
+    }
     for (const theirs of [other.email, other.scanId, other.leadId, other.sessionId]) {
       expect(text, theirs).not.toContain(theirs);
     }
@@ -675,13 +684,12 @@ describe("a request for a copy of an address's data", () => {
 
     const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
 
-    const minutes = Math.ceil(
-      (COPY_RETRY_DELAYS_MS.reduce((sum, delay) => sum + delay, 0) + 30_000) / 60_000,
-    );
+    // The next try in a minute, the waits after it, and each of the four
+    // tries left allowed a minute and a half past its due moment.
     expect(answered.body).toMatchObject({
       status: "pending",
       outcome: "refused",
-      within_minutes: minutes,
+      within_minutes: 57,
     });
     const [pending] = await copyRequestsOf(fixture.email);
     if (pending === undefined) throw new Error("no copy request was recorded");
@@ -724,6 +732,129 @@ describe("a request for a copy of an address's data", () => {
     await expect(requestScannerIdentityDeletion({ leadId: fixture.leadId })).resolves.toBe(
       "completed",
     );
+
+    expect(await copyRequestsOf(fixture.email)).toEqual([]);
+  });
+
+  it("gives a phone number only from a registration the address's mailbox confirmed", async () => {
+    copyAnswer = "accepted";
+    const fixture = await createLeadFixture("copy-phones");
+    const intent = (phone: string, consumedAt: Date | null) => ({
+      id: createUuidV7(),
+      scanId: fixture.scanId,
+      sessionId: fixture.sessionId,
+      emailNormalizedCiphertext: encryptSensitiveValue(fixture.email, Buffer.alloc(32, 7)),
+      emailLookupHash: hmacHex(tokenHmacSecret, "email", fixture.email),
+      phoneE164Ciphertext: encryptSensitiveValue(phone, Buffer.alloc(32, 7)),
+      role: "owner",
+      datasetReuseAcknowledged: true,
+      expiresAt: new Date(Date.now() + 3_600_000),
+      consumedAt,
+    });
+    await getDatabase()
+      .db.insert(registrationIntents)
+      .values([intent("+15550000001", new Date()), intent("+15550000002", null)]);
+
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    const text = JSON.stringify(copiesAsked.at(-1)?.scanner ?? {});
+    expect(text).toContain("+15550000001");
+    // Anyone can type any address beside their own number.
+    expect(text).not.toContain("+15550000002");
+  });
+
+  it("says an address whose deletion is under way is being deleted, and copies none of its reports", async () => {
+    copyAnswer = "accepted";
+    const fixture = await createLeadFixture("copy-being-deleted");
+    await getDatabase()
+      .db.update(leads)
+      .set({ deletionRequestedAt: new Date() })
+      .where(eq(leads.id, fixture.leadId));
+
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    const scanner = copiesAsked.at(-1)?.scanner ?? {};
+    expect(scanner).toMatchObject({ lead: { deletion_requested_at: expect.any(String) } });
+    expect(scanner).not.toHaveProperty("reports");
+    expect(JSON.stringify(scanner)).not.toContain(fixture.scanId);
+  });
+
+  it("holds no lead and no report for an address already deleted", async () => {
+    copyAnswer = "accepted";
+    sellerDashboardMode = "retained";
+    const fixture = await createLeadFixture("copy-after-deletion");
+    await requestScannerIdentityDeletion({ leadId: fixture.leadId });
+
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    const scanner = copiesAsked.at(-1)?.scanner ?? {};
+    expect(scanner).toMatchObject({ lead: null });
+    expect(JSON.stringify(scanner)).not.toContain(fixture.scanId);
+  });
+
+  it("ends at once, and says so, a copy too large for the dashboard to take", async () => {
+    const fixture = await createLeadFixture("copy-too-large");
+    copyAnswer = "too_large";
+    const asked = copiesAsked.length;
+
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+    copyAnswer = "accepted";
+    await retryDueDataCopies();
+
+    expect(answered.body).toMatchObject({ status: "too_large", sent_to: fixture.email });
+    expect(copiesAsked.slice(asked)).toHaveLength(1);
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({
+      state: "failed",
+      lastOutcome: "too_large",
+      emailNormalizedCiphertext: null,
+    });
+  });
+
+  it("counts a try as it starts, so a request whose tries all died gives up unconfirmed", async () => {
+    const fixture = await createLeadFixture("copy-died");
+    copyAnswer = "unavailable";
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+    const [asked] = await copyRequestsOf(fixture.email);
+    if (asked === undefined) throw new Error("no copy request was recorded");
+    // As a process leaves it that died during its fifth try.
+    await getDatabase()
+      .db.update(dataCopyRequests)
+      .set({
+        attempts: COPY_RETRY_DELAYS_MS.length + 1,
+        nextAttemptAt: new Date(Date.now() - 1),
+        leaseToken: createUuidV7(),
+        leaseExpiresAt: new Date(Date.now() - 1),
+      })
+      .where(eq(dataCopyRequests.id, asked.id));
+    copyAnswer = "accepted";
+    const before = copiesAsked.length;
+
+    await expect(runDataCopy({ id: asked.id })).resolves.toBe("no_answer");
+
+    expect(copiesAsked).toHaveLength(before);
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({
+      state: "failed",
+      lastOutcome: "no_answer",
+    });
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+    expect(answered.body).toMatchObject({ status: "sent" });
+  });
+
+  it("forgets a request thirty days after it was sent or gave up, and not before", async () => {
+    copyAnswer = "accepted";
+    const fixture = await createLeadFixture("copy-forgotten");
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+    const [sent] = await copyRequestsOf(fixture.email);
+    if (sent === undefined) throw new Error("no copy request was recorded");
+
+    await retryDueDataCopies();
+    expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
+
+    await getDatabase()
+      .db.update(dataCopyRequests)
+      .set({ settledAt: new Date(Date.now() - SETTLED_COPY_RETENTION_MS - 1) })
+      .where(eq(dataCopyRequests.id, sent.id));
+    await retryDueDataCopies();
 
     expect(await copyRequestsOf(fixture.email)).toEqual([]);
   });

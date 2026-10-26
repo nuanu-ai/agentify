@@ -1063,3 +1063,79 @@ describe("a database that holds deliveries bound for the partner", () => {
     }
   }, 30_000);
 });
+
+describe("a database that holds data access requests recorded on leads", () => {
+  it("turns each request of an address not deleted into one copy request due at once, and no other", async () => {
+    await resetDatabase();
+    const { db, pool } = createDatabase(connectionString, { max: 2 });
+    const before = await mkdtemp(join(tmpdir(), "scanner-migrations-"));
+    try {
+      // Every migration before copies were answered, as a deployed database has them.
+      await cp(migrationsFolder, before, { recursive: true });
+      const journal = JSON.parse(await readFile(join(before, "meta", "_journal.json"), "utf8"));
+      journal.entries = journal.entries.slice(
+        0,
+        journal.entries.findIndex(
+          ({ tag }: { tag: string }) => tag === "0028_the_scanner_answers_data_copies",
+        ),
+      );
+      await writeFile(join(before, "meta", "_journal.json"), JSON.stringify(journal));
+      await migrateDatabase(db, before);
+
+      const sessionId = createUuidV7();
+      await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, 'copy-hash')", [
+        sessionId,
+      ]);
+      const asked = new Date("2026-10-01T09:00:00.000Z");
+      const lead = async (
+        hash: string,
+        requested: Date | null,
+        gone: { deletionRequestedAt?: Date; anonymizedAt?: Date } = {},
+      ) =>
+        await pool.query(
+          `insert into leads (id, email_normalized_ciphertext, email_lookup_hash, role,
+             first_segment, first_session_id, data_access_requested_at,
+             deletion_requested_at, anonymized_at)
+           values ($1, $2, $3, 'owner', 'owner', $4, $5, $6, $7)`,
+          [
+            createUuidV7(),
+            `ciphertext-of-${hash}`,
+            hash,
+            sessionId,
+            requested,
+            gone.deletionRequestedAt ?? null,
+            gone.anonymizedAt ?? null,
+          ],
+        );
+      await lead("asked", asked);
+      await lead("never-asked", null);
+      await lead("asked-then-deletion-requested", asked, { deletionRequestedAt: asked });
+      await lead("asked-then-anonymized", asked, {
+        deletionRequestedAt: asked,
+        anonymizedAt: asked,
+      });
+
+      await migrateDatabase(db, migrationsFolder);
+
+      const moved = await pool.query(
+        `select email_lookup_hash, email_normalized_ciphertext, state, attempts, requested_at,
+           next_attempt_at <= now() as due
+         from data_copy_requests`,
+      );
+      expect(moved.rows).toEqual([
+        {
+          email_lookup_hash: "asked",
+          email_normalized_ciphertext: "ciphertext-of-asked",
+          state: "pending",
+          attempts: 0,
+          requested_at: asked,
+          due: true,
+        },
+      ]);
+    } finally {
+      await rm(before, { recursive: true, force: true });
+      await pool.end();
+      await resetDatabase();
+    }
+  }, 30_000);
+});

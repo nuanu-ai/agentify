@@ -14,7 +14,9 @@ type Copy =
       outcome: "refused" | "no_answer" | "in_progress";
       within_minutes: number;
     }>
-  | Readonly<{ status: "failed"; sent_to: string }>;
+  | Readonly<{ status: "unconfirmed"; sent_to: string }>
+  | Readonly<{ status: "too_large"; sent_to: string }>
+  | Readonly<{ status: "deleted"; sent_to: string }>;
 
 type Done = "requested" | "completed" | "unsubscribed" | Copy;
 
@@ -33,7 +35,11 @@ function copyIn(answer: Record<string, unknown>): Copy | null {
     isWhole(answer.within_minutes)
   )
     return answer as Copy;
-  return answer.status === "failed" ? (answer as Copy) : null;
+  return answer.status === "unconfirmed" ||
+    answer.status === "too_large" ||
+    answer.status === "deleted"
+    ? (answer as Copy)
+    : null;
 }
 
 function doneIn(answer: unknown): Done | null {
@@ -55,13 +61,17 @@ function copySaid(copy: Copy, privacyEmail: string): string {
     return copy.fresh
       ? `A copy of your data was emailed to ${copy.sent_to} just now. It is a JSON file attached to the message.`
       : `A copy was emailed to ${copy.sent_to} ${copy.minutes_ago === 0 ? "less than a minute" : minutes(copy.minutes_ago)} ago, so it was not sent again. It is the JSON file attached to that message, and you can ask for a new one ten minutes after it was sent.`;
-  if (copy.status === "failed")
-    return `Every try to email the copy to ${copy.sent_to} failed, so it was not sent. Write to ${privacyEmail}, or ask again later.`;
+  if (copy.status === "unconfirmed")
+    return `No try to email the copy to ${copy.sent_to} was confirmed by the mail service, so we cannot tell whether it arrived. If it has not, write to ${privacyEmail}, or ask again later.`;
+  if (copy.status === "too_large")
+    return `The copy of the data held for ${copy.sent_to} is too large to send by email, so nothing was sent. Write to ${privacyEmail} for it.`;
+  if (copy.status === "deleted")
+    return `The data held for ${copy.sent_to} was deleted while the copy was being made, so there is nothing more to send. We cannot tell whether a copy made before the deletion reached you.`;
   const within = minutes(copy.within_minutes);
   if (copy.outcome === "refused")
     return `The mail service did not take the copy just now. It is tried again automatically for the next ${within}, and goes to ${copy.sent_to} as soon as a try works. ${writeAfter}`;
   if (copy.outcome === "no_answer")
-    return `No answer came back from sending the copy, so we cannot tell whether it went to ${copy.sent_to}. It is tried again automatically for the next ${within}, so it may arrive twice. ${writeAfter}`;
+    return `No answer came back from sending the copy, so we cannot tell whether it reached ${copy.sent_to}. It is tried again automatically for the next ${within}, and at most one copy arrives. ${writeAfter}`;
   return `A copy for ${copy.sent_to} is already being sent. Tries go on for the next ${within}. ${writeAfter}`;
 }
 

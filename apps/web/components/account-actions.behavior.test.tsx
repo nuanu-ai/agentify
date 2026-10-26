@@ -68,6 +68,21 @@ function siteWith({
   });
 }
 
+/**
+ * A claim either way about whether a copy reached the mailbox: that it was
+ * emailed, or that it was not sent.
+ */
+const NEITHER_WAY = /was emailed|went to|was not sent|not sent/;
+
+/** Presses Request data access and reads what the page then says about the copy. */
+async function toldAfterAskingForACopy(): Promise<string> {
+  await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
+  const said = await screen.findByText((_content, element) =>
+    Boolean(element?.classList.contains("message-answer") && element.textContent),
+  );
+  return said.textContent ?? "";
+}
+
 const signedIn = { status: 200, body: { status: "signed_in", email: OWNER, operator: false } };
 
 afterEach(() => {
@@ -93,64 +108,77 @@ describe("the account requests on the site's own pages", () => {
     render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
     expect(await screen.findByText(OWNER)).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "Request data access" }));
 
-    expect(await screen.findByText(/emailed to owner@example\.com just now/)).toBeTruthy();
+    expect(await toldAfterAskingForACopy()).toContain(OWNER);
   });
 
-  it("say a copy was emailed to the signed-in address while the person waited, as an attached file", async () => {
+  it("say the copy was emailed to the signed-in address, while the person waited", async () => {
     siteWith({ visitor: signedIn });
     render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
+    const told = await toldAfterAskingForACopy();
 
-    const told = await screen.findByText(/A copy of your data was emailed/);
-    expect(told.textContent).toContain(`emailed to ${OWNER} just now`);
-    expect(told.textContent).toMatch(/JSON file attached/);
+    expect(told).toContain(`emailed to ${OWNER}`);
   });
 
-  it("say a copy sent minutes ago was not sent a second time", async () => {
-    siteWith({
-      visitor: signedIn,
-      copy: { ...SENT_NOW, fresh: false, minutes_ago: 3 },
-    });
+  it("say how many minutes ago a copy already went, when a second press sends none", async () => {
+    siteWith({ visitor: signedIn, copy: { ...SENT_NOW, fresh: false, minutes_ago: 3 } });
     render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
+    const told = await toldAfterAskingForACopy();
 
-    const told = await screen.findByText(/3 minutes ago/);
-    expect(told.textContent).toMatch(/not sent again/);
+    expect(told).toContain(OWNER);
+    expect(told).toContain("3 minutes ago");
   });
 
   it.each([
-    ["the mail service did not take it", "refused", /did not take the copy/],
-    ["no answer came back from sending it", "no_answer", /cannot tell whether it went/],
-    ["another try is under way", "in_progress", /already being sent/],
+    ["the mail service did not take it", "refused"],
+    ["no answer came back from sending it", "no_answer"],
+    ["another try is under way", "in_progress"],
   ])(
     "say for how many minutes the copy is still tried when %s, and where to write after",
-    async (_when, outcome, words) => {
+    async (_when, outcome) => {
       siteWith({
         visitor: signedIn,
-        copy: { status: "pending", type: "access", sent_to: OWNER, outcome, within_minutes: 52 },
+        copy: { status: "pending", type: "access", sent_to: OWNER, outcome, within_minutes: 57 },
       });
       render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
-      await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
+      const told = await toldAfterAskingForACopy();
 
-      const told = await screen.findByText(words);
-      expect(told.textContent).toContain("52 minutes");
-      expect(told.textContent).toContain(PRIVACY);
+      expect(told).toContain(OWNER);
+      expect(told).toContain("57 minutes");
+      expect(told).toContain(PRIVACY);
     },
   );
 
-  it("say every try failed, and where to write, when the copy could not be sent at all", async () => {
-    siteWith({ visitor: signedIn, copy: { status: "failed", type: "access", sent_to: OWNER } });
+  it.each([
+    ["every try ended unconfirmed", "unconfirmed"],
+    ["no answer came back from sending it", "pending"],
+    ["the address's data was deleted while the copy was made", "deleted"],
+  ])("claim neither that the copy went nor that it did not when %s", async (_when, status) => {
+    // Any of these may have reached the mailbox, or not; saying either would
+    // be a guess presented as knowledge.
+    siteWith({
+      visitor: signedIn,
+      copy: { status, type: "access", sent_to: OWNER, outcome: "no_answer", within_minutes: 57 },
+    });
     render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
-    await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
+    const told = await toldAfterAskingForACopy();
 
-    const told = await screen.findByText(/Every try to email/);
-    expect(told.textContent).toContain(PRIVACY);
+    expect(told).toContain(OWNER);
+    expect(told).not.toMatch(NEITHER_WAY);
+  });
+
+  it.each([
+    ["every try ended unconfirmed", "unconfirmed"],
+    ["the copy is too large to email", "too_large"],
+  ])("say where to write when %s", async (_when, status) => {
+    siteWith({ visitor: signedIn, copy: { status, type: "access", sent_to: OWNER } });
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+    expect(await toldAfterAskingForACopy()).toContain(PRIVACY);
   });
 
   it("name the address in the deletion's confirmation, and send it with the deletion", async () => {

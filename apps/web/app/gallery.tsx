@@ -538,7 +538,7 @@ const NUMBERS: OperatorNumbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  dataCopies: { unsent: 0, oldestAt: null },
+  dataCopies: { unconfirmed: 0, oldestAt: null },
   daily: DAYS,
   recentScans: [
     {
@@ -611,7 +611,7 @@ const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live };
 const TROUBLED: OperatorNumbers = {
   ...NUMBERS,
   turnstileEnforced: false,
-  dataCopies: { unsent: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
+  dataCopies: { unconfirmed: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   selfScan: null,
   worker: {
     heartbeat: {
@@ -1311,7 +1311,7 @@ const ACCOUNT: GalleryState[] = [
             type: "access",
             sent_to: WHO,
             outcome: "refused",
-            within_minutes: 52,
+            within_minutes: 57,
           },
         },
       },

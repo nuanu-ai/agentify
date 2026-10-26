@@ -129,12 +129,14 @@ export const deleteUnattachedPersonResponseSchema = z.union([
  * A copy of the data held about one address, to be mailed to that address and
  * no other: the dashboard adds what it holds to `scanner`, which is what the
  * scanner holds, and reads nothing in it. `request` is the scanner's own
- * identifier for the request, printed in the copy.
+ * identifier for the request and `requested_at` when it was asked for; both
+ * are printed in the copy and stay the same on every try of one request.
  */
 export const sendDataCopyRequestSchema = z
   .object({
     operation: z.literal("copy"),
     request: z.uuid(),
+    requested_at: timestampSchema,
     email: normalizedEmailSchema,
     scanner: z.record(z.string(), z.unknown()),
   })
