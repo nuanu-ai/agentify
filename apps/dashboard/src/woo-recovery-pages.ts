@@ -175,7 +175,8 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       reconnected:
         connection !== null &&
         new URL(connection.shopUrl).origin === record.facts.shopOrigin &&
-        connection.revision !== record.facts.connectionRevision,
+        connection.revision !== record.facts.connectionRevision &&
+        connection.permissions === "read_write",
     };
   };
   return {
@@ -243,13 +244,30 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       }
       const now = modeOf(after);
       if (now === "delivered") return { kind: "view", view: viewOf(after) };
-      if (now === "unavailable") return { kind: "view", status: 409, view: viewOf(after) };
+      // A press that created a shop order, or left one unknown, says so even
+      // where the order can no longer be recovered here.
+      const created =
+        known.record.phase === "precreate_refused" && after.record.placed != null
+          ? `Your shop created order ${after.record.placed.id}. `
+          : "";
+      if (now === "unavailable") {
+        return after.record.phase === known.record.phase
+          ? { kind: "view", status: 409, view: viewOf(after) }
+          : {
+              kind: "view",
+              status,
+              view: viewOf(after, { message: `${created}${said.message ?? ""}`.trim() || null }),
+            };
+      }
       // Only the linking form has a box to say a refusal under.
       const told =
         now === "link"
           ? said
           : {
-              message: said.message ?? said.typedRefusal ?? null,
+              message:
+                said.message === undefined
+                  ? (said.typedRefusal ?? null)
+                  : `${created}${said.message}`,
               unknown: said.unknown ?? false,
               typedRefusal: null,
             };

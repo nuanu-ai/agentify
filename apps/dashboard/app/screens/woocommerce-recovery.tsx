@@ -15,7 +15,7 @@ const PARCELS = "/docs/woocommerce#parcels";
 /** What the merchant does here, in a line, under what the last press came to. */
 const introOf = (view: WooRecoveryView): string | null =>
   view.mode === "create"
-    ? "Your shop never got this order, so the buyer has nothing yet. Create it now: Agentify makes the order in your shop once, at the price the buyer paid, and sends the download."
+    ? "Your shop never got this order. Create it once, at the price the buyer paid."
     : view.mode === "link"
       ? "Your shop may have created this order without telling Agentify. Find the WooCommerce order whose Transaction ID is the order ID below, and enter its number."
       : view.mode === "retry"

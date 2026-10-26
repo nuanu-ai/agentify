@@ -189,6 +189,19 @@ const recover = async (
         "We couldn't read where the payment went. Nothing was sent to your shop, so you can try again.",
       );
     }
+    // The shop's checks can take long enough for the merchant to close
+    // fulfillment meanwhile, and a closed order is not created for.
+    const still = await gateway.getOrder(request.orderId);
+    if (!still.ok) {
+      return unresolved(
+        "We couldn't read the order again before creating it. Nothing was sent to your shop, so you can try again.",
+      );
+    }
+    if (still.document.status !== "unfulfilled") {
+      return refused(
+        "This order is no longer waiting for delivery, so nothing was sent to your shop.",
+      );
+    }
     // Once the ledger moves, no press creates again: what the shop then does
     // with the request is unknown until an order is linked.
     const claimed = await parts.shops.beginPrecreateRecovery(
@@ -198,7 +211,7 @@ const recover = async (
     );
     if (!claimed) {
       return unresolved(
-        "Another press already sent this order to your shop. Reload to see where it stands.",
+        "Another press is creating this order in your shop, or already has. Reload to see where it stands.",
       );
     }
     const made = await (parts.placeOrder ?? createTheOrderInTheShop)(
@@ -439,11 +452,11 @@ export const RECONNECT_FIRST =
   "Connect the same shop again on the WooCommerce page first, then create the order here.";
 
 export const PARCEL_NOT_CREATED =
-  "Your shop never got this order, and a parcel's order can't be made later: Agentify doesn't keep the delivery address. Close fulfillment on Orders and tell the buyer.";
+  "Your shop never got this order, and a parcel's order can't be made later: Agentify doesn't keep the delivery address.";
 
 /** Said once a create was sent and its answer is not one the shop can be held to. */
 export const CREATE_UNKNOWN =
-  "We sent the order to your shop but got no clear answer, so we don't know if your shop created it. Don't create it again: look for it in your shop and link it below.";
+  "We sent the order to your shop but got no clear answer, so we don't know if your shop created it. Don't create it again: look for it in your shop.";
 
 const originOf = (url: string): string => new URL(url).origin;
 const emailUid = (email: string): string => createHash("sha256").update(email).digest("hex");
