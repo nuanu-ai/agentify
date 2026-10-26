@@ -178,7 +178,7 @@ export const SELL_LANDING = {
     title: "All your sales to AI agents in one dashboard",
     lede: "Agentify ties together your catalog, purchases, and payments. The dashboard shows what happens to each product, from publishing its card to fulfilling the order.",
     parts: [
-      ["Product cards", "Title, price, and availability. You can pause any card."],
+      ["Products", "Title, price, and availability. You can pause any product."],
       ["Orders", "What the agent bought, whether the order is paid, and how it was fulfilled."],
       ["Receipts", "Proof of payment for every delivered order, and a history of sales."],
       ["Integrations", "The WooCommerce connection and API keys for the SDK."],
@@ -188,10 +188,10 @@ export const SELL_LANDING = {
     window: {
       brand: "Agentify",
       kind: "SELLER DASHBOARD",
-      sections: ["Cards", "Orders", "Receipts", "Integrations", "API keys", "Settings"],
+      sections: ["Products", "Orders", "Receipts", "Integrations", "API keys", "Settings"],
       help: ["Need help?", "Open the docs →"],
       account: { initial: "M", name: "Account", email: "merchant@example.com" },
-      heading: "Product cards",
+      heading: "Products",
       stop: "Pause all sales",
       segments: [
         ["All", "3"],
@@ -204,7 +204,7 @@ export const SELL_LANDING = {
         ["Brewing guide, PDF", "brew-guide-pdf", "9.00 USD", "Immediate", "On sale"],
         ["30-minute consultation", "consult-30", "30.00 USD", "Later", "Paused by you"],
       ],
-      note: "A pause takes a card off sale; orders you have already accepted play out as usual.",
+      note: "A pause takes a product off sale; orders you have already accepted play out as usual.",
     },
   },
   questions: {
