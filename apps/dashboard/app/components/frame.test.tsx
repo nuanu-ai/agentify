@@ -367,6 +367,63 @@ describe("the banner about the account", () => {
   });
 });
 
+describe("a waiting change of the payout wallet", () => {
+  const WAITING = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+  const PAID = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+  const notes = accountOf(
+    {
+      base: "",
+      mode: "live",
+      who: PERSON,
+      confirmed: true,
+      sellerName: "Freeland",
+      payout: { wallet: PAID },
+      liveApproval: true,
+    },
+    { selling: "open", walletChange: { wallet: WAITING, takesEffectAt: "2026-10-28T16:05:00Z" } },
+  );
+  const cancelIn = (drawn: HTMLElement) =>
+    drawn.querySelector<HTMLFormElement>('form[action="/settings/payout-wallet/cancel"]');
+
+  it.each([
+    ["cards", "/cards"],
+    ["orders", "/orders"],
+    ["keys", "/keys"],
+  ] as const)(
+    "is said on %s, which offers to cancel it and is where the press comes back to",
+    async (tab, page) => {
+      framed(tab, { account: notes });
+      await screen.findByText("The screen");
+      const drawn = banner();
+      if (drawn === null) throw new Error("no banner was drawn");
+      const cancel = cancelIn(drawn);
+      if (cancel === null) throw new Error("the banner offers no cancel");
+
+      expect(drawn.querySelector("[data-reason]")?.getAttribute("data-reason")).toBe(
+        "wallet_change",
+      );
+      expect(within(cancel).getByRole("button", { name: "Cancel this change" })).toBeTruthy();
+      const sent = Object.fromEntries(new FormData(cancel));
+      expect(sent).toMatchObject({
+        signed_in_as: PERSON,
+        waiting: WAITING,
+        paid: PAID,
+        back: page,
+      });
+    },
+  );
+
+  it("is said on Settings without a second cancel, which the wallet's own section holds", async () => {
+    framed("settings", { account: notes });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    expect(drawn.querySelector("[data-reason]")?.getAttribute("data-reason")).toBe("wallet_change");
+    expect(cancelIn(drawn)).toBeNull();
+  });
+});
+
 describe("the way past the header", () => {
   it("leads to the page's title and its control about the whole page, before the screen", async () => {
     framed("cards");

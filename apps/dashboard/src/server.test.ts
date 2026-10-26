@@ -6032,6 +6032,57 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(screen.html).toContain('action="/settings/payout-wallet/cancel"');
   });
 
+  it("says the waiting change over every screen, whose cancel brings the person back to that screen", async () => {
+    const running = await live();
+    await running.browser.signIn();
+    await aChangeWaits(running);
+
+    const screens = await Promise.all(
+      ["/cards", "/orders", "/receipts", "/keys", "/integrations"].map(
+        async (path) => [path, await running.browser.get(path)] as const,
+      ),
+    );
+    for (const [path, screen] of screens) {
+      expect(screen.status, path).toBe(200);
+      expect(readable(screen.html), path).toContain("Your payout wallet is changing");
+      expect(fromTheScreen(screen).back, path).toBe(path);
+    }
+    const [, orders] = screens[1] ?? [];
+    if (orders === undefined) throw new Error("the orders screen was not read");
+
+    const pressed = await running.browser.post(
+      "/settings/payout-wallet/cancel",
+      fromTheScreen(orders),
+    );
+
+    expect(pressed.status).toBe(303);
+    expect(pressed.to).toBe("/orders");
+    expect(await waitingNow(running)).toBeNull();
+    expect(readable((await running.browser.get("/orders")).html)).not.toContain(
+      "Your payout wallet is changing",
+    );
+  });
+
+  it.each([
+    ["another site", "https://elsewhere.example/cards"],
+    ["another site without a scheme", "//elsewhere.example/cards"],
+    ["another site behind a backslash", "/\\elsewhere.example/cards"],
+    ["no page at all", "cards"],
+  ])("sends a cancel that names %s as its way back to Settings instead", async (_what, back) => {
+    const running = await live();
+    await running.browser.signIn();
+    await aChangeWaits(running);
+
+    const pressed = await running.browser.post("/settings/payout-wallet/cancel", {
+      ...fromTheScreen(await running.browser.get("/cards")),
+      back,
+    });
+
+    expect(pressed.status).toBe(303);
+    expect(pressed.to).toBe("/settings");
+    expect(await waitingNow(running)).toBeNull();
+  });
+
   it("shows no cancel control where nothing is waiting", async () => {
     const running = await live();
     await running.browser.signIn();
