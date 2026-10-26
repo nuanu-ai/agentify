@@ -1091,9 +1091,8 @@ describe("importing the catalogue", () => {
 
     expect(second.status).toBe(409);
     // The first may have been started from a page since closed, so the words
-    // send the merchant to Cards rather than to its result.
-    expect(readable(second.html)).toContain("already running");
-    expect(readable(second.html)).toContain("Cards");
+    // send the merchant to Products rather than to its result.
+    expect(readable(second.html)).toMatch(/already running; its products appear on Products/);
     expect(storePages(seen)).toHaveLength(1);
     expect(done.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(3);
