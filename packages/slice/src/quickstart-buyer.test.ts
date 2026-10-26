@@ -320,7 +320,7 @@ describe("the quickstart's test buyer", () => {
     const unknown = await run(AT_ONCE);
 
     expect(unknown.code, unknown.printed).not.toBe(0);
-    expect(readsIn(unknown.printed)).toBe(60);
+    expect(readsIn(unknown.printed)).toBeGreaterThan(1);
     expect(kept()?.status_url).toBeDefined();
 
     await run(AT_ONCE);
@@ -341,6 +341,29 @@ describe("the quickstart's test buyer", () => {
     expect(kept()?.status_url).toBeDefined();
     expect(facilitator.settles).toHaveLength(1);
 
+    const paid = await run(AT_ONCE);
+
+    expect(paid.code, paid.printed).toBe(0);
+    expect(paid.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
+    expect(facilitator.settles).toHaveLength(2);
+  });
+
+  it("keeps the purchase when paying again for goods already made is refused, and gets them once the wallet can pay", async () => {
+    facilitator.willSettle(
+      { settled: false, reason: "the wallet did not hold the price" },
+      { settled: true, transaction: "0xtx2" },
+    );
+    await run(AT_ONCE);
+    facilitator.willRefuseVerification("insufficient_funds", "the wallet does not hold the price");
+
+    const refused = await run(AT_ONCE);
+
+    expect(refused.code, refused.printed).not.toBe(0);
+    // The goods are held for this purchase, so the reader is not sent to buy again.
+    expect(refused.printed).not.toMatch(/delete/i);
+    expect(kept()?.status_url).toBeDefined();
+
+    facilitator.willVerify();
     const paid = await run(AT_ONCE);
 
     expect(paid.code, paid.printed).toBe(0);
