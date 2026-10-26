@@ -69,23 +69,33 @@ card, a UCP profile, an A2A agent card or OAuth metadata, 2 MiB for a page, and
 5 MiB for a sitemap. A longer response is cut at its limit, and a result that
 depends on it names the limit.
 
-What was read proves what it contains and says nothing about the rest. A
-heading, a link or a sitemap entry found before the limit counts. A check that
-would have to conclude that something is missing from a response that was cut
-is unavailable. A page longer than 2 MiB still fails the page-weight check,
-since its size is known.
+What was read proves what it contains. A heading, a link or a sitemap entry
+found before the limit counts. A discovery document longer than its limit is
+too large, since its size is known, and a page longer than 2 MiB fails the
+page-weight check for the same reason. An llms.txt longer than its limit
+passes when a heading and a link were read before the limit and is too large
+otherwise. A robots.txt longer than its limit is partial, since crawlers need
+read only its first 500 KiB. A sitemap may be larger than 5 MiB, so it is
+judged by the entries read, and one cut before any entry is not judged. A check
+that would have to conclude from a cut page that something is missing is
+unavailable.
 
-A 404 or 410 says a document is not there, and so does a web page served where
-a text or JSON document belongs. Any other answer, such as no answer at all, a
-server error, a refusal or a rate limit, says nothing about the document, so the
-check is unavailable and its evidence gives the status. robots.txt follows its
-own standard, under which a crawler treats a refused robots.txt as having no
-rules at all, and the scan reports it as refused. A document that is there but
-cannot be parsed is reported as unparseable.
+A 404 or 410 says a document is not there, and so does a web page or an empty
+answer where a document belongs. Any other 4xx, such as 401 or 403, refuses
+the document to an agent as it did to the scanner, so the scan takes it as
+absent and says so: the check fails, or does not apply to the optional
+llms.txt and A2A card, and the result asks you to allow the document or answer
+404. No answer at all, a timeout (408), a rate limit (429) or a server error
+says nothing about the document, so the check is unavailable and its evidence
+gives the status. A document that is there but is not valid JSON, whatever it
+opens with, is reported as unparseable. A sitemap compressed with gzip is not
+read and leaves the check unavailable.
 
-A verdict that nothing usable exists needs every location the check reads to
-have answered. A sitemap that a sitemap index lists and that did not answer is
-named in the evidence and does not lower the score.
+When a check reads several documents, a defect proven by what was read
+stands, while a pass or a verdict that nothing usable exists needs every
+document read. A sitemap index whose listed sitemaps did not all answer is not
+judged as a whole unless a defect was proven, and the evidence names each
+sitemap that did not answer.
 
 ## Non-scoring browser observations {#browser-observation}
 
