@@ -669,7 +669,10 @@ function noReceiptOf(order: OperatorOrder): Readonly<{ head: string; said: strin
       said: "The order ended before any goods were released, so no receipt will be written.",
     };
   }
-  return { head: "Not yet", said: "One is written when the goods are released or the parcel ships." };
+  return {
+    head: "Not yet",
+    said: "One is written when the goods are released or the parcel ships.",
+  };
 }
 
 export function orderPageView(
