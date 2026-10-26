@@ -54,7 +54,7 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   content_signal_unavailable:
     "The Content-Signal policy could not be assessed because robots.txt was unavailable.",
   document_truncated:
-    "The document here is larger than the scanner's read limit, which the evidence names, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
+    "The document this check reads is larger than the scanner's read limit, which the evidence names, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
   feed_discoverable: "A public product-feed declaration was found and could be read.",
   feed_machine_signals_only:
     "Product-like machine-readable signals exist, but no public feed declaration was found.",
@@ -114,7 +114,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   oauth_not_declared:
     "No authenticated agent surface was declared, so OAuth discovery is not applicable.",
   oauth_unavailable: "OAuth discovery metadata could not be assessed.",
-  page_performance_heavy: "The public page is readable, but it is heavier than the 2 MiB budget.",
+  page_performance_heavy:
+    "The public page is readable, but it is 2 MiB or larger, which is over the size budget.",
   page_performance_slow:
     "The public page is readable, but it answered slower than the budget of a first byte within 1.5 seconds and the whole page within 4 seconds.",
   page_performance_slow_heavy: "The public page is both heavy and slow for an automated reader.",
@@ -369,7 +370,7 @@ const FIX_COPY: Readonly<Record<string, string>> = {
   reduce_response_time:
     "Reduce the public page's response time without hiding critical facts behind client-only rendering.",
   refresh_sitemap_lastmod:
-    "Keep each lastmod date equal to when its page last changed, in W3C date format. If most pages have not changed in six months, nothing needs to change.",
+    "Keep each lastmod date equal to when its page last changed, in W3C date format. If most pages have not changed in 180 days, nothing needs to change.",
   render_substantive_html:
     "Render the core public facts in the initial HTML and preserve progressive enhancement.",
   repair_a2a_card:

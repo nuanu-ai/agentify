@@ -3,8 +3,8 @@
 
 /**
  * The elements of a header that carries a comma-separated list, trimmed, with
- * the empty elements HTTP allows dropped. A comma inside a quoted string
- * belongs to the element, not between elements.
+ * the empty elements HTTP allows dropped. A comma inside a quoted string stays
+ * in its element.
  */
 export const headerList = (value: string | undefined): string[] => {
   const text = value ?? "";
