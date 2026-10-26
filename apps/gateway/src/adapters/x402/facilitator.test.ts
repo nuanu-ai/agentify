@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import type { AddressInfo } from "node:net";
+import { dirname, join } from "node:path";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
 import { type FacilitatorClient, HTTPFacilitatorClient } from "@x402/core/server";
 import {
@@ -63,6 +66,37 @@ const edge = new PaymentEdge({
   publicBaseUrl: "https://agentify.example",
   deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
 });
+
+/**
+ * Every refusal code the installed facilitator libraries name, except those
+ * of payment schemes, networks and transfer methods this gateway never
+ * offers: Coinbase's hosted facilitator publishes its codes in its SDK's API
+ * types, and the reference facilitator keeps its own as constants. Neither is
+ * exported, so both are read from the files the packages ship.
+ */
+function facilitatorVocabulary(): string[] {
+  const resolve = createRequire(import.meta.url).resolve;
+  const cdpTypes = readFileSync(
+    join(
+      dirname(dirname(resolve("@coinbase/cdp-sdk"))),
+      "_types/openapi-client/generated/coinbaseDeveloperPlatformAPIs.schemas.d.ts",
+    ),
+    "utf8",
+  );
+  const block = /export declare const X402VerifyInvalidReason: \{([^}]*)\}/.exec(cdpTypes)?.[1];
+  const hosted = [...(block ?? "").matchAll(/readonly (\w+):/g)].map((found) => found[1] ?? "");
+  const reference = [
+    ...readFileSync(resolve("@x402/evm/exact/facilitator"), "utf8").matchAll(
+      /var Err\w+ = "(\w+)"/g,
+    ),
+  ].map((found) => found[1] ?? "");
+  if (!hosted.includes("amount_too_low") || !reference.includes("invalid_exact_evm_signature")) {
+    throw new Error("the facilitator libraries no longer ship their codes where this test reads them");
+  }
+  const offeredNowhere =
+    /^(invalid_exact_svm_|invalid_exact_solana_|invalid_batch_settlement_|batch_settlement_|missing_batch_settlement_|invalid_upto_|upto_|permit2_|invalid_permit2_|invalid_exact_evm_permit2_|erc20_approval_|invalid_erc20_approval_|eip2612_|invalid_eip2612_)/;
+  return [...new Set([...hosted, ...reference])].filter((code) => !offeredNowhere.test(code));
+}
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */
 class Answering implements FacilitatorClient {
@@ -713,25 +747,108 @@ describe("verifying a payment", () => {
     expect(client.asked[0]?.requirements.amount).toBe("80000000");
   });
 
-  it("keeps what the facilitator actually said, and picks the nearest of the machine's three reasons", async () => {
-    // The facilitator's set of reasons is open and grows; the machine's is
-    // three. The record is a little coarser than what happened and never wrong
-    // about whether the payment was refused.
+  /** What the gateway makes of the facilitator refusing an honest payment with `invalidReason`. */
+  const refusedWith = (invalidReason: string | undefined, invalidMessage?: string) =>
+    facilitatorFor(
+      new Answering({
+        verify: {
+          isValid: false,
+          ...(invalidReason === undefined ? {} : { invalidReason }),
+          ...(invalidMessage === undefined ? {} : { invalidMessage }),
+        } as VerifyResponse,
+      }),
+      edge,
+    ).verify(charge(honest()));
+
+  it("tells a payer that the payment network will not carry an amount this small, not to buy again", async () => {
+    // A payment of a millionth of a dollar was refused this way on the test
+    // channel. Read as a moved price, it sent the buyer to a new purchase that
+    // failed the same way.
+    expect(await refusedWith("amount_too_low", "amount is below the minimum")).toStrictEqual({
+      verified: false,
+      reason: "amount_not_payable",
+      message: "amount_too_low: amount is below the minimum",
+    });
+    expect(await refusedWith("invalid_amount")).toMatchObject({ reason: "amount_not_payable" });
+  });
+
+  it("reads a refusal by the facilitator's code as a whole, whatever words the code contains", async () => {
+    // The price, the asset, the chain and the payee are compared with the
+    // order before the facilitator is asked, so no code it answers means the
+    // offer moved. Each code below contains a word that once decided its
+    // meaning on its own.
     const cases: [string, string][] = [
       ["invalid_exact_evm_payload_signature", "signature"],
-      ["invalid_payload: contract call failed / execution reverted", "insufficient_funds"],
-      ["invalid_exact_evm_payload_authorization_value", "price_stale"],
-      ["something nobody has seen before", "signature"],
+      ["invalid_exact_evm_payload_authorization_value", "signature"],
+      ["invalid_exact_evm_payload_authorization_value_mismatch", "signature"],
+      ["invalid_exact_evm_payload_authorization_valid_before", "signature"],
+      ["invalid_exact_evm_nonce_already_used", "signature"],
+      ["insufficient_funds", "insufficient_funds"],
+      ["invalid_exact_evm_insufficient_balance", "insufficient_funds"],
+      ["invalid_exact_evm_transaction_simulation_failed", "unexplained"],
+      ["invalid_exact_evm_payload_authorization_from_address_kyt", "wallet_refused"],
+      ["self_send_not_allowed", "wallet_refused"],
     ];
 
-    for (const [said, expected] of cases) {
-      const answered = await facilitatorFor(
-        new Answering({ verify: { isValid: false, invalidReason: said } }),
-        edge,
-      ).verify(charge(honest()));
-
-      expect(answered).toStrictEqual({ verified: false, reason: expected, message: said });
+    for (const [code, expected] of cases) {
+      expect(await refusedWith(code), code).toStrictEqual({
+        verified: false,
+        reason: expected,
+        message: code,
+      });
     }
+  });
+
+  it("says a refusal code it does not recognise is unrecognised, quoting the code", async () => {
+    for (const code of ["funds_frozen_by_issuer", "amount_expired_elsewhere", "constructor"]) {
+      expect(await refusedWith(code, "the facilitator's own words"), code).toStrictEqual({
+        verified: false,
+        reason: "unrecognised",
+        message: `${code}: the facilitator's own words`,
+      });
+    }
+  });
+
+  it("says a refusal that names no code says nothing about what was wrong", async () => {
+    expect(await refusedWith(undefined)).toStrictEqual({
+      verified: false,
+      reason: "unexplained",
+      message: "no reason was given",
+    });
+  });
+
+  it("reads a refusal that reports the facilitator's own failure as no verdict that asking again may cure", async () => {
+    for (const code of ["invalid_exact_evm_failed_to_get_balance", "unknown_error"]) {
+      const answered = await refusedWith(code, "the payer's words must not reach the log");
+      if (answered.verified !== "unknown") throw new Error(`${code} became a verdict`);
+      expect(answered.cause).toBe("no_answer");
+      expect(answered.failure).toContain(code);
+      expect(answered.failure).not.toContain("must not reach");
+    }
+  });
+
+  it("reads a refusal of what Agentify asked, or of where the seller is paid, as no verdict on the payment", async () => {
+    const cases: [string, string][] = [
+      ["request_blocked_by_location", "refused_agentify"],
+      ["invalid_payment_requirements", "refused_agentify"],
+      ["invalid_exact_evm_payload_authorization_to_address_kyt", "seller_cannot_be_paid"],
+    ];
+    for (const [code, cause] of cases) {
+      expect(await refusedWith(code), code).toMatchObject({ verified: "unknown", cause });
+    }
+  });
+
+  it("gives every refusal code the facilitator libraries can answer about this payment a meaning of its own", async () => {
+    // Read from the installed libraries, so an upgrade that adds a code fails
+    // here until the code is given a meaning. Codes about payment schemes,
+    // networks and transfer methods this gateway never offers are left out: a
+    // payment of those kinds is refused before a facilitator is asked.
+    const unread: string[] = [];
+    for (const code of facilitatorVocabulary()) {
+      const answered = await refusedWith(code);
+      if (answered.verified === false && answered.reason === "unrecognised") unread.push(code);
+    }
+    expect(unread).toStrictEqual([]);
   });
 
   it("says nobody knows when the facilitator could not be reached, naming the failure for the operator's log", async () => {
@@ -815,8 +932,9 @@ describe("verifying a payment", () => {
 
     expect(answered).toStrictEqual({
       verified: false,
-      reason: "price_stale",
-      message: "the authorised amount is not the amount asked for",
+      reason: "signature",
+      message:
+        "invalid_exact_evm_payload_authorization_value: the authorised amount is not the amount asked for",
     });
   });
 
