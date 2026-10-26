@@ -92,6 +92,11 @@ function ConsentPreferencesPanel(props: {
 }) {
   const [productAnalytics, setProductAnalytics] = useState(props.inForce.productAnalytics);
   const [adsMeasurement, setAdsMeasurement] = useState(props.inForce.adsMeasurement);
+  // On every drawing, the first opening and a redrawing for another tab's
+  // choice alike, so the keyboard stays in the dialog.
+  useEffect(() => {
+    document.getElementById("consent-title")?.focus();
+  }, []);
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: clicking outside is a pointer shortcut; Escape and Cancel close the dialog from the keyboard
     <div className="consent-backdrop" role="presentation" onMouseDown={props.onClose}>
@@ -227,9 +232,8 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
       const current = readCurrentConsent(window.localStorage);
       setRead(true);
       setVisible(current === undefined);
-      if (current === undefined) return;
-      setProductAnalytics(current.categories.product_analytics);
-      setAdsMeasurement(current.categories.ads_measurement);
+      setProductAnalytics(current?.categories.product_analytics ?? false);
+      setAdsMeasurement(current?.categories.ads_measurement ?? false);
     };
     read();
     const kept = (event: StorageEvent) => {
@@ -251,7 +255,6 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
 
   useEffect(() => {
     if (!preferencesOpen) return;
-    document.getElementById("consent-title")?.focus();
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         closePreferences();
