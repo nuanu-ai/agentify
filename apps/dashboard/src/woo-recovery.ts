@@ -23,7 +23,7 @@ import {
   type WooOrderRead,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
-import { PARCEL_NOT_CREATED, RECONNECT_FIRST } from "./woo-views.js";
+import { PARCEL_NOT_CREATED, RECONNECT_FIRST } from "./woo-words.js";
 import { deliveryFromWooPermission } from "./woo-worker.js";
 
 export interface WooRecoveryRequest {

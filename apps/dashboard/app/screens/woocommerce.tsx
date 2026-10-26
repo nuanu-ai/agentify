@@ -1,16 +1,16 @@
 import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router";
-import {
-  type ConnectionView,
-  type ImportHeld,
-  NO_SHOP,
-  type NoKeysYet,
-  type RateView,
-  type Refusal,
-  type WooImportView,
-  type WooShopView,
+import type {
+  ConnectionView,
+  ImportHeld,
+  NoKeysYet,
+  RateView,
+  Refusal,
+  WooImportView,
+  WooShopView,
 } from "../../src/woo-views.js";
+import { NO_SHOP } from "../../src/woo-words.js";
 import type { Word as WordView } from "../../src/words.js";
 import { type Chrome, useChrome } from "../answer.js";
 import { Ident } from "../components/copy.js";

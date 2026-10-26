@@ -40,7 +40,7 @@ import {
   type WooOrderLookup,
 } from "./woo-shop.js";
 import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
-import { NO_SHOP } from "./woo-views.js";
+import { NO_SHOP } from "./woo-words.js";
 
 const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {

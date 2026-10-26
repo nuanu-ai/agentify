@@ -1,7 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
 import type { Unavailable, WooRecoveryView } from "../../src/woo-recovery-pages.js";
-import { PARCEL_NOT_CREATED, RECONNECT_FIRST, shopNameOf } from "../../src/woo-views.js";
+import { PARCEL_NOT_CREATED, RECONNECT_FIRST, shopNameOf } from "../../src/woo-words.js";
 import { ORDER_WORDS } from "../../src/words.js";
 import { Ident } from "../components/copy.js";
 import { Fact, Facts } from "../components/list.js";

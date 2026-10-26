@@ -64,18 +64,17 @@ import {
   type Held,
   heldBy,
   type ImportOutcome,
-  NO_SHOP,
   referenceShown,
   type Said,
   type ShopAnswer,
   type ShopState,
   settingsNamed,
-  shopNameOf,
   type WooImportView,
   type WooShopView,
   wooImportView,
   wooShopView,
 } from "./woo-views.js";
+import { NO_SHOP, shopNameOf } from "./woo-words.js";
 import { SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /**

@@ -8,7 +8,8 @@
 
 import type { Integration } from "@agentify/gateway";
 import { type MomentView, momentView } from "./views.js";
-import { noKeysYet, type ShopTile, shopNameOf } from "./woo-views.js";
+import { noKeysYet, type ShopTile } from "./woo-views.js";
+import { shopNameOf } from "./woo-words.js";
 
 /**
  * The state rather than a standing invitation: "connect a WooCommerce shop"
