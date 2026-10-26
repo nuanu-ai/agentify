@@ -707,17 +707,23 @@ describe("a page or a sitemap as large as the fetch admits", () => {
     expect(parsed.nodes).toHaveLength(166_651);
   });
 
-  it("finds no price in JSON-LD graphs nested as deep as a script may be, in time", () => {
-    // Each script nests @graph 19 deep, the innermost holding as many empty
-    // objects as fit in the 512 KiB a script is parsed up to. A reader that
-    // walked each node's subtree once per graph around it would walk the
-    // innermost objects 19 times.
-    let graph = `{"@graph":[${Array(10_000).fill("[{},{},{},{},{},{},{},{},{},{},{},{}]").join(",")}]}`;
-    for (let level = 0; level < 18; level += 1) graph = `{"@graph":[${graph}]}`;
-    const page = `${`<script type="application/ld+json">${graph}</script>`.repeat(4)}<h1>Wool Runner</h1>`;
-    const signals = timed(() => signalsOf(page));
-    expect(signals.value.hasPrice).toBe(false);
-    expect(signals.ms).toBeLessThan(budgetMs);
+  it("finds no price in JSON-LD graphs nested as deep as a script may be, no slower than in a flat one", () => {
+    // Each script holds as many empty objects as fit in the 512 KiB a script
+    // is parsed up to, once directly under one @graph and once 19 graphs
+    // deep. A reader that walked each node's subtree once per graph around it
+    // would walk the deep objects 19 times; one that walks each once reads
+    // the deep one within a few times the flat one, on any machine (each graph
+    // around the objects is a node of its own to read).
+    const leaves = `[${Array(10_000).fill("[{},{},{},{},{},{},{},{},{},{},{},{}]").join(",")}]`;
+    let deep = `{"@graph":${leaves}}`;
+    for (let level = 0; level < 18; level += 1) deep = `{"@graph":[${deep}]}`;
+    const pageOf = (graph: string) =>
+      `${`<script type="application/ld+json">${graph}</script>`.repeat(4)}<h1>Wool Runner</h1>`;
+    signalsOf(pageOf(`{"@graph":${leaves}}`));
+    const flat = timed(() => signalsOf(pageOf(`{"@graph":${leaves}}`)));
+    const nested = timed(() => signalsOf(pageOf(deep)));
+    expect(nested.value.hasPrice).toBe(false);
+    expect(nested.ms).toBeLessThan(flat.ms * 6 + 50);
   });
 
   it("reads the hreflang links around an alternate link that runs on for megabytes", () => {

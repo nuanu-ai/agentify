@@ -418,28 +418,38 @@ const DRAWN_HERE = randomUUID();
 /** How many pictures the process keeps, about 160 KB each. */
 const KEPT_PICTURES = 32;
 
-/** The pictures drawn last, oldest first; a picture asked for again moves to the end. */
-const kept = new Map<string, Promise<Png>>();
-
 const tagOf = (snapshot: PublicShareSnapshot): string =>
   `"${createHash("sha256").update(DRAWN_HERE).update(JSON.stringify(snapshot)).digest("base64url").slice(0, 32)}"`;
 
-const keptPicture = (tag: string, snapshot: PublicShareSnapshot): Promise<Png> => {
-  const known = kept.get(tag);
-  kept.delete(tag);
-  const picture =
-    known ??
-    drawShareImage(snapshot).catch((error: unknown) => {
-      kept.delete(tag);
-      throw error;
-    });
-  kept.set(tag, picture);
-  for (const oldest of kept.keys()) {
-    if (kept.size <= KEPT_PICTURES) break;
-    kept.delete(oldest);
-  }
-  return picture;
+/**
+ * The last `limit` pictures `draw` made, by tag, oldest let go first: a
+ * picture asked for while it is drawn or after it is shares that drawing, and
+ * one let go, or one whose drawing failed, is drawn again when asked for.
+ */
+export const pictureMemory = (
+  limit: number,
+  draw: (snapshot: PublicShareSnapshot) => Promise<Png>,
+): ((tag: string, snapshot: PublicShareSnapshot) => Promise<Png>) => {
+  const kept = new Map<string, Promise<Png>>();
+  return (tag, snapshot) => {
+    const known = kept.get(tag);
+    kept.delete(tag);
+    const picture =
+      known ??
+      draw(snapshot).catch((error: unknown) => {
+        kept.delete(tag);
+        throw error;
+      });
+    kept.set(tag, picture);
+    for (const oldest of kept.keys()) {
+      if (kept.size <= limit) break;
+      kept.delete(oldest);
+    }
+    return picture;
+  };
 };
+
+const keptPicture = pictureMemory(KEPT_PICTURES, drawShareImage);
 
 const holds = (ifNoneMatch: string | null, tag: string): boolean =>
   (ifNoneMatch ?? "")

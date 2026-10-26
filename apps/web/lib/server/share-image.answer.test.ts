@@ -10,7 +10,7 @@
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 
-import { sharePictureAnswer } from "./share-image";
+import { pictureMemory, sharePictureAnswer } from "./share-image";
 
 const snapshot = (host: string, score = 72): PublicShareSnapshot => ({
   host,
@@ -71,13 +71,21 @@ describe("a share's picture, asked for over HTTP", () => {
   });
 
   it("keeps a bounded number of pictures, drawing again one it let go", async () => {
-    const first = snapshot("first.example");
-    const drawn = await timed(() => sharePictureAnswer(ask(), first));
-    // More pictures than the process keeps, each of another share.
-    for (let score = 0; score < 40; score++)
-      await sharePictureAnswer(ask(), snapshot("crowd.example", score));
-    const redrawn = await timed(() => sharePictureAnswer(ask(), first));
+    const drawn: string[] = [];
+    const remembered = pictureMemory(2, async (shown) => {
+      drawn.push(shown.host);
+      return new Uint8Array(0);
+    });
+    const ask = (host: string) => remembered(host, snapshot(host));
 
-    expect(redrawn.spent).toBeGreaterThan(drawn.spent / 5);
+    await ask("a.example");
+    await ask("b.example");
+    await ask("a.example");
+    await ask("c.example");
+    await ask("b.example");
+    await ask("a.example");
+
+    // a is kept when asked again; c lets b go, b lets a go, and both are drawn again.
+    expect(drawn).toStrictEqual(["a.example", "b.example", "c.example", "b.example", "a.example"]);
   });
 });
