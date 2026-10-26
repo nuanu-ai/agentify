@@ -563,7 +563,7 @@ describe("what the scanner takes for a price", () => {
   it.each([
     ["a year", "<footer>© 2026 Toko Kain. Since 1998.</footer>"],
     ["a phone number", "<p>WhatsApp +62 812-3456-7890, or call (555) 123-4567</p>"],
-    ["a quantity with its unit", "<p>Berat 1.5 kg, 500 ml, 2 L, 12 oz</p>"],
+    ["a quantity with its unit", "<p>Berat 1.5 kg, 500 ml, 2 L, 12 oz. Bottle of 0,75 L</p>"],
     ["a percentage", "<p>Save 20% today. ALL 50% OFF</p>"],
     ["a number without a currency", "<p>Size 42, Qty 3, Model 2026, Q4 2025</p>"],
     ["a currency code inside a word", "<h3>DISNEY PIXAR CARS 3 DIE-CAST</h3>"],
