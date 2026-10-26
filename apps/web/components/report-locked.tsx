@@ -48,8 +48,8 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
         <>
           <h1>This report belongs to another address</h1>
           <p>
-            You are signed in as <strong>{page.email}</strong>. Open the report from the email it
-            was sent in, or sign out and sign in with that address.
+            You are signed in as <strong>{page.email}</strong>. Sign out, then sign in with the
+            address the report was sent to.
           </p>
           {/* The dashboard's own sign-out, which ends this browser's session on the whole site. */}
           <form action="/dashboard/sign-out" className="message-actions" method="post">
@@ -62,8 +62,8 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
         <>
           <h1>Sign in to open this report</h1>
           <p>
-            It opens for the address it was sent to. The link in that email signs you in and opens
-            it.
+            It opens only for the address it was sent to. Sign in with that address to read your
+            reports.
           </p>
           <a className="button button-primary" href={READING_SIGN_IN}>
             Sign in
