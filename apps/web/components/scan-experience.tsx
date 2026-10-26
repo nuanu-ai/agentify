@@ -254,14 +254,15 @@ function ScanCard({
   data: ScanStatusResponse | null;
   unread?: boolean;
 }>) {
+  const line = scanStatusLine(data?.status, accessState, unread);
   return (
     <section className="message-panel">
       <header className={`message-meta ${styles.scanHeader}`}>
         <p>
           {data ? <b>{data.target_host}</b> : <span>Private website diagnostic</span>}
-          <span>{scanStatusLine(data?.status, accessState, unread)}</span>
+          {line === null ? null : <span>{line}</span>}
         </p>
-        <ScanStateBadge accessState={accessState} status={data?.status} />
+        <ScanStateBadge accessState={accessState} status={data?.status} unread={unread} />
       </header>
       {children}
     </section>
@@ -425,11 +426,15 @@ function LoadingState() {
 function ScanStateBadge({
   accessState,
   status,
+  unread,
 }: Readonly<{
   accessState: AccessState;
   status?: ScanStatusResponse["status"];
+  unread: boolean;
 }>) {
-  if (accessState === "missing" || accessState === "invalid")
+  // Without a status read, nothing is known of the scan, so the badge does
+  // not say it is being checked.
+  if (accessState === "missing" || accessState === "invalid" || (unread && !status))
     return <StatusBadge status="unavailable" />;
   // A scan that ended without a result found no fault: "Fail" is a check's
   // verdict on something it could read.
@@ -443,9 +448,10 @@ function scanStatusLine(
   status: ScanStatusResponse["status"] | undefined,
   accessState: AccessState,
   unread: boolean,
-) {
+): string | null {
   if (accessState === "missing" || accessState === "invalid") return "Private access required";
-  if (!status) return unread ? "Status unreadable" : "Reading scan state…";
+  // The heading under it already says the status could not be read.
+  if (!status) return unread ? null : "Reading scan state…";
   return SCAN_STATUS_LINES[status];
 }
 

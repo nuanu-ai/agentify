@@ -145,15 +145,16 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
       ) : (
         <div className="message-actions">
           <button
-            className="button button-secondary"
+            className="button button-primary"
             disabled={busy}
             onClick={() => void act("access")}
             type="button"
           >
             Request data access
           </button>
+          {/* Irreversible, so never the primary press until it is confirmed. */}
           <button
-            className="button button-primary"
+            className="button button-secondary"
             onClick={() => setConfirmingDeletion(true)}
             type="button"
           >
