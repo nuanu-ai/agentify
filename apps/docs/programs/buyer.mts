@@ -148,6 +148,9 @@ const signerOf = (payment: PaymentPayload): string | undefined =>
 // pays; afterwards a fresh signature for the same request from the same wallet
 // returns the order with no second charge.
 async function pay(kept: Kept, buyer: PrivateKeyAccount): Promise<Order | string> {
+  // Only the first payment of a purchase with no order yet can end it: after
+  // that, the order may already be paid or hold goods made for it.
+  const first = kept.payment === undefined && kept.status_url === undefined
   const before = kept.payment === undefined ? undefined : signerOf(kept.payment)
   if (before !== undefined && before.toLowerCase() !== buyer.address.toLowerCase()) {
     return (
@@ -187,10 +190,17 @@ async function pay(kept: Kept, buyer: PrivateKeyAccount): Promise<Order | string
     return order
   }
   const refusal = refusalIn(paid)
-  if (refusal !== undefined && !refusal.retryable) {
+  if (refusal !== undefined && !refusal.retryable && first) {
     return (
       `The payment was refused and this purchase is over. ${said(paid)}\n` +
       `Delete ${KEPT} to start a new purchase.`
+    )
+  }
+  if (refusal !== undefined && !refusal.retryable) {
+    return (
+      `The payment was refused. ${said(paid)}\n` +
+      `Keep ${KEPT}: this purchase may already be paid, or hold goods made for it. ` +
+      `Fix what the refusal names and run this again.`
     )
   }
   return (

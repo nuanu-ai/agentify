@@ -455,9 +455,13 @@ program refuses to sign it with another `BUYER_PRIVATE_KEY`.
 
 An order that ended is printed with its status and the merchant's refusal or
 Agentify's reason. Where its `payment_status` is `not_paid`, nothing was
-charged, and deleting `purchase.json` lets the next run buy again. A payment
-refused with a refusal that is not `retryable` ends the purchase too, and the
-program says to delete `purchase.json`. An order that reads
+charged, and deleting `purchase.json` lets the next run buy again. A refusal
+that is not `retryable` ends the purchase too when it answers the first
+payment, before any order exists, and the program then says to delete
+`purchase.json`. A refusal of a later payment, which brings back a lost answer
+or pays for goods already made, leaves the purchase as it was: the program
+says to keep the file, fix what the refusal names and run it again, since the
+order may already be paid. An order that reads
 `delivered_unpaid` holds goods your handler made whose charge did not go
 through; the next run pays the kept payment request again, which releases
 them. The program exits with `0` only when the goods are delivered.
