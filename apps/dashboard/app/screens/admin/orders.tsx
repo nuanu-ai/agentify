@@ -375,7 +375,13 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
                     <div key={fact.label}>
                       <dt>{fact.label}</dt>
                       <dd>
-                        <Whole value={fact.value} />
+                        {"ident" in fact ? (
+                          <Whole value={fact.ident} />
+                        ) : "at" in fact ? (
+                          <Moment at={fact.at} />
+                        ) : (
+                          fact.text
+                        )}
                       </dd>
                     </div>
                   ))}

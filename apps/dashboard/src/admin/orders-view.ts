@@ -314,11 +314,15 @@ export interface OrderView {
   }>;
   readonly receipt: Readonly<{
     head: string;
-    facts: readonly Readonly<{ label: string; value: string }>[];
+    facts: readonly ReceiptFact[];
     said: string | null;
   }>;
   readonly withheld: string;
 }
+
+/** A fact on a receipt: an identifier shown short, a word, or a moment. */
+type ReceiptFact = Readonly<{ label: string }> &
+  (Readonly<{ ident: string }> | Readonly<{ text: string }> | Readonly<{ at: MomentView }>);
 
 export type OrderPageView =
   | OrderView
@@ -647,6 +651,27 @@ function withheldOf(order: OperatorOrder): string {
   return said.join(" ");
 }
 
+/**
+ * Why an order holds no receipt. One is written when the goods are released
+ * or the parcel's shipment is recorded, and never once the merchant closed
+ * fulfillment, so an order that ended without that will never have one.
+ */
+function noReceiptOf(order: OperatorOrder): Readonly<{ head: string; said: string }> {
+  if (order.agent.merchant_closure !== undefined || order.status === "fulfillment_closed") {
+    return {
+      head: "None",
+      said: "Fulfillment was closed, so the goods are never released and no receipt will be written.",
+    };
+  }
+  if (order.status === "rejected" || order.status === "expired") {
+    return {
+      head: "None",
+      said: "The order ended before any goods were released, so no receipt will be written.",
+    };
+  }
+  return { head: "Not yet", said: "One is written when the goods are released or the parcel ships." };
+}
+
 export function orderPageView(
   id: string,
   order: OperatorOrder | null | "unread",
@@ -680,20 +705,16 @@ export function orderPageView(
     payment: paymentPanelOf(order, explorer, readAt),
     receipt:
       order.receipt === null
-        ? {
-            head: "None",
-            facts: [],
-            said: "No receipt is issued yet: one is written once a delivered or shipped order's payment is recorded.",
-          }
+        ? { ...noReceiptOf(order), facts: [] }
         : {
             head: "Issued",
             facts: [
-              { label: "Receipt", value: order.receipt.id },
-              { label: "Outcome", value: order.receipt.outcome },
-              { label: "Paid at", value: moment(order.receipt.paid_at) },
+              { label: "Receipt", ident: order.receipt.id },
+              { label: "Outcome", text: ORDER_WORDS[order.receipt.outcome].text },
+              { label: "Paid at", at: momentView(order.receipt.paid_at) },
               ...(order.receipt.transaction === undefined
                 ? []
-                : [{ label: "Transaction", value: order.receipt.transaction }]),
+                : [{ label: "Transaction", ident: order.receipt.transaction }]),
             ],
             said: null,
           },

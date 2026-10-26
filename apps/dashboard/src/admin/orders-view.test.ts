@@ -277,6 +277,24 @@ describe("one order", () => {
       "Transaction",
     ]);
   });
+
+  it("says when its receipt was paid as a moment, not as an identifier shown short", () => {
+    const paidAt = page(parcelOrder()).receipt.facts.find((fact) => fact.label === "Paid at");
+
+    expect(paidAt).toStrictEqual({
+      label: "Paid at",
+      at: { date: "2026-10-21", time: expect.stringMatching(/^\d{2}:\d{2}:\d{2} UTC$/) },
+    });
+  });
+
+  it("tells an order that will never have a receipt from one that has none yet", () => {
+    // A closed order's goods are never released, so it never gets a receipt;
+    // "not yet" on it would send an operator waiting for one.
+    expect(page(closedOrder()).receipt).toMatchObject({ head: "None", facts: [] });
+    expect(page(closedOrder()).receipt.said).toMatch(/no receipt will be written/);
+    expect(page(unknownOrder()).receipt).toMatchObject({ head: "Not yet", facts: [] });
+    expect(page(unknownOrder()).receipt.said).not.toMatch(/will be written/);
+  });
 });
 
 describe("the lookup", () => {
