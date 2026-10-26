@@ -657,6 +657,36 @@ describe("a scan in Chromium", () => {
     await page.context().close();
   });
 
+  it.each([
+    [
+      "holds back at the field a phone with more digits than the site takes",
+      "+1 415 555 0123 4567 89",
+      0,
+    ],
+    ["sends the ask with a phone the site takes", "+1 (415) 555-0123", 1],
+  ])("%s", async (_case, phone, asks) => {
+    const { page } = await answered(FINISHED);
+    let posted = 0;
+    await page.route(`**/api/v2/scans/${SCAN_ID}/registrations`, (route) => {
+      posted += 1;
+      return route.fulfill({ status: 202, json: { status: "verification_sent" } });
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByLabel("Email").fill("owner@shop.example");
+    const field = page.getByLabel(/^Phone/);
+    await field.fill(phone);
+    await page.getByLabel(/acknowledge the scanner data notice/i).check();
+
+    await page.getByRole("button", { name: "Email me a secure link" }).click();
+    if (asks > 0) await page.getByText("Check your inbox").waitFor();
+
+    expect(await field.evaluate((input: HTMLInputElement) => input.validity.patternMismatch)).toBe(
+      asks === 0,
+    );
+    expect(posted).toBe(asks);
+    await page.context().close();
+  });
+
   it("asks a stranger at a report to sign in, and its own links need no reload", async () => {
     const { page, complaints } = await visit("/report/0190f4c5-0000-7000-8000-00000000f002");
     await page.evaluate(() => {

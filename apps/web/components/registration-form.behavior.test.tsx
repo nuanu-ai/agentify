@@ -260,4 +260,82 @@ describe("asking the scanner for a verification link", () => {
     expect(screen.queryByLabelText("Email")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
   });
+
+  /** What a screen reader reads after a field's name: the text of what it is described by. */
+  const describedAs = (field: HTMLElement) =>
+    (field.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+
+  it.each([
+    ["phone", "invalid_phone", "Give the phone with its country code.", /^Phone/],
+    ["email", "invalid_email", "Enter a valid email address.", /^Email$/],
+    [
+      "data notice",
+      "data_notice_unacknowledged",
+      "Acknowledge the scanner data notice.",
+      /acknowledge the scanner data notice/i,
+    ],
+  ])(
+    "shows the site's refusal of the %s at that field, and takes the visitor there",
+    async (_field, code, message, label) => {
+      answerWith(400, {
+        error: {
+          code,
+          message,
+          retryable: false,
+          request_id: "019f5b6a-4b9f-7000-8000-00000000000f",
+        },
+      });
+
+      await askForALink();
+
+      const field = await screen.findByLabelText(label);
+      await waitFor(() => expect(field.getAttribute("aria-invalid")).toBe("true"));
+      expect(describedAs(field)).toContain(message);
+      expect(document.activeElement).toBe(field);
+    },
+  );
+
+  it("marks no field when the site's refusal names none", async () => {
+    answerWith(400, {
+      error: {
+        code: "invalid_registration",
+        message: "This ask could not be read. Reload the page and ask again.",
+        retryable: false,
+        request_id: "019f5b6a-4b9f-7000-8000-00000000001f",
+      },
+    });
+
+    await askForALink();
+
+    await screen.findByText(/could not be read/);
+    expect(document.querySelectorAll("[aria-invalid='true']")).toHaveLength(0);
+  });
+
+  it("clears the mark from a field once the visitor asks again", async () => {
+    const fetched = answerWith(400, {
+      error: {
+        code: "invalid_phone",
+        message: "Give the phone with its country code.",
+        retryable: false,
+        request_id: "019f5b6a-4b9f-7000-8000-00000000002f",
+      },
+    });
+    await askForALink();
+    const phone = await screen.findByLabelText(/^Phone/);
+    await waitFor(() => expect(phone.getAttribute("aria-invalid")).toBe("true"));
+
+    fetched.mockImplementation(async (input) =>
+      String(input).endsWith("/api/v2/session")
+        ? json(200, { status: "signed_out" })
+        : json(202, { status: "verification_sent" }),
+    );
+    await userEvent.click(screen.getByRole("button"));
+
+    await screen.findByText(/Check your inbox/);
+    expect(phone.getAttribute("aria-invalid")).toBeNull();
+    expect(describedAs(phone)).not.toContain("country code.");
+  });
 });
