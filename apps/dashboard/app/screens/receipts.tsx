@@ -75,7 +75,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
               <Fragment key={row.id}>
                 {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
                 <DisclosedRow
-                  of={`${row.product}, ${row.time}`}
+                  of={`${row.product}, ${row.day}, ${row.time}`}
                   id={`details-${row.id}`}
                   needsYou={row.needsYou}
                   cells={
