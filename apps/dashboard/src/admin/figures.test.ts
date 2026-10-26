@@ -210,6 +210,18 @@ describe("the overview", () => {
     ).toStrictEqual([harnessed.merchant.id]);
   });
 
+  it("on the live channel, names a WooCommerce order whose shop order is uncertain", async () => {
+    // One order sent to its shop that never heard back, as the store counts it.
+    const shops: WooShops = { ...memoryWooShops(), uncertainOrders: async () => 1 };
+    const { harnessed, pages } = await served({ channel: "live", shops });
+
+    const view = viewOf<OverviewView>(
+      await pages.overview(operatorAt(harnessed), new URLSearchParams()),
+    );
+
+    expect(view.worth.items.map((item) => item.badge.word)).toContain("Shop order uncertain");
+  });
+
   it("asks nothing about admission on the test channel, which admits nobody", async () => {
     const { harnessed, pages } = await served({ channel: "test" });
 
