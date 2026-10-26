@@ -421,6 +421,17 @@ document.write('<script src="/js/legacy.js"></script>');
     expect(htmlSignals(page).hasH1).toBe(true);
   });
 
+  it("leaves an SVG icon a theme left open at the end tag of the element around it", () => {
+    const badge = `<span class="badge"><svg viewBox="0 0 1 1"><path d="M0 0"></span> $98.00 <button>Add to cart</button>`;
+    expect(visibleText(badge)).toBe("$98.00 Add to cart");
+    expect(htmlSignals(badge).price).toEqual({ source: "text", price: "$98.00" });
+    // An SVG link's end tag closes the link inside the SVG, not the page's
+    // link around it.
+    const cart = `<a href="/cart"><svg viewBox="0 0 1 1"><a href="#icon"><path d="M0 0"/></a><title>Cart</title></svg></a><p>Wool Runner</p>`;
+    expect(visibleText(cart)).toBe("Wool Runner");
+    expect(htmlSignals(cart).hasTitle).toBe(false);
+  });
+
   it("sees a heading whose text sits in an inner element, and none that holds only an image", () => {
     expect(htmlSignals('<h1 class="product__title"><span>Wool Runner</span></h1>').hasH1).toBe(
       true,
