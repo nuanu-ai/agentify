@@ -9,7 +9,14 @@
  * in-memory harness.
  */
 
-import { type Gateway, payoutSplitFor, SPLITS_PER_PAYOUT } from "@agentify/gateway";
+import { UNKNOWN } from "@agentify/core";
+import {
+  type Gateway,
+  type PayoutCheck,
+  type PayoutTransaction,
+  payoutSplitFor,
+  SPLITS_PER_PAYOUT,
+} from "@agentify/gateway";
 import {
   type Harness,
   harness,
@@ -36,8 +43,8 @@ const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
 let open: { harnessed: Harness; served: Served | null } | null = null;
 
-const started = async (overrides: Record<string, string> = {}) => {
-  const harnessed = await harness(overrides);
+const started = async (overrides: Record<string, string> = {}, payoutCheck?: PayoutCheck) => {
+  const harnessed = await harness(overrides, payoutCheck === undefined ? {} : { payoutCheck });
   open = { harnessed, served: null };
   return harnessed;
 };
@@ -610,7 +617,9 @@ describe("the payout a merchant is shown", () => {
 
     const payout = read.ok ? read.document.payout : null;
     expect(
-      typeof payout === "object" && payout !== null && "splits" in payout ? payout.splits : [],
+      typeof payout === "object" && payout !== null && "transaction" in payout
+        ? payout.transaction.splits
+        : [],
     ).toHaveLength(SPLITS_PER_PAYOUT);
   });
 
@@ -640,5 +649,79 @@ describe("the payout a merchant is shown", () => {
       ok: true,
       document: { inForce: null, pending: null, payout: null },
     });
+  });
+});
+
+describe("what the payout a merchant is shown would bring", () => {
+  /** A chain that answers every payout with `brings`, and keeps each payout it was asked about. */
+  const aChain = (brings: () => Promise<bigint>) => {
+    const asked: PayoutTransaction[] = [];
+    const check: PayoutCheck = {
+      wouldBring: (payout) => {
+        asked.push(payout);
+        return brings();
+      },
+    };
+    return { check, asked };
+  };
+
+  const shown = async (harnessed: Harness, answerWithinMs?: number) => {
+    const read = await asTheOwner(harnessed, answerWithinMs).payoutSplits();
+    const payout = read.ok ? read.document.payout : null;
+    if (typeof payout !== "object" || payout === null || !("transaction" in payout)) {
+      throw new Error(`no payout to send was shown: ${JSON.stringify(read)}`);
+    }
+    return payout;
+  };
+
+  it("is what the chain says sending the very transaction shown would bring", async () => {
+    const chain = aChain(async () => 12_345_678n);
+    const harnessed = await started({}, chain.check);
+
+    const payout = await shown(harnessed);
+
+    expect(payout.brings).toBe(12_345_678n);
+    expect(chain.asked).toStrictEqual([payout.transaction]);
+  });
+
+  it("is nothing where the chain says the payout would bring nothing", async () => {
+    const harnessed = await started({}, aChain(async () => 0n).check);
+
+    expect((await shown(harnessed)).brings).toBe(0n);
+  });
+
+  it("is not known, rather than nothing, where the chain could not be asked", async () => {
+    const harnessed = await started(
+      {},
+      aChain(async () => {
+        throw new Error("the chain endpoint did not answer");
+      }).check,
+    );
+
+    expect((await shown(harnessed)).brings).toBe(UNKNOWN);
+  });
+
+  it("is not known where no chain endpoint is configured", async () => {
+    const harnessed = await started();
+
+    expect((await shown(harnessed)).brings).toBe(UNKNOWN);
+  });
+
+  it("is not known once the chain has taken half the page's deadline, and the page is still drawn", async () => {
+    // The rest of Settings, the control that signs every other device out
+    // among it, must not wait on a chain endpoint that hangs.
+    const harnessed = await started({}, aChain(() => new Promise(() => undefined)).check);
+
+    expect((await shown(harnessed, 400)).brings).toBe(UNKNOWN);
+  });
+
+  it("is not asked of the chain where there is no transaction to send", async () => {
+    const chain = aChain(async () => 1n);
+    const harnessed = await started({}, chain.check);
+    const none = await harnessed.gateway.registerMerchant();
+
+    await gatewayFor(harnessed.gateway, { merchantId: none, email: OWNER }).payoutSplits();
+
+    expect(chain.asked).toStrictEqual([]);
   });
 });
