@@ -22,7 +22,7 @@
   line-height: var(--leading-display);
 }
 
-.heroCopy > p {
+.subtitle {
   max-width: 48ch;
   margin: 0;
   color: var(--fg-2);
@@ -249,7 +249,7 @@
     gap: 16px;
   }
 
-  .heroCopy > p {
+  .subtitle {
     font-size: var(--text-body);
   }
 
