@@ -75,7 +75,7 @@ config:
 ---
 sequenceDiagram
     accTitle: One purchase, from the catalogue to the goods
-    accDescr: The agent reads the catalogue and asks to buy a card. If the card has a price check, which a parcel's card always has, Agentify asks your process the price and waits five seconds; an answer of none refuses the purchase on any card, and silence refuses it on a card charged at purchase while a synchronous card sells at its own price. Agentify answers 402 Payment Required with the price and your payout contract as the payee, and the price holds thirty seconds. The agent repeats the call with a signed payment and the facilitator verifies it. In the synchronous mode the order goes to your process, which answers each hand-over within three seconds and has ten seconds in all from the payment check to send back the goods; the facilitator then executes the charge into your payout contract and the agent receives the goods. A refusal or silence instead charges nothing, and a failed charge leaves the order delivered_unpaid. In the asynchronous and parcel modes the charge is executed first, the agent receives an order it reads again later, your process answers each hand-over within three seconds, accepting the order or delivering at once, and delivers later with a separate call by the deadline on your card; a parcel's delivery is its shipment. A refusal or a missed deadline instead leaves a paid order unfulfilled.
+    accDescr: The agent reads the catalogue and asks to buy a card. If the card has a price check, which a parcel's card always has, Agentify asks your process the price and waits {{quote-response}}; an answer of none refuses the purchase on any card, and silence refuses it on a card charged at purchase while a synchronous card sells at its own price. Agentify answers 402 Payment Required with the price and your payout contract as the payee, and the price holds {{quote-ttl}}. The agent repeats the call with a signed payment and the facilitator verifies it. In the synchronous mode the order goes to your process, which answers each hand-over within {{handler-answer}} and has {{sync-response}} in all from the payment check to send back the goods; the facilitator then executes the charge into your payout contract and the agent receives the goods. A refusal or silence instead charges nothing, and a failed charge leaves the order delivered_unpaid. In the asynchronous and parcel modes the charge is executed first, the agent receives an order it reads again later, your process answers each hand-over within {{handler-answer}}, accepting the order or delivering at once, and delivers later with a separate call by the deadline on your card; a parcel's delivery is its shipment. A refusal or a missed deadline instead leaves a paid order unfulfilled.
     participant A as Buyer's agent
     participant G as Agentify
     participant Y as Your process
@@ -83,16 +83,16 @@ sequenceDiagram
     A->>G: reads the catalogue,<br/>asks to buy one card
     opt a price check (a parcel always has one)
         G->>Y: the price question
-        Y-->>G: a price, or none (5 s)
+        Y-->>G: a price, or none ({{quote-response:short}})
         Note over G,Y: none: refused on any card<br/>silence: refused on async<br/>or ship, while a sync card<br/>sells at its own price
     end
     G-->>A: 402: the price, payable<br/>to your payout contract
-    Note over A,G: the price holds 30 s
+    Note over A,G: the price holds {{quote-ttl:short}}
     A->>G: the same call,<br/>with a signed payment
     G->>F: verify the payment
     alt sync
         G->>Y: the order
-        Y-->>G: the goods (3 s per<br/>hand-over, 10 s in all<br/>from the payment check)
+        Y-->>G: the goods ({{handler-answer:short}} per<br/>hand-over, {{sync-response:short}} in all<br/>from the payment check)
         G->>F: charge, into your<br/>payout contract
         G-->>A: the goods
         Note over G,Y: a refusal or silence:<br/>nothing is charged<br/>a failed charge:<br/>delivered_unpaid
@@ -100,7 +100,7 @@ sequenceDiagram
         G->>F: charge, into your<br/>payout contract
         G-->>A: the order, no goods yet
         G->>Y: the order
-        Y-->>G: accepted, or the goods<br/>(3 s per hand-over)
+        Y-->>G: accepted, or the goods<br/>({{handler-answer:short}} per hand-over)
         Y->>G: deliver, or a parcel's<br/>shipment, by the deadline
         Note over G,Y: a refusal or a missed<br/>deadline: unfulfilled
         A->>G: reads the order again
@@ -168,20 +168,20 @@ Those three answers are the whole set, and that matters for how you report a
 temporary failure. An exception in the handler, a process that fell over, a
 connection that broke — for us each of these means the order never reached
 you, so we send it again, after a delay, until the order's deadline runs out
-or we have delivered it five times, whichever comes first. Five is what this
+or we have delivered it {{redelivery-max-attempts}} times, whichever comes first. {{Redelivery-max-attempts}} is what this
 system is set to, and no card changes it. Once we stop sending it, the order
 stays open until its deadline: an answer or a delivery that arrives before
 then still counts. A refusal we read the other way, as a final "this cannot be
 delivered", and we end the order on it. So a supplier that did not answer in
 time is not worth a refusal: throw instead.
 
-We wait three seconds for a handler's answer, counted from the moment we hand
+We wait {{handler-answer}} for a handler's answer, counted from the moment we hand
 the order to your process. An answer that comes later still counts while the
 order's deadline has not run out, but by then the order has gone out again,
 to the same process or to another instance, and the repeat is answered the way
 every repeat is ([Telling a repeat apart](#telling-a-repeat-apart)). That is
 why an asynchronous handler takes the order on at once and does the work
-outside the handler, and why a synchronous handler slower than three seconds
+outside the handler, and why a synchronous handler slower than {{handler-answer}}
 has to expect the same order twice.
 
 ## Confirming a delivery with a separate call
@@ -243,7 +243,10 @@ await order.refuse({
 The buyer has already been charged for an order you took on, so a refusal
 makes it `unfulfilled` straight away. It stays on the open list, and a late
 delivery still counts. A refusal does not stop Agentify accepting deliveries;
-closing fulfillment does.
+closing fulfillment does. Until you deliver it or close it, a refused or missed
+paid order also counts toward the stop on {{unserved-at-most}} such orders, under which every
+new purchase of yours is refused ([What can go wrong](/failures)); closing it,
+with an explanation to the buyer, takes it out.
 
 ## Closing fulfillment
 
@@ -403,7 +406,7 @@ flowchart LR
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
 | `rejected` | nothing was charged: your price check said there is none, or stayed silent on an asynchronous card or a parcel; a charge before the goods failed; or you refused a synchronous order | no | — |
 | `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
-| `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to; otherwise leave it, or close fulfillment |
+| `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to, or closes fulfillment: until one or the other, an order you were given counts toward the stop on {{unserved-at-most}} such orders |
 | `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
 | `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and not once you closed fulfillment | skips it: Agentify settles it when the payment is known |
 | `fulfillment_closed` | you closed fulfillment; `payment_status` says what became of the payment | only when a payment went through after you closed, until you close it again | skips delivering, which is refused; closes it again once you have settled with the buyer |
@@ -432,7 +435,7 @@ nobody knows. It is apart from the status because an order you closed can
 still have been paid.
 
 An order that ended `rejected` or `expired` with nothing charged or held is
-deleted thirty days after it was last written, at the first daily clean-up
+deleted {{lapsed-kept}} after it was last written, at the first daily clean-up
 after that. From then on `orders.get`
 refuses it with `no_such_order`, as an order that never existed, it is no
 longer in `orders.list`, and the agent's status address answers it as an
@@ -600,10 +603,12 @@ you closed fulfillment, and its `status` column is the word each one reads.
 
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists, and a payment that fails its check is refused the same way,
-leaving the priced order to lapse as `expired`. Two more refusals come before
-anything is charged, both described on [What can go wrong](/failures): a
-purchase while twenty of yours already wait for payment, and a purchase that
-charges before its goods while no process of yours has polled for ten minutes. A pause ends no orders: cards
+leaving the priced order to lapse as `expired`. Three more refusals come
+before anything is charged, all described on [What can go wrong](/failures): a
+purchase while {{waiting-for-payment-at-most}} of yours already wait for payment, a purchase that
+charges before its goods while no process of yours has polled for {{silent-after}},
+and any purchase while {{unserved-at-most}} or more of your orders are paid for with nothing
+delivered. A pause ends no orders: cards
 stop selling, and the orders already taken on play out in the ordinary way.
 To stop Agentify accepting deliveries for one order, [close
 fulfillment](#closing-fulfillment).
@@ -616,16 +621,16 @@ the two your card names.
 
 | What waits | Whom it binds | How long | Counted from | When it runs out |
 | --- | --- | --- | --- | --- |
-| Your price handler's answer | you | five seconds | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment (`rejected`, `price_check_unanswered`) |
-| The price an order was given | the agent | thirty seconds | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
-| Each hand-over of an order to your process | you | three seconds | the order is handed to your process | the order is sent again, up to five deliveries in all, within its own deadline |
-| The goods of a synchronous order | you | ten seconds | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays, unless you closed fulfillment |
-| The facilitator's answer about the charge | Agentify | ten seconds on a synchronous order; fifteen where the charge comes before the goods | the charge is sent | `payment_unresolved` |
-| The delivery of an asynchronous order | you | the deadline your card names; without one, a day | the charge at purchase | `unfulfilled` |
+| Your price handler's answer | you | {{quote-response}} | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment (`rejected`, `price_check_unanswered`) |
+| The price an order was given | the agent | {{quote-ttl}} | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
+| Each hand-over of an order to your process | you | {{handler-answer}} | the order is handed to your process | the order is sent again, up to {{redelivery-max-attempts}} deliveries in all, within its own deadline |
+| The goods of a synchronous order | you | {{sync-response}} | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays, unless you closed fulfillment |
+| The facilitator's answer about the charge | Agentify | {{settle-response}} on a synchronous order; {{settle-before-goods:number}} where the charge comes before the goods | the charge is sent | `payment_unresolved` |
+| The delivery of an asynchronous order | you | the deadline your card names; without one, {{default-async-fulfillment}} | the charge at purchase | `unfulfilled` |
 | The shipment of a parcel | you | your `ship_within_seconds`, at most thirty days | the charge at purchase | `unfulfilled` |
 
-The agent is promised a synchronous purchase within twenty seconds of the
-payment check, and your ten seconds and the facilitator's ten fit inside them.
+The agent is promised a synchronous purchase within {{sync-budget}} of the
+payment check, and your {{sync-response}} and the facilitator's {{settle-response:number}} fit inside them.
 Asking your price comes before the payment, so it is outside all three
 numbers. A late synchronous answer is not an error and does not come back as
 an exception: the purchase has already ended with nothing charged, and goods
@@ -672,7 +677,7 @@ delivery lands in one of them.
 Your answer is what acknowledges an order: until it comes back, the order
 counts as open. A process that fell over or reconnected without answering
 leaves the order to go out again, possibly to another instance, and so does a
-handler that takes longer than the three seconds we wait for an answer. In that
+handler that takes longer than the {{handler-answer}} we wait for an answer. In that
 second case the same order is in two processes at once, which is ordinary, and
 it is what the handler's idempotency by the order's identifier is for.
 

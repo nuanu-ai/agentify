@@ -97,6 +97,24 @@ export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
 };
 
 /**
+ * Whether the merchant answers for an order that has just become
+ * `unfulfilled`, given the integration it was sold through: whether they were
+ * given it. Their own code answers for an order it was handed, and they for
+ * one they accepted or refused by a call before any hand-over was recorded.
+ * A shop answers only
+ * for an order it took on, which the connector does only for a parcel it
+ * ordered in the shop; a download it delivers itself, so whatever stops one is
+ * Agentify's. An order never handed over is nobody's that the record can
+ * name, Agentify's own failures among them, so it is not the merchant's.
+ */
+export const answerableFor = (order: Order, through: Integration): boolean =>
+  through === "api"
+    ? order.timestamps.dispatchedAt !== null ||
+      order.dispatch.accepted ||
+      order.closure?.cause === "merchant_refused"
+    : order.dispatch.accepted;
+
+/**
  * Whether an order is an attempt that lapsed unpaid: it ended rejected or
  * expired with no payment ever verified, no goods held for its buyer and
  * nothing presented to pay with. Nothing of anybody's money or goods rests on
@@ -281,6 +299,19 @@ export interface StoredOrder {
    * report the handler as silent and send the order again.
    */
   readonly openDeliveryId: string | null;
+  /**
+   * The integration the order was sold through, fixed at its birth, so that
+   * whether its merchant answers for it is decided without reading its card.
+   * Absent on an order born before it was kept.
+   */
+  readonly through?: Integration;
+  /**
+   * On an `unfulfilled` order only: whether its merchant answers for it
+   * (`answerableFor`), decided as it became unfulfilled and gone once it is
+   * not. An unfulfilled order without it, written before it was kept, is
+   * answered for by nobody.
+   */
+  readonly answerable?: boolean;
 }
 
 /** One thing the payment layer said, and when. */
@@ -963,6 +994,18 @@ export interface Store {
    * (`waitsForPayment`), counted up to `atMost` and no further.
    */
   waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
+
+  /**
+   * How many of this merchant's orders are `unfulfilled` and answered for by
+   * them (`StoredOrder#answerable`), counted up to `atMost` and no further.
+   */
+  unservedOrders(merchantId: string, atMost: number): Promise<number>;
+
+  /**
+   * Which of these merchants have at least `atLeast` such orders, in one read
+   * however many are asked about.
+   */
+  stoppedSellers(merchantIds: readonly string[], atLeast: number): Promise<ReadonlySet<string>>;
 
   /**
    * Writes an order that is not there yet. The record says whose it is. An

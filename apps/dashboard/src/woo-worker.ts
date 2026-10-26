@@ -16,6 +16,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { QUOTE_RESPONSE_MS } from "@agentify/core/published";
 import { failureNamed } from "@agentify/gateway/failure-named";
 import {
   type HandlerAnswer,
@@ -849,11 +850,11 @@ export const turnOnce = async (
 };
 
 /**
- * The gateway waits five seconds for a price (`QUOTE_RESPONSE_MS`) and then
- * reads the merchant as silent; four leaves time for the answer to travel and
- * keeps a slow shop from holding up the work queued behind it.
+ * A second less than the gateway waits for a price before it reads the
+ * merchant as silent, which leaves time for the answer to travel and keeps a
+ * slow shop from holding up the work queued behind it.
  */
-const QUOTE_WITHIN_MS = 4_000;
+const QUOTE_WITHIN_MS = QUOTE_RESPONSE_MS - 1_000;
 
 /** Null where it did not finish in time. */
 const inTime = async <T>(work: Promise<T>, ms: number): Promise<T | null> => {

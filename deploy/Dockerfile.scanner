@@ -19,6 +19,9 @@ COPY packages/scanner/package.json packages/scanner/package.json
 COPY packages/remediation/package.json packages/remediation/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/visual/package.json packages/visual/package.json
+# The landing writes Agentify's published numbers from the core package; its
+# contracts devDependency is left unresolved, as nothing here builds the core.
+COPY packages/core/package.json packages/core/package.json
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile --filter @agentify/web...
 
@@ -35,6 +38,7 @@ COPY packages/scanner packages/scanner
 COPY packages/remediation packages/remediation
 COPY packages/ui packages/ui
 COPY packages/visual packages/visual
+COPY packages/core packages/core
 COPY apps/web apps/web
 RUN pnpm --filter @agentify/web build
 

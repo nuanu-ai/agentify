@@ -450,11 +450,13 @@ const FAILURES = [
 /**
  * The rows about a purchase refused before any order exists, which this
  * machine never sees: their scenarios are the gateway's, in
- * `apps/gateway/src/http/purchase-door.test.ts`, which reads these rows too.
+ * `apps/gateway/src/http/purchase-door.test.ts`. They are named as the source
+ * writes them, with the number the build writes in.
  */
 const AT_THE_DOOR = [
-  "Twenty of your purchases already wait for payment",
-  "No process of yours has polled for ten minutes",
+  "{{Waiting-for-payment-at-most}} of your purchases already wait for payment",
+  "No process of yours has polled for {{silent-after}}",
+  "{{Unserved-at-most}} paid orders you took on are left without delivery or closure",
 ] as const;
 
 function priceCheckedParcel(): Order {

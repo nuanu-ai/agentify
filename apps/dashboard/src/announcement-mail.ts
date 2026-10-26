@@ -14,11 +14,11 @@
  * everywhere, then sign in again and set an address of one's own.
  */
 
+import { type CommissionRate, percentagesOf } from "@agentify/core/published";
 import type { Announcement, AskedInTheDashboard } from "@agentify/gateway/announcements";
 import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
-import { type CommissionRate, percentagesOf } from "./shares.js";
 import { moment } from "./words.js";
 
 export interface Screens {

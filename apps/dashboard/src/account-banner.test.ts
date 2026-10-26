@@ -70,13 +70,18 @@ describe("the account banner", () => {
     );
   });
 
-  it("says in one sentence that new purchases are refused while twenty wait for payment", () => {
-    const [note] = accountOf(READY, { selling: "open", through: "api", busy: true });
+  it("names a merchant whose purchases waiting for payment fill the limit, with nothing to switch on", () => {
+    const notes = accountOf(READY, { selling: "open", through: "api", busy: true });
 
-    expect(note?.reason).toBe("busy");
-    expect(note?.says).toBe(
-      "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
-    );
+    expect(notes.map((note) => note.reason)).toStrictEqual(["busy"]);
+    expect(notes[0]?.fix).toBeNull();
+  });
+
+  it("says new purchases are refused while ten paid orders are left unserved, and leads to the orders that need the merchant", () => {
+    const [note] = accountOf(READY, { selling: "open", through: "api", unserved: true });
+
+    expect(note?.reason).toBe("unserved");
+    expect(note?.fix?.to).toBe("/orders?show=needs");
   });
 
   it("names every reason that holds at once, broadest first", () => {

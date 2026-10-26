@@ -6,6 +6,8 @@
  * would not.
  */
 
+import { COMMISSION_RATE } from "@agentify/core/published";
+
 /** One network's payout split: who it pays, in what shares, and the contracts it uses. */
 export interface PayoutSplitNetwork {
   /** The CAIP-2 chain, as `PAYMENT_NETWORK` names it. */
@@ -47,12 +49,11 @@ const BASE_COMMISSION_SAFE = "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541";
 
 /**
  * 0xSplits v2.2 and Multicall3 are deployed at these addresses on Base and on
- * Base Sepolia alike, and so are the rate's terms: Agentify takes 1000 of
- * every 1000000, 0.1%.
+ * Base Sepolia alike, and so are the rate's terms, which are published with
+ * Agentify's other numbers.
  */
 const ON_BOTH_BASE_CHAINS = {
-  commissionAllocation: 1_000,
-  totalAllocation: 1_000_000,
+  ...COMMISSION_RATE,
   factory: "0x6B9118074aB15142d7524E8c4ea8f62A3Bdb98f1",
   implementation: "0x98254AeDb6B2c30b70483064367f0BA24ca86244",
   warehouse: "0x8fb66F38cF86A3d5e8768f8F1754A24A6c661Fb8",
