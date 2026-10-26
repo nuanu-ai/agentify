@@ -432,10 +432,12 @@ function ScanStateBadge({
   status?: ScanStatusResponse["status"];
   unread: boolean;
 }>) {
-  // Without a status read, nothing is known of the scan, so the badge does
-  // not say it is being checked.
-  if (accessState === "missing" || accessState === "invalid" || (unread && !status))
+  if (accessState === "missing" || accessState === "invalid") {
     return <StatusBadge status="unavailable" />;
+  }
+  // Without a status read, nothing is known of the scan, so the badge says
+  // neither that it is being checked nor that it is unavailable.
+  if (unread && !status) return <StatusBadge status="unknown" />;
   // A scan that ended without a result found no fault: "Fail" is a check's
   // verdict on something it could read.
   if (status === "failed") return <Badge tone="quiet">No result</Badge>;
