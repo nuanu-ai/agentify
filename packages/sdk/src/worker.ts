@@ -50,6 +50,19 @@ import type { OrderEvent } from "./reading.js";
 import { describeProblems, onlyWhatIsNew, problemsOf, whereItFailed } from "./schema.js";
 import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } from "./transport.js";
 
+/**
+ * A thrown value as text, for a problem's sentence. Code can throw anything,
+ * including a value that turning into text throws again, and the report about
+ * it must not be what fails.
+ */
+const describeThrown = (cause: unknown): string => {
+  try {
+    return String(cause);
+  } catch {
+    return "a value that cannot be turned into text";
+  }
+};
+
 /** What follows for an order nothing was answered for. */
 const COMES_AGAIN =
   "it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered";
@@ -697,7 +710,7 @@ export const startWorker = (
         fatal: false,
         cause,
         subject: order.id,
-        message: `the handler threw on order ${order.id}, so nothing was answered and the order counts as undelivered — ${COMES_AGAIN}: ${String(cause)}`,
+        message: `the handler threw on order ${order.id}, so nothing was answered and the order counts as undelivered — ${COMES_AGAIN}: ${describeThrown(cause)}`,
       });
       return;
     }
@@ -744,7 +757,7 @@ export const startWorker = (
         fatal: false,
         cause,
         subject: question.price_id,
-        message: `the price handler threw on question ${question.price_id}, so no price was sent and the sale goes on the card's own price or does not go on at all: ${String(cause)}`,
+        message: `the price handler threw on question ${question.price_id}, so no price was sent and the sale goes on the card's own price or does not go on at all: ${describeThrown(cause)}`,
       });
       return;
     }
@@ -844,7 +857,7 @@ export const startWorker = (
         // An event is sent at most once and carries no acknowledgement, so
         // nothing here can ask for it again: what the handler failed on is
         // lost, and the open-orders list is where an unfulfilled order shows up.
-        message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${String(cause)}`,
+        message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${describeThrown(cause)}`,
       });
     }
   };
@@ -893,7 +906,7 @@ export const startWorker = (
       kind: WORKER_PROBLEM_KINDS.WORKER_FAILED,
       fatal: true,
       cause,
-      message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${String(cause)}`,
+      message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${describeThrown(cause)}`,
     });
   };
 
