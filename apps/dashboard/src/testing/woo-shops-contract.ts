@@ -257,6 +257,13 @@ export const wooShopsContract = (
           { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
+        // A download whose shop order was placed without its file: nothing to deliver it with.
+        await shops.claimOrder(accounts.one, "ord_bare", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_bare",
+          { id: "14", number: "WOO-14", permission: null, total: "25.00" },
+          NOW,
+        );
         await shops.claimOrder(accounts.one, "ord_hidden", FACTS, NOW);
         await shops.claimOrder(accounts.other, "ord_foreign", FACTS, NOW);
         await shops.claimOrder(accounts.one, "ord_parcel", { ...FACTS, kind: "parcel" }, NOW);
@@ -266,6 +273,7 @@ export const wooShopsContract = (
           await shops.heldSales(accounts.one, [
             "ord_unknown",
             "ord_placed",
+            "ord_bare",
             "ord_foreign",
             "ord_parcel",
             "ord_refused",
@@ -274,6 +282,7 @@ export const wooShopsContract = (
         ).toStrictEqual({
           ord_placed: "recoverable",
           ord_unknown: "recoverable",
+          ord_bare: "unrecoverable",
           ord_parcel: "parcel",
           ord_refused: "unrecoverable",
         });
