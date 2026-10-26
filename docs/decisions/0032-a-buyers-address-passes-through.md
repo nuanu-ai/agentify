@@ -52,7 +52,10 @@ reminders that keep its deadlines. The order then reads `ship_to: {
 Nothing of the address is kept, neither a masked fragment nor a fingerprint,
 and nothing of ours logs it: no error leaving the store or the queue carries a
 bound parameter. A handler Agentify runs for a merchant, such as a shop
-connector, keeps it no longer than the gateway does.
+connector, keeps it no longer than the gateway does. The erasure reaches the
+channel's database and not the backups taken before it, which keep the
+address until they expire (ADR-0029), and the portal says so wherever it
+promises the erasure.
 
 ## Consequences
 
