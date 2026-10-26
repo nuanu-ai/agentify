@@ -159,6 +159,15 @@ function ConnectPanel({ view, base }: Readonly<{ view: WooShopView; base: string
               </span>
             </div>
           ) : null}
+          {view.testMoney ? (
+            <div className={styles.note} role="note" aria-label="Test purchases">
+              <Exclamation />
+              <span>
+                A test purchase here makes a paid order in the shop you connect, marked as paid in
+                test USDC; if it is your real shop, do not ship for it.
+              </span>
+            </div>
+          ) : null}
           <Button pending={pending}>Connect</Button>
           <Problem said={view.problem} base={base} />
         </>

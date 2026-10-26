@@ -108,7 +108,7 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
  */
 export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import again.";
 
-export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
+export const APPROVAL_GIVEN = "Agentify has approved your business for live sales.";
 
 /**
  * Why the account as a whole is not selling as usual: all sales are paused,
@@ -156,8 +156,8 @@ export const ACCOUNT_WORDS: Readonly<
   },
   not_approved: {
     title: "Not approved for live sales yet",
-    says: "Agents cannot buy your cards on the live site until an Agentify administrator approves your merchant. Test sales need no approval; your first test sale happens on the test channel, under an account of its own.",
-    fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Open the test dashboard" },
+    says: "Agents can buy your products once Agentify approves your account. To ask, write to admin@agentify.ad.",
+    fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Make a test sale" },
   },
   no_seller_name: {
     title: "No seller name yet",

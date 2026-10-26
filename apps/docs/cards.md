@@ -225,7 +225,7 @@ something fails, so the product decides it:
 | --- | --- | --- |
 | Your API hands it over within {{sync-response}} of the payment check, every time: a key, a link, a document | `'sync'`, the default | after the goods came back |
 | It takes longer — a profile to provision, a supplier to ask — and can be delivered a second time without loss | `'async'`, with a deadline of your own or {{default-async-fulfillment}} | at the moment of purchase |
-| A physical product a carrier takes to the buyer | `'ship'`, on the test channel only | at the moment of purchase, at the price with shipping and any tax your price handler names |
+| A physical product a carrier takes to the buyer | `'ship'` | at the moment of purchase, at the price with shipping and any tax your price handler names |
 | A download from a WooCommerce shop | `'async'`, set by the connector | at the moment of purchase |
 | A physical product from a WooCommerce shop | `'ship'`, set by the connector | at the moment of purchase |
 | Every order has to be confirmed by hand before the buyer pays | none: no mode lets you confirm an order before the buyer pays | — |
@@ -277,12 +277,9 @@ address lacks something your carrier needs; the agent is told the purchase did
 not happen. The price an agent pays does not cover duties the recipient may owe
 at the border, so say in the card's description where that can happen.
 
-Two things are asked of you rather than of the card. A parcel's card is
+One thing is asked of you rather than of the card. A parcel's card is
 published only once you have given the site of your shop, because a parcel
 that does not arrive is a question its buyer takes there (`no_seller_site`).
-And it is published on the test channel only, where the money is not real: on
-the live one it is refused (`not_sold_yet`), because parcels are not sold on
-the live channel yet.
 
 ## A price worked out at the moment of purchase
 
@@ -580,10 +577,8 @@ wallet set for your share of the sales wherever a payment settles
 (`no_payout_wallet`), on the live channel only, no approval from the operator
 yet (`no_operator_approval`), and on a parcel's card alone, no site set for
 your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
-your side cannot see either which channel a card is published on, so it passes
-a parcel's card that the live channel then refuses. Nor can it measure the
-header a card is paid through, so a card it passes can still be refused for its
-size ([how large a card may be](#how-large-a-card-may-be)).
+your side cannot measure the header a card is paid through either, so a card it
+passes can still be refused for its size ([how large a card may be](#how-large-a-card-may-be)).
 
 ## Your seller name and site
 

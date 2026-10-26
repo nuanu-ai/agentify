@@ -59,7 +59,7 @@ written in; the rest are in English.
 | Decision | What it decides |
 | --- | --- |
 | [0032](0032-a-buyers-address-passes-through.md) | A buyer's address passes through Agentify to the merchant and is erased once the merchant holds it or the order ends without them. |
-| [0033](0033-a-shipped-order-ends-at-the-carrier.md) | A shipped order ends at the carrier: the merchant records the shipment, the agent is told `shipped`, and parcels sell on the test channel only until the product owner admits them to the live one. |
+| [0033](0033-a-shipped-order-ends-at-the-carrier.md) | A shipped order ends at the carrier: the merchant records the shipment, the agent is told `shipped`, and parcels sell on every channel. |
 
 ### Sign-in and the one origin
 

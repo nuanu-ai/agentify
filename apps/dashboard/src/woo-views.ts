@@ -104,13 +104,18 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
  * sentence naming an API route, which means nothing to a merchant with no code.
  * So the answer to a refused press names what was unset at that moment as
  * Settings does. Before a press the banner over the page says what is missing,
- * and the button does not say it again. The connector is not offered on live,
- * so the operator's approval never stands in the way here.
+ * and the button does not say it again. The operator's approval is not among
+ * them: nobody sets it in Settings, and on live the banner says it is missing.
  */
 interface BeforeImporting {
   /** The settings, in the words Settings uses for them. */
   readonly what: string;
 }
+
+/** The answer to Import on live before the operator has approved the merchant. */
+export const NOT_APPROVED_YET =
+  "Nothing was imported: Agentify hasn't approved your business for live sales yet." +
+  " Import again once it has. To ask, write to admin@agentify.ad.";
 
 /** How many of the orders a refusal names are drawn before the rest are counted. */
 const ORDERS_DRAWN = 5;
@@ -224,6 +229,11 @@ export interface WooShopView {
    */
   readonly connectSwitches: boolean;
   /**
+   * Off the live channel a sale is paid in test USDC and still makes a paid
+   * order in the shop, so the form says so before a real shop is connected.
+   */
+  readonly testMoney: boolean;
+  /**
    * Why the press was refused: drawn under Connect, or, with a shop connected,
    * under the shop, since it is then about what the shop answered.
    */
@@ -236,6 +246,8 @@ export interface WooShopView {
 export interface ShopRead {
   readonly state: ShopState;
   readonly through: Integration;
+  /** Off the live channel, where a sale is paid in test USDC and still makes a paid shop order. */
+  readonly testMoney: boolean;
   /** For a connected shop in another currency: its rate now and Coinbase's. */
   readonly rate?: {
     readonly currency: ShopCurrency;
@@ -323,6 +335,7 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
       answer.typed ??
       (state.kind === "waiting" || state.kind === "unanswered" ? state.shopUrl : ""),
     connectSwitches: read.through === "api",
+    testMoney: read.testMoney,
     problem: refusalOf(answer.problem),
     leaving: refusalOf(answer.leaving),
   };

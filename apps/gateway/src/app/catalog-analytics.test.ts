@@ -194,20 +194,17 @@ describe("the result of publishing a card", () => {
     ).toStrictEqual(reasons.map(([reason]) => reason));
   });
 
-  it("records the refusals only the live channel makes: no operator approval, and a parcel", async () => {
+  it("records the refusal only the live channel makes: no operator approval", async () => {
     const { harnessed } = await started(LIVE);
     const unapproved = await harnessed.gateway.registerMerchant();
     await harnessed.gateway.setSellerName(unapproved, { seller_name: "A shop not yet admitted" });
     await harnessed.gateway.setPayoutWallet(unapproved, A_WALLET, SIGNED_IN);
-    const merchant = harnessed.merchant.id;
-    await harnessed.gateway.setSellerName(merchant, { seller_site: "https://shop.example.com" });
 
     await harnessed.gateway.publishCard(unapproved, cardFor("room-1"));
-    await harnessed.gateway.publishCard(merchant, parcelFor("beans"));
 
     expect(
       recorded(harnessed, "agc_card_publish_result").map((event) => event.fields.reason_code),
-    ).toStrictEqual(["approval_required", "unsupported_channel"]);
+    ).toStrictEqual(["approval_required"]);
   });
 
   it("records a publication whose write failed as failed, and still throws the failure", async () => {

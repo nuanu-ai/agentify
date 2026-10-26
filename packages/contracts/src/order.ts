@@ -54,8 +54,12 @@ export const OrderSchema = z.strictObject({
    * which the merchant stores before taking the order on. Once Agentify no
    * longer needs it (the order taken on, its shipment recorded, or the order
    * ended or unfulfilled without being taken on), only the moment Agentify
-   * erased its copy; from then on the merchant has the address only as they
-   * stored it, and the order is not handed to a handler again.
+   * erased its copy from its database; from then on the merchant has the
+   * address only as they stored it, and the order is not handed to a handler
+   * again. Copies of the database taken before the erasure keep it: the live
+   * channel's backups, usually for about sixty days, with no upper bound set
+   * yet, and the restore point each release takes, on either channel, until
+   * five newer releases replace it.
    */
   ship_to: z.union([ShipToSchema, ShipToLocalitySchema, ErasedShipToSchema]).optional(),
 

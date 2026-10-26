@@ -482,7 +482,7 @@ describe("whether a live merchant is approved", () => {
     const approved = settings({ mode: "live", wallet: SHAPED, liveApproval: true });
     const waiting = settings({ mode: "live", wallet: SHAPED, liveApproval: false });
 
-    expect(approved).toMatch(/Agentify has approved your merchant for live sales/);
+    expect(approved).toMatch(/Agentify has approved your business for live sales/);
     expect(waiting).not.toMatch(/approv/i);
   });
 

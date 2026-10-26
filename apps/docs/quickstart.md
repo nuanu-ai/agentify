@@ -25,7 +25,7 @@ through a WooCommerce shop](/woocommerce).
   under it instead of delivering a second time.
 - Fulfillment mode — whether the goods arrive in the answer to the purchase or
   later, which decides when the buyer is charged. Three modes can be published:
-  synchronous, asynchronous, and a parcel on the test channel only
+  synchronous, asynchronous, and a parcel
   ([the modes](/orders#fulfillment-modes)).
 - Price check — the question of how much a product costs and whether it is
   there, which we ask at the moment of purchase about products whose price
@@ -473,16 +473,15 @@ the same way, with a wallet that receives real USDC on Base and a key that
 starts with `csk_live_`. Nothing is copied from the test channel: your code
 publishes its cards again with the live key and points the client at the live
 address. Live publication also waits for an Agentify operator to approve your
-merchant; until then publishing lists `no_operator_approval`, and nothing
-of yours sells live. The operator can withdraw that approval later; publishing
-and new live sales are then refused the same way, while the orders you already
-took are still yours to deliver. A parcel's card is refused live (`not_sold_yet`). What
-changes between the two channels is in one table on [Connecting to
-Agentify](/#how-to-start).
+merchant, which you ask for by writing to admin@agentify.ad; until then
+publishing lists `no_operator_approval`, and nothing of yours sells live. The
+operator can withdraw that approval later; publishing and new live sales are
+then refused the same way, while the orders you already took are still yours to
+deliver. What changes between the two channels is in one table on [Connecting
+to Agentify](/#how-to-start).
 
 ## What is not settled yet
 
-- A public way to ask for the operator's approval of the live channel.
 - How to take orders outside Node. The subscription's wire protocol is not
   documented for external consumers; the ready-made tools are for Node only.
 - The other ways of receiving orders, which are designed and not open: a

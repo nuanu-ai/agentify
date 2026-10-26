@@ -333,6 +333,7 @@ describe("reading the catalogue", () => {
 describe("creating the order", () => {
   const order = {
     orderId: "ord_7",
+    test: false,
     productId: "11",
     email: "merchant@example.com",
     price: { amount: "25.00", currency: "USD" },
@@ -443,6 +444,21 @@ describe("creating the order", () => {
       value: "25.00 USD",
     });
     expect(stand.asked).toHaveLength(1);
+  });
+
+  it("says on a test channel's order that it was paid in test USDC, which is not real money", async () => {
+    // A merchant may connect their real shop on the test channel, whose paid
+    // orders look like any other in WooCommerce unless the order says so.
+    stand = await shopAnswering(() => ({ status: 201, body: madeOrder() }));
+
+    await createOrder(connectionTo(stand.url), { ...order, test: true });
+
+    const lines = JSON.parse(stand.asked[0]?.body ?? "{}").meta_data;
+    expect(lines).toContainEqual({ key: "agentify_channel", value: "test" });
+    expect(lines).toContainEqual({
+      key: "agentify_paid",
+      value: "25.00 USD in test USDC, not real money",
+    });
   });
 
   it("writes the commission at the rate of the split the payment went to", async () => {
@@ -1933,6 +1949,7 @@ describe("the protected product check", () => {
 
     const made = await createOrder(keys, {
       orderId: "ord_7",
+      test: false,
       productId: read.product.productId,
       email: "merchant@example.com",
       price: read.product.price,
@@ -2840,6 +2857,7 @@ describe("creating a parcel's order", () => {
   };
   const sold = {
     orderId: "ord_9",
+    test: false,
     productId: "28",
     email: "merchant@example.com",
     total: { amount: "23.00", currency: "USD" },
@@ -2942,6 +2960,15 @@ describe("creating a parcel's order", () => {
       ],
     });
     expect(body.shipping.last_name).toBeUndefined();
+  });
+
+  it("says on a test channel's parcel order that it was paid in test USDC, so nobody ships it", async () => {
+    stand = await shopAnswering(() => ({ status: 201, body: madeParcel() }));
+
+    await createParcel(connectionTo(stand.url), { ...sold, test: true });
+
+    const lines = JSON.parse(stand.asked[0]?.body ?? "{}").meta_data;
+    expect(lines).toContainEqual({ key: "agentify_channel", value: "test" });
   });
 
   it("writes the commission of a parcel on what was paid, the goods and the shipping together", async () => {

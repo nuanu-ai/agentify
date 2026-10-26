@@ -1425,58 +1425,90 @@ describe("importing the catalogue", () => {
     expect(running.read).toEqual([]);
   });
 
-  it("is not offered on the live channel, where it does not work", async () => {
-    // The connector works in test mode only, and offering it on live would
-    // leave an owner to infer the limit.
-    const running = await started({ channel: "live" });
-    await running.signIn();
-
-    const shopScreen = await running.get("/woocommerce");
-    const integrations = await running.get("/integrations");
-
-    expect(shopScreen.status).toBe(404);
-    expect(integrations.status).toBe(200);
-    expect(integrations.html).not.toContain("/woocommerce");
-    // Nothing on live can have started a grant for these to finish.
-    const keys = await running.postJson("/woocommerce/callback", {
-      key_id: 2,
-      user_id: "a-token-nobody-issued",
-      consumer_key: "ck_a-key-from-the-shop",
-      consumer_secret: "cs_a-secret-from-the-shop",
-      key_permissions: "read_write",
+  it("on the live channel, connects a WooCommerce shop and imports its downloads for a merchant the operator approved", async () => {
+    const running = await started({
+      channel: "live",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
-    expect(keys.status).toBe(404);
-    expect((await running.get("/woocommerce/return?success=1")).status).toBe(404);
+    await connected(running);
+
+    const integrations = await running.get("/integrations");
+    const shopScreen = await running.get("/woocommerce");
+    const imported = await running.post("/woocommerce/import");
+
+    expect(integrations.html).toContain('href="/woocommerce"');
+    expect(shopScreen.status).toBe(200);
+    expect(readable(shopScreen.html)).toContain("shop.example.com");
+    expect(imported.status).toBe(200);
+    expect(await cardsOf(running)).toHaveLength(1);
   });
 
-  it("answers its pages on the live channel as any address the dashboard does not have", async () => {
-    // Somebody signed in is told in the dashboard's frame, with its menu and a
-    // way back, and somebody with no session is sent to the sign-in, as from
-    // any other address that is no page.
-    const running = await started({ channel: "live" });
-    await running.signIn();
-    await running.get("/cards");
+  it.each([
+    ["the test channel", "test", true],
+    ["the live channel", "live", false],
+  ] as const)(
+    "on %s, notes on the Connect form that a purchase makes a paid shop order only where the money is not real",
+    async (_, channel, noted) => {
+      // A test purchase still makes a paid order in whatever shop is connected,
+      // and a merchant may connect their real one.
+      const running = await started({ channel });
+      await running.signIn();
 
-    for (const [method, path] of [
-      ["GET", "/woocommerce"],
-      ["GET", "/woocommerce/connect"],
-      ["POST", "/woocommerce/connect"],
-      ["POST", "/woocommerce/import"],
-      ["GET", "/woocommerce/return?success=1"],
-    ] as const) {
-      const answered =
-        method === "GET"
-          ? await running.get(path)
-          : await running.post(path, { shop_url: "https://shop.example.com" });
-      expect(answered.status, `${method} ${path}`).toBe(404);
-      expect(readable(answered.html), `${method} ${path}`).toContain("There is no such page");
-      expect(readable(answered.html), `${method} ${path}`).toContain(PERSON);
-    }
-    expect(running.asked).toEqual([]);
+      const screen = await running.get("/woocommerce");
 
-    const stranger = await running.getWithoutCookie("/woocommerce");
-    expect(stranger.status).toBe(303);
-    expect(new URL(stranger.to ?? "", "http://dashboard.test").pathname).toBe("/sign-in");
+      expect(screen.html.includes('aria-label="Test purchases"')).toBe(noted);
+    },
+  );
+
+  it("on the live channel, imports a physical product as a parcel, as on the test channel", async () => {
+    const running = await started({
+      channel: "live",
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
+      }),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "11",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" as const },
+        },
+      }),
+    });
+    await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
+      seller_site: SHOP,
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    const listed = (await cardsOf(running)) as unknown as readonly {
+      card: { fulfillment: string };
+    }[];
+    expect(listed.map((one) => one.card.fulfillment)).toStrictEqual(["ship"]);
+  });
+
+  it("on the live channel, reads nothing from the shop and publishes nothing for a merchant the operator has not approved, and says why", async () => {
+    // The harness's own merchant is approved on live; one registered through
+    // the gateway is not, and sets its wallet in Settings as anybody does.
+    const running = await started({
+      channel: "live",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+    });
+    await connected(running);
+    await running.post("/settings/payout-wallet", { payout_wallet: A_WALLET });
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(409);
+    expect(imported.html).toContain('class="problem"');
+    expect(running.read).toEqual([]);
+    expect(await cardsOf(running)).toEqual([]);
   });
 
   it("says a wallet is needed before Import is pressed in the banner, and not again at the button", async () => {
@@ -2424,12 +2456,6 @@ describe("merchant delivery recovery", () => {
     });
     expect(crossOrigin.status).toBe(403);
     expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
-  });
-
-  it("does not offer the recovery route on live", async () => {
-    const running = await started({ channel: "live" });
-    await running.signIn();
-    expect((await running.get("/integrations/woocommerce/recover/ord_missing")).status).toBe(404);
   });
 });
 

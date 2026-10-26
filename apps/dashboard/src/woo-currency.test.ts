@@ -177,6 +177,7 @@ const aShopTotalling =
 
 const SOLD: SoldItem = {
   orderId: "ord_idr",
+  test: false,
   productId: "41",
   email: EMAIL,
   price: { amount: "240000", currency: "IDR" },
@@ -226,6 +227,7 @@ describe("the shop's order for a sale converted at the merchant's rate", () => {
   it("is a parcel's order at the goods and the shop's own rupiah rate, held to their sum", async () => {
     const parcel: ParcelSold = {
       orderId: "ord_parcel",
+      test: false,
       productId: "41",
       email: EMAIL,
       total: { amount: "264000", currency: "IDR" },

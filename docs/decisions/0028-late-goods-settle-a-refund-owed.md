@@ -58,9 +58,9 @@ no merchant action stay neutral: the migration invents no actor or time. No
 net accounting or partial-refund schema is added, and address retention is
 unchanged (ADR-0032).
 
-Closure is built for parcels as for every order, so it no longer holds parcels
-off the live channel; ADR-0033 names what still does. Evidence and remaining
-work are in `docs/research/54-self-service.md`.
+Closure is built for parcels as for every order, and parcels sell on every
+channel (ADR-0033). Evidence and remaining work are in
+`docs/research/54-self-service.md`.
 
 Rejected: verifying or coordinating the parties' agreement, an administrator
 declaring it settled, a staffed reconciliation queue and a mandatory

@@ -21,6 +21,7 @@ import { loadConfig } from "../config.js";
 import type { Person } from "../dashboard-entry.js";
 import { identityFor } from "../identity.js";
 import { TEST_AUTH_SECRET } from "../testing/secrets.js";
+import { memoryWooShops, type WooShops } from "../woo-shops.js";
 import type { Operator } from "./access.js";
 import {
   type CheckReach,
@@ -90,6 +91,7 @@ async function served(
     reader?: (real: OperatorReader) => OperatorReader;
     coinbase?: number;
     validated?: unknown;
+    shops?: WooShops;
   }> = {},
 ): Promise<Served> {
   const channel = CHANNELS[options.channel ?? "test"];
@@ -146,7 +148,7 @@ async function served(
         refused: async () => {},
       },
       now: () => new Date(harnessed.now()),
-      shops: null,
+      shops: options.shops ?? null,
     },
     reach,
     { AGENTIFY_SOURCE_REVISION: "ea229fdd5c1f" },
@@ -206,6 +208,18 @@ describe("the overview", () => {
     expect(
       waiting?.kind === "read" && waiting.value.items.map((item) => item.merchantId),
     ).toStrictEqual([harnessed.merchant.id]);
+  });
+
+  it("on the live channel, names a WooCommerce order whose shop order is uncertain", async () => {
+    // One order sent to its shop that never heard back, as the store counts it.
+    const shops: WooShops = { ...memoryWooShops(), uncertainOrders: async () => 1 };
+    const { harnessed, pages } = await served({ channel: "live", shops });
+
+    const view = viewOf<OverviewView>(
+      await pages.overview(operatorAt(harnessed), new URLSearchParams()),
+    );
+
+    expect(view.worth.items.map((item) => item.badge.word)).toContain("Shop order uncertain");
   });
 
   it("asks nothing about admission on the test channel, which admits nobody", async () => {
@@ -304,6 +318,15 @@ describe("health", () => {
 
     expect((await backupOf(test))?.fact.join("")).toMatch(/not backed up, by decision/);
     expect((await backupOf(live))?.badge).toStrictEqual({ tone: "unknown", word: "Not measured" });
+  });
+
+  it("reads the WooCommerce shops connected on the live channel", async () => {
+    const { harnessed, pages } = await served({ channel: "live", shops: memoryWooShops() });
+
+    const view = viewOf<HealthView>(await pages.health(operatorAt(harnessed)));
+    const shops = [...view.read, ...view.unseen].find((row) => row.part === "WooCommerce");
+
+    expect(shops?.badge).toStrictEqual({ tone: "quiet", word: "No shop" });
   });
 
   it("names the revision the build wrote, linked to its commit", async () => {
