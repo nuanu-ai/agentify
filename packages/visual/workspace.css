@@ -420,3 +420,33 @@
   font-size: var(--text-label);
   font-weight: 400;
 }
+
+/* In the narrow window's menu the groups list their sections one under
+   another, as the sidebar does, lined up with the menu's other links. */
+.site-menu-panel .tabs.op-tabs {
+  display: grid;
+  gap: var(--space-snug);
+}
+
+.site-menu-panel .op-tabs > a,
+.site-menu-panel .op-tabs > span {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+  padding: 0 var(--space-control);
+  border-radius: var(--radius-control);
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  font-weight: 550;
+  box-shadow: none;
+}
+
+.site-menu-panel .op-tabs > [aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.site-menu-panel .op-group {
+  margin: var(--space-control) var(--space-control) var(--space-snug);
+}

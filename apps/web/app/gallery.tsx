@@ -1441,21 +1441,31 @@ const ACCOUNT: GalleryState[] = [
         "An operator opens /admin; everybody else, a stranger included, gets the page not found.",
         NUMBERS,
         LIVE,
+        null,
+      ],
+      [
+        "scanner-admin-in-operator-zone",
+        "An operator whose browser named its time zone, here Bali's, opens /admin: each moment is in that zone with its offset after it, and the chart keeps the UTC days it is counted by.",
+        NUMBERS,
+        LIVE,
+        "Asia/Makassar",
       ],
       [
         "scanner-admin-test-channel",
         "An operator opens /admin on the test channel, which says what its money is under the header, as every page of the workspace there does.",
         NUMBERS,
         { mode: "test", name: CHANNEL_NAMES.test },
+        null,
       ],
       [
         "scanner-admin-troubled",
         "An operator opens /admin while the worker has gone quiet, the challenge is not enforced, no self-scan has completed and data access requests wait.",
         TROUBLED,
         LIVE,
+        null,
       ],
     ] as const
-  ).map(([id, when, numbers, channel]) =>
+  ).map(([id, when, numbers, channel, zone]) =>
     at(
       {
         id,
@@ -1473,6 +1483,7 @@ const ACCOUNT: GalleryState[] = [
               data: numbers,
               who: "operator@example.com",
               channel,
+              zone,
             }),
           },
         },

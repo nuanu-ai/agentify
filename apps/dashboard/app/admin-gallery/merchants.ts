@@ -187,6 +187,7 @@ const listState = (
         accounts: read.unread === true ? null : ACCOUNTS,
         accountsUnread: read.unread === true,
         accountsCut: false,
+        page: 1,
       }),
     },
   };

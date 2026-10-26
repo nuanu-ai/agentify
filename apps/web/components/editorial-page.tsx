@@ -12,13 +12,11 @@ export type EditorialSection = Readonly<{
 }>;
 
 export function EditorialPage({
-  eyebrow,
   intro,
   sections,
   structuredData = false,
   title,
 }: Readonly<{
-  eyebrow: string;
   intro: string;
   sections: readonly EditorialSection[];
   structuredData?: boolean;
@@ -39,7 +37,6 @@ export function EditorialPage({
           ))}
         </nav>
         <article className="editorial-article">
-          <div className="eyebrow">{eyebrow}</div>
           <h1>{title}</h1>
           <p>{intro}</p>
           <details className="editorial-outline">

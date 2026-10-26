@@ -5,6 +5,9 @@
  * and the site's foot, with the consent banner every measured page of the
  * origin carries and the page views a visitor's choice allows.
  *
+ * The pages are built ahead of time, the same for everybody, so the header
+ * asks the browser who is signed in, as the scanner's pages do.
+ *
  * The root's data never changes, yet it carries no `shouldRevalidate`: a
  * route that opts out of revalidation makes React Router prefetch a page's
  * data under an address with `?_routes=`, while a prerendered site's
@@ -20,7 +23,7 @@ import "@agentify/visual/consent.css";
 import "./docs.css";
 
 import { ConsentBanner, KeptChoiceScript, PrivacyChoicesButton } from "@agentify/consent";
-import { SiteFooter, SiteHeader, SiteMenu } from "@agentify/ui";
+import { SiteFooter, SiteHeader, useVisitor } from "@agentify/ui";
 import { type ReactNode, useMemo, useState } from "react";
 import {
   isRouteErrorResponse,
@@ -101,7 +104,9 @@ export function DocsBody({ children }: Readonly<{ children: ReactNode }>) {
       <SiteHeader
         surface="docs"
         link={OwnLink}
-        menu={<SiteMenu surface="docs" link={OwnLink} contents={<MenuContents />} />}
+        current="docs"
+        visitor={useVisitor()}
+        contents={<MenuContents />}
       />
       {site === undefined ? null : <Served built={site.served} />}
       {children}

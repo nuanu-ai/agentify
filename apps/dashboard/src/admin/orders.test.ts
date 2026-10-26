@@ -68,7 +68,7 @@ describe("the orders over HTTP", () => {
     expect(listed).toContain("A room for the night");
     expect(listed).toContain("80.00 USD");
     expect(listed).toContain("Delivered");
-    expect(listed).toContain("Showing 1–1 of 1, newest first.");
+    expect(listed).toContain("Showing 1–1 of 1, newest first");
 
     const one = await browser.get(`/admin/orders/${orderId}`);
     const page = readable(one.html);

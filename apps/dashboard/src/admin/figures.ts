@@ -43,9 +43,10 @@ import {
 import type { SectionCounts } from "@agentify/ui/workspace-view";
 import type { AdReportCounts, LinkPurpose } from "../dashboard-entry.js";
 import { LINK_CHANNEL_LIMIT } from "../identity.js";
+import { dayOf, dayOfUtc } from "../moments.js";
 import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
-import { dayOf, ORDER_WORDS } from "../words.js";
+import { ORDER_WORDS } from "../words.js";
 import { type Operator, signedInFreshly } from "./access.js";
 import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import { CHECK_FIELD } from "./fields.js";
@@ -96,14 +97,21 @@ const momentOf = (at: number): MomentView => momentView(new Date(at).toISOString
 /** A day as every page of the dashboard writes it: "23 October 2026". */
 const dayWritten = (at: number): string => dayOf(new Date(at).toISOString());
 
-/** A day under a chart's bar, where the year is the chart's: "23 Oct". */
+/**
+ * A day under a chart's bar, where the year is the chart's: "23 Oct". The
+ * gateway counts sales by UTC day, so a chart's days and its clock are UTC
+ * whatever the viewer's zone.
+ */
 const chartDay = (at: number): string => {
   const d = new Date(at);
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 };
 
-/** "14:05". */
-const clockWritten = (at: number): string => {
+/** A chart's day written out, in UTC like its bars: "23 October 2026". */
+const chartDayWritten = (at: number): string => dayOfUtc(new Date(at).toISOString());
+
+/** "14:05", in UTC. */
+const chartClock = (at: number): string => {
   const d = new Date(at);
   return `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
 };
@@ -393,7 +401,7 @@ export function chartOf(sales: SalesByDay, stacked: boolean): ChartView {
     const x = Number((PLOT.left + index * width + (width - BAR) / 2).toFixed(1));
     const when =
       index === last
-        ? `${chartDay(Date.parse(day.day))}, until ${clockWritten(sales.readAt)} UTC`
+        ? `${chartDay(Date.parse(day.day))}, until ${chartClock(sales.readAt)} UTC`
         : chartDay(Date.parse(day.day));
     const total = totals[index] ?? "0.00";
     if (day.delivered.count + day.noDelivery.count === 0) {
@@ -453,7 +461,7 @@ export function chartOf(sales: SalesByDay, stacked: boolean): ChartView {
   const lastTotal = totals[last] ?? "0.00";
   const lastBar = [...bars].reverse().find((bar) => bar.x === bars[bars.length - 1]?.x);
   return {
-    aria: `Settled sales per day from ${dayWritten(Date.parse(first))} to ${dayWritten(Date.parse(final))}, ${usd(whole)} in all`,
+    aria: `Settled sales per day from ${chartDayWritten(Date.parse(first))} to ${chartDayWritten(Date.parse(final))}, ${usd(whole)} in all`,
     ticks: [0, 1, 2, 3, 4].map((n) => ({
       y: PLOT.base - (n * height) / 4,
       label: String(Number((n * step).toFixed(6))),

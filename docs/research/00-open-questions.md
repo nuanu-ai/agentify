@@ -19,7 +19,7 @@ and git keeps the entries that were here.
 | How agents rank cards and compare prices in a catalogue, and what that asks of a card | product owner | `02-agentic-storefronts.md` |
 | How a card is withdrawn from an outside catalogue such as the x402 Bazaar once it is listed there | product owner | `04-spike-bazaar-listing.md` |
 | What the front page of `agentify.ad` shows: the scanner, as now, or the merchant landing at `/sell`; the release preflight requires the scanner there today (`AGENTIFY_FRONT_PAGE`) | product owner | — |
-| How the site's header, the dashboard's menu of sections and the menu on a phone fit together | product owner | — |
+| ~~How the site's header, the dashboard's menu of sections and the menu on a phone fit together~~ — one bar on every page: the site's offers on the left, Docs, Dashboard, Admin and the account menu on the right, the rest in the menu on a phone (2026-10-26) | product owner | `86-one-bar.md` |
 | One look for links on the whole origin: the shared stylesheet underlines a link in running text, and the scanner reverts every link to the browser's look | product owner | — |
 | Paging and search in the dashboard's lists of cards, orders and receipts, which hold hundreds of orders without breaking but let one be found only by eye | product owner | — |
 | Selling through a WooCommerce shop and one's own code at once: the design is ready (a card remembers the integration that published it, one queue per integration) and is built when a real merchant needs it | product owner | ADR-0036 |

@@ -74,7 +74,7 @@ describe("the orders list", () => {
     expect(view.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
       ["Payment unknown", 2, false],
       ["Unfulfilled", 1, true],
-      ["Delivered, not paid", 0, false],
+      ["Held for payment", 0, false],
       ["In progress", 0, false],
       ["Ended", 50, false],
       ["Lapsed", 6, false],
@@ -98,7 +98,7 @@ describe("the orders list", () => {
     );
     expect(first.result).toMatchObject({
       kind: "rows",
-      cut: "Showing 1–2 of 61, newest first.",
+      cut: "Showing 1–2 of 61, newest first",
       earlier: "/admin/orders?before=1787000000000.ord_b",
       newest: null,
     });
@@ -109,7 +109,7 @@ describe("the orders list", () => {
       READ_AT,
     );
     expect(later.result).toMatchObject({
-      cut: "Showing 51–51 of 61, newest first.",
+      cut: "Showing 51–51 of 61, newest first",
       earlier: null,
       newest: "/admin/orders",
     });
@@ -276,6 +276,24 @@ describe("one order", () => {
       "Paid at",
       "Transaction",
     ]);
+  });
+
+  it("says when its receipt was paid as a moment, not as an identifier shown short", () => {
+    const paidAt = page(parcelOrder()).receipt.facts.find((fact) => fact.label === "Paid at");
+
+    expect(paidAt).toStrictEqual({
+      label: "Paid at",
+      at: { date: "2026-10-21", time: expect.stringMatching(/^\d{2}:\d{2}:\d{2} UTC$/) },
+    });
+  });
+
+  it("tells an order that will never have a receipt from one that has none yet", () => {
+    // A closed order's goods are never released, so it never gets a receipt;
+    // "not yet" on it would send an operator waiting for one.
+    expect(page(closedOrder()).receipt).toMatchObject({ head: "None", facts: [] });
+    expect(page(closedOrder()).receipt.said).toMatch(/no receipt will be written/);
+    expect(page(unknownOrder()).receipt).toMatchObject({ head: "Not yet", facts: [] });
+    expect(page(unknownOrder()).receipt.said).not.toMatch(/will be written/);
   });
 });
 

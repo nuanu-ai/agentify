@@ -25,7 +25,7 @@ import type { NamedAccount } from "../dashboard-entry.js";
 export type { MerchantList, MerchantRecord, MerchantRow } from "@agentify/gateway/operator";
 
 import type { SectionCounts } from "@agentify/ui/workspace-view";
-import { askedIn, type Listing } from "../listing.js";
+import { askedIn, cutOfPage, type Listing, PAGE_ROWS } from "../listing.js";
 import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
 import { FULFILLMENT_WORDS, ORDER_WORDS, type Word } from "../words.js";
@@ -34,7 +34,6 @@ import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import { type ActionAnswer, type ChangeAnswer, pressed } from "./action.js";
 import {
   CHECK_WORDS,
-  cutSaid,
   missingSaid,
   NO_SELLER_NAME,
   REFUSED_WORDS,
@@ -48,7 +47,6 @@ import { LOST_ANSWER } from "./words.js";
 
 const PATH = "/admin/merchants";
 const SEGMENT_KEYS = ["all", ...MERCHANT_SEGMENTS] as const;
-const LIST_ROWS = 50;
 const HISTORY_ROWS = 20;
 /**
  * How recently a key was used for disabling it to be said to stop sales: a
@@ -94,7 +92,6 @@ export interface MerchantsView {
   readonly mode: SurfaceMode;
   readonly readAt: MomentView;
   readonly listing: Listing<MerchantListRow>;
-  readonly cut: string;
   /** True where the accounts could not be read: no address is shown, and the search did not look at them. */
   readonly accountsUnread: boolean;
   /** True where the search of addresses stopped at the most it reads, so a match may be missing. */
@@ -309,6 +306,8 @@ export interface MerchantsRead {
   readonly accountsUnread: boolean;
   /** True where the search of addresses stopped at the most it reads. */
   readonly accountsCut: boolean;
+  /** The page `found` holds, a page of `PAGE_ROWS` at a time. */
+  readonly page: number;
 }
 
 /** The Merchants list, from what was read. */
@@ -320,13 +319,15 @@ export function merchantsViewOf({
   accounts,
   accountsUnread,
   accountsCut,
+  page,
 }: MerchantsRead): MerchantsView {
   const listed = askedIn(query, SEGMENT_KEYS);
   const rows = found.rows.map((row) => listRowOf(row, accounts?.get(row.id) ?? null));
-  const linkTo = (show: string, q: string) => {
+  const linkTo = (show: string, q: string, at = 1) => {
     const fields = new URLSearchParams();
     if (q !== "") fields.set("q", q);
     if (show !== "all") fields.set("show", show);
+    if (at !== 1) fields.set("page", String(at));
     const written = fields.toString();
     return written === "" ? PATH : `${PATH}?${written}`;
   };
@@ -359,8 +360,7 @@ export function merchantsViewOf({
       to: linkTo(key, listed.q),
       here: key === listed.show,
     })),
-    // The list is cut and searched, never paged: the sentence under it says so.
-    cut: null,
+    cut: cutOfPage(page, found.total, (one) => linkTo(listed.show, listed.q, one)),
     nothing: nothing(),
     place: {},
   };
@@ -368,7 +368,6 @@ export function merchantsViewOf({
     mode,
     readAt: at(readAt),
     listing,
-    cut: cutSaid(rows.length, found.total),
     accountsUnread: accountsUnread || accounts === null,
     accountsCut,
   };
@@ -816,13 +815,23 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
         }
       }
       const { at: readAt, surface } = asked();
-      const found = await reader.merchants.list({
-        at: readAt,
-        surface,
-        ...(listed.q === "" ? {} : { search: listed.q, alsoIds }),
-        ...(segment === undefined ? {} : { segment }),
-        limit: LIST_ROWS,
-      });
+      const read = async (page: number) =>
+        await reader.merchants.list({
+          at: readAt,
+          surface,
+          ...(listed.q === "" ? {} : { search: listed.q, alsoIds }),
+          ...(segment === undefined ? {} : { segment }),
+          limit: PAGE_ROWS,
+          offset: (page - 1) * PAGE_ROWS,
+        });
+      let page = listed.page;
+      let found = await read(page);
+      // An address kept from a longer list draws its last page, not no rows.
+      const last = Math.max(1, Math.ceil(found.total / PAGE_ROWS));
+      if (page > last) {
+        page = last;
+        found = await read(page);
+      }
       const accounts = await accountsOf(found.rows.map((row) => row.id));
       return {
         kind: "view",
@@ -834,6 +843,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           accounts,
           accountsUnread,
           accountsCut,
+          page,
         }),
       };
     },

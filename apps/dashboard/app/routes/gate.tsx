@@ -100,7 +100,7 @@ export { ErrorBoundary } from "../root.js";
  */
 export const loader = ({ context }: LoaderFunctionArgs): Gated => ({
   who: context.get(signedIn).email,
-  ...(context.get(holdsOperatorFlag) ? { admin: `${context.get(services).base}/admin` } : {}),
+  ...(context.get(holdsOperatorFlag) ? { operator: true as const } : {}),
 });
 
 /**

@@ -4,7 +4,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { onSite } from "../testing/on-site";
 import { RegistrationForm } from "./registration-form";
-import { SiteDoors } from "./site-chrome";
+import { SiteHeader } from "./site-chrome";
 
 function visitorIs(status: number, body: unknown) {
   return vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -20,18 +20,23 @@ afterEach(() => {
   cleanup();
 });
 
-/** The doors in the bar, rather than their copy in the menu. */
-const doors = () => within(screen.getByRole("navigation", { name: /docs, dashboard/i }));
+/** Who is visiting at the end of the bar's row, rather than in the narrow window's menu. */
+const doors = () => {
+  const end = document.querySelector<HTMLElement>(".site-header-end > .site-visitor");
+  if (end === null) throw new Error("the bar keeps no place for who is visiting");
+  return within(end);
+};
 
-describe("the header's doors", () => {
-  it("carries the signed-in address, leading to the account's settings, and a sign-out that posts to the dashboard", async () => {
+describe("who is visiting, in the scanner's bar", () => {
+  it("names the signed-in address on the account's menu, with the account's settings and a sign-out that posts to the dashboard", async () => {
     visitorIs(200, { status: "signed_in", email: "owner@example.com", operator: false });
 
-    const { container } = render(onSite(<SiteDoors />));
+    render(onSite(<SiteHeader />));
 
     const address = await doors().findByText("owner@example.com");
-    expect(address.closest("a")?.getAttribute("href")).toBe("/dashboard/settings");
-    const form = container.querySelector('form[action="/dashboard/sign-out"]');
+    const account = address.closest("details");
+    expect(account?.querySelector('a[href="/dashboard/settings"]')?.textContent).toBe("Settings");
+    const form = account?.querySelector('form[action="/dashboard/sign-out"]');
     expect(form?.getAttribute("method")).toBe("post");
     expect(form?.querySelector("button")?.textContent).toMatch(/sign out/i);
   });
@@ -39,7 +44,7 @@ describe("the header's doors", () => {
   it("shows an operator the way to the operator's workspace", async () => {
     visitorIs(200, { status: "signed_in", email: "operator@example.com", operator: true });
 
-    const { container } = render(onSite(<SiteDoors />));
+    const { container } = render(onSite(<SiteHeader />));
 
     await doors().findByText("operator@example.com");
     expect(container.querySelector('a[href="/dashboard/admin"]')?.textContent).toBe("Admin");
@@ -52,7 +57,7 @@ describe("the header's doors", () => {
       [503, { status: "unknown" }],
     ] as const) {
       visitorIs(status, body);
-      const { container } = render(onSite(<SiteDoors />));
+      const { container } = render(onSite(<SiteHeader />));
       await vi.waitFor(() =>
         expect(container.querySelector('[aria-busy="false"]'), JSON.stringify(body)).toBeTruthy(),
       );
@@ -65,7 +70,7 @@ describe("the header's doors", () => {
   it("says it does not know who is signed in when the dashboard does not answer", async () => {
     visitorIs(503, { status: "unknown" });
 
-    const { container } = render(onSite(<SiteDoors />));
+    const { container } = render(onSite(<SiteHeader />));
 
     expect(await doors().findByText(/sign-in unknown/i)).toBeTruthy();
     expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
@@ -80,7 +85,7 @@ describe("the header's doors", () => {
       null,
     ]) {
       visitorIs(200, body);
-      const { container } = render(onSite(<SiteDoors />));
+      const { container } = render(onSite(<SiteHeader />));
 
       expect(await doors().findByText(/sign-in unknown/i), JSON.stringify(body)).toBeTruthy();
       expect(container.querySelector('form[action="/dashboard/sign-out"]')).toBeNull();
@@ -92,7 +97,7 @@ describe("the header's doors", () => {
   it("says the same when the question itself fails on the way", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
 
-    render(onSite(<SiteDoors />));
+    render(onSite(<SiteHeader />));
 
     expect(await doors().findByText(/sign-in unknown/i)).toBeTruthy();
   });
@@ -100,7 +105,7 @@ describe("the header's doors", () => {
   it("shows a stranger the doors and nobody's address", async () => {
     visitorIs(200, { status: "signed_out" });
 
-    const { container } = render(onSite(<SiteDoors />));
+    const { container } = render(onSite(<SiteHeader />));
 
     // The header says when it has stopped finding out who is visiting, which
     // is what a screen reader announces and what the doors below settle on.
@@ -124,7 +129,7 @@ describe("the header's doors", () => {
     render(
       onSite(
         <>
-          <SiteDoors />
+          <SiteHeader />
           <RegistrationForm scanId="019f5b6a-4b9f-7000-8000-0000000000aa" />
         </>,
       ),

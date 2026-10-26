@@ -387,21 +387,18 @@ const anyDoorIn = (html: string): boolean =>
   doorsIn(html).length > 0 || /\bAdmin\b/.test(readable(html));
 
 describe("the door into the workspace from the merchant's dashboard", () => {
-  it("stands in an operator's header, saying Admin, and in the menu, and nowhere for an account the flag does not confirm", async () => {
+  it("stands in an operator's header, saying Admin, in the row and in the menu, and nowhere for an account the flag does not confirm", async () => {
     const workspace = await serve();
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     const merchant = await workspace.signedIn(MERCHANT);
 
     for (const path of ["/cards", "/orders", "/settings"]) {
-      expect(doorsIn((await operator.get(path)).html), path).toStrictEqual([
-        "Admin",
-        "Open the admin →",
-      ]);
+      expect(doorsIn((await operator.get(path)).html), path).toStrictEqual(["Admin", "Admin"]);
       expect(anyDoorIn((await merchant.get(path)).html), path).toBe(false);
     }
   });
 
-  it("is not named in the data a merchant's page is drawn from, while an operator's carries its address", async () => {
+  it("is not named in the data a merchant's page is drawn from, while an operator's carries the flag", async () => {
     // A merchant's browser is not told the workspace exists, not even that
     // their account lacks the flag for it.
     const workspace = await serve();
@@ -411,7 +408,7 @@ describe("the door into the workspace from the merchant's dashboard", () => {
     const merchants = await merchant.get("/cards.data");
     expect(merchants.status).toBe(200);
     expect(merchants.html).not.toMatch(/admin|"operator"/i);
-    expect((await operator.get("/cards.data")).html).toContain("/dashboard/admin");
+    expect((await operator.get("/cards.data")).html).toContain('"operator"');
   });
 
   it("is gone from the next request once the flag is taken away", async () => {

@@ -6,7 +6,7 @@
  * loader reads the channel and the counts after the operator check.
  */
 
-import { SignedIn, SurfaceNote } from "@agentify/ui";
+import { SurfaceNote } from "@agentify/ui";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { AdminSection } from "@agentify/ui/workspace-view";
 import type { ReactNode } from "react";
@@ -41,13 +41,7 @@ export function AdminFrame({
       <WorkspaceFrame
         surface="dashboard"
         link={Link}
-        visitor={
-          <SignedIn
-            who={gate.who}
-            account={`${chrome.base}/settings`}
-            signOut={`${chrome.base}/sign-out`}
-          />
-        }
+        who={gate.who}
         channel={frame.channel}
         counts={frame.counts}
         section={section}

@@ -10,9 +10,10 @@
  *
  * Left alone: the operator's page, which is no visitor's; the page's top,
  * whose header names some of the same pages; the consent banner and scripts,
- * which every page draws after its footer; links in a page's own sentences
- * and its calls to action drawn as buttons, which may name a page the footer
- * also names; and where each link leads, which the footer's own test holds.
+ * which every page draws after its footer; links in a page's own sentences,
+ * its calls to action drawn as buttons and the trail above its heading that
+ * says where the page stands, which may name a page the footer also names;
+ * and where each link leads, which the footer's own test holds.
  */
 
 import { prerender } from "react-dom/static";
@@ -65,6 +66,7 @@ const repeatedBeside = (page: Document, footer: Element): string[] => {
       (link) =>
         !link.matches(".button") &&
         link.closest("p") === null &&
+        link.closest(".trail") === null &&
         (link.closest("li") === null || link.closest("nav") !== null),
     )
     .map(

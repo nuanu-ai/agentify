@@ -44,13 +44,6 @@ export const missingSaid = (missing: readonly string[]): string => {
 export const NO_SELLER_NAME = "No seller name";
 
 /** Under the list: which rows of how many. */
-export const cutSaid = (shown: number, total: number): string =>
-  total === 0
-    ? "No merchant is in this segment"
-    : shown === total
-      ? `${total} of ${total} shown`
-      : `${shown} of ${total} shown · search to find the rest`;
-
 export const SORTED = "Sorted by what needs you, then by the last sale";
 
 /** Where the search of addresses stopped at the most it reads. */

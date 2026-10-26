@@ -27,7 +27,7 @@ import { ActionForm, InPlace, opensOn } from "../../components/admin/action-form
 import { PressAnswer } from "../../components/admin/press-answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
-import { ListTools, NothingHere } from "../../components/listing.js";
+import { CutNote, ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
 import { JournalList } from "./journal.js";
@@ -165,8 +165,8 @@ export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
                   ))}
                 </ul>
               </div>
+              <CutNote cut={listing.cut} />
               <p className="cut">
-                <span>{view.cut}</span>
                 <span>{SORTED}</span>
                 <span>
                   Read <Moment at={view.readAt} />

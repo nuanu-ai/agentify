@@ -6,9 +6,10 @@ import { ReceiptsScreen } from "../screens/receipts.js";
 import { services, signedIn } from "../services.js";
 
 export async function loader(asked: LoaderFunctionArgs) {
-  const { context } = asked;
+  const { url, context } = asked;
   return readOnly(
-    async () => await context.get(services).screens.receipts(context.get(signedIn)),
+    async () =>
+      await context.get(services).screens.receipts(context.get(signedIn), url.searchParams),
     asked,
   );
 }

@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANDINGS } from "../../content/landing";
+import { barIn } from "../../testing/bar";
 import { ask } from "../../testing/scanner";
 
 beforeEach(() => {
@@ -202,21 +203,31 @@ describe("the scanner's pages that moved into the documentation", () => {
   });
 });
 
-describe("a trust page's header", () => {
-  it("leads to the site's sections, the scanner's in the documentation, and the doors", async () => {
-    const { html } = await page("/privacy");
-    const header = html.match(/<header class="site-header">[\s\S]*?<\/header>/)?.[0] ?? "";
-
-    for (const href of [
-      "/agentic-shop",
-      "/docs/scanner",
-      "/docs/scanner/methodology",
-      "/privacy",
-      "/docs/",
-      "/dashboard/sign-in",
-    ]) {
-      expect(header, href).toContain(`href="${href}"`);
+describe("the bar over every page", () => {
+  it.each([
+    ["/", "Scanner"],
+    ["/store", "Scanner"],
+    ["/local", "Scanner"],
+    ["/scan/pending", "Scanner"],
+    ["/scan/0190f4c5-0000-7000-8000-000000000000", "Scanner"],
+    ["/agentic-shop", "Sell to agents"],
+    ["/sell", "Sell to agents"],
+    ["/privacy", null],
+    ["/terms", null],
+    ["/data-request", null],
+    ["/email/unsubscribe", null],
+  ])("draws the one bar over %s, marking %s as where the page is", async (path, marked) => {
+    if (path.startsWith("/scan/")) {
+      // A scan's pages are drawn without the database their script later asks through.
+      vi.stubEnv("DATABASE_URL", "postgresql://nobody:unused@127.0.0.1:1/nowhere");
+      vi.stubEnv("REGISTRATION_ENABLED", "false");
+      vi.stubEnv("TURNSTILE_SITE_KEY", "");
     }
+    const bar = barIn((await page(path)).html);
+
+    expect(bar.count).toBe(1);
+    expect(bar.whole).toBe(true);
+    expect(bar.marked).toStrictEqual(marked === null ? [] : [marked]);
   });
 });
 

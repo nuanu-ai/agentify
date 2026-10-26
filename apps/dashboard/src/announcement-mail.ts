@@ -18,8 +18,8 @@ import type { Announcement, AskedInTheDashboard } from "@agentify/gateway/announ
 import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
+import { momentInUtc } from "./moments.js";
 import { type CommissionRate, percentagesOf } from "./shares.js";
-import { moment } from "./words.js";
 
 export interface Screens {
   readonly wallet: string;
@@ -67,7 +67,7 @@ export function announcementMessage(
 ): Message {
   switch (announcement.kind) {
     case "wallet_change": {
-      const notBefore = moment(announcement.not_before);
+      const notBefore = momentInUtc(announcement.not_before);
       const lead =
         `A change of the wallet your share of every sale is paid out to was asked for ${askedIn(announcement.asked_with)}.` +
         ` From ${announcement.from} to ${announcement.to}.`;

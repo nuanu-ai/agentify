@@ -19,6 +19,7 @@ import type { DashboardConfig } from "./config.js";
 import type { DashboardIdentity, Person } from "./dashboard-entry.js";
 import type { Acting, Answer, GatewayClient } from "./gateway.js";
 import { type Postman, postmanFor } from "./mail.js";
+import { moment } from "./moments.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
 import { unsetIn } from "./viewer.js";
@@ -65,7 +66,7 @@ import {
   wooImportView,
   wooShopView,
 } from "./woo-views.js";
-import { moment, SITE_IN_SETTINGS, type Unset } from "./words.js";
+import { SITE_IN_SETTINGS, type Unset } from "./words.js";
 
 /**
  * The calls that reach a merchant's shop. Only tests pass others: both real

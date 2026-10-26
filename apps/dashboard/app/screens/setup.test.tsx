@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 /**
  * A new merchant's setup screens, drawn as the server sends them from the
  * views and words the server half hands them. What the person pressed and
@@ -6,10 +8,12 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
 import { NAME_NEEDED, NAME_REFUSED, NAME_RULE } from "../../src/seller-name.js";
 import { formTo, readable } from "../../src/testing/html.js";
@@ -31,14 +35,19 @@ const chrome: Chrome = {
  * Inside the gate, as the screens are, so a form that posts knows its address;
  * `gated` is what the gate's loader read, a merchant's unless given.
  */
-const served = (screen: () => ReactElement, gated: Gated = { who: WHO }): string => {
+const gatedPage = (screen: () => ReactElement, gated: Gated = { who: WHO }): ReactElement => {
   const Stub = createRoutesStub([
     { id: "routes/gate", path: "/", children: [{ path: "page", Component: screen }] },
   ]);
-  return renderToString(
-    <Stub initialEntries={["/page"]} hydrationData={{ loaderData: { "routes/gate": gated } }} />,
+  return (
+    <Stub initialEntries={["/page"]} hydrationData={{ loaderData: { "routes/gate": gated } }} />
   );
 };
+
+const served = (screen: () => ReactElement, gated: Gated = { who: WHO }): string =>
+  renderToString(gatedPage(screen, gated));
+
+afterEach(cleanup);
 
 /** The box and the line its description names, as a screen reader reads them together. */
 const nameBox = (html: string) => {
@@ -58,22 +67,25 @@ describe("opening a seller dashboard", () => {
   it("names who is signed in, and makes nothing until the press, which carries that address", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
 
-    expect(readable(html)).toContain(WHO);
+    // On the card, not only in the header, which hides the address on a phone.
+    expect(readable(/<main[\s\S]*<\/main>/.exec(html)?.[0] ?? "")).toContain(WHO);
     expect(formTo(html, "post", "/merchant")?.fields.get(DRAWN_FOR)).toBe(WHO);
     expect(html).not.toContain('class="problem"');
   });
 
-  it("offers one way out, the header's", () => {
+  it("offers the way out in the header alone", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
+    const signOut = /<form\b[^>]*action="[^"]*\/sign-out"/;
 
-    expect(html.match(/<form\b[^>]*action="[^"]*\/sign-out"/g)).toHaveLength(1);
+    expect(html).toMatch(signOut);
+    expect(html.replace(/<header class="site-header[\s\S]*?<\/header>/, "")).not.toMatch(signOut);
   });
 
   it("says a press that made nothing failed on our side, and offers the press again", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: true }} />);
 
     expect(readable(/<p class="problem">[\s\S]*?<\/p>/.exec(html)?.[0] ?? "")).toMatch(
-      /not opened because of a fault on our side/,
+      /fault on our side/,
     );
     expect(formTo(html, "post", "/merchant")?.fields.get(DRAWN_FOR)).toBe(WHO);
   });
@@ -133,6 +145,64 @@ describe("choosing the seller name", () => {
   });
 });
 
+describe("the button that takes the seller name", () => {
+  const choosing = () => <ChooseNameScreen chrome={chrome} view={{ typed: "", rule: NAME_RULE }} />;
+
+  it("is served pressable, because only the page's script can give it back once a name is typed", () => {
+    const button = /<button\b[^>]*>Use this name<\/button>/.exec(served(choosing))?.[0] ?? "";
+
+    expect(button).not.toBe("");
+    expect(button).not.toMatch(/\sdisabled(=|\s|>)/);
+  });
+
+  it("waits for a name where the script runs, and takes a box of spaces for an empty one", () => {
+    const { getByRole, getByLabelText } = render(gatedPage(choosing));
+    const button = getByRole("button", { name: "Use this name" }) as HTMLButtonElement;
+    const box = getByLabelText(/name/i);
+
+    expect(button.disabled).toBe(true);
+
+    fireEvent.change(box, { target: { value: "Tea & Co" } });
+    expect(button.disabled).toBe(false);
+
+    fireEvent.change(box, { target: { value: "   " } });
+    expect(button.disabled).toBe(true);
+  });
+
+  it("is pressable once the script arrives for a name typed before it did", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    host.innerHTML = served(choosing);
+    const box = host.querySelector<HTMLInputElement>('input[name="seller_name"]');
+    if (box === null) throw new Error("no name box was served");
+    box.value = "Tea & Co";
+
+    const root = await act(async () => hydrateRoot(host, gatedPage(choosing)));
+    const button = [...host.querySelectorAll("button")].find(
+      (one) => one.textContent === "Use this name",
+    );
+
+    expect(button?.disabled).toBe(false);
+    await act(async () => root.unmount());
+    host.remove();
+  });
+
+  it("is pressable at once for a refused name given back in the box", () => {
+    const { getByRole } = render(
+      gatedPage(() => (
+        <ChooseNameScreen
+          chrome={chrome}
+          view={{ typed: "Freeland \u2014 eSIM", problem: NAME_REFUSED, rule: null }}
+        />
+      )),
+    );
+
+    expect((getByRole("button", { name: "Use this name" }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+});
+
 describe("the door into the operator's workspace on the setup screens", () => {
   const SCREENS = {
     "opening a seller dashboard": () => (
@@ -143,11 +213,13 @@ describe("the door into the operator's workspace on the setup screens", () => {
     ),
   };
 
-  it("stands beside the address in the header of an account the gate gave the door", () => {
+  it("stands among the header's doors for an account the gate gave the door", () => {
     for (const [name, screen] of Object.entries(SCREENS)) {
-      const html = served(screen, { who: WHO, admin: "/dashboard/admin" });
+      const html = served(screen, { who: WHO, operator: true });
+      const doors = /<nav aria-label="Docs and dashboard"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1];
 
-      expect(html, name).toMatch(/<a href="\/dashboard\/admin">Admin<\/a><a class="site-who"/);
+      // The workspace's address is the dashboard's own, under whatever prefix it is drawn at.
+      expect(doors, name).toMatch(/<a [^>]*href="[^"]*\/admin"[^>]*>Admin<\/a>/);
     }
   });
 

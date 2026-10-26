@@ -18,6 +18,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
+import { inViewersZone } from "../../src/moments.js";
 import { readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import { cardsView, ordersView, receiptsView } from "../../src/views.js";
@@ -124,32 +125,43 @@ const pricedAt = (amount: string, id = `ord_${amount}`) => ({
   price: { ...order(id, false).price, amount },
 });
 
-/** Each row's amount, as a person reads it on a wide screen: a receipt's cell, or an order's. */
+/** Each row's amount, as a person reads it in its column. */
 const amountsIn = (html: string): string[] =>
-  [
-    ...html.matchAll(
-      /<td class="amount"[^>]*>([\s\S]*?)<\/td>|<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/g,
-    ),
-  ].map((cell) => readable(cell[1] ?? cell[2] ?? ""));
+  [...html.matchAll(/<div class="cell cell-amount">([\s\S]*?)<\/div>/g)].map((cell) =>
+    readable(cell[1] ?? ""),
+  );
 
-/** What each order's row opens to on a narrow screen. */
+/** What each row opens to. */
 const openedIn = (html: string): string[] =>
   [...html.matchAll(/<div class="more-body">([\s\S]*?)<\/div><\/details>/g)].map((opened) =>
     readable(opened[1] ?? ""),
   );
 
 describe("the receipts of sales that went out", () => {
-  it("counts a parcel handed to a carrier beside goods handed over, and says which it is", () => {
-    // A shipped parcel is counted with the delivered ones, under a label that
-    // does not call a parcel with a carrier delivered.
+  it("puts each payment under its day in the viewer's calendar, the heading naming the zone its time is in", () => {
+    const receipts: ReceiptList = ReceiptListSchema.parse({
+      receipts: [{ ...receipt("rcp_1", false), paid_at: "2026-08-26T20:15:03Z" }],
+    });
+
+    const html = inViewersZone("Asia/Makassar", () => receiptsPage(receipts));
+
+    expect(html).toMatch(/<h3>27 August 2026 · UTC\+8<\/h3>/);
+    expect(readable(html)).toContain("04:15:03");
+    expect(readable(receiptsPage(receipts))).toContain("26 August 2026 · UTC");
+  });
+
+  it("lists a parcel handed to a carrier beside goods handed over, and says which it is", () => {
+    // A parcel with a carrier has not been delivered, so its row does not say
+    // so; both are counted among the receipts.
     const receipts: ReceiptList = ReceiptListSchema.parse({
       receipts: [receipt("rcp_1", false), { ...receipt("rcp_2", false), outcome: "shipped" }],
     });
 
     const text = readable(receiptsPage(receipts));
 
-    expect(text).toContain("Delivered or shipped 2 of 2 receipts");
-    expect(text).toContain("shipped");
+    expect(text).toContain("All receipts 2");
+    expect(text).toContain("Delivered");
+    expect(text).toContain("Shipped");
   });
 
   it("lists the latest payment first, whatever order the gateway gave them in", () => {
@@ -176,7 +188,7 @@ describe("the receipts of sales that went out", () => {
     });
 
     const html = receiptsPage(receipts);
-    const lines = html.replace(/<details class="cell-more[\s\S]*?<\/details>/g, "");
+    const lines = html.replace(/<details[^>]*class="row-more[\s\S]*?<\/details>/g, "");
     const [opened] = openedIn(html);
 
     expect(readable(lines)).not.toMatch(/rcp_|ord_/);
@@ -208,7 +220,7 @@ describe("a list where some of the money was real and some was not", () => {
       ],
     });
 
-    const html = ordersPage(orders);
+    const html = ordersPage(orders, ON_LIVE);
     const rows = html.split("<li").slice(1);
 
     // The refund's own row and its line in the list beside the two real sales.
@@ -222,7 +234,7 @@ describe("a list where some of the money was real and some was not", () => {
     });
 
     const html = receiptsPage(receipts, ON_LIVE);
-    const rows = html.split('<li class="list-row').slice(1);
+    const rows = html.split('class="list-opens').slice(1);
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
     // One row carries the mark and the other does not; a page that marked both
@@ -258,9 +270,9 @@ describe("a list where some of the money was real and some was not", () => {
     );
   });
 
-  it("leaves it to the band on a channel that draws one, and still marks every sum", () => {
+  it("leaves it to the band on a channel that draws one, in no sentence and on no sum", () => {
     // The test site's band says on every page that its payments are tests, so
-    // the list does not say it a second time; the mark on each sum stays.
+    // neither the list nor a sum in it says it a second time.
     const onTest: Viewer = { ...SEEN_BY, mode: "test" };
     const receipts: ReceiptList = ReceiptListSchema.parse({
       receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
@@ -268,11 +280,11 @@ describe("a list where some of the money was real and some was not", () => {
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
 
     const html = receiptsPage(receipts, onTest);
-    const rows = html.split('<li class="list-row').slice(1);
 
     expect(readable(html)).not.toContain("test purchase");
     expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
-    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
+    expect(html).not.toContain(">test<");
+    expect(ordersPage(orders, onTest)).not.toContain(">test<");
   });
 });
 
@@ -280,14 +292,14 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
   // Computed by hand in whole millionths of a dollar, USDC's smallest unit,
   // each share rounded down as the split rounds it: 0.29 at 99.9% is 289710
   // millionths exactly, where floating point makes it 0.28970999999999997.
-  const SHARES: readonly (readonly [price: string, merchant: string, commission: string])[] = [
-    ["80.00", "≈ 79.92 USD", "≈ 0.08 USD"],
-    ["5", "≈ 4.995 USD", "≈ 0.005 USD"],
-    ["0.29", "≈ 0.28971 USD", "≈ 0.00029 USD"],
-    ["0.09", "≈ 0.08991 USD", "≈ 0.00009 USD"],
-    ["0.01", "≈ 0.00999 USD", "≈ 0.00001 USD"],
-    ["0.000019", "≈ 0.000018 USD", "under 0.000001 USD"],
-    ["0.000001", "under 0.000001 USD", "under 0.000001 USD"],
+  const SHARES: readonly (readonly [price: string, merchant: string])[] = [
+    ["80.00", "about 79.92 USD"],
+    ["5", "about 4.995 USD"],
+    ["0.29", "about 0.28971 USD"],
+    ["0.09", "about 0.08991 USD"],
+    ["0.01", "about 0.00999 USD"],
+    ["0.000019", "about 0.000018 USD"],
+    ["0.000001", "under 0.000001 USD"],
   ];
 
   it("says each order's shares as about so much, rounded down to a millionth as the split rounds them", () => {
@@ -302,14 +314,12 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       />
     ));
 
-    // A wide row says the merchant's share under the price; the row a phone
-    // opens says both, beside the whole ID and the moment.
-    expect(amountsIn(html)).toStrictEqual(
-      SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
-    );
+    // The row says the price the buyer paid; its opened part says the
+    // merchant's share of it, after Agentify's part.
+    expect(amountsIn(html)).toStrictEqual(SHARES.map(([price]) => `${price} USD`));
     expect(openedIn(html)).toStrictEqual(
-      SHARES.map(([, merchant, commission]) =>
-        expect.stringContaining(`${merchant} to you ${commission} to Agentify`),
+      SHARES.map(([, merchant]) =>
+        expect.stringContaining(`Your share ${merchant}, after Agentify's 0.1%`),
       ),
     );
   });
@@ -327,14 +337,10 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
     ));
 
-    // A row says the merchant's share under the price; the row's opened part
-    // says both.
-    expect(amountsIn(html)).toStrictEqual(
-      SHARES.map(([price, merchant]) => `${price} USD ${merchant} to you`),
-    );
+    expect(amountsIn(html)).toStrictEqual(SHARES.map(([price]) => `${price} USD`));
     for (const [at, opened] of openedIn(html).entries()) {
-      const [, merchant, commission] = SHARES[at] ?? [];
-      expect(opened).toContain(`${merchant} to you ${commission} to Agentify`);
+      const [, merchant] = SHARES[at] ?? [];
+      expect(opened).toContain(`Your share ${merchant}, after Agentify's 0.1%`);
     }
   });
 
@@ -357,8 +363,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       />
     ));
 
-    expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 77.60 USD to you"]);
-    expect(openedIn(html)[0]).toContain("≈ 2.40 USD to Agentify");
+    expect(openedIn(html)[0]).toContain("Your share about 77.60 USD, after Agentify's 3%");
   });
 
   it("shows no shares for an order paid to a wallet itself, before payments went to splits", () => {
@@ -374,7 +379,8 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       />
     ));
 
-    expect(amountsIn(html)).toStrictEqual(["80.00 USD ≈ 79.92 USD to you", "80.00 USD"]);
+    expect(openedIn(html)[0]).toContain("Your share");
+    expect(openedIn(html)[1]).not.toContain("Your share");
     expect(openedIn(html)[1]).not.toContain("Agentify");
   });
 });
@@ -400,7 +406,7 @@ describe("a paid order left unfulfilled", () => {
       )),
     );
     const callout = text.slice(text.indexOf("Needs you"), text.indexOf("All orders"));
-    expect(callout).toContain("delivery window ran out");
+    expect(callout).toContain("not delivered before the delivery deadline");
     // The order's own price is the one sum told; neither its share nor any
     // amount owed back is put to the merchant as a transfer to make.
     expect(callout.match(/\d+\.\d{2} USD/g)).toStrictEqual(["80.00 USD"]);
@@ -437,8 +443,8 @@ describe("a paid order left unfulfilled", () => {
       orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
     });
     const text = readable(ordersPage(unfulfilled));
-    expect(text).toContain("Paid, and the product was not delivered");
-    expect(text).not.toContain("delivery window ran out");
+    expect(text).toContain("Paid, but not delivered.");
+    expect(text).not.toContain("deadline");
   });
 });
 
@@ -459,16 +465,16 @@ describe("an order delivered and not paid", () => {
     expect(text).toContain("Waiting on the buyer 1");
     expect(text).toContain("Needs you 0");
     expect(html).not.toContain('aria-label="Orders that need you"');
-    expect(text).toContain("the payment failed, so the goods are held");
+    expect(text).toMatch(/the buyer's payment failed after you delivered/i);
     // Paid again for the same order, never bought again, which would deliver
     // twice.
-    expect(text).toContain("The buyer can pay again for this same order");
+    expect(text).toContain("only if they pay again for this order");
   });
 
   it("leaves to the merchant whether to revoke what they delivered or to wait", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("whether to revoke what you delivered or wait is yours to decide");
+    expect(text).toContain("You can wait, or take back what you delivered.");
     expect(text).not.toMatch(/nothing for you to do/i);
   });
 
@@ -478,13 +484,13 @@ describe("an order delivered and not paid", () => {
     });
 
     const text = readable(ordersPage(both));
-    const at = (words: string) => text.indexOf(words);
+    const needs = text.slice(text.indexOf("Needs you 1"), text.indexOf("Waiting on the buyer 1"));
+    const waits = text.slice(text.indexOf("Waiting on the buyer 1"), text.indexOf("All orders"));
 
-    expect(text).toContain("Needs you 1");
-    expect(text).toContain("Waiting on the buyer 1");
-    expect(at("Needs you")).toBeLessThan(at("ord_owed"));
-    expect(at("ord_owed")).toBeLessThan(at("Waiting on the buyer"));
-    expect(at("Waiting on the buyer")).toBeLessThan(at("ord_held"));
+    expect(needs).toContain("Unfulfilled");
+    expect(needs).not.toContain("Held for payment");
+    expect(waits).toContain("Held for payment");
+    expect(waits).not.toContain("Unfulfilled");
   });
 });
 
@@ -513,24 +519,29 @@ describe("the state of each card", () => {
     expect(wordsOf(list)).toStrictEqual(["On sale", "Paused by you", "Off sale"]);
   });
 
-  it("says beside a card the shop published that it is off sale while the code sells", () => {
-    // The banner names no reason for it: only this card's row can say which
-    // of the merchant's cards came from the shop.
-    const list = listOf("open", { selling: "paused", paused: false });
-    const html = served(() => (
-      <CardsScreen
-        view={cardsView(list, "https://agentify.ad", false, {
-          through: "api",
-          offSale: ["itm_0"],
-        })}
-        base=""
-      />
-    ));
-    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+  it.each([
+    ["the shop published, while the code sells", "api", /your code/i],
+    ["the code published, while the shop sells", "woocommerce", /WooCommerce/],
+  ] as const)(
+    "says beside a card %s why it is off sale, with no switch",
+    (_which, through, says) => {
+      // The banner names no reason for it: only this card's row can say which
+      // of the merchant's cards came from the integration not in use.
+      const list = listOf("open", { selling: "paused", paused: false });
+      const html = served(() => (
+        <CardsScreen
+          view={cardsView(list, "https://agentify.ad", false, { through, offSale: ["itm_0"] })}
+          base=""
+        />
+      ));
+      const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
 
-    expect(readable(row)).toMatch(/off sale while you sell through your own code/i);
-    expect(row).not.toContain("<form");
-  });
+      expect(
+        readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? ""),
+      ).toMatch(says);
+      expect(row).not.toContain("<form");
+    },
+  );
 
   it("does not call a card paused by the merchant while the other integration holds it", () => {
     // Resuming it would not put it on sale, so "Paused by you" would send the
@@ -598,7 +609,7 @@ describe("how a card is delivered", () => {
     ));
     const fact = /<div class="cell cell-fact">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
 
-    expect(readable(fact)).toBe("Later, within Agentify's default window");
+    expect(readable(fact)).toMatch(/^Later, \S/);
     expect(fact).toContain('href="/docs/cards#goods-that-leave-later-than-the-answer"');
   });
 
@@ -625,49 +636,22 @@ describe("a card's row on a phone", () => {
     expect(readable(fact)).toContain("price asked at purchase");
   });
 
-  it("does not repeat under every title the moment a fixed price holds from", () => {
-    // On a real catalogue every fixed-price row would carry the same line.
-    const html = served(() => (
-      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
-    ));
-    const main =
-      /<div class="cell cell-main">([\s\S]*?)<div class="cell cell-amount"/.exec(html)?.[1] ?? "";
-
-    expect(readable(main)).toContain("A room for the night");
-    expect(readable(main)).not.toMatch(/since/i);
-  });
-
-  it("opens the price, at a press or a key, to the moment it holds from, on every width", () => {
-    // A title on a span is reached by a resting pointer alone; a disclosure
-    // the browser opens itself is reached by a key and a tap as well, without
-    // the page's script.
-    const html = served(() => (
-      <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
-    ));
-    const price =
-      /<div class="cell cell-amount"><details[^>]*><summary[^>]*>([^<]*)<\/summary>([\s\S]*?)<\/details>/.exec(
-        html,
-      );
-
-    expect(price?.[1]).toBe("80.00 USD");
-    expect(readable(price?.[2] ?? "")).toBe("On the card since 2026-08-26 09:00:00 UTC");
-    expect(html).not.toContain('class="cell-more');
-  });
-
-  it("leaves a price asked at purchase as it is, with nothing to open", () => {
+  it("shows the price as a figure with nothing to open, fixed or asked at purchase", () => {
     const entry = cards.cards[0];
     if (entry === undefined) throw new Error("the example catalogue has no card");
-    const asked = MerchantCardListSchema.parse({
+    const both = MerchantCardListSchema.parse({
       selling: "open",
-      cards: [{ ...entry, card: { ...entry.card, price_check: "handler" } }],
+      cards: [entry, { ...entry, id: "itm_2", card: { ...entry.card, price_check: "handler" } }],
     });
     const html = served(() => (
-      <CardsScreen view={cardsView(asked, "https://agentify.ad")} base="" />
+      <CardsScreen view={cardsView(both, "https://agentify.ad")} base="" />
     ));
-    const price = /<div class="cell cell-amount">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "";
+    const prices = [...html.matchAll(/<div class="cell cell-amount">([\s\S]*?)<\/div>/g)].map(
+      ([, price = ""]) => price,
+    );
 
-    expect(price).not.toContain("<details");
-    expect(readable(price)).toBe("80.00 USD");
+    expect(prices.map(readable)).toStrictEqual(["80.00 USD", "80.00 USD"]);
+    expect(prices.join("")).not.toContain("<details");
   });
 });
 
