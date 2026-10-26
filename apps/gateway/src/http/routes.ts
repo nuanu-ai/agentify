@@ -19,7 +19,7 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
+import type { Caller, Gateway, OffSale, PurchaseAttempt } from "../app/gateway.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 import {
@@ -389,6 +389,13 @@ const SELLER_NOT_FULFILLING = `this seller has ${UNSERVED_AT_MOST} or more paid 
 /** Why a purchase of a seller whose own system has gone quiet is refused. */
 const SELLER_NOT_TAKING_ORDERS = `this seller is not taking orders right now, and nothing was charged: their system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}, so nobody would pick up the order; try again later`;
 
+/** What a refusal at the door says for each reason a card is off sale. */
+const OFF_SALE_WORDS: Readonly<Record<OffSale["code"], string>> = {
+  not_selling: "this product is not on sale at the moment",
+  seller_not_fulfilling: SELLER_NOT_FULFILLING,
+  seller_not_taking_orders: SELLER_NOT_TAKING_ORDERS,
+};
+
 function answeredOrder(
   response: RouteCall["response"],
   answered: { readonly ok: boolean } | null,
@@ -418,17 +425,9 @@ async function probeAnswer(
   // A card off sale for good answers no challenge: the challenge carries the
   // discovery declaration, and would keep inviting agents to a purchase that is
   // refused. One off sale for a moment still answers it (`OffSale`).
-  switch (offered.offSale?.transient ? undefined : offered.offSale?.code) {
-    case "not_selling":
-      return written(
-        response,
-        CONFLICT,
-        refusal("not_selling", "this product is not on sale at the moment"),
-      );
-    case "seller_not_fulfilling":
-      return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
-    case undefined:
-      break;
+  const off = offered.offSale;
+  if (off !== null && !off.transient) {
+    return written(response, CONFLICT, refusal(off.code, OFF_SALE_WORDS[off.code]));
   }
   response.setHeader(
     PAYMENT_REQUIRED_HEADER,
