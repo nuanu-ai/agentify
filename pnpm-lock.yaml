@@ -636,6 +636,9 @@ importers:
       '@agentify/scanner-contracts':
         specifier: workspace:*
         version: link:../scanner-contracts
+      entities:
+        specifier: 8.1.0
+        version: 8.1.0
     devDependencies:
       '@types/node':
         specifier: 26.1.1

@@ -39,7 +39,7 @@ export const isQuote = (code: number): boolean => code === 34 || code === 39;
  * Where `<name` next begins at or after `from` as a whole tag name, which is
  * what `<name\b` matches, or -1. `lower` is the text through asciiLower.
  */
-export const findTag = (lower: string, name: string, from: number): number => {
+const findTag = (lower: string, name: string, from: number): number => {
   const opening = `<${name}`;
   for (let at = lower.indexOf(opening, from); at !== -1; at = lower.indexOf(opening, at + 1))
     if (!isWordCode(lower.charCodeAt(at + opening.length))) return at;
@@ -47,7 +47,7 @@ export const findTag = (lower: string, name: string, from: number): number => {
 };
 
 /** Where the first " or ' at or after `from` is, or -1. */
-export const nextQuote = (text: string, from: number): number => {
+const nextQuote = (text: string, from: number): number => {
   for (let at = from; at < text.length; at += 1) if (isQuote(text.charCodeAt(at))) return at;
   return -1;
 };
