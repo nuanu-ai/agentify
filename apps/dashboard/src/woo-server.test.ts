@@ -1547,7 +1547,7 @@ describe("importing the catalogue", () => {
     const imported = await running.post("/woocommerce/import", { [DRAWN_FOR]: PERSON });
 
     expect(imported.status).toBe(504);
-    expect(readable(imported.html)).toContain("did not answer");
+    expect(readable(imported.html)).toMatch(/didn't answer/i);
     expect(running.read).toEqual([]);
   });
 
@@ -2236,10 +2236,8 @@ describe("a press that fails inside the dashboard", () => {
     const said = readable(pressed.html);
 
     expect(pressed.status).toBe(500);
-    expect(said).toContain(
-      "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
-    );
-    expect(said).toContain("Back to Cards");
+    expect(said).toContain("We don't know if this was done");
+    expect(said).toContain("Open WooCommerce");
     expect(pressed.html).not.toContain("the shops table is not answering");
   });
 });

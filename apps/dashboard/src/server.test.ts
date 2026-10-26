@@ -2753,7 +2753,7 @@ describe("the settings screen", () => {
     const screen = await running.browser.get("/settings");
 
     expect(screen.status).toBe(504);
-    expect(readable(screen.html)).toMatch(/did not answer/i);
+    expect(readable(screen.html)).toMatch(/didn't answer/i);
   });
 });
 
@@ -4654,7 +4654,7 @@ describe("the keys screen", () => {
     await browser.signIn();
 
     const refused = await browser.post("/keys/key_nobody_has/disable");
-    const said = /<h1>Something went wrong<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
+    const said = /<h1>[^<]*<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
 
     expect(said).toMatch(/^[A-Z]/);
     expect(said.toLowerCase()).toContain("there is no such key");
@@ -4988,7 +4988,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
       expect(answered.status).toBe(500);
       const text = readable(answered.html);
-      expect(text).toContain("Something in the dashboard is broken");
+      expect(text).toContain("We don't know if this was done");
       expect(text).not.toContain("Nothing was changed");
     } finally {
       await close();
@@ -5230,7 +5230,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     ]) {
       const forged = await browser.sending({ origin }).post("/sign-in", credentials);
       expect(forged.status, origin).toBe(403);
-      expect(readable(forged.html), origin).toContain("did not come from the dashboard");
+      expect(readable(forged.html), origin).toContain("Nothing was changed");
     }
   });
 
@@ -5260,6 +5260,24 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 });
 
 describe("when the gateway will not answer", () => {
+  it("says of a press it did not answer that nobody knows whether it was done, and leads to the screen it was made on", async () => {
+    // A reload of the answer to a press sends the press again, so the way on
+    // is the screen to look at, never the answer.
+    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
+    await browser.signIn();
+    silenceGateway();
+
+    const pressed = await browser.post(STOP_SELLING, {});
+
+    expect(pressed.status).toBe(504);
+    const text = readable(pressed.html);
+    expect(text).toContain("We don't know if this was done");
+    expect(text).not.toMatch(/reload/i);
+    expect(/<a class="button button-primary" href="([^"]*)"/.exec(pressed.html)?.[1]).toBe(
+      "/cards",
+    );
+  });
+
   it("says the gateway did not answer rather than showing an empty catalog", async () => {
     // "Nothing answered" and "you have no cards" are different news, and only
     // one means the merchant should act.
@@ -5493,14 +5511,18 @@ describe("a page left open while another address signs in", () => {
     expect(behind.length).toBeGreaterThan(10);
     const silently = async (path: string): Promise<Visit> =>
       await running.browser.postRaw(path, "application/x-www-form-urlencoded", "");
+    /** The panel's heading and sentence; its way on is the screen pressed on. */
+    const saidIn = (html: string): string =>
+      readable(/<h1>[\s\S]*?<\/p>/.exec(/<main\b[\s\S]*<\/main>/.exec(html)?.[0] ?? "")?.[0] ?? "");
     const refusal = await silently(STOP_SELLING);
     expect(refusal.status).toBe(409);
+    expect(saidIn(refusal.html)).toContain("Nothing was changed");
     for (const { path } of behind) {
       for (const answer of [await running.browser.post(path, leftOpen), await silently(path)]) {
         // The same words whichever way the screen is drawn.
-        expect({ status: answer.status, said: readable(answer.html) }, path).toStrictEqual({
+        expect({ status: answer.status, said: saidIn(answer.html) }, path).toStrictEqual({
           status: 409,
-          said: readable(refusal.html),
+          said: saidIn(refusal.html),
         });
       }
     }
@@ -5711,6 +5733,10 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-session");
   });
 
+  /** The panel's one way on, and where it leads. */
+  const wayOnIn = (html: string): string | undefined =>
+    /<a class="button button-primary" href="([^"]*)"/.exec(html)?.[1]?.replaceAll("&amp;", "&");
+
   it("answers on the dashboard's own page, which says to look before pressing again and leads on", async () => {
     // A press can fail after its work was done, so the page cannot say
     // whether it went through; a bare line would leave the person with no
@@ -5727,10 +5753,11 @@ describe("a press that fails in a way nobody planned for", () => {
     const answered = await said(async () => {
       const failed = await browser.makeMerchant();
       expect(failed.status).toBe(500);
-      expect(readable(failed.html)).toContain(
-        "Check the page you were on before deciding whether it went through.",
-      );
-      expect(failed.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to Cards<\/a>/);
+      expect(readable(failed.html)).toContain("We don't know if this was done");
+      expect(readable(failed.html)).toContain("before you try again");
+      // The press made no merchant's screen yet, so the way on is the start,
+      // which leads wherever this person begins.
+      expect(wayOnIn(failed.html)).toBe("/");
     });
 
     expect(answered).toMatch(/request failed/i);
@@ -5763,23 +5790,25 @@ describe("a press that fails in a way nobody planned for", () => {
     breaking = true;
 
     await said(async () => {
-      for (const [path, form] of [
-        [STOP_SELLING, {}],
-        ["/keys", { label: "the second worker" }],
-        ["/keys/some-key/disable", {}],
-        ["/settings", { seller_name: "Bright Data Plans" }],
-        ["/settings/site", { seller_site: "https://example.com" }],
-        ["/settings/sign-out-everywhere", {}],
+      for (const [path, form, screen] of [
+        [STOP_SELLING, {}, "/cards"],
+        ["/keys", { label: "the second worker" }, "/keys"],
+        ["/keys/some-key/disable", {}, "/keys"],
+        ["/settings", { seller_name: "Bright Data Plans" }, "/settings"],
+        ["/settings/site", { seller_site: "https://example.com" }, "/settings"],
+        ["/settings/sign-out-everywhere", {}, "/settings"],
         [
           "/settings/payout-wallet",
           { payout_wallet: "0x1111111111111111111111111111111111111111" },
+          "/settings",
         ],
         [
           "/settings/payout-wallet/cancel",
           { payout_wallet: "0x1111111111111111111111111111111111111111" },
+          "/settings",
         ],
-        ["/sign-out", {}],
-        ["/orders", { order_id: `ord_${"0".repeat(32)}` }],
+        ["/sign-out", {}, "/"],
+        ["/orders", { order_id: `ord_${"0".repeat(32)}` }, "/orders"],
       ] as const) {
         const pressed = await browser.post(path, form);
 
@@ -5787,9 +5816,11 @@ describe("a press that fails in a way nobody planned for", () => {
           status: 500,
           to: null,
         });
-        expect(readable(pressed.html), path).toContain(
-          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
-        );
+        expect(readable(pressed.html), path).toContain("We don't know if this was done");
+        expect(readable(pressed.html), path).toContain("before you try again");
+        // Back to the screen the press was made on, to look there; never the
+        // press's own address, whose reload would press again.
+        expect(wayOnIn(pressed.html), path).toBe(screen);
       }
     });
   });
@@ -5813,9 +5844,8 @@ describe("a press that fails in a way nobody planned for", () => {
         const pressed = await browser.post(path, form);
 
         expect(pressed.status, path).toBe(500);
-        expect(readable(pressed.html), path).toContain(
-          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
-        );
+        expect(readable(pressed.html), path).toContain("We don't know if this was done");
+        expect(readable(pressed.html), path).toContain("before you try again");
       }
     });
 
