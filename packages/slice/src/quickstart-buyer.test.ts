@@ -190,7 +190,15 @@ describe("the quickstart's test buyer", () => {
     return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as Kept) : null;
   };
 
-  const onlyHeld = (): LiveOrder => {
+  /**
+   * The one order the merchant took on. The program's reads are quick and the
+   * merchant's subscription polls, so the order can reach the merchant after
+   * the program has stopped; it is waited for rather than expected at once.
+   */
+  const onlyHeld = async (): Promise<LiveOrder> => {
+    for (let waited = 0; held.size === 0 && waited < 10_000; waited += 20) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     const [order, ...others] = held.values();
     if (order === undefined || others.length > 0) {
       throw new Error(`the merchant holds ${held.size} orders, not one`);
@@ -207,7 +215,7 @@ describe("the quickstart's test buyer", () => {
     // The address opens the order, so it is kept in the file and not printed.
     expect(waiting.printed).not.toContain(statusUrl);
 
-    const order = onlyHeld();
+    const order = await onlyHeld();
     await order.deliver(goodsOf(order.id));
     const finished = await run(LATER);
 
@@ -219,7 +227,7 @@ describe("the quickstart's test buyer", () => {
 
   it("tells a read that failed from the order's state, and reads again until it has one", async () => {
     await run(LATER);
-    const order = onlyHeld();
+    const order = await onlyHeld();
     await order.deliver(goodsOf(order.id));
 
     // Every read fails: the run does not finish, and it names no state.
