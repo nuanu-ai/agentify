@@ -2816,6 +2816,20 @@ describe("one integration at a time", () => {
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
   });
 
+  it("says a Disconnect from a page whose shop is gone changed nothing, also once the code sells", async () => {
+    // A tab left open on the shop while another disconnected it.
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+    expect((await disconnectAsDrawn(running)).status).toBe(303);
+
+    const stale = await running.post("/woocommerce/disconnect", { shop: SHOP });
+
+    expect(stale.status).toBe(409);
+    expect(readable(stale.html)).toContain("Nothing was changed");
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+  });
+
   it("offers the way back to the code to a merchant on the shop whose shop never connected", async () => {
     // Reached by an account that started on the shop because it held an
     // imported card before integrations were recorded.

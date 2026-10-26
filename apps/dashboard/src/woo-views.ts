@@ -466,6 +466,10 @@ const heldImport = (read: ShopRead): ImportHeld | null => {
 
 export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => {
   const { state } = read;
+  const wayBack = state.kind !== "connected" && read.through === "woocommerce";
+  // A refused Disconnect with no Disconnect left on the page, the merchant
+  // being on their code with no shop, is said beside Connect instead.
+  const leavingUnplaced = state.kind !== "connected" && !wayBack;
   return {
     screen: "shop",
     keysArrived: answer.cameBack === true && state.kind === "connected",
@@ -483,7 +487,7 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
             rate: read.rate === undefined ? null : rateViewOf(read.rate, answer),
           }
         : null,
-    wayBack: state.kind !== "connected" && read.through === "woocommerce",
+    wayBack,
     noKeysYet: noKeysYet(state),
     typed:
       answer.typed ??
@@ -491,8 +495,8 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
     addressProblem: answer.addressProblem ?? null,
     connectSwitches: read.through === "api",
     codeProducts: read.codeProducts === undefined ? null : read.codeProducts,
-    problem: refusalOf(answer.problem),
-    leaving: refusalOf(answer.leaving),
+    problem: refusalOf(answer.problem ?? (leavingUnplaced ? answer.leaving : undefined)),
+    leaving: leavingUnplaced ? null : refusalOf(answer.leaving),
   };
 };
 
