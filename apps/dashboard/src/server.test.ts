@@ -3068,6 +3068,9 @@ describe("the wallet a merchant's share is paid out to", () => {
     const text = readable(screen.html);
     expect(text).toMatch(/getting paid/i);
     expect(text).toMatch(/couldn't prepare your payout/i);
+    // The page has not read what the contracts hold, and a fresh or just-paid
+    // merchant's hold nothing, so it must not say money is waiting there.
+    expect(text).not.toMatch(/your money (is|stays)/i);
     expect(text).toContain(SIGN_OUT_EVERYWHERE);
     expect(screen.html).toContain('name="payout_wallet"');
   });
