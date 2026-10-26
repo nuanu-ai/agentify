@@ -237,24 +237,6 @@
   }
 }
 
-/* The menu at the end of the header's row holds, where there is no room for
-   the sidebar, the sections as the sidebar lists them and the doors out, to
-   the documentation and for an operator to the workspace, over who is signed
-   in. */
-.site-menu .app-menu-sections [aria-current="page"] {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.site-menu .app-menu-door {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  margin-top: 6px;
-  padding: 0 12px;
-  font-size: var(--text-small);
-  font-weight: 650;
-}
-
 /* --- figures ------------------------------------------------------------- */
 
 .summary {

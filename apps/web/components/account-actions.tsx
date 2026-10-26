@@ -1,7 +1,6 @@
+import { useVisitor } from "@agentify/ui";
 import { useState } from "react";
-
 import { press } from "../lib/press";
-import { useVisitor } from "../lib/visitor";
 
 type Action = "unsubscribe" | "access" | "deletion";
 type Done = "requested" | "completed" | "unsubscribed";

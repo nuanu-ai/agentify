@@ -159,11 +159,8 @@ const TABLE: RouteObject[] = [{ id: "root", path: "/", children: routes.map(matc
 const BASE = config.basename;
 const WHO = "owner@example.com";
 
-/**
- * What the gate reads for the operator the examples name, whose account holds
- * the flag: the door's address with the gallery's dashboard at the root.
- */
-const OPERATOR_GATED: Gated = { who: "operator@example.com", admin: "/admin" };
+/** What the gate reads for the operator the examples name, whose account holds the flag. */
+const OPERATOR_GATED: Gated = { who: "operator@example.com", operator: true };
 
 const chromeIn = (mode: SurfaceMode): Chrome => ({
   base: "",
@@ -1296,7 +1293,7 @@ const CARDS: GalleryState[] = [
     screen: "Cards",
     when: "An operator who also sells opens their own dashboard.",
     cause:
-      "The session's account holds the operator flag, so the header has a door into the operator's workspace beside the address.",
+      "The session's account holds the operator flag, so the header has a door into the operator's workspace among its doors.",
   }),
   {
     ...operatorsCards({
@@ -1308,7 +1305,7 @@ const CARDS: GalleryState[] = [
     }),
     scene: {
       steps: [{ shows: "Product cards", does: openTheMenu }],
-      shows: "Open the admin →",
+      shows: "Admin",
     },
   },
   cards(
@@ -1328,7 +1325,7 @@ const CARDS: GalleryState[] = [
         screen: "Cards",
         when: "A merchant on a phone or a tablet opens the menu at the end of the header's row.",
         cause:
-          "Where the sidebar gives way, the header keeps the lockup and the menu's button, and the menu holds the sections, the way to the documentation, the address and the way out.",
+          "Where the sidebar gives way, the header keeps the lockup, the documentation, the dashboard and the menu's button, and the menu holds the sections, the address and the way out.",
       },
       cardsView(CATALOGUE, ORIGIN.live),
       "live",
