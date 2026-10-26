@@ -179,4 +179,24 @@ describe("publishing and revoking a scan's public link", () => {
     await screen.findByText("Public link live");
     expect(screen.queryByRole("link", { name: "Download image again" })).toBeNull();
   });
+
+  it("says the link is selected only while it is, and selects it again on the next press", async () => {
+    siteWith({ existing: true, pressed: () => Promise.reject(new TypeError("unused")) });
+    const copy = await screen.findByRole("button", { name: /copy share link/i });
+    await vi.waitFor(() => expect((copy as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(copy);
+    const box = (await screen.findByRole("textbox", {
+      name: "Public link",
+    })) as HTMLTextAreaElement;
+    await screen.findByText(/selected/i);
+
+    box.setSelectionRange(0, 0);
+    box.blur();
+    await vi.waitFor(() => expect(screen.queryByText(/selected/i)).toBeNull());
+
+    await userEvent.click(copy);
+    await screen.findByText(/selected/i);
+    expect(document.activeElement).toBe(box);
+    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe(box.value);
+  });
 });

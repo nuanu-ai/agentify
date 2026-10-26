@@ -345,4 +345,14 @@ describe("asking the scanner for a verification link", () => {
     expect(phone.getAttribute("aria-invalid")).toBeNull();
     expect(describedAs(phone)).not.toContain("This phone was refused.");
   });
+
+  it("says in the phone field's title what a phone must look like, so the browser's refusal says it too", async () => {
+    answerWith(202, { status: "verification_sent" });
+    render(<RegistrationForm scanId={scanId} />);
+
+    const title = (await screen.findByLabelText(/^Phone/)).getAttribute("title") ?? "";
+
+    expect(title).toMatch(/\+/);
+    expect(title).toMatch(/country code/i);
+  });
 });

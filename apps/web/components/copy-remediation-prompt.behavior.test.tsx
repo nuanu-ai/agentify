@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -59,5 +59,23 @@ describe("copying where the clipboard is refused", () => {
     await screen.findByRole("textbox", { name: "Developer brief" });
     const told = await screen.findByText(/developer brief is selected below/i);
     expect(told.textContent).not.toMatch(/prompt/i);
+  });
+
+  it("stops saying the text is selected once the visitor moves away, and selects it again on the next press", async () => {
+    refusingClipboard();
+    render(<CopyRemediationPrompt label="Copy this fix" prompt="Add Product JSON-LD." />);
+    const copy = screen.getByRole("button", { name: "Copy this fix" });
+    await userEvent.click(copy);
+    const box = (await screen.findByRole("textbox", { name: "Fix prompt" })) as HTMLTextAreaElement;
+    await screen.findByText(/selected/i);
+
+    box.setSelectionRange(0, 0);
+    box.blur();
+    await waitFor(() => expect(screen.queryByText(/selected/i)).toBeNull());
+
+    await userEvent.click(copy);
+    await screen.findByText(/selected/i);
+    expect(document.activeElement).toBe(box);
+    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe("Add Product JSON-LD.");
   });
 });

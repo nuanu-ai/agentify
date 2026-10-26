@@ -314,6 +314,33 @@ describe("the preferences dialog", () => {
     expect(screen.queryByRole("status")).toBeNull();
     expect(readCurrentConsent(window.localStorage)?.categories.product_analytics).toBe(true);
   });
+
+  it("shows a choice made in another tab while it is open, and Save then keeps what it shows", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    window.localStorage.setItem(
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(
+        createConsentSnapshot({
+          policyVersion: CONSENT_POLICY_VERSION,
+          decisions: { product_analytics: false, ads_measurement: false },
+          source: "banner",
+        }),
+      ),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+
+    await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
+    expect(box(/ads measurement/i).checked).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Save choices" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(readCurrentConsent(window.localStorage)?.categories).toMatchObject({
+      product_analytics: false,
+      ads_measurement: false,
+    });
+  });
 });
 
 describe("the preferences, from the keyboard", () => {
