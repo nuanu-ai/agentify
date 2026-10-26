@@ -838,6 +838,10 @@ export const startWorker = (
   };
 
   const dispatch = async (one: Taken): Promise<void> => {
+    // Its turn can come after the stop gave up on it, once the work ahead of
+    // it ends, and by then the merchant has been told no handler was called.
+    if (one.abandoned) return;
+
     const { envelope } = one;
 
     switch (envelope.kind) {
