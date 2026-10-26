@@ -75,13 +75,15 @@ describe("checking a card before it is published", () => {
       [{ amount: "0.00", currency: "USD" }, "amount"],
       ["500 USD", "amount"],
       ["0.0000001 USD", "amount"],
+      ["0.009 USD", "amount"],
+      ["0.000001 USDC", "amount"],
       [{ amount: "5.00", currency: "EUR" }, "currency"],
     ] as const) {
       expect(pathsOf({ ...validCard, price }), JSON.stringify(price)).toStrictEqual([
         ["price", field],
       ]);
     }
-    expect(checkCard({ ...validCard, price: "0.001 USDC" }).problems).toStrictEqual([]);
+    expect(checkCard({ ...validCard, price: "0.01 USDC" }).problems).toStrictEqual([]);
   });
 
   it("stops before the rules that compare fields when the shape itself is wrong", () => {
