@@ -9,7 +9,7 @@
  */
 
 import { outcomeFor } from "@agentify/core";
-import { durationInWords, SILENT_AFTER_MS } from "@agentify/core/published";
+import { durationInWords, SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
 import type {
   OrderListQuery,
   PurchaseRequest,
@@ -19,12 +19,7 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import {
-  type Caller,
-  type Gateway,
-  type PurchaseAttempt,
-  UNSERVED_AT_MOST,
-} from "../app/gateway.js";
+import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 import {

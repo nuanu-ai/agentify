@@ -41,6 +41,15 @@ export const REDELIVERY_MAX_ATTEMPTS = 5;
 export const WAITING_FOR_PAYMENT_AT_MOST = 50;
 
 /**
+ * How many of a seller's paid orders may be taken on and left with nothing
+ * delivered or closed before every new purchase of theirs is refused as
+ * `seller_not_fulfilling`, and their cards leave the catalogue. A constant
+ * rather than a setting, since a knob here could switch the guard off or stop
+ * a seller's every sale.
+ */
+export const UNSERVED_AT_MOST = 10;
+
+/**
  * How long a seller's own process may go without polling before a purchase
  * that charges before its goods is refused: past it, a buyer would pay for
  * goods nothing is there to make. Nothing is paused and nothing has to be

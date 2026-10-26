@@ -27,6 +27,7 @@ import {
   durationInWords,
   LAPSED_KEPT_MS,
   SILENT_AFTER_MS,
+  UNSERVED_AT_MOST,
   WAITING_FOR_PAYMENT_AT_MOST,
 } from "@agentify/core/published";
 import {
@@ -321,18 +322,6 @@ interface HowTheySell {
   readonly sellable: boolean;
   readonly integration: Integration;
 }
-
-/**
- * How many of a seller's paid orders may be taken on and left with nothing
- * delivered (`leftUnserved`) before every new purchase of theirs is refused, a
- * synchronous one too, and their cards leave the catalogue. Only an order a
- * buyer paid for counts, so nobody can stop a seller's sales without paying.
- * Nothing is stored and nothing has to be resumed: a late delivery or a
- * closure that leaves fewer lets the next purchase through. A constant rather
- * than a setting, since a knob here could switch the guard off or stop a
- * seller's every sale.
- */
-export const UNSERVED_AT_MOST = 10;
 
 /**
  * How stale a seller's recorded poll may get in one process before a poll
@@ -2315,7 +2304,12 @@ export class Gateway {
     return await this.#unserved(merchantId);
   }
 
-  /** Whether as many of this merchant's paid orders are left unserved as the door allows. */
+  /**
+   * Whether as many of this merchant's paid orders are left unserved as the
+   * door allows. Only an order a buyer paid for counts, so nobody can stop a
+   * seller's sales without paying, and nothing is stored: a late delivery or a
+   * closure that leaves fewer lets the next purchase through.
+   */
   async #unserved(merchantId: string): Promise<boolean> {
     return (
       (await this.runtime.store.unservedOrders(merchantId, UNSERVED_AT_MOST)) >= UNSERVED_AT_MOST
