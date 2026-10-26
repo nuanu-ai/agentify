@@ -20,16 +20,27 @@ const decodeXml = (value: string): string =>
 
 const SPACE = /\s/;
 
-// The text of each `<name>…</name>` element in turn, the opening tag allowed
-// attributes after a space, up to `limit` of them.
+// The text of each `<name>…</name>` element outside a comment, in turn, the
+// opening tag allowed attributes after a space, up to `limit` of them. The
+// next opening and the next comment are each looked for once and kept while
+// they lie ahead, so a sitemap of many comments is walked once.
 const elementTexts = (xml: string, lower: string, name: string, limit: number): string[] => {
   const opening = `<${name}`;
   const closing = `</${name}>`;
   const texts: string[] = [];
   let from = 0;
+  let open = -2;
+  let comment = -2;
   while (texts.length < limit) {
-    const open = lower.indexOf(opening, from);
+    if (open !== -1 && open < from) open = lower.indexOf(opening, from);
     if (open === -1) break;
+    if (comment !== -1 && comment < from) comment = lower.indexOf("<!--", from);
+    if (comment !== -1 && comment < open) {
+      const end = lower.indexOf("-->", comment + 4);
+      if (end === -1) break;
+      from = end + 3;
+      continue;
+    }
     const next = lower.charAt(open + opening.length);
     if (next !== ">" && !SPACE.test(next)) {
       from = open + 1;
@@ -43,6 +54,15 @@ const elementTexts = (xml: string, lower: string, name: string, limit: number): 
     from = end + closing.length;
   }
   return texts;
+};
+
+// An element's text: a CDATA section's as written, any other with its
+// entities decoded.
+const xmlText = (text: string): string => {
+  const value = text.trim();
+  return value.startsWith("<![CDATA[") && value.endsWith("]]>")
+    ? value.slice(9, -3).trim()
+    : decodeXml(value);
 };
 
 export const parseSitemap = (body: string): SitemapResult => {
@@ -66,9 +86,9 @@ export const parseSitemap = (body: string): SitemapResult => {
     };
   const lower = asciiLower(body);
   const urls = elementTexts(body, lower, "loc", 5000)
-    .map((text) => decodeXml(text.trim()))
+    .map(xmlText)
     .filter((value) => /^https?:\/\//i.test(value));
-  const lastmods = elementTexts(body, lower, "lastmod", 5000).map((text) => text.trim());
+  const lastmods = elementTexts(body, lower, "lastmod", 5000).map(xmlText);
   return {
     valid: urls.length > 0,
     isIndex,
