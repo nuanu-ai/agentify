@@ -931,3 +931,49 @@ describe("18-check engine", () => {
     });
   });
 });
+
+describe("headers that carry a list of values", () => {
+  const negotiated = (vary: string): ScanArtifacts => ({
+    ...makeArtifacts("owner"),
+    markdown: artifact(
+      "https://example.com/",
+      `# Fixture\n\n${"Markdown product catalog. ".repeat(20)}`,
+      { headers: { "content-type": "text/markdown; charset=utf-8", vary } },
+    ),
+  });
+
+  it.each(["Accept-Encoding", "X-Accept", "accept-language, Origin"])(
+    "does not take Vary: %s for a response that varies by Accept",
+    (vary) => {
+      expect(check(negotiated(vary), 7)?.evidence.vary_accept).toBe(false);
+    },
+  );
+
+  it.each(["Accept", "accept", "Accept-Encoding, Accept", "Origin ,ACCEPT", ", Accept ,"])(
+    "takes Vary: %s for a response that varies by Accept",
+    (vary) => {
+      expect(check(negotiated(vary), 7)?.evidence.vary_accept).toBe(true);
+    },
+  );
+
+  it("gives a response that varies by everything the least partial credit", () => {
+    expect(check(negotiated("Accept-Encoding, *"), 7)?.earnedWeight).toBe(2);
+    expect(check(negotiated("Accept-Encoding"), 7)?.earnedWeight).toBe(6);
+  });
+
+  it("does not take a word inside a challenge's parameters for an OAuth sign-in", () => {
+    const challenged = (challenge: string): ScanArtifacts => ({
+      ...makeArtifacts("owner"),
+      base: artifact("https://example.com/", html, {
+        headers: { "content-type": "text/html", "www-authenticate": challenge },
+      }),
+    });
+    expect(check(challenged('Basic realm="oauth bearer area"'), 11)?.status).toBe(
+      "not_applicable",
+    );
+    expect(check(challenged('Basic realm="a", Bearer realm="api"'), 11)?.status).toBe(
+      "unavailable",
+    );
+    expect(check(challenged('bearer error="invalid_token"'), 11)?.status).toBe("unavailable");
+  });
+});
