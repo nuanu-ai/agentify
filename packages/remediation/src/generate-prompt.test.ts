@@ -44,6 +44,16 @@ describe("generateRemediationPrompt", () => {
     expect(first.content).not.toContain("provider-run-123");
   });
 
+  it("does not round a coverage under the provisional line up to it", () => {
+    const output = generateRemediationPrompt({
+      scope: "full",
+      host: "example.com",
+      assessment: { ...inspected, coverage: 0.698 },
+      findings: [],
+    });
+    expect(output.content).toContain("Coverage: 69% of the applicable checks");
+  });
+
   it("includes only fail and partial findings", () => {
     const output = generateRemediationPrompt({
       scope: "teaser",
