@@ -2699,11 +2699,13 @@ describe("one integration at a time", () => {
 
     // A purchase still waiting for its price ends in seconds, so the merchant
     // is told to try again shortly rather than handed its ID to chase.
-    expect(order).toBeDefined();
+    if (order === undefined) throw new Error("the purchase made no order");
     expect(refused.status).toBe(409);
-    // Not priced yet, it is not on the open list, so nothing is claimed of it.
-    expect(readable(refused.html)).toMatch(/Try again in a moment/);
-    expect(readable(refused.html)).toMatch(/try again/i);
+    // Not priced yet, it is not on the open list, so nothing is claimed of it:
+    // neither its ID, nor a count, nor that it is in progress.
+    expect(refused.html).not.toContain(order.order.id);
+    expect(readable(refused.html)).not.toMatch(/\b\d+ orders?\b/);
+    expect(readable(refused.html)).not.toMatch(/in progress/i);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 
     const replaced = await running.post("/woocommerce/connect", {

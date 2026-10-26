@@ -90,23 +90,47 @@ const modeOf = ({ record, order, reconnected }: Known): WooRecoveryView["mode"] 
       : "link";
 };
 
-/** Why nothing can be done here, said in place of a form. */
-const unavailableBecause = ({ record, order }: Known): Unavailable =>
-  record.facts.kind === "parcel"
-    ? record.phase === "precreate_refused" && order.status === "unfulfilled"
-      ? { why: PARCEL_NOT_CREATED, instead: "close" }
-      : {
-          why: "This page recovers downloads only. A parcel counts as shipped once you mark it Completed in WooCommerce.",
-          instead: "parcel",
-        }
-    : record.phase === "placed" && record.placed?.permission == null
-      ? { why: "The linked shop order has no download to send.", instead: "close" }
-      : order.status !== "unfulfilled"
+/** Where the shop may hold an order nobody here can see, the merchant looks for it by this. */
+export const unknownCreate = (orderId: string): string =>
+  `We don't know if your shop created this order; look for its Transaction ID ${orderId} in your shop.`;
+
+/**
+ * Why nothing can be done here, said in place of a form. It is read from the
+ * saved sale alone, so a reload says the same as the press that led here.
+ */
+const unavailableBecause = ({ record, order }: Known): Unavailable => {
+  const waiting = order.status === "unfulfilled";
+  if (record.facts.kind === "parcel") {
+    if (record.phase === "precreate_refused" && waiting) {
+      return { why: PARCEL_NOT_CREATED, instead: "close" };
+    }
+    if (record.phase === "create_unknown") {
+      return waiting
         ? {
-            why: "This order isn't waiting for a late delivery, so there's nothing to recover.",
-            instead: "nothing",
+            why: `${unknownCreate(record.orderId)} This page recovers downloads only, so don't ship it; close fulfillment instead.`,
+            instead: "close",
           }
-        : { why: `Your shop never got this order. ${RECONNECT_FIRST}`, instead: "reconnect" };
+        : { why: unknownCreate(record.orderId), instead: "nothing" };
+    }
+    return {
+      why: "This page recovers downloads only. A parcel counts as shipped once you mark it Completed in WooCommerce.",
+      instead: "parcel",
+    };
+  }
+  if (record.phase === "placed" && record.placed?.permission == null) {
+    return { why: "The linked shop order has no download to send.", instead: "close" };
+  }
+  if (!waiting) {
+    return {
+      why:
+        record.phase === "create_unknown"
+          ? unknownCreate(record.orderId)
+          : `${record.placed == null ? "" : `Your shop has order ${record.placed.id} for this sale. `}This order isn't waiting for a late delivery, so there's nothing to recover.`,
+      instead: "nothing",
+    };
+  }
+  return { why: `Your shop never got this order. ${RECONNECT_FIRST}`, instead: "reconnect" };
+};
 
 /** Said where what a press did is not known; the page then asks for a reload, not a press. */
 export const RECOVERY_UNKNOWN =
@@ -244,21 +268,22 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       }
       const now = modeOf(after);
       if (now === "delivered") return { kind: "view", view: viewOf(after) };
-      // A press that created a shop order, or left one unknown, says so even
-      // where the order can no longer be recovered here.
+      if (now === "unavailable") {
+        // The saved sale says what became of the shop order; a press adds only
+        // that its own end is unknown.
+        return {
+          kind: "view",
+          status: after.record.phase === known.record.phase && said.unknown !== true ? 409 : status,
+          view: viewOf(
+            after,
+            said.unknown === true ? { message: said.message ?? null, unknown: true } : {},
+          ),
+        };
+      }
       const created =
         known.record.phase === "precreate_refused" && after.record.placed != null
           ? `Your shop created order ${after.record.placed.id}. `
           : "";
-      if (now === "unavailable") {
-        return after.record.phase === known.record.phase
-          ? { kind: "view", status: 409, view: viewOf(after) }
-          : {
-              kind: "view",
-              status,
-              view: viewOf(after, { message: `${created}${said.message ?? ""}`.trim() || null }),
-            };
-      }
       // Only the linking form has a box to say a refusal under.
       const told =
         now === "link"

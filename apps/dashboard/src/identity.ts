@@ -549,11 +549,15 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             // The token is all the link carries that opens anything. A link
             // that makes no merchant also says so, so the page for a link that
             // no longer works asks for the next one without making one either;
-            // that mark can only keep a merchant from being made.
+            // that mark can only keep a merchant from being made. A page of the
+            // operator's workspace is named itself, so the next link returns to it.
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
             if (!asksForSellerDashboard(claim.destination)) {
-              action.searchParams.set("destination", "reports");
+              action.searchParams.set(
+                "destination",
+                adminDestinationIn(claim.destination) ?? "reports",
+              );
             }
             active.handed = await postman(
               typeof claim.destination !== "string"

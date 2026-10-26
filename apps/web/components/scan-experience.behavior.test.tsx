@@ -9,9 +9,11 @@
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { SCAN_STOP_REASONS } from "@agentify/scanner-contracts/browser";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { onSite } from "../testing/on-site";
 import { ScanExperience } from "./scan-experience";
+import { StatusBadge } from "./status-badge";
 
 const scanId = "019f5b6a-4b9f-7000-8000-0000000000bb";
 const TOKEN_KEY = `agentify:scan-token:${scanId}`;
@@ -343,8 +345,14 @@ describe("a scan's states", () => {
 
     visit();
     await timePasses(0);
-    expect(screen.getByRole("heading", { name: /cannot read this scan's status/ })).toBeTruthy();
-    expect(screen.queryByText("Checking")).toBeNull();
+    const heading = screen.getByRole("heading", { name: /cannot read this scan's status/ });
+    // Nothing is known of the scan, so its badge is neither a check being run
+    // nor a check that could not be: not knowing does not read as "no".
+    const said = (status: Parameters<typeof StatusBadge>[0]["status"]) =>
+      renderToStaticMarkup(<StatusBadge status={status} />).replace(/<[^>]+>/g, "");
+    const badge = heading.closest("section")?.querySelector("header .badge")?.textContent;
+    expect(badge).toBe(said("unknown"));
+    expect(said("unknown")).not.toBe(said("unavailable"));
     await timePasses(2_100);
 
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();

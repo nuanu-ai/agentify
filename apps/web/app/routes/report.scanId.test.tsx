@@ -123,6 +123,30 @@ describe("a report's page", () => {
     expect(page).not.toContain("All 18 checks");
   });
 
+  it.each([
+    [
+      "somebody signed in as another address to sign out",
+      { kind: "not_yours", email: "someone-else@shop.example" },
+      /^<form[^>]*action="\/dashboard\/sign-out"[^>]*method="post"/,
+    ],
+    [
+      "a stranger to sign in to read reports",
+      { kind: "stranger" },
+      /^<a[^>]*href="\/dashboard\/sign-in\?destination=reports"/,
+    ],
+  ] as const)("leaves %s, and offers no other way", async (_, locked, way) => {
+    world.page = locked;
+
+    const panel =
+      /<section class="message-panel">([\s\S]*?)<\/section>/.exec(await drawn())?.[1] ?? "";
+    // A report's email link opens once and expires within the hour, so the
+    // page never leads back to it; the panel's one control is the way on.
+    const controls = panel.match(/<(?:a|form|button)\b[^>]*>/g) ?? [];
+
+    expect(controls.filter((tag) => !tag.startsWith("<button"))).toHaveLength(1);
+    expect(controls[0]).toMatch(way);
+  });
+
   it("shows its owner the level, the score on the scan page's scale, the coverage and the segment's average", async () => {
     const page = await drawn();
 

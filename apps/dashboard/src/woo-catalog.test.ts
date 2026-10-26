@@ -402,9 +402,8 @@ describe("a physical product, which a carrier takes to the buyer", () => {
     const { cards, skipped } = cardsFromTheShop([parcel({ manage_stock: true })]);
 
     expect(cards).toHaveLength(0);
-    // Stock is the merchant's to count: nothing here asks them to change how
-    // their shop counts it.
-    expect(skipped[0]?.why).toMatch(/stock tracking/);
-    expect(skipped[0]?.why).not.toMatch(/turn|off|change/i);
+    // Stock is the merchant's to count, so the product lands under Not
+    // supported, where nothing asks them to change how their shop counts it.
+    expect(skipped).toMatchObject([{ fixable: false }]);
   });
 });

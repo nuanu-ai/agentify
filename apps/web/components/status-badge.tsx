@@ -1,9 +1,12 @@
 import type { CheckStatus } from "@agentify/scanner-contracts";
 import { Badge, type BadgeTone } from "@agentify/ui";
 
-type BadgeStatus = CheckStatus | "complete";
+type BadgeStatus = CheckStatus | "complete" | "unknown";
 
-/** Each state's own word: an unavailable check is never said to have failed. */
+/**
+ * Each state's own word: an unavailable check is never said to have failed,
+ * and a scan whose status nobody could read is not said to be unavailable.
+ */
 const STATES: Record<BadgeStatus, readonly [label: string, tone: BadgeTone]> = {
   pending: ["Pending", "quiet"],
   running: ["Checking", "progress"],
@@ -13,6 +16,7 @@ const STATES: Record<BadgeStatus, readonly [label: string, tone: BadgeTone]> = {
   unavailable: ["Unavailable", "quiet"],
   not_applicable: ["Not applicable", "quiet"],
   complete: ["Complete", "pass"],
+  unknown: ["Unknown", "quiet"],
 };
 
 /** A state's badge; given a count, it says how many are in that state. */

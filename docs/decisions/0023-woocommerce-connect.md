@@ -71,11 +71,11 @@ and the product still qualifies (the product owner, 2026-10-26). The ledger
 becomes `create_unknown` before the request is sent, so no second press
 creates again, and the order holds what the buyer paid. The Agentify order is
 read again after the shop's checks, just before the ledger moves, so a closure
-can still meet a create only in the moment between that read and the request. An unknown create
-binds only an order id the merchant supplies, read back and matched on every
-fact of the sale. A mismatch stays unfulfilled, as does a parcel's failure,
-whose address is gone, and no staffed recovery queue is part of the service
-(the product owner, 2026-10-19).
+can still meet a create only between that read and the shop's answer. An
+unknown create binds only an order id the merchant supplies, read back and
+matched on every fact of the sale. A mismatch stays unfulfilled, as does a
+parcel's failure, whose address is gone, and no staffed recovery queue is part
+of the service (the product owner, 2026-10-19).
 
 ## Consequences
 
