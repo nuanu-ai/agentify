@@ -2639,7 +2639,8 @@ describe("one integration at a time", () => {
     // is told to try again shortly rather than handed its ID to chase.
     expect(order).toBeDefined();
     expect(refused.status).toBe(409);
-    expect(readable(refused.html)).toMatch(/1 order from your shop is still in progress/);
+    // Not priced yet, it is not on the open list, so it is not counted.
+    expect(readable(refused.html)).toMatch(/An order from your shop is still in progress/);
     expect(readable(refused.html)).toMatch(/try again/i);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 

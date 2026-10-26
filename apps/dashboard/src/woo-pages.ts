@@ -60,6 +60,7 @@ import type { ShopCurrency, ShopTotal, WooConnection, WooShops } from "./woo-sho
 import {
   groupedRate,
   type Held,
+  heldBy,
   type ImportOutcome,
   NO_SHOP,
   referenceShown,
@@ -445,10 +446,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   };
 
   /**
-   * A refused move between integrations, worded from the orders that hold it:
-   * read once more, so a purchase about to lapse is told apart from goods
-   * owed. An order missing from the open list has ended since the refusal, or
-   * has no price yet, which it gets within seconds or never.
+   * A refused move between integrations, worded from the orders that hold it,
+   * read once more so a purchase about to lapse is told apart from goods owed.
    */
   const refusedMove = async (
     gateway: GatewayClient,
@@ -457,18 +456,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   ): Promise<Said> => {
     if (refused.code !== "orders_waiting" || refused.orders === undefined) return refused;
     const open = await gateway.orders(true);
-    if (!open.ok) return { held: { to, orders: refused.orders, quick: false, parcels: false } };
-    const still = open.document.orders.filter((order) => refused.orders?.includes(order.id));
-    return {
-      held: {
-        to,
-        orders: refused.orders,
-        quick: still.every(
-          (order) => order.status === "in_progress" && order.payment_status === "not_paid",
-        ),
-        parcels: still.some((order) => order.ship_to !== undefined),
-      },
-    };
+    return { held: heldBy(to, refused.orders, open.ok ? open.document.orders : null) };
   };
 
   /**

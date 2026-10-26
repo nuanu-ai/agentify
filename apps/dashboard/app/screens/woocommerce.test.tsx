@@ -22,6 +22,7 @@ import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import {
   type Held,
+  heldBy,
   type ShopAnswer,
   type ShopRead,
   wooImportView,
@@ -335,7 +336,54 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(block)).toMatch(/try again/i);
     expect(readable(block)).toMatch(/within a minute/);
     expect(block).not.toMatch(/aria-label="Copy the whole order ID/);
-    expect(readable(block)).not.toMatch(/pause/i);
+    // A merchant whose buyers keep coming has no other way out.
+    expect(block).toMatch(/<a href="\/cards">[^<]*pause[^<]*<\/a>/i);
+  });
+
+  it("counts and names only the orders still open, which See open orders shows", () => {
+    // A purchase not yet priced is not on the open list, and one that ended
+    // since the refusal is gone from it.
+    const still = "ord_still0f3c9a1b2d4e6f8a7b9c";
+    const block = blockOf(
+      shopPage(
+        {},
+        {
+          problem: {
+            held: heldBy(
+              "woocommerce",
+              ["ord_quote0f3c9a1b2d4e6f8a7b9c", still, "ord_ended0f3c9a1b2d4e6f8a7b9c"],
+              [
+                { id: still, status: "in_progress", payment_status: "paid" },
+                {
+                  id: "ord_other0f3c9a1b2d4e6f8a7b9c",
+                  status: "in_progress",
+                  payment_status: "paid",
+                },
+              ],
+            ),
+          },
+        },
+      ),
+      "/woocommerce/connect",
+    );
+
+    expect(readable(block)).toMatch(/\b1 order from your code is still open/);
+    expect([...block.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(1);
+    expect(readable(block)).toContain(still);
+    expect(readable(block)).not.toMatch(/delivers/);
+  });
+
+  it("asks to try again shortly where no order it named is open any more", () => {
+    const block = blockOf(
+      shopPage(
+        {},
+        { problem: { held: heldBy("woocommerce", ["ord_quote0f3c9a1b2d4e6f8a7b9c"], []) } },
+      ),
+      "/woocommerce/connect",
+    );
+
+    expect(readable(block)).toMatch(/within a minute/);
+    expect(readable(block)).not.toMatch(/\b0 orders?\b/);
   });
 
   it("says how a parcel ends where one holds the way out", () => {

@@ -127,6 +127,11 @@ export interface Refusal {
   readonly says: string;
   readonly orders: readonly string[];
   readonly more: number;
+  /**
+   * Purchases about to lapse hold it, and new ones can keep arriving: pausing
+   * all sales is the way out for a merchant whose buyers do not stop.
+   */
+  readonly pause: boolean;
 }
 
 /**
@@ -142,19 +147,51 @@ export interface Held {
   readonly parcels: boolean;
 }
 
+/** An order as the open list shows it, as much as a held move reads of it. */
+export interface OpenOrder {
+  readonly id: string;
+  readonly status: string;
+  readonly payment_status: string;
+  readonly ship_to?: unknown;
+}
+
+/**
+ * The orders that held a move, as the open list shows them now, which is what
+ * See open orders leads to: an order missing from it has ended since the
+ * refusal, or has no price yet, which it gets within seconds or never. Where
+ * the list could not be read, the refusal's own orders, said as goods owed.
+ */
+export const heldBy = (
+  to: Integration,
+  named: readonly string[],
+  open: readonly OpenOrder[] | null,
+): Held => {
+  if (open === null) return { to, orders: named, quick: false, parcels: false };
+  const still = open.filter((order) => named.includes(order.id));
+  return {
+    to,
+    orders: still.map((order) => order.id),
+    quick: still.every(
+      (order) => order.status === "in_progress" && order.payment_status === "not_paid",
+    ),
+    parcels: still.some((order) => order.ship_to !== undefined),
+  };
+};
+
 /** A refusal as a press's answer hands it over: a sentence, a refusal's own words, or held orders. */
 export type Said = string | Readonly<{ why: string }> | Readonly<{ held: Held }>;
 
 const heldSays = ({ to, orders, quick, parcels }: Held): string => {
-  const one = orders.length === 1;
-  const counted = `${orders.length} ${one ? "order" : "orders"} from your ${to === "woocommerce" ? "code" : "shop"} ${one ? "is" : "are"}`;
+  const one = orders.length <= 1;
+  const from = `from your ${to === "woocommerce" ? "code" : "shop"}`;
+  const counted =
+    orders.length === 0
+      ? `An order ${from} is`
+      : `${orders.length} ${one ? "order" : "orders"} ${from} ${one ? "is" : "are"}`;
   if (quick) return `${counted} still in progress and should end within a minute. Try again then.`;
-  if (to === "woocommerce") {
-    return `${counted} still open. Try again once your code delivers ${one ? "it" : "them"} or ${one ? "its" : "their"} time runs out.`;
-  }
   return (
     `${counted} still open. Try again once ${one ? "it ends" : "they end"}.` +
-    (parcels
+    (to === "api" && parcels
       ? " A parcel ends when you mark it Completed in WooCommerce, or after its seven days."
       : "")
   );
@@ -162,8 +199,8 @@ const heldSays = ({ to, orders, quick, parcels }: Held): string => {
 
 const refusalOf = (said: Said | undefined): Refusal | null => {
   if (said === undefined) return null;
-  if (typeof said === "string") return { says: said, orders: [], more: 0 };
-  if ("why" in said) return { says: said.why, orders: [], more: 0 };
+  if (typeof said === "string") return { says: said, orders: [], more: 0, pause: false };
+  if ("why" in said) return { says: said.why, orders: [], more: 0, pause: false };
   const { held } = said;
   // Purchases about to lapse are not worth copying: they are gone in a minute.
   const named = held.quick ? [] : held.orders;
@@ -171,6 +208,7 @@ const refusalOf = (said: Said | undefined): Refusal | null => {
     says: heldSays(held),
     orders: named.slice(0, ORDERS_DRAWN),
     more: Math.max(0, named.length - ORDERS_DRAWN),
+    pause: held.quick,
   };
 };
 

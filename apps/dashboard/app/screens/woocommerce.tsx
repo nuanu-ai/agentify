@@ -53,7 +53,18 @@ const comeBack = (count: number | null): string => {
  */
 function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }>) {
   if (said === null) return null;
-  if (said.orders.length === 0) return <p className="problem">{said.says}</p>;
+  if (said.orders.length === 0) {
+    return (
+      <>
+        <p className="problem">{said.says}</p>
+        {said.pause ? (
+          <p>
+            If new purchases keep arriving, <a href={`${base}/cards`}>pause all sales</a> first.
+          </p>
+        ) : null}
+      </>
+    );
+  }
   return (
     <div className={styles.refusal}>
       <p className="problem">{said.says}</p>
