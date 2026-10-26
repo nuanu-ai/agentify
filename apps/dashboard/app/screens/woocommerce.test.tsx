@@ -442,12 +442,21 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(formTo(html, "post", "/woocommerce/import")).toBeUndefined();
   });
 
-  it("asks before it disconnects: the press stands inside a closed disclosure", () => {
-    const html = shopPage({ state: CONNECTED, through: "woocommerce" });
-    const block = blockOf(html, "/woocommerce/disconnect");
+  it("asks before it disconnects a connected shop: every press stands inside a closed disclosure", () => {
+    for (const through of ["woocommerce", "api"] as const) {
+      const page = new DOMParser().parseFromString(
+        shopPage({ state: CONNECTED, through }),
+        "text/html",
+      );
+      const forms = [...page.querySelectorAll('form[action="/woocommerce/disconnect"]')];
 
-    expect(block).toMatch(/^<details(?![^>]*\bopen\b)[^>]*>/);
-    expect(block).toMatch(/<summary>/);
+      expect(forms, through).not.toHaveLength(0);
+      for (const form of forms) {
+        const disclosure = form.closest("details");
+        expect(disclosure, through).not.toBeNull();
+        expect(disclosure?.open, through).toBe(false);
+      }
+    }
   });
 
   it("says a read-only grant as a warning rather than as connected", () => {
