@@ -927,5 +927,18 @@ export const wooShopsContract = (
         expect(await shops.knownOrder("ord_1")).toEqual({ kind: "unknown", attemptedAt: LATER });
       });
     });
+
+    it("lets one of two presses at once reopen a refusal before creation, and not the other", async () => {
+      await using(async (shops, accounts) => {
+        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, NOW);
+
+        const both = await Promise.all([
+          shops.beginPrecreateRecovery("ord_1", "grant_2", LATER),
+          shops.beginPrecreateRecovery("ord_1", "grant_2", LATER),
+        ]);
+
+        expect(both.filter(Boolean)).toHaveLength(1);
+      });
+    });
   });
 };

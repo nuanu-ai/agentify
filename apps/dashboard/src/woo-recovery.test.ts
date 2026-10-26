@@ -456,8 +456,68 @@ describe("a merchant creating the shop order of a download refused before creati
       state: "refused",
       why: expect.stringMatching(/read/i),
     });
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "unavailable", unavailable: { instead: "reconnect" } },
+    });
     expect(test.created()).toBe(0);
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+
+  it("creates nothing when fulfillment is closed while the shop is being checked", async () => {
+    const shops = await setup("precreate_refused");
+    const test = parts(shops, {
+      inspectProduct: async () => {
+        test.becomes("fulfillment_closed");
+        return { ok: true, product: PRODUCT };
+      },
+    });
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
+    expect(test.created()).toBe(0);
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+
+  it("asks the shop of a sale paid in dollars for its own currency's amount, at the rate fixed at the sale", async () => {
+    const converted: WooOrderFacts = {
+      ...FACTS,
+      converted: {
+        inTheShop: { amount: "180", currency: "IDR" },
+        rate: { version: 3, rate: "18000", setAt: "2026-09-18T08:00:00.000Z" },
+      },
+    };
+    const shops = await setup("precreate_refused", converted);
+    const test = parts(
+      shops,
+      {
+        inspectProduct: async () => ({
+          ok: true,
+          product: { ...PRODUCT, price: { amount: "180", currency: "IDR" } },
+        }),
+      },
+      converted,
+    );
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: true,
+    });
+    expect(test.sold.map(({ price, converted }) => ({ price, converted }))).toStrictEqual([
+      {
+        price: { amount: "180", currency: "IDR" },
+        converted: {
+          paid: { amount: FACTS.amount, currency: "USD" },
+          rate: {
+            version: 3,
+            currency: "IDR",
+            rate: "18000",
+            setAt: new Date("2026-09-18T08:00:00.000Z"),
+          },
+        },
+      },
+    ]);
   });
 
   it("creates nothing at a price the shop changed since the sale, and can be pressed again once it matches", async () => {
@@ -625,6 +685,67 @@ describe("merchant recovery pages", () => {
       view: { mode: "create", message: expect.stringContaining("no product 22") },
     });
     expect(test.created()).toBe(0);
+  });
+
+  it("says the shop order was just created when fulfillment was closed before its download went", async () => {
+    const shops = await setup("precreate_refused");
+    let closed = false;
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () => ({
+          ok: true,
+          document: gatewayOrder(closed ? "fulfillment_closed" : "unfulfilled"),
+        }),
+        deliverOrder: async () => ({ ok: false, status: 409, why: "the order is closed" }),
+      }),
+      placeOrder: async () => {
+        closed = true;
+        return {
+          ok: true,
+          id: "13",
+          number: "WOO-13",
+          orderKey: "wc_order_13",
+          downloadId: PRODUCT.downloadId,
+          total: FACTS.amount,
+        };
+      },
+    });
+
+    const pressed = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData());
+
+    expect(pressed).toMatchObject({
+      kind: "view",
+      view: { mode: "unavailable", message: expect.stringMatching(/created/i) },
+    });
+    expect(pressed.kind === "view" && pressed.view.message).toContain("13");
+  });
+
+  it("keeps saying nobody knows whether the shop created the order when fulfillment was closed meanwhile", async () => {
+    const shops = await setup("precreate_refused");
+    let closed = false;
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () => ({
+          ok: true,
+          document: gatewayOrder(closed ? "fulfillment_closed" : "unfulfilled"),
+        }),
+      }),
+      placeOrder: async () => {
+        closed = true;
+        return { ok: false, why: "no answer", again: true };
+      },
+    });
+
+    const pressed = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData());
+
+    expect(pressed).toMatchObject({
+      kind: "view",
+      view: { mode: "unavailable", message: expect.stringMatching(/don't know/i) },
+    });
   });
 
   it("offers no create for an order whose create is unknown, only linking", async () => {
