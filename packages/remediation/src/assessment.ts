@@ -30,6 +30,17 @@ export function assessmentOf(scan: {
   };
 }
 
+/**
+ * A share from 0 to 1 as the whole percent it has reached, rounded down. A
+ * figure shown beside a verdict decided on the share then never shows a line
+ * the share has not reached: 0.698 is 69%, under the 70% below which a result
+ * is provisional, and only a whole share is 100%.
+ */
+export const percentReached = (share: number): string =>
+  // The small addition keeps 0.29, which floating point holds as
+  // 28.999999999999996 percent, at 29%.
+  `${Math.floor(share * 100 + 1e-9)}%`;
+
 const inspectedLabel = (moment: string): string => {
   const at = new Date(moment);
   if (Number.isNaN(at.getTime())) return "time not recorded";
@@ -41,7 +52,7 @@ export function assessmentLines(assessment: ScanAssessment): string[] {
   const unknown = assessment.unassessed.map(canonicalCheckLabel);
   return [
     `Inspected: ${inspectedLabel(assessment.inspectedAt)}`,
-    `Coverage: ${Math.round(assessment.coverage * 100)}% of the applicable checks, by weight, could be assessed.`,
+    `Coverage: ${percentReached(assessment.coverage)} of the applicable checks, by weight, could be assessed.`,
     unknown.length
       ? `Not assessed: ${unknown.join(", ")}. Whether these pass is unknown; they are not failures, and nothing here asks for a change to them.`
       : "Not assessed: none. Every applicable check was assessed.",

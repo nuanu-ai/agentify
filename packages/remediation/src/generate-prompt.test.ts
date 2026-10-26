@@ -91,7 +91,7 @@ describe("generateRemediationPrompt", () => {
     it("says when the site was inspected and how much of it could be assessed", () => {
       expect(partial.content).toContain("2026-10-20");
       expect(partial.content).toContain("10:52 UTC");
-      expect(partial.content).toContain("78%");
+      expect(partial.content).toContain("77%");
     });
 
     it("names each check that could not be assessed, and invents no finding for it", () => {
