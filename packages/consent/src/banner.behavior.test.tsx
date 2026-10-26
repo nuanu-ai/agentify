@@ -341,6 +341,48 @@ describe("the preferences dialog", () => {
       ads_measurement: false,
     });
   });
+
+  it("keeps the keyboard in the dialog when another tab's choice redraws it", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    window.localStorage.setItem(
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(
+        createConsentSnapshot({
+          policyVersion: CONSENT_POLICY_VERSION,
+          decisions: { product_analytics: false, ads_measurement: false },
+          source: "banner",
+        }),
+      ),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+
+    await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+  });
+
+  it.each([
+    ["cleared", () => window.localStorage.clear()],
+    [
+      "left under an earlier policy",
+      () => window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder("consent-v0.9.0")),
+    ],
+  ])(
+    "offers nothing allowed once another tab's choice is %s while it is open",
+    async (_how, change) => {
+      const user = userEvent.setup();
+      await pageOfAVisitorWhoAllowedBoth();
+      await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+      change();
+      window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+
+      await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
+      expect(box(/ads measurement/i).checked).toBe(false);
+    },
+  );
 });
 
 describe("the preferences, from the keyboard", () => {
