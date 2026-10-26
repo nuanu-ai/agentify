@@ -1785,7 +1785,7 @@ describe("where a sign-in started", () => {
     expect(await merchantOf(running, FRESH.email)).toBeNull();
   });
 
-  for (const [asked, askFor, lands] of [
+  for (const [asked, askFor, lands, makesMerchant] of [
     [
       "a report's email link",
       async (running: Running) => {
@@ -1797,6 +1797,7 @@ describe("where a sign-in started", () => {
         });
       },
       LATEST_REPORT,
+      false,
     ],
     [
       "a link asked for from a scanner's door",
@@ -1804,6 +1805,7 @@ describe("where a sign-in started", () => {
         await running.browser.post("/sign-in", { ...TO_READ_REPORTS, email: FRESH.email });
       },
       LATEST_REPORT,
+      false,
     ],
     [
       "a link asked for a page of the operator's workspace",
@@ -1811,9 +1813,18 @@ describe("where a sign-in started", () => {
         await running.browser.post("/sign-in", { email: FRESH.email, destination: "admin/orders" });
       },
       "/admin/orders",
+      false,
+    ],
+    [
+      "a link asked for a section of the seller's dashboard",
+      async (running: Running) => {
+        await running.browser.post("/sign-in", { email: FRESH.email, destination: "orders" });
+      },
+      "/orders",
+      true,
     ],
   ] as const) {
-    it(`makes no merchant, and keeps the page, for a person without one who asks for a new link from ${asked} that no longer works`, async () => {
+    it(`keeps the page for a person without a merchant who asks for a new link from ${asked} that no longer works, and makes ${makesMerchant ? "one as the seller's dashboard does" : "none"}`, async () => {
       const running = await started();
       await askFor(running);
       const action = actionIn(running.mails.at(-1));
@@ -1840,7 +1851,7 @@ describe("where a sign-in started", () => {
         );
         expect((await signInFrom(running, browser, page, FRESH.email)).to).toBe(lands);
       }
-      expect(await merchantOf(running, FRESH.email)).toBeNull();
+      expect((await merchantOf(running, FRESH.email)) !== null).toBe(makesMerchant);
     });
   }
 
