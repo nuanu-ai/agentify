@@ -53,7 +53,8 @@ const STATEMENT_HEIGHT =
   FOOT_HEIGHT;
 
 /** Headline sizes, largest first; a host the smallest cannot hold is shortened. */
-const HEADLINE_SIZES = [52, 46, 40, 35, 30] as const;
+const SMALLEST_HEADLINE = 30;
+const HEADLINE_SIZES = [52, 46, 40, 35, SMALLEST_HEADLINE];
 const ELLIPSIS = "…";
 
 const ZONES = [
@@ -125,7 +126,7 @@ async function fittedStatement(
   const copy = shareCopy(snapshot);
   for (const size of HEADLINE_SIZES) if (await fits(copy, tone, size)) return { copy, size };
 
-  const size = HEADLINE_SIZES[HEADLINE_SIZES.length - 1];
+  const size = SMALLEST_HEADLINE;
   const host = cleanHost(snapshot.host);
   const copyKeeping = (kept: number) => shareCopy({ ...snapshot, host: shortened(host, kept) });
   let kept = 0;
