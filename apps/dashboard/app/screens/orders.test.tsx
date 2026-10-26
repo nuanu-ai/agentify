@@ -1090,16 +1090,36 @@ describe("an order's facts", () => {
     expect(details).toContain("You can still deliver it late");
     expect(details).toContain("Delivering late");
     expect(details).toContain("Close fulfillment");
-  });
-
-  it("say no deadline passed for an order its integration refused, and the deadline still running for one in progress", () => {
-    const refused = detailsText(opened(SAME_HEAD), SAME_HEAD);
+    // A deadline still running is said as the deadline, not as one passed.
     const running = detailsText(opened(SAME_TAIL), SAME_TAIL);
-
-    expect(refused).toContain("your integration refused");
-    expect(refused).not.toContain("Delivery deadline");
     expect(running).toContain("Delivery deadline 2026-10-12 17:42:05 UTC");
     expect(running).not.toContain("Delivery deadline passed");
+  });
+
+  it("are said in the order they happened, so a payment after the closure comes after it", () => {
+    const closedThenPaid = OrderListSchema.parse({
+      orders: ordersOf([{ id: FIRST, status: "fulfillment_closed" }]).orders.map((order) => ({
+        ...order,
+        payment_status: "paid",
+        merchant_closure: { closed_at: "2026-10-12T16:50:00Z" },
+      })),
+    });
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(
+          "live",
+          CARDS,
+          closedThenPaid,
+          closedThenPaid,
+          new URLSearchParams({ details: FIRST }),
+          { [FIRST]: { unfulfilled: null, paidAt: "2026-10-12T17:10:00Z", deadline: null } },
+        )}
+      />
+    ));
+
+    expect(detailsText(html, FIRST)).toMatch(
+      /Price set 2026-10-12 16:40:00 UTC Closed by you 2026-10-12 16:50:00 UTC Paid 2026-10-12 17:10:00 UTC/,
+    );
   });
 
   it("are told on the order's row in Needs you, where the deadline's passing is read beside its cause", () => {
@@ -1108,5 +1128,96 @@ describe("an order's facts", () => {
     expect(text).toMatch(
       /delivery window ran out[\s\S]*Delivering late[\s\S]*Delivery deadline passed 2026-10-12 17:40:05 UTC/,
     );
+  });
+});
+
+describe("the way on for an unfulfilled order", () => {
+  const detailsOf = (html: string, id: string) =>
+    new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "";
+  const SDK_DOCS = 'href="/docs/orders#confirming-a-delivery-with-a-separate-call"';
+  const PARCELS = 'href="/docs/woocommerce#parcels"';
+  const RECOVER = `/integrations/woocommerce/recover/${SAME_HEAD}`;
+  const PARCEL_REFUSED = idOf("5a5a", "0001");
+  const LOST = idOf("5a5a", "0002");
+  const SDK = idOf("5a5a", "0003");
+
+  const unfulfilled = ordersOf(
+    [FIRST, SAME_HEAD, PARCEL_REFUSED, LOST, SDK].map((id) => ({ id, status: "unfulfilled" })),
+  );
+  const cause = (unfulfilled: "deadline_passed" | "refused") => ({
+    unfulfilled,
+    paidAt: null,
+    deadline: null,
+  });
+  const opened = (id: string) =>
+    detailsOf(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(
+            "live",
+            CARDS,
+            unfulfilled,
+            unfulfilled,
+            new URLSearchParams({ details: id }),
+            {
+              [FIRST]: cause("deadline_passed"),
+              [SAME_HEAD]: cause("deadline_passed"),
+              [PARCEL_REFUSED]: cause("refused"),
+              [LOST]: cause("refused"),
+              [SDK]: cause("deadline_passed"),
+            },
+            {},
+            undefined,
+            {},
+            {
+              [FIRST]: { kind: "parcel" },
+              [SAME_HEAD]: { kind: "download", recover: RECOVER },
+              [PARCEL_REFUSED]: { kind: "parcel" },
+              [LOST]: { kind: "download", recover: null },
+            },
+          )}
+        />
+      )),
+      id,
+    );
+
+  it("is the integration's late delivery for an order the merchant's own code holds", () => {
+    const details = opened(SDK);
+
+    expect(readable(details)).toContain("You can still deliver it late");
+    expect(details).toContain(SDK_DOCS);
+  });
+
+  it("is marking the order Completed in WooCommerce for a parcel the shop connector holds", () => {
+    const details = opened(FIRST);
+
+    expect(readable(details)).toContain("mark the order Completed in WooCommerce");
+    expect(details).toContain(PARCELS);
+    expect(details).not.toContain(SDK_DOCS);
+  });
+
+  it("is no shipment at all for a parcel the connector refused, only the closure", () => {
+    const details = opened(PARCEL_REFUSED);
+
+    expect(readable(details)).toContain("Do not ship it");
+    expect(readable(details)).not.toMatch(/still (deliver|ship)/);
+    expect(details).toContain(PARCELS);
+  });
+
+  it("is the connector's recovery for a download it can still deliver", () => {
+    const details = opened(SAME_HEAD);
+
+    expect(readable(details)).toContain("You can still deliver it late");
+    expect(details).toContain(`href="${RECOVER}"`);
+    expect(details).not.toContain(SDK_DOCS);
+  });
+
+  it("offers no late delivery for a download the connector cannot deliver", () => {
+    const details = opened(LOST);
+
+    expect(readable(details)).not.toContain("late");
+    expect(readable(details)).toContain("Close fulfillment with an explanation to the buyer");
+    expect(details).not.toContain(SDK_DOCS);
+    expect(details).not.toContain("/integrations/woocommerce/recover/");
   });
 });
