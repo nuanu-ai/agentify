@@ -6,37 +6,33 @@
  */
 
 import { Button, Field } from "@agentify/ui";
-import { useRouteLoaderData } from "react-router";
+import { useEffect, useState } from "react";
 import type { ChooseNameView, MerchantView } from "../../src/page-services.js";
 import type { Chrome } from "../answer.js";
 import { GatePage } from "../components/gate-page.js";
 import { PostForm } from "../components/post-form.js";
+// The cards in front of the dashboard keep one rhythm, the sign-in's.
+import styles from "./sign-in.module.css";
 
 /**
- * Only the same-origin press makes the merchant; a press that did not make one
- * leaves the person here, signed in, to press again.
+ * Only the same-origin press makes the merchant: an account is made at sign-in,
+ * and the scanner signs people in too, so a merchant is made only for somebody
+ * who asked the dashboard for one. A press that did not make one leaves the
+ * person here, signed in, to press again. The header names who is signed in.
  */
 export function MerchantScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: MerchantView }>) {
-  const gate = useRouteLoaderData<{ who: string }>("routes/gate");
-  if (gate === undefined) {
-    throw new Error("the merchant screen was drawn outside the gate, where no address is known");
-  }
   return (
-    <GatePage chrome={chrome} title="Open a seller dashboard">
-      <div className="gate-card">
-        <h1>Open a seller dashboard</h1>
-        <p>
-          You are signed in as <strong>{gate.who}</strong>.
-        </p>
+    <GatePage chrome={chrome} title="Sell to AI agents">
+      <div className={`gate-card ${styles.card}`}>
+        <h1>Sell to AI agents</h1>
         {view.unavailable ? (
           <p className="problem">
-            Your seller dashboard was not opened because of a fault on our side. You are still
-            signed in, so pressing again needs no new link.
+            Your seller dashboard did not open because of a fault on our side. Try again.
           </p>
         ) : (
           <p>
-            A seller dashboard is where your engineer publishes what you sell to agents and where
-            the orders arrive. Nothing is made until you press the button.
+            Your seller dashboard holds the products you offer to AI agents and the orders they
+            place.
           </p>
         )}
         <PostForm action="/merchant">
@@ -48,17 +44,24 @@ export function MerchantScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
 }
 
 /**
- * No navigation: this is the last step of first-time setup. Skipping is a link
- * to the cards, where the same missing-name notice waits with the page that
- * fixes it. The example is the shape of the common mistake: the name people
- * already know, not a description of the goods, because a catalogue written
- * into this box becomes the listing name and nothing further down the line
- * corrects it.
+ * No navigation: this is the last step of first-time setup. Choosing later is a
+ * link to the cards, where the same missing-name notice waits with the page that
+ * fixes it. The advice is against the common mistake, a description of the
+ * goods, because a catalogue written into this box becomes the listing name and
+ * nothing further down the line corrects it.
+ *
+ * With the box empty the only way on is to choose later, so the button waits
+ * for a name. It is served pressable, as every button that waits here is,
+ * because nothing could enable it again where the page's script did not run;
+ * the server refuses an empty name for that browser.
  */
 export function ChooseNameScreen({
   chrome,
   view,
 }: Readonly<{ chrome: Chrome; view: ChooseNameView }>) {
+  const [typed, setTyped] = useState(view.typed);
+  const [alive, setAlive] = useState(false);
+  useEffect(() => setAlive(true), []);
   // The rule is the box's line until something is refused; then the refusal
   // is, and the rule follows it unless the refusal already says it.
   const line =
@@ -68,14 +71,17 @@ export function ChooseNameScreen({
         : { hint: view.rule }
       : { error: view.problem };
   return (
-    <GatePage chrome={chrome} title="The name your products are sold under">
-      <PostForm className="gate-card" action="/choose-name">
+    <GatePage chrome={chrome} title="Choose a seller name">
+      <PostForm className={`gate-card ${styles.card}`} action="/choose-name">
         {(pending) => (
           <>
-            <h1>Choose your seller name</h1>
-            <p>Your account is ready. Choose the seller name buyers will see.</p>
+            <h1>Choose a seller name</h1>
+            <p>
+              Buyers see it beside your products and in every payment they approve, so use the name
+              people know you by. You can change it later.
+            </p>
             <Field
-              label="The name your products are sold under"
+              label="Seller name"
               id="seller_name"
               name="seller_name"
               type="text"
@@ -84,22 +90,17 @@ export function ChooseNameScreen({
               defaultValue={view.typed}
               autoFocus
               required
+              onChange={(event) => setTyped(event.currentTarget.value)}
               {...line}
             />
             {view.problem !== undefined && view.rule !== null ? (
               <p className="quiet">{view.rule}</p>
             ) : null}
-            <Button pending={pending}>Use this name</Button>
-            <p>
-              Buyers see this seller name beside your products and in the payment they approve. Use
-              the name people already know you by, rather than a description of what you sell.
-            </p>
-            <p className="quiet">
-              You can change it in <a href={`${chrome.base}/settings`}>Settings</a>; until it is
-              set, nothing you publish goes on sale.
-            </p>
-            <p className="quiet gate-skip">
-              Not decided yet? <a href={`${chrome.base}/cards`}>Leave it for now</a>.
+            <Button pending={pending} disabled={alive && typed.trim() === ""}>
+              Use this name
+            </Button>
+            <p className={`quiet gate-skip ${styles.foot}`}>
+              <a href={`${chrome.base}/cards`}>Choose later</a>. Nothing goes on sale until you do.
             </p>
           </>
         )}

@@ -8,8 +8,8 @@
  */
 
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
-import type { ReactElement } from "react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
@@ -81,7 +81,7 @@ describe("opening a seller dashboard", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: true }} />);
 
     expect(readable(/<p class="problem">[\s\S]*?<\/p>/.exec(html)?.[0] ?? "")).toMatch(
-      /not opened because of a fault on our side/,
+      /fault on our side/,
     );
     expect(formTo(html, "post", "/merchant")?.fields.get(DRAWN_FOR)).toBe(WHO);
   });

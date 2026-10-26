@@ -8,13 +8,14 @@ import { SellerSiteSchema, ServiceNameSchema } from "@nuanu-ai/agentify-contract
 import { STOP_ALL_SELLING } from "./control-labels.js";
 
 /**
- * The rule itself is the contract's `ServiceNameSchema`, the discovery
- * catalogue's own rule, and is applied by asking it; only the sentence is
- * written out, because the schema reports one message per broken rule.
+ * The rule itself is the contract's `ServiceNameSchema`, which holds the name to
+ * what the payment network's public listing of sellers carries, and is applied
+ * by asking it; only the sentence is written out, because the schema reports
+ * one message per broken rule. Spaces at either end are trimmed before the
+ * rule is asked, so the sentence does not mention them.
  */
 export const NAME_RULE =
-  "Use 1 to 32 characters of printable ASCII: Latin letters, numbers, spaces or common punctuation," +
-  " as plain text, without HTML tags or codes such as &amp;. Spaces at either end are removed.";
+  "The payment network allows up to 32 characters: letters A to Z, numbers, spaces and punctuation.";
 
 /**
  * The rule whole, then what the person cannot see: that nothing was written.
@@ -22,12 +23,17 @@ export const NAME_RULE =
  * rather than the gateway's refusal, which names a route rather than a page.
  */
 export const NAME_REFUSED =
-  "Use 1 to 32 characters of printable ASCII (Latin letters, numbers, spaces or common punctuation)" +
-  " as plain text, without HTML tags or codes such as &amp;. Your name was not saved.";
+  "The payment network allows only letters A to Z, numbers, spaces and punctuation, up to 32" +
+  " characters. Your name was not saved.";
 
-export const NAME_NEEDED =
-  "A name is needed here. If you have not settled on one yet, leave this for now with the link" +
-  " below and come back to it in your settings.";
+/**
+ * Plain text is Agentify's own rule rather than the network's, so its refusal
+ * does not lend it the network's name.
+ */
+const NAME_NOT_PLAIN =
+  "Write the name as plain text, without HTML tags or codes such as &amp;. Your name was not saved.";
+
+export const NAME_NEEDED = "Enter a name, or choose one later.";
 
 /**
  * Emptying the name is refused by rule: a card on sale with nobody named beside
@@ -38,8 +44,17 @@ export const NAME_CANNOT_BE_TAKEN_AWAY =
   `The seller name cannot be empty once you have an account. To stop selling, use ${STOP_ALL_SELLING}` +
   " on the Cards screen; your cards stay there until you resume.";
 
-export const whatIsWrongWithTheName = (name: string): string | null =>
-  ServiceNameSchema.safeParse(name).success ? null : NAME_REFUSED;
+/**
+ * The listing's own limits are checks of length and character; what is left
+ * over is the plain-text rule, the one refinement the schema adds of its own.
+ */
+export const whatIsWrongWithTheName = (name: string): string | null => {
+  const checked = ServiceNameSchema.safeParse(name);
+  if (checked.success) return null;
+  return checked.error.issues.every((issue) => issue.code === "custom")
+    ? NAME_NOT_PLAIN
+    : NAME_REFUSED;
+};
 
 /**
  * The form is the contract's `SellerSiteSchema`, applied by asking it. The

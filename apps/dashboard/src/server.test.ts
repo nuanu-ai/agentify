@@ -2381,7 +2381,7 @@ describe("choosing the name buyers read", () => {
     expect(screen.html).toContain('name="seller_name"');
     // What it is for: buyers read it beside the products.
     expect(text).toMatch(/buyers/i);
-    expect(text).toMatch(/name people already know/i);
+    expect(text).toMatch(/name people know you by/i);
     // The catalogue's rule, before anybody types.
     expect(text).toMatch(/32 characters/);
     // That it can be changed, and where.
@@ -2432,7 +2432,7 @@ describe("choosing the name buyers read", () => {
     for (const name of ["x".repeat(33), "Кириллица", "  "]) {
       const answered = await running.browser.post("/choose-name", { seller_name: name });
       expect(answered.status, name).toBe(400);
-      expect(readable(answered.html), name).toMatch(/not saved|name is needed/i);
+      expect(readable(answered.html), name).toMatch(/not saved|enter a name/i);
       expect(await listedAs(running), name).toBeNull();
     }
   });
@@ -2447,7 +2447,7 @@ describe("choosing the name buyers read", () => {
     const answered = await running.browser.post("/choose-name");
 
     expect(answered.status).toBe(400);
-    expect(readable(answered.html)).toMatch(/name is needed/i);
+    expect(readable(answered.html)).toMatch(/enter a name/i);
     // The way past stays, for somebody with nothing to type.
     expect(answered.html).toContain('href="/cards"');
     expect(await listedAs(running)).toBeNull();
@@ -2632,7 +2632,7 @@ describe("the settings screen", () => {
     // Nothing was written, which the merchant cannot see for themselves, and
     // the page still shows what they are listed under.
     expect(readable(answered.html)).toMatch(/not saved/i);
-    expect(readable(answered.html)).toMatch(/printable ASCII/i);
+    expect(readable(answered.html)).toMatch(/payment network/i);
     expect(answered.html).toContain(`value="${"x".repeat(33)}"`);
     expect(readable(answered.html)).toContain(running.harnessed.merchant.name);
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
