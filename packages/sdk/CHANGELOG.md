@@ -1,5 +1,18 @@
 # Merchant SDK release history
 
+## 0.9.2
+
+### Patch Changes
+
+- eb685a4: The README no longer states Agentify's commission, and the doc comment of
+  `orders.list` no longer states how long an order that ended with nothing
+  charged is kept: each links the page of the documentation that names it, from
+  the gateway's own numbers. Nothing the package does changes.
+- Updated dependencies [f567a5d]
+- Updated dependencies [247ab83]
+- Updated dependencies [8519cb7]
+  - @nuanu-ai/agentify-contracts@0.16.0
+
 ## 0.9.1
 
 ### Patch Changes
