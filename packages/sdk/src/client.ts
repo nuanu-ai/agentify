@@ -267,8 +267,10 @@ export interface OrdersNamespace {
    * one whose payment completed after you closed it. An order
    * that was priced and never paid never reached the handler, so it is not on
    * that list; `get` still reads it until it is deleted: an order that ended
-   * rejected or expired with nothing charged or held is deleted thirty days
-   * after it was last written, and then leaves every list.
+   * rejected or expired with nothing charged or held is deleted a fixed time
+   * after it was last written, and then leaves every list ([Finding out where
+   * an order stands](https://agentify.ad/docs/orders#finding-out-where-an-order-stands)
+   * names the time).
    *
    * An order this release cannot read, such as one carrying a field the
    * contract version it speaks does not allow, is left out rather than
