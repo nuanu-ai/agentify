@@ -187,7 +187,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter @agentify/browser-observer-actor exec playwright install --with-deps chromium
+      - run: scripts/install-chromium.sh @agentify/browser-observer-actor
 
       - run: pnpm scanner:test:actor
 
@@ -245,7 +245,7 @@ jobs:
     name: screens
     needs: secret_scan
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -258,7 +258,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter @agentify/gallery exec playwright install --with-deps --only-shell chromium
+      - run: scripts/install-chromium.sh @agentify/gallery --only-shell
 
       - run: pnpm gallery
 
