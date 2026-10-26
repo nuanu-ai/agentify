@@ -119,7 +119,13 @@ export function ordersFor(parts: AdminParts): OrdersPages {
           found = "unread";
         }
       }
-      const view = findView(q, found, lookupOf(q).kind === "transaction");
+      const kind = lookupOf(q).kind;
+      const view = findView(
+        q,
+        found,
+        kind === "transaction",
+        kind === "none" ? "not-read" : "looked-up",
+      );
       return view.kind === "open"
         ? { kind: "redirect", location: `${parts.config.basePath}${view.to}` }
         : { kind: "view", view, ...(view.kind === "unread" ? { status: 503 } : {}) };

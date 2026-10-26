@@ -7,6 +7,7 @@
 import type { SurfaceMode } from "@agentify/core";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
+import { findView } from "../../src/admin/orders-view.js";
 import type { StepUpLink, StepUpView } from "../../src/admin/step-up.js";
 import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
@@ -94,6 +95,18 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
     },
     { unavailable: true },
   ),
+  {
+    id: "dashboard-admin-find-not-read",
+    screen: "Find a record",
+    when: "An operator types a shop's name into Find, as a merchant said it on a call.",
+    cause:
+      "Find reads identifiers, addresses, sites and transactions, so it looked nothing up and offers the merchants' search for the text instead.",
+    path: "/admin/find?q=City+Walking+Tours",
+    mode: "live",
+    loaded: {
+      "routes/admin/find": findView("City Walking Tours", [], false, "not-read"),
+    },
+  },
   {
     id: "dashboard-admin-no-such-page",
     screen: "There is no such page",

@@ -971,3 +971,29 @@
 .op-form > .row + .op-answer {
   margin-top: var(--gap-caption);
 }
+
+/* The lookup's own page: its box as tall as its button, what it reads clear
+   under them, and the bar's box, which would be a second one, put away. */
+.op-find .search {
+  max-width: 30rem;
+}
+
+.op-find .search input {
+  min-height: 48px;
+}
+
+.op-find .search > svg {
+  top: 15px;
+}
+
+.op-find + .op-find-note {
+  margin-top: var(--space-block);
+}
+
+.app-frame:has(.op-find) .op-lookup {
+  display: none;
+}
+
+.list-empty > p + p {
+  margin-top: var(--space-tight);
+}
