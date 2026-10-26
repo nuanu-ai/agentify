@@ -170,8 +170,8 @@ export const ACCOUNT_WORDS: Readonly<
     fix: { to: "/settings", words: "Set it in Settings" },
   },
   out_of_touch: {
-    title: "Prepaid purchases are refused",
-    says: "Your integration has not connected yet, so new purchases that charge before delivery are refused until it does.",
+    title: "Your cards are off sale",
+    says: "Your integration has not connected yet, so agents do not see your cards in the catalogue and new purchases are refused until it does.",
     fix: null,
   },
   busy: {
@@ -218,7 +218,7 @@ export const liveSalesStoppedSince = (when: string, note: string | null): string
 
 /** The out-of-touch reason's sentence where the integration did connect once, at `when`. */
 export const notConnectedSince = (when: string): string =>
-  `Your integration has not connected since ${when}, so new purchases that charge before delivery are refused until it connects again.`;
+  `Your integration has not connected since ${when}, so agents do not see your cards in the catalogue and new purchases are refused until it connects again.`;
 
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on

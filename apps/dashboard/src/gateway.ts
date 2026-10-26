@@ -288,9 +288,9 @@ export interface GatewayClient {
       readonly payoutWallet: string | null;
       readonly liveApproved: boolean;
       /**
-       * Present while the merchant's purchases that charge before their goods
-       * are refused because their process has not polled: when it last did,
-       * or null where it never has.
+       * Present while the merchant's purchases are refused, and their cards
+       * left out of the catalogue, because their process has not polled: when
+       * it last did, or null where it never has.
        */
       readonly outOfTouch: { readonly since: number | null } | null;
       /** Whether as many purchases wait for payment as the door allows, so the next is refused. */

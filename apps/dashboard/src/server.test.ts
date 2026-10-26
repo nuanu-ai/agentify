@@ -4080,7 +4080,7 @@ describe("the banner about the account", () => {
     expect(readable(cards.html)).not.toContain("could not be checked");
   });
 
-  it("says over Cards and Orders when the integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
+  it("says over Cards and Orders when the integration last connected while purchases are refused for its silence, and no longer once it polls", async () => {
     const { browser, gateway, harnessed } = await started();
     await publish(gateway, esimCard);
     await browser.signIn();
