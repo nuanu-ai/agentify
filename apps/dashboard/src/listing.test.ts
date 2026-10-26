@@ -74,6 +74,9 @@ describe("a list cut short", () => {
     expect(named("")).toStrictEqual(["[1]", 2, 3, 4, 5, "…", 20]);
     expect(named("page=10")).toStrictEqual([1, "…", 9, "[10]", 11, "…", 20]);
     expect(named("page=19")).toStrictEqual([1, "…", 16, 17, 18, "[19]", 20]);
+    // A gap never stands for one page alone: that page is named instead.
+    expect(named("page=4")).toStrictEqual([1, 2, 3, "[4]", 5, "…", 20]);
+    expect(named("page=17")).toStrictEqual([1, "…", 16, "[17]", 18, 19, 20]);
   });
 
   it("leads both ways from a page in the middle, and stops at the last", () => {
