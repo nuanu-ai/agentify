@@ -106,6 +106,18 @@ describe("the merchant's recovery controls", () => {
     }
   });
 
+  it("says only that the last press is unknown, and leaves what the saved sale says to the reload", () => {
+    const pressed = (shopOrder: "none" | "unknown") =>
+      draw("unavailable", null, {
+        message: "We don't know if this worked.",
+        unknown: true,
+        unavailable: { shopOrder, instead: "nothing" },
+      });
+
+    expect(pressed("unknown")).toBe(pressed("none"));
+    expect(pressed("unknown")).toContain(`href="/dashboard${PATH}"`);
+  });
+
   it("says why a typed shop order was refused under its box, and marks the box", () => {
     const html = draw(
       "link",
