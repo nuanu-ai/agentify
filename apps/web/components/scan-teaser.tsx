@@ -91,6 +91,7 @@ export function ScanTeaser({
                     label="Copy AI fix prompt"
                     promptUrl={`/api/v1/scans/${encodeURIComponent(scanId)}/remediation-prompt?scope=teaser`}
                     secondary
+                    subject="AI fix prompt"
                   />
                 ) : null}
               </div>

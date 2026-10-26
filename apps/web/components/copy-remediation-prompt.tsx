@@ -1,5 +1,7 @@
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 
+import { useCopyByHand } from "../lib/copy-by-hand";
+import { askBrowserToDownload } from "../lib/download";
 import { type ResumeIntent as GateIntent, rememberResumeIntent } from "../lib/resume-intent";
 import styles from "./copy-remediation-prompt.module.css";
 import row from "./report-actions.module.css";
@@ -55,6 +57,7 @@ export function CopyRemediationPrompt({
   promptUrl,
   tokenStorageKey,
   secondary = false,
+  subject = "fix prompt",
 }: Readonly<{
   allowDownload?: boolean;
   contactGateScanId?: string;
@@ -64,13 +67,19 @@ export function CopyRemediationPrompt({
   prompt?: string;
   promptUrl?: string;
   secondary?: boolean;
+  /** What is copied, in lower case, as the page's words and the box's label name it. */
+  subject?: string;
   tokenStorageKey?: string;
 }>) {
   const [state, setState] = useState<CopyState>("idle");
   const [resolvedPrompt, setResolvedPrompt] = useState(prompt ?? "");
   const [gateIntent, setGateIntent] = useState<GateIntent>("copy-prompt");
   const textareaId = useId();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [fallbackPresses, setFallbackPresses] = useState(0);
+  const { box, events, selected } = useCopyByHand(
+    state === "fallback" ? fallbackPresses : undefined,
+  );
+  const Subject = subject.charAt(0).toUpperCase() + subject.slice(1);
 
   async function copy() {
     let content: string;
@@ -92,10 +101,7 @@ export function CopyRemediationPrompt({
       );
     } catch {
       setState("fallback");
-      window.setTimeout(() => {
-        textareaRef.current?.focus();
-        textareaRef.current?.select();
-      });
+      setFallbackPresses((presses) => presses + 1);
     }
   }
 
@@ -147,13 +153,7 @@ export function CopyRemediationPrompt({
       setState("loading");
       if (!(await ensureContactAccess("download-md"))) return;
       if (!downloadUrl) throw new Error("download_url_missing");
-      const anchor = document.createElement("a");
-      anchor.href = downloadUrl;
-      anchor.download = "";
-      anchor.hidden = true;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
+      askBrowserToDownload(downloadUrl);
       setState("idle");
     } catch {
       setState("error");
@@ -198,23 +198,25 @@ export function CopyRemediationPrompt({
       </div>
       <span aria-live="polite" className={messageShown ? styles.status : "sr-only"}>
         {state === "copied"
-          ? "Prompt copied to your clipboard."
+          ? `${Subject} copied to your clipboard.`
           : state === "gated"
             ? gateStatusMessage(gateIntent)
             : state === "fallback"
-              ? "Clipboard access was unavailable. The prompt is selected below for manual copying."
+              ? selected
+                ? `Clipboard access was unavailable. The ${subject} is selected below, ready to copy.`
+                : `Clipboard access was unavailable. Copy the ${subject} from the box below.`
               : state === "error"
-                ? "The prompt could not be prepared. Check your access and try again."
+                ? `The ${subject} could not be prepared. Check your access and try again.`
                 : ""}
       </span>
       {state === "fallback" ? (
         <div className={styles.fallback}>
-          <label htmlFor={textareaId}>Fix prompt</label>
+          <label htmlFor={textareaId}>{Subject}</label>
           <textarea
             id={textareaId}
-            onFocus={(event) => event.currentTarget.select()}
+            {...events}
             readOnly
-            ref={textareaRef}
+            ref={box}
             rows={8}
             value={resolvedPrompt}
           />

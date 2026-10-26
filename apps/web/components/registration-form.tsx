@@ -1,8 +1,10 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
+import { PHONE_INPUT_PATTERN } from "@agentify/scanner-contracts/browser";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 import { waitLabel } from "../lib/link-answer";
 import { press } from "../lib/press";
+import { type RegistrationField, refusedField } from "../lib/registration-refusals";
 import { useVisitor } from "../lib/visitor";
 import styles from "./registration-form.module.css";
 
@@ -37,10 +39,15 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
   const visitor = useVisitor();
   const emailId = useId();
   const phoneId = useId();
+  const errorId = useId();
   const [state, setState] = useState<RegistrationState>("idle");
   const [message, setMessage] = useState("");
   const [sentTo, setSentTo] = useState("");
   const [resendWait, setResendWait] = useState(0);
+  // A new object for every refusal, so a second refusal of the same field
+  // takes the visitor back to it as well.
+  const [refused, setRefused] = useState<Readonly<{ field: RegistrationField }>>();
+  const formRef = useRef<HTMLFormElement>(null);
   const registrationStarted = useRef(false);
 
   function markRegistrationStarted() {
@@ -52,6 +59,12 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       }),
     );
   }
+
+  useEffect(() => {
+    if (refused === undefined) return;
+    const field = formRef.current?.elements.namedItem(refused.field);
+    if (field instanceof HTMLElement) field.focus();
+  }, [refused]);
 
   useEffect(() => {
     if (resendWait <= 0) return;
@@ -72,6 +85,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     const email = signedIn ? visitor.email : String(form.get("email") ?? "");
     setState("sending");
     setMessage("");
+    setRefused(undefined);
     const outcome = await press(
       `/api/v2/scans/${encodeURIComponent(scanId)}/registrations`,
       {
@@ -108,6 +122,9 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     if (outcome.kind === "refused") {
       setState(outcome.refusal.code === "signed_in_as_another_address" ? "stale" : "error");
       setMessage(outcome.refusal.message);
+      const field = refusedField(outcome.refusal.code);
+      // A signed-in ask names the session's address, which has no field here.
+      if (field !== undefined && !(signedIn && field === "email")) setRefused({ field });
       setResendWait(outcome.refusal.retry_after_seconds ?? 0);
       return;
     }
@@ -133,6 +150,16 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       </p>
     );
   const signedIn = visitor.status === "signed_in";
+  const errorAt = (field: RegistrationField) =>
+    state === "error" && refused?.field === field ? `${errorId}-${field}` : undefined;
+  const fieldError = (field: RegistrationField) => {
+    const id = errorAt(field);
+    return id === undefined ? null : (
+      <span aria-live="polite" className={styles.error} id={id}>
+        {message}
+      </span>
+    );
+  };
   // The site has said this page was loaded for somebody other than who is
   // signed in now, so the page offers only a reload.
   if (state === "stale")
@@ -151,6 +178,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
   return (
     <form
       className={styles.form}
+      ref={formRef}
       onFocusCapture={markRegistrationStarted}
       onSubmit={(event) => void submit(event)}
     >
@@ -178,7 +206,16 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
       {signedIn ? null : (
         <div>
           <label htmlFor={emailId}>Email</label>
-          <input id={emailId} name="email" type="email" autoComplete="email" required />
+          <input
+            aria-describedby={errorAt("email")}
+            aria-invalid={errorAt("email") ? true : undefined}
+            autoComplete="email"
+            id={emailId}
+            name="email"
+            required
+            type="email"
+          />
+          {fieldError("email")}
         </div>
       )}
       <div>
@@ -186,18 +223,21 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           Phone <span className={styles.optional}>optional</span>
         </label>
         <input
-          aria-describedby={`${phoneId}-hint`}
+          aria-describedby={[`${phoneId}-hint`, errorAt("phone")].filter(Boolean).join(" ")}
+          aria-invalid={errorAt("phone") ? true : undefined}
           autoComplete="tel"
           id={phoneId}
           inputMode="tel"
           name="phone"
-          pattern="\+[1-9][0-9 ()-]{7,20}"
+          pattern={PHONE_INPUT_PATTERN}
           placeholder="+1 415 555 0123"
+          title="Start with + and the country code, as in +1 415 555 0123: 8 to 15 digits, with a space, dot, dash or bracket between them if you like."
           type="tel"
         />
         <span className={styles.hint} id={`${phoneId}-hint`}>
           With the country code. We store it as contact information; only your email is verified.
         </span>
+        {fieldError("phone")}
       </div>
       <div>
         <label htmlFor={`${emailId}-role`}>Your role</label>
@@ -213,7 +253,13 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
         <span>I own or manage this site.</span>
       </label>
       <label className={styles.check}>
-        <input name="dataset_reuse_acknowledged" type="checkbox" required />
+        <input
+          aria-describedby={errorAt("dataset_reuse_acknowledged")}
+          aria-invalid={errorAt("dataset_reuse_acknowledged") ? true : undefined}
+          name="dataset_reuse_acknowledged"
+          required
+          type="checkbox"
+        />
         <span>
           I acknowledge the{" "}
           <a href="/privacy" rel="noopener" target="_blank">
@@ -222,6 +268,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           .
         </span>
       </label>
+      {fieldError("dataset_reuse_acknowledged")}
       <label className={styles.check}>
         <input name="marketing_email_opt_in" type="checkbox" />
         <span>Send optional product research updates.</span>
@@ -239,7 +286,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           ? "Open the full report"
           : registrationSubmitLabel(state, resendWait)}
       </button>
-      {message && state === "error" ? (
+      {message && state === "error" && refused === undefined ? (
         <p className={styles.error} aria-live="polite">
           {message}
         </p>

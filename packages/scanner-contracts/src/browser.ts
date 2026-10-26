@@ -60,3 +60,12 @@ export const SCAN_STOP_REASONS = [
   "forbidden_redirect",
   "certificate_invalid",
 ] as const;
+
+/**
+ * A phone number as a person types or pastes it: a plus, a country code that
+ * does not start with 0, and 8 to 15 digits in all, with up to two spaces,
+ * dots, dashes or brackets between digits and any spaces around the number. It is written for the HTML `pattern` attribute,
+ * which browsers compile with the `v` flag, and the report request's schema
+ * takes a phone exactly when it matches.
+ */
+export const PHONE_INPUT_PATTERN = "\\s*\\+[1-9](?:[\\s\\(\\)\\.\\-]{0,2}[0-9]){7,14}\\s*";
