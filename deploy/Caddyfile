@@ -198,12 +198,16 @@
 		# A client that prefers Markdown to HTML gets the page's Markdown, as the
 		# scanner answers its own pages: when the Accept header names
 		# text/markdown with a quality above zero (the first expression) and does
-		# not name text/html with one before it (the second). This differs from
-		# the scanner's reading only where the two name different qualities in
-		# the opposite order, such as `text/html;q=0.5, text/markdown`.
+		# not name text/html with one before it (the second). Any other parameter
+		# may stand beside the type or the quality, in either order. A regular
+		# expression cannot compare two qualities, so this differs from the
+		# scanner's reading where text/markdown and text/html, or a wildcard
+		# standing for text/html, carry different qualities, such as
+		# `text/html;q=0.5, text/markdown`, and where a wildcard comes before
+		# text/markdown, such as `*/*, text/markdown`.
 		@docs_markdown {
-			header_regexp Accept `(?i)(?:^|,)\s*text/markdown\s*(?:$|,|;\s*q\s*=\s*(?:1|0*\.\d*[1-9]))`
-			not header_regexp Accept `(?i)(?:^|,)\s*text/html\s*(?:,|;\s*q\s*=\s*(?:1|0*\.\d*[1-9])[^,]*,).*text/markdown`
+			header_regexp Accept `(?i)(?:^|,)\s*text/markdown(?:\s*;\s*(?:[^,;=\sq][^,;]*|q[^,;=\s][^,;]*|q\s*=\s*(?:0*[1-9]\d*(?:\.\d*)?|0*\.\d*[1-9]\d*)\s*)?)*\s*(?:,|$)`
+			not header_regexp Accept `(?i)(?:^|,)\s*text/html(?:\s*;\s*(?:[^,;=\sq][^,;]*|q[^,;=\s][^,;]*|q\s*=\s*(?:0*[1-9]\d*(?:\.\d*)?|0*\.\d*[1-9]\d*)\s*)?)*\s*,.*text/markdown`
 			file {path}.md {path}index.md
 		}
 		handle @docs_markdown {
