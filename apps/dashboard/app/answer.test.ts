@@ -14,7 +14,7 @@ import {
   RouterContextProvider,
 } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { answer, saidAsAsked, sendTo } from "./answer.js";
+import { answer, notesAnswered, saidAsAsked, sendTo } from "./answer.js";
 import { services } from "./services.js";
 
 const SURFACE = { attribute: SURFACE_MARKER_ATTRIBUTE, mode: "live", words: SURFACE_WORDS.live };
@@ -53,12 +53,20 @@ describe("a redirect a press answers with", () => {
 const asked = (method: string, address: string, signal = new AbortController().signal) =>
   ({ request: new Request(address, { method, signal }) }) as Parameters<typeof saidAsAsked>[0];
 
-/** Runs the middleware around what the dashboard's requests came back with. */
+/**
+ * Runs the root's middleware around what the dashboard's requests came back
+ * with, and the gate's inside it for a page behind the gate.
+ */
 const around = async (
   args: Parameters<typeof saidAsAsked>[0],
   results: Record<string, DataStrategyResult>,
+  gated = true,
 ): Promise<Record<string, DataStrategyResult>> =>
-  (await saidAsAsked(args, async () => results)) as Record<string, DataStrategyResult>;
+  (await saidAsAsked(args, async () =>
+    gated
+      ? ((await notesAnswered(args, async () => results)) as Record<string, DataStrategyResult>)
+      : results,
+  )) as Record<string, DataStrategyResult>;
 
 /** The trouble a result now carries, as the error page reads it. */
 const carried = (result: DataStrategyResult | undefined): unknown =>
@@ -159,6 +167,25 @@ describe("a request the page's script sent that failed on its way", () => {
     });
   });
 
+  it("claims no change for a press outside the gate, such as asking for a sign-in link, which is answered alike whether a link went out or not", async () => {
+    await around(
+      asked("POST", "http://dashboard.test/dashboard/sign-in"),
+      { "routes/sign-in": { type: "data", result: data({ screen: "requested" }, 202) } },
+      false,
+    );
+
+    const read = await around(
+      asked("GET", "http://dashboard.test/dashboard/sign-in"),
+      { "routes/sign-in": { type: "error", result: new TypeError("Failed to fetch") } },
+      false,
+    );
+
+    expect(carried(read["routes/sign-in"])).toStrictEqual({
+      kind: "unread",
+      again: "/dashboard/sign-in",
+    });
+  });
+
   it("claims no change for a press the dashboard answered with a refusal", async () => {
     const navigation = new AbortController();
     await around(asked("POST", "http://dashboard.test/dashboard/keys", navigation.signal), {
@@ -212,6 +239,29 @@ describe("a problem the server half answered", () => {
         "Agentify didn't answer in time.",
       ),
     ).toMatchObject({ kind: "unanswered", reopen: "/dashboard/settings/site" });
+  });
+
+  it("carries whether a refused press did nothing, where the server half knows it", () => {
+    const request = new Request("http://dashboard.test/dashboard/settings/payout-wallet", {
+      method: "POST",
+    });
+    const marked = (outcome?: "refused" | "unconfirmed"): unknown => {
+      try {
+        answer(
+          {
+            kind: "problem",
+            problem: { status: 503, said: "Nothing was recorded", ...(outcome ? { outcome } : {}) },
+          },
+          { request, url: new URL(request.url), context },
+        );
+      } catch (thrown) {
+        return (thrown as { data?: unknown }).data;
+      }
+      return undefined;
+    };
+
+    expect(marked("refused")).toMatchObject({ kind: "problem", outcome: "refused" });
+    expect(marked()).not.toHaveProperty("outcome");
   });
 
   it("keeps a refusal's own words, on a read and on a press", () => {

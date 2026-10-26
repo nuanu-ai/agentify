@@ -6336,6 +6336,36 @@ describe("a wallet change waiting on the live deployment", () => {
     expect((await otherDevice.get("/settings")).status).toBe(200);
   });
 
+  it("titles a change the gateway refused as nothing changed when its words say nothing was recorded, and a fault it did not word as not known", async () => {
+    // The message about the change could not be confirmed as sent: a 503 whose
+    // words say nothing was recorded, so the page must not say the change may
+    // have been made. A 500 nobody worded promises nothing either way.
+    const running = await live({
+      client: (real) => ({
+        ...real,
+        issueKey: async () => ({
+          ok: false as const,
+          status: 500,
+          why: "something failed inside Agentify",
+        }),
+      }),
+    });
+    await running.browser.signIn();
+    running.harnessed.announcer.answer = "not_handed_over";
+
+    const refused = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: WAITING,
+    });
+    const faulted = await running.browser.post("/keys", { label: "the nightly job" });
+
+    expect(refused.status).toBe(503);
+    expect(readable(refused.html)).toContain("Nothing was changed");
+    expect(readable(refused.html)).toContain("nothing was recorded");
+    expect(readable(refused.html)).not.toContain("We don't know if this was done");
+    expect(faulted.status).toBe(500);
+    expect(readable(faulted.html)).toContain("We don't know if this was done");
+  });
+
   it("says a change that took effect before the press did take effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // The unwanted change has just landed. It is not cancelled (nothing takes
     // it back at once) and the page must not say so; it signs every other

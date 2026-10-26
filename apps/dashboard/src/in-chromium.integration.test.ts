@@ -707,6 +707,8 @@ describe("a request that fails or stops on its way", () => {
     "says nobody knows whether a press whose answer was lost was done, and leads back to the list it was pressed on with a read that sends nothing again, when %s",
     async (_, fail) => {
       const page = await onTheCards();
+      await page.goto(`${origin}${BASE}/cards?q=room`);
+      await page.waitForLoadState("networkidle");
       const posts: string[] = [];
       page.on("request", (request) => {
         if (request.method() === "POST") posts.push(request.url());
@@ -722,7 +724,7 @@ describe("a request that fails or stops on its way", () => {
 
       expect(await mainText(page)).toMatch(/We don't know if this was done/);
       expect(await mainText(page)).not.toMatch(/could not be loaded/);
-      expect(href).toBe(`${BASE}/cards`);
+      expect(href).toBe(`${BASE}/cards?q=room`);
       await reopen.click();
       await page.waitForURL(`${origin}${href}`);
       await page.waitForLoadState("networkidle");
@@ -731,7 +733,7 @@ describe("a request that fails or stops on its way", () => {
     },
   );
 
-  it("locks what was typed while a save is on its way, sends it whole, and with no answer a few seconds on says the change could not be confirmed, still locked", async () => {
+  it("locks what was typed while a save is on its way, sends it whole, says it is still waiting, and once the server's deadline has passed says the change could not be confirmed, still locked", async () => {
     const page = await onTheCards();
     await page.goto(`${origin}${BASE}/settings`);
     await page.waitForLoadState("networkidle");
@@ -756,19 +758,22 @@ describe("a request that fails or stops on its way", () => {
           seen.typableSoon = String(field?.matches(":enabled:read-write"));
         }, 300);
         setTimeout(() => {
+          seen.waiting = sending.querySelector("[role='status']")?.textContent ?? "";
+        }, 6_000);
+        setTimeout(() => {
           seen.typableLater = String(field?.matches(":enabled:read-write"));
           seen.said = sending.querySelector("[role='status']")?.textContent ?? "";
           seen.reads = sending.querySelector("[role='status'] a")?.getAttribute("href") ?? "";
           seen.saveable = String(!sending.querySelector("button")?.disabled);
           window.stop();
-        }, 6_000);
+        }, 15_000);
       });
     });
     // Not waited for: a click waits for the page it starts, which is held.
     const clicked = form.getByRole("button", { name: "Save" }).click();
     await expect.poll(() => held.length).toBe(1);
     const sent = new URLSearchParams(held[0]?.request().postData() ?? "");
-    await page.waitForTimeout(6_500);
+    await page.waitForTimeout(15_500);
     await held[0]?.abort().catch(() => {});
     await clicked.catch(() => {});
     const seen = await page.evaluate(() => ({ ...document.body.dataset }));
@@ -776,6 +781,7 @@ describe("a request that fails or stops on its way", () => {
     expect(sent.get("seller_site")).toBe("https://rooms.example.com");
     expect(sent.get(DRAWN_FOR)).toBe(PERSON);
     expect(seen).toMatchObject({
+      waiting: "Still waiting for an answer…",
       typableSoon: "false",
       typableLater: "false",
       saveable: "false",
@@ -784,5 +790,6 @@ describe("a request that fails or stops on its way", () => {
     });
     expect(await site.inputValue()).toBe("https://rooms.example.com");
     await page.context().close();
-  });
+    // The site's save waits out the gateway's ten seconds before it says so.
+  }, 40_000);
 });

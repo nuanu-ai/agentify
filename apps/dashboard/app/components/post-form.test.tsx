@@ -10,6 +10,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ANSWER_WITHIN_MS, WALLET_CHANGE_MS } from "../../src/deadlines.js";
 import { PostForm } from "./post-form.js";
 
 afterEach(() => {
@@ -17,8 +18,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/** The settings' site form as the page draws it, under the gate's address, at /settings. */
-const sitePage = () => {
+/**
+ * The settings' site form as the page draws it, under the gate's address, at
+ * /settings; with `waits`, a form whose answer may take that long, as the
+ * payout wallet's does.
+ */
+const sitePage = (waits?: number) => {
   const Stub = createRoutesStub([
     {
       id: "routes/gate",
@@ -27,7 +32,12 @@ const sitePage = () => {
         {
           path: "settings",
           Component: () => (
-            <PostForm document action="/settings/site" className="issue">
+            <PostForm
+              document
+              action="/settings/site"
+              className="issue"
+              {...(waits === undefined ? {} : { answeredWithinMs: waits })}
+            >
               {(pending) => (
                 <>
                   <label htmlFor="seller_site">Your shop's site</label>
@@ -83,18 +93,38 @@ describe("a whole-page save on its way", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("says, a few seconds on with no answer, that the change could not be confirmed, with a read of this page, and stays locked even after Escape", async () => {
+  /** Lets the given time pass on the test's clock. */
+  const waited = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  it("says it is still waiting a few seconds on, with nothing to press, and stays locked even after Escape", async () => {
     vi.useFakeTimers();
     const { site, form } = sitePage();
 
     await saved(site, form);
     fireEvent.keyDown(window, { key: "Escape" });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(6_000);
-    });
+    await waited(4_000);
 
-    const status = screen.getByRole("status");
-    expect(status.textContent).toBe(
+    expect(screen.getByRole("status").textContent).toBe("Still waiting for an answer…");
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(site.readOnly).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save" }).disabled).toBe(true);
+  });
+
+  it("says the change could not be confirmed only once the server's own deadline has passed, with a read of this page, still locked", async () => {
+    vi.useFakeTimers();
+    const { site, form } = sitePage();
+
+    await saved(site, form);
+    await waited(ANSWER_WITHIN_MS);
+    const before = screen.getByRole("status").textContent;
+    await waited(4_000);
+
+    expect(before).toBe("Still waiting for an answer…");
+    expect(screen.getByRole("status").textContent).toBe(
       "We could not confirm whether your change was made. Open this page again to see where it stands; this sends nothing again.",
     );
     expect(screen.getByRole("link", { name: "Open this page again" }).getAttribute("href")).toBe(
@@ -102,6 +132,19 @@ describe("a whole-page save on its way", () => {
     );
     expect(site.readOnly).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save" }).disabled).toBe(true);
+  });
+
+  it("waits out a form's own longer deadline, as a payout wallet change's, before saying it could not be confirmed", async () => {
+    vi.useFakeTimers();
+    const { site, form } = sitePage(WALLET_CHANGE_MS);
+
+    await saved(site, form);
+    await waited(WALLET_CHANGE_MS);
+    const before = screen.getByRole("status").textContent;
+    await waited(4_000);
+
+    expect(before).toBe("Still waiting for an answer…");
+    expect(screen.getByRole("status").textContent).toMatch(/^We could not confirm/);
   });
 
   it("is forgotten without a word when the browser brings the page back from its cache", async () => {
