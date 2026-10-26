@@ -226,12 +226,7 @@ export const textPrice = (text: string): PriceSignal | undefined => {
     const spaced = text[start - 1] === " " ? start - 1 : start;
     const before = text[spaced - 1] === "." && isLetter(text[spaced - 2]) ? spaced - 1 : spaced;
     const prefix = markerBefore(text, before);
-    if (
-      prefix &&
-      !AFTER_ONLY.has(prefix) &&
-      !(oneLetter(prefix) && before !== spaced) &&
-      counts(prefix, amount)
-    )
+    if (prefix && !AFTER_ONLY.has(prefix) && counts(prefix, amount))
       return { source: "text", price: text.slice(before - prefix.length, end) };
     const after = text[end] === " " ? end + 1 : end;
     const suffix = markerAfter(text, after);
