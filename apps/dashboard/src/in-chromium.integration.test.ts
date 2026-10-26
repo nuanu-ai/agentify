@@ -21,10 +21,11 @@ import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
 import express from "express";
-import type { Browser, Locator, Page } from "playwright";
+import type { Browser, Locator, Page, Route } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
+import { DRAWN_FOR } from "./drawn-for.js";
 import { identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { builtPages } from "./pages.js";
@@ -666,4 +667,117 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
   } finally {
     await page.context().close();
   }
+});
+
+describe("a request that fails or stops on its way", () => {
+  /** A failure on the way to the dashboard: the connection dropped, or a proxy answered for it while it restarted. */
+  const FAILURES = [
+    ["the connection drops", (route: Route) => route.abort("connectionreset")],
+    [
+      "a proxy answers 502 in its own words",
+      (route: Route) =>
+        route.fulfill({ status: 502, contentType: "text/html", body: "<h1>502 Bad Gateway</h1>" }),
+    ],
+  ] as const;
+
+  /** The words of the page's main region, spaces folded. */
+  const mainText = async (page: Page): Promise<string> =>
+    ((await page.locator("main").innerText()) ?? "").replace(/\s+/g, " ");
+
+  it.each(FAILURES)(
+    "says a list that could not be read could not be loaded, and offers the same list again, search and all, when %s",
+    async (_, fail) => {
+      const page = await onTheCards();
+      await page.goto(`${origin}${BASE}/orders`);
+      await page.waitForLoadState("networkidle");
+      await page.route(`${origin}${BASE}/orders.data?show=open*`, fail);
+
+      await page.locator(".segments a", { hasText: "Open" }).click();
+      const again = page.getByRole("link", { name: "Try again" });
+      await again.waitFor({ timeout: 5_000 });
+
+      expect(await mainText(page)).toMatch(/could not be loaded/);
+      expect(await mainText(page)).not.toMatch(/went through|may or may not|outcome is unknown/i);
+      expect(await again.getAttribute("href")).toBe(`${BASE}/orders?show=open`);
+      await page.context().close();
+    },
+  );
+
+  it.each(FAILURES)(
+    "says a press whose answer was lost may or may not have been done, and leads back with a read that sends nothing again, when %s",
+    async (_, fail) => {
+      const page = await onTheCards();
+      const posts: string[] = [];
+      page.on("request", (request) => {
+        if (request.method() === "POST") posts.push(request.url());
+      });
+      await page.route(`${origin}${BASE}/cards.data?*`, (route) =>
+        route.request().method() === "POST" ? fail(route) : route.fallback(),
+      );
+
+      await page.locator(".list-row form[action*='pause='] button").first().click();
+      const reopen = page.getByRole("link", { name: "Open the page again" });
+      await reopen.waitFor({ timeout: 5_000 });
+      const href = (await reopen.getAttribute("href")) ?? "";
+
+      expect(await mainText(page)).toMatch(/may or may not have been done/);
+      expect(await mainText(page)).not.toMatch(/could not be loaded/);
+      expect(href).toMatch(new RegExp(`^${BASE}/cards\\?pause=`));
+      await reopen.click();
+      await page.waitForURL(`${origin}${href}`);
+      await page.waitForLoadState("networkidle");
+      expect(posts).toHaveLength(1);
+      await page.context().close();
+    },
+  );
+
+  it("locks what was typed while a save is on its way, sends it whole, and once the page is stopped gives it back saying the outcome is unknown", async () => {
+    const page = await onTheCards();
+    await page.goto(`${origin}${BASE}/settings`);
+    await page.waitForLoadState("networkidle");
+    const held: Route[] = [];
+    await page.route(`${origin}${BASE}/settings/site`, (route) => {
+      if (route.request().method() === "POST") held.push(route);
+      else void route.fallback();
+    });
+    const site = page.getByLabel("Your shop's site");
+    const form = page.locator("form[action$='/settings/site']");
+
+    await site.fill("https://rooms.example.com");
+    // Playwright waits out a page that is loading before it reads one, and the
+    // save's answer is held, so the page reads itself: what the field allows a
+    // moment after the press, and then Escape, which stops a loading page in a
+    // desktop browser, with the stop the browser would make.
+    await form.evaluate((sending) => {
+      const field = sending.querySelector<HTMLInputElement>("input[name='seller_site']");
+      sending.addEventListener("submit", () => {
+        setTimeout(() => {
+          document.body.dataset.typable = String(field?.matches(":enabled:read-write"));
+          document.body.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+          );
+          window.stop();
+        }, 300);
+      });
+    });
+    // Not waited for: a click waits for the page it starts, which is held.
+    const clicked = form.getByRole("button", { name: "Save" }).click();
+    await expect.poll(() => held.length).toBe(1);
+    const sent = new URLSearchParams(held[0]?.request().postData() ?? "");
+    await page.waitForTimeout(600);
+    await held[0]?.abort().catch(() => {});
+    await clicked.catch(() => {});
+    expect(await page.locator("body").getAttribute("data-typable")).toBe("false");
+
+    const status = form.getByRole("status");
+    await status.waitFor({ timeout: 5_000 });
+    expect(sent.get("seller_site")).toBe("https://rooms.example.com");
+    expect(sent.get(DRAWN_FOR)).toBe(PERSON);
+    expect(await site.inputValue()).toBe("https://rooms.example.com");
+    await site.fill("https://rooms.example.com/again", { timeout: 2_000 });
+    expect(await form.getByRole("button", { name: "Save" }).isEnabled()).toBe(true);
+    expect(await status.innerText()).toMatch(/outcome is unknown/i);
+    expect(await status.getByRole("link").getAttribute("href")).toBe(`${BASE}/settings`);
+    await page.context().close();
+  });
 });

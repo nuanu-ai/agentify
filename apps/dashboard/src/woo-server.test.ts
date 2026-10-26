@@ -2236,10 +2236,10 @@ describe("a press that fails inside the dashboard", () => {
     const said = readable(pressed.html);
 
     expect(pressed.status).toBe(500);
-    expect(said).toContain(
-      "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+    expect(said).toContain("may or may not have been done");
+    expect(pressed.html).toMatch(
+      /<a [^>]*href="\/woocommerce\/import"[^>]*>Open the page again<\/a>/,
     );
-    expect(said).toContain("Back to Cards");
     expect(pressed.html).not.toContain("the shops table is not answering");
   });
 });
