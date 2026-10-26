@@ -973,6 +973,9 @@ describe("headers that carry a list of values", () => {
       "unavailable",
     );
     expect(check(challenged('bearer error="invalid_token"'), 11)?.status).toBe("unavailable");
+    expect(check(challenged('Basic realm="staff, bearer tokens only"'), 11)?.status).toBe(
+      "not_applicable",
+    );
   });
 });
 
