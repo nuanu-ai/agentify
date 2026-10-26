@@ -123,10 +123,13 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
    * merchant moves to the shop, and Connect only asked whether they could. A
    * switch refused now, by an order made since, or failed, leaves the shop
    * connected and the merchant selling through their code, which the shop
-   * screen offers to change. It never fails the callback: a failed post makes
-   * the shop delete the key just approved, which the connection now holds.
+   * screen offers to change. Keys short of read and write switch nothing,
+   * since every purchase through them is refused before payment, and that
+   * screen asks to connect again. It never fails the callback: a failed post
+   * makes the shop delete the key just approved, which the connection now holds.
    */
-  const sellThroughTheShop = async (accountId: string): Promise<void> => {
+  const sellThroughTheShop = async (accountId: string, permissions: string): Promise<void> => {
+    if (permissions !== "read_write") return;
     try {
       const person = await identity.byId(accountId);
       if (person === null || person.merchant === null) return;
@@ -205,7 +208,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           `[dashboard] a WooCommerce shop was connected for an account: ${connection.shopUrl}, ${permissions}`,
         ),
       );
-      await sellThroughTheShop(connection.accountId);
+      await sellThroughTheShop(connection.accountId, connection.permissions);
       response.json({ ok: true });
     })().catch(() => {
       // A failure, so the shop takes its key back rather than keeping one

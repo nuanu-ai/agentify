@@ -290,15 +290,17 @@ moment you approve access: from then the products your code published are off
 sale and your code receives no orders until you disconnect the shop. The
 WooCommerce page says how many products that takes off sale before you press
 Connect. Until the keys arrive nothing changes, so if you decline or close the
-approval screen, your code goes on selling as before.
+approval screen, your code goes on selling as before. Keys that grant less than
+Read/Write switch nothing either, because every purchase through them would be
+refused; the page asks you to connect again and approve Read/Write.
 
 Connect and Sell through this shop are refused while an order from your code
-is still open, and each such order has to end first. A purchase its buyer has not paid yet ends within a
-minute, paid or lapsed, so the page asks you to try again then. An order your
-code took on ends when your code delivers or refuses it, or when its time runs
-out; the page names those orders and links to them on Orders. If you paused
-all sales on Products to keep new orders from arriving meanwhile, selling stays
-paused after the switch until you resume it there.
+is still open, and each such order has to end first. A purchase its buyer has
+not paid yet ends within a minute, paid or lapsed, so the page asks you to try
+again then. An order your code took on ends when your code delivers or refuses
+it, or when its time runs out; the page names those orders and links to them on
+Orders. If you paused all sales on Products to keep new orders from arriving
+meanwhile, selling stays paused after the switch until you resume it there.
 
 An order from your code can also open while you are approving. The shop is then
 connected when its keys arrive, but you keep selling through your code, and the
@@ -337,10 +339,10 @@ order:
 
 | Heading | What happened | What you do |
 | --- | --- | --- |
-| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published, stock tracking (Manage stock) turned on, or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
+| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
 | No verdict | Agentify did not answer about it, so whether it was published is not known | import again; it does not double products |
 | Not attempted | the import stopped at the first product with no verdict | import again |
-| Not supported | the connector does not sell its kind, such as a variable or grouped product, or a download that also ships | nothing in the shop's product puts it right |
+| Not supported | the connector does not sell its kind, such as a variable or grouped product, a product with stock tracking, or a download that also ships | nothing in the shop's product puts it right |
 | Published | the product is on Products, folded under the other headings | nothing; whether it sells is on Products |
 
 ## When a product changes in the shop

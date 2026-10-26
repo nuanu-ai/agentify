@@ -172,9 +172,9 @@ export const heldBy = (
   return {
     to,
     orders: still.map((order) => order.id),
-    quick: still.every(
-      (order) => order.status === "in_progress" && order.payment_status === "not_paid",
-    ),
+    quick:
+      still.length > 0 &&
+      still.every((order) => order.status === "in_progress" && order.payment_status === "not_paid"),
     parcels: still.some((order) => order.ship_to !== undefined),
   };
 };
@@ -190,12 +190,12 @@ export type Said =
   | Readonly<{ running: true }>;
 
 const heldSays = ({ to, orders, quick, parcels }: Held): string => {
-  const one = orders.length <= 1;
-  const from = `from your ${to === "woocommerce" ? "code" : "shop"}`;
-  const counted =
-    orders.length === 0
-      ? `An order ${from} is`
-      : `${orders.length} ${one ? "order" : "orders"} ${from} ${one ? "is" : "are"}`;
+  // Each order the refusal named has ended since, or has no price yet, which
+  // it gets within seconds or never: nothing is known to hold it any more.
+  if (orders.length === 0)
+    return "None of the orders that held this is open on Orders now. Try again now.";
+  const one = orders.length === 1;
+  const counted = `${orders.length} ${one ? "order" : "orders"} from your ${to === "woocommerce" ? "code" : "shop"} ${one ? "is" : "are"}`;
   if (quick) return `${counted} still in progress and should end within a minute. Try again then.`;
   return (
     `${counted} still open. Try again once ${one ? "it ends" : "they end"}.` +
@@ -466,6 +466,10 @@ const heldImport = (read: ShopRead): ImportHeld | null => {
 
 export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => {
   const { state } = read;
+  const wayBack = state.kind !== "connected" && read.through === "woocommerce";
+  // A refused Disconnect with no Disconnect left on the page, the merchant
+  // being on their code with no shop, is said beside Connect instead.
+  const leavingUnplaced = state.kind !== "connected" && !wayBack;
   return {
     screen: "shop",
     keysArrived: answer.cameBack === true && state.kind === "connected",
@@ -483,7 +487,7 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
             rate: read.rate === undefined ? null : rateViewOf(read.rate, answer),
           }
         : null,
-    wayBack: state.kind !== "connected" && read.through === "woocommerce",
+    wayBack,
     noKeysYet: noKeysYet(state),
     typed:
       answer.typed ??
@@ -491,8 +495,8 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
     addressProblem: answer.addressProblem ?? null,
     connectSwitches: read.through === "api",
     codeProducts: read.codeProducts === undefined ? null : read.codeProducts,
-    problem: refusalOf(answer.problem),
-    leaving: refusalOf(answer.leaving),
+    problem: refusalOf(answer.problem ?? (leavingUnplaced ? answer.leaving : undefined)),
+    leaving: leavingUnplaced ? null : refusalOf(answer.leaving),
   };
 };
 

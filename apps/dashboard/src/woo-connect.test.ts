@@ -62,15 +62,27 @@ describe("the address a merchant types", () => {
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/")).toBeNull();
   });
 
-  it("offers no root address for a shop in a folder of its site, which is another WordPress", () => {
+  it("suggests the site's root for an address copied from one of its own shop or admin pages", () => {
     for (const typed of [
-      "https://example.com/store",
-      "https://example.com/store/",
-      "example.com/store",
-      "http://example.com/store/wp-admin/",
+      "https://example.com/shop/",
+      "https://example.com/product/silk-scarf/",
+      "https://example.com/my-account",
+      "https://example.com/index.php",
+      "example.com/checkout",
     ]) {
+      expect(whatIsWrongWithTheShopUrl(typed), typed).toMatch(/: https:\/\/example\.com$/);
+    }
+  });
+
+  it("suggests no root for any other path, which may be a WordPress of its own", () => {
+    for (const [typed, folder] of [
+      ["https://example.com/store", "/store"],
+      ["https://example.com/store/", "/store"],
+      ["example.com/store", "/store"],
+      ["http://example.com/store/wp-admin/", "/store"],
+    ] as const) {
       const wrong = whatIsWrongWithTheShopUrl(typed);
-      expect(wrong, typed).toMatch(/root of its address/);
+      expect(wrong, typed).toContain(`installed in ${folder}`);
       expect(wrong, typed).not.toMatch(/https:\/\/example\.com\b(?!\/)/);
     }
   });

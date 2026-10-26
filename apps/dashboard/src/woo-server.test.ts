@@ -40,6 +40,7 @@ import {
   type WooOrderLookup,
 } from "./woo-shop.js";
 import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
+import { NO_SHOP } from "./woo-views.js";
 
 const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {
@@ -2571,6 +2572,25 @@ describe("one integration at a time", () => {
     expect(readable(page.html)).toContain("Sell through this shop");
   });
 
+  it("leaves the code selling when the shop's keys arrive short of Read/Write", async () => {
+    // Every purchase through such a shop is refused before payment, so a
+    // switch would take the code's products off sale for nothing.
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody(tokenIn(pressed.to ?? ""), "read"),
+    );
+
+    expect(callback.status).toBe(200);
+    expect((await running.shops.connectionOf(running.accountId))?.permissions).toBe("read");
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+  });
+
   it("changes nothing for a Connect whose approval never comes", async () => {
     const running = await started();
     await running.signIn();
@@ -2681,8 +2701,8 @@ describe("one integration at a time", () => {
     // is told to try again shortly rather than handed its ID to chase.
     expect(order).toBeDefined();
     expect(refused.status).toBe(409);
-    // Not priced yet, it is not on the open list, so it is not counted.
-    expect(readable(refused.html)).toMatch(/An order from your shop is still in progress/);
+    // Not priced yet, it is not on the open list, so nothing is claimed of it.
+    expect(readable(refused.html)).toMatch(/Try again now/);
     expect(readable(refused.html)).toMatch(/try again/i);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 
@@ -2799,7 +2819,7 @@ describe("one integration at a time", () => {
     await running.get("/woocommerce");
     await connectTheShop(running);
 
-    const stale = await running.post("/woocommerce/disconnect", { shop: "none" });
+    const stale = await running.post("/woocommerce/disconnect", { shop: NO_SHOP });
 
     expect(stale.status).toBe(409);
     expect(stale.to).toBeNull();
@@ -2807,9 +2827,26 @@ describe("one integration at a time", () => {
     expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe(
       "woocommerce",
     );
-    expect(readable(stale.html)).toContain(new URL(SHOP).host);
+    // Said inside the Disconnect it refused, opened, so the next press is one
+    // made with the shop in sight.
+    const opened = /<details[^>]*\bopen\b[^>]*>[\s\S]*?<\/details>/.exec(stale.html)?.[0] ?? "";
+    expect(readable(opened)).toContain(`Nothing was disconnected: ${new URL(SHOP).host}`);
     expect((await disconnectAsDrawn(running)).status).toBe(303);
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
+  });
+
+  it("says a Disconnect from a page whose shop is gone changed nothing, also once the code sells", async () => {
+    // A tab left open on the shop while another disconnected it.
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+    expect((await disconnectAsDrawn(running)).status).toBe(303);
+
+    const stale = await running.post("/woocommerce/disconnect", { shop: SHOP });
+
+    expect(stale.status).toBe(409);
+    expect(readable(stale.html)).toContain("Nothing was changed");
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
   });
 
   it("offers the way back to the code to a merchant on the shop whose shop never connected", async () => {
