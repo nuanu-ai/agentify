@@ -555,9 +555,10 @@ script, not a send: nobody has yet sent a payout from Coinbase Wallet on Base
 through Settings. A comment on the same issue of 2026-07-18, by someone
 outside Coinbase, reports that a new EIP-7702 wallet sending on Base without a
 paymaster saw the window's spinner stall and the request end in a silent
-cancel, with no 4001 [reported in the issue, not checked]. The page would then
-wait for its ten minutes and say it does not know whether the payout went
-out.
+cancel, with no 4001 [reported in the issue, not checked]. A cancel of that
+kind ends the request with an error other than 4001, and the page then says at
+once that it does not know whether the payout went out [checked in the
+dashboard's code].
 
 The wallet fault browser of `packages/slice` reaches the box's button on a
 local stack on Base Sepolia, and the payout's only on a stack whose payments

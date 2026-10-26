@@ -739,7 +739,8 @@ it each time it draws a merchant's payout: an `eth_chainId` and one
 `eth_call`, a dry run of the payout that names what it would bring, kept for
 five seconds per payout. Both share the endpoint, and a free public endpoint
 limits requests per address, so a busy dashboard can use up what recovery
-needs; an endpoint of a provider with limits of its own serves both. A page
+needs. An RPC provider's endpoint named in `AGENTIFY_PAYMENT_RPC_URL` is
+limited by the provider's plan instead. A page
 waits for the chain for at most half its deadline, and after a read it gave
 up on, the pages about that payout say for five seconds that the chain did
 not answer, without asking it.
