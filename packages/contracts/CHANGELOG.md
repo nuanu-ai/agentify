@@ -1,5 +1,99 @@
 # Contracts release history
 
+## 0.16.0
+
+### Minor Changes
+
+- 05cc207: An order read back, from `GET /v0/orders/:order_id` and `GET /v0/orders`, can
+  carry `transaction`: the transaction that paid it. It is there once
+  `payment_status` is `paid` and a transaction was recorded, whether or not the
+  goods have reached the buyer, and absent before that and on a payment that is
+  `not_paid` or `unresolved`. It is the same transaction the buyer's order status
+  names and, once there is one, the receipt. A paid order that was never
+  delivered has no receipt, so until now nothing the merchant read named its
+  payment. The description of `GET /v0/receipts` points to the field.
+  
+  The field is added at the top of an order read, which a reader keeps closed, so
+  `CONTRACT_VERSION` moves from `3` to `4`, and every schema's identity moves to
+  `urn:agentify:contract:4:<name>`. A reader built on version `3` refuses every
+  paid order read back with the field, so upgrade it before it reads orders.
+- 8519cb7: `seller_not_fulfilling` joins `ERROR_CODES`. A purchase is refused with it, with
+  HTTP 409 and `retryable` false, while the seller has ten or more paid orders
+  they took on and left without delivery or closure. The refusal covers every
+  purchase of that seller, synchronous ones included, and comes before the price
+  is asked, so nothing is charged. A payment at a price named before the seller
+  reached ten is refused with it too, before the payment is checked, and so is a
+  look at the product, which then carries no payment challenge. A payment that
+  releases goods already made goes through. The refusal ends by itself once the
+  seller delivers or closes enough of those orders to leave fewer than ten. A client that switches over `ERROR_CODES` and keeps a default arm reads it
+  as an ordinary refusal with a sentence to show.
+  
+  The description of the purchase route lists it beside `seller_busy` and
+  `seller_not_taking_orders`.
+- d7dc66f: `priceProblemsOf` refuses an amount above zero and below 0.01, a cent of USD
+  or of USDC, with a finding on `price.amount` that names the price and the
+  smallest price Agentify sells at. The payment network refuses payments below a
+  minimum it does not publish, and on the test channel a card at 0.000001 was
+  refused that way when a buyer paid, so such a card could be listed and never
+  bought. Publication and the answer to a price question now refuse prices they
+  used to accept, from 0.000001 up to 0.009999. The new export `SMALLEST_PRICE`
+  is that amount, `"0.01"`. The JSON Schema export states the rule on the card's
+  `price` and on a price answer's `price`, and the `answer_quote` route says so
+  in its description. No schema's shape changed, so cards, orders and receipts
+  already written are read back as they were.
+
+### Patch Changes
+
+- 16be82e: The description of the `list_catalog` route says the catalogue lists only
+  products that can be bought when it is read: a product is left out while its
+  card or its merchant is paused, while its card carries a price the price rule
+  now refuses, while the merchant lacks what a sale needs, while the merchant's
+  own system has not polled for longer than Agentify allows, and while the
+  merchant has left too many paid orders without delivery or closure. A merchant at the limit of purchases waiting for payment stays listed.
+  A product left out for its merchant's silence still answers a look at its
+  purchase address with the challenge. The description of `purchase_item` says
+  `seller_not_taking_orders` now refuses any purchase of a silent seller, a
+  synchronous one included, and a first payment at a price named before the
+  silence. Nothing a call sends or answers changes in shape.
+  
+  A card a merchant reads back reads `selling: "open"` exactly when the public
+  catalogue lists it, so the descriptions of the merchant's own catalog and of
+  `MerchantCardSchema` name the merchant's silence and their unserved orders
+  among the reasons it reads paused.
+- 86cf8af: The descriptions of a delivery address, `ship_to`, which a buyer's agent reads
+  in a parcel's purchase schema, and of an erased one, `ship_to: { erased_at }`,
+  now say what erasing reaches. It removes the address from Agentify's database.
+  Copies of the database taken before the erasure keep it: the live channel's
+  backups, usually for about sixty days, with no upper bound set yet, and the
+  restore point each release takes, on either channel, until five newer releases
+  replace it. Nothing a call sends or answers changes.
+  
+  A parcel's card, `fulfillment: "ship"`, now publishes and sells on the live
+  channel as on the test one, and publishing it there no longer returns
+  `not_sold_yet`.
+- f567a5d: The description of the purchase route says a purchase is refused with
+  `seller_busy` while fifty of the seller's purchases already wait for payment,
+  where it said twenty. Nothing a call sends or answers changes.
+- c7eb53f: The refusal of an address whose capital letters do not match its checksum now
+  says that a character is mistyped or its letters changed case on the way, and
+  asks for the address to be copied again from the wallet. It no longer suggests writing the address in lower case: lower
+  case carries no checksum, so following that advice would have turned a mistyped
+  address, which is somebody else's valid one, into an accepted one. Which
+  spellings are accepted is unchanged.
+- 247ab83: The descriptions of `PayoutWalletSchema` and of the `get_payout_wallet`,
+  `list_orders`, `purchase_item` and `get_order_status` routes state none of
+  Agentify's numbers: its commission, how long a price holds, how many of a
+  seller's purchases may wait for payment, how long a seller's process may go
+  without polling, how many paid orders a seller may leave unserved before every
+  purchase is refused, and how long an order that ended with nothing charged is
+  kept. Each says what the limit is and where the documentation names it, from
+  the gateway's own numbers; the payout wallet's description drops its worked
+  example of a first payout, which only held at one rate. Nothing a call sends
+  or answers changes.
+- a0ba5ae: The JSON Schema of a parcel's address, `ship_to`, carries one example address,
+  so an agent that has the schema can write its first address from it. A
+  parcel's payment request shows the same address in its example purchase.
+
 ## 0.15.1
 
 ### Patch Changes

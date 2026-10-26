@@ -1,5 +1,84 @@
 # Merchant SDK release history
 
+## 0.10.0
+
+### Minor Changes
+
+- 05cc207: `orders.get` and `orders.list` return `transaction` on a paid order: the
+  transaction that paid it, present once the payment went through and a
+  transaction was recorded, whether or not you have delivered. It is how you find
+  the payment of an order you could not deliver, which has no receipt.
+  
+  The package speaks contract version `4`. A worker on an earlier release stops
+  at its first poll answer from a gateway that speaks `4`, with a
+  `contract_version_mismatch` problem naming both versions, once the work already
+  in its handlers has finished. Code on an earlier release that reads orders
+  without polling, such as a reconciliation script or a loop over open orders,
+  fails differently: `orders.get` throws on every paid order because of the
+  unknown `transaction`, and `orders.list` leaves every paid order out with one
+  `unread` problem, so the orders that need you are the ones it does not return.
+  Upgrade before reading orders.
+- d7dc66f: `checkCard` reports a price above zero and below 0.01 as a finding on
+  `price.amount`, in the words the publish call uses, because publication now
+  refuses it: the payment network refuses payments below a minimum it does not
+  publish. A card priced `'0.001 USD'` that passed the check before is now
+  reported. The worker holds a price handler's answer to the same rule and
+  reports one under a cent as `HANDLER_ANSWER_REFUSED` without sending it.
+- 0b5fb16: `stop()` sends the answers handlers return while it waits, where it used to
+  drop them unsent, and waits eight seconds at most, where a handler that never
+  returned used to hold it for ever. Each message still unfinished then gets a
+  `batch_abandoned` problem of its own, with the order or price question it is
+  about as its `subject`, saying where it stood: an order still waiting or in its
+  handler had nothing sent for it and comes again, and an answer already on its
+  way may have arrived, which nobody on this side knows. Nothing the stop gave
+  up on reaches a handler afterwards. A process manager that kills the process
+  sooner cuts the wait short and nothing is reported: an order whose answer was
+  not sent comes again, and one whose answer was on its way may or may not be
+  closed by it.
+  
+  An answer cut off by `stop()` is now reported as `batch_abandoned`, where it
+  used to be reported as `answer_failed`, so code that reconciles on
+  `answer_failed` after a shutdown should read `batch_abandoned` as well.
+  
+  A worker stopping on another contract version ends the same way. It no longer
+  reports an answer that was on its way as one for which nothing was sent, nor
+  reports that answer a second time as `answer_failed`.
+
+### Patch Changes
+
+- 34af47c: A parcel's card, `fulfillment: "ship"`, now publishes and sells on the live
+  channel as on the test one, and publishing it there no longer returns
+  `not_sold_yet`.
+- 243a951: A call that Agentify failed while handling, answered with a 5xx, is no longer
+  described as one that did not go through, because such a failure can come
+  after the call took effect. The message now says that Agentify failed while
+  handling it, and the gateway's own words follow. Codes and `retryable` are
+  unchanged.
+- eb685a4: The README no longer states Agentify's commission, and the doc comment of
+  `orders.list` no longer states how long an order that ended with nothing
+  charged is kept: each links the page of the documentation that names it, from
+  the gateway's own numbers. Nothing the package does changes.
+- bbcd930: No failure or problem the package reports repeats the contents of an answer it
+  could not read, whatever that answer's status or content type: it names the
+  call, the status, the content type and the length, and where JSON did not fit,
+  the fields and what was expected there, so the buyer's details and the prices
+  stay out of your logs.
+  
+  An answer that does not parse as JSON, such as a proxy's error page or a
+  gateway document cut short, is no longer quoted. A `poll_failed` problem about
+  an answer that names another contract version says so without repeating the
+  version it named.
+- Updated dependencies [16be82e]
+- Updated dependencies [86cf8af]
+- Updated dependencies [f567a5d]
+- Updated dependencies [05cc207]
+- Updated dependencies [c7eb53f]
+- Updated dependencies [247ab83]
+- Updated dependencies [8519cb7]
+- Updated dependencies [a0ba5ae]
+- Updated dependencies [d7dc66f]
+  - @nuanu-ai/agentify-contracts@0.16.0
+
 ## 0.9.1
 
 ### Patch Changes
