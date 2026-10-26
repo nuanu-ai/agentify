@@ -506,7 +506,6 @@ const UNFULFILLED_BY: Readonly<Partial<Record<string, UnfulfilledCause>>> = {
  */
 const moneyMovedAt = (record: StoredOrder, receipted: string | null): string | null => {
   const { order } = record;
-  if (order.payment !== "settled") return null;
   if (receipted !== null) return receipted;
   const completion = record.paymentAttempt?.completion;
   const at =
