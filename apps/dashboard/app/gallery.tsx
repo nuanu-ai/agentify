@@ -84,7 +84,11 @@ import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import { gapOf } from "../src/woo-money.js";
 import { findingsOf, rateFarSays } from "../src/woo-pages.js";
 import { CREATE_UNKNOWN, PARCEL_NOT_CREATED, RECONNECT_FIRST } from "../src/woo-recovery.js";
-import { RECOVERY_UNKNOWN, type WooRecoveryView } from "../src/woo-recovery-pages.js";
+import {
+  RECOVERY_UNKNOWN,
+  unknownCreate,
+  type WooRecoveryView,
+} from "../src/woo-recovery-pages.js";
 import {
   type Said,
   type ShopAnswer,
@@ -3025,6 +3029,21 @@ const WOO_RECOVERY: GalleryState[] = [
         why: `Your shop never got this order. ${RECONNECT_FIRST}`,
         instead: "reconnect",
       },
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-closed-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant reloads recovery for a download whose create got no clear answer, after closing its fulfillment.",
+      cause:
+        "The saved sale still says nobody knows whether the shop holds the order, so the page names the Transaction ID to look for in the shop, and offers no press.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: { why: unknownCreate(RECOVERY_SALE.orderId), instead: "nothing" },
     },
   ),
   recovery(

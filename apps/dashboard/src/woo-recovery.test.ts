@@ -392,8 +392,12 @@ describe("a merchant creating the shop order of a download refused before creati
 
   it("leaves a create whose answer was lost to linking, and never sends it again", async () => {
     const shops = await setup("precreate_refused");
+    let sent = 0;
     const test = parts(shops, {
-      placeOrder: async () => ({ ok: false, why: "no answer", again: true }),
+      placeOrder: async () => {
+        sent += 1;
+        return { ok: false, why: "no answer", again: true };
+      },
     });
     const pages = wooRecoveryPagesFor(test.value);
 
@@ -402,10 +406,15 @@ describe("a merchant creating the shop order of a download refused before creati
 
     expect(pressed).toMatchObject({
       kind: "view",
-      view: { mode: "link", message: expect.stringMatching(/don't know/i) },
+      view: { mode: "link", message: expect.any(String) },
     });
     expect(pressed.kind === "view" && pressed.view.message).not.toMatch(/fail/i);
     expect(again).toMatchObject({ kind: "view", status: 400, view: { mode: "link" } });
+    expect(await pages.page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "link" },
+    });
+    expect(sent).toBe(1);
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
   });
 
@@ -598,10 +607,10 @@ describe("a merchant creating the shop order of a download refused before creati
       test.becomes(status);
       const pages = wooRecoveryPagesFor(test.value);
 
-      expect(await pages.page(OWNER, "ord_1")).toMatchObject({
-        kind: "view",
-        view: { mode: "unavailable" },
-      });
+      const page = await pages.page(OWNER, "ord_1");
+      expect(page).toMatchObject({ kind: "view", view: { mode: "unavailable" } });
+      // No shop order can exist, so there is no Transaction ID to look for.
+      expect(page.kind === "view" && page.view.unavailable?.why).not.toContain("ord_1");
       expect(await pages.recover(OWNER, "ord_1", new FormData())).toMatchObject({
         kind: "view",
         status: 409,
@@ -713,13 +722,21 @@ describe("merchant recovery pages", () => {
       },
     });
 
-    const pressed = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData());
+    const pages = wooRecoveryPagesFor(test.value);
+    const pressed = await pages.recover(OWNER, "ord_1", new FormData());
+    const reloaded = await pages.page(OWNER, "ord_1");
 
-    expect(pressed).toMatchObject({
-      kind: "view",
-      view: { mode: "unavailable", message: expect.stringMatching(/created/i) },
-    });
-    expect(pressed.kind === "view" && pressed.view.message).toContain("13");
+    expect((await shops.recoveryOrder("ord_1"))?.placed?.id).toBe("13");
+    for (const drawn of [pressed, reloaded]) {
+      expect(drawn).toMatchObject({
+        kind: "view",
+        view: {
+          mode: "unavailable",
+          wooOrderId: "13",
+          unavailable: { why: expect.stringContaining("13"), instead: "nothing" },
+        },
+      });
+    }
   });
 
   it("keeps saying nobody knows whether the shop created the order when fulfillment was closed meanwhile", async () => {
@@ -740,11 +757,62 @@ describe("merchant recovery pages", () => {
       },
     });
 
+    const pages = wooRecoveryPagesFor(test.value);
+    const pressed = await pages.recover(OWNER, "ord_1", new FormData());
+    const reloaded = await pages.page(OWNER, "ord_1");
+
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
+    for (const drawn of [pressed, reloaded]) {
+      expect(drawn).toMatchObject({
+        kind: "view",
+        view: { mode: "unavailable", unavailable: { why: expect.stringContaining("ord_1") } },
+      });
+    }
+  });
+
+  it("asks for a reload, naming the Transaction ID, when a create broke inside Agentify and fulfillment was closed meanwhile", async () => {
+    const shops = await setup("precreate_refused");
+    let closed = false;
+    const base = parts(shops);
+    const test = parts(shops, {
+      gatewayFor: (acting) => ({
+        ...base.value.gatewayFor(acting),
+        getOrder: async () => ({
+          ok: true,
+          document: gatewayOrder(closed ? "fulfillment_closed" : "unfulfilled"),
+        }),
+      }),
+      placeOrder: async () => {
+        closed = true;
+        throw new Error("the connection to the shop broke");
+      },
+    });
+
     const pressed = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData());
 
+    expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
     expect(pressed).toMatchObject({
       kind: "view",
-      view: { mode: "unavailable", message: expect.stringMatching(/don't know/i) },
+      status: 503,
+      view: {
+        mode: "unavailable",
+        unknown: true,
+        unavailable: { why: expect.stringContaining("ord_1") },
+      },
+    });
+  });
+
+  it("names the Transaction ID to look for on a parcel whose create is unknown, and sends the merchant to close it", async () => {
+    const facts: WooOrderFacts = { ...FACTS, kind: "parcel" };
+    const shops = await setup("create_unknown", facts);
+    const test = parts(shops, {}, facts);
+
+    expect(await wooRecoveryPagesFor(test.value).page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: {
+        mode: "unavailable",
+        unavailable: { why: expect.stringContaining("ord_1"), instead: "close" },
+      },
     });
   });
 
