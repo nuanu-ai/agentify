@@ -2668,9 +2668,9 @@ describe("the settings screen", () => {
     const href = /href="([^"]*)"[^>]*>Create an API key</.exec(integrations.html)?.[1];
     expect(href).toBe("/keys?new=key");
 
-    const keys = await browser.get("/keys?new=key");
-    expect(keys.html).toMatch(/<input id="label"[^>]*autofocus/);
-    expect((await browser.get("/keys")).html).not.toMatch(/<input id="label"[^>]*autofocus/);
+    const focused = /<input(?=[^>]*\bid="label")(?=[^>]*\bautofocus)[^>]*>/;
+    expect((await browser.get("/keys?new=key")).html).toMatch(focused);
+    expect((await browser.get("/keys")).html).not.toMatch(focused);
   });
 
   it("leads the wallet form's address, opened again, to the settings it lives on", async () => {
@@ -4343,8 +4343,12 @@ describe("the keys screen", () => {
 
     const page = (await browser.get("/keys")).html;
 
-    expect(page).toContain(`/keys/${NIGHTLY.id}/disable`);
-    expect(page).toContain(`/keys/${ANOTHER.id}/disable`);
+    for (const working of [NIGHTLY, ANOTHER]) {
+      expect(page).toContain(`href="/keys?revoke=${working.id}#revoke"`);
+      expect((await browser.get(`/keys?revoke=${working.id}`)).html).toContain(
+        `action="/keys/${working.id}/disable"`,
+      );
+    }
   });
 
   it("revokes the key the merchant's own code is calling with, and the dashboard goes on working", async () => {
@@ -4368,8 +4372,10 @@ describe("the keys screen", () => {
     await browser.signIn();
 
     const page = (await browser.get("/keys")).html;
+    const asked = (await browser.get(`/keys?revoke=${REVOKED.id}`)).html;
 
-    expect(page).not.toContain(`/keys/${REVOKED.id}/disable`);
+    expect(page).not.toContain(`revoke=${REVOKED.id}`);
+    expect(asked).not.toContain(`/keys/${REVOKED.id}/disable`);
   });
 
   /**
@@ -4390,12 +4396,20 @@ describe("the keys screen", () => {
     return readable(cell ?? "").replace(/^Last call /, "");
   };
 
+  /** Made after every deployment recorded calls, and never called. */
+  const UNUSED: MerchantKey = {
+    id: "key_made_this_month",
+    label: "the price checker",
+    created_at: "2026-10-20T09:00:00.000Z",
+    last_used_at: null,
+    disabled_at: null,
+  };
+
   it("says when each key was last called, and stops there when it cannot", async () => {
     // The column a merchant opens the screen for: which key is safe to revoke.
-    // A blank covers both a key never used and one older than the recording,
-    // and the wire does not tell them apart, so the words claim only a missing
-    // record, never "never".
-    const { browser } = await started({ client: withKeys().client });
+    // A blank on a key older than the recording covers both a key never used
+    // and one used before, so it claims only a missing record, never "never".
+    const { browser } = await started({ client: withKeys([NIGHTLY, ANOTHER, UNUSED]).client });
     await browser.signIn();
 
     const page = (await browser.get("/keys")).html;
@@ -4411,17 +4425,27 @@ describe("the keys screen", () => {
     expect(quiet).not.toBe(inColumn(page, ANOTHER.id, /created/i));
   });
 
-  it("says under the table that an empty last call is two situations", async () => {
-    // A merchant reading "No calls recorded" beside an old key must be able to
-    // learn that recording began recently and that old keys show the same
-    // either way, or the honest phrase reads as the confident one.
+  it("says a key made since calls were recorded, and never called, was never used", async () => {
+    const { browser } = await started({ client: withKeys([NIGHTLY, UNUSED]).client });
+    await browser.signIn();
+
+    const page = (await browser.get("/keys")).html;
+
+    expect(inColumn(page, UNUSED.id, /last/i)).toMatch(/never used/i);
+    // No row says there is no record, so nothing under the list explains one.
+    expect(readable(page)).not.toMatch(/record/i);
+  });
+
+  it("says under the table what a missing record means, where a row has one", async () => {
+    // A merchant reading that no call is recorded beside an old key must be
+    // able to learn that the key is older than the recording, or the honest
+    // phrase reads as the confident one.
     const { browser } = await started({ client: withKeys().client });
     await browser.signIn();
 
     const text = readable((await browser.get("/keys")).html);
 
-    expect(text).toMatch(/began recording|started recording/i);
-    expect(text).toMatch(/cannot tell you which|which it is/i);
+    expect(text).toMatch(/older than our record of calls/i);
   });
 
   it("issues a key, shows its secret once, and says that is the only time", async () => {
@@ -4534,14 +4558,13 @@ describe("the keys screen", () => {
 
     const page = (await browser.get("/keys")).html;
     const action = `action="/keys/${NIGHTLY.id}/disable"`;
-    const question =
-      /<details class="confirm-revoke">[\s\S]*?<\/details>/g.exec(
-        page.slice(page.indexOf(NIGHTLY.label)),
-      )?.[0] ?? "";
-    expect(question).toMatch(/<summary[^>]*>Revoke<\/summary>/);
-    expect(question).toContain(action);
-    expect(question).toContain("Yes, revoke");
-    expect(page.split(action)).toHaveLength(2);
+    // The first press is a link that asks the question, which posts nothing.
+    expect(page).not.toContain(action);
+    const asked = await browser.get(`/keys?revoke=${NIGHTLY.id}`);
+    expect(asked.html.split(action)).toHaveLength(2);
+    // The question says what the press does before it is answered.
+    expect(readable(asked.html)).toMatch(/stops working at once/i);
+    expect(readable(asked.html)).toMatch(/can't undo/i);
 
     await browser.post(`/keys/${NIGHTLY.id}/disable`);
     expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
@@ -4710,7 +4733,7 @@ describe("the keys screen", () => {
     const { browser } = await started({ base: "/dashboard", client: keys.client });
     await browser.signIn();
 
-    const list = await browser.get("/dashboard/keys");
+    const list = await browser.get(`/dashboard/keys?revoke=${NIGHTLY.id}`);
     expect(postingFormsIn(list.html).map(({ action }) => action)).toEqual(
       expect.arrayContaining([
         "/dashboard/keys",

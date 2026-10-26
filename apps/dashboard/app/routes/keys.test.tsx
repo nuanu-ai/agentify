@@ -140,10 +140,10 @@ const keysPage = ({
 
 /** Names a key and presses Issue, as a merchant does. */
 const issue = async () => {
-  fireEvent.change(await screen.findByLabelText("What this key is for"), {
+  fireEvent.change(await screen.findByLabelText("Key name"), {
     target: { value: "the second worker" },
   });
-  fireEvent.click(screen.getByText("Issue a key"));
+  fireEvent.click(screen.getByText("Create key"));
   expect(await screen.findByText(SECRET)).toBeTruthy();
 };
 
@@ -172,7 +172,7 @@ describe("issuing a key where the page's script runs", () => {
 
     fireEvent.click(screen.getByText("Browser back"));
 
-    expect(await screen.findByText("Issue a key")).toBeTruthy();
+    expect(await screen.findByText("Create key")).toBeTruthy();
     expect(screen.queryByText("The cards page")).toBeNull();
     expect(screen.queryByText(SECRET)).toBeNull();
   });
@@ -190,7 +190,7 @@ describe("issuing a key where the page's script runs", () => {
     act(() => {
       window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     });
-    expect(await screen.findByText("Issue a key")).toBeTruthy();
+    expect(await screen.findByText("Create key")).toBeTruthy();
     expect(document.body.textContent).not.toContain(SECRET);
   });
 
@@ -207,11 +207,11 @@ describe("issuing a key where the page's script runs", () => {
     });
     leaveOnSight.observe(document.body, { characterData: true, childList: true, subtree: true });
 
-    fireEvent.change(await screen.findByLabelText("What this key is for"), {
+    fireEvent.change(await screen.findByLabelText("Key name"), {
       target: { value: "the second worker" },
     });
-    fireEvent.click(screen.getByText("Issue a key"));
-    await screen.findByText(/This is the key for "the second worker"/);
+    fireEvent.click(screen.getByText("Create key"));
+    await screen.findByText(/the key for “the second worker”/);
     leaveOnSight.disconnect();
 
     expect(keptWithTheSecret).toBe(false);
