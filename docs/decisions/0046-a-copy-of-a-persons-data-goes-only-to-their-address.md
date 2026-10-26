@@ -8,11 +8,11 @@ of its tries, are this record's proposal
 
 ## Context
 
-Pressing Request data access on the data request page used to record a date,
-and nothing answered it; the operator's page counted the requests. Agentify has
-no staffed service to answer one by hand. A copy of everything held about an
-address describes a person and their shop more fully than anything else the
-product can produce, so who may receive one is a security boundary.
+A person signed in on the data request page can ask for a copy of the data
+held about their address. Agentify has no staffed service to answer such a
+request by hand. A copy of everything held about an address describes a person
+and their shop more fully than anything else the product produces, so who may
+receive one is a security boundary.
 
 ## Decision
 
@@ -27,36 +27,38 @@ loaded for another address is refused, as every account request is.
 The copy is one JSON file attached to the message, sent through the mail
 provider the product already uses; no link to it exists. It holds what both
 databases keep for the address: the scanner's lead, registrations, owned
-reports, visits, privacy choices and analytics events; the dashboard's account,
+reports and analytics events; the dashboard's account,
 Google link, sessions and ad reports; the merchant the account names, with its
 keys, cards, orders, payout splits and WooCommerce connection; and the
 operator's journal rows about the account and the merchant. Each field is named
 in the code, so a column added later stays out until somebody puts it in.
 
-It leaves out whatever would let its holder act as somebody, and whatever is
-about another person: session tokens, passwords, Google's tokens, key digests
-and the shop's consumer key and secret; colleagues on the same merchant; buyers'
-inputs, addresses, payments and order keys, and what a buyer received; the
-operator who acted, who is named only as an operator; and keyed fingerprints of
-the address. The file says so in its own `left_out` list, and a list it cuts
-says how many rows there are in all.
+It leaves out what would let its holder act as somebody (session tokens,
+passwords, Google's tokens, key digests, the shop's key and secret) and what
+may be another person's: colleagues on the merchant, buyers' inputs, addresses,
+payments, order keys and goods, the acting operator, browser visits and their
+privacy choices, and a phone typed on a registration the mailbox never
+confirmed, since anyone can type any address. An address being deleted gets a
+copy that says so and holds none of its reports. The file lists what it leaves
+out, and a cut list says how many rows there are.
 
-The first try is made while the person waits. A try the provider refuses, or
-one that gets no answer, is made again 1, 5, 15 and 30 minutes later, and the
-page says for how many minutes the tries go on. After the fifth failed try the
-request has failed, and the operator's page counts it until a later copy to the
-address is sent. A press within ten minutes of a mailed copy, or while one is
-being tried, makes no second copy. A try that got no answer may still have been
-mailed, so a retry can deliver the copy twice, and the page says that. A request
-keeps the address, encrypted, only while tries remain, and deleting the address
-removes its requests.
+The first try is made while the person waits; tries after a refusal or a lost
+answer follow 1, 5, 15 and 30 minutes later, each counted as it starts, and the
+page says for how many minutes they go on. After five tries with none
+confirmed the request gives up and the operator's page counts it; a copy too
+large for the dashboard ends at once. Every try of one request carries its
+identifier as the provider's idempotency key, so a try after a lost answer
+delivers no second copy, and an outcome nobody confirmed is said as not known.
+A press within ten minutes of a mailed copy, or during a try, makes no second
+copy. A request keeps the address, encrypted, only while tries remain; its
+fingerprint and dates go thirty days after it settles, or with the address's
+reports.
 
 ## Alternatives rejected
 
-**A short-lived download link that opens only for the signed-in owner.** It
-needs a second route that hands out the whole copy, with its own token or
-session check and an expiry to keep, while an attachment needs nothing beyond
-the provider in use and is reachable from no address on the web. **A copy only
+**A short-lived download link that opens only for the signed-in owner.** A
+second route handing out the whole copy, with its own check and expiry, where
+an attachment needs only the provider in use and no address on the web. **A copy only
 for an address with reports.** A seller who signed in with Google holds a
 dashboard and possibly no report, and would be told nothing is held. **An
 operator answering by hand.** There is no staffed service, and the request
