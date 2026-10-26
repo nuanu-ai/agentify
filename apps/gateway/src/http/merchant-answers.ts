@@ -6,7 +6,12 @@
 
 import { outcomeFor } from "@agentify/core";
 import type { ErrorCode, OrderList, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
-import { merchantClosureOf, orderDocumentOf, paymentStatusOf } from "../app/runner.js";
+import {
+  merchantClosureOf,
+  orderDocumentOf,
+  paymentStatusOf,
+  transactionFieldOf,
+} from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 
 /**
@@ -103,15 +108,7 @@ export function merchantOrderAnswer(
       },
     };
   }
-  return {
-    ok: true,
-    document: {
-      ...orderDocumentOf(record),
-      status,
-      payment_status: paymentStatusOf(record.order),
-      ...merchantClosureOf(record.order),
-    },
-  };
+  return { ok: true, document: merchantOrderOf(record) };
 }
 
 /**
@@ -121,13 +118,15 @@ export function merchantOrderAnswer(
  */
 export function merchantOrderList(records: readonly StoredOrder[]): OrderList {
   return {
-    orders: records
-      .filter((record) => record.order.price !== null)
-      .map((record) => ({
-        ...orderDocumentOf(record),
-        status: outcomeFor(record.order),
-        payment_status: paymentStatusOf(record.order),
-        ...merchantClosureOf(record.order),
-      })),
+    orders: records.filter((record) => record.order.price !== null).map(merchantOrderOf),
   };
 }
+
+/** One priced order as its merchant reads it back, alone or in their list. */
+const merchantOrderOf = (record: StoredOrder): OrderWithStatus => ({
+  ...orderDocumentOf(record),
+  status: outcomeFor(record.order),
+  payment_status: paymentStatusOf(record.order),
+  ...transactionFieldOf(record),
+  ...merchantClosureOf(record.order),
+});
