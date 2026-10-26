@@ -17,6 +17,7 @@ import {
   POLL_DEADLINE_MS,
   POLL_WAIT_SECONDS,
   QUIET_POLL_FLOOR_MS,
+  type RunningWorker,
   STOP_WAIT_MS,
   startWorker,
   systemClock,
@@ -2025,6 +2026,56 @@ describe("stopping", () => {
 
     expect(abandoned?.message).toMatch(/2 of this batch's 6/);
     expect(abandoned?.message).toMatch(/quote_request, order_event/);
+  });
+
+  it("reports a poll answer that arrived as the stop began, rather than dropping it", async () => {
+    // An answer read in full in the moment the stop begins is taken by
+    // nobody, and an event in it is never sent again, so the merchant is told.
+    const problems: WorkerProblem[] = [];
+    const handled: string[] = [];
+    let worker: RunningWorker | undefined;
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: { poll_worker: polling(batch(envelopes.event)) },
+    });
+
+    // Only a wrapper around fetch reaches the moment between the answer being
+    // read and the loop looking at it, which is where the stop is placed.
+    const sending = globalThis.fetch;
+    const placed = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const response = await sending(input, init);
+
+      if (!String(input).endsWith("/worker/poll")) return response;
+
+      const text = await response.text();
+      void worker?.stop();
+      return new Response(text, { status: response.status, headers: response.headers });
+    });
+
+    try {
+      worker = startWorker(
+        { apiKey: API_KEY, baseUrl: gateway.url },
+        {
+          event: (arrived) => {
+            handled.push(arrived.type);
+          },
+          problem: (problem) => problems.push(problem),
+        },
+        recordingClock(),
+      );
+      const stopped = worker;
+      await waitUntil(() => !stopped.running(), "the worker to stop");
+    } finally {
+      placed.mockRestore();
+    }
+
+    expect(handled).toStrictEqual([]);
+    expect(problems.map((problem) => problem.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+    ]);
+    expect(problems[0]?.message).toMatch(/1 of this batch's 1/);
+    expect(problems[0]?.message).toMatch(/order_event/);
   });
 
   it("abandons the parked poll and asks for nothing more", async () => {
