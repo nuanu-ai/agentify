@@ -106,24 +106,19 @@ export const unavailableOf = (
   record: SavedSale,
   status: OrderWithStatus["status"],
 ): Unavailable => {
-  const waiting = status === "unfulfilled";
   const shopOrder: Unavailable["shopOrder"] =
     record.placed !== null
       ? { id: record.placed.id }
       : record.phase === "create_unknown"
         ? "unknown"
         : "none";
+  // An order no longer waiting for delivery, closed or delivered, asks nothing
+  // more of the merchant, here or in the shop.
+  if (status !== "unfulfilled") return { shopOrder, instead: "nothing" };
   if (record.facts.kind === "parcel") {
-    if (record.phase === "precreate_refused" && waiting) return { shopOrder, instead: "close" };
-    if (record.phase === "create_unknown") {
-      return { shopOrder, instead: waiting ? "close" : "nothing" };
-    }
-    return { shopOrder, instead: "parcel" };
+    return { shopOrder, instead: record.phase === "placed" ? "parcel" : "close" };
   }
-  if (record.phase === "placed" && record.placed?.permission == null) {
-    return { shopOrder, instead: "close" };
-  }
-  return { shopOrder, instead: waiting ? "reconnect" : "nothing" };
+  return { shopOrder, instead: record.phase === "placed" ? "close" : "reconnect" };
 };
 
 /** Said where what a press did is not known; the page then asks for a reload, not a press. */

@@ -3071,6 +3071,24 @@ const WOO_RECOVERY: GalleryState[] = [
   ),
   recovery(
     {
+      id: "dashboard-woo-recovery-parcel-closed",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant comes back to recovery for a parcel their shop never received, after closing its fulfillment.",
+      cause:
+        "The sale no longer waits for delivery, so the page says the shop never got the order and offers nothing more.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: unavailableOf(
+        { ...PARCEL_SALE, phase: "precreate_refused" },
+        "fulfillment_closed",
+      ),
+    },
+  ),
+  recovery(
+    {
       id: "dashboard-woo-recovery-delivered",
       screen: "Recover WooCommerce delivery",
       when: "A merchant reloads recovery after their download was delivered.",
