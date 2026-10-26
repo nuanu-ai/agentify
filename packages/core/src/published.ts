@@ -95,7 +95,7 @@ export function inWords(count: number): string {
 }
 
 /** The units a published stretch of time is counted in. */
-type Unit = "second" | "minute" | "day";
+export type Unit = "second" | "minute" | "day";
 
 const UNIT_MS: Readonly<Record<Unit, number>> = {
   second: 1_000,
@@ -104,7 +104,7 @@ const UNIT_MS: Readonly<Record<Unit, number>> = {
 };
 
 /** How many of the unit a stretch of time is, refused where it is no whole number of them. */
-function unitsIn(ms: number, unit: Unit): number {
+export function unitsIn(ms: number, unit: Unit): number {
   const count = ms / UNIT_MS[unit];
   if (!Number.isInteger(count)) {
     throw new Error(`${ms} ms is not a whole number of ${unit}s, so it cannot be said in ${unit}s`);
