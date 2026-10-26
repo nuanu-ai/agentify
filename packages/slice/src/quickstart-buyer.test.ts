@@ -218,7 +218,7 @@ describe("the quickstart's test buyer", () => {
 
   it("reads an asynchronous order at its address until the goods arrive", async () => {
     // Waits long enough between reads for the merchant to take the order and deliver.
-    const running = run(LATER, { waitMs: 100 });
+    const running = run(LATER, { waitMs: 200 });
     const order = await onlyHeld();
     await order.deliver(goodsOf(order.id));
     const finished = await running;
@@ -253,13 +253,24 @@ describe("the quickstart's test buyer", () => {
     expect(facilitator.settles).toHaveLength(0);
   });
 
-  it("reports a read of the order that failed and stops there, without printing the address", async () => {
-    const unread = await run(LATER, { statusReads: [503] });
+  it("reports a read of the order that failed and reads on until the goods arrive", async () => {
+    const running = run(LATER, { statusReads: [503], waitMs: 200 });
+    const order = await onlyHeld();
+    await order.deliver(goodsOf(order.id));
+    const finished = await running;
+
+    expect(finished.code, finished.printed).toBe(0);
+    expect(finished.printed).toContain("503");
+    expect(finished.printed).toContain(goodsOf(order.id).access_url);
+    expect(finished.printed).not.toContain(keptAddress());
+  });
+
+  it("stops with the order's address kept and not printed when every read fails", async () => {
+    const unread = await run(LATER, { statusReads: Array(60).fill(503) });
 
     expect(unread.code, unread.printed).not.toBe(0);
     expect(unread.printed).toContain("503");
-    // A failed read is not the order's state, so no state is printed after it.
-    expect(unread.printed).not.toContain('"status"');
+    expect(unread.printed).toContain(ADDRESSES);
     expect(readsIn(unread.printed)).toBe(0);
     const statusUrl = keptAddress();
     expect(statusUrl, unread.printed).toBeDefined();
