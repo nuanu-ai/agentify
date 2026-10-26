@@ -697,14 +697,14 @@ describe("a request that fails or stops on its way", () => {
       await again.waitFor({ timeout: 5_000 });
 
       expect(await mainText(page)).toMatch(/could not be loaded/);
-      expect(await mainText(page)).not.toMatch(/went through|may or may not|outcome is unknown/i);
+      expect(await mainText(page)).not.toMatch(/went through|may or may not|don't know/i);
       expect(await again.getAttribute("href")).toBe(`${BASE}/orders?show=open`);
       await page.context().close();
     },
   );
 
   it.each(FAILURES)(
-    "says a press whose answer was lost may or may not have been done, and leads back with a read that sends nothing again, when %s",
+    "says nobody knows whether a press whose answer was lost was done, and leads back to the list it was pressed on with a read that sends nothing again, when %s",
     async (_, fail) => {
       const page = await onTheCards();
       const posts: string[] = [];
@@ -716,13 +716,13 @@ describe("a request that fails or stops on its way", () => {
       );
 
       await page.locator(".list-row form[action*='pause='] button").first().click();
-      const reopen = page.getByRole("link", { name: "Open the page again" });
+      const reopen = page.getByRole("link", { name: "Open Products" });
       await reopen.waitFor({ timeout: 5_000 });
       const href = (await reopen.getAttribute("href")) ?? "";
 
-      expect(await mainText(page)).toMatch(/may or may not have been done/);
+      expect(await mainText(page)).toMatch(/We don't know if this was done/);
       expect(await mainText(page)).not.toMatch(/could not be loaded/);
-      expect(href).toMatch(new RegExp(`^${BASE}/cards\\?pause=`));
+      expect(href).toBe(`${BASE}/cards`);
       await reopen.click();
       await page.waitForURL(`${origin}${href}`);
       await page.waitForLoadState("networkidle");
@@ -731,7 +731,7 @@ describe("a request that fails or stops on its way", () => {
     },
   );
 
-  it("locks what was typed while a save is on its way, sends it whole, and once the page is stopped gives it back saying the outcome is unknown", async () => {
+  it("locks what was typed while a save is on its way, sends it whole, and with no answer a few seconds on says the change could not be confirmed, still locked", async () => {
     const page = await onTheCards();
     await page.goto(`${origin}${BASE}/settings`);
     await page.waitForLoadState("networkidle");
@@ -746,38 +746,43 @@ describe("a request that fails or stops on its way", () => {
     await site.fill("https://rooms.example.com");
     // Playwright waits out a page that is loading before it reads one, and the
     // save's answer is held, so the page reads itself: what the field allows a
-    // moment after the press, and then Escape, which stops a loading page in a
-    // desktop browser, with the stop the browser would make.
+    // moment after the press, then what the form says once seconds have passed
+    // with no answer, before the load is stopped.
     await form.evaluate((sending) => {
       const field = sending.querySelector<HTMLInputElement>("input[name='seller_site']");
+      const seen = document.body.dataset;
       sending.addEventListener("submit", () => {
         setTimeout(() => {
-          document.body.dataset.typable = String(field?.matches(":enabled:read-write"));
-          document.body.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-          );
-          window.stop();
+          seen.typableSoon = String(field?.matches(":enabled:read-write"));
         }, 300);
+        setTimeout(() => {
+          seen.typableLater = String(field?.matches(":enabled:read-write"));
+          seen.said = sending.querySelector("[role='status']")?.textContent ?? "";
+          seen.reads = sending.querySelector("[role='status'] a")?.getAttribute("href") ?? "";
+          seen.saveable = String(!sending.querySelector("button")?.disabled);
+          window.stop();
+        }, 6_000);
       });
     });
     // Not waited for: a click waits for the page it starts, which is held.
     const clicked = form.getByRole("button", { name: "Save" }).click();
     await expect.poll(() => held.length).toBe(1);
     const sent = new URLSearchParams(held[0]?.request().postData() ?? "");
-    await page.waitForTimeout(600);
+    await page.waitForTimeout(6_500);
     await held[0]?.abort().catch(() => {});
     await clicked.catch(() => {});
-    expect(await page.locator("body").getAttribute("data-typable")).toBe("false");
+    const seen = await page.evaluate(() => ({ ...document.body.dataset }));
 
-    const status = form.getByRole("status");
-    await status.waitFor({ timeout: 5_000 });
     expect(sent.get("seller_site")).toBe("https://rooms.example.com");
     expect(sent.get(DRAWN_FOR)).toBe(PERSON);
+    expect(seen).toMatchObject({
+      typableSoon: "false",
+      typableLater: "false",
+      saveable: "false",
+      said: "We could not confirm whether your change was made. Open this page again to see where it stands; this sends nothing again.",
+      reads: `${BASE}/settings`,
+    });
     expect(await site.inputValue()).toBe("https://rooms.example.com");
-    await site.fill("https://rooms.example.com/again", { timeout: 2_000 });
-    expect(await form.getByRole("button", { name: "Save" }).isEnabled()).toBe(true);
-    expect(await status.innerText()).toMatch(/outcome is unknown/i);
-    expect(await status.getByRole("link").getAttribute("href")).toBe(`${BASE}/settings`);
     await page.context().close();
   });
 });

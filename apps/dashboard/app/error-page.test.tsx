@@ -2,8 +2,8 @@
 
 /**
  * The dashboard's own error page for a failure nobody named, such as a page
- * that broke while it was drawn: it claims nothing about a press, and its way
- * on is the page the person was on, read again.
+ * that broke while it was drawn: it does not say a change was made or lost,
+ * and its way on is a screen to look at, never another section's.
  */
 
 import { cleanup, render, screen } from "@testing-library/react";
@@ -27,7 +27,7 @@ const config = loadConfig({
 afterEach(cleanup);
 
 describe("a page that failed for a reason nobody named", () => {
-  it("says it could not be shown and offers the same address again, search and all, never another section", async () => {
+  it("says it could not be shown, asks a person who pressed something to look first, and leads to the dashboard's start rather than to Cards", async () => {
     const pages = pageServicesFor(config, {
       identity: identityFor(config, { postman: async () => "accepted" }),
       clientFor: () => {
@@ -60,12 +60,14 @@ describe("a page that failed for a reason nobody named", () => {
     ]);
 
     render(<Stub initialEntries={["/sign-in?destination=%2Freport"]} />);
-    const again = await screen.findByRole("link", { name: "Try again" });
+    const way = await screen.findByRole("link", { name: "Open the dashboard" });
 
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Something went wrong");
-    expect(document.body.textContent).toContain("This page could not be shown.");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+      "This page could not be shown",
+    );
+    expect(document.body.textContent).toContain("If you pressed a button, check the dashboard");
     expect(document.body.textContent).not.toMatch(/went through|may or may not/);
-    expect(again.getAttribute("href")).toBe("/sign-in?destination=%2Freport");
-    expect(screen.queryByRole("link", { name: /Cards/ })).toBeNull();
+    expect(way.getAttribute("href")).toBe("/");
+    expect(screen.queryByRole("link", { name: /Cards|Products/ })).toBeNull();
   });
 });

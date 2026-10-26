@@ -4663,7 +4663,7 @@ describe("the keys screen", () => {
     await browser.signIn();
 
     const refused = await browser.post("/keys/key_nobody_has/disable");
-    const said = /<h1>Something went wrong<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
+    const said = /<h1>[^<]*<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
 
     expect(said).toMatch(/^[A-Z]/);
     expect(said.toLowerCase()).toContain("there is no such key");
@@ -4997,7 +4997,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
       expect(answered.status).toBe(500);
       const text = readable(answered.html);
-      expect(text).toContain("may or may not have been done");
+      expect(text).toContain("We don't know if this was done");
       expect(text).not.toContain("Nothing was changed");
     } finally {
       await close();
@@ -5669,11 +5669,11 @@ describe("a list, when it could not be read", () => {
     },
   );
 
-  it("says a page whose session could not be checked could not be loaded, and offers the same page again", async () => {
+  it("says a page whose session could not be checked could not be loaded, and a press it could not check changed nothing", async () => {
     // Opening a list is a read: nothing could have been done, so the person
     // is not told to wonder about it, and the way on is the list they asked
-    // for, filter and all. A press refused the same way may have been made
-    // by nobody, and is said to be of unknown outcome.
+    // for, filter and all. The gate runs before any press, so a press it
+    // could not check changed nothing either, and the page says so.
     let breaking = false;
     const { browser } = await started({
       identity: (real) => ({
@@ -5694,9 +5694,37 @@ describe("a list, when it could not be read", () => {
     expect(readable(read.html)).toContain("could not be loaded");
     expect(readable(read.html)).not.toMatch(/may or may not|went through/);
     expect(read.html).toMatch(/<a [^>]*href="\/orders\?show=open"[^>]*>Try again<\/a>/);
-    expect(readable(pressed.html)).toContain("may or may not have been done");
-    expect(pressed.html).toMatch(/<a [^>]*href="\/orders"[^>]*>Open the page again<\/a>/);
+    expect(readable(pressed.html)).toContain("Nothing was changed");
+    expect(readable(pressed.html)).not.toContain("We don't know if this was done");
+    expect(pressed.html).toMatch(
+      /<a class="button button-primary" href="\/orders">Open Orders<\/a>/,
+    );
   });
+
+  it.each(LISTS)(
+    "%s says a refusal in the gateway's own words beside the sections, and offers no read that would only be refused again",
+    async (path, read) => {
+      let refusing = false;
+      const { browser } = await started({
+        client: (real) => ({
+          ...real,
+          [read]: async (...asked: unknown[]) =>
+            refusing
+              ? { ok: false as const, status: 403, why: "this merchant is suspended" }
+              : await (real[read] as (...given: unknown[]) => Promise<unknown>)(...asked),
+        }),
+      });
+      await browser.signIn();
+      refusing = true;
+
+      const refused = await browser.get(path);
+
+      expect(refused.status).toBe(403);
+      expect(refused.html).toContain('aria-label="Dashboard sections"');
+      expect(readable(mainOf(refused.html))).toContain("This merchant is suspended");
+      expect(waysOnIn(refused.html)).toStrictEqual([]);
+    },
+  );
 
   it.each(LISTS)("%s says the same of a read Agentify did not answer", async (path) => {
     const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
@@ -5714,9 +5742,9 @@ describe("a list, when it could not be read", () => {
 });
 
 describe("a press that fails in a way nobody planned for", () => {
-  /** Where the error page's "Open the page again" leads. */
+  /** Where the error page's one way on, "Open" and the screen's name, leads. */
   const reopened = (html: string): string | undefined =>
-    /<a [^>]*href="([^"]*)"[^>]*>Open the page again<\/a>/
+    /<a class="button button-primary" href="([^"]*)">Open [^<]+<\/a>/
       .exec(html)?.[1]
       ?.replaceAll("&amp;", "&");
   const said = async (during: () => Promise<void>): Promise<string> => {
@@ -5771,8 +5799,10 @@ describe("a press that fails in a way nobody planned for", () => {
     const answered = await said(async () => {
       const failed = await browser.makeMerchant();
       expect(failed.status).toBe(500);
-      expect(readable(failed.html)).toContain("may or may not have been done");
-      expect(failed.html).toMatch(/<a [^>]*href="\/merchant"[^>]*>Open the page again<\/a>/);
+      expect(readable(failed.html)).toContain("We don't know if this was done");
+      expect(failed.html).toMatch(
+        /<a class="button button-primary" href="\/merchant">Open [^<]+<\/a>/,
+      );
     });
 
     expect(answered).toMatch(/request failed/i);
@@ -5830,7 +5860,7 @@ describe("a press that fails in a way nobody planned for", () => {
           status: 500,
           to: null,
         });
-        expect(readable(pressed.html), path).toContain("may or may not have been done");
+        expect(readable(pressed.html), path).toContain("We don't know if this was done");
         expect(reopened(pressed.html), path).toBe(path);
       }
     });
@@ -5855,7 +5885,7 @@ describe("a press that fails in a way nobody planned for", () => {
         const pressed = await browser.post(path, form);
 
         expect(pressed.status, path).toBe(500);
-        expect(readable(pressed.html), path).toContain("may or may not have been done");
+        expect(readable(pressed.html), path).toContain("We don't know if this was done");
         expect(reopened(pressed.html), path).toBe(path);
       }
     });
