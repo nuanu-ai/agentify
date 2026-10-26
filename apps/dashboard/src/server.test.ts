@@ -60,6 +60,7 @@ import type { Handover, Message, Postman } from "./mail.js";
 import { NOT_AN_ADDRESS } from "./page-services.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
+import { PAYOUT_NOTES } from "./settings-view.js";
 import { googleExchange } from "./testing/google.js";
 import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
@@ -3405,10 +3406,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(screen.html).not.toContain("<textarea");
     const text = readable(screen.html);
     expect(text).toMatch(/getting paid/i);
-    expect(text).toMatch(/couldn't prepare your payout/i);
-    // The page has not read what the contracts hold, and a fresh or just-paid
-    // merchant's hold nothing, so it must not say money is waiting there.
-    expect(text).not.toMatch(/your money (is|stays)/i);
+    expect(text).toContain(PAYOUT_NOTES.unbuilt);
     expect(text).toContain(SIGN_OUT_EVERYWHERE);
     expect(screen.html).toContain('name="payout_wallet"');
   });

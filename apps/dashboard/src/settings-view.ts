@@ -167,16 +167,19 @@ export const PAYOUT_NOTES = Object.freeze({
     test: "Send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
     live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
   } satisfies Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>>,
-  multicall3: "Multicall3, a public contract, not ours.",
+  multicall3: "Multicall3, a public contract, not Agentify's.",
   toYourWallet: (contracts: number): string =>
-    `One transaction pays out your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
-  toEachWallet: "One transaction pays out each payout contract to the wallet written into it.",
-  orAgentify: "If nobody sends it, Agentify's next payout does. It has no fixed date.",
-  fromTheSender: "It moves no money out of the wallet that sends it.",
+    `This transaction moves what is in your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
+  toEachWallet:
+    "This transaction moves what is in each payout contract to the wallet written into it.",
+  orAgentify: "If nobody sends it, Agentify's next payout does the same, on no fixed date.",
+  fromTheSender: "Sending this transaction costs only the network fee.",
   tooMany: (count: number): string =>
-    `You have ${count} payout contracts, more than one transaction can pay out. Agentify's next payout covers them all. It has no fixed date.`,
+    `You have ${count} payout contracts, more than one transaction can carry. Agentify's next payout covers them all, on no fixed date.`,
+  // Agentify's own payout refuses every contract the merchant's refuses, and
+  // refuses as a whole, so it does not cover this one in the meantime.
   unbuilt:
-    "We couldn't prepare your payout transaction. The fault is on our side. If you see this again, write to admin@agentify.ad.",
+    "Agentify could not build your payout transaction because of a fault on its side. Until the fault is fixed, Agentify's next payout cannot move what is in your payout contracts either, so write to admin@agentify.ad.",
 });
 
 const sameAddress = (one: string, other: string): boolean =>

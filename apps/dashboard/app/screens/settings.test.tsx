@@ -707,7 +707,7 @@ describe("the payout instruction", () => {
     const text = shownText(settingsPage({ mode: "test", wallet: W }));
 
     expect(text).toContain(`To ${MULTICALL3}`);
-    expect(text).toMatch(/Multicall3, a public contract, not ours/);
+    expect(text).toContain(PAYOUT_NOTES.multicall3);
     expect(text).toMatch(/ETH to send 0\b/);
   });
 
