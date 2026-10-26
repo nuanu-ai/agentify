@@ -54,6 +54,12 @@
   display: none;
 }
 
+/* Under the status line that says the browser was asked for the image. */
+.again {
+  display: block;
+  font-size: var(--text-label);
+}
+
 .manualCopy {
   display: grid;
   gap: 8px;
