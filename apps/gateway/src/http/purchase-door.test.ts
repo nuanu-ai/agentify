@@ -10,18 +10,22 @@
  */
 
 import { type Card, CardSchema, type QuoteResponse } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Integration } from "../ports/store.js";
 import {
+  authorisation,
   type Harness,
   harness,
   loggedWhile,
   paymentNamingNoPayer,
   type Served,
   serve,
+  signedFor,
   workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
+import { aWallet } from "../testing/signed-payment.js";
+import { PAYMENT_SIGNATURE_HEADER } from "./x402.js";
 
 /** A card whose price its seller is asked at every purchase, as a shop's always is. */
 const pricedCard: Card = CardSchema.parse({
@@ -432,7 +436,10 @@ describe("a synchronous purchase", () => {
 /**
  * `count` purchases of `itemId` paid for and then refused by their seller, so
  * each is an order whose buyer paid and got nothing. The worker answers the
- * price questions and leaves the orders to the seller's own calls.
+ * price questions and draws the orders, which hands them over, and leaves them
+ * to the seller's own calls. A shop's order is taken on before it is refused,
+ * as the connector takes on an order it has made in the shop, unless `takenOn`
+ * says it never was.
  */
 const leftUnserved = async (
   harnessed: Harness,
@@ -440,6 +447,7 @@ const leftUnserved = async (
   count: number,
   merchantId: string = harnessed.merchant.id,
   through: Integration = "api",
+  takenOn: boolean = through === "woocommerce",
 ): Promise<string[]> => {
   const worker = workUntilStopped(harnessed, { onQuote: () => priced, merchantId, through });
   const ids: string[] = [];
@@ -450,6 +458,12 @@ const leftUnserved = async (
       const orderId = offered.order.order.id;
       const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
       await harnessed.gateway.payPurchase(orderId, payment, fingerprint);
+      await vi.waitFor(async () =>
+        expect((await harnessed.store.orderById(orderId))?.order.state).toBe("dispatched"),
+      );
+      if (takenOn) {
+        await harnessed.gateway.acceptOrder(merchantId, orderId, {});
+      }
       await harnessed.gateway.refuseOrder(merchantId, orderId, {
         code: "out_of_stock",
         message: "the supplier has none",
@@ -463,6 +477,62 @@ const leftUnserved = async (
     expect((await harnessed.store.orderById(id))?.order.state).toBe("unfulfilled");
   }
   return ids;
+};
+
+/** A buyer's wallet, for payments that have to come from one payer. */
+const BUYER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+
+/**
+ * One order of a card charged before its goods with a one-second deadline,
+ * whose charge nobody could confirm and which settled only after its deadline,
+ * so the order became unfulfilled without ever being handed over.
+ */
+const lateSettled = async (harnessed: Harness): Promise<string> => {
+  const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+    ...prepaidCard,
+    merchant_item_id: "esim-late",
+    fulfill_deadline_seconds: 1,
+  });
+  if (!published.ok) throw new Error("the card was refused");
+  const merchant = await harnessed.store.merchantById(harnessed.merchant.id);
+  const payTo = merchant?.payoutWallet.split?.address;
+  if (payTo === undefined) throw new Error("the merchant has no split");
+  const payer = BUYER.toLowerCase();
+  harnessed.facilitator.willVerify({
+    verified: true,
+    payer,
+    validUntil: null,
+    recovery: {
+      kind: "evm-exact-eip3009",
+      network: "eip155:84532",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      payer,
+      payTo,
+      amount: "25000000",
+      validAfter: "0",
+      validBefore: String(Math.floor(harnessed.now() / 1000) + 600),
+      nonce: `0x${"1".repeat(64)}`,
+      notBefore: String(Math.floor(harnessed.now() / 1000) - 30),
+    },
+  });
+  harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+  const offered = await harnessed.gateway.beginPurchase(published.id, {});
+  if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+  const orderId = offered.order.order.id;
+  await harnessed.gateway.payPurchase(orderId, "PAYMENT-LATE", "fp-late");
+  const executedAt = harnessed.now();
+  harnessed.advance(2_000);
+  const attempt = (await harnessed.store.orderById(orderId))?.paymentAttempt;
+  if (attempt === undefined) throw new Error("no charge was submitted");
+  await harnessed.gateway.runner.completePaymentAttempt(
+    orderId,
+    attempt.id,
+    { settled: true, transaction: `0x${"a".repeat(64)}`, executedAt },
+    "chain",
+  );
+  harnessed.facilitator.willVerify();
+  harnessed.facilitator.willSettle();
+  return orderId;
 };
 
 /** A purchase of `itemId` over HTTP, its price answered by `merchantId`'s worker. */
@@ -628,10 +698,156 @@ describe("a seller with ten paid orders left unserved", () => {
     if (first === undefined) throw new Error("no order was left unserved");
 
     const stopped = await harnessed.gateway.standingOf(merchantId);
+    await harnessed.store.setSelling(merchantId, "paused");
+    const paused = await harnessed.gateway.standingOf(merchantId);
     await harnessed.gateway.closeOrder(merchantId, first, {});
     const lifted = await harnessed.gateway.standingOf(merchantId);
 
     expect(stopped.unserved).toBe(true);
+    // A paused seller learns of it before resuming into it.
+    expect(paused.unserved).toBe(true);
     expect(lifted.unserved).toBe(false);
+  });
+
+  it("is refused at the paid request over HTTP, with nothing charged and nothing worth retrying soon", async () => {
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+    const offered = await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } });
+    await worker.stop();
+    expect(offered.status).toBe(402);
+    const [orderId] = (await harnessed.store.orders(merchantId)).map((held) => held.order.id);
+    if (orderId === undefined) throw new Error("no order was opened");
+    const record = await harnessed.store.orderById(orderId);
+    if (record === null) throw new Error("the order went missing");
+    await leftUnserved(harnessed, itemId, 10);
+    const settled = harnessed.facilitator.settles.length;
+
+    const payTo = (await harnessed.store.merchantById(merchantId))?.payoutWallet.split?.address;
+    const { payment } = await signedFor(harnessed, record, aWallet("a buyer"), {
+      nonce: "0x7",
+      ...(payTo === undefined ? {} : { payTo }),
+    });
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+      headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+    });
+
+    expect(refused.status).toBe(409);
+    const { error } = refused.body as Refused;
+    expect(error.code).toBe("seller_not_fulfilling");
+    expect(error.retryable).toBe(false);
+    expect(harnessed.facilitator.settles).toHaveLength(settled);
+  });
+
+  it("lets a payment through that releases goods already made and held for their buyer", async () => {
+    // The charge for a synchronous purchase failed after its goods were made;
+    // paying again releases them, and that order was served.
+    const { harnessed } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    const roomId = await selling(harnessed, syncCard);
+    harnessed.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
+    const offered = await harnessed.gateway.beginPurchase(roomId, {});
+    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+    const orderId = offered.order.order.id;
+    const first = authorisation(harnessed, BUYER, "0x01");
+    const second = authorisation(harnessed, BUYER, "0x02");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await worker.stop();
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("delivered_unpaid");
+    harnessed.facilitator.willSettle();
+    await leftUnserved(harnessed, itemId, 10);
+
+    const repeated = await harnessed.gateway.payPurchase(
+      orderId,
+      second.payment,
+      second.fingerprint,
+    );
+
+    expect(repeated.step).toBe("settled");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("delivered");
+  });
+
+  it("answers the buyer of one of the ten who lost their answer and presents their payment again", async () => {
+    const { harnessed } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    const [first] = await leftUnserved(harnessed, itemId, 10);
+    if (first === undefined) throw new Error("no order was left unserved");
+    const kept = (await harnessed.store.orderById(first))?.payment;
+    const owner = (await harnessed.store.orderById(first))?.paidBy;
+    if (kept == null || owner == null) throw new Error("the order kept no payment");
+    const settled = harnessed.facilitator.settles.length;
+
+    const again = await harnessed.gateway.payPurchase(first, kept, owner);
+
+    expect(again.step).not.toBe("seller_not_fulfilling");
+    expect("order" in again && again.order.order.id).toBe(first);
+    expect(harnessed.facilitator.settles).toHaveLength(settled);
+  });
+
+  it("does not count a shop's orders the connector refused before the shop's own order was made", async () => {
+    // The connector runs inside Agentify, so its refusal before creating the
+    // shop's order is Agentify's, and the shop never took the order on.
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "woocommerce");
+    await leftUnserved(harnessed, itemId, 10, merchantId, "woocommerce", false);
+
+    expect((await tryToBuy(harnessed, served, itemId, merchantId, "woocommerce")).status).toBe(402);
+  });
+
+  it("does not count an order that became unfulfilled only when a charge nobody could confirm settled late", async () => {
+    // The purchase was closed on the silence before any hand-over, and the
+    // charge reported in after its deadline: the seller was never given it.
+    const { harnessed, served } = await started({ SETTLE_RESPONSE_MS: "5000" });
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    const late = await lateSettled(harnessed);
+    expect((await harnessed.store.orderById(late))?.order.state).toBe("unfulfilled");
+    await leftUnserved(harnessed, itemId, 9);
+
+    expect((await tryToBuy(harnessed, served, itemId)).status).toBe(402);
+  });
+});
+
+describe("a stopped seller's products", () => {
+  it("answer an agent's look at them with the refusal and no payment challenge", async () => {
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    await leftUnserved(harnessed, itemId, 10);
+
+    const looked = await served.call("GET", `/x402/${itemId}/purchase`);
+
+    expect(looked.status).toBe(409);
+    expect((looked.body as Refused).error.code).toBe("seller_not_fulfilling");
+    expect(looked.headers.get("payment-required")).toBeNull();
+  });
+
+  it("leave the catalogue while the stop holds, and come back once it lifts, beside another seller's", async () => {
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await sellingThrough(harnessed, merchantId, "api");
+    const other = await harnessed.addMerchant();
+    const otherItem = await sellingThrough(harnessed, other.id, "api");
+    const [first] = await leftUnserved(harnessed, itemId, 10);
+    if (first === undefined) throw new Error("no order was left unserved");
+    const listed = async () =>
+      ((await served.call("GET", "/x402/catalog")).body as { items: { id: string }[] }).items.map(
+        (item) => item.id,
+      );
+
+    const stopped = await listed();
+    await harnessed.gateway.closeOrder(merchantId, first, {});
+    const lifted = await listed();
+
+    expect(stopped).toStrictEqual([otherItem]);
+    expect([...lifted].sort()).toStrictEqual([itemId, otherItem].sort());
   });
 });

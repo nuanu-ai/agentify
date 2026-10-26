@@ -18,6 +18,7 @@ import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { JournalEntry, JournalPress, JournalSubject } from "../ports/journal.js";
 import type {
+  Integration,
   PayoutWalletWrite,
   RecordedPayoutSplit,
   Store,
@@ -1675,19 +1676,56 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     });
 
     describe("a paid order left unserved", () => {
-      /** An order of `merchantId`'s in `state`, with its payment where it stands. */
-      const paidOrder = (
-        id: string,
-        state: Order["state"],
-        payment: Order["payment"],
-        merchantId = A,
-      ): StoredOrder => {
-        const base = anOrder(id, state, {
-          merchantId,
+      /** How an order came to be where it is, as far as the store is told. */
+      interface Ended {
+        readonly state?: Order["state"];
+        readonly payment?: Order["payment"];
+        readonly closure?: Order["closure"];
+        /** Whether the merchant's process was ever handed the order. */
+        readonly handedOver?: boolean;
+        /** Whether the merchant took it on. */
+        readonly takenOn?: boolean;
+        readonly merchantId?: string;
+      }
+
+      const REFUSED: Order["closure"] = {
+        cause: "merchant_refused",
+        code: "out_of_stock",
+        message: "none left",
+      };
+      const MISSED: Order["closure"] = {
+        cause: "deadline_expired",
+        deadline: "async_fulfillment",
+      };
+
+      /** An order of the card `itemId`, paid for and left unfulfilled unless `ended` says otherwise. */
+      const paidOrder = (id: string, itemId: string, ended: Ended = {}): StoredOrder => {
+        const base = anOrder(id, ended.state ?? "unfulfilled", {
+          merchantId: ended.merchantId ?? A,
           createdAt: Number(id.replace(/\D/g, "")) || 1,
         });
-        return { ...base, order: { ...base.order, payment } };
+        return {
+          ...base,
+          itemId,
+          order: {
+            ...base.order,
+            payment: ended.payment ?? "settled",
+            closure: ended.closure === undefined ? REFUSED : ended.closure,
+            dispatch: {
+              attempts: ended.handedOver === false ? 0 : 1,
+              accepted: ended.takenOn ?? false,
+            },
+            timestamps: {
+              ...base.order.timestamps,
+              dispatchedAt: ended.handedOver === false ? null : 2_000,
+            },
+          },
+        };
       };
+
+      /** One card of `merchantId`'s, published through `through`. */
+      const cardOf = async (store: Store, merchantId: string, through: Integration) =>
+        (await store.publishCard(merchantId, card(`sku-${through}`, "A room"), 1_000, through)).id;
 
       it("is counted for its own seller only, and only while the buyer paid and nothing was delivered", async () => {
         // Closed by the merchant, delivered late, charged with nobody knowing
@@ -1695,23 +1733,84 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // with nothing charged: none of these is a buyer who paid and got
         // nothing, and neither is another seller's.
         const store = await twoMerchants();
-        await store.addOrder(paidOrder("ord_1", "unfulfilled", "settled"));
-        await store.addOrder(paidOrder("ord_2", "unfulfilled", "settled"));
-        await store.addOrder(paidOrder("ord_3", "fulfillment_closed", "settled"));
-        await store.addOrder(paidOrder("ord_4", "delivered", "settled"));
-        await store.addOrder(paidOrder("ord_5", "rejected", "outcome_unknown"));
-        await store.addOrder(paidOrder("ord_6", "delivered_unpaid", "settle_failed"));
-        await store.addOrder(paidOrder("ord_7", "expired", "none"));
-        await store.addOrder(paidOrder("ord_8", "unfulfilled", "settled", B));
+        const own = await cardOf(store, A, "api");
+        const theirs = await cardOf(store, B, "api");
+        await store.addOrder(paidOrder("ord_1", own));
+        await store.addOrder(paidOrder("ord_2", own));
+        await store.addOrder(paidOrder("ord_3", own, { state: "fulfillment_closed" }));
+        await store.addOrder(paidOrder("ord_4", own, { state: "delivered", closure: null }));
+        await store.addOrder(
+          paidOrder("ord_5", own, {
+            state: "rejected",
+            payment: "outcome_unknown",
+            closure: { cause: "payment_outcome_unknown" },
+          }),
+        );
+        await store.addOrder(
+          paidOrder("ord_6", own, { state: "delivered_unpaid", payment: "settle_failed" }),
+        );
+        await store.addOrder(paidOrder("ord_7", own, { state: "expired", payment: "none" }));
+        await store.addOrder(paidOrder("ord_8", theirs, { merchantId: B }));
 
         expect(await store.unservedOrders(A, 10)).toBe(2);
         expect(await store.unservedOrders(B, 10)).toBe(1);
       });
 
+      it("is counted for a seller's own code where they refused it, or were handed it and let its time run out", async () => {
+        const store = await twoMerchants();
+        const own = await cardOf(store, A, "api");
+        await store.addOrder(paidOrder("ord_1", own, { handedOver: false }));
+        await store.addOrder(paidOrder("ord_2", own, { closure: MISSED }));
+        await store.addOrder(paidOrder("ord_3", own, { closure: MISSED, takenOn: true }));
+
+        expect(await store.unservedOrders(A, 10)).toBe(3);
+      });
+
+      it("is not counted where the seller's code was never handed the order before its time ran out", async () => {
+        // Nothing records why no hand-over happened, and Agentify's own
+        // failure to hand it over is one of the reasons.
+        const store = await twoMerchants();
+        const own = await cardOf(store, A, "api");
+        await store.addOrder(paidOrder("ord_1", own, { closure: MISSED, handedOver: false }));
+
+        expect(await store.unservedOrders(A, 10)).toBe(0);
+      });
+
+      it("is not counted where the charge was answered only after the purchase was closed without it", async () => {
+        // The order became unfulfilled when a charge nobody could confirm
+        // settled late, and no order was handed to the seller for it.
+        const store = await twoMerchants();
+        const own = await cardOf(store, A, "api");
+        await store.addOrder(
+          paidOrder("ord_1", own, {
+            closure: { cause: "payment_outcome_unknown" },
+            handedOver: false,
+          }),
+        );
+
+        expect(await store.unservedOrders(A, 10)).toBe(0);
+      });
+
+      it("is counted for a WooCommerce shop only where the shop took the order on", async () => {
+        // The connector runs inside Agentify and draws every order, so a
+        // hand-over says nothing about the shop. A refusal before the shop's
+        // order was made, or a creation that never reported back, is the
+        // connector's, and only an order taken on is the shop's to serve.
+        const store = await twoMerchants();
+        const shop = await cardOf(store, A, "woocommerce");
+        await store.addOrder(paidOrder("ord_1", shop));
+        await store.addOrder(paidOrder("ord_2", shop, { closure: MISSED }));
+        await store.addOrder(paidOrder("ord_3", shop, { closure: MISSED, takenOn: true }));
+        await store.addOrder(paidOrder("ord_4", shop, { takenOn: true }));
+
+        expect(await store.unservedOrders(A, 10)).toBe(2);
+      });
+
       it("is counted up to the number asked and no further", async () => {
         const store = await twoMerchants();
+        const own = await cardOf(store, A, "api");
         for (let one = 1; one <= 4; one += 1) {
-          await store.addOrder(paidOrder(`ord_${one}`, "unfulfilled", "settled"));
+          await store.addOrder(paidOrder(`ord_${one}`, own));
         }
 
         expect(await store.unservedOrders(A, 3)).toBe(3);
