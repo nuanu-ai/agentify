@@ -233,10 +233,7 @@ describe("the overview", () => {
 
 describe("a registry of splits the gateway would refuse to start on", () => {
   const SPLIT = "0x91fa2e3d4c5b6a798867a5b4c3d2e1f00f1e0c3d";
-  const refusal = {
-    kind: "refused",
-    why: `1 recorded split of a wallet in force or waiting on eip155:84532, beginning with ${SPLIT}, is no longer what this code makes for that merchant and wallet, so the gateway does not start`,
-  } as const;
+  const refusal = `1 recorded split of a wallet in force or waiting on eip155:84532, beginning with ${SPLIT}, is no longer what this code makes for that merchant and wallet, so the gateway does not start`;
   const splits = {
     readAt: 0,
     of: 1,
@@ -265,17 +262,8 @@ describe("a registry of splits the gateway would refuse to start on", () => {
     expect(refused?.why).not.toContain("eip155");
   });
 
-  it("still says the gateway would refuse where the splits could not be read to name the merchant", () => {
-    expect(startRefusedOf(refusal, null)).toMatchObject({ split: SPLIT, merchant: null });
-  });
-
-  it("is nothing where the gateway would start", () => {
-    expect(
-      startRefusedOf(
-        { kind: "nothing_recorded", chain: { id: "eip155:8453", name: "Base" }, waiting: 0 },
-        splits,
-      ),
-    ).toBeNull();
+  it("says the merchant could not be read where the splits could not be, rather than naming none", () => {
+    expect(startRefusedOf(refusal, "unread")).toMatchObject({ split: SPLIT, merchant: "unread" });
   });
 });
 

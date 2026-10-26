@@ -72,13 +72,16 @@ export function ActionForm({
   /** A fact to read before pressing, over the button. */
   beside?: ReactNode;
 }>) {
-  if (stepUp !== null && answer?.kind !== "step-up") {
+  // Before any press, the step stands in the form's place; after one, over
+  // the form, which keeps what was typed and the press's answer.
+  if (stepUp !== null && answer === null) {
     return (
       <div className="op-decide">
         <StepUp view={stepUp} />
       </div>
     );
   }
+  const askedFirst = answer?.kind === "step-up" ? answer.stepUp : stepUp;
   const typed = answer?.kind === "refused" || answer?.kind === "step-up" ? answer.typed : null;
   const refusedReason =
     answer?.kind === "refused" && answer.field === "reason"
@@ -90,7 +93,9 @@ export function ActionForm({
   const under = answer?.kind === "refused" || answer?.kind === "unknown" ? answer : null;
   return (
     <div className="op-decide">
-      {answer?.kind === "step-up" ? <StepUp view={answer.stepUp} pressed /> : null}
+      {askedFirst === null ? null : (
+        <StepUp view={askedFirst} pressed={answer?.kind === "step-up"} />
+      )}
       <PostForm action={action} document className="op-form">
         {(pending) => (
           <>

@@ -182,7 +182,11 @@ function StartRefused({ refused }: Readonly<{ refused: StartRefusedView }>) {
         </details>
       </div>
       <div className="meta">
-        {refused.merchant === null ? null : (
+        {refused.merchant === null ? null : refused.merchant === "unread" ? (
+          <span>
+            Whose split it is <CouldNotBeRead />
+          </span>
+        ) : (
           <span>
             The split of{" "}
             <Link to={`/admin/merchants/${refused.merchant.id}`}>

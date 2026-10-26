@@ -348,7 +348,8 @@ describe("the lookup", () => {
       kind: "none",
       merchants: "/admin/merchants?q=City+Walking+Tours",
     });
-    expect(view.kind === "none" && view.said).not.toContain("Nothing");
+    const lookedUp = findView("City Walking Tours", [], false);
+    expect(view.kind === "none" && view.said).not.toBe(lookedUp.kind === "none" && lookedUp.said);
   });
 
   it("names the site a merchant was found by, so two found by one site are told apart by it", () => {

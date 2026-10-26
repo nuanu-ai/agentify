@@ -207,9 +207,13 @@ interface NeedsYouItem {
 export interface StartRefusedView {
   /** The gateway's own sentence, its networks named as a wallet names them. */
   readonly why: string;
-  /** The split the sentence begins with, and its merchant where the splits name it. */
+  /** The split the sentence begins with, where it names one. */
   readonly split: string | null;
-  readonly merchant: Readonly<{ id: string; name: string | null }> | null;
+  /**
+   * The split's merchant as the splits name it; null where they do not list
+   * the split, "unread" where they could not be read.
+   */
+  readonly merchant: Readonly<{ id: string; name: string | null }> | null | "unread";
 }
 
 interface WorthItem {
@@ -347,25 +351,27 @@ const chainsNamed = (sentence: string): string =>
 const ADDRESS_IN = /0x[0-9a-fA-F]{40}/;
 
 /**
- * Why the gateway would refuse to start, from the payout listing's refusal,
- * with the split its sentence names and that split's merchant where the
- * splits read name it. Null where the gateway would start.
+ * Why the gateway would refuse to start, from its own sentence, with the
+ * split the sentence names and that split's merchant where the splits read
+ * name it. The sentence is the only form the refusal comes in, so the split
+ * is read out of it.
  */
-export function startRefusedOf(
-  payout: PayoutListing,
-  splits: Splits | null,
-): StartRefusedView | null {
-  if (payout.kind !== "refused") return null;
-  const split = ADDRESS_IN.exec(payout.why)?.[0] ?? null;
+export function startRefusedOf(why: string, splits: Splits | "unread"): StartRefusedView {
+  const split = ADDRESS_IN.exec(why)?.[0] ?? null;
   const row =
-    split === null
+    split === null || splits === "unread"
       ? undefined
-      : splits?.rows.find((one) => one.address.toLowerCase() === split.toLowerCase());
-  const why = chainsNamed(payout.why);
+      : splits.rows.find((one) => one.address.toLowerCase() === split.toLowerCase());
+  const said = chainsNamed(why);
   return {
-    why: `${why.slice(0, 1).toUpperCase()}${why.slice(1)}.`,
+    why: `${said.slice(0, 1).toUpperCase()}${said.slice(1)}.`,
     split,
-    merchant: row === undefined ? null : { id: row.merchantId, name: row.merchantName },
+    merchant:
+      split !== null && splits === "unread"
+        ? "unread"
+        : row === undefined
+          ? null
+          : { id: row.merchantId, name: row.merchantName },
   };
 }
 
@@ -1167,8 +1173,8 @@ function startRowOf(read: Readable<StartRefusedView | null>): HealthRowView {
   if (refused === null) {
     return {
       part,
-      badge: { tone: "pass", word: "Match the code" },
-      fact: ["Every recorded split is the one this code makes for its merchant and wallet."],
+      badge: { tone: "pass", word: "Would start" },
+      fact: ["The gateway would start on the recorded splits."],
     };
   }
   return {
@@ -1179,14 +1185,16 @@ function startRowOf(read: Readable<StartRefusedView | null>): HealthRowView {
       refused.why,
       ...(refused.merchant === null
         ? []
-        : [
-            " The split is ",
-            {
-              text: `${refused.merchant.name ?? refused.merchant.id}'s`,
-              href: `/admin/merchants/${refused.merchant.id}`,
-            },
-            ".",
-          ]),
+        : refused.merchant === "unread"
+          ? [" Whose split it is could not be read."]
+          : [
+              " The split is ",
+              {
+                text: `${refused.merchant.name ?? refused.merchant.id}'s`,
+                href: `/admin/merchants/${refused.merchant.id}`,
+              },
+              ".",
+            ]),
     ],
   };
 }
@@ -1506,9 +1514,10 @@ export function figuresFor(
   const adReports = (at: number) =>
     readable("the ad reports", () => identity.adReportsSince(new Date(at - 30 * 86_400_000)));
   /**
-   * Whether the gateway would start on the recorded splits, as the payout
-   * asks it, with the splits read only where it would not, to name the
-   * merchant. Asked by Overview and Health alone, since it reads every merchant.
+   * Whether the gateway would start on the recorded splits, asked the way its
+   * start asks it, with the splits read only where it would not, to name the
+   * merchant. It reads every merchant and every split, so Overview and Health
+   * alone ask it, and not the sections' counts on every page.
    */
   const startRefused = async (
     asked: FiguresAsked,
@@ -1516,10 +1525,15 @@ export function figuresFor(
     config.surfaceMode === "sandbox"
       ? null
       : await readable("whether the gateway would start", async () => {
-          const payout = await payoutListing(gateway);
-          if (payout.kind !== "refused") return null;
-          const splits = await reader.splits.splits(asked).catch(() => null);
-          return startRefusedOf(payout, splits);
+          try {
+            await gateway.refuseUnlessTheSplitsAgree();
+            return null;
+          } catch (thrown) {
+            // Any other failure is a read that failed, said as unread.
+            if (!(thrown instanceof Error) || thrown.name !== "RefusedToStart") throw thrown;
+            const splits = await reader.splits.splits(asked).catch(() => "unread" as const);
+            return startRefusedOf(thrown.message, splits);
+          }
         });
 
   const healthReads = async (): Promise<HealthReads> => {

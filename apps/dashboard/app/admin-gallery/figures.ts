@@ -385,12 +385,12 @@ const healthReads = (over: Partial<HealthReads> = {}): HealthReads => ({
 });
 
 /** The gateway's refusal of a registry whose split for the tours' wallet is no longer the code's. */
-const REFUSED: PayoutListing = {
+const REFUSED = {
   kind: "refused",
   why: `1 recorded split of a wallet in force or waiting on eip155:8453, beginning with ${TOURS.split}, is no longer what this code makes for that merchant and wallet: the commission wallet or the rate, the factory, or the way a salt and an address are derived changed since, and there is no way yet to move merchants onto new splits, so the gateway does not start`,
-};
+} as const satisfies PayoutListing;
 
-const START_REFUSED = read(startRefusedOf(REFUSED, SPLITS));
+const START_REFUSED = read(startRefusedOf(REFUSED.why, SPLITS));
 
 /** On the test channel nobody is admitted, so the journal holds no admission. */
 const TEST_JOURNAL = read({

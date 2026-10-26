@@ -837,7 +837,7 @@ export function findView(
     return {
       kind: "none",
       q,
-      said: `Find does not read text like “${q}”: it reads IDs, whole email addresses, sites, wallet addresses and transactions.`,
+      said: `Find does not read text like “${q}”: it reads order and merchant IDs, whole email addresses, sites, wallet addresses and transactions.`,
       unknown: null,
       merchants: `/admin/merchants?${new URLSearchParams({ q })}`,
     };
