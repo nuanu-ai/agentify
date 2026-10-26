@@ -2025,7 +2025,7 @@ describe("what the integrations screen says about a shop", () => {
 
     const settings = await running.get("/settings");
     expect(settings.status).toBe(200);
-    expect(readable(settings.html)).toContain("Payout wallet");
+    expect(settings.html).toContain('name="payout_wallet"');
 
     const screen = await running.get("/integrations");
 
@@ -2874,9 +2874,9 @@ describe("one integration at a time", () => {
     }
   });
 
-  it("does not claim the shop sells, which a Connect never approved leaves untrue", async () => {
-    // Pressing Connect switches selling to the shop before the shop has given
-    // any keys, so the code's cards are off sale and nothing sells at all.
+  it("leaves the code's products on sale, and claims no shop sales, after a Connect never approved", async () => {
+    // Connect only asks; the switch waits for the shop's keys, so an approval
+    // abandoned at the shop leaves the code selling and says nothing of a shop.
     const running = await started();
     await running.signIn();
     await publishedByTheCode(running);
@@ -2889,8 +2889,8 @@ describe("one integration at a time", () => {
 
     expect(rows).not.toHaveLength(0);
     for (const row of rows) {
-      expect(row).toContain("Off sale");
-      expect(row).not.toMatch(/\bsells\b/);
+      expect(row).toContain("On sale");
+      expect(row).not.toMatch(/WooCommerce|\bsells\b/);
     }
   });
 });
