@@ -149,12 +149,17 @@ check one or judge whether you and the buyer have settled. You hold the
 buyer's details only where the product needs them: a parcel's address, with
 the name and phone number it carries, and whatever a purchase parameter your
 card asks for holds, such as an email. A sale that has a receipt also names
-its payment's transaction, which is on a public chain, where a block explorer
-shows the wallet that paid it, and money can be sent back to that wallet. An
-order paid for and never delivered has no receipt, and nothing Agentify shows
-you names its transaction. A wallet's address says where a payment came from,
-not who the person is or how to write to them, so anything beyond sending
-money back to a wallet you know waits until the buyer reaches you.
+its payment's transaction, when one was recorded. The transaction is on a
+public chain, but a block explorer shows as its sender the payment service
+that submitted it, not the buyer: the wallet that paid is the address the USDC
+transfer inside the transaction came from. USDC sent back on Base to that
+address reaches the wallet that paid. The same address on another network may
+belong to nobody, because some wallets exist on Base alone, so a refund in
+another currency or on another network needs the buyer to say where. An order
+paid for and never delivered has no receipt, and nothing Agentify shows you
+names its transaction. A wallet's address says where a payment came from, not
+who the person is or how to write to them, so anything beyond sending USDC
+back to that wallet waits until the buyer reaches you.
 
 You close fulfillment from **Orders → Order details → Close fulfillment** on
 your dashboard, or your engineer does it from your integration ([Closing
