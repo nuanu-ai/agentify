@@ -52,6 +52,15 @@ import { ShipToSchema } from "./ship-to.js";
 import { RecordedShipmentSchema } from "./shipment.js";
 
 /**
+ * The transaction that paid an order, as both the buyer's agent and the
+ * merchant read it on the order, with one rule for when it is there.
+ */
+const PaidTransactionSchema = z.string().regex(/\S/, "a transaction names the transfer").meta({
+  description:
+    "The transaction that paid this order: the buyer's payment as the facilitator reported it or as Agentify verified it from chain evidence, on the chain of this deployment. On an EVM chain it is the hash of the transaction that paid the merchant's payout contract, and it is the one the merchant's receipt names once there is a receipt. A block explorer shows as its sender the payment service that submitted it; the wallet that paid is the address the USDC transfer inside it came from. Present once payment_status is paid and a transaction was recorded, whether or not the goods have reached the buyer; absent before that, and on a payment that is not_paid or unresolved.",
+});
+
+/**
  * An order together with the word for where it stands: the document of the
  * calls that read orders back. It is a different document from an order off
  * the worker stream, and `OrderSchema` refuses it.
@@ -60,6 +69,7 @@ export const OrderWithStatusSchema = OrderSchema.extend({
   /** Where the order stands, in the words an agent and a merchant both read. */
   status: OrderStatusSchema,
   payment_status: PaymentStatusSchema,
+  transaction: PaidTransactionSchema.optional(),
   merchant_closure: MerchantClosureSchema.optional(),
 });
 
@@ -310,16 +320,7 @@ export const AgentOrderStatusSchema = z
      */
     payment_status: z.union([PaymentStatusSchema, OpenWordSchema]),
 
-    /**
-     * The transaction that paid this order, as the merchant's receipt names
-     * it: the buyer's payment as reported by the facilitator or verified from
-     * chain evidence, on the chain of this deployment, which on an EVM chain is
-     * the hash of the transaction that paid the merchant's payout contract.
-     * Present once payment_status is paid and a transaction was recorded,
-     * whether or not the goods have reached the buyer; absent before that, and
-     * on a payment that is not_paid or unresolved.
-     */
-    transaction: z.string().regex(/\S/, "a transaction names the transfer").optional(),
+    transaction: PaidTransactionSchema.optional(),
 
     /** The authenticated merchant's closure action; the message is their statement alone. */
     merchant_closure: MerchantClosureSchema.loose().optional(),

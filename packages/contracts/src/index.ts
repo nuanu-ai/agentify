@@ -289,7 +289,7 @@ export { RecordedShipmentSchema, ShipmentSchema } from "./shipment.js";
  * changes, not when a schema is added: a consumer uses it to decide whether it
  * understands the other side.
  */
-export const CONTRACT_VERSION = "3";
+export const CONTRACT_VERSION = "4";
 
 /**
  * Every schema of the public contract, under the name it is known by outside
