@@ -35,7 +35,7 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { channelOf } from "./admin/frame.js";
+import { channelWrittenOf } from "./admin/frame.js";
 import type { JournalTransaction } from "./admin/journal.js";
 import { operatorFlagMessage } from "./admin/operator-mail.js";
 import type { DashboardConfig } from "./config.js";
@@ -1618,7 +1618,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     async setOperatorIn(tx, accountId, on, asked) {
-      const channel = channelOf(config);
+      const channel = channelWrittenOf(config);
       const tell = async (
         before: readonly Readonly<{ id: string; email: string }>[],
         changed: Readonly<{ id: string; email: string }>,
@@ -1633,7 +1633,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
                 granted: on,
                 at: asked.at,
                 askedBy: asked.by,
-                channel: `${channel.name.toLowerCase()} (${channel.line})`,
+                channel,
                 accounts: `${base}/admin/accounts`,
               }),
             ),

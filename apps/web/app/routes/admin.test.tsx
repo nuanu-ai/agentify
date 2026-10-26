@@ -11,6 +11,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
+import { CHANNEL_NAMES } from "@agentify/ui/workspace-view";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawOperatorPage, OperatorDashboard } from "../../components/operator-dashboard.server";
@@ -416,7 +417,7 @@ describe("the operator's page, in the workspace's frame", () => {
   const page = drawOperatorPage({
     data: NUMBERS,
     who: "operator@example.com",
-    channel: { mode: "test", name: "Test channel", line: "test.agentify.ad" },
+    channel: { mode: "test", name: CHANNEL_NAMES.test },
   });
   const sidebar = part(page, /<aside\b/, "aside");
   const linkTo = (words: string) =>
@@ -444,10 +445,22 @@ describe("the operator's page, in the workspace's frame", () => {
     const live = drawOperatorPage({
       data: NUMBERS,
       who: "operator@example.com",
-      channel: { mode: "live", name: "Live channel", line: "agentify.ad" },
+      channel: { mode: "live", name: CHANNEL_NAMES.live },
     });
     expect(live).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
     expect(live).not.toContain('class="surface-words"');
+  });
+
+  it("names the channel at the head of the content only on the live channel, where no band names it", () => {
+    const content = (drawn: string) => part(drawn, /<main\b/, "main");
+    expect(text(content(page))).not.toContain(CHANNEL_NAMES.test);
+
+    const live = drawOperatorPage({
+      data: NUMBERS,
+      who: "operator@example.com",
+      channel: { mode: "live", name: CHANNEL_NAMES.live },
+    });
+    expect(text(content(live))).toContain(CHANNEL_NAMES.live);
   });
 
   it("draws no section's count, which it cannot read, rather than a zero", () => {
@@ -456,7 +469,7 @@ describe("the operator's page, in the workspace's frame", () => {
 
   it("finds a record through the workspace's lookup, and names the channel and the operator with the way out", () => {
     expect(page).toMatch(/<form[^>]*action="\/dashboard\/admin\/find"/);
-    expect(text(sidebar)).toContain("Test channel test.agentify.ad");
+    expect(text(sidebar)).toContain(CHANNEL_NAMES.test);
     expect(page).toContain("operator@example.com");
     expect(page).toMatch(/<form[^>]*action="\/dashboard\/sign-out"/);
   });

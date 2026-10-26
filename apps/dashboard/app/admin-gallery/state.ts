@@ -8,7 +8,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
-import type { SectionCounts } from "@agentify/ui/workspace-view";
+import { CHANNEL_NAMES, type SectionCounts } from "@agentify/ui/workspace-view";
 import type { HydrationState } from "react-router";
 import type { AdminFrameView } from "../../src/admin/frame.js";
 
@@ -33,9 +33,9 @@ export interface AdminGalleryState {
 }
 
 const CHANNELS: Readonly<Record<SurfaceMode, AdminFrameView["channel"]>> = {
-  live: { mode: "live", name: "Live channel", line: "agentify.ad · Base" },
-  test: { mode: "test", name: "Test channel", line: "test.agentify.ad · Base Sepolia" },
-  sandbox: { mode: "sandbox", name: "Sandbox", line: "localhost:8080 · no chain" },
+  live: { mode: "live", name: CHANNEL_NAMES.live },
+  test: { mode: "test", name: CHANNEL_NAMES.test },
+  sandbox: { mode: "sandbox", name: CHANNEL_NAMES.sandbox },
 };
 
 /**

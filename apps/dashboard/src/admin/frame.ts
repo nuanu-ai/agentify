@@ -17,15 +17,21 @@ export interface AdminFrameView {
 
 const CHAINS: Readonly<Record<number, string>> = { 8453: "Base", 84532: "Base Sepolia" };
 
-export const channelOf = (config: DashboardConfig): ChannelView => ({
+const channelOf = (config: DashboardConfig): ChannelView => ({
   mode: config.surfaceMode,
   name: CHANNEL_NAMES[config.surfaceMode],
-  line: `${new URL(config.publicBaseUrl).host} · ${
+});
+
+/**
+ * The channel as a message names it: a letter has no address bar, so it
+ * carries the site's host and the chain beside the name.
+ */
+export const channelWrittenOf = (config: DashboardConfig): string =>
+  `${CHANNEL_NAMES[config.surfaceMode].toLowerCase()} (${new URL(config.publicBaseUrl).host} · ${
     config.walletChain === null
       ? "no chain"
       : (CHAINS[config.walletChain] ?? `chain ${config.walletChain}`)
-  }`,
-});
+  })`;
 
 /** How long the frame waits for an area's counts: a page is answered whole. */
 const COUNTS_WITHIN_MS = 2_000;

@@ -5,6 +5,7 @@
  * administrative action, or a stale session could act.
  */
 
+import { CHANNEL_NAMES } from "@agentify/ui/workspace-view";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { afterEach, describe, expect, it } from "vitest";
 import routes from "../../app/routes.js";
@@ -154,7 +155,7 @@ describe("who the operator's workspace answers", () => {
       // A record the walk makes up is drawn in the frame as one there is none of.
       const madeUp = path.endsWith("nothing-here") || path.includes("acc_somebody");
       expect(read.status, path).toBe(madeUp ? 404 : 200);
-      expect(readable(read.html), path).toContain("Live channel");
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
       expect(readable(read.html), path).toContain("Operator");
     }
   });

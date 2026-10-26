@@ -61,11 +61,6 @@
   color: var(--notice-ink);
 }
 
-.op-channel-sub {
-  color: var(--muted);
-  font: var(--text-caption) / 1.5 var(--font-mono);
-}
-
 /* A group of sections under a quiet caption. */
 .op-group {
   margin: 14px 26px 2px;
@@ -118,8 +113,9 @@
   font: var(--text-caption) / 1.5 var(--font-mono);
 }
 
-/* Where the sidebar gives way to the menu, the channel moves to the head of
-   the content, so it stays on every page at every width. */
+/* Where the sidebar gives way to the menu, the live channel moves to the
+   head of the content, so it stays on every page at every width; any other
+   channel has its band there already. */
 .op-channel-line {
   display: none;
 }

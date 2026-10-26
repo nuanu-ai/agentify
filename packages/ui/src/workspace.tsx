@@ -7,7 +7,7 @@
  * over the page holds its title and the one box that finds any record by what
  * an operator has in hand. Where there is no room for the sidebar, the menu at
  * the end of the header's row holds the channel and the sections, and the
- * channel stands at the head of the page.
+ * live channel, which draws no band, stands at the head of the page.
  *
  * The seller dashboard serves every section but one, the scanner's, which the
  * scanner serves at its own `/admin`; a section the drawing application does
@@ -153,9 +153,7 @@ export function WorkspaceFrame({
         visitor={visitor}
         menu={
           <HeaderMenu>
-            <p className="op-menu-channel">
-              {channel.name} · {channel.line}
-            </p>
+            <p className="op-menu-channel">{channel.name}</p>
             <Sections current={section} counts={counts} {...drawn} />
             <a className="app-menu-door" href="/docs/">
               Open the docs →
@@ -169,7 +167,6 @@ export function WorkspaceFrame({
           <div className="app-sidebar-inner">
             <div className={channel.mode === "live" ? "op-channel" : "op-channel test"}>
               <span className="badge">{channel.name}</span>
-              <span className="op-channel-sub">{channel.line}</span>
             </div>
             <Sections current={section} counts={counts} {...drawn} />
           </div>
@@ -184,10 +181,12 @@ export function WorkspaceFrame({
               </div>
             </div>
             <div className="app-content">
-              <p className="op-channel-line">
-                <span className="badge">{channel.name}</span>
-                <span>{channel.line}</span>
-              </p>
+              {/* Elsewhere the stack's band above already names the channel. */}
+              {channel.mode === "live" && (
+                <p className="op-channel-line">
+                  <span className="badge">{channel.name}</span>
+                </p>
+              )}
               {children}
             </div>
           </main>
