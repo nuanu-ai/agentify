@@ -219,6 +219,27 @@ function clocksFor(
 }
 
 /**
+ * The order to save, carrying whether its merchant answers for it: decided as
+ * the order becomes unfulfilled, the one moment where the hand-over, the
+ * acceptance, the refusal and the integration it was sold through are all on
+ * the order, kept while it stays unfulfilled, and dropped once it is not.
+ * Every change after an order's birth comes through `OrderRunner#withOrder`.
+ * It reads nothing, because it runs inside the order's hold.
+ */
+const answering = (before: StoredOrder, after: StoredOrder): StoredOrder => {
+  if (after.order.state !== "unfulfilled") {
+    if (after.answerable === undefined) return after;
+    const { answerable: _, ...rest } = after;
+    return rest;
+  }
+  if (before.order.state === "unfulfilled") return after;
+  return {
+    ...after,
+    answerable: after.through !== undefined && answerableFor(after.order, after.through),
+  };
+};
+
+/**
  * Whether this effect runs after the order is written rather than being
  * written with it. An effect belongs with the write when nothing can re-drive
  * it once the order has moved past the transition that asked for it; the
@@ -792,7 +813,7 @@ export class OrderRunner {
         const decided = await change(found);
         return decided.save === undefined
           ? decided
-          : { ...decided, save: await this.#answering(found, decided.save) };
+          : { ...decided, save: answering(found, decided.save) };
       },
       scope === undefined
         ? undefined
@@ -812,27 +833,6 @@ export class OrderRunner {
         }
       },
     );
-  }
-
-  /**
-   * The order to save, carrying whether its merchant answers for it: decided
-   * here as the order becomes unfulfilled, the one moment where the hand-over,
-   * the refusal and the shop's taking it on are all on the order, kept while
-   * it stays unfulfilled, and dropped once it is not. Every change after an
-   * order's birth comes through here.
-   */
-  async #answering(before: StoredOrder, after: StoredOrder): Promise<StoredOrder> {
-    if (after.order.state !== "unfulfilled") {
-      if (after.answerable === undefined) return after;
-      const { answerable: _, ...rest } = after;
-      return rest;
-    }
-    if (before.order.state === "unfulfilled") return after;
-    const card = await this.#runtime.store.cardById(after.itemId);
-    return {
-      ...after,
-      answerable: card !== null && answerableFor(after.order, card.integration),
-    };
   }
 
   /**

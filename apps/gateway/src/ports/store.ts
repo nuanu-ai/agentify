@@ -98,9 +98,10 @@ export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
 
 /**
  * Whether the merchant answers for an order that has just become
- * `unfulfilled`, given the integration its card sells through: whether they
- * were given it. Their own code answers for an order it was handed, and they
- * for one they refused by a call before any hand-over. A shop answers only
+ * `unfulfilled`, given the integration it was sold through: whether they were
+ * given it. Their own code answers for an order it was handed, and they for
+ * one they accepted or refused by a call before any hand-over was recorded.
+ * A shop answers only
  * for an order it took on, which the connector does only for a parcel it
  * ordered in the shop; a download it delivers itself, so whatever stops one is
  * Agentify's. An order never handed over is nobody's that the record can
@@ -108,7 +109,9 @@ export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
  */
 export const answerableFor = (order: Order, through: Integration): boolean =>
   through === "api"
-    ? order.timestamps.dispatchedAt !== null || order.closure?.cause === "merchant_refused"
+    ? order.timestamps.dispatchedAt !== null ||
+      order.dispatch.accepted ||
+      order.closure?.cause === "merchant_refused"
     : order.dispatch.accepted;
 
 /**
@@ -296,6 +299,12 @@ export interface StoredOrder {
    * report the handler as silent and send the order again.
    */
   readonly openDeliveryId: string | null;
+  /**
+   * The integration the order was sold through, fixed at its birth, so that
+   * whether its merchant answers for it is decided without reading its card.
+   * Absent on an order born before it was kept.
+   */
+  readonly through?: Integration;
   /**
    * On an `unfulfilled` order only: whether its merchant answers for it
    * (`answerableFor`), decided as it became unfulfilled and gone once it is

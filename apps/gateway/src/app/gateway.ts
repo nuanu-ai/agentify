@@ -1772,6 +1772,7 @@ export class Gateway {
       paymentWords: [],
       paymentWordsDropped: 0,
       openDeliveryId: null,
+      through: stored.integration,
     };
     // Written only while the merchant still sells through the card's
     // integration, since a switch landing between the word above and this
