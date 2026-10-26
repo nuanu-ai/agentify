@@ -196,6 +196,17 @@ describe("a share's picture", () => {
       ).not.toBe(0);
     });
 
+    it("keeps the site's own name whole when the start can give way to it", async () => {
+      const site = "northern-lights-outdoor-equipment-and-camping";
+      const host = (start: string, name: string) => `${start}.${label()}.${label()}.${name}.co.uk`;
+      const drawn = await picture(host("shop", site), "readable", 41);
+
+      expect(
+        differing(drawn, await picture(host("shop", `m${site.slice(1)}`), "readable", 41)),
+      ).not.toBe(0);
+      expect(differing(drawn, await picture(host("chop", site), "readable", 41))).not.toBe(0);
+    });
+
     it("shows a label at its end whole or not at all, never only its end", async () => {
       const pad = `${label()}.${label()}.${label(55)}`;
       const name = "x-customer-accounts-and-orders-help-desk-support-team-amazon";
