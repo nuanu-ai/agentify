@@ -1,10 +1,13 @@
 /**
  * Loaded with `--import` into the process that runs the quickstart's buyer
  * program, so the program can meet a broken network without a line of it
- * changing. It does three things and nothing else.
+ * changing. It does four things and nothing else.
  *
  * It refuses every address that is not on this machine, so the program cannot
  * reach the real test channel from `pnpm test`.
+ *
+ * It prints a line for every read of an order it lets through, so a test can
+ * count them.
  *
  * It plays the faults named in `BUYER_FAULTS`, a JSON object:
  * `statusReads`, the HTTP statuses the first reads of an order answer with
@@ -82,6 +85,7 @@ globalThis.fetch = async (input, init) => {
   const failed = reading ? failedReads.shift() : undefined;
   if (failed !== undefined) return unavailable(failed);
 
+  if (reading) console.error("[faults] order read");
   const answer = await reachable(input, init);
   const paid = new Headers(init?.headers).has("payment-signature");
   if (paid && faults.losePaidAnswer === true) {
