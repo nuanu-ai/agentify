@@ -22,9 +22,10 @@ import {
   useLoaderData,
 } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
-import { accountOf, headingOf } from "../../src/account-banner.js";
+import { accountOf } from "../../src/account-banner.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
+import { headingOf } from "../../src/words.js";
 import type { Gated } from "../answer.js";
 import { shouldRevalidate } from "../routes/merchant-only.js";
 import { OrdersScreen } from "../screens/orders.js";

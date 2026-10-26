@@ -185,8 +185,29 @@ export const ACCOUNT_WORDS: Readonly<
   },
 });
 
-/** The heading over several reasons at once where one of them keeps every product off sale. */
-export const OFF_SALE = "Your products are off sale";
+/** The reasons that each keep every product off sale. */
+const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
+  "paused",
+  "no_seller_name",
+  "no_payout_wallet",
+  "not_approved",
+]);
+
+/**
+ * The banner's heading. One reason is headed by its own title; several by
+ * what they come to together where one of them keeps every product off sale,
+ * and otherwise by the first. Here rather than beside the reasons, so the
+ * page's script that draws the banner does not carry the rules that find them.
+ */
+export const headingOf = (
+  notes: readonly Readonly<{ reason: AccountReason; title: string }>[],
+): string => {
+  const [first] = notes;
+  if (first === undefined) return "";
+  return notes.length > 1 && notes.some((note) => KEEP_OFF_SALE.has(note.reason))
+    ? "Your products are off sale"
+    : first.title;
+};
 
 /** The banner's title while Agentify's withdrawal of the merchant's admission stands. */
 export const LIVE_SALES_STOPPED = "Live sales are stopped";

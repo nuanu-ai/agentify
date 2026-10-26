@@ -14,7 +14,6 @@ import {
   liveSalesStoppedSince,
   moment,
   notConnectedSince,
-  OFF_SALE,
   type Way,
 } from "./words.js";
 
@@ -76,14 +75,6 @@ const ORDER: readonly AccountReason[] = [
   "unread",
 ];
 
-/** The reasons that each keep every product off sale. */
-const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
-  "paused",
-  "no_seller_name",
-  "no_payout_wallet",
-  "not_approved",
-]);
-
 const noteOf = (reason: AccountReason, read: AccountRead): AccountNote => {
   const since = read.outOfTouch?.since;
   if (reason === "out_of_touch" && typeof since === "string") {
@@ -115,17 +106,4 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   if (read.busy === true) found.add("busy");
   if (read.unread === true) found.add("unread");
   return ORDER.filter((reason) => found.has(reason)).map((reason) => noteOf(reason, read));
-};
-
-/**
- * One reason is headed by its own title; several by what they come to
- * together where one of them keeps every product off sale, and otherwise by
- * the first.
- */
-export const headingOf = (notes: readonly AccountNote[]): string => {
-  const [first] = notes;
-  if (first === undefined) return "";
-  return notes.length > 1 && notes.some((note) => KEEP_OFF_SALE.has(note.reason))
-    ? OFF_SALE
-    : first.title;
 };

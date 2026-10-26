@@ -5,8 +5,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { accountOf, headingOf } from "./account-banner.js";
+import { accountOf } from "./account-banner.js";
 import type { Viewer } from "./viewer.js";
+import { headingOf } from "./words.js";
 
 const WALLET = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
