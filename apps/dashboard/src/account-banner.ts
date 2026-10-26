@@ -33,9 +33,9 @@ export interface AccountRead {
   /** True where a read was asked for and failed. */
   readonly unread?: boolean;
   /**
-   * Present while purchases that charge before delivery are refused because
-   * the merchant's integration has not connected: when it last did, as an ISO
-   * instant, or null where it never has.
+   * Present while the merchant's cards are off sale because their
+   * integration has not connected: when it last did, as an ISO instant, or
+   * null where it never has.
    */
   readonly outOfTouch?: { readonly since: string | null };
   /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */

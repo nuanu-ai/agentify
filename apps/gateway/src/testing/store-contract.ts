@@ -596,6 +596,21 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.noteContact(A, 8_000);
         expect(await store.lastContact(A)).toBe(8_000);
       });
+
+      it("reaches the catalogue beside each card of that merchant's, and nothing where they never polled", async () => {
+        // A silent seller's cards are left out of the catalogue, so a read that
+        // lost the poll would hide every card, and one that invented a poll
+        // would list cards nobody is there to sell.
+        const store = await twoMerchants();
+        await store.publishCard(A, card("sku-1", "A's room"), 10_000);
+        await store.publishCard(B, card("sku-1", "B's room"), 20_000);
+        await store.noteContact(A, 30_000);
+
+        const entries = await store.catalogEntries();
+
+        expect(entries.find((entry) => entry.card.merchantId === A)?.lastContact).toBe(30_000);
+        expect(entries.find((entry) => entry.card.merchantId === B)?.lastContact).toBeNull();
+      });
     });
 
     describe("a merchant", () => {

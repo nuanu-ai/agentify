@@ -3623,9 +3623,10 @@ describe("a card held off sale by what its merchant lacks", () => {
         expect((await running.browser.makeMerchant()).status).toBe(200);
         const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
         if (merchant == null) throw new Error("the press made no merchant");
-        // For the calls the merchant's code makes.
+        // For the calls the merchant's code makes, which is polling.
         const key = await running.harnessed.addKey(merchant.id);
         const asTheMerchant = { authorization: `Bearer ${key}` };
+        await running.harnessed.gateway.poll(merchant.id, 0);
         if (hasName) {
           const listed = await running.gateway.call("POST", "/v0/seller-name", {
             body: { seller_name: "Their own shop" },
@@ -3713,6 +3714,7 @@ describe("a card held off sale by what its merchant lacks", () => {
     const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
     if (merchant == null) throw new Error("the press made no merchant");
     const key = await running.harnessed.addKey(merchant.id);
+    await running.harnessed.gateway.poll(merchant.id, 0);
     const listed = await running.gateway.call("POST", "/v0/seller-name", {
       body: { seller_name: "Their own shop" },
       headers: { authorization: `Bearer ${key}` },
@@ -4078,7 +4080,7 @@ describe("the banner about the account", () => {
     expect(readable(cards.html)).not.toContain("could not be checked");
   });
 
-  it("says over Cards and Orders when the integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
+  it("says over Cards and Orders, and on each card, when the integration last connected while purchases are refused for its silence, and no longer once it polls", async () => {
     const { browser, gateway, harnessed } = await started();
     await publish(gateway, esimCard);
     await browser.signIn();
@@ -4092,6 +4094,9 @@ describe("the banner about the account", () => {
 
     expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
     expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
+    // Each card says what the banner says, with the merchant's own switch kept.
+    expect(readable(rowsIn(cards)[0] ?? "")).toContain("Off sale");
+    expect(readable(rowsIn(after)[0] ?? "")).toContain("On sale");
     expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
     expect(reasonsIn(after)).toStrictEqual([]);
   });
@@ -4134,14 +4139,18 @@ describe("the banner about the account", () => {
     expect(reasonsIn(after)).toStrictEqual([]);
   });
 
-  it("does not say prepaid purchases are refused while the merchant sells only goods made in the answer", async () => {
+  it("says purchases are refused for silence while the merchant sells only goods made in the answer, and not once every card is paused", async () => {
     const { browser, gateway, harnessed } = await started();
-    await publish(gateway, roomCard);
+    const itemId = await publish(gateway, roomCard);
     await browser.signIn();
 
     harnessed.advance(11 * 60_000);
+    const selling = (await browser.get("/cards")).html;
+    await harnessed.gateway.setCardPaused(harnessed.merchant.id, itemId, true);
+    const paused = (await browser.get("/cards")).html;
 
-    expect(reasonsIn((await browser.get("/cards")).html)).toStrictEqual([]);
+    expect(reasonsIn(selling)).toStrictEqual(["out_of_touch"]);
+    expect(reasonsIn(paused)).toStrictEqual([]);
   });
 });
 

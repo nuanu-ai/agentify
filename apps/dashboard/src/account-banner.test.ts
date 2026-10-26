@@ -53,7 +53,7 @@ describe("the account banner", () => {
     expect(note?.says).toMatch(/until you switch back/);
   });
 
-  it("says when a merchant's integration last connected while purchases that charge first are refused for it", () => {
+  it("says when a merchant's integration last connected while their cards are off sale for it", () => {
     const [since] = accountOf(READY, {
       selling: "open",
       through: "api",
@@ -63,10 +63,10 @@ describe("the account banner", () => {
 
     expect(since?.reason).toBe("out_of_touch");
     expect(since?.says).toBe(
-      "Your integration has not connected since 2026-10-21 14:02:07 UTC, so new purchases that charge before delivery are refused until it connects again.",
+      "Your integration has not connected since 2026-10-21 14:02:07 UTC, so agents do not see your cards in the catalogue and new purchases are refused until it connects again.",
     );
     expect(never?.says).toBe(
-      "Your integration has not connected yet, so new purchases that charge before delivery are refused until it does.",
+      "Your integration has not connected yet, so agents do not see your cards in the catalogue and new purchases are refused until it does.",
     );
   });
 

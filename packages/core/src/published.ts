@@ -50,12 +50,12 @@ export const WAITING_FOR_PAYMENT_AT_MOST = 50;
 export const UNSERVED_AT_MOST = 10;
 
 /**
- * How long a seller's own process may go without polling before a purchase
- * that charges before its goods is refused: past it, a buyer would pay for
- * goods nothing is there to make. Nothing is paused and nothing has to be
- * resumed; the first poll lets the next purchase through. A constant rather
- * than a setting: a knob here could switch the guard off, or refuse every
- * prepaid sale of a seller whose process is running.
+ * How long a seller's own process may go without polling before their
+ * purchases are refused and their cards left out of the catalogue: past it,
+ * nobody is there to take an order up. Nothing is paused and nothing has to
+ * be resumed; the first poll lets the next purchase through. A constant rather
+ * than a setting: a knob here could switch the guard off, or refuse every sale
+ * of a seller whose process is running.
  */
 export const SILENT_AFTER_MS = 10 * 60_000;
 

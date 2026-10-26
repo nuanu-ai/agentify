@@ -356,25 +356,56 @@ for route in /=200 /owner=308 /api/health/live=200 /api/health=200 /dashboard/si
     || refuse "https://$origin${route%=*} answered ${status:-nothing} where ${route#*=} was expected, so $revision runs unverified."
 done
 at "checking the cards on sale"
-# Read-only: a GET on a purchase address is always answered with its payment
-# challenge and never read for payment. The catalog is one unpaged document.
+# Read-only: a GET on a purchase address is answered with its payment challenge,
+# or refused, and never read for payment. The catalog is one unpaged document.
+# A card also leaves the catalog for its seller's own state, whatever is
+# released; a card gone whose look is refused with such a code is not held
+# against the release. A seller whose process has gone quiet still answers the
+# look with the challenge, so the release cannot tell that card from one it
+# broke, and holds it against the release.
 python3 - "$origin" "$address" "$network" "$cards" <<'PY' \
   || refuse "the cards on sale do not answer as they did before the release, for the reason above, so $revision runs unverified."
-import base64, json, os, subprocess, sys, urllib.parse
+import base64, json, os, subprocess, sys, time, urllib.parse
 origin, address, network, before = sys.argv[1:5]
 def get(url, *flags):
     return subprocess.run(["curl", "-sS", "--max-time", "20", "--connect-to", f"{origin}:443:{address}", *flags, url],
                           capture_output=True, text=True, check=True).stdout
-cards = sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
+def listed():
+    return sorted(item["id"] for item in json.loads(get(f"https://{origin}/x402/catalog"))["items"])
+cards = listed()
 known = set(open(before).read().split()) if before else None
 leaving = set(os.environ.get("AGENTIFY_LEAVING", "").split())
 if leaving and known is None:
     sys.exit(f"activate: no catalog was read before the release, so the card(s) named as leaving cannot be checked: {' '.join(sorted(leaving))}")
 gone = known - set(cards) if known is not None else set()
+# A stop longer than the silence the gateway allows leaves every seller of
+# their own code silent, and their cards out of the catalog, until their worker
+# polls again; the SDK's worker tries again within thirty seconds. Cards gone
+# and not named are read again for that long and a margin. The tests shorten it.
+deadline = time.monotonic() + float(os.environ.get("AGENTIFY_RETURN_WAIT_SECONDS", "45"))
+while gone - leaving and time.monotonic() < deadline:
+    time.sleep(max(0.0, min(3.0, deadline - time.monotonic())))
+    cards = listed()
+    gone = known - set(cards)
+SELLERS_OWN_STATE = {"seller_not_fulfilling"}
+def refused_for(card):
+    url = f"https://{origin}/x402/{urllib.parse.quote(card, safe='')}/purchase"
+    # Read as text, so the header ends at a blank line however it was spelled.
+    head, _, body = get(url, "-D", "-").partition("\n\n")
+    if head.split()[1:2] != ["409"]:
+        return None
+    try:
+        return json.loads(body)["error"]["code"]
+    except (ValueError, KeyError, TypeError):
+        return None
+sellers = sorted(card for card in gone - leaving if refused_for(card) in SELLERS_OWN_STATE)
+gone -= set(sellers)
 unnamed = sorted(gone - leaving)
 if unnamed:
     sys.exit(f"activate: {len(unnamed)} card(s) on sale before the release are gone from the catalog: {' '.join(unnamed)}; "
-             f"if the release takes them off sale on purpose, run it again with --leaving {','.join(sorted(gone))}")
+             f"if the release takes them off sale on purpose, run it again with --leaving {','.join(sorted(gone))}. "
+             f"A card is also left out while its seller's own process has not polled for ten minutes, which the admin's "
+             f"Health page names; such a card is not the release's doing, and naming it the same way lets the release through")
 stayed = sorted(leaving - gone)
 if stayed:
     sys.exit(f"activate: {len(stayed)} card(s) named as leaving did not leave the catalog, because they are still on sale "
@@ -390,6 +421,7 @@ for card in cards:
         sys.exit(f"activate: card {card} answered {status} without a payment challenge for {url} on {network}")
 compared = "none compared, since nothing answered before" if known is None else f"{len(known)} compared"
 left = f"; {len(gone)} left the catalog as named: {' '.join(sorted(gone))}" if gone else ""
+left += f"; {len(sellers)} left the catalog for their seller's own state: {' '.join(sellers)}" if sellers else ""
 print(f"activate: {len(cards)} card(s) on sale ({compared}), each answering its payment challenge on {network}{left}", file=sys.stderr)
 PY
 

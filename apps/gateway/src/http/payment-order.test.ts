@@ -226,6 +226,9 @@ async function aGatewayPayingThrough(
   await store.addMerchant({ id: merchant.id, name: merchant.name }, clock());
   await setServiceName(store, merchant.id, merchant.name, clock());
   await setPayoutWallet(store, config.payoutSplit, merchant.id, merchant.wallet, clock());
+  // As though their worker had just polled: nothing is sold for a seller
+  // whose process is silent.
+  await store.noteContact(merchant.id, clock());
   const served = await serve({ gateway });
 
   return {

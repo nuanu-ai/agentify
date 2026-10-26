@@ -41,7 +41,7 @@ export function ready(merchant: StoredMerchant, asked: FiguresAsked): boolean {
   );
 }
 
-/** Whether a card is on sale now. */
+/** Whether a card is on sale now, as `onSale` in figures-sql.ts reads it, with its gap. */
 export function onSale(card: StoredCard, merchant: StoredMerchant, asked: FiguresAsked): boolean {
   return (
     merchant.selling === "open" &&

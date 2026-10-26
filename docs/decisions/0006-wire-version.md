@@ -1,7 +1,9 @@
 # 0006. What the contract version promises, and when it moves
 
 Date: 2026-08-27
-Status: accepted; the reading rule rewritten on 2026-10-21
+Status: accepted; the reading rule rewritten on 2026-10-21; the version moved
+to `"4"` on 2026-10-26, when the merchant's order read gained the transaction
+that paid it
 
 ## Context
 
@@ -26,7 +28,7 @@ handshake reaches.
    delivers (product, parameters, price, address, test flag), off the stream or
    read back, is read closed: an unknown field or address shape fails the poll
    or the read. The gateway writes closed, so a leaked field fails on our side.
-2. The version is `"3"`. It moves when a field or a word is renamed or removed,
+2. The version is `"4"`. It moves when a field or a word is renamed or removed,
    a field's meaning changes, or a field or shape is added to what the merchant
    delivers or prices: an order's core, anything at the top of an order read,
    which is kept closed, and a price question's contents, where an older SDK
@@ -39,7 +41,8 @@ handshake reaches.
    repeating it. What no SDK worker reads moves nothing: the
    payout wallet's pending fields (ADR-0019), and the routes and codes only
    the dashboard called (`docs/research/35-one-process.md`). The version moved
-   once, from `"2"`, at the switch from strict to lenient reading.
+   from `"2"` at the switch from strict to lenient reading, and from `"3"` when
+   the top of an order read gained `transaction`, the transaction that paid it.
 3. Every SDK call names its release in `user-agent` as `agentify-sdk/<version>`,
    and the gateway notes it beside a key's last use whenever it writes that
    down, so the team sees who runs what. Nothing refuses a call on it.

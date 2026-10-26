@@ -56,9 +56,8 @@ follows a parcel, and otherwise only when the merchant closes it.
 
 Counting purchases that ended uncharged, or price questions left unanswered:
 anybody can produce them for free, which the owner's principle rules out.
-Stopping only purchases charged before their goods, as the rule about a silent
-merchant in [ADR-0043](0043-the-purchase-door-refuses-before-any-charge.md)
-does: the product owner chose to stop all of a merchant's sales. A stored pause
+Stopping only purchases charged before their goods: the product owner chose to
+stop all of a merchant's sales. A stored pause
 resumed by hand: it would make a staffed step of an ordinary sale, when the
 stop already ends as soon as its cause does. A time window or a share of
 sales: an old order left without delivery or closure is still a buyer without

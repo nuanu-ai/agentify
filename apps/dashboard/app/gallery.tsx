@@ -479,12 +479,10 @@ const ordersOf = (rows: readonly (readonly [Product, Status])[], test = false) =
       },
       test,
       status,
-      payment_status:
-        status === "payment_unresolved"
-          ? "unresolved"
-          : ["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(status)
-            ? "paid"
-            : "not_paid",
+      // A paid order names the transfer that paid it, as the gateway writes it.
+      ...(["delivered", "shipped", "unfulfilled", "fulfillment_closed"].includes(status)
+        ? { payment_status: "paid", transaction: transactionOf(`${product} ${at}`) }
+        : { payment_status: status === "payment_unresolved" ? "unresolved" : "not_paid" }),
     })),
   });
 
@@ -1252,7 +1250,7 @@ const CARDS: GalleryState[] = [
       screen: "Cards",
       when: "A merchant whose own process stopped polling over ten minutes ago opens Cards.",
       cause:
-        "The gateway refuses new purchases of their cards that charge before delivery until their integration polls again, so the banner says since when it has not connected; the cards themselves stay on sale.",
+        "The gateway leaves their cards out of the catalogue and refuses new purchases of them until their integration polls again, so the banner says since when it has not connected.",
     },
     cardsView(CATALOGUE, ORIGIN.live),
     "live",
@@ -1635,6 +1633,8 @@ const ordersAt = (
     lapsed,
     {},
     connector,
+    new Set(),
+    TRANSACTIONS[mode],
   );
 
 /** The layout reads the banner from the same selling state the orders' cards carry. */
@@ -1925,7 +1925,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant follows Close fulfillment from an order whose delivery deadline passed.",
       cause:
-        "The order's details say when it was paid and when its deadline passed, that a late delivery still counts, and how to close fulfillment instead.",
+        "The order's details say when it was paid and when its deadline passed, that a late delivery still counts, and how to close fulfillment instead. They name the transfer that paid it, which no receipt names, and point to how money goes back to the buyer.",
     },
     OWING,
     `/orders?${new URLSearchParams({ details: OWING.orders[0]?.id ?? "" })}`,

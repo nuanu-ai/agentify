@@ -196,13 +196,24 @@ for argument in "$@"; do case $argument in https://*) url=$argument ;; -w) code=
 path="${url#https://test.agentify.ad}"
 case $path in
   */purchase)
+    card="${path#/x402/}"; card="${card%/purchase}"
+    refused="$(awk -v card="$card" '$1 == card { print $2 }' /h/world/refused 2>/dev/null)"
+    if [[ -n $refused ]]; then
+      printf 'HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{"error": {"code": "%s"}}' "$refused"
+      exit 0
+    fi
     challenge="{\"resource\": {\"url\": \"$url\"}, \"accepts\": [{\"network\": \"$(< /h/world/network)\"}]}"
     printf 'HTTP/2 402\r\npayment-required: %s\r\n\r\n' "$(printf '%s' "$challenge" | base64 -w0)" ;;
   *)
     if [[ -n $code ]]; then
       case $path in /owner) printf 308 ;; /cabinet/sign-in) printf 307 ;; /admin) printf 404 ;; *) printf 200 ;; esac
     else
-      printf '{"items": [%s]}' "$(tr ' ' '\n' < /h/world/cards | sed '/^$/d; s/.*/{"id": "&"}/' | paste -sd, -)"
+      # Cards in `returning` are listed again from the third read on: the
+      # first is before the release and the second right after it.
+      reads=$(( $(cat /h/world/catalog-reads 2>/dev/null || echo 0) + 1 )); echo $reads > /h/world/catalog-reads
+      listed="$(cat /h/world/cards)"
+      if [[ -f /h/world/returning && $reads -ge 3 ]]; then listed="$listed $(cat /h/world/returning)"; fi
+      printf '{"items": [%s]}' "$(tr ' ' '\n' <<<"$listed" | sed '/^$/d; s/.*/{"id": "&"}/' | paste -sd, -)"
     fi ;;
 esac
 """
@@ -269,7 +280,10 @@ class Activation(unittest.TestCase):
             restore() { /h/tree/deploy/restore.sh "$1"; echo "restore exit $?"; }
             privacy() { bash -c "$(sed -n 's/^23 4 \\* \\* \\* root //p' /etc/cron.d/agentify-release)"; }
             """)
-        return self.scratch.run(prelude + script, {"NEW": NEW, "OLD": OLD, "OWNER": self.owner, **digests, **environment})
+        # No wait for cards to come back unless a test asks for one, so a test
+        # where a card stays gone does not sit out the whole wait.
+        waits = {"AGENTIFY_RETURN_WAIT_SECONDS": "0"}
+        return self.scratch.run(prelude + script, {"NEW": NEW, "OLD": OLD, "OWNER": self.owner, **digests, **waits, **environment})
 
     def databases(self):
         return {name: (self.world / "db" / name).read_text().strip() for name in ORIGINAL}
@@ -869,6 +883,37 @@ class Activation(unittest.TestCase):
         said = self.run_script("activate", CARDS_AFTER="card_one", AGENTIFY_LEAVING="card_two")
         self.assertIn("exit 0", said)
         self.assertIsNone(self.record())
+
+    def test_a_card_that_left_because_its_seller_is_stopped_is_not_the_releases_doing(self):
+        # A seller who left too many paid orders unserved loses their cards from
+        # the catalog whatever is released, and a look at one says so.
+        (self.world / "refused").write_text("card_two seller_not_fulfilling\n")
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("exit 0", said)
+        self.assertIn("left the catalog for their seller's own state: card_two", said)
+        self.assertIsNone(self.record())
+
+    def test_a_card_whose_seller_reconnects_within_the_wait_does_not_stop_the_release(self):
+        # A stop longer than the silence the gateway allows leaves every seller
+        # of their own code silent when the release starts, until their worker
+        # polls again.
+        (self.world / "returning").write_text("card_two")
+        said = self.run_script("activate", CARDS_AFTER="card_one", AGENTIFY_RETURN_WAIT_SECONDS="10")
+        self.assertIn("exit 0", said)
+        self.assertIn("2 card(s) on sale", said)
+        self.assertIsNone(self.record())
+
+    def test_a_card_still_gone_after_the_wait_stops_the_release_and_names_a_quiet_seller_as_a_cause(self):
+        said = self.run_script("activate", CARDS_AFTER="card_one", AGENTIFY_RETURN_WAIT_SECONDS="1")
+        self.assertIn("exit 1", said)
+        self.assertIn("--leaving card_two", said)
+        self.assertIn("process has not polled", said)
+
+    def test_a_card_that_left_and_is_refused_for_anything_else_still_stops_the_release(self):
+        (self.world / "refused").write_text("card_two not_selling\n")
+        said = self.run_script("activate", CARDS_AFTER="card_one")
+        self.assertIn("exit 1", said)
+        self.assertIn("--leaving card_two", said)
 
     def test_a_card_named_as_leaving_that_is_still_on_sale_stops_the_release(self):
         # Named as leaving and still selling is a person expecting something the

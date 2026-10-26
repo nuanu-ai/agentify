@@ -16,6 +16,7 @@ import {
   type AuthMode,
   type ErrorCode,
   type ErrorEnvelope,
+  type HttpMethod,
   MERCHANT_KEY_HEADER,
   merchantKeyFrom,
   mountableRoutes,
@@ -27,8 +28,9 @@ import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
 import { failureNamed } from "../failure-named.js";
-import { GATEWAY_FAILED } from "./merchant-answers.js";
+import { FAILED, GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
+import { presentedPayment } from "./x402.js";
 
 export type RouteAnswer =
   | { readonly status: number; readonly document: unknown }
@@ -246,9 +248,10 @@ function mount(
       } catch (thrown) {
         console.error(`[gateway] ${name} failed: ${failureNamed(thrown)}`);
         if (!response.headersSent) {
+          const failed = failedPartway(name, method, request);
           response
-            .status(GATEWAY_FAILED.status)
-            .json(refusal(GATEWAY_FAILED.code, GATEWAY_FAILED.message));
+            .status(FAILED)
+            .json(refusal("gateway_failed", failed.message, { retryable: failed.retryable }));
         }
       }
     };
@@ -268,6 +271,48 @@ function mount(
       }
     }
   }
+}
+
+/**
+ * What a call that threw may say about itself, by what it could have done
+ * before it threw. Only a read is known to have decided nothing. A purchase is
+ * paid only by a payment that can be read and names an order, and such a
+ * purchase may have been charged; any other purchase cannot have been. Any
+ * other call may have changed what it acts on, so its answer says the outcome
+ * is not known.
+ */
+function failedPartway(
+  name: RouteName,
+  method: HttpMethod,
+  request: Request,
+): { readonly message: string; readonly retryable: boolean } {
+  if (method === "GET") {
+    return { message: GATEWAY_FAILED.message, retryable: true };
+  }
+  if (name === "purchase_item") {
+    const presented = presentedPayment(request.headers);
+    if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
+      // Not retryable: the payment it carried may already be spent, so the way
+      // back to the order is a fresh signature, not this call again.
+      return {
+        message:
+          "this purchase failed after its payment arrived, and whether it was charged is not known. Sign the same payment request again from the same wallet: that is answered with the order or with where its payment stands, and it never charges twice. Asking for a new price starts a new purchase, which is charged again once paid",
+        retryable: false,
+      };
+    }
+    return {
+      message:
+        "this purchase did not complete and nothing was charged; ask for the price again to buy",
+      retryable: true,
+    };
+  }
+  // Retryable, as the SDK marks a call whose outcome it does not know: worth
+  // making again once its subject has been read.
+  return {
+    message:
+      "this call failed partway, and whether it changed anything is not known; read what it acts on before making it again",
+    retryable: true,
+  };
 }
 
 async function answer(

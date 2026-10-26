@@ -86,7 +86,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
 import { estimateL1Fee } from "viem/op-stack";
-import { makeBuyer } from "./buyer.js";
+import { listedWithin, makeBuyer } from "./buyer.js";
 import { EUROPE_ESIM } from "./cards.js";
 import { commissionWalletVerdicts } from "./commission-wallet.js";
 import { bootGateway, sliceEnv } from "./gateway-harness.js";
@@ -348,7 +348,7 @@ async function main(): Promise<void> {
         privateKey: settings.buyerKey,
         maxUsd: Number(priceUsd),
       });
-      const listing = (await shopper.catalog()).find((one) => one.title === card.title);
+      const listing = await listedWithin(shopper, card.title);
       if (listing === undefined) {
         throw new SmokeStopped(
           "the plan",
