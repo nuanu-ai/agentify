@@ -796,7 +796,7 @@ describe("18-check engine", () => {
     ),
   });
 
-  it.each([408, 429])(
+  it.each([408, 429, 431, 451])(
     "gives no Markdown verdict when the request for it was answered with %i, and names the status",
     (status) => {
       const checked = check(markdownAnswer(status), 7);
@@ -1146,7 +1146,7 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     return input;
   };
 
-  it.each([401, 403, 451])(
+  it.each([401, 403, 405])(
     "takes a document the site refuses with %i for the absence it is to an agent, and says so",
     (status) => {
       const input = answeredWith(status);
@@ -1170,7 +1170,7 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
     },
   );
 
-  it.each([408, 429, 503])(
+  it.each([408, 429, 431, 451, 503])(
     "does not judge a document the site answered with %i, and names the status",
     (status) => {
       const input = answeredWith(status);
@@ -1214,6 +1214,26 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
       evidence: { status: 503 },
     });
     expect(check(answered(json("mcp.json", JSON.stringify(card))), 9)?.status).toBe("pass");
+  });
+
+  it("says a card that asks for sign-in cannot serve discovery", () => {
+    const behind = (challenge: string | undefined) =>
+      withMcp(
+        json("mcp.json", '{"error":"unauthorized"}', {
+          status: 401,
+          headers: {
+            "content-type": "application/json",
+            ...(challenge ? { "www-authenticate": challenge } : {}),
+          },
+        }),
+      );
+    expect(check(behind('Bearer resource_metadata="https://example.com/x"'), 9)).toMatchObject({
+      status: "fail",
+      summaryCode: "mcp_card_behind_sign_in",
+      evidence: { status: 401 },
+      fixCode: "serve_mcp_card_publicly",
+    });
+    expect(check(behind(undefined), 9)?.summaryCode).toBe("document_refused");
   });
 
   it("judges two incomplete cards by the more nearly complete one", () => {
@@ -1271,6 +1291,26 @@ describe("a discovery document read whole, cut, refused, malformed or not there"
       evidence: {
         fields_not_https: ["issuer", "token_endpoint"],
         documents_unread: ["protected resource metadata: fetch_timeout"],
+      },
+    });
+  });
+
+  it("says which OAuth document is missing when none could be read", () => {
+    const checked = check(
+      oauthDeclared([
+        notFound("oauth-authorization-server"),
+        json("oauth-protected-resource", "busy", { status: 503 }),
+      ]),
+      11,
+    );
+    expect(checked).toMatchObject({
+      status: "partial",
+      earnedWeight: 0,
+      summaryCode: "oauth_metadata_missing",
+      evidence: {
+        documents_found: 0,
+        documents_missing: ["authorization server metadata: not found"],
+        documents_unread: ["protected resource metadata: HTTP 503"],
       },
     });
   });
@@ -1434,11 +1474,43 @@ describe("a sitemap's result names its one cause and the entries involved", () =
     ]);
   });
 
-  it("does not take a sitemap compressed with gzip for no sitemap", () => {
-    // The fetch keeps a body as text, as it keeps a gzip file's bytes.
+  it("names the sitemaps an index lists on another site, which the scan does not read", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml(
+            "sitemap.xml",
+            `<sitemapindex><sitemap><loc>https://cdn.other.net/s1.xml</loc><lastmod>${now}</lastmod></sitemap></sitemapindex>`,
+          ),
+        ),
+        4,
+      ),
+    ).toMatchObject({
+      status: "unavailable",
+      summaryCode: "sitemap_partly_unread",
+      evidence: {
+        sitemaps_unread: ["entry 1 of the sitemap index: listed on another site, not read"],
+      },
+    });
+  });
+
+  it("judges a readable sitemap whatever its media type says", () => {
+    expect(
+      check(
+        withSitemaps(
+          xml("sitemap.xml.gz", urlset(now), { headers: { "content-type": "application/x-gzip" } }),
+        ),
+        4,
+      ),
+    ).toMatchObject({ status: "pass", summaryCode: "sitemap_valid" });
+  });
+
+  it("leaves a sitemap the fetch could not unpack unread, and does not take it for no sitemap", () => {
+    // Compressed twice, a file is still gzip after the fetch unpacks it once;
+    // the fetch keeps a body as text, as it keeps such bytes.
     const compressed = (path: string) =>
-      xml(path, gzipSync(Buffer.from(urlset(now))).toString("utf8"), {
-        headers: { "content-type": "application/x-gzip" },
+      xml(path, gzipSync(gzipSync(Buffer.from(urlset(now)))).toString("utf8"), {
+        headers: { "content-type": "text/plain" },
       });
     expect(check(withSitemaps(compressed("sitemap.xml.gz")), 4)).toMatchObject({
       status: "unavailable",
@@ -1455,7 +1527,9 @@ describe("a sitemap's result names its one cause and the entries involved", () =
       ),
     ).toMatchObject({
       status: "unavailable",
-      evidence: { sitemaps_unread: ["entry 2 of the sitemap index: compressed with gzip"] },
+      evidence: {
+        sitemaps_unread: ["entry 2 of the sitemap index: still compressed with gzip"],
+      },
     });
   });
 
@@ -1580,10 +1654,7 @@ describe("a sitemap's result names its one cause and the entries involved", () =
 describe("a web page answered where a document belongs, whatever comes before its opening", () => {
   const pages = [
     ["a comment", "<!-- built -->\n<!doctype html><html><body>App</body></html>"],
-    [
-      "a server warning",
-      "<br />\n<b>Warning</b>: session_start() failed<br />\n<!DOCTYPE html><html><body>x</body></html>",
-    ],
+    ["white space", '\n\n   <html lang="en"><body>App</body></html>'],
     [
       "an XML prolog",
       '<?xml version="1.0"?>\n<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "x">\n<html xmlns="http://www.w3.org/1999/xhtml"><body>x</body></html>',
@@ -1602,6 +1673,35 @@ describe("a web page answered where a document belongs, whatever comes before it
       expect(check(input, 4)?.summaryCode).toBe("sitemap_not_sitemap");
     },
   );
+
+  it("does not take a document that only mentions a page's markup for a page", () => {
+    const input = makeArtifacts("store");
+    input.llms = artifact(
+      "https://example.com/llms.txt",
+      '# Frontend kit\n\n> Components for pages.\n\n```html\n<!doctype html>\n<html lang="en">\n```\n\n- [Guide](https://example.com/guide)\n',
+      { headers: { "content-type": "text/plain" } },
+    );
+    const card = JSON.stringify({
+      name: "Docs MCP",
+      description: 'Returns templates such as <html lang="en"> skeletons',
+      endpoint: "https://example.com/mcp",
+    });
+    input.mcp = [
+      artifact("https://example.com/.well-known/mcp.json", card, {
+        headers: { "content-type": "application/json" },
+      }),
+    ];
+    expect(check(input, 8)?.summaryCode).toBe("llms_valid");
+    expect(check(input, 9)?.summaryCode).toBe("mcp_card_valid");
+    input.mcp = [
+      artifact("https://example.com/.well-known/mcp.json", card.slice(0, 80), {
+        headers: { "content-type": "application/json" },
+        truncated: true,
+        decodedBytes: 1024 * 1024,
+      }),
+    ];
+    expect(check(input, 9)?.summaryCode).toBe("document_too_large");
+  });
 });
 
 describe("a robots.txt result names its one cause", () => {
@@ -1659,7 +1759,7 @@ describe("a robots.txt result names its one cause", () => {
     });
   });
 
-  it.each([408, 429, 503])(
+  it.each([408, 429, 431, 451, 503])(
     "names the status of an answer of %i that kept robots.txt from being read",
     (status) => {
       const checked = check(withRobots("", { status }), 1);
