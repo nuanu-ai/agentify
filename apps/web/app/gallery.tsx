@@ -471,7 +471,9 @@ const reportOf = (score: number): ReportResponse => ({
             ? "partial"
             : check.id === 9
               ? "unavailable"
-              : "pass",
+              : score >= 70 && check.id === 11
+                ? "not_applicable"
+                : "pass",
     summary_code: check.id === 6 ? "vertical_jsonld_missing" : null,
     user_impact_code: null,
     fix_code: check.id === 6 ? "publish_vertical_jsonld" : null,
