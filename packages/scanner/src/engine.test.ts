@@ -968,12 +968,184 @@ describe("headers that carry a list of values", () => {
         headers: { "content-type": "text/html", "www-authenticate": challenge },
       }),
     });
-    expect(check(challenged('Basic realm="oauth bearer area"'), 11)?.status).toBe(
-      "not_applicable",
-    );
+    expect(check(challenged('Basic realm="oauth bearer area"'), 11)?.status).toBe("not_applicable");
     expect(check(challenged('Basic realm="a", Bearer realm="api"'), 11)?.status).toBe(
       "unavailable",
     );
     expect(check(challenged('bearer error="invalid_token"'), 11)?.status).toBe("unavailable");
+  });
+});
+
+describe("a discovery document read whole, cut, refused, malformed or not there", () => {
+  const MIB = 1024 * 1024;
+  const json = (path: string, body: string, overrides: Partial<FetchArtifact> = {}) =>
+    artifact(`https://example.com/.well-known/${path}`, body, {
+      headers: { "content-type": "application/json" },
+      ...overrides,
+    });
+  // A document of exactly `size` bytes, its padding inside a string field.
+  const sized = (fields: Record<string, unknown>, size: number): string => {
+    const shell = JSON.stringify({ ...fields, padding: "" });
+    return JSON.stringify({ ...fields, padding: "x".repeat(size - Buffer.byteLength(shell)) });
+  };
+  const card = { name: "Store MCP", endpoint: "https://example.com/mcp" };
+  const cutAt = (body: string, limit: number) =>
+    ({ body: body.slice(0, limit), decodedBytes: limit, truncated: true }) as const;
+  const notFound = (path: string) => json(path, "", { status: 404 });
+  const withMcp = (first: FetchArtifact): ScanArtifacts => ({
+    ...makeArtifacts("store"),
+    mcp: [first, notFound("mcp/server-card.json")],
+  });
+
+  it("judges a card of exactly the read limit, and leaves one byte more unjudged with the limit named", () => {
+    expect(check(withMcp(json("mcp.json", sized(card, MIB))), 9)).toMatchObject({
+      status: "pass",
+    });
+    const cut = check(withMcp(json("mcp.json", "", cutAt(sized(card, MIB + 1), MIB))), 9);
+    expect(cut).toMatchObject({
+      status: "unavailable",
+      earnedWeight: 0,
+      summaryCode: "document_truncated",
+      evidence: { truncated: true, read_limit: "1 MiB" },
+    });
+    expect(cut?.fixCode).toBeUndefined();
+  });
+
+  it.each([
+    ["a UCP profile", 10, "store"],
+    ["an A2A card", 17, "owner"],
+  ] as const)("does not call %s cut at the read limit absent", (_, id, segment) => {
+    const input = makeArtifacts(segment);
+    const cut = json("document", "", cutAt(`{"name":"${"x".repeat(MIB)}"}`, MIB));
+    if (id === 10) input.ucp = cut;
+    else input.a2a = cut;
+    const evaluation = evaluateScan(input);
+    expect(evaluation.checks.find((each) => each.id === id)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "document_truncated",
+      evidence: { read_limit: "1 MiB" },
+    });
+    expect(evaluation.findings.negativeCheckIds).not.toContain(id);
+  });
+
+  it("does not call OAuth metadata cut at the read limit absent", () => {
+    const input = {
+      ...makeArtifacts("owner"),
+      mcp: [json("mcp.json", '{"name":"x","endpoint":"https://example.com/mcp","auth":"oauth2"}')],
+      oauth: [
+        json("oauth-authorization-server", "", cutAt(`{"issuer":"${"x".repeat(MIB)}"}`, MIB)),
+        notFound("oauth-protected-resource"),
+      ],
+    };
+    expect(check(input, 11)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "document_truncated",
+    });
+  });
+
+  it("does not say no sign-in is declared when the card that would declare it was cut", () => {
+    const input = withMcp(
+      json("mcp.json", "", cutAt(`{"auth":"oauth2","x":"${"x".repeat(MIB)}"}`, MIB)),
+    );
+    expect(check(input, 11)).toMatchObject({ status: "unavailable" });
+  });
+
+  it.each([
+    ["an MCP server card", 9, "mcp_card_unparseable", "fail"],
+    ["a UCP profile", 10, "ucp_profile_unparseable", "fail"],
+    ["an A2A card", 17, "a2a_card_unparseable", "partial"],
+  ] as const)(
+    "reports %s that is not valid JSON as unparseable, not as absent",
+    (_, id, summaryCode, status) => {
+      const input = makeArtifacts("store");
+      const broken = json("document", '{"name": "Store", "endpoint": ');
+      if (id === 9) input.mcp = [broken, notFound("mcp/server-card.json")];
+      else if (id === 10) input.ucp = broken;
+      else input.a2a = broken;
+      expect(check(input, id)).toMatchObject({
+        status,
+        summaryCode,
+        fixCode: "repair_document_json",
+      });
+    },
+  );
+
+  it("reports OAuth metadata that is not valid JSON as unparseable", () => {
+    const input = {
+      ...makeArtifacts("owner"),
+      mcp: [json("mcp.json", '{"name":"x","endpoint":"https://example.com/mcp","auth":"oauth2"}')],
+      oauth: [json("oauth-authorization-server", "{"), notFound("oauth-protected-resource")],
+    };
+    expect(check(input, 11)).toMatchObject({
+      status: "fail",
+      summaryCode: "oauth_metadata_unparseable",
+    });
+  });
+
+  const page = "<!DOCTYPE html><html><head><title>Store</title></head><body>App</body></html>";
+
+  it("takes a web page answered where a card belongs for no card", () => {
+    const input = makeArtifacts("store");
+    input.mcp = [
+      json("mcp.json", page, { headers: { "content-type": "text/html" } }),
+      json("mcp/server-card.json", page, { headers: { "content-type": "text/html" } }),
+    ];
+    input.ucp = json("ucp", `﻿  ${page}`, { headers: { "content-type": "text/html" } });
+    input.a2a = json("agent-card.json", page, { headers: { "content-type": "text/html" } });
+    input.llms = artifact("https://example.com/llms.txt", page);
+    expect(check(input, 9)).toMatchObject({ status: "fail", summaryCode: "mcp_absent" });
+    expect(check(input, 10)).toMatchObject({ status: "fail", summaryCode: "ucp_absent" });
+    expect(check(input, 17)).toMatchObject({ status: "not_applicable", summaryCode: "a2a_absent" });
+    expect(check(input, 8)).toMatchObject({ status: "not_applicable", summaryCode: "llms_absent" });
+  });
+
+  it.each([401, 403, 429, 503])(
+    "does not call a document the site answered with %i absent or malformed",
+    (status) => {
+      const input = makeArtifacts("store");
+      const refused = (path: string) =>
+        artifact(`https://example.com/${path}`, "Forbidden", { status });
+      input.mcp = [refused(".well-known/mcp.json"), notFound("mcp/server-card.json")];
+      input.ucp = refused(".well-known/ucp");
+      input.a2a = refused(".well-known/agent-card.json");
+      input.llms = refused("llms.txt");
+      for (const id of [8, 9, 10, 17]) {
+        const checked = check(input, id);
+        expect(checked).toMatchObject({ status: "unavailable", evidence: { status } });
+        expect(checked?.fixCode).toBeUndefined();
+      }
+    },
+  );
+
+  it("keeps an llms.txt heading and link read before the limit, and does not judge a cut one without them", () => {
+    const head = "# Store\n\n- [Catalog](https://example.com/catalog)\n";
+    const proven = makeArtifacts("store");
+    proven.llms = artifact("https://example.com/llms.txt", head, {
+      truncated: true,
+      decodedBytes: 512 * 1024,
+    });
+    expect(check(proven, 8)).toMatchObject({ status: "pass", evidence: { truncated: true } });
+    const unproven = makeArtifacts("store");
+    unproven.llms = artifact("https://example.com/llms.txt", "Store notes\n".repeat(10), {
+      truncated: true,
+      decodedBytes: 512 * 1024,
+    });
+    expect(check(unproven, 8)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "document_truncated",
+      evidence: { read_limit: "512 KiB" },
+    });
+  });
+
+  it("still reports a card that is not there, and one that is there but incomplete", () => {
+    const absent = makeArtifacts("store");
+    absent.mcp = [notFound("mcp.json"), notFound("mcp/server-card.json")];
+    expect(check(absent, 9)).toMatchObject({ status: "fail", summaryCode: "mcp_absent" });
+    const incomplete = withMcp(json("mcp.json", '{"name":"Store MCP"}'));
+    expect(check(incomplete, 9)).toMatchObject({
+      status: "partial",
+      summaryCode: "mcp_card_incomplete",
+      evidence: { fields_missing: ["endpoint"] },
+    });
   });
 });
