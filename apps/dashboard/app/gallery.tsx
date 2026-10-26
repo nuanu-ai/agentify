@@ -2896,7 +2896,7 @@ const SETTINGS: GalleryState[] = [
       screen: "Settings",
       when: "A merchant on the test site opens Settings after saving their payout wallet.",
       cause:
-        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH from a wallet other than Coinbase Wallet, whose window refuses Base Sepolia.",
+        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH from a wallet other than Coinbase Wallet, whose payout is not known to work on Base Sepolia.",
     },
     settingsView("test", WHO, settingsOf({}, "test")),
     { mode: "test" },

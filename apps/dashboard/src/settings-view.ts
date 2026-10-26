@@ -158,25 +158,27 @@ const PAID_IN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
 };
 
 /**
- * Where Coinbase Wallet's window is offered, by the EIP-155 chain it works
- * on, with the line each panel says where it is not. Coinbase's window
- * refuses Base Sepolia to the wallets it creates now, so the test channel
- * offers neither button. A chain not written here offers neither, without a
- * word.
+ * Where each of Coinbase Wallet's buttons is offered, by the EIP-155 chain it
+ * would work on, with the line its panel says where it is not. Connecting a
+ * Coinbase Wallet works on Base Sepolia, but Coinbase's window refuses
+ * transactions there from the wallets it creates now, so the test channel
+ * offers the box's button and not the payout's. A chain not written here
+ * offers neither, without a word.
  */
-const COINBASE_ON: Readonly<Record<number, true | Readonly<{ box: string; payout: string }>>> = {
-  8453: true,
+const COINBASE_ON: Readonly<
+  Record<number, Readonly<{ box: true | string; payout: true | string }>>
+> = {
+  8453: { box: true, payout: true },
   84532: {
-    box: "There is no Coinbase Wallet button on the test channel, because Coinbase's window refuses Base Sepolia to the wallets it creates now. Enter your wallet's address by hand.",
+    box: true,
     payout:
-      "Coinbase Wallet cannot send it on the test channel, because Coinbase's window refuses Base Sepolia to the wallets it creates now. Send it from another wallet, as below.",
+      "Coinbase Wallet's payout is not known to work on the test network, Base Sepolia, so send it from another wallet, as below.",
   },
 };
 
 const coinbaseOn = (chain: number | null, panel: "box" | "payout"): CoinbaseView => {
-  if (chain === null) return null;
-  const on = COINBASE_ON[chain];
-  return on === undefined ? null : on === true ? { chain } : { absent: on[panel] };
+  const on = chain === null ? undefined : COINBASE_ON[chain]?.[panel];
+  return chain === null || on === undefined ? null : on === true ? { chain } : { absent: on };
 };
 
 const sameAddress = (one: string, other: string): boolean =>
@@ -252,7 +254,7 @@ const payoutView = (
         ? `Agentify could not read from the network what this payout would bring, so it does not know whether anything is waiting for you. Sending it anyway does no harm: it pays out only what is there, though it costs the network's fee even when that is nothing. ${SENT_ON[mode]}`
         : `Sent now, this payout would bring ${amount} ${
             one ? "to your wallet" : "to the wallets beside your payout contracts, between them"
-          }. That is what the network showed when this page was drawn: a buyer who pays before the payout goes out adds to it, and if Agentify's own payout goes out first, that one brings it to you instead. ${SENT_ON[mode]}`,
+          }. That is what the network showed when this page was drawn: a buyer who pays before the payout goes out adds to it, and if Agentify's own payout goes out first, that one brings it to you instead. A payout already sent, from this page or any wallet, is counted here until the network has carried it out. ${SENT_ON[mode]}`,
     brings: amount,
     to: transaction.to,
     data: transaction.data,

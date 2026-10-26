@@ -325,7 +325,10 @@ function PayoutPanel({ payout }: Readonly<{ payout: PayoutView }>) {
           <p className="under">Multicall3, a public contract, not ours.</p>
         </dd>
         <dt>Amount</dt>
-        <dd className="mono">0</dd>
+        <dd>
+          <div className="mono">0</div>
+          <p className="under">The transaction itself carries no money.</p>
+        </dd>
         <dt>
           <label htmlFor="payout-data">Data</label>
         </dt>

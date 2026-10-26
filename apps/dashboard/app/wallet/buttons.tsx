@@ -57,16 +57,16 @@ export const WALLET_WORDS = {
   payoutSent: (brings: string | null): string =>
     `You asked Coinbase Wallet to send the payout${
       brings === null ? "" : `, which would bring you ${brings} as this page showed it`
-    }, and it accepted. The money reaches your wallet once the network carries the payout out; reload this page to see what is left to pay out.`,
+    }, and it accepted. The money reaches your wallet once the network carries the payout out, and until then this page goes on counting it as waiting, so give it a few minutes and reload before you send another.`,
   payoutClosed:
     "Coinbase's window closed before the payout was asked for, so nothing was sent. Press again, or send the payout from another wallet with the values below.",
   payoutUnconfirmed:
-    "Coinbase's window closed without confirming the payout. If you approved it there, it may still go out, so reload this page to see what is left before you send another, from Coinbase Wallet or from another wallet with the values below.",
-  payoutUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page does not know whether the payout went out. Reload this page to see what is left before you send another.`,
+    "Coinbase's window closed without confirming the payout. If you approved it there, it may still go out, and this page counts it as waiting until the network carries it out, so give it a few minutes and reload before you send another, from Coinbase Wallet or from another wallet with the values below.",
+  payoutUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page does not know whether the payout went out. Give it a few minutes and reload before you send another, from Coinbase Wallet or from another wallet with the values below.`,
   payoutEarlierStands:
-    "Coinbase Wallet sent nothing this time. It accepted a payout from this page earlier; reload this page to see what is left.",
+    "Coinbase Wallet sent nothing this time. It accepted a payout from this page earlier, which this page counts as waiting until the network carries it out.",
   payoutUnknown:
-    "Coinbase Wallet did not tell this page whether a payout it was asked for went out. Reload this page to see what is left before you send another.",
+    "Coinbase Wallet did not tell this page whether a payout it was asked for went out. Give it a few minutes and reload before you send another, from Coinbase Wallet or from another wallet with the values below.",
   payoutNotSent:
     "Coinbase Wallet stopped before the payout was asked for, so nothing was sent. Press again, or send the payout from another wallet with the values below.",
 } as const;
