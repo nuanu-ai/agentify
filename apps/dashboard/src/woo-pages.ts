@@ -1084,7 +1084,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       // Where the code's cards came back with selling stopped, the merchant is
       // sent to the screen that starts it again, which says it is stopped.
       if (switched.document.sellingPaused) {
-        return { kind: "redirect", location: `${base}/cards` };
+        return { kind: "redirect", location: `${base}/products` };
       }
       const query = shopUrl === null ? "" : `?${new URLSearchParams({ shop_url: shopUrl })}`;
       return { kind: "redirect", location: `${base}/woocommerce${query}` };

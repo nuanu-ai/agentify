@@ -6,7 +6,12 @@
  * a pill that says nothing is not a claim that nothing waits.
  */
 
-import { CHANNEL_NAMES, type ChannelView, type SectionCounts } from "@agentify/ui/workspace-view";
+import {
+  CHANNEL_NAMES,
+  type ChannelView,
+  inChannel,
+  type SectionCounts,
+} from "@agentify/ui/workspace-view";
 import type { DashboardConfig } from "../config.js";
 import type { Operator } from "./access.js";
 
@@ -23,12 +28,12 @@ const channelOf = (config: DashboardConfig): ChannelView => ({
 });
 
 /**
- * The channel as a message names it, such as "agentify.ad (production, Base)":
- * a letter has no address bar, so it leads with the site's host and carries
- * the chain beside the name.
+ * The channel as a message names it, such as "in production at agentify.ad
+ * (Base)": a letter has no band and no address bar, so it says the site's host
+ * beside the channel's name, and the chain.
  */
 export const channelWrittenOf = (config: DashboardConfig): string =>
-  `${new URL(config.publicBaseUrl).host} (${CHANNEL_NAMES[config.surfaceMode].toLowerCase()}, ${
+  `${inChannel(config.surfaceMode)} at ${new URL(config.publicBaseUrl).host} (${
     config.walletChain === null
       ? "no chain"
       : (CHAINS[config.walletChain] ?? `chain ${config.walletChain}`)

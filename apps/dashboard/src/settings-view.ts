@@ -48,13 +48,15 @@ export interface SplitView {
 export type PayoutView =
   | Readonly<{
       kind: "send";
+      /** What the transaction does, and who pays out if the merchant does not. */
+      said: string;
       /** On which one chain, from what, the raw transaction is sent. */
       sentOn: string;
       to: string;
       data: string;
       /** Each split it pays out, beside the wallet written into it. */
       pays: readonly Readonly<{ split: string; wallet: string }>[];
-      /** What sending it can and cannot do. */
+      /** What sending it takes from the wallet that sends it. */
       after: string;
       /** The chain a Coinbase Wallet sends it on, the one `sentOn` names; null where there is none. */
       chain: number | null;
@@ -157,6 +159,24 @@ const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
   live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
 };
 
+/**
+ * Every note Getting paid says, by the state it is in, so each is written once
+ * and one test reads them all. The page reads which payout contracts there
+ * are and never what they hold, so no note says there is money in one: a
+ * merchant with no sale yet reads the same words.
+ */
+export const PAYOUT_NOTES = Object.freeze({
+  toYourWallet: (contracts: number): string =>
+    `One transaction pays out your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
+  toEachWallet: "One transaction pays out each payout contract to the wallet written into it.",
+  orAgentify: "If nobody sends it, Agentify's next payout does. It has no fixed date.",
+  fromTheSender: "It moves no money out of the wallet that sends it.",
+  tooMany: (count: number): string =>
+    `You have ${count} payout contracts, more than one transaction can pay out. Agentify's next payout covers them all. It has no fixed date.`,
+  unbuilt:
+    "We couldn't prepare your payout transaction. The fault is on our side. If you see this again, write to admin@agentify.ad.",
+});
+
 const sameAddress = (one: string, other: string): boolean =>
   one.toLowerCase() === other.toLowerCase();
 
@@ -188,33 +208,26 @@ const payoutView = (
   const { payout } = splits;
   if (mode === "sandbox" || payout === null) return null;
   if (payout === "unbuilt") {
-    return {
-      kind: "unbuilt",
-      said: "We couldn't prepare your payout transaction. The fault is on our side. Whatever your payout contracts hold stays there until it is paid out.",
-    };
+    return { kind: "unbuilt", said: PAYOUT_NOTES.unbuilt };
   }
   if ("tooMany" in payout) {
-    return {
-      kind: "too_many",
-      said: `You have ${payout.tooMany} payout contracts, more than one transaction can pay out. Agentify's next payout covers them all. It has no fixed date.`,
-    };
+    return { kind: "too_many", said: PAYOUT_NOTES.tooMany(payout.tooMany) };
   }
   const pays = payout.splits.map((split) => ({
     split: split.address,
     wallet: split.merchantWallet,
   }));
   const wallets = new Set(pays.map((pair) => pair.wallet.toLowerCase()));
+  const goes =
+    wallets.size === 1 ? PAYOUT_NOTES.toYourWallet(pays.length) : PAYOUT_NOTES.toEachWallet;
   return {
     kind: "send",
+    said: `${goes} ${PAYOUT_NOTES.orAgentify}`,
     sentOn: SENT_ON[mode],
     to: payout.to,
     data: payout.data,
     pays,
-    after: `This transaction moves no money out of the wallet that sends it. ${
-      wallets.size === 1
-        ? "Your share arrives in the same transaction."
-        : "Each share arrives in the wallet beside its contract, in the same transaction."
-    }`,
+    after: PAYOUT_NOTES.fromTheSender,
     chain: walletChain,
   };
 };

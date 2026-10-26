@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { shortened } from "./copy.js";
 
 /**
  * The working screens' lists: rows in one bordered surface, separated by
@@ -163,9 +164,10 @@ const Chevron = () => (
  * anywhere on the line opens it, which the browser does with no script on the
  * page; the chevron at the line's end shows that it opens and turns when it
  * is open. A link or a button in a cell stays its own. `of` names the press:
- * the row's title and what tells it from another row of the same title, so a
- * list of them read out tells its rows apart. `id` is the row's address, which
- * the page scrolls to with the row's line in view, and `open` draws it opened.
+ * the row's title, its day and time, and its record's short ID, since two
+ * purchases of one product can share the second, so a list of them read out
+ * tells its rows apart. `id` is the row's address, which the page scrolls to
+ * with the row's line in view, and `open` draws it opened.
  */
 export function DisclosedRow({
   of,
@@ -175,7 +177,7 @@ export function DisclosedRow({
   cells,
   children,
 }: Readonly<{
-  of: string;
+  of: Readonly<{ title: string; day: string; time: string; id: string }>;
   id: string;
   open?: boolean;
   needsYou?: boolean;
@@ -191,7 +193,9 @@ export function DisclosedRow({
         </span>
       </div>
       <details open={open} className="row-more">
-        <summary aria-label={`Details of ${of}`} />
+        <summary
+          aria-label={`Details of ${of.title}, ${of.day}, ${of.time}, ${shortened(of.id)}`}
+        />
         <div className="more-body">{children}</div>
       </details>
     </li>

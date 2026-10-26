@@ -22,7 +22,7 @@ export interface FlagChanged {
   readonly at: Date;
   /** The address of the session the change was pressed from. */
   readonly askedBy: string;
-  /** The channel's host, with its name and chain, such as "agentify.ad (production, Base)". */
+  /** The channel's name with its host and chain, such as "in production at agentify.ad (Base)". */
   readonly channel: string;
   /** The workspace's Accounts page. */
   readonly accounts: string;
@@ -34,8 +34,8 @@ export function operatorFlagMessage(to: string, changed: FlagChanged): Message {
     : "An operator flag is being removed";
   const when = momentInUtc(changed.at.toISOString());
   const lead = changed.granted
-    ? `${changed.email} is being made an operator of Agentify on ${changed.channel}, asked at ${when}. An operator reads every merchant, order and account there, and can admit and stop merchants and change who else is an operator.`
-    : `The operator flag of ${changed.email} on ${changed.channel} is being removed, asked at ${when}. The operator's workspace closes to that account from its next request.`;
+    ? `${changed.email} is being made an operator of Agentify ${changed.channel}, asked at ${when}. An operator reads every merchant, order and account there, and can admit and stop merchants and change who else is an operator.`
+    : `The operator flag of ${changed.email} ${changed.channel} is being removed, asked at ${when}. The operator's workspace closes to that account from its next request.`;
   const applies = `It applies only if Accounts in the workspace shows it: this message is sent before the change is kept, and the change is not made if a message to another operator is refused.`;
   const asked = `It was asked for in the operator's workspace, from a session signed in as ${changed.askedBy}.`;
   const unasked =
@@ -45,8 +45,8 @@ export function operatorFlagMessage(to: string, changed: FlagChanged): Message {
   return {
     to,
     subject: changed.granted
-      ? `An operator is being added on ${changed.channel}`
-      : `An operator flag is being removed on ${changed.channel}`,
+      ? `An operator is being added ${changed.channel}`
+      : `An operator flag is being removed ${changed.channel}`,
     body: `Agentify\n\n${title}\n\n${lead}\n\n${applies}\n\n${asked}\n\n${unasked}\n\n${inert}\n\n${action}:\n\n${changed.accounts}`,
     html: transactionalEmailHtml({
       preview: lead,

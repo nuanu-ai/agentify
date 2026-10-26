@@ -152,8 +152,9 @@ export interface CardsIntegration {
  * meanwhile can be taken back. A card published by the integration not in use
  * is offered none, and its word does not say its own pause either: the move
  * between integrations is made on the WooCommerce page, which its words lead
- * to. They name the merchant's choice and not a sale, since a shop whose
- * Connect was never approved sells nothing, and neither does code never run.
+ * to. They name only the merchant's choice: the state beside them already
+ * says the card is off sale, and naming a sale would be wrong where a shop's
+ * Connect was never approved or the code never ran.
  */
 const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
   if (integration.offSale.includes(entry.id)) {
@@ -161,8 +162,8 @@ const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardCo
       kind: "reason",
       text:
         integration.through === "woocommerce"
-          ? "Off sale while you sell through WooCommerce"
-          : "Off sale while you sell through your code",
+          ? "You sell through WooCommerce"
+          : "You sell through your code",
       to: "/woocommerce",
     };
   }
@@ -238,15 +239,15 @@ const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
  */
 const CARD_SEGMENTS: readonly SegmentRule<CardRow>[] = [
   { key: "all", label: "All", holds: () => true, none: "" },
-  { key: "on-sale", label: "On sale", holds: (row) => !row.off, none: "No card is on sale." },
-  { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No card is off sale." },
+  { key: "on-sale", label: "On sale", holds: (row) => !row.off, none: "No product is on sale." },
+  { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No product is off sale." },
 ];
 
 const CARD_SEGMENT_KEYS = CARD_SEGMENTS.map((one) => one.key);
 
 /** Where a press on the cards leads back to: the list its form's fields name. */
 export const cardsPlace = (fields: URLSearchParams): string =>
-  placeOf("/cards", fields, CARD_SEGMENT_KEYS);
+  placeOf("/products", fields, CARD_SEGMENT_KEYS);
 
 export const cardsView = (
   cards: MerchantCardList,
@@ -287,7 +288,7 @@ export const cardsView = (
     listing: listingOf({
       rows,
       asked,
-      path: "/cards",
+      path: "/products",
       segments: CARD_SEGMENTS,
       matches: (row, words) =>
         byCode
@@ -295,18 +296,18 @@ export const cardsView = (
           : row.title.toLocaleLowerCase().includes(words) ||
             row.itemId.toLocaleLowerCase().includes(words),
       noMatch: (q, within) => {
-        const which = within === null ? "No card" : `No card ${within.toLocaleLowerCase()}`;
+        const which = within === null ? "No product" : `No product ${within.toLocaleLowerCase()}`;
         return byCode ? `${which} has the product code “${q}”.` : `${which} matches “${q}”.`;
       },
-      showAll: "Show all cards",
+      showAll: "Show all products",
     }),
     empty:
       cards.cards.length > 0
         ? null
-        : { says: "You haven't published any cards yet.", ways: { woo: wooAvailable } },
+        : { says: "You haven't published any products yet.", ways: { woo: wooAvailable } },
     note: switchesNote(cards.selling),
     byCode: byCode
-      ? `Only the ${coded === 1 ? "card" : "cards"} with the product code “${asked.q}”.`
+      ? `Only the ${coded === 1 ? "product" : "products"} with the product code “${asked.q}”.`
       : null,
   };
 };
@@ -325,7 +326,7 @@ const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] =
   switch (selling) {
     case "paused":
       return {
-        says: `Cards you paused one by one stay paused when you press ${RESUME_ALL_SELLING}.`,
+        says: `Products you paused one by one stay paused when you press ${RESUME_ALL_SELLING}.`,
         rest: WHAT_A_PAUSE_DOES,
       };
     case "open":

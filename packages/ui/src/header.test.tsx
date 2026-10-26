@@ -31,7 +31,7 @@ const BASENAME: Readonly<Record<Surface, string>> = {
 };
 const START: Readonly<Record<Surface, string>> = {
   scanner: "/privacy",
-  dashboard: "/dashboard/cards",
+  dashboard: "/dashboard/products",
   docs: "/docs/money",
 };
 
@@ -346,7 +346,7 @@ describe("the sections", () => {
       <SectionNav
         label="Dashboard sections"
         sections={[
-          { key: "cards", label: "Cards", to: "/cards" },
+          { key: "products", label: "Products", to: "/products" },
           { key: "orders", label: "Orders", to: "/orders", current: true },
           { key: "settings", label: "Settings", href: "/dashboard/settings" },
         ]}
@@ -356,7 +356,7 @@ describe("the sections", () => {
 
     expect(nav.querySelector('[aria-current="page"]')?.textContent).toBe("Orders");
     expect(screen.getByText("Orders").closest("a")).toBeNull();
-    expect(screen.getByText("Cards").closest("a")?.getAttribute("href")).toBe("/cards");
+    expect(screen.getByText("Products").closest("a")?.getAttribute("href")).toBe("/products");
     expect(screen.getByText("Settings").closest("a")?.getAttribute("href")).toBe(
       "/dashboard/settings",
     );

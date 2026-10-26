@@ -1309,19 +1309,11 @@ export function healthViewOf(reads: HealthReads): HealthView {
             },
   );
 
-  if (channel.surface === "live") {
+  if (channel.surface === "live" || reads.shops === null) {
     rows.push({
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not offered" },
-      fact: [
-        "The connector is offered in the test environment only, until its orders pass end to end there.",
-      ],
-    });
-  } else if (reads.shops === null) {
-    rows.push({
-      part: "WooCommerce",
-      badge: { tone: "quiet", word: "Not on this deployment" },
-      fact: ["This deployment offers no connector, so no shop can be connected."],
+      fact: ["The connector is not offered here, so no shop can be connected."],
     });
   } else {
     const shops = foundIn(reads.shops);
@@ -1441,7 +1433,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
           badge: { tone: "quiet", word: "Not backed up" },
           fact: [
             channel.surface === "test"
-              ? "The test environment is not backed up, by decision."
+              ? "Nothing here is backed up, by decision."
               : "A sandbox runs on one machine and is not backed up.",
           ],
         },

@@ -21,7 +21,7 @@ export function ListTools({
   listing: Listing<unknown>;
   /** The list's page, without the dashboard's prefix. */
   path: string;
-  /** What the search box is called, "Search cards". */
+  /** What the search box is called, "Search products". */
   label: string;
   placeholder: string;
   /**

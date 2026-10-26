@@ -14,6 +14,7 @@
  */
 
 import type { Fulfillment, MerchantFinding, OrderStatus } from "@nuanu-ai/agentify-contracts";
+import { STOP_ALL_SELLING } from "./control-labels.js";
 
 /**
  * `waiting` is a state held until somebody acts, the merchant or the buyer, and
@@ -159,8 +160,8 @@ export const ACCOUNT_WORDS: Readonly<
   },
   paused: {
     title: "Sales are paused",
-    says: "Nothing sells until you resume.",
-    fix: { to: "/cards", words: "Go to Cards" },
+    says: `You pressed ${STOP_ALL_SELLING}.`,
+    fix: { to: "/products", words: "Resume on Products" },
   },
   not_approved: {
     title: "Not approved for live sales yet",

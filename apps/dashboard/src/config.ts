@@ -56,7 +56,7 @@ const environmentSchema = z.object({
 
   /**
    * Every link and form on every page is built from this; without it a merchant
-   * at `/dashboard/cards` would be sent to `/cards`.
+   * at `/dashboard/products` would be sent to `/products`.
    */
   BASE_PATH: z
     .string()

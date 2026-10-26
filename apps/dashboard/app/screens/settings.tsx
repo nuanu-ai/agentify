@@ -187,7 +187,7 @@ function Notice({ notice }: Readonly<{ notice: WalletNoticeView }>) {
         </p>
       )}
       <p>Every other session on your account was signed out.</p>
-      <PostForm document action="/cards?selling=pause" className={styles.noticeAction}>
+      <PostForm document action="/products?selling=pause" className={styles.noticeAction}>
         {(pressed) => <Button pending={pressed}>Pause all sales</Button>}
       </PostForm>
     </div>
@@ -378,14 +378,7 @@ function GettingPaid({ payout }: Readonly<{ payout: PayoutView }>) {
   return (
     <section className={`settings-panel ${styles.section}`} aria-labelledby="getting-paid">
       <Head id="getting-paid" title="Getting paid">
-        {payout.kind === "send" ? (
-          <p>
-            Your money waits in your payout contract until someone pays it out. If you don't,
-            Agentify's next payout pays it out. It has no fixed date.
-          </p>
-        ) : (
-          <p>{payout.said}</p>
-        )}
+        <p>{payout.said}</p>
       </Head>
       {payout.kind !== "send" ? null : (
         <>

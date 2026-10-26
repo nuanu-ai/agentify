@@ -117,7 +117,8 @@ export function ChooseNameScreen({
               Use this name
             </Button>
             <p className={`quiet ${styles.caption}`}>
-              <a href={`${chrome.base}/cards`}>Choose later</a>. Nothing goes on sale until you do.
+              <a href={`${chrome.base}/products`}>Choose later</a>. Nothing goes on sale until you
+              do.
             </p>
           </>
         )}

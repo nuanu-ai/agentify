@@ -76,7 +76,7 @@ import { memoryWooShops, type WooShops } from "./woo-shops.js";
  */
 
 /** Every section of the dashboard a merchant works in. */
-const ALL_SECTIONS = ["/cards", "/orders", "/receipts", "/keys", "/integrations", "/settings"];
+const ALL_SECTIONS = ["/products", "/orders", "/receipts", "/keys", "/integrations", "/settings"];
 const KEY = theMerchantKey("test");
 const asMerchant = { authorization: `Bearer ${KEY}` };
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -553,10 +553,10 @@ const overASocket = (
  * Written out because many tests press a switch without drawing the page; the
  * tests about what the page draws read its forms off it.
  */
-const STOP_SELLING = "/cards?selling=pause";
-const START_SELLING = "/cards?selling=resume";
+const STOP_SELLING = "/products?selling=pause";
+const START_SELLING = "/products?selling=resume";
 const switchOf = (itemId: string, way: "pause" | "resume"): string =>
-  `/cards?${new URLSearchParams({ [way]: itemId })}`;
+  `/products?${new URLSearchParams({ [way]: itemId })}`;
 
 /** The reasons the banner over a page names, in its order. */
 const reasonsIn = (html: string): readonly string[] =>
@@ -568,7 +568,7 @@ const rowsIn = (html: string): readonly string[] =>
 
 /** The switches drawn for one card each. */
 const cardSwitchesIn = (html: string) =>
-  formsIn(html).filter(({ action }) => /^\/cards\?(pause|resume)=/.test(action));
+  formsIn(html).filter(({ action }) => /^\/products\?(pause|resume)=/.test(action));
 
 const publish = async (gateway: Served, card: Card): Promise<string> => {
   const answered = await gateway.call("POST", "/v0/catalog/publish", {
@@ -721,7 +721,7 @@ describe("the passwordless dashboard door", () => {
     const withoutMerchant = await running.browser.get("/sign-in");
 
     expect(withMerchant.status).toBe(303);
-    expect(withMerchant.to).toBe("/cards");
+    expect(withMerchant.to).toBe("/products");
     expect(withoutMerchant.status).toBe(303);
     expect(withoutMerchant.to).toBe("/merchant");
   });
@@ -1013,7 +1013,7 @@ describe("the passwordless dashboard door", () => {
       .from(running.url)
       .post("/dashboard/sign-in/open", { token });
     expect(opened.status).toBe(303);
-    expect(opened.to).toBe("/dashboard/cards");
+    expect(opened.to).toBe("/dashboard/products");
     expect(opened.headers.get("cache-control")).toBe("private, no-store");
     expect(opened.headers.get("referrer-policy")).toBe("strict-origin");
     expect(sessionCookieIn(opened, SECURE_COOKIE)).toBeDefined();
@@ -1024,7 +1024,7 @@ describe("the passwordless dashboard door", () => {
       .from(running.url)
       .post("/dashboard/sign-in/open", { token });
     expect(replay.status).toBe(303);
-    expect(replay.to).toBe("/dashboard/cards");
+    expect(replay.to).toBe("/dashboard/products");
 
     const switching = await running.browser.from(running.url).post("/dashboard/sign-out");
     expect(switching.status).toBe(303);
@@ -1195,7 +1195,7 @@ describe("the passwordless dashboard door", () => {
       token: action.searchParams.get("token") ?? "",
     });
 
-    expect(opened.to).toBe("/cards");
+    expect(opened.to).toBe("/products");
   });
 
   it("sends a signed-in browser that opens a spent, expired or unknown link to its own start", async () => {
@@ -1222,10 +1222,10 @@ describe("the passwordless dashboard door", () => {
     for (const token of [theirs, soonExpired, "A".repeat(32)]) {
       const pressed = await running.browser.from(running.url).post("/sign-in/open", { token });
       expect(pressed.status, token).toBe(303);
-      expect(pressed.to, token).toBe("/cards");
+      expect(pressed.to, token).toBe("/products");
       const landed = await running.browser.get(`/sign-in/open?token=${token}`);
       expect(landed.status, token).toBe(303);
-      expect(landed.to, token).toBe("/cards");
+      expect(landed.to, token).toBe("/products");
     }
 
     running.forgetMerchant(PERSON);
@@ -1557,7 +1557,7 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     const page = await running.browser.get(`/sign-in?clickid=${CLICK}`);
 
     expect(page.status).toBe(303);
-    expect(page.to).toBe("/cards");
+    expect(page.to).toBe("/products");
     expect(running.mails).toHaveLength(mailed);
     expect(running.rows.dashboard_link_sends).toHaveLength(sends ?? 0);
     expect(adReportsIn(running)).toStrictEqual([]);
@@ -1711,9 +1711,9 @@ describe("where a sign-in started", () => {
     expect(fromTheDashboard.status).toBe(200);
     expect(formTo(fromTheDashboard.html, "post", "/choose-name")).toBeUndefined();
     expect(readable(fromTheDashboard.html)).toContain(PERSON);
-    expect(fromADoor.to).toBe("/cards");
-    expect(googleFromTheDashboard.returned.to).toBe("/cards");
-    expect(googleFromADoor.returned.to).toBe("/cards");
+    expect(fromADoor.to).toBe("/products");
+    expect(googleFromTheDashboard.returned.to).toBe("/products");
+    expect(googleFromADoor.returned.to).toBe("/products");
     expect(await merchantOf(running, PERSON)).toBe(running.theMerchant);
     expect(await merchantOf(running, "seller@gmail.com")).toBe(made);
   });
@@ -2116,7 +2116,7 @@ describe("what the React pages take from a stranger", () => {
       });
     }
 
-    const page = await browser.get("/cards%E0%A4%A");
+    const page = await browser.get("/products%E0%A4%A");
     const forged = encodeURIComponent("/%E0\n[dashboard] forged");
     // A second question mark is part of the query to React Router, which reads
     // the question from everything after the first.
@@ -2221,7 +2221,7 @@ describe("one session for the whole site", () => {
     // Nothing under the unprefixed name goes out on the https origin.
     expect(sessionCookieIn(opened, COOKIE)).toBeUndefined();
     // The same session at the root.
-    expect((await running.browser.get("/dashboard/cards")).status).toBe(200);
+    expect((await running.browser.get("/dashboard/products")).status).toBe(200);
   });
 
   it("sets the same cookie without the prefix or Secure on the plain-http local origin", async () => {
@@ -2258,7 +2258,7 @@ describe("one session for the whole site", () => {
       session.expiresAt = new Date(aDayAndAnHourAgo + THIRTY_DAYS_SECONDS * 1_000);
     }
 
-    const visited = await running.browser.get("/cards");
+    const visited = await running.browser.get("/products");
 
     expect(visited.status).toBe(200);
     const line = sessionCookieIn(visited, COOKIE);
@@ -2277,7 +2277,7 @@ describe("one session for the whole site", () => {
     await running.browser.signIn();
     const before = structuredClone(sessionRows());
 
-    const visited = await running.browser.get("/cards");
+    const visited = await running.browser.get("/products");
 
     expect(visited.status).toBe(200);
     expect(sessionCookieIn(visited, COOKIE)).toBeUndefined();
@@ -2600,7 +2600,7 @@ describe("the gate", () => {
       ["pressing it", () => stranger.post("/dashboard/sign-in/open", { token: "C".repeat(32) })],
       [
         "the route table the pages' script asks for",
-        () => stranger.get("/dashboard/__manifest?paths=%2Fdashboard%2Fcards&version=any"),
+        () => stranger.get("/dashboard/__manifest?paths=%2Fdashboard%2Fproducts&version=any"),
       ],
       ["the health probe", () => stranger.get("/dashboard/healthz")],
       [
@@ -2629,7 +2629,7 @@ describe("the gate", () => {
 
     for (const path of [
       "/dashboard/",
-      "/dashboard/cards",
+      "/dashboard/products",
       "/dashboard/merchant",
       "/dashboard/settings",
     ]) {
@@ -2638,6 +2638,37 @@ describe("the gate", () => {
     for (const path of ["/dashboard/merchant", "/dashboard/report-handoff", "/dashboard/keys"]) {
       expect(gate(await stranger.post(path)), path).toBe(true);
     }
+  });
+});
+
+describe("Products' former address", () => {
+  it.each([
+    ["at the root of its origin", ""],
+    ["under its prefix", "/dashboard"],
+  ])(
+    "sends a link to it on to Products for good, %s, with the search it asked for",
+    async (_where, base) => {
+      const running = await started({ base });
+      await running.browser.signIn();
+
+      const old = await running.browser.get(`${base}/cards?q=room&show=off-sale`);
+      const bare = await running.browser.get(`${base}/cards`);
+
+      expect(old.status).toBe(308);
+      expect(old.to).toBe(`${base}/products?q=room&show=off-sale`);
+      expect(bare.to).toBe(`${base}/products`);
+      expect((await running.browser.get(old.to ?? "")).status).toBe(200);
+    },
+  );
+
+  it("sends a press posted to it on to Products as it was posted", async () => {
+    const running = await started();
+    await running.browser.signIn();
+
+    const pressed = await running.browser.post("/cards?selling=pause");
+
+    expect(pressed.status).toBe(308);
+    expect(pressed.to).toBe("/products?selling=pause");
   });
 });
 
@@ -2690,7 +2721,7 @@ describe("choosing the name buyers read", () => {
     expect(text).toMatch(/change/i);
     expect(screen.html).toContain('href="/settings"');
     // A way past it, for somebody who has not decided.
-    expect(screen.html).toContain('href="/cards"');
+    expect(screen.html).toContain('href="/products"');
   });
 
   it("writes the name and takes the merchant on to their cards", async () => {
@@ -2701,7 +2732,7 @@ describe("choosing the name buyers read", () => {
     const chosen = await running.browser.post("/choose-name", { seller_name: "Bright Data Plans" });
 
     expect(chosen.status).toBe(303);
-    expect(chosen.to).toBe("/cards");
+    expect(chosen.to).toBe("/products");
     expect(await listedAs(running)).toBe("Bright Data Plans");
   });
 
@@ -2712,7 +2743,7 @@ describe("choosing the name buyers read", () => {
     await unname(running);
     await running.browser.signIn();
 
-    const cards = await running.browser.get("/cards");
+    const cards = await running.browser.get("/products");
 
     expect(cards.status).toBe(200);
     expect(reasonsIn(cards.html)).toContain("no_seller_name");
@@ -2748,7 +2779,7 @@ describe("choosing the name buyers read", () => {
     expect(answered.status).toBe(400);
     expect(readable(answered.html)).toMatch(/enter a name/i);
     // The way past stays, for somebody with nothing to type.
-    expect(answered.html).toContain('href="/cards"');
+    expect(answered.html).toContain('href="/products"');
     expect(await listedAs(running)).toBeNull();
   });
 
@@ -2785,7 +2816,7 @@ describe("the settings screen", () => {
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/keys"]) {
+    for (const path of ["/products", "/orders", "/receipts", "/keys"]) {
       const screen = await browser.get(path);
       expect(screen.status, path).toBe(200);
       expect(screen.html, path).toContain('href="/settings"');
@@ -2944,7 +2975,7 @@ describe("the settings screen", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    const cards = await browser.get("/cards");
+    const cards = await browser.get("/products");
     expect(cards.html).toContain('href="/integrations"');
 
     const integrations = await browser.get("/integrations");
@@ -3443,7 +3474,7 @@ describe("a merchant who has chosen no name", () => {
       .error.problems[0];
     await running.browser.signIn();
 
-    const cards = await running.browser.get("/cards");
+    const cards = await running.browser.get("/products");
     const text = readable(cards.html);
 
     // The gateway really refused, for this reason.
@@ -3466,7 +3497,7 @@ describe("the way out to the documentation", () => {
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
+    for (const path of ["/products", "/orders", "/receipts", "/keys", "/settings"]) {
       const screen = await browser.get(`/dashboard${path}`);
       expect(screen.status, path).toBe(200);
 
@@ -3487,7 +3518,7 @@ describe("the cards screen", () => {
     const itemId = await publish(running.gateway, roomCard);
     await running.browser.signIn();
 
-    const screen = await running.browser.get("/cards");
+    const screen = await running.browser.get("/products");
     const shown =
       /title="Copy the purchase address: https:\/\/shop\.example\.com(\/x402\/[^"]+?\/purchase)"/.exec(
         screen.html,
@@ -3540,13 +3571,13 @@ describe("the cards screen", () => {
     await publish(gateway, esimCard);
     await browser.signIn();
 
-    const found = readable((await browser.get("/cards?q=esim")).html);
-    const none = readable((await browser.get("/cards?q=sofa")).html);
+    const found = readable((await browser.get("/products?q=esim")).html);
+    const none = readable((await browser.get("/products?q=sofa")).html);
 
     expect(found).toContain("eSIM Europe, 5 GB for 30 days");
     expect(found).not.toContain("A room for the night");
-    expect(none).toContain("No card matches “sofa”.");
-    expect(none).not.toContain("haven't published any cards");
+    expect(none).toContain("No product matches “sofa”.");
+    expect(none).not.toContain("haven't published any products");
   });
 
   it("shows every promise a card makes, not the first one it finds", async () => {
@@ -3572,7 +3603,7 @@ describe("the cards screen", () => {
     const screen = await browser.signIn();
     const text = readable(screen.html);
 
-    expect(text).toContain("haven't published any cards yet");
+    expect(text).toContain("haven't published any products yet");
     expect(screen.html).toContain('href="/docs/quickstart"');
   });
 
@@ -3581,12 +3612,12 @@ describe("the cards screen", () => {
     await unname(running);
     await running.browser.signIn();
 
-    const html = (await running.browser.get("/cards")).html;
+    const html = (await running.browser.get("/products")).html;
     const banner = html.indexOf('class="account-banner"');
     const underIt = readable(html.slice(html.indexOf("</section>", banner)));
 
     expect(reasonsIn(html)).toContain("no_seller_name");
-    expect(underIt).toContain("haven't published any cards yet");
+    expect(underIt).toContain("haven't published any products yet");
     expect(underIt).not.toMatch(/seller name|choose/i);
   });
 
@@ -3621,9 +3652,9 @@ describe("the cards screen", () => {
     await browser.signIn();
 
     const paused = await browser.post(switchOf(room, "pause"));
-    const text = readable((await browser.get("/cards")).html);
+    const text = readable((await browser.get("/products")).html);
 
-    expect(paused.to).toBe("/cards");
+    expect(paused.to).toBe("/products");
     expect(text).toContain("Paused by you");
     expect(text).toContain("Resume");
     expect(await purchasable(gateway, room)).toBe(false);
@@ -3644,7 +3675,7 @@ describe("the cards screen", () => {
     await browser.post(switchOf(itemId, "resume"));
 
     expect(await purchasable(gateway, itemId)).toBe(true);
-    expect(readable((await browser.get("/cards")).html)).toContain("Pause");
+    expect(readable((await browser.get("/products")).html)).toContain("Pause");
   });
 
   it("stops all selling from one control, and starts it again", async () => {
@@ -3653,14 +3684,14 @@ describe("the cards screen", () => {
     await browser.signIn();
 
     await browser.post(STOP_SELLING);
-    const stopped = (await browser.get("/cards")).html;
+    const stopped = (await browser.get("/products")).html;
 
     expect(reasonsIn(stopped)).toStrictEqual(["paused"]);
     expect(readable(stopped)).toContain("Resume all sales");
     expect(await purchasable(gateway, itemId)).toBe(false);
 
     await browser.post(START_SELLING);
-    const reopened = (await browser.get("/cards")).html;
+    const reopened = (await browser.get("/products")).html;
 
     expect(await purchasable(gateway, itemId)).toBe(true);
     expect(readable(reopened)).toContain("Pause all sales");
@@ -3675,9 +3706,9 @@ describe("the cards screen", () => {
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
+    expect(readable((await browser.get("/products")).html)).not.toMatch(/fulfil/i);
     await browser.post(STOP_SELLING);
-    expect(readable((await browser.get("/cards")).html)).not.toMatch(/fulfil/i);
+    expect(readable((await browser.get("/products")).html)).not.toMatch(/fulfil/i);
   });
 
   it("says once, over the cards, which switch holds them, and keeps each card's own switch", async () => {
@@ -3690,7 +3721,7 @@ describe("the cards screen", () => {
     await browser.signIn();
 
     await browser.post(STOP_SELLING);
-    const html = (await browser.get("/cards")).html;
+    const html = (await browser.get("/products")).html;
     const [row = ""] = rowsIn(html);
     const [own] = cardSwitchesIn(row);
     if (own === undefined) throw new Error("the card drawn under a pause has no switch");
@@ -3713,7 +3744,7 @@ describe("the cards screen", () => {
     await browser.post(switchOf(itemId, "pause"));
 
     await publish(gateway, { ...roomCard, price: { amount: "90.00", currency: "USD" } });
-    const text = readable((await browser.get("/cards")).html);
+    const text = readable((await browser.get("/products")).html);
 
     expect(text).toContain("90.00 USD");
     expect(text).toContain("Paused by you");
@@ -3727,7 +3758,7 @@ describe("the cards screen", () => {
     const { browser, gateway } = await started();
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
-    const drawn = formsIn((await browser.get("/cards")).html).find(
+    const drawn = formsIn((await browser.get("/products")).html).find(
       ({ method, action }) => method === "post" && action.includes(encodeURIComponent(itemId)),
     );
     if (drawn === undefined) throw new Error("the cards draw no switch for the card");
@@ -3737,10 +3768,10 @@ describe("the cards screen", () => {
     const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
 
     expect(pressed.status).toBe(202);
-    expect(pressed.html).toContain('"redirect","/cards"');
+    expect(pressed.html).toContain('"redirect","/products"');
     expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
     expect(await purchasable(gateway, itemId)).toBe(false);
-    expect(readable((await browser.get("/cards")).html)).toContain("Resume");
+    expect(readable((await browser.get("/products")).html)).toContain("Resume");
   });
 
   it("leads a press back to the search and the segment it was drawn under, all selling's switch too", async () => {
@@ -3750,7 +3781,7 @@ describe("the cards screen", () => {
     const room = await publish(gateway, roomCard);
     await publish(gateway, esimCard);
     await browser.signIn();
-    const html = (await browser.get("/cards?q=room&show=on-sale")).html;
+    const html = (await browser.get("/products?q=room&show=on-sale")).html;
     const forms = formsIn(html).filter(({ method }) => method === "post");
     const pause = forms.find(({ action }) => action.includes(encodeURIComponent(room)));
     const all = forms.find(({ action }) => action === STOP_SELLING);
@@ -3759,8 +3790,8 @@ describe("the cards screen", () => {
     const paused = await browser.post(pause.action, Object.fromEntries(pause.fields));
     const stopped = await browser.post(all.action, Object.fromEntries(all.fields));
 
-    expect(paused.to).toBe("/cards?q=room&show=on-sale");
-    expect(stopped.to).toBe("/cards?q=room&show=on-sale");
+    expect(paused.to).toBe("/products?q=room&show=on-sale");
+    expect(stopped.to).toBe("/products?q=room&show=on-sale");
     expect(await purchasable(gateway, room)).toBe(false);
   });
 
@@ -3770,7 +3801,7 @@ describe("the cards screen", () => {
     const { browser, gateway } = await started();
     const room = await publish(gateway, roomCard);
     await browser.signIn();
-    await browser.get("/cards");
+    await browser.get("/products");
 
     const kept = await browser.post(switchOf(room, "pause"), {
       q: "room",
@@ -3787,9 +3818,9 @@ describe("the cards screen", () => {
     const written = await browser.post(switchOf(room, "pause"), { q: "кофе" });
     await browser.post(switchOf(room, "resume"));
 
-    expect(kept.to).toBe("/cards?q=room&show=off-sale&page=3");
-    expect(unknown.to).toBe("/cards?q=room");
-    expect(written.to).toBe(`/cards?q=${encodeURIComponent("кофе")}`);
+    expect(kept.to).toBe("/products?q=room&show=off-sale&page=3");
+    expect(unknown.to).toBe("/products?q=room");
+    expect(written.to).toBe(`/products?q=${encodeURIComponent("кофе")}`);
     expect(await purchasable(gateway, room)).toBe(true);
   });
 
@@ -3797,7 +3828,7 @@ describe("the cards screen", () => {
     const { browser, gateway } = await started();
     const room = await publish(gateway, roomCard);
     await browser.signIn();
-    const drawn = formsIn((await browser.get("/cards?q=room")).html).find(
+    const drawn = formsIn((await browser.get("/products?q=room")).html).find(
       ({ method, action }) => method === "post" && action.includes(encodeURIComponent(room)),
     );
     if (drawn === undefined) throw new Error("the cards draw no switch for the card");
@@ -3806,7 +3837,7 @@ describe("the cards screen", () => {
     const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
 
     expect(pressed.status).toBe(202);
-    expect(pressed.html).toContain('"redirect","/cards?q=room"');
+    expect(pressed.html).toContain('"redirect","/products?q=room"');
     expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
   });
 
@@ -3841,12 +3872,12 @@ describe("the cards screen", () => {
       "?pause=",
       "",
     ]) {
-      const answered = await browser.post(`/cards${query}`);
+      const answered = await browser.post(`/products${query}`);
       expect(answered.status, query).toBe(404);
       expect(readable(answered.html), query).toMatch(/no such switch/i);
     }
     expect(await purchasable(gateway, itemId)).toBe(true);
-    expect(readable((await browser.get("/cards")).html)).toContain("Pause all sales");
+    expect(readable((await browser.get("/products")).html)).toContain("Pause all sales");
   });
 });
 
@@ -3941,7 +3972,7 @@ describe("a card held off sale by what its merchant lacks", () => {
         }
         await running.harnessed.store.publishCard(merchant.id, roomCard, running.harnessed.now());
 
-        const screen = await running.browser.get("/cards");
+        const screen = await running.browser.get("/products");
         const [row = ""] = rowsIn(screen.html);
 
         expect(screen.status).toBe(200);
@@ -4020,7 +4051,7 @@ describe("a card held off sale by what its merchant lacks", () => {
     expect(await theDoorSays(running.gateway, key)).toStrictEqual([]);
 
     const settings = readable((await running.browser.get("/settings")).html);
-    const screen = await running.browser.get("/cards");
+    const screen = await running.browser.get("/products");
 
     expect(settings).toMatch(/approved your business/);
     expect(settings).not.toMatch(/not approved your business/);
@@ -4342,10 +4373,10 @@ describe("the banner about the account", () => {
     const since = "2026-08-26 12:00:00 UTC";
 
     harnessed.advance(11 * 60_000);
-    const cards = (await browser.get("/cards")).html;
+    const cards = (await browser.get("/products")).html;
     const orders = (await browser.get("/orders")).html;
     await harnessed.gateway.poll(harnessed.merchant.id, 0);
-    const after = (await browser.get("/cards")).html;
+    const after = (await browser.get("/products")).html;
 
     expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
     expect(readable(cards)).toContain(since);
@@ -4371,7 +4402,7 @@ describe("the banner about the account", () => {
 
     harnessed.advance(11 * 60_000);
 
-    expect(reasonsIn((await browser.get("/cards")).html)).toStrictEqual([]);
+    expect(reasonsIn((await browser.get("/products")).html)).toStrictEqual([]);
   });
 });
 
@@ -5122,7 +5153,7 @@ describe("what every screen says about the address", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/integrations"]) {
+    for (const path of ["/products", "/orders", "/receipts", "/integrations"]) {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
@@ -5142,11 +5173,11 @@ describe("what every screen says about the address", () => {
     const priced = await harnessed.gateway.beginPurchase(itemId, {});
     if (priced.step !== "pay") throw new Error("the closure order was not priced");
     await browser.signIn();
-    const kept = await browser.get("/cards.data");
+    const kept = await browser.get("/products.data");
     expect(kept.headers.get("vary")).toMatch(/cookie/i);
 
     const presses: [string, () => Promise<Visit>][] = [
-      ["a switch sent by the page's script", () => browser.post(`/cards.data?pause=${itemId}`)],
+      ["a switch sent by the page's script", () => browser.post(`/products.data?pause=${itemId}`)],
       ["a switch sent as a plain form", () => browser.post(switchOf(itemId, "resume"))],
       ["a press on another page", () => browser.post("/keys", { label: "ci" })],
       ["closing fulfillment", () => browser.post("/orders", { order_id: priced.order.order.id })],
@@ -5173,7 +5204,7 @@ describe("what every screen says about the address", () => {
     const running = await started({ base: "/dashboard" });
     await running.browser.signIn();
 
-    const answered = await running.browser.post("/dashboard/cards?selling=pause");
+    const answered = await running.browser.post("/dashboard/products?selling=pause");
 
     expect(answered.status).toBe(303);
     const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
@@ -5186,7 +5217,7 @@ describe("what every screen says about the address", () => {
     const running = await started({ base: "/dashboard", dashboard: { COOKIE_SECURE: "true" } });
     await running.browser.signIn();
 
-    const answered = await running.browser.post("/dashboard/cards?selling=pause");
+    const answered = await running.browser.post("/dashboard/products?selling=pause");
 
     const line = answered.headers.getSetCookie().find((one) => one.startsWith(`${PRESSED}=`));
     expect(line).toBeDefined();
@@ -5216,7 +5247,7 @@ describe("what every screen says about the address", () => {
       await running.browser.signIn();
 
       for (const path of [
-        "/cards",
+        "/products",
         "/orders",
         "/receipts",
         "/integrations",
@@ -5236,7 +5267,7 @@ describe("what every screen says about the address", () => {
     const { browser } = await started();
     await browser.signIn();
 
-    for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
+    for (const path of ["/products", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
       const account = accountIn(barOf(answered.html));
       expect(account.who, path).toBe(PERSON);
@@ -5333,7 +5364,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(readable(answered.html)).toContain("There is no such page");
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
-    expect(answered.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to the dashboard<\/a>/);
+    expect(answered.html).toMatch(/<a [^>]*href="\/products"[^>]*>Back to the dashboard<\/a>/);
     const bar = barOf(answered.html);
     expect(readable(bar)).toContain(PERSON);
     expect(formTo(bar, "post", "/sign-out")).toBeDefined();
@@ -5351,7 +5382,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
       "=nonsense",
       `${COOKIE}=made-up-identifier`,
     ]) {
-      const answered = await browser.withRawCookie(raw).get("/cards");
+      const answered = await browser.withRawCookie(raw).get("/products");
       expect(answered.status, raw).toBe(303);
       expect(answered.to, raw).toBe(raw.startsWith(`${COOKIE}=`) ? SESSION_ENDED : "/sign-in");
     }
@@ -5373,7 +5404,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
       `${COOKIE}=somebody-elses; ${COOKIE}=${mine}`,
       `${COOKIE}=a; ${COOKIE}=b; ${COOKIE}=${mine}`,
     ]) {
-      const answered = await browser.withRawCookie(raw).get("/cards");
+      const answered = await browser.withRawCookie(raw).get("/products");
       expect(answered.status, raw).toBe(200);
       expect(readable(answered.html), raw).toContain(PERSON);
     }
@@ -5406,7 +5437,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
       ]
         .map((value) => `${COOKIE}=${value}`)
         .join("; ");
-    const most = await overASocket(url, "/cards", carrying(161));
+    const most = await overASocket(url, "/products", carrying(161));
 
     // The merchant is still the person asking, with 160 planted cookies in
     // front.
@@ -5414,7 +5445,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(most.body).toContain(PERSON);
 
     // One more and the runtime refuses to read the headers at all.
-    const tooMany = await overASocket(url, "/cards", carrying(162));
+    const tooMany = await overASocket(url, "/products", carrying(162));
 
     expect(tooMany.status).toBe(431);
   });
@@ -5433,13 +5464,13 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(mine).not.toBe(also);
     const answered = await browser
       .withRawCookie(`${COOKIE}=${mine}; ${COOKIE}=${also}`)
-      .get("/cards");
+      .get("/products");
 
     expect(answered.status).toBe(200);
     expect(readable(answered.html)).toContain(PERSON);
     // Neither session was ended: both still work on their own.
-    expect((await browser.withRawCookie(`${COOKIE}=${mine}`).get("/cards")).status).toBe(200);
-    expect((await browser.withRawCookie(`${COOKIE}=${also}`).get("/cards")).status).toBe(200);
+    expect((await browser.withRawCookie(`${COOKIE}=${mine}`).get("/products")).status).toBe(200);
+    expect((await browser.withRawCookie(`${COOKIE}=${also}`).get("/products")).status).toBe(200);
   });
 
   it("ends both sessions rather than choosing when they belong to two people", async () => {
@@ -5460,13 +5491,15 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(mine).not.toBe(theirs);
     const answered = await browser
       .withRawCookie(`${COOKIE}=${mine}; ${COOKIE}=${theirs}`)
-      .get("/cards");
+      .get("/products");
 
     expect(answered.status).toBe(303);
     expect(answered.to).toBe(SESSION_ENDED);
     // Neither is a session any more, so the plant is spent.
-    expect((await browser.withRawCookie(`${COOKIE}=${mine}`).get("/cards")).to).toBe(SESSION_ENDED);
-    expect((await browser.withRawCookie(`${COOKIE}=${theirs}`).get("/cards")).to).toBe(
+    expect((await browser.withRawCookie(`${COOKIE}=${mine}`).get("/products")).to).toBe(
+      SESSION_ENDED,
+    );
+    expect((await browser.withRawCookie(`${COOKIE}=${theirs}`).get("/products")).to).toBe(
       SESSION_ENDED,
     );
     // The dead cookie is still in the browser and no longer decides anything.
@@ -5474,7 +5507,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     expect(back.status).toBe(200);
     const carrying = await browser
       .withRawCookie(`${COOKIE}=${theirs}; ${COOKIE}=${browser.sessionToken() ?? ""}`)
-      .get("/cards");
+      .get("/products");
     expect(carrying.status).toBe(200);
     expect(readable(carrying.html)).toContain(PERSON);
   });
@@ -5599,7 +5632,7 @@ describe("when the gateway will not answer", () => {
     expect(text).toContain("We don't know if this was done");
     expect(text).not.toMatch(/reload/i);
     expect(/<a class="button button-primary" href="([^"]*)"/.exec(pressed.html)?.[1]).toBe(
-      "/cards",
+      "/products",
     );
   });
 
@@ -5611,7 +5644,7 @@ describe("when the gateway will not answer", () => {
     await browser.signIn();
     silenceGateway();
 
-    const answered = await browser.get("/cards");
+    const answered = await browser.get("/products");
 
     expect(answered.status).toBe(504);
     const text = readable(answered.html);
@@ -5663,7 +5696,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const { browser, gateway, identity } = await started();
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
-    expect((await browser.get("/cards")).status).toBe(200);
+    expect((await browser.get("/products")).status).toBe(200);
 
     await endSessionsOf(identity, PERSON);
 
@@ -5675,7 +5708,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
     // The negative control is the fact: the switch the tab pressed did not
     // move.
     expect(await purchasable(gateway, itemId)).toBe(true);
-    expect((await browser.get("/cards")).to).toBe("/sign-in");
+    expect((await browser.get("/products")).to).toBe("/sign-in");
   });
 
   it("tells a tab whose person signed out in another one that what it pressed was not saved", async () => {
@@ -5686,7 +5719,7 @@ describe("a session that is ended while somebody is looking at a page", () => {
     const { browser, gateway } = await started();
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
-    expect((await browser.get("/cards")).status).toBe(200);
+    expect((await browser.get("/products")).status).toBe(200);
 
     await browser.post("/sign-out");
     const refused = await browser.post(STOP_SELLING);
@@ -5715,8 +5748,8 @@ describe("a session that is ended while somebody is looking at a page", () => {
 
     await identity.signOut(`${COOKIE}=${browser.sessionToken() ?? ""}`);
 
-    expect((await browser.get("/cards")).to).toBe(SESSION_ENDED);
-    expect((await telephone.get("/cards")).status).toBe(200);
+    expect((await browser.get("/products")).to).toBe(SESSION_ENDED);
+    expect((await telephone.get("/products")).status).toBe(200);
   });
 
   it("refuses a session whose time is up, without anybody ending it", async () => {
@@ -5724,13 +5757,13 @@ describe("a session that is ended while somebody is looking at a page", () => {
     // row decides.
     const { browser } = await started();
     await browser.signIn();
-    expect((await browser.get("/cards")).status).toBe(200);
+    expect((await browser.get("/products")).status).toBe(200);
 
     for (const session of sessionRows()) {
       session.expiresAt = new Date(Date.now() - 60_000);
     }
 
-    const answered = await browser.get("/cards");
+    const answered = await browser.get("/products");
 
     expect(answered.status).toBe(303);
     expect(answered.to).toBe(SESSION_ENDED);
@@ -5789,7 +5822,7 @@ describe("a page left open while another address signs in", () => {
     const itemId = await publish(running.gateway, roomCard);
     await running.identity.make(OTHER, running.theMerchant);
     await running.browser.signIn();
-    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, STOP_SELLING);
+    const leftOpen = hiddenIn((await running.browser.get("/products")).html, STOP_SELLING);
 
     await running.browser.post("/sign-out");
     await running.browser.signIn(OTHER);
@@ -5802,10 +5835,10 @@ describe("a page left open while another address signs in", () => {
     // where that person starts.
     expect(said).toContain(OTHER);
     expect(said).not.toContain(PERSON);
-    expect(refused.html).toContain('href="/cards"');
+    expect(refused.html).toContain('href="/products"');
     expect(await purchasable(running.gateway, itemId)).toBe(true);
 
-    const drawnNow = hiddenIn((await running.browser.get("/cards")).html, STOP_SELLING);
+    const drawnNow = hiddenIn((await running.browser.get("/products")).html, STOP_SELLING);
     expect((await running.browser.post(STOP_SELLING, drawnNow)).status).toBe(303);
     expect(await purchasable(running.gateway, itemId)).toBe(false);
   });
@@ -5817,13 +5850,15 @@ describe("a page left open while another address signs in", () => {
     await publish(running.gateway, roomCard);
     await running.identity.make(OTHER, running.theMerchant);
     await running.browser.signIn();
-    const leftOpen = hiddenIn((await running.browser.get("/cards")).html, STOP_SELLING);
+    const leftOpen = hiddenIn((await running.browser.get("/products")).html, STOP_SELLING);
     await running.browser.post("/sign-out");
     await running.browser.signIn(OTHER);
 
-    // These answer without a session, and the sign-out signs this browser out
-    // whichever page it was pressed on.
+    // These answer without a session: the sign-out signs this browser out
+    // whichever page it was pressed on, and Products' former address sends a
+    // press on to Products, which refuses it there.
     const above = new Set([
+      "/cards",
       "/sign-in",
       "/sign-in/open",
       "/sign-in/google",
@@ -5861,7 +5896,7 @@ describe("a page left open while another address signs in", () => {
     const running = await started({ wooShops: memoryWooShops() });
     await publish(running.gateway, roomCard);
     await running.browser.signIn();
-    const pages = ["/cards", "/keys", "/settings", "/integrations", "/woocommerce", "/nowhere"];
+    const pages = ["/products", "/keys", "/settings", "/integrations", "/woocommerce", "/nowhere"];
     const drawn = [];
     for (const path of pages) drawn.push(...postingFormsIn((await running.browser.get(path)).html));
     await unname(running);
@@ -5900,12 +5935,12 @@ describe("a page left open while another address signs in", () => {
     }
     // Still signed in: a form that ended the session would turn every later
     // answer into the sign-in.
-    expect((await running.browser.get("/cards")).status).toBe(200);
+    expect((await running.browser.get("/products")).status).toBe(200);
 
     const freshRefusal = await asDrawn(fresh, STOP_SELLING, {});
     // Somebody with no merchant is offered only the way to where they start.
     expect(freshRefusal.html).toContain(`href="${LATEST_REPORT}"`);
-    expect(freshRefusal.html).not.toContain('href="/cards"');
+    expect(freshRefusal.html).not.toContain('href="/products"');
     for (const { action, fields } of offered.filter(({ action }) => action !== "/sign-out")) {
       const answer = await asDrawn(fresh, action, fields);
       expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
@@ -5973,7 +6008,7 @@ describe("a list, when it could not be read", () => {
   // without.
   const LISTS = [
     ["/orders?show=open", "orders"],
-    ["/cards?q=room", "cards"],
+    ["/products?q=room", "cards"],
     ["/receipts", "receipts"],
     ["/keys", "keys"],
   ] as const;
@@ -6076,7 +6111,7 @@ describe("a press that fails in a way nobody planned for", () => {
     });
 
     const failed = await said(async () => {
-      const read = await browser.get("/cards");
+      const read = await browser.get("/products");
       expect(read.status).toBe(500);
       expect(readable(read.html)).toContain("Nothing was changed");
       expect(readable(read.html)).not.toContain("We don't know if this was done");
@@ -6139,7 +6174,7 @@ describe("a press that fails in a way nobody planned for", () => {
 
     await said(async () => {
       for (const [path, form, screen] of [
-        [STOP_SELLING, {}, "/cards"],
+        [STOP_SELLING, {}, "/products"],
         ["/keys", { label: "the second worker" }, "/keys"],
         ["/keys/some-key/disable", {}, "/keys"],
         ["/settings", { seller_name: "Bright Data Plans" }, "/settings"],
@@ -6415,7 +6450,7 @@ describe("a wallet change waiting on the live deployment", () => {
     await aChangeWaits(running);
 
     const screens = await Promise.all(
-      ["/cards", "/orders", "/receipts", "/keys", "/integrations"].map(
+      ["/products", "/orders", "/receipts", "/keys", "/integrations"].map(
         async (path) => [path, await running.browser.get(path)] as const,
       ),
     );
@@ -6441,11 +6476,11 @@ describe("a wallet change waiting on the live deployment", () => {
   });
 
   it.each([
-    ["another site", "https://elsewhere.example/cards"],
-    ["another site without a scheme", "//elsewhere.example/cards"],
-    ["another site behind a backslash", "/\\elsewhere.example/cards"],
-    ["another site behind a dot", "/.//elsewhere.example/cards"],
-    ["another site behind a step up", "/cards/..//elsewhere.example"],
+    ["another site", "https://elsewhere.example/products"],
+    ["another site without a scheme", "//elsewhere.example/products"],
+    ["another site behind a backslash", "/\\elsewhere.example/products"],
+    ["another site behind a dot", "/.//elsewhere.example/products"],
+    ["another site behind a step up", "/products/..//elsewhere.example"],
     ["no page at all", "cards"],
   ])("sends a cancel that names %s as its way back to Settings instead", async (_what, back) => {
     const running = await live();
@@ -6453,7 +6488,7 @@ describe("a wallet change waiting on the live deployment", () => {
     await aChangeWaits(running);
 
     const pressed = await running.browser.post("/settings/payout-wallet/cancel", {
-      ...fromTheScreen(await running.browser.get("/cards")),
+      ...fromTheScreen(await running.browser.get("/products")),
       back,
     });
 
@@ -6512,7 +6547,7 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(browser.sessionToken()).not.toBe(before);
     expect((await browser.get("/settings")).status).toBe(200);
     expect((await copy.get("/settings")).to).toMatch(/^\/sign-in/);
-    expect((await copy.get("/cards")).to).toMatch(/^\/sign-in/);
+    expect((await copy.get("/products")).to).toMatch(/^\/sign-in/);
   };
 
   it("cancels with one press, after which neither the old cookie nor a copy of it opens anything, and the pressing browser stays signed in on a new session", async () => {
@@ -6537,7 +6572,7 @@ describe("a wallet change waiting on the live deployment", () => {
     // ends: theirs on another device, and every other account's at the
     // merchant.
     expect((await otherDevice.get("/settings")).to).toMatch(/^\/sign-in/);
-    expect((await partner.get("/cards")).to).toMatch(/^\/sign-in/);
+    expect((await partner.get("/products")).to).toMatch(/^\/sign-in/);
   });
 
   /** The settings fail to draw while `failing.now` holds, as a store that stopped answering. */
@@ -6936,7 +6971,7 @@ describe("signing out everywhere", () => {
       ["the phone", phone],
     ] as const) {
       expect((await browser.get("/settings")).to, who).toMatch(/^\/sign-in/);
-      expect((await browser.get("/cards")).to, who).toMatch(/^\/sign-in/);
+      expect((await browser.get("/products")).to, who).toMatch(/^\/sign-in/);
     }
   });
 
@@ -7099,10 +7134,10 @@ describe("the screen a signed-out person was going to", () => {
 
     for (const named of ["//evil.example", "/evil.example", "https://evil.example", "ORDERS", ""]) {
       const seen = await running.browser.get(`/sign-in?destination=${encodeURIComponent(named)}`);
-      expect(seen.to, named).toBe("/cards");
+      expect(seen.to, named).toBe("/products");
     }
     const twice = await running.browser.get("/sign-in?destination=keys&destination=orders");
-    expect(twice.to).toBe("/cards");
+    expect(twice.to).toBe("/products");
   });
 
   it("is under the mount point where the dashboard is mounted under one", async () => {
@@ -7127,7 +7162,7 @@ describe("the screen a signed-out person was going to", () => {
   it("is not named for an address outside the sections", async () => {
     const running = await started();
 
-    for (const path of ["/no-such-page", "/cards", "/keysmith"]) {
+    for (const path of ["/no-such-page", "/products", "/keysmith"]) {
       expect((await running.browser.get(path)).to, path).toBe("/sign-in");
     }
   });
@@ -7814,7 +7849,7 @@ describe("what the pages record for product analytics", () => {
     const owner = await theOwner(running);
     await fromNow(running);
 
-    expect((await running.browser.get("/cards")).status).toBe(200);
+    expect((await running.browser.get("/products")).status).toBe(200);
     expect((await running.browser.get("/orders.data")).status).toBe(200);
     expect((await running.browser.get("/settings")).status).toBe(200);
     await settle();
@@ -7854,7 +7889,7 @@ describe("what the pages record for product analytics", () => {
       expect((await robot.get("/sign-in")).status).toBe(200);
     }
     const unnamed = await overASocket(running.url, "/sign-in", "");
-    const person = await running.browser.sending({ "user-agent": "curl/8.7.1" }).get("/cards");
+    const person = await running.browser.sending({ "user-agent": "curl/8.7.1" }).get("/products");
     await settle();
 
     expect([unnamed.status, person.status]).toStrictEqual([200, 200]);
@@ -7864,7 +7899,7 @@ describe("what the pages record for product analytics", () => {
   it("records no view for a prefetch, a read the gate sent elsewhere, or a page that is no screen", async () => {
     const running = await started();
     const stranger = await running.another();
-    await stranger.get("/cards");
+    await stranger.get("/products");
     await running.browser.signIn();
     await fromNow(running);
 
@@ -7914,7 +7949,7 @@ describe("what the pages record for product analytics", () => {
     const itemId = await publish(running.gateway, roomCard);
     await running.browser.signIn();
     const owner = await theOwner(running);
-    const drawn = cardSwitchesIn((await running.browser.get("/cards")).html)[0];
+    const drawn = cardSwitchesIn((await running.browser.get("/products")).html)[0];
     if (drawn === undefined) throw new Error("the cards draw no switch");
     const [path = "", query = ""] = drawn.action.split("?");
     await fromNow(running);
@@ -7923,7 +7958,7 @@ describe("what the pages record for product analytics", () => {
       `${path}.data?${query}`,
       Object.fromEntries(drawn.fields),
     );
-    const reread = await running.browser.get("/cards.data");
+    const reread = await running.browser.get("/products.data");
     const moved = await running.browser.get("/orders.data");
     await settle();
 
@@ -7972,7 +8007,7 @@ describe("what the pages record for product analytics", () => {
     const owner = await theOwner(running);
     await fromNow(running);
 
-    expect((await running.browser.get("/cards")).status).toBe(503);
+    expect((await running.browser.get("/products")).status).toBe(503);
     await settle();
 
     expect(recorded(running)).toStrictEqual([
@@ -8021,7 +8056,7 @@ describe("what the pages record for product analytics", () => {
     });
     await running.browser.signIn();
     const owner = await theOwner(running);
-    await running.browser.get("/cards");
+    await running.browser.get("/products");
     await fromNow(running);
 
     const pressed = await running.browser.post(STOP_SELLING);
@@ -8039,7 +8074,7 @@ describe("what the pages record for product analytics", () => {
     });
     await running.browser.signIn();
     const owner = await theOwner(running);
-    await running.browser.get("/cards");
+    await running.browser.get("/products");
     await fromNow(running);
 
     await running.browser.post(STOP_SELLING);

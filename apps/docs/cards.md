@@ -619,7 +619,7 @@ under an older result are still open, deliver to them what they were sold
 with, or leave the result as it is until they have closed: a delivery in the
 new shape is refused for them with `delivery_does_not_match_card`.
 
-Taking a card off sale is a pause, on the Cards screen of your dashboard or
+Taking a card off sale is a pause, on Products in your dashboard or
 with a call: `POST /v0/cards/<id>/pause`, where `<id>` is the catalogue `id`
 the publish returned, takes one card off sale, and `POST /v0/selling/pause`
 stops all of them. Each is called with your key as `Authorization: Bearer

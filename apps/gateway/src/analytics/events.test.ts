@@ -248,7 +248,7 @@ describe("the analytics contract a recorded event is held to", () => {
 
   it("refuses a field or a reference the event does not carry, so nothing else rides along", () => {
     expect(
-      problemOf({ ...rowOf(viewed), fields: { ...viewed.fields, path: "/dashboard/cards" } }),
+      problemOf({ ...rowOf(viewed), fields: { ...viewed.fields, path: "/dashboard/products" } }),
     ).toContain("properties.path");
     expect(
       problemOf({ ...rowOf(blocked), fields: { ...blocked.fields, message: "fetch failed" } }),

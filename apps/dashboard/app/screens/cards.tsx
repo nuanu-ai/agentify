@@ -25,7 +25,10 @@ const Control = ({
   }
   return (
     <Cell at="action">
-      <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
+      <PostForm
+        className="inline"
+        action={`/products?${new URLSearchParams({ [control.verb]: id })}`}
+      >
         {(pending) => (
           <>
             <KeptPlace place={place} />
@@ -47,7 +50,7 @@ const Control = ({
 export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
   const { allSelling, listing } = view;
   return (
-    <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
+    <PostForm className="inline" action={`/products?selling=${allSelling.verb}`}>
       {(pending) => (
         <>
           <KeptPlace place={listing.place} />
@@ -89,8 +92,8 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
     <>
       <ListTools
         listing={listing}
-        path="/cards"
-        label="Search cards"
+        path="/products"
+        label="Search products"
         placeholder="Search by name or product code"
       />
       {view.byCode === null || listing.rows.length === 0 ? null : (
@@ -100,7 +103,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         <NothingHere listing={listing} />
       ) : (
         <List
-          label="Product cards"
+          label="Products"
           columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 12rem)" : "6.5rem"}`}
           head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
         >

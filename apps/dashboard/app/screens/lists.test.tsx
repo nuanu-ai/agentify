@@ -199,6 +199,39 @@ describe("the receipts of sales that went out", () => {
   });
 });
 
+describe("a row that opens to its details", () => {
+  // Two purchases of one product in the same second share a title, a day and
+  // a time; read out by those alone, the two presses could not be told apart.
+  it.each([
+    [
+      "orders",
+      () =>
+        ordersPage(
+          OrderListSchema.parse({
+            orders: [order("ord_0a1b2c3d4e5f6a7b", false), order("ord_9f8e7d6c5b4a3f2e", false)],
+          }),
+        ),
+    ],
+    [
+      "receipts",
+      () =>
+        receiptsPage(
+          ReceiptListSchema.parse({
+            receipts: [
+              receipt("rcp_0a1b2c3d4e5f6a7b", false),
+              receipt("rcp_9f8e7d6c5b4a3f2e", false),
+            ],
+          }),
+        ),
+    ],
+  ])("names apart two %s of one product made in the same second", (_list, page) => {
+    const names = [...page().matchAll(/<summary aria-label="([^"]*)"/g)].map((found) => found[1]);
+
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+  });
+});
+
 describe("a list where some of the money was real and some was not", () => {
   it("counts the test purchases rather than calling the whole page a test", () => {
     const orders: OrderList = OrderListSchema.parse({
@@ -523,7 +556,7 @@ describe("the state of each card", () => {
     ["the shop published, while the code sells", "api", /your code/i],
     ["the code published, while the shop sells", "woocommerce", /WooCommerce/],
   ] as const)(
-    "says beside a card %s why it is off sale, with the way to the switch and no switch of its own",
+    "says beside a card %s which integration the merchant chose, with the way to the switch and no switch of its own",
     (_which, through, says) => {
       // The banner names no reason for it: only this card's row can say which
       // of the merchant's cards came from the integration not in use.
@@ -535,10 +568,11 @@ describe("the state of each card", () => {
         />
       ));
       const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+      const note = readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? "");
 
-      expect(
-        readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? ""),
-      ).toMatch(says);
+      expect(note).toMatch(says);
+      // The state beside it already says the card is off sale.
+      expect(note).not.toMatch(/off sale/i);
       // The choice between the two is the merchant's, not a sale anybody makes:
       // a shop never approved sells nothing, and neither does code never run.
       expect(readable(row)).not.toMatch(/\bsells\b/);
@@ -690,9 +724,9 @@ describe("a search over the cards", () => {
   it("says what was searched for where no card matches, which is not an empty catalogue", () => {
     const text = page(many(3), "q=suite");
 
-    expect(text).toContain("No card matches “suite”. Clear the search");
-    expect(text).not.toContain("haven't published any cards");
-    expect(page(many(0), "q=suite")).toContain("You haven't published any cards yet.");
+    expect(text).toContain("No product matches “suite”. Clear the search");
+    expect(text).not.toContain("haven't published any products");
+    expect(page(many(0), "q=suite")).toContain("You haven't published any products yet.");
   });
 
   it("finds only the card whose product code is the whole search, as a link to one card names it", () => {
@@ -753,8 +787,8 @@ describe("a search over the cards", () => {
         )),
       );
 
-    expect(drawn("q=1")).toContain("Only the card with the product code “1”.");
-    expect(drawn("q=1&show=off-sale")).toContain("No card off sale has the product code “1”.");
+    expect(drawn("q=1")).toContain("Only the product with the product code “1”.");
+    expect(drawn("q=1&show=off-sale")).toContain("No product off sale has the product code “1”.");
     expect(drawn("q=room")).not.toContain("product code “");
   });
 

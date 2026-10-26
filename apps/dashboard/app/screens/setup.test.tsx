@@ -139,7 +139,7 @@ describe("choosing the seller name", () => {
       />
     ));
 
-    expect(html).toContain('href="/dashboard/cards"');
+    expect(html).toContain('href="/dashboard/products"');
     expect(html).toContain('href="/dashboard/settings"');
     expect(formTo(html, "post", "/choose-name")?.fields.get(DRAWN_FOR)).toBe(WHO);
   });
