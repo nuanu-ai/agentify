@@ -507,12 +507,38 @@
   --columns: minmax(13rem, 1.6fr) 9.5rem 10.5rem 6rem 8rem 9.5rem;
 }
 
+/*
+ * The time a price was set, under its day's heading; the product with its
+ * merchant under it, which take what the other columns leave and wrap, so a
+ * long name is read whole; the state, which holds "Payment outcome unknown" on
+ * one line; the payment; the amount. The product leads to the order's page,
+ * and so does a press anywhere on the row.
+ */
 .op-cols-orders {
-  --columns: 6.5rem minmax(7rem, 1fr) minmax(10rem, 1.3fr) 6.5rem minmax(9.5rem, 11rem) 9rem 8.5rem;
+  --columns: 7rem minmax(0, 1fr) 12.5rem 9.5rem 7.5rem;
+}
+
+.op-cols-orders .list-row {
+  position: relative;
+}
+
+.op-cols-orders .cell-title a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.op-cols-orders .list-row:hover {
+  background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
+}
+
+.op-cols-orders .cell-title .op-sub {
+  margin-top: var(--space-snug);
+  overflow-wrap: anywhere;
 }
 
 .op-cols-health {
-  --columns: minmax(10rem, 13rem) 11rem minmax(14rem, 1fr) 7rem;
+  --columns: minmax(10rem, 13rem) 11rem minmax(14rem, 1fr) 8rem;
 }
 
 .op-cols-journal {

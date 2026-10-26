@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { accountOf } from "./account-banner.js";
 import type { Viewer } from "./viewer.js";
+import { headingOf } from "./words.js";
 
 const WALLET = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 
@@ -25,8 +26,8 @@ const reasonsOf = (...args: Parameters<typeof accountOf>) =>
   accountOf(...args).map((note) => note.reason);
 
 describe("the account banner", () => {
-  it("says nothing for a merchant selling as usual through their own code", () => {
-    expect(accountOf(READY, { selling: "open", through: "api" })).toStrictEqual([]);
+  it("says nothing for a merchant selling as usual", () => {
+    expect(accountOf(READY, { selling: "open" })).toStrictEqual([]);
   });
 
   it.each([
@@ -34,7 +35,6 @@ describe("the account banner", () => {
     ["without a seller name", { ...READY, sellerName: null }, {}, "no_seller_name"],
     ["without a payout wallet", { ...READY, payout: { wallet: null } }, {}, "no_payout_wallet"],
     ["with all sales paused", READY, { selling: "paused" }, "paused"],
-    ["selling through a WooCommerce shop", READY, { through: "woocommerce" }, "through_shop"],
   ] as const)("names a merchant %s", (_who, viewer, read, reason) => {
     const notes = accountOf(viewer, read);
 
@@ -43,51 +43,52 @@ describe("the account banner", () => {
     expect(notes[0]?.says).toMatch(/\.$/);
   });
 
-  it("does not claim the shop sells, which a Connect never approved leaves untrue", () => {
-    // Selling goes through the shop from the press of Connect, whether or not
-    // the shop ever approved; what holds in every such state is that the
-    // code's cards wait for the switch back.
-    const [note] = accountOf(READY, { through: "woocommerce" });
-
-    expect(note?.says).not.toMatch(/shop sells/);
-    expect(note?.says).toMatch(/until you switch back/);
-  });
-
-  it("says when a merchant's integration last connected while purchases that charge first are refused for it", () => {
+  it("says since when a merchant's integration has not connected while purchases paid before delivery are refused for it", () => {
     const [since] = accountOf(READY, {
       selling: "open",
-      through: "api",
       outOfTouch: { since: "2026-10-21T14:02:07.000Z" },
     });
     const [never] = accountOf(READY, { outOfTouch: { since: null } });
 
     expect(since?.reason).toBe("out_of_touch");
-    expect(since?.says).toBe(
-      "Your integration has not connected since 2026-10-21 14:02:07 UTC, so new purchases that charge before delivery are refused until it connects again.",
-    );
-    expect(never?.says).toBe(
-      "Your integration has not connected yet, so new purchases that charge before delivery are refused until it does.",
-    );
+    expect(since?.says).toContain("2026-10-21 14:02:07 UTC");
+    expect(never?.reason).toBe("out_of_touch");
+    expect(never?.says).not.toBe(since?.says);
+    // Nothing is paused that the merchant has to resume: the first poll lets
+    // the next purchase through, so the banner offers no switch.
+    expect([since?.fix, never?.fix]).toStrictEqual([null, null]);
   });
 
-  it("says in one sentence that new purchases are refused while twenty wait for payment", () => {
-    const [note] = accountOf(READY, { selling: "open", through: "api", busy: true });
+  it("names how many purchases wait for payment while new ones are refused for them, and offers nothing to press", () => {
+    const [note] = accountOf(READY, { selling: "open", busy: true });
 
     expect(note?.reason).toBe("busy");
-    expect(note?.says).toBe(
-      "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
-    );
+    expect(note?.says).toContain("20");
+    expect(note?.fix).toBeNull();
   });
 
-  it("names every reason that holds at once, broadest first", () => {
+  it("names every reason that holds at once, those the merchant puts right first", () => {
     const viewer: Viewer = { ...READY, sellerName: null, payout: { wallet: null } };
 
     expect(reasonsOf({ ...viewer, liveApproval: false }, { selling: "paused" })).toStrictEqual([
       "paused",
-      "not_approved",
       "no_seller_name",
       "no_payout_wallet",
+      "not_approved",
     ]);
+  });
+
+  it("heads one reason with its own title, and several that keep the products off sale with one heading", () => {
+    const one = accountOf(READY, { selling: "paused" });
+    const several = [
+      accountOf({ ...READY, sellerName: null }, { selling: "paused" }),
+      accountOf({ ...READY, liveApproval: false, payout: { wallet: null } }),
+      accountOf({ ...READY, sellerName: null }, { unread: true }),
+    ];
+
+    expect(headingOf(one)).toBe(one[0]?.title);
+    expect(new Set(several.map(headingOf)).size).toBe(1);
+    expect(headingOf(several[0] ?? [])).not.toBe(headingOf(one));
   });
 
   it("says it could not check where a read failed, beside what the other reads found", () => {
@@ -135,8 +136,8 @@ describe("the account banner", () => {
     const viewer: Viewer = { ...READY, sellerName: null, liveApproval: false };
 
     expect(accountOf(viewer).map((note) => [note.reason, note.fix?.to ?? null])).toStrictEqual([
-      ["not_approved", "https://test.agentify.ad/dashboard/sign-in"],
       ["no_seller_name", "/settings"],
+      ["not_approved", "https://test.agentify.ad/dashboard/sign-in"],
     ]);
   });
 });

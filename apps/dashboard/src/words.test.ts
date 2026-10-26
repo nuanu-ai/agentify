@@ -9,15 +9,7 @@ import {
   ReceiptOutcomeSchema,
 } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import {
-  dayOf,
-  FULFILLMENT_WORDS,
-  moment,
-  money,
-  needsYou,
-  ORDER_WORDS,
-  waitsOnTheBuyer,
-} from "./words.js";
+import { FULFILLMENT_WORDS, money, needsYou, ORDER_WORDS, waitsOnTheBuyer } from "./words.js";
 
 describe("the words a merchant reads", () => {
   it("has one for every state an order can be in", () => {
@@ -80,31 +72,12 @@ describe("the words a merchant reads", () => {
   });
 });
 
-describe("money and moments on a screen", () => {
+describe("money on a screen", () => {
   it("prints an amount exactly as it arrived", () => {
     // Money is a decimal string on the wire so nothing turns it into a float;
     // "5.00" shown as "5" is where a merchant's books would first disagree.
     expect(money({ amount: "5.00", currency: "USD" })).toBe("5.00 USD");
     expect(money({ amount: "0.000001", currency: "USDC" })).toBe("0.000001 USDC");
     expect(money({ amount: "1234.50", currency: "USD" })).toBe("1234.50 USD");
-  });
-
-  it("says which zone a moment is in", () => {
-    // The reader's zone is unknown to the server, and receipts are reconciled
-    // against a wallet: two payments seconds apart must not look like one line
-    // twice.
-    expect(moment("2026-08-27T09:12:04Z")).toBe("2026-08-27 09:12:04 UTC");
-    expect(moment("2026-08-27T11:12:04+02:00")).toBe("2026-08-27 09:12:04 UTC");
-  });
-
-  it("shows a moment it cannot read rather than inventing one", () => {
-    expect(moment("not a moment")).toBe("not a moment");
-    expect(dayOf("not a moment")).toBe("not a moment");
-  });
-
-  it("names the day a moment falls on in UTC, as the moments under it are given", () => {
-    expect(dayOf("2026-10-12T16:40:00Z")).toBe("12 October 2026");
-    // Late evening west of Greenwich is already the next day in UTC.
-    expect(dayOf("2026-10-12T23:30:00-02:00")).toBe("13 October 2026");
   });
 });

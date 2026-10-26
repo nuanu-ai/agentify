@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
-import type { CutView, Listing } from "../../src/listing.js";
+import type { CutView, Listing, PageLink } from "../../src/listing.js";
 import { useGoingTo } from "./going-to.js";
 import { ListEmpty } from "./list.js";
 
@@ -109,23 +110,96 @@ export const KeptPlace = ({ place }: Readonly<{ place: Listing<unknown>["place"]
     <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
   ));
 
+/**
+ * A way back or on from the page shown, and where there is none, its words in
+ * grey. `beside` is false for a way that leads further than the page next to
+ * this one, as the way to the newest page does.
+ */
+interface PageStep {
+  readonly to: string | null;
+  readonly words: string;
+  readonly beside?: false;
+}
+
+const Step = ({ step, rel }: Readonly<{ step: PageStep; rel: "prev" | "next" }>) =>
+  step.to === null ? (
+    <span className={`pager-step ${rel}`} aria-disabled="true">
+      {step.words}
+    </span>
+  ) : (
+    <Link
+      className={`pager-step ${rel}`}
+      to={step.to}
+      {...(step.beside === false ? {} : { rel })}
+      prefetch="intent"
+    >
+      {step.words}
+    </Link>
+  );
+
+/**
+ * Under a list cut short, on one line where it fits: which rows of how many,
+ * then the steps back and on, with the pages between them where the list can
+ * name them; a list with nowhere to go says only the range. Every way is a
+ * link the server answers, so it works before the page's script and can be
+ * opened in a tab of its own.
+ */
+export function Pager({
+  range,
+  previous,
+  next,
+  pages = [],
+}: Readonly<{
+  range: ReactNode;
+  previous: PageStep;
+  next: PageStep;
+  pages?: readonly PageLink[];
+}>) {
+  return (
+    <nav className="cut pager" aria-label="Pages">
+      <span className="pager-range">{range}</span>
+      {previous.to === null && next.to === null && pages.length === 0 ? null : (
+        <span className="pager-ways">
+          <Step step={previous} rel="prev" />
+          {pages.map((one, at) =>
+            "gap" in one ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: a gap has no page of its own and the list never reorders
+              <span key={`gap ${at}`} className="pager-gap" aria-hidden="true">
+                …
+              </span>
+            ) : one.to === null ? (
+              <span key={one.page} className="pager-page" aria-current="page">
+                {one.page}
+              </span>
+            ) : (
+              <Link
+                key={one.page}
+                className="pager-page"
+                to={one.to}
+                prefetch="intent"
+                aria-label={`Page ${one.page}`}
+              >
+                {one.page}
+              </Link>
+            ),
+          )}
+          <Step step={next} rel="next" />
+        </span>
+      )}
+    </nav>
+  );
+}
+
 /** Under a list cut short: which rows of how many, and the ways to the rest. */
 export function CutNote({ cut }: Readonly<{ cut: CutView | null }>) {
   if (cut === null) return null;
   return (
-    <nav className="cut" aria-label="Pages">
-      <span>{`Showing ${cut.from}–${cut.to} of ${cut.of}`}</span>
-      {cut.previous === null ? null : (
-        <Link to={cut.previous} prefetch="intent">
-          Previous
-        </Link>
-      )}
-      {cut.next === null ? null : (
-        <Link to={cut.next} prefetch="intent">
-          Next
-        </Link>
-      )}
-    </nav>
+    <Pager
+      range={`Showing ${cut.from}–${cut.to} of ${cut.of}`}
+      previous={{ to: cut.previous, words: "Previous" }}
+      next={{ to: cut.next, words: "Next" }}
+      pages={cut.pages}
+    />
   );
 }
 

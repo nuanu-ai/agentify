@@ -45,7 +45,6 @@ export const readFailedIn = ({
       <Frame tab={tab} title={title}>
         <NotLoaded again={again}>
           <div className="what">{`Your ${what} could not be loaded.`}</div>
-          <p className="why">Loading them changed nothing.</p>
         </NotLoaded>
       </Frame>
     );

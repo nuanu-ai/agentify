@@ -45,9 +45,9 @@ import {
   NOT_A_PAYOUT_WALLET_CODE,
   type Registrar,
 } from "./gateway.js";
-import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
+import { moment } from "./moments.js";
 import { noted } from "./noted.js";
 import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
@@ -81,7 +81,6 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -306,7 +305,7 @@ export interface PageServices {
     /** As the address asks: the words searched for, the segment and the page. */
     cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
-    receipts(person: Person): Promise<Outcome<ReceiptsView>>;
+    receipts(person: Person, query: URLSearchParams): Promise<Outcome<ReceiptsView>>;
     /** The banner the frame draws over every page about the merchant's selling. */
     frame(person: Person): Promise<FrameView>;
   };
@@ -398,12 +397,9 @@ const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 /**
  * The gate cannot say why the session ended (thirty days without a visit, or
- * ended from another device), so it gives the rule; naming the lifetime makes
- * the request for an address read as an ordinary end rather than a fault.
+ * ended from another device), so it says neither.
  */
-const SESSION_ENDED =
-  `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
-  `Send yourself a new link to carry on.`;
+const SESSION_ENDED = "Your session ended. Sign in again to carry on.";
 
 /**
  * Signing out clears the cookie in every tab, so a form pressed in another one
@@ -414,9 +410,7 @@ const UNSAVED = "You are not signed in, so the change you submitted was not save
 
 const SIGNED_OUT_EVERYWHERE_REASON = "signed-out-everywhere";
 
-const SIGNED_OUT_EVERYWHERE =
-  "Every device signed in to your account was signed out, this one included. " +
-  "Send yourself a new link to sign in again.";
+const SIGNED_OUT_EVERYWHERE = "You signed out on every device, this one included.";
 
 /**
  * A value named once, as a form or an address names it; named twice it is
@@ -446,7 +440,7 @@ export const askViewOf = (
   const said = once(query.getAll("reason"));
   const problem =
     said === "session-ended-unsaved"
-      ? `${SESSION_ENDED} The change you submitted was not saved.`
+      ? "Your session ended, so the change you submitted was not saved."
       : said === "unsaved"
         ? UNSAVED
         : undefined;
@@ -483,7 +477,7 @@ const GOOGLE_REFUSALS = {
     "This Google account's email address has changed. Use a sign-in link to your original Agentify email address.",
   cancelled: "Google sign-in was cancelled. Try again or use a sign-in link.",
   invalid: "Google sign-in could not be completed. Start again or use a sign-in link.",
-  unavailable: "Google sign-in is unavailable right now. Use a sign-in link or try again later.",
+  unavailable: "Google sign-in is not working right now. Use an email link instead.",
 } as const;
 
 /** The email comes from the identity's refusal, never from the callback's query. */
@@ -1349,7 +1343,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             {
               id: id.data,
               note: null,
-              refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
+              refusal: `Your note ${reason.replace(/^a closure message /, "")}.`,
               typed: said,
             },
             400,
@@ -1455,7 +1449,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       orders: ordersScreen,
 
-      async receipts(person) {
+      async receipts(person, query) {
         const gateway = gatewayAs(person);
         const [cards, receipts, paidInto] = await Promise.all([
           gateway.cards(),
@@ -1473,6 +1467,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             receipts.document,
             config.transactionPage,
             paidInto.document,
+            query,
           ),
         };
       },
@@ -1492,7 +1487,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 },
                 {
                   selling: standing.value.selling,
-                  through: standing.value.through,
                   busy: standing.value.busy,
                   ...(standing.value.withdrawn === null
                     ? {}

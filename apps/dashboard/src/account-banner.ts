@@ -5,15 +5,14 @@
  * behind, and the banner says instead that it could not check.
  */
 
-import type { Integration } from "@agentify/gateway";
 import type { MerchantFinding, SellingState } from "@nuanu-ai/agentify-contracts";
+import { moment } from "./moments.js";
 import { readinessSeenBy, type Viewer } from "./viewer.js";
 import {
   ACCOUNT_WORDS,
   type AccountReason,
   LIVE_SALES_STOPPED,
   liveSalesStoppedSince,
-  moment,
   notConnectedSince,
   type Way,
 } from "./words.js";
@@ -29,7 +28,6 @@ export interface AccountNote {
 /** What was read beside the viewer; absent is not read. */
 export interface AccountRead {
   readonly selling?: SellingState;
-  readonly through?: Integration;
   /** True where a read was asked for and failed. */
   readonly unread?: boolean;
   /**
@@ -62,15 +60,18 @@ const FROM_SELLING: Readonly<Record<SellingState, AccountReason | null>> = {
   paused: "paused",
 };
 
-/** The order the banner says them in, broadest first. */
+/**
+ * The order the banner says them in: what the merchant puts right themselves
+ * first, then what Agentify lifts, then what lifts by itself, and last that
+ * something could not be read.
+ */
 const ORDER: readonly AccountReason[] = [
   "paused",
-  "not_approved",
   "no_seller_name",
   "no_payout_wallet",
   "out_of_touch",
+  "not_approved",
   "busy",
-  "through_shop",
   "unread",
 ];
 
@@ -101,7 +102,6 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   );
   const selling = read.selling === undefined ? null : FROM_SELLING[read.selling];
   if (selling !== null) found.add(selling);
-  if (read.through === "woocommerce") found.add("through_shop");
   if (read.outOfTouch !== undefined) found.add("out_of_touch");
   if (read.busy === true) found.add("busy");
   if (read.unread === true) found.add("unread");

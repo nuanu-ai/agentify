@@ -40,12 +40,14 @@ const GoogleButton = () => (
 
 export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: AskView }>) {
   const pressed = usePressed();
+  // A page that says why the person is here is about somebody who was signed
+  // in, or about a refusal; only the plain page speaks to a newcomer.
+  const plain = view.reason === undefined && view.problem === undefined;
   return (
     <GatePage chrome={chrome} title="Sign in">
-      <div className="message-panel">
+      <div className={`message-panel ${styles.card}`}>
         <h1>Sign in</h1>
         {view.reason === undefined ? null : <p>{view.reason}</p>}
-        <p>Enter your email address and we will send you a sign-in link.</p>
         <Form method="post" action="/sign-in">
           <Field
             label="Email address"
@@ -58,7 +60,9 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
             autoFocus
             required
             defaultValue={view.email ?? ""}
-            {...(view.problem === undefined ? {} : { error: view.problem })}
+            {...(view.problem === undefined
+              ? { hint: "We email you a link. It works once, within an hour." }
+              : { error: view.problem })}
           />
           <Destination destination={view.destination} />
           <Click clickId={view.clickId} />
@@ -66,7 +70,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
         </Form>
         {view.googleEnabled ? (
           <>
-            <p className="or">Or sign in with Google.</p>
+            <p className={`or ${styles.or}`}>or</p>
             <Form method="post" action="/sign-in/google" reloadDocument>
               <Destination destination={view.destination} />
               <Click clickId={view.clickId} />
@@ -74,18 +78,11 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
             </Form>
           </>
         ) : null}
-        <p className="quiet">
-          Each email sign-in link opens once and expires an hour after it is sent, so there is
-          nothing to keep and no password to remember.
-        </p>
-        <p className="quiet">
-          New to Agentify? Sign in here. The dashboard then offers one button, “Open my seller
-          dashboard”, whose press creates your merchant.
-        </p>
         {/* The header's own Privacy link is hidden on a phone, and an ad's visitor is reported
             to the ad tracker with nothing asked here, so the privacy page is reached from
             the card. */}
-        <p className="quiet">
+        <p className={`quiet ${styles.foot}`}>
+          {plain ? "New to Agentify? Signing in creates your account. " : null}
           <a href="/privacy">Privacy</a>
         </p>
       </div>
@@ -104,8 +101,8 @@ const counted = (amount: number, unit: string): string =>
   `${amount} ${unit}${amount === 1 ? "" : "s"}`;
 
 /**
- * The sentence and the button show the same number and must round the same
- * way, or the page argues with itself.
+ * The words and the button show the same number and must round the same way,
+ * or the page argues with itself.
  */
 const waitInWords = (seconds: number): string =>
   seconds > SECONDS_WORTH_WATCHING
@@ -113,11 +110,12 @@ const waitInWords = (seconds: number): string =>
     : counted(Math.max(1, Math.ceil(seconds)), "second");
 
 /**
- * Served pressable, and taken away by the page's script for the wait: nothing
- * can lift a `disabled` attribute where the script did not run, and a button
- * served disabled would be dead for the person most in need of it. The wait is
- * counted against a deadline, because a background tab's timers are throttled
- * and a tab that slept through the wait must get the button back at once.
+ * Served pressable, and taken away by the page's script for the wait, which it
+ * then carries on its face: nothing can lift a `disabled` attribute where the
+ * script did not run, and a button served disabled would be dead for the
+ * person most in need of it. The wait is counted against a deadline, because a
+ * background tab's timers are throttled and a tab that slept through the wait
+ * must get the button back at once.
  */
 function WaitingButton({
   seconds,
@@ -143,17 +141,36 @@ function WaitingButton({
     <Button variant="secondary" disabled={left !== null} pending={pending} data-link-wait={seconds}>
       {left === null
         ? label
-        : `${label} (${left > SECONDS_WORTH_WATCHING ? `${Math.ceil(left / 60)} min` : `${left} s`})`}
+        : `${label} in ${left > SECONDS_WORTH_WATCHING ? `${Math.ceil(left / 60)} min` : `${left} s`}`}
     </Button>
   );
 }
 
 /**
+ * Where the page's script runs, the button carries a refusal's wait; these
+ * words carry it for a browser that runs none, whose button stays as served.
+ */
+const WaitWithoutScript = ({ seconds }: Readonly<{ seconds: number }>) => (
+  <noscript>
+    <p className="quiet">Try again in {waitInWords(seconds)}.</p>
+  </noscript>
+);
+
+/** Why no link went out, where no other address would have fared better. */
+const PAUSED: Readonly<Record<"client" | "shared" | "ceiling", string>> = {
+  client: "Your connection has asked for too many sign-in links this hour.",
+  shared:
+    "Too many sign-in links were asked for this hour from connections we cannot tell apart from yours.",
+  ceiling:
+    "More sign-in links than usual were asked for this hour, so they are paused for everyone.",
+};
+
+/**
  * Never says whether the address is known. The resend is on every version of
  * the page: an accepted request cannot know the message arrived, and a refused
  * one must leave something to come back to; a refusal only changes whether it
- * can be pressed yet. Only the hourly page prints its wait in words, because a
- * person leaves the page for it.
+ * can be pressed yet. A link that went out reads the same whether or not it
+ * was the hour's last; the button shows the wait once there is one.
  *
  * The minute's page may say only what the rate row holds: not where the
  * earlier link leads, since it may have been asked for elsewhere, and not
@@ -183,75 +200,49 @@ export function LinkRequestedScreen({
   const pressed = usePressed();
   const wall = "wall" in answer ? answer.wall : null;
   const anyAddressRefused = wall === "client" || wall === "shared" || wall === "ceiling";
-  const heading = wall === null || wall === "interval" ? "Check your mail" : "Try again later";
+  const heading = anyAddressRefused ? "Sign-in links are paused" : "Check your email";
+  const seconds = Math.max(0, Math.ceil(answer.seconds));
   return (
     <GatePage chrome={chrome} title={heading}>
-      <div className="message-panel">
+      <div className={`message-panel ${styles.card}`}>
         <h1>{heading}</h1>
         {wall === null ? (
           <>
             <p>
-              A sign-in link is on its way to <strong>{email}</strong>. It opens once and expires an
-              hour after it is sent.
+              A sign-in link is on its way to <strong>{email}</strong>.
             </p>
-            <p className="quiet">
-              {
-                // A wait longer than the counted seconds can only be the hourly
-                // limit, so inviting another send would mean most of an hour's
-                // wait.
-                answer.seconds > SECONDS_WORTH_WATCHING
-                  ? "If nothing has arrived in a minute, look in your spam folder. That was the last of this address's three links for the hour, so the next one waits for the hour to turn over."
-                  : "If nothing has arrived in a minute, look in your spam folder, then send another link from this page."
-              }
-            </p>
+            <p className="quiet">If nothing arrives in a minute, check your spam folder.</p>
           </>
         ) : wall === "interval" ? (
           <>
             <p>
-              No new link was sent to <strong>{email}</strong>. A sign-in link went to this address
-              less than a minute ago.
+              No new link was sent: one went to <strong>{email}</strong> less than a minute ago.
             </p>
-            <p className="quiet">
-              Look for it in your inbox and your spam folder. The link opens wherever it was
-              requested, which may not be this page. One address gets one link a minute, so you can
-              ask for another as soon as the minute is up.
-            </p>
+            <p className="quiet">Check your inbox and your spam folder.</p>
           </>
         ) : wall === "hourly" ? (
           <>
             <p>
-              No new link was sent to <strong>{email}</strong>. One email address gets three links
-              an hour, and this one has had its three.
+              No new link was sent: <strong>{email}</strong> has had its three links for this hour.
             </p>
-            <p className="problem">Try again in {waitInWords(answer.seconds)}.</p>
+            <WaitWithoutScript seconds={seconds} />
           </>
         ) : (
           <>
-            <p>
-              No link was sent to <strong>{email}</strong>.{" "}
-              {wall === "client"
-                ? "Many sign-in links have been asked for from your internet connection in the last hour, so it has to wait before it can ask for another, whichever address is typed."
-                : wall === "shared"
-                  ? "Many sign-in links have been asked for in the last hour by visitors this site cannot tell apart from you, so email sign-in links for all of them are paused for a while."
-                  : "More sign-in links than usual have been asked for in the last hour, so email sign-in links are paused for everybody for a while."}
-            </p>
-            <p className="problem">Try again in {waitInWords(answer.seconds)}.</p>
+            <p>{PAUSED[wall]}</p>
+            <WaitWithoutScript seconds={seconds} />
           </>
         )}
         <Form method="post" action="/sign-in">
           <input name="email" type="hidden" value={email} />
           <Destination destination={destination} />
           <Click clickId={clickId} />
-          <WaitingButton
-            seconds={Math.max(0, Math.ceil(answer.seconds))}
-            pending={pressed}
-            label="Send another link"
-          />
+          <WaitingButton seconds={seconds} pending={pressed} label="Send another link" />
         </Form>
         {anyAddressRefused ? (
           googleEnabled ? (
             <>
-              <p className="or">Signing in with Google works in the meantime.</p>
+              <p className={`or ${styles.or}`}>or</p>
               <Form method="post" action="/sign-in/google" reloadDocument>
                 <Destination destination={destination} />
                 <Click clickId={clickId} />
@@ -260,10 +251,12 @@ export function LinkRequestedScreen({
             </>
           ) : null
         ) : (
-          <Form method="get" action="/sign-in">
+          <Form className={styles.caption} method="get" action="/sign-in">
             <Destination destination={destination} />
             <Click clickId={clickId} />
-            <Button variant="secondary">Use a different address</Button>
+            <button className={styles.textButton} type="submit">
+              Use a different address
+            </button>
           </Form>
         )}
       </div>
@@ -273,8 +266,10 @@ export function LinkRequestedScreen({
 
 /**
  * "Refused" covers both a provider that rejected the message and one that did
- * not answer in time, and the second may have delivered it. What is known is
- * that the send cannot be confirmed and nothing was written. Trying again
+ * not answer in time, and the second may have delivered it. Nothing of the
+ * attempt was kept, neither the link nor its count against the limits, so a
+ * message that arrives anyway carries a link that no longer opens, and trying
+ * again asks for a new one as if this attempt had not happened. Trying again
  * keeps the ad's click.
  */
 export function MailUnavailableScreen({
@@ -282,12 +277,12 @@ export function MailUnavailableScreen({
   clickId,
 }: Readonly<{ chrome: Chrome; clickId?: string }>) {
   return (
-    <GatePage chrome={chrome} title="We could not confirm your sign-in link went out">
-      <Form className="message-panel" method="get" action="/sign-in">
-        <h1>We could not confirm your sign-in link went out</h1>
+    <GatePage chrome={chrome} title="Your sign-in link may not have been sent">
+      <Form className={`message-panel ${styles.card}`} method="get" action="/sign-in">
+        <h1>Your sign-in link may not have been sent</h1>
         <p>
-          Something went wrong while sending the email, so we do not know whether it was delivered.
-          No account or session was created. Try again, and check that the email address is correct.
+          Our email service did not confirm it. If the email arrives anyway, its link will not work,
+          so ask for a new one.
         </p>
         <Click clickId={clickId} />
         <Button>Try again</Button>
@@ -308,36 +303,30 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
     // says nothing about whose the link was.
     return (
       <GatePage chrome={chrome} title="That link no longer works">
-        <div className="message-panel">
+        <Form
+          className={`message-panel ${styles.card}`}
+          method="get"
+          action="/sign-in"
+          reloadDocument
+        >
           <h1>That link no longer works</h1>
-          <p>
-            A sign-in link opens once and expires an hour after it is sent. This one no longer opens
-            anything.
-          </p>
-          <p>
-            Nothing is lost: access belongs to your email address, not to any one link. Ask for a
-            new one.
-          </p>
-          <Form method="get" action="/sign-in" reloadDocument>
-            <Button variant="secondary">Ask for another link</Button>
-          </Form>
-        </div>
+          <p>A sign-in link works once, within an hour.</p>
+          <Button>Get a new link</Button>
+        </Form>
       </GatePage>
     );
   }
   return (
     <GatePage chrome={chrome} title="Sign in">
-      <Form className="message-panel" method="post" action="/sign-in/open" reloadDocument>
+      <Form
+        className={`message-panel ${styles.card}`}
+        method="post"
+        action="/sign-in/open"
+        reloadDocument
+      >
         <h1>Sign in</h1>
-        <p>
-          This link signs <strong>{view.email}</strong> in on this browser.
-        </p>
         <input type="hidden" name="token" value={view.token} />
         <Button>Sign in as {view.email}</Button>
-        <p className="quiet">
-          If that is not your address, close this page. Nothing happens unless the button is
-          pressed.
-        </p>
       </Form>
     </GatePage>
   );

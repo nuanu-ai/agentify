@@ -1,0 +1,21 @@
+/* The banner's heading, at the size of a panel's heading. */
+.heading {
+  font-size: var(--text-heading);
+  line-height: var(--leading-heading);
+}
+
+/* Several reasons under the banner's one heading, each a line of its own
+   with a quiet marker, so they read as a list and not as one paragraph. */
+.reasons {
+  margin: 0;
+  padding-left: 1.15em;
+  list-style: disc;
+}
+
+.reasons > li::marker {
+  color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+.reasons > li + li {
+  margin-top: var(--space-snug);
+}

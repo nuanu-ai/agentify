@@ -12,7 +12,9 @@
     "./docs": "./src/docs.ts",
     "./surface": "./src/surface.ts",
     "./workspace": "./src/workspace.tsx",
-    "./workspace-view": "./src/workspace-view.ts"
+    "./remember-zone": "./src/remember-zone.ts",
+    "./workspace-view": "./src/workspace-view.ts",
+    "./zone": "./src/zone.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

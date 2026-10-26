@@ -1477,6 +1477,7 @@ describe("importing the catalogue", () => {
     const form = importFormOf(screen.html);
 
     expect(screen.status).toBe(200);
+    expect(screen.html).toContain('data-reason="no_payout_wallet"');
     expect(form).toMatch(/<button[^>]*\bdisabled\b[^>]*>Import products</);
     expect(readable(form)).toMatch(/wallet/i);
     expect(form).toContain('href="/settings"');
@@ -2716,10 +2717,10 @@ describe("one integration at a time", () => {
     expect(await running.harnessed.gateway.sellsThrough(merchantId)).toBe("woocommerce");
   });
 
-  it("says once over the cards why the code's cards are off sale while the shop sells", async () => {
-    // Said beside every card it would be the same sentence on every row; the
-    // row says only that the card is off sale, and offers no switch that would
-    // put it back.
+  it("says beside each card the code published why it is off sale while the shop sells, and holds nothing against the account", async () => {
+    // Selling through the shop is how the account works, not a hold on its
+    // sales, so the banner says nothing of it; the rows say which cards it
+    // leaves off sale, and offer no switch that would put them back.
     const running = await started();
     await running.signIn();
     await publishedByTheCode(running);
@@ -2730,13 +2731,11 @@ describe("one integration at a time", () => {
       ([, row = ""]) => row,
     );
 
-    expect([...html.matchAll(/data-reason="([^"]+)"/g)].map(([, reason]) => reason)).toContain(
-      "through_shop",
-    );
+    expect([...html.matchAll(/data-reason="([^"]+)"/g)]).toStrictEqual([]);
     expect(rows).not.toHaveLength(0);
     for (const row of rows) {
       expect(readable(row)).toContain("Off sale");
-      expect(readable(row)).not.toMatch(/WooCommerce/);
+      expect(readable(row)).toMatch(/WooCommerce/);
       expect(row).not.toMatch(/<form/);
     }
   });
