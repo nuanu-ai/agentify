@@ -980,11 +980,16 @@ export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "uc
 const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
   if (!declaresAuth(artifacts)) {
     // A card the scanner could not read may declare a sign-in it cannot see.
+    // The card's own status or read limit is not shown as the metadata's.
     const unread = documentsOf(authCards(artifacts), "card_unavailable").readings.find(isUnknown);
     if (unread)
-      return unjudged(11, unread, {
-        summaryCode: "oauth_unavailable",
+      return result({
+        id: 11,
+        status: "unavailable",
+        earnedWeight: 0,
+        summaryCode: "oauth_declaration_unknown",
         userImpactCode: "oauth_not_assessed",
+        errorCode: unread.state === "cut" ? "document_truncated" : unread.errorCode,
       });
     return result({
       id: 11,

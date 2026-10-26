@@ -101,6 +101,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   mcp_card_valid:
     "A usable MCP server card was found at the experimental public discovery location.",
   mcp_unavailable: "The MCP server-card surface could not be assessed.",
+  oauth_declaration_unknown:
+    "Whether the site declares a sign-in for agents could not be told, because a discovery card that could declare one was not read whole. The card's own result says why.",
   oauth_metadata_absent:
     "The site declares an authenticated agent surface, but no OAuth authorization-server metadata was found.",
   oauth_metadata_partial:
