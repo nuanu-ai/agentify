@@ -36,7 +36,15 @@ export interface Chrome {
  * to the dashboard carries no chrome: the root's is already loaded there.
  */
 export type Trouble =
-  | Readonly<{ kind: "problem"; chrome: Chrome; said: string; again?: string; reopen?: string }>
+  | Readonly<{
+      kind: "problem";
+      chrome: Chrome;
+      said: string;
+      again?: string;
+      reopen?: string;
+      /** What the server half knew of a refused press: see `Problem` in `page-services.ts`. */
+      outcome?: "refused" | "unconfirmed";
+    }>
   /**
    * The dashboard's page for an address it does not have, drawn where no
    * loader ran, with what the gate and the merchant's pages' layout read.
@@ -105,11 +113,31 @@ const statusOf = (answered: unknown): number | undefined => {
 };
 
 /**
- * The address of a press answered as done. React Router reads the page after
- * a press at the press's own address, as the very next request, and that read
- * alone may say the change was made.
+ * The address of a press behind the gate answered as done. React Router reads
+ * the page after a press at the press's own address, as the very next
+ * request, and that read alone may say the change was made.
  */
 let pressAnswered: string | null = null;
+
+/**
+ * For the pages behind the gate, whose presses change what is saved: notes a
+ * press answered as done. A press outside it, such as asking for a sign-in
+ * link, is answered alike whether anything happened or not, and is never said
+ * to have made a change.
+ */
+export const notesAnswered: MiddlewareFunction<Record<string, DataStrategyResult>> = async (
+  { request },
+  next,
+) => {
+  const results = await next();
+  if (reads(request.method) || request.signal.aborted) return results;
+  const outcomes = Object.values(results);
+  const done =
+    outcomes.length > 0 &&
+    outcomes.every((result) => result.type === "data" && (statusOf(result.result) ?? 400) < 400);
+  if (done) pressAnswered = request.url;
+  return results;
+};
 
 /**
  * The browser's half of the same rule, run around every request a page makes
@@ -128,13 +156,6 @@ export const saidAsAsked: MiddlewareFunction<Record<string, DataStrategyResult>>
   pressAnswered = null;
   const results = await next();
   if (request.signal.aborted) return results;
-  const outcomes = Object.values(results);
-  if (!reads(request.method)) {
-    const done = outcomes.every(
-      (result) => result.type === "data" && (statusOf(result.result) ?? 400) < 400,
-    );
-    if (done && outcomes.length > 0) pressAnswered = request.url;
-  }
   const url = new URL(request.url);
   const at =
     reads(request.method) || typeof window === "undefined" ? url : new URL(window.location.href);
@@ -287,6 +308,7 @@ export function answer<View>(outcome: Outcome<View>, { request, url, context }: 
     kind: "problem",
     chrome,
     said: outcome.problem.said,
+    ...(outcome.problem.outcome === undefined ? {} : { outcome: outcome.problem.outcome }),
     ...(reads(request.method)
       ? { again: `${url.pathname}${url.search}` }
       : { reopen: `${url.pathname}${url.search}` }),

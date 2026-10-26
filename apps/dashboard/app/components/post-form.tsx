@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { Form, useHref, useLocation, useNavigation, useRouteLoaderData } from "react-router";
+import { ANSWER_WITHIN_MS } from "../../src/deadlines.js";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
 
 /** The press's button in a row, the way a keyboard reaches the next one. */
@@ -64,20 +65,22 @@ const useFocusKept = (form: RefObject<HTMLFormElement | null>, pending: boolean)
   };
 };
 
-/** How long a whole-page press waits for its answer before saying it cannot confirm it. */
-const UNCONFIRMED_AFTER_MS = 5_000;
+/** How long a whole-page press waits before it says it is still waiting. */
+const STILL_WAITING_AFTER_MS = 3_000;
 
 /**
  * A press sent as a whole page load. The browser carries it out and tells the
  * page nothing when the load is stopped, by the toolbar, by Escape, or on a
  * phone, and a second press of a form unlocked then could send the change
- * twice. So the form stays locked until the next page is drawn, and a few
- * seconds on with no answer it says the change cannot be confirmed, with a
- * read of the page as the way to see where it stands. A page the browser
- * brings back from its cache after the press is a page as it was before it.
+ * twice. So the form stays locked until the next page is drawn. A few seconds
+ * on it says it is still waiting. Once the server's own deadline for the press
+ * has passed, it says the change cannot be confirmed, with a read of the page
+ * as the way to see where it stands; said sooner, it would send the person to
+ * look while the change was still being made. A page the browser brings back
+ * from its cache after the press is a page as it was before it.
  */
-const useWholeLoad = () => {
-  const [stage, setStage] = useState<"idle" | "sending" | "unconfirmed">("idle");
+const useWholeLoad = (answeredWithinMs: number) => {
+  const [stage, setStage] = useState<"idle" | "sending" | "waiting" | "unconfirmed">("idle");
   useEffect(() => {
     const restored = (event: PageTransitionEvent) => {
       if (event.persisted) setStage("idle");
@@ -85,11 +88,19 @@ const useWholeLoad = () => {
     window.addEventListener("pageshow", restored);
     return () => window.removeEventListener("pageshow", restored);
   }, []);
+  const pressed = stage !== "idle";
   useEffect(() => {
-    if (stage !== "sending") return;
-    const waited = setTimeout(() => setStage("unconfirmed"), UNCONFIRMED_AFTER_MS);
-    return () => clearTimeout(waited);
-  }, [stage]);
+    if (!pressed) return;
+    const still = setTimeout(() => setStage("waiting"), STILL_WAITING_AFTER_MS);
+    const late = setTimeout(
+      () => setStage("unconfirmed"),
+      answeredWithinMs + STILL_WAITING_AFTER_MS,
+    );
+    return () => {
+      clearTimeout(still);
+      clearTimeout(late);
+    };
+  }, [pressed, answeredWithinMs]);
   return { stage, send: () => setStage("sending") };
 };
 
@@ -152,9 +163,10 @@ const useFieldsLocked = (form: RefObject<HTMLFormElement | null>, pending: boole
  * script, its fields and button are locked from the press until the page that
  * answers it is drawn, so a page read again after the press never shows the
  * old state pressable; a page that answers its own press keeps the person
- * where they were on it. A whole-page press with no answer a few seconds on
- * says the change cannot be confirmed and offers a read of this page, and the
- * form stays locked. Only the person sends a press again.
+ * where they were on it. A whole-page press with no answer says it is still
+ * waiting, and once the server's deadline has passed that the change cannot be
+ * confirmed, with a read of this page; the form stays locked. Only the person
+ * sends a press again.
  *
  * `autoComplete="off"` because Firefox restores a hidden field's old value on
  * reload, which would put the first address back into a page redrawn for
@@ -163,6 +175,7 @@ const useFieldsLocked = (form: RefObject<HTMLFormElement | null>, pending: boole
 export function PostForm({
   action,
   document = false,
+  answeredWithinMs = ANSWER_WITHIN_MS,
   replace,
   className,
   children,
@@ -173,13 +186,18 @@ export function PostForm({
   replace?: boolean;
   className?: string;
   children: (pending: boolean) => ReactNode;
+  /**
+   * The server's longest wait for this press's answer, for a whole-page press;
+   * the gateway's usual deadline unless the press waits longer.
+   */
+  answeredWithinMs?: number;
 }>) {
   const gate = useRouteLoaderData<{ who: string }>("routes/gate");
   if (gate === undefined) {
     throw new Error("a form that posts was drawn outside the gate, where no address is known");
   }
   const navigation = useNavigation();
-  const whole = useWholeLoad();
+  const whole = useWholeLoad(answeredWithinMs);
   const location = useLocation();
   const here = useHref(`${location.pathname}${location.search}`);
   const form = useRef<HTMLFormElement>(null);
@@ -205,6 +223,7 @@ export function PostForm({
     >
       <input type="hidden" name={DRAWN_FOR} value={gate.who} autoComplete="off" />
       {children(pending)}
+      {whole.stage === "waiting" ? <p role="status">Still waiting for an answer…</p> : null}
       {whole.stage === "unconfirmed" ? (
         <p role="status">
           We could not confirm whether your change was made. <a href={here}>Open this page again</a>{" "}

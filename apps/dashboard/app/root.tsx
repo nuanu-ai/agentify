@@ -148,7 +148,7 @@ const PRESSED_ON: Readonly<Record<string, readonly [string, string]>> = {
 };
 
 const screenOf = (path: string): readonly [string, string] =>
-  PRESSED_ON[path.split("/")[1] ?? ""] ?? ["/", "the dashboard"];
+  PRESSED_ON[path.split(/[?#]/)[0]?.split("/")[1] ?? ""] ?? ["/", "the dashboard"];
 
 /** One message panel: whether anything changed, why, and the one way on. */
 function MessagePage({
@@ -212,6 +212,9 @@ export function ErrorBoundary() {
   const again =
     trouble?.kind === "problem" || trouble?.kind === "unread" ? trouble.again : undefined;
   if (again !== undefined) {
+    // A refusal is offered again only where it was a fault that may pass.
+    const passing =
+      trouble?.kind === "unread" || (isRouteErrorResponse(error) && error.status >= 500);
     return (
       <MessagePage
         chrome={chrome}
@@ -221,9 +224,9 @@ export function ErrorBoundary() {
             ? trouble.said
             : trouble?.kind === "unread" && trouble.answered === true
               ? "Your change was made, but the page could not be loaded after it."
-              : "Something broke on our side."
+              : "Loading it again changes nothing."
         }
-        way={[again, "Try again"]}
+        way={passing ? [again, "Try again"] : open}
       />
     );
   }
@@ -236,8 +239,13 @@ export function ErrorBoundary() {
     reopen === undefined
       ? open
       : ([reopen, `Open ${screenOf(reopen.slice(chrome.base.length))[1]}`] as const);
-  // A refusal of a press did not do it; a fault behind one may have.
-  if (trouble?.kind === "problem" && isRouteErrorResponse(error) && error.status < 500) {
+  // A refused press did nothing where the server half says so, or where a
+  // refusal came before any work; a fault nobody worded may have done it.
+  if (
+    trouble?.kind === "problem" &&
+    (trouble.outcome === "refused" ||
+      (trouble.outcome === undefined && isRouteErrorResponse(error) && error.status < 500))
+  ) {
     return (
       <MessagePage chrome={chrome} title="Nothing was changed" said={trouble.said} way={back} />
     );

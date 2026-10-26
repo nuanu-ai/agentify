@@ -40,14 +40,9 @@ import {
 } from "react-router";
 import config from "../react-router.config.js";
 import { type AccountNote, type AccountRead, accountOf } from "../src/account-banner.js";
+import { ANSWER_WITHIN_MS } from "../src/deadlines.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
-import {
-  ANSWER_WITHIN_MS,
-  type Answer,
-  lateAnswer,
-  type PayoutSplits,
-  switchRefused,
-} from "../src/gateway.js";
+import { type Answer, lateAnswer, type PayoutSplits, switchRefused } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
 import {

@@ -59,6 +59,7 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import { ANSWER_WITHIN_MS } from "./deadlines.js";
 import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { CommissionRate } from "./shares.js";
@@ -85,6 +86,8 @@ export type Answer<T> =
        * each one to be copied.
        */
       readonly orders?: readonly string[];
+      /** Set where the refusal's own words say nothing was written. */
+      readonly nothingRecorded?: true;
     };
 
 /**
@@ -263,17 +266,6 @@ export interface Acting {
   readonly email: string;
 }
 
-/**
- * The default deadline for one call: a guard on a page, shorter than a
- * person's patience. The work behind a call that runs out is not cancelled (a
- * late database still writes), so the page says it may have been done. A
- * caller may pass its own: a payout wallet change passes a longer one
- * (`WALLET_CHANGE_MS` in `payout-wallet.ts`), because on live the gateway
- * answers only after every announcement is handed to the mail provider, and
- * tests pass a shorter one so as not to wait ten seconds.
- */
-export const ANSWER_WITHIN_MS = 10_000;
-
 export const lateAnswer = (answerWithinMs: number): Answer<never> => {
   const seconds = Math.max(1, Math.round(answerWithinMs / 1_000));
   return {
@@ -330,24 +322,28 @@ const walletRefusedAs = (why: Exclude<WalletChangeRefusal, object>): Answer<neve
     case "nobody_to_tell":
       return {
         ok: false,
+        nothingRecorded: true,
         status: CONFLICT,
         why: "a change of the payout wallet is told to every dashboard account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
       };
     case "not_announced":
       return {
         ok: false,
+        nothingRecorded: true,
         status: UNAVAILABLE,
         why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not",
       };
     case "raced":
       return {
         ok: false,
+        nothingRecorded: true,
         status: CONFLICT,
         why: "another change of this merchant's payout wallet was recorded between reading the wallet and writing this one, so this one was not recorded; read the wallet and ask again if this is still the address wanted",
       };
     case "raced_after_announcing":
       return {
         ok: false,
+        nothingRecorded: true,
         status: CONFLICT,
         why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
       };

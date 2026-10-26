@@ -15,7 +15,7 @@ import {
   type ShouldRevalidateFunction,
 } from "react-router";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
-import { chromeOf, failedBefore, type Gated, type Trouble } from "../answer.js";
+import { chromeOf, failedBefore, type Gated, notesAnswered, type Trouble } from "../answer.js";
 import { holdsOperatorFlag, services, signedIn } from "../services.js";
 
 const cookies = (lines: readonly string[]): Headers => {
@@ -85,6 +85,9 @@ export const middleware: MiddlewareFunction<Response>[] = [
     return response;
   },
 ];
+
+/** In the browser, a press here answered as done is noted for the read after it. */
+export const clientMiddleware = [notesAnswered];
 
 /**
  * The root's page for trouble, drawn from here for the pages behind the gate:
