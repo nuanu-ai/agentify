@@ -74,21 +74,21 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   },
 };
 
-/** How a drawing abbreviates each unit after its digits, as in "30 s". */
-const SHORT_UNIT: Readonly<Record<Unit, string>> = { second: "s", minute: "min", day: "d" };
-
 /**
  * A value as its sentence asks for it. With no form, a stretch of time is in
  * words with its unit and a rate is a percentage. A stretch of time also has
- * `number`, the count of its unit in words alone, and `short`, digits and the
- * unit's abbreviation; a rate has `words`, as a screen reader reads it.
+ * `number`, the count of its unit in words alone, and one counted in seconds
+ * has `short`, digits as a drawing writes them, "30 s"; a rate has `words`, as
+ * a screen reader reads it.
  */
 function said(value: BuildValue, form: string | undefined): string {
   if ("ms" in value) {
     if (form === undefined) return durationInWords(value.ms, value.unit);
     if (form === "number") return inWords(unitsIn(value.ms, value.unit));
-    if (form === "short") return `${unitsIn(value.ms, value.unit)} ${SHORT_UNIT[value.unit]}`;
-    throw new Error("a stretch of time is written with no form, or as :number or :short");
+    if (form === "short" && value.unit === "second") return `${unitsIn(value.ms, "second")} s`;
+    throw new Error(
+      "a stretch of time is written with no form or as :number, and one in seconds as :short",
+    );
   }
   if ("part" in value) {
     const percent = percentOf(value.part, value.total);
