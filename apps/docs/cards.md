@@ -223,8 +223,8 @@ something fails, so the product decides it:
 
 | Your product | `fulfillment` | When the buyer is charged |
 | --- | --- | --- |
-| Your API hands it over within ten seconds of the payment check, every time: a key, a link, a document | `'sync'`, the default | after the goods came back |
-| It takes longer — a profile to provision, a supplier to ask — and can be delivered a second time without loss | `'async'`, with a deadline of your own or a day | at the moment of purchase |
+| Your API hands it over within {{sync-response}} of the payment check, every time: a key, a link, a document | `'sync'`, the default | after the goods came back |
+| It takes longer — a profile to provision, a supplier to ask — and can be delivered a second time without loss | `'async'`, with a deadline of your own or {{default-async-fulfillment}} | at the moment of purchase |
 | A physical product a carrier takes to the buyer | `'ship'`, on the test channel only | at the moment of purchase, at the price with shipping and any tax your price handler names |
 | A download from a WooCommerce shop | `'async'`, set by the connector | at the moment of purchase |
 | A physical product from a WooCommerce shop | `'ship'`, set by the connector | at the moment of purchase |
@@ -241,14 +241,14 @@ purchase — so the clock is already going when the order reaches your handler,
 and it covers every attempt we make to deliver that order to you. Name it, and
 the agent sees it before it buys.
 
-Leaving it out does not leave you off a clock. A day applies instead, the
+Leaving it out does not leave you off a clock. {{Default-async-fulfillment}} applies instead, the
 agent sees that day on your card in the catalog as if you had named it, and an
 order that runs past it is unfulfilled exactly as one past a number of your
 own would. That day is ours to set rather than the card's, so naming your own
 is the way to keep the time yours.
 
 A synchronous card has no such field, because how long to wait for a
-synchronous answer is set by us, the same for every product: ten seconds, from
+synchronous answer is set by us, the same for every product: {{sync-response}}, from
 the moment the payment checked out. Every limit, and what happens when each
 runs out, is in [Every time limit](/orders#every-time-limit).
 
@@ -389,7 +389,7 @@ both is refused rather than read one way or the other:
 <<< @/examples/quote-response/unavailable.json
 
 An `available: false` answer to a purchase closes it before any money moves,
-and no order appears on your side. A price you name holds for thirty seconds,
+and no order appears on your side. A price you name holds for {{quote-ttl}},
 counted from the moment your answer reaches us; that number is set by us and is
 the same across the system. The `expires_at` in the question is the outside edge
 of the same life rather than a second number — it is worked out when the
@@ -397,7 +397,7 @@ question goes out, before anyone knows when your answer will land, so it falls a
 little later — and what happens once a price has run out is in [Time ran
 out](/orders).
 
-We wait five seconds for an answer, and a question unanswered by then counts as
+We wait {{quote-response}} for an answer, and a question unanswered by then counts as
 silence, which costs different things in different modes ([What can go
 wrong](/failures)). The seconds run from the moment we ask, not from the moment
 your process takes the question, and the question shares the stream with
@@ -405,10 +405,10 @@ everything else. The SDK handles up to four unfinished messages at once, so
 one slow order need not delay a price question. When all four places are busy
 with orders, questions or events, the question waits; more instances divide
 that work further. A question that expires in the queue is still unanswered. One purchase asks
-one question and that question is put on your stream once. At most fifty of
+one question and that question is put on your stream once. At most {{waiting-for-payment-at-most}} of
 your purchases wait for payment at once, and a purchase beyond them is refused
 before its question is asked ([What can go wrong](/failures)), so purchases
-nobody pays reach your handler as fifty questions at a time at most. A
+nobody pays reach your handler as {{waiting-for-payment-at-most}} questions at a time at most. A
 purchase that is paid frees its place at once, so the rate your price handler
 meets is otherwise the rate agents buy at, and that is the number to size it
 against. The thresholds that would hold that rate down further are among what
