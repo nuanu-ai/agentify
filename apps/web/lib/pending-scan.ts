@@ -79,3 +79,27 @@ export function readPendingScan(storage: ScanStorage): PendingScanRequest | null
 export function clearPendingScan(storage: ScanStorage) {
   storage.removeItem(PENDING_SCAN_STORAGE_KEY);
 }
+
+/** Where each segment's scan form is. */
+const FORM_PATHS: Readonly<Record<Segment, string>> = {
+  owner: "/",
+  store: "/store",
+  local: "/local",
+};
+
+/**
+ * Where to send an owner who asks to scan an address again: the form the scan
+ * came from, holding the address in the router's state rather than in the
+ * page's address, so it reaches neither a log nor the attribution the form
+ * records. The form starts nothing until it is pressed.
+ */
+export function scanAgainAt(segment: Segment, address: string) {
+  return { path: FORM_PATHS[segment], state: { address } };
+}
+
+/** The address a form was opened to scan again, or the empty one. */
+export function addressToScanAgain(state: unknown): string {
+  const address =
+    typeof state === "object" && state !== null ? (state as { address?: unknown }).address : null;
+  return typeof address === "string" ? address : "";
+}

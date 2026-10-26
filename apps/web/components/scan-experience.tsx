@@ -1,15 +1,10 @@
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
 import { Badge } from "@agentify/ui";
-import {
-  type CSSProperties,
-  type ReactNode,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type CSSProperties, type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import { scanStatusIn } from "../lib/api-answers";
+import { ask } from "../lib/ask";
+import { scanAgainAt } from "../lib/pending-scan";
 import type { ScanFixture } from "../lib/scan-fixtures";
 import { SCAN_STATUS_LINES } from "../lib/scan-status";
 import { CheckRow } from "./check-row";
@@ -52,7 +47,22 @@ const CHECK_LABELS = {
   hreflang_locales: "Language alternatives",
 } as const;
 
+/**
+ * Whether the page can read the scan: not yet asked, asking, without a token
+ * to ask with, or told that asking again cannot help. The page does not say
+ * why, so a deleted scan and a refused token look the same.
+ */
 type AccessState = "loading" | "ready" | "missing" | "invalid";
+
+/** The states a scan does not leave. */
+const ENDED: ReadonlySet<ScanStatusResponse["status"]> = new Set([
+  "completed",
+  "partial",
+  "failed",
+]);
+
+/** How long the page waits after a status it could not read: doubling from two seconds to half a minute. */
+const waitAfter = (failures: number) => Math.min(2 * 2 ** (failures - 1), 30);
 
 /** The token that reads a scan, kept for the tab's life under the scan's own key. */
 const tokenKey = (scanId: string) => `agentify:scan-token:${scanId}`;
@@ -81,13 +91,16 @@ export function ScanExperience({
   segment: Segment;
 }>) {
   const fixtureName = fixture?.name;
+  const navigate = useNavigate();
   const [data, setData] = useState<ScanStatusResponse | null>(fixture?.status ?? null);
   const [accessState, setAccessState] = useState<AccessState>(fixtureName ? "ready" : "loading");
   const [requestError, setRequestError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const terminal = data ? ["completed", "partial", "failed"].includes(data.status) : false;
+  const terminal = data ? ENDED.has(data.status) : false;
   const underway = data !== null && !terminal;
   const [watchedItRun, setWatchedItRun] = useState(false);
+  // A press that reads the scan once more after it ended.
+  const [readings, setReadings] = useState(0);
 
   useEffect(() => {
     if (terminal || fixtureName) return;
@@ -99,49 +112,58 @@ export function ScanExperience({
     return () => window.clearInterval(timer);
   }, [fixtureName, terminal]);
 
-  const poll = useCallback(async () => {
+  // The page asks for the scan's status until the scan ends or the API says
+  // asking cannot help; an answer it cannot read makes it wait longer each time.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `readings` changes only to read the scan again.
+  useEffect(() => {
     if (fixtureName) return;
+    captureFragmentToken(scanId);
     const token = sessionStorage.getItem(tokenKey(scanId));
     if (!token) {
       setAccessState("missing");
       return;
     }
     setAccessState("ready");
-    try {
-      const response = await fetch(`/api/v1/scans/${encodeURIComponent(scanId)}/status`, {
-        cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.status === 401 || response.status === 403) {
+    let left = false;
+    let timer: number | undefined;
+    let failures = 0;
+    const askAgainIn = (seconds: number) => {
+      timer = window.setTimeout(() => void read(), seconds * 1000);
+    };
+    const read = async () => {
+      const asked = await ask(
+        `/api/v1/scans/${encodeURIComponent(scanId)}/status`,
+        { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
+        scanStatusIn,
+      );
+      if (left) return;
+      if (asked.kind === "ended") {
+        setData(null);
+        setRequestError(null);
         setAccessState("invalid");
         return;
       }
-      const status = scanStatusIn(await response.json());
-      if (!response.ok || status === null) {
-        setRequestError("The scanner returned an invalid or unavailable status response.");
+      if (asked.kind === "later") {
+        failures += 1;
+        const seconds = Math.max(asked.waitSeconds ?? 0, waitAfter(failures));
+        setRequestError(
+          `${asked.words ?? "Live status cannot be read right now."} The page asks again in ${seconds} s.`,
+        );
+        askAgainIn(seconds);
         return;
       }
-      setData(status);
+      failures = 0;
+      setData(asked.answer);
       setRequestError(null);
-    } catch {
-      setRequestError("Live status is temporarily unreachable. We will keep trying.");
-    }
-  }, [fixtureName, scanId]);
-
-  useEffect(() => {
-    if (fixtureName) return;
-    captureFragmentToken(scanId);
-    void poll();
-  }, [fixtureName, poll, scanId]);
-
-  useEffect(() => {
-    if (fixtureName || terminal || accessState === "invalid" || accessState === "missing") return;
-    const interval = window.setInterval(
-      () => void poll(),
-      data?.status === "running" ? 1000 : 2000,
-    );
-    return () => window.clearInterval(interval);
-  }, [accessState, data?.status, fixtureName, poll, terminal]);
+      if (ENDED.has(asked.answer.status)) return;
+      askAgainIn(asked.answer.status === "running" ? 1 : 2);
+    };
+    void read();
+    return () => {
+      left = true;
+      window.clearTimeout(timer);
+    };
+  }, [fixtureName, readings, scanId]);
 
   useEffect(() => {
     if (!data?.teaser || fixtureName || accessState !== "ready") return;
@@ -217,12 +239,19 @@ export function ScanExperience({
               <ScanFailed
                 blocked={data.blocked === true}
                 checks={data.checks}
-                onRetry={() => window.location.assign("/")}
+                onRetry={() => {
+                  const again = scanAgainAt(segment, data.target_host);
+                  void navigate(again.path, { state: again.state });
+                }}
                 stopReason={data.stop_reason}
               />
             ) : null}
             {finished && !data.teaser ? (
-              <ScanFailed blocked={false} checks={data.checks} onRetry={() => void poll()} />
+              <ScanFailed
+                blocked={false}
+                checks={data.checks}
+                onRetry={() => setReadings((count) => count + 1)}
+              />
             ) : null}
             {requestError ? (
               <div aria-live="polite" className={styles.pollNotice}>
