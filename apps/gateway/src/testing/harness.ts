@@ -46,6 +46,7 @@ import {
   X402_VERSION,
 } from "../http/x402.js";
 import type { Ids } from "../ports/clock.js";
+import type { PayoutCheck } from "../ports/payout-check.js";
 import type { Integration, StoredOrder } from "../ports/store.js";
 import { type SignedTerms, signedPayment } from "./signed-payment.js";
 
@@ -130,7 +131,11 @@ export async function harness(
    * The identifiers the gateway issues: counted by default so a test can read
    * them, or as production issues them for a test about what they are.
    */
-  options: { readonly ids?: Ids } = {},
+  options: {
+    readonly ids?: Ids;
+    /** What the chain says a payout would bring; none is asked by default. */
+    readonly payoutCheck?: PayoutCheck;
+  } = {},
 ): Promise<Harness> {
   // Moves only on `advance`, so deadlines are arithmetic to check by eye. The
   // store stamps payment claims from it too, so `advance` moves those as well.
@@ -162,6 +167,7 @@ export async function harness(
     // Read from the configuration as the process reads it, so a test names a
     // chain endpoint by PAYMENT_RPC_URL; none is configured by default.
     ...(chain === undefined ? {} : { chain }),
+    ...(options.payoutCheck === undefined ? {} : { payoutCheck: options.payoutCheck }),
   };
 
   const gateway = new Gateway(runtime);

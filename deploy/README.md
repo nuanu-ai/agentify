@@ -732,14 +732,28 @@ sign-in links and rate notices are to reach real mailboxes, as an acceptance
 run needs; without them its dashboard writes every message to the
 application's log instead of sending it.
 
-The channel overlays use free public Base RPC for background payment recovery:
-`https://sepolia.base.org` on TEST and `https://mainnet.base.org` on PRODUCTION.
-`AGENTIFY_PAYMENT_RPC_URL` replaces that address; setting it explicitly to an
-empty value disables chain checks. The gateway receives it as `PAYMENT_RPC_URL`.
-Local Compose and the standalone gateway have no default RPC.
+The channel overlays use free public Base RPC: `https://sepolia.base.org` on
+TEST and `https://mainnet.base.org` on PRODUCTION. Two things read it. Payment
+recovery reads it in the background, as below. The dashboard's Settings reads
+it each time it draws a merchant's payout: an `eth_chainId` and one
+`eth_call`, a dry run of the payout that names what it would bring, kept for
+five seconds per payout. Both share the endpoint, and a free public endpoint
+limits requests per address, so a busy dashboard can use up what recovery
+needs. An RPC provider's endpoint named in `AGENTIFY_PAYMENT_RPC_URL` is
+limited by the provider's plan instead. A page
+waits for the chain for at most half its deadline, and after a read it gave
+up on, the pages about that payout say for five seconds that the chain did
+not answer, without asking it.
 
-RPC is read only and is called for unanswered payments after their response
-deadline, never for ordinary verification or settlement. The gateway asks the
+`AGENTIFY_PAYMENT_RPC_URL` replaces that address. Setting it explicitly to an
+empty value disables chain checks: recovery is off, and every Settings panel
+with a payout says it could not read from the network what the payout would
+bring, while still giving the transaction. The gateway receives it as
+`PAYMENT_RPC_URL`. Local Compose and the standalone gateway have no default
+RPC.
+
+RPC is read only. Recovery calls it for unanswered payments after their
+response deadline, never for ordinary verification or settlement. The gateway asks the
 endpoint for its chain id at start-up, and the log's first lines say whether it
 serves the channel's network; it asks again on every recovery poll, so an
 endpoint that did not answer at start-up is used as soon as it does, without a

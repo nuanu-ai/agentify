@@ -12,7 +12,7 @@ import "./styles.css";
 import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
-import { keyPrefixFor, type SurfaceMode } from "@agentify/core";
+import { keyPrefixFor, type SurfaceMode, UNKNOWN } from "@agentify/core";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import {
   type MerchantKey,
@@ -289,7 +289,19 @@ const splitOf = (mode: SurfaceMode, wallet: string): RecordedPayoutSplit => ({
 const splitsOf = (
   mode: SurfaceMode,
   wallet: string | null,
-  { pending, toPayOut }: { pending?: string; toPayOut?: readonly RecordedPayoutSplit[] } = {},
+  {
+    pending,
+    toPayOut,
+    brings = 49_450_498n,
+  }: {
+    pending?: string;
+    toPayOut?: readonly RecordedPayoutSplit[];
+    /**
+     * What the chain says the payout would bring unless a state says
+     * otherwise: what the contracts pay out of 49.50 USDC of sales.
+     */
+    brings?: bigint | typeof UNKNOWN;
+  } = {},
 ): PayoutSplits => {
   const network = networkIn(mode);
   const paidOut = toPayOut ?? (wallet === null ? [] : [splitOf(mode, wallet)]);
@@ -300,7 +312,10 @@ const splitsOf = (
     },
     inForce: wallet === null ? null : splitOf(mode, wallet),
     pending: pending === undefined ? null : splitOf(mode, pending),
-    payout: paidOut.length === 0 ? null : merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS),
+    payout:
+      paidOut.length === 0
+        ? null
+        : { transaction: merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS), brings },
   };
 };
 
@@ -2881,7 +2896,7 @@ const SETTINGS: GalleryState[] = [
       screen: "Settings",
       when: "A merchant on the test site opens Settings after saving their payout wallet.",
       cause:
-        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH.",
+        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH from a wallet other than Coinbase Wallet, whose payout is not known to work on Base Sepolia.",
     },
     settingsView("test", WHO, settingsOf({}, "test")),
     { mode: "test" },
@@ -2912,6 +2927,32 @@ const SETTINGS: GalleryState[] = [
           toPayOut: [splitOf("live", PAID_INTO), splitOf("live", ASKED_FOR)],
         }),
       }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-nothing",
+      screen: "Settings",
+      when: "A merchant opens Settings before any buyer has paid into their payout contract.",
+      cause:
+        "The chain's run of the payout brings the wallet nothing, so no payout is offered and the page says so.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({ payoutSplits: splitsOf("live", PAID_INTO, { brings: 0n }) }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-unknown",
+      screen: "Settings",
+      when: "A merchant opens Settings while the chain endpoint does not answer.",
+      cause:
+        "What the payout would bring could not be read, so the page says it does not know and still offers the payout, which pays out only what is there.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({ payoutSplits: splitsOf("live", PAID_INTO, { brings: UNKNOWN }) }),
       liveApproval: true,
     }),
   ),

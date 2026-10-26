@@ -73,6 +73,12 @@ export const sharesOf = (
   };
 };
 
+/**
+ * An exact amount of USDC's millionths, with at least two places and every
+ * place it needs beyond them, such as "12.34" or "0.000999", and no currency.
+ */
+export const usdcOf = (units: bigint): string => written(units, 2);
+
 /** Agentify's percentage of every sale and the merchant's, such as "0.1%" and "99.9%". */
 export const percentagesOf = (
   rate: CommissionRate,
