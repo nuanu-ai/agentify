@@ -30,9 +30,8 @@ dashboard asks for](/#what-the-dashboard-asks-for)).
 
 ### What does it cost?
 
-We take 0.1% of every payment, and it is inside your price: the buyer pays the
-price on your card, and your payout contract sends 99.9% of it to your wallet
-and 0.1% to us. There is no subscription and no monthly fee ([What we
+We take 0.1% of every payment, and it comes out of the price on your card.
+There is no subscription and no monthly fee ([What we
 take](/money#what-we-take)).
 
 ### Do you write the product cards, or do I?
@@ -53,10 +52,11 @@ here](/#who-buys-here)).
 
 ### How do I find out about a sale?
 
-Your code receives the paid order, or your connected WooCommerce shop receives
-it as a paid order, and the dashboard shows it under Orders. A receipt is
-written when the goods are delivered, and your share reaches your wallet with
-the next payout ([Money](/money)).
+Your code receives the order, or your connected WooCommerce shop receives it as
+a paid order, and the dashboard shows it under Orders. Whether the buyer has
+paid by then depends on when your product charges ([When your buyer is
+charged](/#when-your-buyer-is-charged)), and the receipt follows the goods
+([What proves a sale happened](/money#what-proves-a-sale-happened)).
 
 ### Can I pause the selling?
 
@@ -79,12 +79,11 @@ did not get the goods](/money#if-the-buyer-did-not-get-the-goods)).
 
 ### A buyer paid and did not get the goods — what happens about a refund?
 
-Agentify records the order as unfulfilled, and you decide what to do: deliver
-late, or close fulfillment with an explanation for the buyer. A refund, if you
-make one, is yours to send, in whatever amount and form you agree, and
-Agentify neither sends nor checks it. Nothing Agentify gives you names the
-buyer or their wallet, so a refund is possible only with a buyer who reaches
-you ([If the buyer did not get the goods](/money#if-the-buyer-did-not-get-the-goods)).
+Agentify records the order as unfulfilled, and the rest is yours: deliver
+late, close fulfillment with an explanation for the buyer, and send a refund
+if you decide to. Agentify neither sends a refund nor checks one. What you
+hold to reach the buyer with is on [If the buyer did not get the
+goods](/money#if-the-buyer-did-not-get-the-goods).
 
 ### The buyer is unhappy — who settles the dispute?
 

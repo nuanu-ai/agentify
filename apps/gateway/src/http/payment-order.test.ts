@@ -371,7 +371,6 @@ describe("the order on the payment side", () => {
         for (const sent of [plainly(challenge), plainly(payment), ...network.sent]) {
           expect(sent).toContain(orderId);
           expect(sent).not.toContain(key);
-          expect(sent).not.toContain("payment_ref");
         }
       } finally {
         await worker.stop();

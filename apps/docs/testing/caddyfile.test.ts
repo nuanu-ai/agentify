@@ -27,14 +27,43 @@ const ACCEPT = [
   "text/*",
   "text/markdown;q=0",
   "text/markdown;q=0.0, text/html",
+  "text/markdown; charset=utf-8",
+  "text/markdown;charset=UTF-8, text/html;q=0.9",
+  "text/markdown; variant=GFM; charset=utf-8",
+  "text/markdown; charset=utf-8; q=0.5, text/html;q=0.4",
+  "text/markdown; charset=utf-8; q=0",
+  "text/markdown; q=0; charset=utf-8",
+  "text/markdown; q=0.5x",
+  "text/html; charset=utf-8, text/markdown",
+  "text/html; charset=utf-8; q=0, text/markdown",
   "application/json",
   "",
 ];
+
+/** The same header with a parameter beside the type of every media range in it. */
+const withParameter = (accept: string): string =>
+  accept
+    .split(",")
+    .map((range) => {
+      const [type, ...parameters] = range.split(";");
+      return [`${type}; charset=utf-8`, ...parameters].join(";");
+    })
+    .join(",");
 
 describe("the Caddyfile's /docs block", () => {
   it.each(ACCEPT)("answers %j with Markdown exactly where the scanner would", (accept) => {
     expect(prefersMarkdown(accept)).toBe(scannerPrefersMarkdown(accept));
   });
+
+  it.each(ACCEPT.filter((accept) => accept !== ""))(
+    "answers %j with a parameter on each media range as it answers it without one",
+    (accept) => {
+      expect(prefersMarkdown(withParameter(accept))).toBe(prefersMarkdown(accept));
+      expect(prefersMarkdown(withParameter(accept))).toBe(
+        scannerPrefersMarkdown(withParameter(accept)),
+      );
+    },
+  );
 
   it("tells a client apart at all", () => {
     expect(prefersMarkdown("text/markdown")).toBe(true);
