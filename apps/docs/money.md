@@ -148,10 +148,13 @@ network, or be replaced by another agreement. Agentify does not send a refund,
 check one or judge whether you and the buyer have settled. You hold the
 buyer's details only where the product needs them: a parcel's address, with
 the name and phone number it carries, and whatever a purchase parameter your
-card asks for holds, such as an email. Otherwise you can arrange a refund only
-with a buyer who reaches you. A payment's transaction, which you hold on the
-receipt, is on a public chain, and a block explorer shows the wallet that paid
-it.
+card asks for holds, such as an email. A sale that has a receipt also names
+its payment's transaction, which is on a public chain, where a block explorer
+shows the wallet that paid it, and money can be sent back to that wallet. An
+order paid for and never delivered has no receipt, and nothing Agentify shows
+you names its transaction. A wallet's address says where a payment came from,
+not who the person is or how to write to them, so anything beyond sending
+money back to a wallet you know waits until the buyer reaches you.
 
 You close fulfillment from **Orders → Order details → Close fulfillment** on
 your dashboard, or your engineer does it from your integration ([Closing
@@ -237,8 +240,8 @@ On the test channel every change applies at once and nothing is sent.
 
 - How a buyer reaches your support to arrange a remedy outside Agentify.
   Until something does, you hold the buyer's details only where the product
-  needs them, and a payment's transaction, which leads on the chain to the
-  wallet that paid.
+  needs them, and, on a sale with a receipt, a payment's transaction, which
+  leads on the chain to the wallet that paid.
 - How long finding a payment whose answer was lost can take. No time is
   promised, and on the live channel it depends on a free public service.
 - Who pays the network fee on a buyer's payment and how it sits against the

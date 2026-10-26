@@ -78,7 +78,10 @@ page declares is held to the end. No fields and no signatures — those are a
 link into the reference.
 
 **FAQ** (`faq`). The question in the reader's voice, the answer in two to five
-sentences, a link to the full page. The FAQ routes; it does not answer.
+sentences, a link to the full page. The FAQ routes; it does not answer. A
+rule another page owns is named in a clause and linked, never restated with
+its conditions, because a restated rule goes stale the day its own page is
+corrected.
 
 ## Vocabulary
 

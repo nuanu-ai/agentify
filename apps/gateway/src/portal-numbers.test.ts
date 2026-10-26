@@ -423,11 +423,6 @@ const PINS: readonly Pin[] = [
     { page: "apps/docs/faq.md" },
     "We take {agentify}% of every payment",
   ),
-  ...sharesIn(
-    "the shares, in the short answer about cost",
-    { page: "apps/docs/faq.md" },
-    "your payout contract sends {merchant}% of it to your wallet and {agentify}% to us",
-  ),
 
   // --- the commission, on the sellers' landing ------------------------------
   ...sharesIn(
