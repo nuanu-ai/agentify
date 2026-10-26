@@ -11,7 +11,7 @@
 import type { Receipt } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Identity } from "../identity.js";
-import { type AdminServed, adminServed } from "../testing/admin.js";
+import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
 import { readable } from "../testing/html.js";
 import { LOST_ANSWER } from "./words.js";
 
@@ -114,6 +114,35 @@ describe("ending every session of an account", () => {
     const again = await operator.post(`/admin/accounts/${account}/end-sessions`, asOperator);
     expect(readable(again.html)).toContain("had no session open");
     expect((await rowsOf(workspace))[0]?.outcome).toBe("unchanged");
+  });
+
+  it("says what a press came to where the account's page cannot be read again after it", async () => {
+    // The sessions ended with their row; a page drawn as a read that failed
+    // would leave the operator to guess, and press again.
+    let pressedOnce = false;
+    const workspace = await serve({
+      identity: (real: Identity): Identity => ({
+        ...real,
+        endSessionsIn: async (...args: Parameters<Identity["endSessionsIn"]>) => {
+          pressedOnce = true;
+          return await real.endSessionsIn(...args);
+        },
+        operatorAccount: async (...args: Parameters<Identity["operatorAccount"]>) => {
+          if (pressedOnce) throw new Error("the identity is gone");
+          return await real.operatorAccount(...args);
+        },
+      }),
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    await workspace.signedIn(MERCHANT);
+    const account = await idOf(workspace, MERCHANT);
+
+    const pressed = await operator.post(`/admin/accounts/${account}/end-sessions`, asOperator);
+
+    expect(pressed.status).toBe(200);
+    expect(readable(pressed.html)).toContain("Every session ended.");
+    expect(pressed.html).toContain(`href="${ADMIN_BASE}/admin/accounts/${account}"`);
+    expect(sessionsOf(workspace, account)).toBe(0);
   });
 
   it("refuses a press without a reason or without the box ticked, changing nothing", async () => {
