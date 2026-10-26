@@ -9,9 +9,14 @@
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { SCAN_STOP_REASONS } from "@agentify/scanner-contracts/browser";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getPublicAppConfig } from "../lib/app-config";
 import { onSite } from "../testing/on-site";
+import { PublicConfigProvider } from "./public-config";
 import { ScanExperience } from "./scan-experience";
+import { UrlScanForm } from "./url-scan-form";
 
 const scanId = "019f5b6a-4b9f-7000-8000-0000000000bb";
 const TOKEN_KEY = `agentify:scan-token:${scanId}`;
@@ -65,8 +70,15 @@ const finishedScan = scan({
   },
 });
 
+/** A refusal in the envelope the site's own routes answer with. */
+const refusal = (code: string, retryable: boolean, more: Record<string, unknown> = {}) => ({
+  error: { code, message: `Refused: ${code}.`, retryable, request_id: "req-1", ...more },
+});
+
 /** Every status the page asked for, in order; the page's asks are what is observed. */
 let statusAsks: { authorization: string | null }[] = [];
+/** Every other address the page asked, a scan started among them. */
+let otherAsks: string[] = [];
 
 /** The API answering the status with each of `answers` in turn, the last one from then on. */
 function apiAnswers(...answers: (() => Response | Promise<Response>)[]) {
@@ -81,6 +93,7 @@ function apiAnswers(...answers: (() => Response | Promise<Response>)[]) {
       if (answer === undefined) throw new Error("no answer given");
       return answer();
     }
+    otherAsks.push(`${init?.method ?? "GET"} ${address}`);
     return json(404, {});
   });
 }
@@ -109,6 +122,7 @@ const timePasses = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
 beforeEach(() => {
   statusAsks = [];
+  otherAsks = [];
 });
 
 afterEach(() => {
@@ -323,14 +337,13 @@ describe("a scan's states", () => {
     expect(await screen.findByLabelText("Email")).toBeTruthy();
   });
 
-  it("says an answer that is no scan's state is not one, rather than drawing it", async () => {
+  it("says an answer that is no scan's state cannot be read, rather than drawing it", async () => {
     apiAnswers(() => json(200, scan({ status: "somewhere" })));
 
     visit();
 
-    expect(
-      await screen.findByText("The scanner returned an invalid or unavailable status response."),
-    ).toBeTruthy();
+    expect(await screen.findByText(/Live status cannot be read right now/)).toBeTruthy();
+    expect(screen.queryByText("somewhere")).toBeNull();
   });
 
   it("says it cannot reach the scanner while it cannot, and recovers once it answers again", async () => {
@@ -342,10 +355,195 @@ describe("a scan's states", () => {
 
     visit();
     await timePasses(0);
-    expect(screen.getByText(/temporarily unreachable/)).toBeTruthy();
+    expect(screen.getByText(/Live status cannot be read right now/)).toBeTruthy();
     await timePasses(2_100);
 
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
-    expect(screen.queryByText(/temporarily unreachable/)).toBeNull();
+    expect(screen.queryByText(/Live status cannot be read right now/)).toBeNull();
+  });
+});
+
+describe("an answer that ends the asking", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+  });
+
+  it.each([
+    ["the scan is not found", 404, refusal("scan_not_found", false)],
+    ["the scan is gone", 410, {}],
+    ["the token is refused", 401, refusal("unauthorized", false)],
+    ["a refusal the API marks not worth repeating", 409, refusal("scan_closed", false)],
+    ["a refusal in no envelope the page knows", 400, "<html>Bad request</html>"],
+  ])(
+    "ends the page when %s: it stops asking and offers a new scan, saying nothing of why",
+    async (_when, status, body) => {
+      apiAnswers(() => json(status, body));
+
+      visit();
+      await timePasses(0);
+
+      expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe("/");
+      expect(screen.queryByText("Reading the scan state…")).toBeNull();
+      expect(screen.queryByText(/scan_not_found|Refused/)).toBeNull();
+      await timePasses(60_000);
+      expect(statusAsks).toHaveLength(1);
+    },
+  );
+
+  it("ends a scan that disappears while it runs, and leaves none of its progress on the page", async () => {
+    apiAnswers(
+      () => json(200, scan({})),
+      () => json(404, refusal("scan_not_found", false)),
+    );
+
+    visit();
+    await timePasses(0);
+    expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
+    await timePasses(1_000);
+
+    expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+    expect(screen.queryByText("7 of 18 checks reported")).toBeNull();
+    expect(screen.queryByText("shop.example")).toBeNull();
+    await timePasses(60_000);
+    expect(statusAsks).toHaveLength(2);
+  });
+});
+
+describe("an answer worth asking again", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+  });
+
+  it("asks less often while the status cannot be read, and says when it asks next", async () => {
+    apiAnswers(() => new Response("<html>Bad gateway</html>", { status: 502 }));
+
+    visit();
+    await timePasses(0);
+    expect(statusAsks).toHaveLength(1);
+    expect(screen.getByText(/asks again in 2 s/)).toBeTruthy();
+
+    for (const [wait, asks] of [
+      [2, 2],
+      [4, 3],
+      [8, 4],
+      [16, 5],
+      [30, 6],
+      [30, 7],
+    ] as const) {
+      await timePasses(wait * 1_000 - 1);
+      expect(statusAsks).toHaveLength(asks - 1);
+      await timePasses(1);
+      expect(statusAsks).toHaveLength(asks);
+    }
+    expect(screen.getByText(/asks again in 30 s/)).toBeTruthy();
+    expect(screen.queryByText("This scan link is no longer valid")).toBeNull();
+  });
+
+  it("waits as long as a refusal worth repeating asks, in the refusal's own words", async () => {
+    apiAnswers(
+      () => json(429, refusal("too_many_requests", true, { retry_after_seconds: 45 })),
+      () => json(200, scan({})),
+    );
+
+    visit();
+    await timePasses(0);
+    expect(screen.getByText(/Refused: too_many_requests\..*asks again in 45 s/)).toBeTruthy();
+
+    await timePasses(44_999);
+    expect(statusAsks).toHaveLength(1);
+    await timePasses(1);
+    expect(statusAsks).toHaveLength(2);
+    expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
+  });
+
+  it("goes back to its usual pace once the status reads again", async () => {
+    apiAnswers(
+      () => json(503, refusal("busy", true)),
+      () => json(503, refusal("busy", true)),
+      () => json(200, scan({})),
+    );
+
+    visit();
+    await timePasses(0);
+    await timePasses(2_000);
+    await timePasses(4_000);
+    expect(statusAsks).toHaveLength(3);
+    expect(screen.queryByText(/asks again/)).toBeNull();
+
+    await timePasses(1_000);
+    expect(statusAsks).toHaveLength(4);
+  });
+});
+
+describe("trying a failed scan again", () => {
+  beforeEach(() => {
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+  });
+
+  /** The scan page and the store's form, under one router, the scan's page first. */
+  function scanThenForm() {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/scan/:id",
+          element: (
+            <ScanExperience
+              browserObservationsEnabled={false}
+              publicShareEnabled
+              registrationEnabled
+              remediationPromptEnabled
+              scanId={scanId}
+              segment="store"
+            />
+          ),
+        },
+        { path: "/store", element: <UrlScanForm cta="Scan" segment="store" variant="store-v1" /> },
+      ],
+      { initialEntries: [`/scan/${scanId}?segment=store`] },
+    );
+    render(
+      <PublicConfigProvider config={getPublicAppConfig()}>
+        <RouterProvider router={router} />
+      </PublicConfigProvider>,
+    );
+    return router;
+  }
+
+  it("returns to the form the scan came from with its address filled in, and starts nothing until the owner presses", async () => {
+    apiAnswers(() =>
+      json(
+        200,
+        scan({
+          status: "failed",
+          progress: { completed: 4, total: 18 },
+          checks: checks(() => "unavailable").slice(0, 4),
+        }),
+      ),
+    );
+    const router = scanThenForm();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/store"));
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Website URL" }).value).toBe(
+      "shop.example",
+    );
+    expect(otherAsks.filter((asked) => asked.includes("/api/v1/scans"))).toEqual([]);
+  });
+
+  it("asks once more for a completed scan whose result is not there yet", async () => {
+    apiAnswers(
+      () => json(200, scan({ status: "completed", progress: { completed: 18, total: 18 } })),
+      () => json(200, finishedScan),
+    );
+    scanThenForm();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByRole("meter")).toBeTruthy();
+    expect(statusAsks).toHaveLength(2);
   });
 });
