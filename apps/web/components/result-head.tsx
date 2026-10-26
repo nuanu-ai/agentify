@@ -1,5 +1,5 @@
-import { percentReached } from "@agentify/remediation";
 import type { DiagnosticLevel } from "@agentify/scanner-contracts";
+import { percentReached } from "@agentify/scanner-contracts/browser";
 import type { ReactNode } from "react";
 
 import { LEVEL_LABELS, PROVISIONAL_BELOW } from "../lib/levels";

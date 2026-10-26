@@ -1,4 +1,4 @@
-import { percentReached } from "@agentify/remediation";
+import { percentReached } from "@agentify/scanner-contracts/browser";
 import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { WorkspaceFrame } from "@agentify/ui/workspace";

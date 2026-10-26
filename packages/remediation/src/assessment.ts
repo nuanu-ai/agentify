@@ -1,3 +1,4 @@
+import { percentReached } from "@agentify/scanner-contracts/browser";
 import { canonicalCheckLabel } from "./canonical-copy.js";
 
 /**
@@ -29,17 +30,6 @@ export function assessmentOf(scan: {
       .map((check) => check.label_code),
   };
 }
-
-/**
- * A share from 0 to 1 as the whole percent it has reached, rounded down. A
- * figure shown beside a verdict decided on the share then never shows a line
- * the share has not reached: 0.698 is 69%, under the 70% below which a result
- * is provisional, and only a whole share is 100%.
- */
-export const percentReached = (share: number): string =>
-  // The small addition keeps 0.29, which floating point holds as
-  // 28.999999999999996 percent, at 29%.
-  `${Math.floor(share * 100 + 1e-9)}%`;
 
 const inspectedLabel = (moment: string): string => {
   const at = new Date(moment);
