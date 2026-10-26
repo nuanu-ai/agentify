@@ -344,6 +344,7 @@ describe("a scan's states", () => {
     visit();
     await timePasses(0);
     expect(screen.getByRole("heading", { name: /cannot read this scan's status/ })).toBeTruthy();
+    expect(screen.queryByText("Checking")).toBeNull();
     await timePasses(2_100);
 
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
