@@ -7,7 +7,7 @@
 
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { whatIsWrongWithTheWallet } from "./payout-wallet.js";
+import { WALLET_NEEDED, WALLET_RULE, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 
 /** Of the right shape, and obviously not a real address. */
 const SHAPED = "0x0123456789abcdef0123456789abcdef01234567";
@@ -64,6 +64,14 @@ describe("the rule an address is held to", () => {
 
     expect(said).toMatch(/copy it again/i);
     expect(said).not.toMatch(/lower ?case/i);
+  });
+
+  it("never suggests lower case on the wallet's box, in its rule or in an empty box's refusal", () => {
+    // Written in lower case, an address carries no checksum, and a typo in it
+    // is somebody else's valid address.
+    for (const said of [WALLET_RULE, WALLET_NEEDED]) {
+      expect(said).not.toMatch(/lower ?case/i);
+    }
   });
 
   it("names what makes an address the wrong shape: its start, a character, or its length", () => {

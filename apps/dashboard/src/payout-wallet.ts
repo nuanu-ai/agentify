@@ -18,10 +18,11 @@ import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
 /**
  * The rule is the contract's schema, applied by asking it. The sentence also
  * says that nothing here looks the address up on a chain, so a merchant knows
- * their own check is the only one there is.
+ * their own check is the only one there is. It never offers lower case, the
+ * one spelling in which a mistyped address passes.
  */
 export const WALLET_RULE =
-  "0x followed by forty letters and digits. We check its spelling, not its network or owner, so copy it from your wallet.";
+  "0x followed by forty letters and digits. We can't tell whose it is or which network it's on, so copy it from your wallet.";
 
 /**
  * So a change that does not apply at once is not read as one that failed, and
