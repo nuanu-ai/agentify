@@ -10,6 +10,7 @@ import { z } from "zod";
 import { setSellerSite, setServiceName } from "../app/merchants.js";
 import {
   buyOverHttp,
+  type Call,
   type Harness,
   harness,
   loggedWhile,
@@ -2379,5 +2380,103 @@ describe("a product that is declared and a product that is not", () => {
 
     expect(await urlOf("GET", `/x402/${itemId}/purchase?utm=abc`)).toBe(plain);
     expect(await urlOf("POST", `/x402/${itemId}/purchase`)).toBe(plain);
+  });
+});
+
+describe("a call that fails inside the gateway", () => {
+  // What the answer may claim depends on what the call could have done before
+  // it failed: a read decided nothing, while a paid purchase or a merchant's
+  // change may have moved money or changed state that nobody has read back.
+  type Failed = { status: number; error: { code: string; message: string; retryable: boolean } };
+  const failedWith = (answered: { status: number; body: unknown }): Failed => ({
+    status: answered.status,
+    error: (answered.body as Failed).error,
+  });
+  // The failure is logged on purpose; the log is not what these promise.
+  const quietly = async (call: () => Promise<Call>): Promise<Call> => {
+    let answered: Call | undefined;
+    await loggedWhile(async () => {
+      answered = await call();
+    });
+    if (answered === undefined) throw new Error("the call was never answered");
+    return answered;
+  };
+
+  it("does not tell a buyer whose payment was settled that nothing was decided, and points to the order's address and the same payment request", async () => {
+    const { served, harnessed } = await started();
+    // Charged as the order opens, inside the purchase call itself.
+    const itemId = await publish(served, {
+      ...syncCard,
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+    const write = harnessed.store.withOrder.bind(harnessed.store);
+    // The facilitator has taken the money, and then the gateway's own record
+    // of it fails to be written.
+    harnessed.store.withOrder = ((...args: Parameters<typeof write>) =>
+      harnessed.facilitator.settles.length > 0
+        ? Promise.reject(new Error("the store went away"))
+        : write(...args)) as typeof write;
+
+    const bought = await quietly(() =>
+      buyOverHttp(harnessed, served, itemId, {
+        onOrder: () => ({ accepted: {} }),
+      }),
+    );
+
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+    const failed = failedWith(bought);
+    expect(failed.status).toBe(500);
+    expect(failed.error.code).toBe("gateway_failed");
+    expect(failed.error.message).not.toContain("nothing was decided");
+    expect(failed.error.message).toContain("whether it was charged is not known");
+    expect(failed.error.message).toContain("status_url");
+    expect(failed.error.message).toContain("same payment request again from the same wallet");
+    // Sending the very same call again is not the way back to the order:
+    // a fresh signature of the kept request is.
+    expect(failed.error.retryable).toBe(false);
+  });
+
+  it("tells a caller whose read failed that nothing was decided", async () => {
+    const { served, harnessed } = await started();
+    harnessed.store.cards = () => Promise.reject(new Error("the store went away"));
+
+    const answered = await quietly(() => served.call("GET", "/v0/cards", { headers: asMerchant }));
+
+    expect(failedWith(answered)).toStrictEqual({
+      status: 500,
+      error: {
+        code: "gateway_failed",
+        message: "this call did not complete and nothing was decided",
+        retryable: true,
+      },
+    });
+  });
+
+  it("tells a merchant whose change failed after it was made that the outcome is not known", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const pause = harnessed.store.setCardPaused.bind(harnessed.store);
+    harnessed.store.setCardPaused = (async (...args: Parameters<typeof pause>) => {
+      await pause(...args);
+      throw new Error("the store went away after the write");
+    }) as typeof pause;
+
+    const answered = await quietly(() =>
+      served.call("POST", `/v0/cards/${encodeURIComponent(itemId)}/pause`, {
+        headers: asMerchant,
+      }),
+    );
+
+    // The pause did happen, which is why the answer may not deny it.
+    expect((await harnessed.store.cardById(itemId))?.paused).toBe(true);
+    const failed = failedWith(answered);
+    expect(failed.status).toBe(500);
+    expect(failed.error.code).toBe("gateway_failed");
+    expect(failed.error.message).not.toContain("nothing was decided");
+    expect(failed.error.message).toContain("whether it changed anything is not known");
+    // Every merchant call either does its work once or answers what already
+    // happened, so repeating it after a look is the way through.
+    expect(failed.error.retryable).toBe(true);
   });
 });
