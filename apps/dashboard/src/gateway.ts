@@ -157,7 +157,7 @@ const broughtWithin = async (
   const late = new Promise<typeof UNKNOWN>((resolve) => {
     cut = setTimeout(() => resolve(UNKNOWN), withinMs);
   });
-  const read = check.wouldBring(transaction).catch((thrown: unknown): typeof UNKNOWN => {
+  const read = check.wouldBring(transaction, withinMs).catch((thrown: unknown): typeof UNKNOWN => {
     console.error(
       `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
     );
