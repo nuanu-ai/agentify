@@ -9,6 +9,7 @@
  */
 
 import { outcomeFor } from "@agentify/core";
+import { durationInWords, SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
 import type {
   OrderListQuery,
   PurchaseRequest,
@@ -18,12 +19,7 @@ import type {
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
-import {
-  type Caller,
-  type Gateway,
-  type PurchaseAttempt,
-  UNSERVED_AT_MOST,
-} from "../app/gateway.js";
+import type { Caller, Gateway, PurchaseAttempt } from "../app/gateway.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 import {
@@ -659,7 +655,7 @@ async function answerPurchase(
         CONFLICT,
         refusal(
           "seller_not_taking_orders",
-          "this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ten minutes; try again later",
+          `this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}; try again later`,
         ),
       );
 

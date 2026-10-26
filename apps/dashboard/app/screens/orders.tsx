@@ -1,3 +1,4 @@
+import { durationInWords, LAPSED_KEPT_MS } from "@agentify/core/published";
 import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -445,8 +446,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         <>
           <OrderList view={view} />
           <p className="note">
-            Nothing was charged for these, and each is deleted thirty days after it was last
-            written.
+            Nothing was charged for these, and each is deleted{" "}
+            {durationInWords(LAPSED_KEPT_MS, "day")} after it was last written.
           </p>
         </>
       ) : here?.key === "needs" ? (

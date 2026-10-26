@@ -13,6 +13,7 @@
  */
 
 import { outcomeFor } from "@agentify/core";
+import type { CommissionRate } from "@agentify/core/published";
 import type {
   Caller,
   Gateway,
@@ -61,7 +62,6 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
-import type { CommissionRate } from "./shares.js";
 import type { LapsedAttempt } from "./views.js";
 
 export type Answer<T> =
