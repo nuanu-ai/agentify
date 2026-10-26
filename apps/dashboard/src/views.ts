@@ -391,7 +391,7 @@ interface OrderRow {
  * Something that happened to an order, or the deadline it is held to, at the
  * moment the order's record keeps for it.
  */
-export interface OrderFact {
+interface OrderFact {
   readonly label: string;
   readonly at: MomentView;
 }
