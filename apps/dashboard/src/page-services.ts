@@ -549,7 +549,7 @@ const switchIn = (query: URLSearchParams): Readonly<{ card?: string; paused: boo
   return key === "pause" || key === "resume" ? { card: value, paused: key === "pause" } : null;
 };
 
-const NO_SUCH_SWITCH = "There is no such switch on the cards.";
+const NO_SUCH_SWITCH = "There is no such switch on Products.";
 
 /** A form's text fields as an address's query; a file a program posted is no field here. */
 const fieldsIn = (form: FormData): URLSearchParams =>
@@ -963,7 +963,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     const attached = await identity.attachMerchant(person.id, registerMerchant);
     if (attached.status === "attached") return { location: `${base}/choose-name`, setCookies: [] };
     if (attached.status === "already-attached")
-      return { location: `${base}/cards`, setCookies: [] };
+      return { location: `${base}/products`, setCookies: [] };
     if (attached.status === "person-missing") {
       return {
         location: `${base}/sign-in`,
@@ -1339,13 +1339,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     start: {
       where: (person) => ({
         kind: "redirect",
-        location: person.merchant === null ? `${base}/merchant` : `${base}/cards`,
+        location: person.merchant === null ? `${base}/merchant` : `${base}/products`,
       }),
 
       // Drawing it makes nothing; only the same-origin press asks the gateway
       // for the merchant.
       merchant: (person, cookie) => {
-        if (person.merchant !== null) return { kind: "redirect", location: `${base}/cards` };
+        if (person.merchant !== null) return { kind: "redirect", location: `${base}/products` };
         const told = carriesUnopened(cookie);
         return {
           kind: "view",
@@ -1356,7 +1356,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       async openMerchant(person) {
         if (person.merchant !== null) {
-          return { kind: "redirect", location: `${base}/cards` };
+          return { kind: "redirect", location: `${base}/products` };
         }
         const made = await merchantMadeFor(person);
         return made === null
@@ -1391,7 +1391,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const set = await gatewayAs(person).setSellerName(typed);
         if (!set.ok) return problemOf(set);
         noted(person, "chose the name their products are sold under");
-        return { kind: "redirect", location: `${base}/cards` };
+        return { kind: "redirect", location: `${base}/products` };
       },
     },
 

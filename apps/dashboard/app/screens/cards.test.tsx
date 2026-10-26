@@ -63,8 +63,8 @@ const pressable = () => {
           loader: () => ({ who: SEEN_BY.who }),
           children: [
             {
-              id: "routes/cards",
-              path: "cards",
+              id: "routes/products",
+              path: "products",
               Component: () => (
                 <CardsScreen view={cardsView(cards, "https://agentify.ad")} base="" />
               ),
@@ -78,7 +78,7 @@ const pressable = () => {
               },
               action: () => {
                 state.pressed += 1;
-                return redirect("/cards");
+                return redirect("/products");
               },
             },
           ],
@@ -88,9 +88,9 @@ const pressable = () => {
   ]);
   render(
     <Stub
-      initialEntries={["/cards"]}
+      initialEntries={["/products"]}
       hydrationData={{
-        loaderData: { root: null, "routes/gate": { who: SEEN_BY.who }, "routes/cards": null },
+        loaderData: { root: null, "routes/gate": { who: SEEN_BY.who }, "routes/products": null },
       }}
     />,
   );

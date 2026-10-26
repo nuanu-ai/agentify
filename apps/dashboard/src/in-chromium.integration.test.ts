@@ -115,7 +115,7 @@ beforeAll(async () => {
       request.path === `${BASE}/receipts.data` ||
       (request.path === `${BASE}/orders.data` && request.query.show === "open") ||
       (request.method === "GET" &&
-        request.path === `${BASE}/cards.data` &&
+        request.path === `${BASE}/products.data` &&
         request.query.q === "suite")
     ) {
       setTimeout(next, SLOW_MS);
@@ -148,7 +148,7 @@ const onTheCards = async (
   const context = await browser.newContext({ viewport, isMobile: phone, hasTouch: phone });
   await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
   const page = await context.newPage();
-  await page.goto(`${origin}${BASE}/cards`);
+  await page.goto(`${origin}${BASE}/products`);
   await page.waitForLoadState("networkidle");
   return page;
 };
@@ -201,7 +201,7 @@ describe("the page data Chromium keeps", () => {
 describe("a page's first visit in Chromium", () => {
   it.each([
     ["/sign-in", "routes/sign-in", false],
-    ["/cards", "routes/cards", true],
+    ["/products", "routes/products", true],
   ])(
     "loads the scripts the speed budget counts for it, no more and no fewer: %s",
     async (path, routeId, signedIn) => {
@@ -266,7 +266,7 @@ describe("a press answered on its own page", () => {
       });
       if (!published.ok) throw new Error("the test's card was not published");
     }
-    const listing = `${origin}${BASE}/cards?q=suite&show=on-sale&page=2`;
+    const listing = `${origin}${BASE}/products?q=suite&show=on-sale&page=2`;
     const page = await onTheCards();
     await page.goto(listing);
     await page.waitForLoadState("networkidle");
@@ -275,7 +275,7 @@ describe("a press answered on its own page", () => {
     const arrived = page.waitForResponse(
       (answer) =>
         answer.request().method() === "GET" &&
-        new URL(answer.url()).pathname === `${BASE}/cards.data`,
+        new URL(answer.url()).pathname === `${BASE}/products.data`,
     );
     await page.locator(".list-row form[action*='pause='] button").first().click();
     await page.waitForTimeout(400);
@@ -287,7 +287,9 @@ describe("a press answered on its own page", () => {
     expect(meanwhile).toContain("On sale");
     expect(page.url()).toBe(listing);
     expect(await marked()).toContain("On sale");
-    expect(await page.getByRole("searchbox", { name: "Search cards" }).inputValue()).toBe("suite");
+    expect(await page.getByRole("searchbox", { name: "Search products" }).inputValue()).toBe(
+      "suite",
+    );
     expect(await page.locator(".cut").textContent()).toContain("Showing 51–54 of 54");
     await page.context().close();
   });
@@ -302,7 +304,7 @@ describe("a switch pressed from the keyboard", () => {
       await resume.click();
       await page.locator("form[action*='selling=pause']").waitFor();
     }
-    await page.goto(`${origin}${BASE}/cards?q=room${show}`);
+    await page.goto(`${origin}${BASE}/products?q=room${show}`);
     await page.waitForLoadState("networkidle");
     return page;
   };

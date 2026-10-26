@@ -45,7 +45,7 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   "sign-in": "sign_in",
   merchant: "merchant",
   "choose-name": "choose_name",
-  cards: "cards",
+  products: "cards",
   orders: "orders",
   receipts: "receipts",
   integrations: "integrations",
@@ -143,7 +143,7 @@ export default function App() {
  * begins.
  */
 const PRESSED_ON: Readonly<Record<string, readonly [string, string]>> = {
-  cards: ["/cards", "Products"],
+  products: ["/products", "Products"],
   orders: ["/orders", "Orders"],
   receipts: ["/receipts", "Receipts"],
   integrations: ["/integrations", "Integrations"],
@@ -202,7 +202,7 @@ export function ErrorBoundary() {
     // The gate's start is Products for somebody who sells, and the scanner's
     // latest report for somebody who does not, whom no screen here is for.
     const way =
-      trouble.start === `${chrome.base}/cards`
+      trouble.start === `${chrome.base}/products`
         ? open
         : ([trouble.start, "Open your latest report"] as const);
     return (

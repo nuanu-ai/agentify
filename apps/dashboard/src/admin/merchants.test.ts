@@ -183,7 +183,7 @@ describe("withdrawing and giving the admission", () => {
     // What the merchant reads on their own dashboard while it stands.
     await served.identity.make("owner@coffee.example", merchant.id);
     const own = await served.signedIn("owner@coffee.example");
-    const banner = text((await own.get("/cards")).html);
+    const banner = text((await own.get("/products")).html);
     expect(banner).toContain("Live sales are stopped");
     expect(banner).toContain(`“${note}”`);
 

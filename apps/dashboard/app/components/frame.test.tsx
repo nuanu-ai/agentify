@@ -104,10 +104,10 @@ const dashboardAt = (base: string, path: string) => {
           Component: Outlet,
           children: [
             {
-              path: "cards",
+              path: "products",
               Component: () => (
-                <Frame tab="cards" title="Product cards">
-                  <p>The cards</p>
+                <Frame tab="products" title="Products">
+                  <p>The products</p>
                 </Frame>
               ),
             },
@@ -172,14 +172,14 @@ describe.each([
   ["under its prefix", "/dashboard"],
 ])("between a click and the next page, %s", (_where, base) => {
   it("marks the section chosen at once, and says the page is coming once it takes a moment", async () => {
-    const dashboard = dashboardAt(base, "/cards");
-    await screen.findByText("The cards");
+    const dashboard = dashboardAt(base, "/products");
+    await screen.findByText("The products");
 
     fireEvent.click(within(sections()).getByText("Orders"));
     await aMoment(20);
 
-    // Still on the cards, with the orders' data held.
-    expect(screen.getByText("The cards")).toBeTruthy();
+    // Still on Products, with the orders' data held.
+    expect(screen.getByText("The products")).toBeTruthy();
     expect(within(sections()).getByText("Orders").closest("[aria-current=page]")).not.toBeNull();
     expect(progress().hidden).toBe(true);
 
@@ -281,7 +281,7 @@ describe("the banner about the account", () => {
   };
 
   it("is not drawn while the account sells as usual", async () => {
-    framed("cards", { account: accountOf(LIVE, { selling: "open" }) });
+    framed("products", { account: accountOf(LIVE, { selling: "open" }) });
     await screen.findByText("The screen");
 
     expect(banner()).toBeNull();
@@ -330,7 +330,7 @@ describe("the banner about the account", () => {
             .queryAllByRole("link")
             .filter((link) => link.getAttribute("href") === TEST_DASHBOARD);
 
-    framed("cards", { account: accountOf({ ...LIVE, liveApproval: false }) });
+    framed("products", { account: accountOf({ ...LIVE, liveApproval: false }) });
     await screen.findByText("The screen");
     expect(toTheTest()).toHaveLength(1);
 
@@ -339,15 +339,15 @@ describe("the banner about the account", () => {
       { ...LIVE, mode: "test", liveApproval: false, sellerName: null },
     ] satisfies Viewer[]) {
       cleanup();
-      framed("cards", { account: accountOf(viewer) });
+      framed("products", { account: accountOf(viewer) });
       await screen.findByText("The screen");
       expect(toTheTest(), JSON.stringify(viewer)).toStrictEqual([]);
     }
   });
 
   it("leaves out the way to the page it is drawn on", async () => {
-    // On the cards the control that resumes the sales is already on screen.
-    framed("cards", { account: accountOf(LIVE, { selling: "paused" }) });
+    // On Products the control that resumes the sales is already on screen.
+    framed("products", { account: accountOf(LIVE, { selling: "paused" }) });
     await screen.findByText("The screen");
     const onCards = banner();
     if (onCards === null) throw new Error("no banner was drawn");
@@ -363,7 +363,7 @@ describe("the banner about the account", () => {
       within(banner() as HTMLElement)
         .getByRole("link")
         .getAttribute("href"),
-    ).toBe("/cards");
+    ).toBe("/products");
   });
 });
 
@@ -386,7 +386,7 @@ describe("a waiting change of the payout wallet", () => {
     drawn.querySelector<HTMLFormElement>('form[action="/settings/payout-wallet/cancel"]');
 
   it.each([
-    ["cards", "/cards"],
+    ["products", "/products"],
     ["orders", "/orders"],
     ["keys", "/keys"],
   ] as const)(
@@ -426,7 +426,7 @@ describe("a waiting change of the payout wallet", () => {
 
 describe("the way past the header", () => {
   it("leads to the page's title and its control about the whole page, before the screen", async () => {
-    framed("cards");
+    framed("products");
     await screen.findByText("The screen");
     const target = document.getElementById("main");
     if (target === null) throw new Error("the skip link leads nowhere");
@@ -440,7 +440,7 @@ describe("the sidebar", () => {
   const orders = () => within(sections()).getByRole("link", { name: /^Orders/ });
 
   it("lists the sections by name alone", async () => {
-    framed("cards", { account: [] });
+    framed("products", { account: [] });
     await screen.findByText("The screen");
 
     expect(within(sections()).getByText("Products").textContent).toBe("Products");
@@ -448,7 +448,7 @@ describe("the sidebar", () => {
   });
 
   it("holds the sections and nothing else", async () => {
-    framed("cards");
+    framed("products");
     await screen.findByText("The screen");
     const sidebar = document.querySelector<HTMLElement>(".app-sidebar");
     if (sidebar === null) throw new Error("the frame drew no sidebar");
@@ -459,7 +459,7 @@ describe("the sidebar", () => {
 
 describe("the menu of an operator who also sells", () => {
   it("lists the door into the workspace among the places the row leaves out, apart from who is signed in", async () => {
-    framed("cards", {}, "cards", { who: PERSON, operator: true });
+    framed("products", {}, "products", { who: PERSON, operator: true });
     await screen.findByText("The screen");
     const places = document.querySelector<HTMLElement>(".site-menu-panel .site-menu-sections");
     const account = document.querySelector<HTMLElement>(".site-menu-panel .site-menu-account");
@@ -475,7 +475,7 @@ describe("the menu of an operator who also sells", () => {
 
 describe("the banner, read by the merchant's layout", () => {
   /**
-   * The cards and the orders under a layout whose loader answers the banner as
+   * Products and the orders under a layout whose loader answers the banner as
    * the server does, through a promise, and which is read again when the real
    * layout says it is; each answer after the first is held until the test lets
    * it go.
@@ -521,14 +521,14 @@ describe("the banner, read by the merchant's layout", () => {
                   },
                   shouldRevalidate,
                   Component: Outlet,
-                  children: [screenAt("cards"), screenAt("orders")],
+                  children: [screenAt("products"), screenAt("orders")],
                 },
               ],
             },
           ],
         },
       ],
-      { initialEntries: ["/cards"] },
+      { initialEntries: ["/products"] },
     );
     render(
       <FrameworkContext.Provider value={FRAMEWORK}>
@@ -549,14 +549,14 @@ describe("the banner, read by the merchant's layout", () => {
       { selling: "paused" },
     );
     const dashboard = reading([[], paused]);
-    await screen.findByText("The cards");
+    await screen.findByText("The products");
     expect(banner()).toBeNull();
 
     fireEvent.click(orders());
     await aMoment(50);
 
-    // Still the cards as they were drawn, while the orders' banner is read.
-    expect(screen.getByText("The cards")).toBeTruthy();
+    // Still Products as it was drawn, while the orders' banner is read.
+    expect(screen.getByText("The products")).toBeTruthy();
     expect(banner()).toBeNull();
 
     act(() => dashboard.releaseAll());

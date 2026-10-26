@@ -226,7 +226,7 @@ export const listingOf = <Row>({
   matches: (row: Row, words: string) => boolean;
   /** The sentence for a search with no match, given the segment's label. */
   noMatch: (q: string, within: string | null) => string;
-  /** The words of the way from an empty segment to the first, "Show all cards". */
+  /** The words of the way from an empty segment to the first, "Show all products". */
   showAll: string;
 }>): Listing<Row> => {
   const first = segments[0]?.key ?? "";

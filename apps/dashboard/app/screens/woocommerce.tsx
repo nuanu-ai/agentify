@@ -59,11 +59,11 @@ function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }
         <p className="problem">{said.says}</p>
         {said.follow === "pause" ? (
           <p>
-            If new purchases keep arriving, <a href={`${base}/cards`}>pause all sales</a> first.
+            If new purchases keep arriving, <a href={`${base}/products`}>pause all sales</a> first.
           </p>
         ) : said.follow === "products" ? (
           <p>
-            Its products appear on <a href={`${base}/cards`}>Products</a> as it publishes them.
+            Its products appear on <a href={`${base}/products`}>Products</a> as it publishes them.
           </p>
         ) : null}
       </>
@@ -660,7 +660,7 @@ export function WooImportScreen({ view, base }: Readonly<{ view: WooImportView; 
                 <Row key={one.id}>
                   <Cell at="main">
                     <Cell at="title">
-                      <a href={`${base}/cards?${new URLSearchParams({ q: one.code })}`}>
+                      <a href={`${base}/products?${new URLSearchParams({ q: one.code })}`}>
                         {one.title}
                       </a>
                     </Cell>
@@ -689,7 +689,7 @@ export function WooImportScreen({ view, base }: Readonly<{ view: WooImportView; 
 function AfterImport({ view, base }: Readonly<{ view: WooImportView; base: string }>) {
   if (view.finished && view.published.length > 0) {
     return (
-      <a className="button button-primary" href={`${base}/cards`}>
+      <a className="button button-primary" href={`${base}/products`}>
         Go to Products
       </a>
     );

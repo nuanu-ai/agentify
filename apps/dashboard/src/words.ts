@@ -160,7 +160,7 @@ export const ACCOUNT_WORDS: Readonly<
   paused: {
     title: "Sales are paused",
     says: "Nothing sells until you resume.",
-    fix: { to: "/cards", words: "Go to Cards" },
+    fix: { to: "/products", words: "Go to Products" },
   },
   not_approved: {
     title: "Not approved for live sales yet",

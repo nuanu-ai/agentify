@@ -187,7 +187,7 @@ function Notice({ notice }: Readonly<{ notice: WalletNoticeView }>) {
         </p>
       )}
       <p>Every other session on your account was signed out.</p>
-      <PostForm document action="/cards?selling=pause" className={styles.noticeAction}>
+      <PostForm document action="/products?selling=pause" className={styles.noticeAction}>
         {(pressed) => <Button pending={pressed}>Pause all sales</Button>}
       </PostForm>
     </div>

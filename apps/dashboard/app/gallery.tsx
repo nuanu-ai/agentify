@@ -1093,10 +1093,10 @@ const cards = (
   more: Readonly<{ path?: string; account?: readonly AccountNote[] }> = {},
 ): GalleryState =>
   at(told, {
-    path: more.path ?? "/cards",
+    path: more.path ?? "/products",
     mode,
     ...(more.account === undefined ? {} : { account: more.account }),
-    loaded: { "routes/cards": view },
+    loaded: { "routes/products": view },
   });
 
 /** The cards at an address that asks for a search, a segment or a page. */
@@ -1340,18 +1340,18 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
-/** Cards as an operator who also sells sees them, with the door into the workspace in the header. */
+/** Products as an operator who also sells sees it, with the door into the workspace in the header. */
 const operatorsCards = (told: Told): GalleryState =>
   at(told, {
-    path: "/cards",
+    path: "/products",
     mode: "live",
-    loaded: { "routes/gate": OPERATOR_GATED, "routes/cards": cardsView(CATALOGUE, ORIGIN.live) },
+    loaded: { "routes/gate": OPERATOR_GATED, "routes/products": cardsView(CATALOGUE, ORIGIN.live) },
   });
 
 const CARDS: GalleryState[] = [
   operatorsCards({
     id: "dashboard-cards-operator",
-    screen: "Cards",
+    screen: "Products",
     when: "An operator who also sells opens their own dashboard.",
     cause:
       "The session's account holds the operator flag, so the header has a door into the operator's workspace among its doors.",
@@ -1359,20 +1359,20 @@ const CARDS: GalleryState[] = [
   {
     ...operatorsCards({
       id: "dashboard-cards-operator-menu",
-      screen: "Cards",
+      screen: "Products",
       when: "An operator who also sells opens the menu at the end of the header's row on a phone.",
       cause:
         "The menu holds what the header's row leaves out, the door into the operator's workspace with it.",
     }),
     scene: {
-      steps: [{ shows: "Product cards", does: openTheMenu }],
+      steps: [{ shows: "Products", does: openTheMenu }],
       shows: "Admin",
     },
   },
   cards(
     {
       id: "dashboard-cards",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant whose code has published a few products opens the dashboard.",
       cause: "The gateway lists three cards, all on sale.",
     },
@@ -1383,7 +1383,7 @@ const CARDS: GalleryState[] = [
     ...cards(
       {
         id: "dashboard-cards-menu",
-        screen: "Cards",
+        screen: "Products",
         when: "A merchant on a phone or a tablet opens the menu at the end of the header's row.",
         cause:
           "Where the sidebar gives way, the header keeps the lockup, the documentation, the dashboard and the menu's button, and the menu holds the sections, the address and the way out.",
@@ -1392,15 +1392,15 @@ const CARDS: GalleryState[] = [
       "live",
     ),
     scene: {
-      steps: [{ shows: "Product cards", does: openTheMenu }],
+      steps: [{ shows: "Products", does: openTheMenu }],
       shows: "Sign out",
     },
   },
   cards(
     {
       id: "dashboard-cards-account-unread",
-      screen: "Cards",
-      when: "A merchant opens Cards while the read of their account's standing does not answer in time.",
+      screen: "Products",
+      when: "A merchant opens Products while the read of their account's standing does not answer in time.",
       cause:
         "The layout could not read whether anything holds the account's sales, so the banner says it could not check rather than showing nothing.",
     },
@@ -1411,8 +1411,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-out-of-touch",
-      screen: "Cards",
-      when: "A merchant whose own process stopped polling over ten minutes ago opens Cards.",
+      screen: "Products",
+      when: "A merchant whose own process stopped polling over ten minutes ago opens Products.",
       cause:
         "The gateway refuses new purchases of their cards that charge before delivery until their integration polls again, so the banner says since when it has not connected; the cards themselves stay on sale.",
     },
@@ -1425,8 +1425,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-busy",
-      screen: "Cards",
-      when: "A merchant opens Cards while twenty purchases of theirs are priced and unpaid.",
+      screen: "Products",
+      when: "A merchant opens Products while twenty purchases of theirs are priced and unpaid.",
       cause:
         "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so and that sales resume by themselves; each place comes free when its purchase is paid or its price runs out.",
     },
@@ -1437,8 +1437,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-wallet-changing",
-      screen: "Cards",
-      when: "A merchant on the live site opens Cards while a change of their payout wallet waits to apply.",
+      screen: "Products",
+      when: "A merchant on the live site opens Products while a change of their payout wallet waits to apply.",
       cause:
         "A replacement wallet applies forty-eight hours after every account is told, and until then every screen says so and offers to cancel it from there.",
     },
@@ -1449,8 +1449,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-many",
-      screen: "Cards",
-      when: "A merchant with a whole catalogue of data plans, VPN and numbers opens Cards.",
+      screen: "Products",
+      when: "A merchant with a whole catalogue of data plans, VPN and numbers opens Products.",
       cause:
         "The gateway lists thirty cards, short of a page: plans delivered later within their own window, VPN and numbers delivered at once, numbers priced at purchase, a router sent by parcel, and three cards the merchant paused.",
     },
@@ -1460,8 +1460,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-windows",
-      screen: "Cards",
-      when: "A merchant who sells a parcel and a data plan whose card names no delivery window opens Cards.",
+      screen: "Products",
+      when: "A merchant who sells a parcel and a data plan whose card names no delivery window opens Products.",
       cause:
         "A parcel's card names its time to reach a carrier; a card sent later that names no window is held to Agentify's default one, which the row says and links to rather than reading as no window at all.",
     },
@@ -1471,84 +1471,84 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-cut-short",
-      screen: "Cards",
-      when: "A merchant selling a data plan per country and size opens Cards.",
+      screen: "Products",
+      when: "A merchant selling a data plan per country and size opens Products.",
       cause:
         "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many and leads to the next page.",
     },
-    cardsAt("/cards", WHOLE_CATALOGUE),
+    cardsAt("/products", WHOLE_CATALOGUE),
     "live",
   ),
   cards(
     {
       id: "dashboard-cards-search",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant searches a long catalogue for one country's plans.",
       cause:
         "The address carries the search, which the loader answers with the three cards whose title or product code holds it; each segment counts its share of them.",
     },
-    cardsAt("/cards?q=japan", WHOLE_CATALOGUE),
+    cardsAt("/products?q=japan", WHOLE_CATALOGUE),
     "live",
-    { path: "/cards?q=japan" },
+    { path: "/products?q=japan" },
   ),
   cards(
     {
       id: "dashboard-cards-search-by-code",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant follows the link the WooCommerce import gives a published product, or types a card's whole product code.",
       cause:
         "The search is one card's whole product code, so the list shows that card alone and says so, not every card whose code holds it.",
     },
-    cardsAt("/cards?q=esim-japan-1gb", WHOLE_CATALOGUE),
+    cardsAt("/products?q=esim-japan-1gb", WHOLE_CATALOGUE),
     "live",
-    { path: "/cards?q=esim-japan-1gb" },
+    { path: "/products?q=esim-japan-1gb" },
   ),
   cards(
     {
       id: "dashboard-cards-search-no-match",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant searches their cards for a word none of them holds.",
       cause:
         "No title or product code holds the search, so the list says what was searched for and offers to clear it, which is not what an empty catalogue says.",
     },
     cardsAt(
-      "/cards?q=router",
+      "/products?q=router",
       cardsOf("open", ["esimEurope", "esimAsia", { product: "vpn", paused: true }, "number"]),
     ),
     "live",
-    { path: "/cards?q=router" },
+    { path: "/products?q=router" },
   ),
   ((pasted) =>
     cards(
       {
         id: "dashboard-cards-search-cut",
-        screen: "Cards",
+        screen: "Products",
         when: "A merchant pastes a card's whole description into the search.",
         cause:
           "The search is longer than 200 characters, so its first 200 are matched and given back, and the page says the rest was not used.",
       },
-      cardsAt(`/cards?${new URLSearchParams({ q: pasted })}`, CATALOGUE),
+      cardsAt(`/products?${new URLSearchParams({ q: pasted })}`, CATALOGUE),
       "live",
-      { path: `/cards?${new URLSearchParams({ q: pasted })}` },
+      { path: `/products?${new URLSearchParams({ q: pasted })}` },
     ))(
     "A data plan delivered as a profile after the purchase. Scan the code it arrives with, keep the profile switched off until you land, and turn it on in your phone's settings once you are there; the plan starts counting its thirty days from that moment.",
   ),
   cards(
     {
       id: "dashboard-cards-segment-empty",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant whose every card is on sale picks Off sale.",
       cause: "The segment holds no card, so the list says so and leads back to all of them.",
     },
-    cardsAt("/cards?show=off-sale", CATALOGUE),
+    cardsAt("/products?show=off-sale", CATALOGUE),
     "live",
-    { path: "/cards?show=off-sale" },
+    { path: "/products?show=off-sale" },
   ),
   cards(
     {
       id: "dashboard-cards-none",
-      screen: "Cards",
-      when: "A merchant opens Cards before their code has published anything.",
+      screen: "Products",
+      when: "A merchant opens Products before their code has published anything.",
       cause: "The gateway lists no cards, and everything publishing needs is set.",
     },
     cardsView(cardsOf("open", []), ORIGIN.live),
@@ -1557,7 +1557,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-first-on-live",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who has just signed up on the live site opens the dashboard for the first time.",
       cause:
         "No cards, no payout wallet and no approval yet, so the banner names both and leads to the test channel's dashboard, where the first sale is made.",
@@ -1569,8 +1569,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-none-without-name",
-      screen: "Cards",
-      when: "A new merchant skipped choosing a seller name and opens Cards.",
+      screen: "Products",
+      when: "A new merchant skipped choosing a seller name and opens Products.",
       cause:
         "The merchant has no seller name, so every card their code publishes would be refused.",
     },
@@ -1581,8 +1581,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-none-with-woocommerce",
-      screen: "Cards",
-      when: "A merchant on the test site opens Cards before publishing anything.",
+      screen: "Products",
+      when: "A merchant on the test site opens Products before publishing anything.",
       cause: "No cards, and this dashboard offers the WooCommerce connector beside the SDK.",
     },
     cardsView(cardsOf("open", []), ORIGIN.test, true),
@@ -1591,7 +1591,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-not-approved",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant on the live site has published cards before Agentify approved them.",
       cause:
         "Publishing on live waits for the operator's approval, so the gateway keeps every card off sale.",
@@ -1609,7 +1609,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-live-sales-stopped",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant opens their dashboard after an operator withdrew their admission to live sales.",
       cause:
         "The withdrawal stands, so the gateway keeps every card off sale on the live site and the banner says since when, with the note the operator wrote for them.",
@@ -1634,7 +1634,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-no-wallet",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant on the test site has cards but has not set a payout wallet.",
       cause:
         "Where payments settle, a card is off sale until the wallet its share is paid out to is set.",
@@ -1652,8 +1652,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-no-name",
-      screen: "Cards",
-      when: "A merchant whose code published cards before they chose a seller name opens Cards.",
+      screen: "Products",
+      when: "A merchant whose code published cards before they chose a seller name opens Products.",
       cause:
         "Without a seller name the gateway keeps every card off sale, so the banner over the page says so and leads to Settings.",
     },
@@ -1670,7 +1670,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-several-reasons",
-      screen: "Cards",
+      screen: "Products",
       when: "A new merchant on the live site pressed Pause all sales before Agentify approved them or they set a payout wallet.",
       cause:
         "Three things hold the whole account at once, so the one banner heads them once and lists each, those the merchant puts right first, then the approval Agentify gives.",
@@ -1686,7 +1686,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-all-paused",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who had paused one card has pressed Pause all sales.",
       cause:
         "The merchant's selling is paused, so every card is off sale and the banner says why; each card keeps its own switch, and the one they paused themselves stays paused when all sales resume.",
@@ -1701,7 +1701,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-selling-through-shop",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who switched to their WooCommerce shop looks at their cards.",
       cause:
         "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, and each of those rows says why.",
@@ -1730,7 +1730,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-shop-cards-while-code-sells",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who imported products from their WooCommerce shop switched back to selling through their own code.",
       cause:
         "The code sells, so the cards the shop published are off sale; no banner reason covers them, so each of those rows says why.",
@@ -2229,9 +2229,9 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-sales-paused",
       screen: "Orders",
-      when: "A merchant who pressed Pause all sales on Cards opens Orders.",
+      when: "A merchant who pressed Pause all sales on Products opens Orders.",
       cause:
-        "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Cards to resume them.",
+        "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Products to resume them.",
     },
     ordersOf([
       ["vpn", "delivered"],
@@ -3635,22 +3635,22 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-page-not-answered",
-      screen: "Product cards",
-      when: "A merchant opens Cards while Agentify is not answering.",
+      screen: "Products",
+      when: "A merchant opens Products while Agentify is not answering.",
       cause:
         "The gateway did not answer the page's read in time. A read changes nothing, so the page says so in the frame and offers itself again; Orders, Receipts and API keys say the same of theirs.",
     },
     {
-      path: "/cards",
+      path: "/products",
       mode: "live",
       account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
-      loaded: { "routes/cards": null },
+      loaded: { "routes/products": null },
       failed: {
-        "routes/cards": thrown(LATE_PROBLEM.status, {
+        "routes/products": thrown(LATE_PROBLEM.status, {
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,
-          again: "/cards",
+          again: "/products",
         }),
       },
     },
@@ -3686,7 +3686,7 @@ const PROBLEMS: GalleryState[] = [
         "The gateway did not answer the press in time, so whether it was done is not known, and the way on is the screen it was pressed on, to look there.",
     },
     {
-      path: `/cards?pause=${idOf("itm", "vpn")}`,
+      path: `/products?pause=${idOf("itm", "vpn")}`,
       mode: "live",
       failed: {
         "routes/gate": thrown(LATE_PROBLEM.status, {
@@ -3713,7 +3713,7 @@ const PROBLEMS: GalleryState[] = [
           kind: "not-drawn-for-you",
           chrome: chromeIn("live"),
           who: "sales@example.com",
-          start: "/cards",
+          start: "/products",
         }),
       },
     },
@@ -3727,7 +3727,7 @@ const PROBLEMS: GalleryState[] = [
         "The post's origin is not the dashboard's host, so it is refused before any page reads it.",
     },
     {
-      path: "/cards?selling=pause",
+      path: "/products?selling=pause",
       mode: "live",
       failed: {
         root: thrown(403, { kind: "problem", chrome: chromeIn("live"), said: NOT_FROM_HERE }),

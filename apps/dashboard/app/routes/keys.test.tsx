@@ -110,7 +110,7 @@ const keysPage = ({
       Component: Shell,
       ErrorBoundary,
       children: [
-        { path: "cards", Component: () => <p>The cards page</p> },
+        { path: "products", Component: () => <p>The products page</p> },
         {
           id: "routes/gate",
           loader: () => {
@@ -135,7 +135,7 @@ const keysPage = ({
       ],
     },
   ]);
-  return render(<Stub initialEntries={["/cards", "/keys"]} initialIndex={1} />);
+  return render(<Stub initialEntries={["/products", "/keys"]} initialIndex={1} />);
 };
 
 /** Names a key and presses Issue, as a merchant does. */

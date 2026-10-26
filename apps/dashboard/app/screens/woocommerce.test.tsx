@@ -337,7 +337,7 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(block)).toMatch(/within a minute/);
     expect(block).not.toMatch(/aria-label="Copy the whole order ID/);
     // A merchant whose buyers keep coming has no other way out.
-    expect(block).toMatch(/<a href="\/cards">[^<]*pause[^<]*<\/a>/i);
+    expect(block).toMatch(/<a href="\/products">[^<]*pause[^<]*<\/a>/i);
   });
 
   it("counts and names only the orders still open, which See open orders shows", () => {

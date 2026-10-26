@@ -26,10 +26,10 @@ import { useGoingTo } from "./going-to.js";
  * Each section is also a destination the sign-in returns to, so a section
  * cannot be added that the sign-in forgets.
  */
-export type Tab = "cards" | Exclude<SectionDestination, "default" | "woocommerce">;
+export type Tab = "products" | Exclude<SectionDestination, "default" | "woocommerce">;
 
 const TABS: readonly (readonly [Tab, string])[] = [
-  ["cards", "Products"],
+  ["products", "Products"],
   ["orders", "Orders"],
   ["receipts", "Receipts"],
   ["integrations", "Integrations"],

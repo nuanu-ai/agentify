@@ -28,13 +28,13 @@ export async function action(asked: ActionFunctionArgs) {
   );
 }
 
-export default function Cards() {
+export default function Products() {
   const view = useLoaderData<typeof loader>();
   return (
-    <Frame tab="cards" title="Product cards" action={<AllSelling view={view} />}>
+    <Frame tab="products" title="Products" action={<AllSelling view={view} />}>
       <CardsScreen view={view} base={useChrome().base} />
     </Frame>
   );
 }
 
-export const ErrorBoundary = readFailedIn({ tab: "cards", title: "Product cards", what: "cards" });
+export const ErrorBoundary = readFailedIn({ tab: "products", title: "Products", what: "products" });

@@ -425,7 +425,7 @@ describe("the payout wallet on the settings screen", () => {
     });
 
     expect(asCopied(html.slice(0, html.indexOf("<h2")))).toContain(SHAPED);
-    expect(html).toContain('action="/cards?selling=pause"');
+    expect(html).toContain('action="/products?selling=pause"');
   });
 
   it("shows what was wrong with an address just refused", () => {

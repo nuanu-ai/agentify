@@ -195,7 +195,7 @@ describe("who the operator's workspace answers", () => {
       expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
       expect(read.html, path).toContain('aria-label="Admin sections"');
       expect(read.html, path).toContain(`href="${ADMIN_BASE}${path.replace("&", "&amp;")}"`);
-      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/cards"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/products"`);
     }
   });
 
@@ -219,7 +219,7 @@ describe("who the operator's workspace answers", () => {
       expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
       expect(read.html, path).toContain('aria-label="Admin sections"');
       expect(read.html, path).toContain(`href="${ADMIN_BASE}${path}"`);
-      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/cards"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/products"`);
     }
   });
 
@@ -425,7 +425,7 @@ describe("the door into the workspace from the merchant's dashboard", () => {
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     const merchant = await workspace.signedIn(MERCHANT);
 
-    for (const path of ["/cards", "/orders", "/settings"]) {
+    for (const path of ["/products", "/orders", "/settings"]) {
       expect(doorsIn((await operator.get(path)).html), path).toStrictEqual(["Admin", "Admin"]);
       expect(anyDoorIn((await merchant.get(path)).html), path).toBe(false);
     }
@@ -438,20 +438,20 @@ describe("the door into the workspace from the merchant's dashboard", () => {
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     const merchant = await workspace.signedIn(MERCHANT);
 
-    const merchants = await merchant.get("/cards.data");
+    const merchants = await merchant.get("/products.data");
     expect(merchants.status).toBe(200);
     expect(merchants.html).not.toMatch(/admin|"operator"/i);
-    expect((await operator.get("/cards.data")).html).toContain('"operator"');
+    expect((await operator.get("/products.data")).html).toContain('"operator"');
   });
 
   it("is gone from the next request once the flag is taken away", async () => {
     const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
-    expect(doorsIn((await operator.get("/cards")).html)).not.toStrictEqual([]);
+    expect(doorsIn((await operator.get("/products")).html)).not.toStrictEqual([]);
 
     flagRow(rows, OPERATOR, false);
 
-    expect(anyDoorIn((await operator.get("/cards")).html)).toBe(false);
+    expect(anyDoorIn((await operator.get("/products")).html)).toBe(false);
   });
 
   it("is not drawn on a page drawn where the flag could not be read", async () => {

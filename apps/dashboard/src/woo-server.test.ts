@@ -1125,7 +1125,7 @@ describe("importing the catalogue", () => {
     // send the merchant to Products rather than to its result.
     const panel = importFormPanelOf(second.html);
     expect(readable(panel)).toContain("already running");
-    expect(panel).toMatch(/<a href="\/cards">Products<\/a>/);
+    expect(panel).toContain('<a href="/products">');
     expect(storePages(seen)).toHaveLength(1);
     expect(done.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(3);
@@ -1179,7 +1179,7 @@ describe("importing the catalogue", () => {
     await connected(running);
     await running.post("/woocommerce/import");
     const tote = (await cardsOf(running)).find((one) => one.card.title === "Canvas tote bag");
-    await running.post(`/cards?${new URLSearchParams({ pause: tote?.id ?? "" })}`);
+    await running.post(`/products?${new URLSearchParams({ pause: tote?.id ?? "" })}`);
 
     const imported = await running.post("/woocommerce/import");
     const text = readable(imported.html);
@@ -1303,7 +1303,7 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const imported = await running.post("/woocommerce/import");
-    const ways = [...imported.html.matchAll(/href="(\/cards\?[^"]+)"/g)].map(([, to = ""]) =>
+    const ways = [...imported.html.matchAll(/href="(\/products\?[^"]+)"/g)].map(([, to = ""]) =>
       to.replaceAll("&amp;", "&"),
     );
     const listed = await Promise.all(
@@ -1480,7 +1480,7 @@ describe("importing the catalogue", () => {
     // any other address that is no page.
     const running = await started({ channel: "live" });
     await running.signIn();
-    await running.get("/cards");
+    await running.get("/products");
 
     for (const [method, path] of [
       ["GET", "/woocommerce"],
@@ -1960,7 +1960,7 @@ describe("what the integrations screen says about a shop", () => {
     const running = await started();
     await running.signIn();
 
-    const html = (await running.get("/cards")).html;
+    const html = (await running.get("/products")).html;
     const empty = html.slice(html.indexOf('class="list list-empty"'));
 
     expect(/<a class="button button-primary" href="([^"]*)"/.exec(empty)?.[1]).toBe(
@@ -2200,7 +2200,7 @@ describe("coming back from the shop with no session on the request", () => {
     for (const path of [
       "/woocommerce",
       "/woocommerce/import",
-      "/cards",
+      "/products",
       "/orders",
       "/receipts",
       "/keys",
@@ -2804,10 +2804,10 @@ describe("one integration at a time", () => {
 
     const left = await disconnectAsDrawn(running);
 
-    expect(left.to).toBe("/cards");
+    expect(left.to).toBe("/products");
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
     expect(await onSale(running)).toStrictEqual([]);
-    await running.post("/cards?selling=resume");
+    await running.post("/products?selling=resume");
     expect(await onSale(running)).toStrictEqual([card]);
   });
 
@@ -2896,7 +2896,7 @@ describe("one integration at a time", () => {
     await publishedByTheCode(running);
     await connectTheShop(running);
 
-    const html = (await running.get("/cards")).html;
+    const html = (await running.get("/products")).html;
     const rows = [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(
       ([, row = ""]) => row,
     );
@@ -2921,7 +2921,9 @@ describe("one integration at a time", () => {
     expect(pressed.status).toBe(303);
 
     const rows = [
-      ...(await running.get("/cards")).html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g),
+      ...(await running.get("/products")).html.matchAll(
+        /<li class="list-row[^"]*">([\s\S]*?)<\/li>/g,
+      ),
     ].map(([, row = ""]) => readable(row));
 
     expect(rows).not.toHaveLength(0);

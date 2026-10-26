@@ -690,9 +690,9 @@ describe("a search over the cards", () => {
   it("says what was searched for where no card matches, which is not an empty catalogue", () => {
     const text = page(many(3), "q=suite");
 
-    expect(text).toContain("No card matches “suite”. Clear the search");
-    expect(text).not.toContain("haven't published any cards");
-    expect(page(many(0), "q=suite")).toContain("You haven't published any cards yet.");
+    expect(text).toContain("No product matches “suite”. Clear the search");
+    expect(text).not.toContain("haven't published any products");
+    expect(page(many(0), "q=suite")).toContain("You haven't published any products yet.");
   });
 
   it("finds only the card whose product code is the whole search, as a link to one card names it", () => {
@@ -753,8 +753,8 @@ describe("a search over the cards", () => {
         )),
       );
 
-    expect(drawn("q=1")).toContain("Only the card with the product code “1”.");
-    expect(drawn("q=1&show=off-sale")).toContain("No card off sale has the product code “1”.");
+    expect(drawn("q=1")).toContain("Only the product with the product code “1”.");
+    expect(drawn("q=1&show=off-sale")).toContain("No product off sale has the product code “1”.");
     expect(drawn("q=room")).not.toContain("product code “");
   });
 

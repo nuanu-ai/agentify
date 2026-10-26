@@ -23,7 +23,7 @@ const LATEST_REPORT = "/report/latest";
 
 /** A merchant's owner starts on the dashboard, anybody else on the scanner. */
 export const startOf = (base: string, person: Person): string =>
-  person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
+  person.merchant !== null ? `${base}/products` : LATEST_REPORT;
 
 /**
  * Where a sign-in that opened leads `person`: the destination's page, except
@@ -41,7 +41,7 @@ export const pathAfterSignIn = (
     ? startOf(base, person)
     : person.merchant === null && adminDestinationIn(destination) === null
       ? `${base}/merchant`
-      : `${base}/${destination === "default" ? "cards" : destination}`;
+      : `${base}/${destination === "default" ? "products" : destination}`;
 
 /**
  * Every cookie the sign-in component sets, not only the session, or the others

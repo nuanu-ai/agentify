@@ -30,7 +30,7 @@ export function NoSuchPage({
         </div>
       </div>
       <div className="connect-actions">
-        <a className="button button-primary" href={`${base}/cards`}>
+        <a className="button button-primary" href={`${base}/products`}>
           Back to the dashboard
         </a>
       </div>
