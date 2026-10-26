@@ -84,6 +84,38 @@ describe("the build stops", () => {
     expect(() => writtenIn("```ts\nconst wait = {{nothing}};\n```\n", VALUES)).toThrow(
       /\{\{nothing\}\}/,
     );
-    expect(() => writtenIn("at {{Origin}}", VALUES)).toThrow(/\{\{Origin\}\}/);
+  });
+
+  it("on a name written in any other shape, rather than showing it to a reader", () => {
+    for (const written of [
+      "{{Quote-TTL}}",
+      "{{QUOTE-TTL}}",
+      "{{price_holds}}",
+      "{{ price-holds }}",
+      "{{price-holds:Short}}",
+      "{{price-holds:}}",
+      "{{release2}}",
+      "{{price-holds",
+    ]) {
+      expect(() => writtenIn(`holds ${written} here`, VALUES), written).toThrow(written);
+      expect(() => writtenIn(`holds ${written} here`, VALUES), written).toThrow(
+        /is not written as a name/,
+      );
+    }
+  });
+
+  it("on a value a deployment fills given a capital or a form", () => {
+    expect(() => writtenIn("at {{Origin}}", VALUES)).toThrow(
+      /^\{\{Origin\}\}: a value a deployment fills/,
+    );
+    expect(() => writtenIn("at {{origin:short}}", VALUES)).toThrow(
+      /^\{\{origin:short\}\}: a value a deployment fills/,
+    );
+  });
+
+  it("naming the page it stopped on", () => {
+    expect(() => writtenIn("Pay within {{nothing}}.", VALUES, "orders.md")).toThrow(
+      /^orders\.md: \{\{nothing\}\}/,
+    );
   });
 });
