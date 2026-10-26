@@ -165,7 +165,12 @@ export type AccountPageView =
        */
       stepUp: StepUpView | null;
     }>
-  | Readonly<{ kind: "absent"; id: string; pressed: AccountPressed | null }>;
+  | Readonly<{ kind: "absent"; id: string; pressed: AccountPressed | null }>
+  /**
+   * A press answered without its page, which could not be read again after
+   * it: what the press came to, since it may have changed the account.
+   */
+  | Readonly<{ kind: "pressed-unread"; id: string; pressed: AccountPressed }>;
 
 type JournalKind = "all" | "admission" | "keys" | "sessions" | "flag" | "forgotten";
 
@@ -460,6 +465,43 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     }
   };
 
+  /** One account's page, read after any press made on this request. */
+  const accountPage = async (
+    operator: Operator,
+    accountId: string,
+    pressedNow: AccountPressed | null,
+  ): Promise<Outcome<AccountPageView>> => {
+    const now = parts.now();
+    const found = await accounts.operatorAccount(accountId, now);
+    if (found === null) {
+      return {
+        kind: "view",
+        status: pressedNow === null ? 404 : 200,
+        view: { kind: "absent", id: accountId, pressed: pressedNow },
+      };
+    }
+    const operators = (await accounts.operatorAccounts(now)).listed.filter((one) => one.operator);
+    const lastOperator = found.operator && operators.length === 1;
+    const named = await namesOf(found.merchantId === null ? [] : [found.merchantId]);
+    const destination = adminDestinationIn(`admin/accounts/${found.id}`);
+    return {
+      kind: "view",
+      view: {
+        kind: "found",
+        stepUp:
+          signedInFreshly(operator, now) || destination === null
+            ? null
+            : stepUpViewOf(operator, destination, parts.pressing.googleEnabled),
+        readAt: momentOf(now),
+        account: { ...rowOf(operator, named, found), createdAt: momentOf(found.createdAt) },
+        lastOperator,
+        forget: await forgetStanding(found.merchantId, found.operator),
+        history: await historyOfAccount(found.id),
+        pressed: pressedNow,
+      },
+    };
+  };
+
   return {
     async list(operator, query) {
       const now = parts.now();
@@ -511,35 +553,17 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     },
 
     async one(operator, accountId, pressedNow) {
-      const now = parts.now();
-      const found = await accounts.operatorAccount(accountId, now);
-      if (found === null) {
+      try {
+        return await accountPage(operator, accountId, pressedNow);
+      } catch (thrown) {
+        if (pressedNow === null) throw thrown;
+        console.error("[dashboard] an account's page could not be read again after a press");
         return {
           kind: "view",
-          status: pressedNow === null ? 404 : 200,
-          view: { kind: "absent", id: accountId, pressed: pressedNow },
+          status: pressedNow.answer.kind === "refused" ? 409 : 200,
+          view: { kind: "pressed-unread", id: accountId, pressed: pressedNow },
         };
       }
-      const operators = (await accounts.operatorAccounts(now)).listed.filter((one) => one.operator);
-      const lastOperator = found.operator && operators.length === 1;
-      const named = await namesOf(found.merchantId === null ? [] : [found.merchantId]);
-      const destination = adminDestinationIn(`admin/accounts/${found.id}`);
-      return {
-        kind: "view",
-        view: {
-          kind: "found",
-          stepUp:
-            signedInFreshly(operator, now) || destination === null
-              ? null
-              : stepUpViewOf(operator, destination, parts.pressing.googleEnabled),
-          readAt: momentOf(now),
-          account: { ...rowOf(operator, named, found), createdAt: momentOf(found.createdAt) },
-          lastOperator,
-          forget: await forgetStanding(found.merchantId, found.operator),
-          history: await historyOfAccount(found.id),
-          pressed: pressedNow,
-        },
-      };
     },
 
     async press(operator, accountId, act, form) {

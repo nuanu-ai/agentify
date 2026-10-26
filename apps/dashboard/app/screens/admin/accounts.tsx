@@ -219,8 +219,33 @@ function Absent({ view }: Readonly<{ view: Extract<AccountPageView, { kind: "abs
   );
 }
 
+/** What a press on an account did, said where the account cannot be named. */
+const PRESS_DONE: Readonly<Record<AccountAct, string>> = {
+  end_sessions: "Every session ended.",
+  grant_operator: "Made an operator; every operator was mailed.",
+  remove_operator: "Operator flag removed; every operator was mailed.",
+  forget_account: "Account forgotten.",
+};
+
+/** A press answered without its page, which could not be read again after it. */
+function PressedUnread({
+  view,
+}: Readonly<{ view: Extract<AccountPageView, { kind: "pressed-unread" }> }>) {
+  const path = `/admin/accounts/${view.id}`;
+  return (
+    <div className="message-panel" role="status">
+      <PressAnswer answer={view.pressed.answer} done={PRESS_DONE[view.pressed.act]} page={path} />
+      <p>The account's page could not be read again after the press.</p>
+      <Link className="button button-primary" to={path}>
+        Open the account's page
+      </Link>
+    </div>
+  );
+}
+
 export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
   if (view.kind === "absent") return <Absent view={view} />;
+  if (view.kind === "pressed-unread") return <PressedUnread view={view} />;
   const { account, pressed, stepUp } = view;
   const path = `/admin/accounts/${account.id}`;
   const sessions = answerFor(pressed, "end_sessions");

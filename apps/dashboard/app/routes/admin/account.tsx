@@ -39,9 +39,11 @@ export default function Account() {
       heading={
         view.kind === "found"
           ? view.account.email
-          : view.pressed?.act === "forget_account" && view.pressed.answer.kind === "done"
-            ? "Account forgotten"
-            : "No such account"
+          : view.kind === "pressed-unread"
+            ? "The account's page could not be read again"
+            : view.pressed?.act === "forget_account" && view.pressed.answer.kind === "done"
+              ? "Account forgotten"
+              : "No such account"
       }
     >
       <AccountScreen view={view} />
