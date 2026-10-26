@@ -57,9 +57,13 @@ function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }
     return (
       <>
         <p className="problem">{said.says}</p>
-        {said.pause ? (
+        {said.follow === "pause" ? (
           <p>
             If new purchases keep arriving, <a href={`${base}/cards`}>pause all sales</a> first.
+          </p>
+        ) : said.follow === "products" ? (
+          <p>
+            Its products appear on <a href={`${base}/cards`}>Products</a> as it publishes them.
           </p>
         ) : null}
       </>

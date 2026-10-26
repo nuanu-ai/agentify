@@ -553,11 +553,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return await drawTheShop(
         person,
         rateSaved === null
-          ? {
-              importing:
-                "An import of your shop is already running; its products appear on Products." +
-                " Import again once it ends to see a result here.",
-            }
+          ? { importing: { running: true } }
           : {
               rate: {
                 saved: rateSaved,

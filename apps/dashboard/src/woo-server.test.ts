@@ -466,6 +466,13 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   return open;
 };
 
+/** The Import panel of the shop screen: its heading, what the last press came to, and its form. */
+const importFormPanelOf = (html: string): string => {
+  const form = html.indexOf('action="/woocommerce/import"');
+  const opened = html.lastIndexOf("<section", form);
+  return form === -1 || opened === -1 ? "" : html.slice(opened, html.indexOf("</section>", form));
+};
+
 /**
  * Disconnect pressed as a browser presses it: from the shop screen as it is
  * drawn now, with the shop its form was drawn for.
@@ -1105,7 +1112,9 @@ describe("importing the catalogue", () => {
     expect(second.status).toBe(409);
     // The first may have been started from a page since closed, so the words
     // send the merchant to Products rather than to its result.
-    expect(readable(second.html)).toMatch(/already running; its products appear on Products/);
+    const panel = importFormPanelOf(second.html);
+    expect(readable(panel)).toContain("already running");
+    expect(panel).toMatch(/<a href="\/cards">Products<\/a>/);
     expect(storePages(seen)).toHaveLength(1);
     expect(done.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(3);

@@ -128,10 +128,11 @@ export interface Refusal {
   readonly orders: readonly string[];
   readonly more: number;
   /**
-   * Purchases about to lapse hold it, and new ones can keep arriving: pausing
-   * all sales is the way out for a merchant whose buyers do not stop.
+   * The page to go on to, said under the sentence: pausing all sales where
+   * purchases about to lapse hold a move and new ones can keep arriving, or
+   * Products where an import already running publishes what it reads.
    */
-  readonly pause: boolean;
+  readonly follow: "pause" | "products" | null;
 }
 
 /**
@@ -178,8 +179,15 @@ export const heldBy = (
   };
 };
 
-/** A refusal as a press's answer hands it over: a sentence, a refusal's own words, or held orders. */
-export type Said = string | Readonly<{ why: string }> | Readonly<{ held: Held }>;
+/**
+ * A refusal as a press's answer hands it over: a sentence, a refusal's own
+ * words, held orders, or an import of the shop already running.
+ */
+export type Said =
+  | string
+  | Readonly<{ why: string }>
+  | Readonly<{ held: Held }>
+  | Readonly<{ running: true }>;
 
 const heldSays = ({ to, orders, quick, parcels }: Held): string => {
   const one = orders.length <= 1;
@@ -199,8 +207,16 @@ const heldSays = ({ to, orders, quick, parcels }: Held): string => {
 
 const refusalOf = (said: Said | undefined): Refusal | null => {
   if (said === undefined) return null;
-  if (typeof said === "string") return { says: said, orders: [], more: 0, pause: false };
-  if ("why" in said) return { says: said.why, orders: [], more: 0, pause: false };
+  if (typeof said === "string") return { says: said, orders: [], more: 0, follow: null };
+  if ("why" in said) return { says: said.why, orders: [], more: 0, follow: null };
+  if ("running" in said) {
+    return {
+      says: "An import of your shop is already running. Import again once it ends to see a result here.",
+      orders: [],
+      more: 0,
+      follow: "products",
+    };
+  }
   const { held } = said;
   // Purchases about to lapse are not worth copying: they are gone in a minute.
   const named = held.quick ? [] : held.orders;
@@ -208,7 +224,7 @@ const refusalOf = (said: Said | undefined): Refusal | null => {
     says: heldSays(held),
     orders: named.slice(0, ORDERS_DRAWN),
     more: Math.max(0, named.length - ORDERS_DRAWN),
-    pause: held.quick,
+    follow: held.quick ? "pause" : null,
   };
 };
 
