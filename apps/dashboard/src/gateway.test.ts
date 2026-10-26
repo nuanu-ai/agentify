@@ -747,6 +747,14 @@ describe("what the payout a merchant is shown would bring", () => {
     expect(chain.given[0]).toBeLessThanOrEqual(200);
   });
 
+  it("is not known once half the page's deadline has passed, even from a chain that ignores the time it was given", async () => {
+    // Sign-out-everywhere lives on the same page, which must never wait on a
+    // check that does not keep to its time.
+    const harnessed = await started({}, aChain(() => new Promise(() => undefined)).check);
+
+    expect((await shown(harnessed, 400)).brings).toBe(UNKNOWN);
+  });
+
   it("gets only what is left of half the page's deadline once the splits were read, so a slow database and a slow chain together still leave the page drawn", async () => {
     const chain = aChain(hanging);
     const harnessed = await started({}, chain.check);

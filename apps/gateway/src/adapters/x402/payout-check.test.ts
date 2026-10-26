@@ -33,7 +33,9 @@ type Answer =
   /** No JSON-RPC answer at all, as a proxy in front of a node that is down gives. */
   | "unavailable"
   /** No answer for as long as the request is held open, as a node that hangs gives. */
-  | "silent";
+  | "silent"
+  /** `answer`, given only after `late` milliseconds. */
+  | { readonly late: number; readonly answer: Answer };
 
 /** Multicall3's answer to a dry run over one wallet that held `before` and would hold `after`. */
 const dryRunAnswer = (before: bigint, after: bigint): Answer => {
@@ -104,14 +106,21 @@ async function anEndpoint(
           : { error: { code: -32602, message: "not the dry run this endpoint answers" } };
         asked += 1;
       }
-      if (answer === "silent") return;
-      if (answer === "unavailable") {
-        response.statusCode = 503;
-        response.end("Service Unavailable");
-        return;
-      }
-      response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ jsonrpc: "2.0", id: read.id, ...answer }));
+      const give = (given: Answer): void => {
+        if (given === "silent") return;
+        if (given === "unavailable") {
+          response.statusCode = 503;
+          response.end("Service Unavailable");
+          return;
+        }
+        if ("late" in given) {
+          setTimeout(() => give(given.answer), given.late);
+          return;
+        }
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ jsonrpc: "2.0", id: read.id, ...given }));
+      };
+      give(answer);
     });
   });
   await new Promise<void>((resolve) => running?.listen(0, "127.0.0.1", resolve));
@@ -284,6 +293,21 @@ describe("a chain that does not answer in time", () => {
     const check = payoutCheckOn(NETWORK, endpoint.url, clock.now);
     await failureOf(check?.wouldBring(PAYOUT, 50));
     clock.pass(5_000);
+
+    expect(await check?.wouldBring(PAYOUT, PATIENT)).toBe(10n);
+    expect(endpoint.asked()).toBe(2);
+  });
+
+  it("is asked again at once when the read a page gave up on then fails, which is not kept", async () => {
+    // The page after it learns what the chain says now, not that it was slow.
+    const endpoint = await anEndpoint(
+      84532,
+      { late: 150, answer: "unavailable" },
+      dryRunAnswer(0n, 10n),
+    );
+    const check = payoutCheckOn(NETWORK, endpoint.url, aClock().now);
+    await failureOf(check?.wouldBring(PAYOUT, 50));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     expect(await check?.wouldBring(PAYOUT, PATIENT)).toBe(10n);
     expect(endpoint.asked()).toBe(2);
