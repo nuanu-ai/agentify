@@ -86,14 +86,30 @@
 
   --shadow-soft: 0 30px 70px -46px rgba(26, 25, 23, 0.42);
 
-  /* Type sizes, named for what they set; body text is the base, 1rem at 1.6.
+  /* Type sizes, named for what they set; body text is the base, 1rem.
      Use one of these rather than a literal, and never a size in pixels. */
   --text-caption: 0.75rem; /* a column head or a caption: the monospaced face */
   --text-label: 0.8125rem; /* a field's label, an identifier, the signed-in address */
   --text-small: 0.875rem; /* a note, a hint under a box, a state beside its dot */
   --text-code: 0.9375rem; /* a value read character by character: a secret, an address */
+  --text-body: 1rem; /* running text */
+  --text-lead: 1.125rem; /* the paragraph under a landing page's display heading */
+  --text-heading: 1.125rem; /* the heading of a panel or of a group of rows */
   --text-section: 1.5rem; /* the heading of a section inside a page */
+  --text-headline: clamp(1.875rem, 3vw, 2.125rem); /* a section heading on a landing page */
   --text-title: clamp(2rem, 5vw, 2.5rem); /* the heading of a page that stands alone */
+  --text-display: clamp(2.75rem, 5vw, 3.375rem); /* a landing page's first heading */
+
+  /* Line heights. A heading's lines sit closer the larger it is; every
+     paragraph, whatever its size, keeps the text leading, so two paragraphs
+     side by side never read at different densities. */
+  --leading-display: 1.05; /* --text-title and larger */
+  --leading-heading: 1.2; /* every heading under --text-title */
+  --leading-text: 1.6; /* a paragraph, a list, a table cell, a note */
+  --leading-ui: 1.4; /* a one-line label: an eyebrow, a caption, a badge, a column head */
+  /* Large type set at the headings' -0.02em looks loose: --text-title and
+     larger close up to this. */
+  --tracking-display: -0.035em;
 
   /* Spacing, named for where it goes. */
   --space-snug: 4px; /* between a line and the line that qualifies it */
@@ -101,7 +117,18 @@
   --space-control: 12px; /* between two controls, and inside a table cell */
   --space-block: 16px; /* between blocks inside a card */
   --space-card: 24px; /* the inset of a card or panel, and between cards */
-  --space-section: 32px; /* between the sections of a page */
+  --space-section: 32px; /* between the sections of a working screen */
+  --space-page: 48px; /* between the sections of a page of reading */
+
+  /* The vertical rhythm of text and actions. The two in em follow the size of
+     the element they are set on: a heading's own margin under it, a
+     paragraph's own margin before the next one. A row of actions stands the
+     same distance from what is above it as from what is below it, and a line
+     that reports on the press, such as its result, sits closer under it. */
+  --gap-heading: 0.5em; /* a heading's margin to its first line of text */
+  --gap-paragraph: 1em; /* between two paragraphs */
+  --gap-actions: var(--space-card); /* above a row of actions, and below it */
+  --gap-caption: var(--space-control); /* from an action to the line under it about that action */
 
   /* Without this, a machine set to dark gives this light page dark form
      controls and scrollbars. */
@@ -132,7 +159,7 @@ body {
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.6;
+  line-height: var(--leading-text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -170,12 +197,16 @@ body {
   outline-offset: 3px;
 }
 
+/* A heading that sets no leading of its own takes the heading's, not the
+   paragraph's: a heading that wraps at the text leading reads as two
+   headings. */
 h1,
 h2,
 h3 {
   margin: 0;
   font-weight: 600;
   letter-spacing: -0.02em;
+  line-height: var(--leading-heading);
   text-wrap: balance;
 }
 
@@ -193,7 +224,7 @@ p {
 
 .eyebrow {
   color: var(--accent);
-  font: 500 0.75rem / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -366,7 +397,7 @@ textarea.field-input {
   gap: 8px;
   white-space: nowrap;
   color: var(--muted);
-  font: 500 var(--text-small) / 1.4 var(--font-sans);
+  font: 500 var(--text-small) / var(--leading-ui) var(--font-sans);
 }
 
 .badge::before {
@@ -957,7 +988,7 @@ textarea.field-input {
 
 .foot-copy {
   color: var(--footer-faint);
-  font: var(--text-caption) / 1.5 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 /* Which stack this is, on every page but a live one: a band across the window
