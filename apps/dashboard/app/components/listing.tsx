@@ -133,7 +133,7 @@ const Step = ({ step, rel }: Readonly<{ step: PageStep; rel: "prev" | "next" }>)
  * link the server answers, so it works before the page's script and can be
  * opened in a tab of its own.
  */
-function Pager({
+export function Pager({
   range,
   previous,
   next,

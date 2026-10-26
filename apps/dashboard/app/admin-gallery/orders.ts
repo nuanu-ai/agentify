@@ -32,7 +32,29 @@ const list = (search: string, read: Parameters<typeof ordersListView>[1]) =>
 const AT = Date.parse("2026-10-23T13:52:00.000Z");
 const minutes = (count: number) => AT - count * 60_000;
 
-/** A page of the live channel's orders, as busy as the pilot's. */
+/**
+ * Merchants and products named at the length a WooCommerce shop names them,
+ * so the list is drawn with what a busy channel's rows carry.
+ */
+const TRAVEL_SHOP = {
+  id: "mch_9e2b7c41d0",
+  name: "A merchant",
+  serviceName: "Roam Easy – Travel eSIM, Virtual Numbers & VPN Store",
+};
+
+const LONG_ESIM = {
+  itemId: "itm_3",
+  merchantItemId: "esim-eu-20gb-30d",
+  title: "eSIM Europe – 39 Countries, 20 GB / 30 Days, 5G, Hotspot Allowed",
+};
+
+const LONG_NUMBER = {
+  itemId: "itm_4",
+  merchantItemId: "number-sms-30d",
+  title: "Virtual Phone Number for SMS Verification – Any Country, 30-Day Rental",
+};
+
+/** A page of the live channel's orders, as busy as the pilot's, newest first as the reader lists them. */
 const busy = aPage({
   counts: counts({
     payment_unknown: 2,
@@ -46,7 +68,8 @@ const busy = aPage({
     aRow("ord_6d58e1f0a2b34c5d6e7f8091a2b3a3e7", {
       createdAt: minutes(-12),
       pricedAt: minutes(-12),
-      product: { itemId: "itm_1", merchantItemId: "number-30d", title: "A virtual number" },
+      merchant: TRAVEL_SHOP,
+      product: LONG_NUMBER,
       price: { amount: "2.00", currency: "USD" },
       status: "in_progress",
       payment: "not_paid",
@@ -65,9 +88,20 @@ const busy = aPage({
       payment: "unresolved",
       segment: "payment_unknown",
     }),
+    aRow("ord_0aa4b5c6d7e8f9a0b1c2d3e4f5a69c15", {
+      createdAt: minutes(340),
+      pricedAt: null,
+      price: null,
+      status: "rejected",
+      payment: "not_paid",
+      segment: "lapsed",
+    }),
     aRow("ord_17ff0c2d3e4f5a6b7c8d9e0f1a2b7de3", {
       createdAt: minutes(1_272),
       pricedAt: minutes(1_272),
+      merchant: TRAVEL_SHOP,
+      product: LONG_ESIM,
+      price: { amount: "24.00", currency: "USD" },
       status: "unfulfilled",
       segment: "unfulfilled",
     }),
@@ -78,17 +112,13 @@ const busy = aPage({
       payment: "not_paid",
       segment: "delivered_unpaid",
     }),
-    aRow("ord_0aa4b5c6d7e8f9a0b1c2d3e4f5a69c15", {
-      createdAt: minutes(340),
-      pricedAt: null,
-      price: null,
-      status: "rejected",
-      payment: "not_paid",
-      segment: "lapsed",
-    }),
   ],
   earlier: { createdAt: minutes(1_309), id: "ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b" },
-  merchants: [EXAMPLE_MERCHANT, { id: "mch_2b9d", name: "A merchant", serviceName: null }],
+  merchants: [
+    EXAMPLE_MERCHANT,
+    TRAVEL_SHOP,
+    { id: "mch_2b9d", name: "A merchant", serviceName: null },
+  ],
 });
 
 const loadedList = (view: ReturnType<typeof list>) => ({ "routes/admin/orders": view });

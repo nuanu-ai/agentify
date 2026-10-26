@@ -74,7 +74,7 @@ describe("the orders list", () => {
     expect(view.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
       ["Payment unknown", 2, false],
       ["Unfulfilled", 1, true],
-      ["Delivered, not paid", 0, false],
+      ["Held for payment", 0, false],
       ["In progress", 0, false],
       ["Ended", 50, false],
       ["Lapsed", 6, false],
@@ -98,7 +98,7 @@ describe("the orders list", () => {
     );
     expect(first.result).toMatchObject({
       kind: "rows",
-      cut: "Showing 1–2 of 61, newest first.",
+      cut: "Showing 1–2 of 61, newest first",
       earlier: "/admin/orders?before=1787000000000.ord_b",
       newest: null,
     });
@@ -109,7 +109,7 @@ describe("the orders list", () => {
       READ_AT,
     );
     expect(later.result).toMatchObject({
-      cut: "Showing 51–51 of 61, newest first.",
+      cut: "Showing 51–51 of 61, newest first",
       earlier: null,
       newest: "/admin/orders",
     });
