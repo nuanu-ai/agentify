@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { PurchaseRequestSchema } from "./api.js";
 import { OrderSchema } from "./order.js";
 import { QuoteRequestSchema } from "./quote.js";
@@ -24,6 +25,18 @@ const address = {
 };
 
 describe("where a parcel goes", () => {
+  it("publishes, in its JSON Schema, an example address that the address check takes", () => {
+    // An agent that has the schema and not these pages writes its first
+    // address from this example; one the check refused would fail every
+    // purchase built from it.
+    const { examples } = z.toJSONSchema(ShipToSchema) as { examples?: unknown[] };
+
+    expect(examples).toHaveLength(1);
+    for (const example of examples ?? []) {
+      expect(ShipToSchema.safeParse(example).success).toBe(true);
+    }
+  });
+
   it("takes an address in the names an agent already writes", () => {
     expect(ShipToSchema.parse(address)).toStrictEqual(address);
   });

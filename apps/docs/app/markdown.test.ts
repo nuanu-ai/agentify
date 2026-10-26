@@ -11,6 +11,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOCS_GROUPS, DOCS_PAGES } from "@agentify/ui/docs";
+import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import scannerRoutes from "../../web/app/routes.js";
 import { parser, renderedPages, sourceOf, withSiteValues } from "./markdown.server.js";
@@ -166,6 +167,21 @@ describe("an include", () => {
     expect(parser().render("<<< @/examples/card/access-monthly.json\n")).toContain(
       "merchant_item_id",
     );
+  });
+});
+
+describe("a value the build knows", () => {
+  it("shows on the orders page a parcel's purchase with its address, as the purchase contract takes it", async () => {
+    // The page is where a buyer's engineer learns the names of ship_to's
+    // fields; a purchase written from a block the contract refused would fail.
+    const orders = PAGES.find((page) => page.file === "orders.md");
+    if (orders === undefined) throw new Error("no orders page");
+    const blocks = [...(await sourceOf(orders)).matchAll(/```json\n([\s\S]*?)\n```/g)]
+      .map((found) => found[1] ?? "")
+      .filter((block) => block.includes('"ship_to"'));
+
+    expect(blocks).toHaveLength(1);
+    expect(PurchaseRequestSchema.safeParse(JSON.parse(blocks[0] ?? "")).success).toBe(true);
   });
 });
 
