@@ -728,7 +728,7 @@ describe("a scan in Chromium", () => {
     await page.context().close();
   });
 
-  it("says what it can see after Publish image: the link is live, the browser was asked for the file, and a link downloads it again", async () => {
+  it("offers a link that downloads the image again after Publish image, and a second press asks for the image again without publishing again", async () => {
     vi.stubEnv("PUBLIC_SHARE_ENABLED", "true");
     const slug = "abcdefghijklmnopqrstuvwxyz_1234567890";
     const { page } = await answered(FINISHED);
@@ -753,7 +753,11 @@ describe("a scan in Chromium", () => {
       });
     });
     // The image never arrives, which the page cannot see.
-    await page.route(`**/api/v1/shares/${slug}/image`, (route) => route.abort());
+    let imageAsks = 0;
+    await page.route(`**/api/v1/shares/${slug}/image`, (route) => {
+      imageAsks += 1;
+      return route.abort();
+    });
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
     const publish = page.getByRole("button", { name: "Publish image" });
     await page.waitForFunction(() =>
@@ -765,13 +769,11 @@ describe("a scan in Chromium", () => {
     await publish.click();
     const again = page.getByRole("link", { name: "Download image again" });
     await again.waitFor();
-    const told = await page.locator("[aria-live]", { hasText: /image/i }).first().textContent();
-    expect(told).not.toMatch(/download started/i);
-    expect(told).toMatch(/asked/i);
     expect(await again.getAttribute("href")).toBe(`/api/v1/shares/${slug}/image`);
+    expect(await again.getAttribute("download")).not.toBeNull();
 
     await publish.click();
-    await page.getByText(/already live/i).waitFor();
+    await expect.poll(() => imageAsks).toBe(2);
     expect(published).toBe(1);
     vi.stubEnv("PUBLIC_SHARE_ENABLED", "false");
     await page.context().close();

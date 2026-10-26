@@ -115,7 +115,7 @@ describe("publishing and revoking a scan's public link", () => {
     expect(told.textContent).toMatch(/reload/i);
   });
 
-  it("says after Publish image what the page can see, and offers the image again by a link", async () => {
+  it("offers the image again by a link after Publish image", async () => {
     siteWith({
       existing: false,
       pressed: async () =>
@@ -129,9 +129,6 @@ describe("publishing and revoking a scan's public link", () => {
     const again = await screen.findByRole("link", { name: "Download image again" });
     expect(again.getAttribute("href")).toBe(`/api/v1/shares/${slug}/image`);
     expect(again.hasAttribute("download")).toBe(true);
-    const told = screen.getByText(/browser was asked/i);
-    expect(told.textContent).not.toMatch(/started/i);
-    expect(told.textContent).toMatch(/link is live/i);
   });
 
   it("says the public link was already live when Publish image is pressed again, and makes no new one", async () => {

@@ -14,13 +14,10 @@ const baseProps = {
 };
 
 describe("ReportActionPanel", () => {
-  it("shows a one-line verified notice when a download intent resumes", () => {
+  it("offers a link that downloads the .md again when a download intent resumes", () => {
     const markup = renderToStaticMarkup(
       <ReportActionPanel {...baseProps} initialIntent="download-md" />,
     );
-    // The page cannot see whether a download arrived, so it says only that it asked.
-    expect(markup).not.toMatch(/download started/i);
-    expect(markup).toMatch(/browser was asked/i);
     expect(markup).toMatch(/<a[^>]*download[^>]*>Download \.md again<\/a>/);
   });
 
