@@ -100,14 +100,17 @@ half of the price that is wrong and what it said:
   amount is in dollars — five dollars is `5.00`, a cent and a half for a
   product priced per call is `0.015` — so a number counted in cents is never
   listed as that many dollars;
-- an amount with more than six digits after the dot, such as `0.0000001`. Six
+- an amount with more than six digits after the dot, such as `5.0000001`. Six
   places are all USDC carries, so a longer amount has no exact charge, and we
   do not round one;
 - an amount above zero and below `{{smallest-price}}`, such as `0.009` or
-  `0.000001`. The smallest price we sell at is `{{smallest-price}}`, in `USD` or
-  `USDC` alike. The payment network refuses payments below a minimum it does
-  not publish, so a smaller price could be listed in a catalogue and then
-  refused when a buyer pays;
+  `0.000001`, however many digits it has after the dot. `{{smallest-price}}`,
+  in `USD` or `USDC` alike, is the smallest price we sell at, and it is a floor
+  we set ourselves. The payment network refuses payments below a minimum it
+  does not publish. On the test network a purchase at `0.01` test USDC was
+  carried where one at `0.000001` was refused; on the live network the minimum
+  has not been measured (see [What is not settled
+  yet](#what-is-not-settled-yet));
 - a currency other than `USD` or `USDC`, which buyers pay as the same number
   of USDC ([What they pay in](/money#what-they-pay-in)), because we hold no
   exchange rate to charge anything else at;
@@ -659,3 +662,8 @@ against it play out in the ordinary way. Nothing removes a card altogether.
   something to check a request against to know that it came from us. A price
   handler has neither question — the subscription channel is authenticated when
   it connects.
+- The smallest payment the live payment network carries. It does not publish
+  its minimum, and `0.01` has been carried only on the test network, so a price
+  at or above `{{smallest-price}}` could still be refused when a buyer pays. The
+  buyer is then told that the payment network will not carry that amount and
+  that neither paying again nor buying again at that price will pass.
