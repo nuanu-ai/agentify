@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
 import type { CutView, Listing, PageLink } from "../../src/listing.js";
 import { useGoingTo } from "./going-to.js";
@@ -138,7 +139,12 @@ export function Pager({
   previous,
   next,
   pages = [],
-}: Readonly<{ range: string; previous: PageStep; next: PageStep; pages?: readonly PageLink[] }>) {
+}: Readonly<{
+  range: ReactNode;
+  previous: PageStep;
+  next: PageStep;
+  pages?: readonly PageLink[];
+}>) {
   return (
     <nav className="cut pager" aria-label="Pages">
       <span className="pager-range">{range}</span>

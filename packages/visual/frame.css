@@ -722,10 +722,9 @@
 
 /*
  * The pager: the range read first, then the steps and the pages at the end of
- * the line, under the list's right edge; on a narrow screen the steps take a
- * line of their own. Each way is a 36px target, the page shown is filled, and
- * a step with nowhere to go stays in its place in grey, so the row does not
- * shift from page to page.
+ * the line, under the list's right edge. Each way is a 36px target, the page
+ * shown is filled, and a step with nowhere to go stays in its place in grey,
+ * so the row does not shift from page to page.
  */
 .pager {
   justify-content: space-between;
@@ -800,13 +799,17 @@
   transform: rotate(-135deg);
 }
 
+/* On a phone the steps stand at the two ends of their own line with the page
+   shown between them; the range over them says how far the list goes. */
 @media (max-width: 560px) {
   .pager-ways {
     width: 100%;
+    justify-content: space-between;
   }
 
-  .pager-step.next {
-    margin-left: auto;
+  .pager-page:not([aria-current]),
+  .pager-gap {
+    display: none;
   }
 }
 
