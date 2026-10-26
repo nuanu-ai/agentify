@@ -193,7 +193,7 @@ const heldSays = ({ to, orders, quick, parcels }: Held): string => {
   // Each order the refusal named has ended since, or has no price yet, which
   // it gets within seconds or never: nothing is known to hold it any more.
   if (orders.length === 0)
-    return "None of the orders that held this is open on Orders now. Try again now.";
+    return "None of the orders that held this is open on Orders now. Try again in a moment.";
   const one = orders.length === 1;
   const counted = `${orders.length} ${one ? "order" : "orders"} from your ${to === "woocommerce" ? "code" : "shop"} ${one ? "is" : "are"}`;
   if (quick) return `${counted} still in progress and should end within a minute. Try again then.`;
