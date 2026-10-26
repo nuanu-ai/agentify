@@ -600,10 +600,12 @@ you closed fulfillment, and its `status` column is the word each one reads.
 
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists, and a payment that fails its check is refused the same way,
-leaving the priced order to lapse as `expired`. Two more refusals come before
-anything is charged, both described on [What can go wrong](/failures): a
-purchase while fifty of yours already wait for payment, and a purchase that
-charges before its goods while no process of yours has polled for ten minutes. A pause ends no orders: cards
+leaving the priced order to lapse as `expired`. Three more refusals come
+before anything is charged, all described on [What can go wrong](/failures): a
+purchase while fifty of yours already wait for payment, a purchase that
+charges before its goods while no process of yours has polled for ten minutes,
+and any purchase while ten or more of your orders are paid for with nothing
+delivered. A pause ends no orders: cards
 stop selling, and the orders already taken on play out in the ordinary way.
 To stop Agentify accepting deliveries for one order, [close
 fulfillment](#closing-fulfillment).

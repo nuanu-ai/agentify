@@ -455,6 +455,7 @@ const FAILURES = [
 const AT_THE_DOOR = [
   "Fifty of your purchases already wait for payment",
   "No process of yours has polled for ten minutes",
+  "Ten of your paid orders have nothing delivered",
 ] as const;
 
 function priceCheckedParcel(): Order {
