@@ -252,6 +252,8 @@ describe("what the checks read from the markup real sites write", () => {
       '<link rel="stylesheet" href="/assets/feedback.css">',
       // An address with a broken escape is read as written.
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/%E0%A4%A/feed/" />',
+      // A product's reviews feed, titled in Portuguese.
+      '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Kain Tenun Ikat Feed de comentários" href="https://example.com/produto/kain-tenun-ikat/feed/" />',
       // A word of the address counts whole, not inside another word.
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/workshop/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/shopping-tips/feed/" />',
