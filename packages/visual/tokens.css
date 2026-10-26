@@ -409,6 +409,27 @@ textarea.field-input {
   color: var(--faint);
 }
 
+/* The place of a badge in a column of rows, one badge to a row: as wide as the
+   longest state word in use, so every row's dot stands on the same vertical
+   line however long the word after it is. A longer word widens its own row
+   only. Put the badge inside it, wherever the row puts its state. */
+.badge-slot {
+  display: inline-flex;
+  min-inline-size: 8rem;
+}
+
+/* A badge that counts, in a row of counts: the word and its count in ink, so
+   the colour rides on the dots alone, and the count in figures of one width. */
+.badge-count {
+  color: var(--fg-2);
+}
+
+.badge-count b {
+  color: var(--fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The bar that says the next page is on its way. Fixed to the window, so it
    covers the top edge rather than pushing the page down; a stripe runs along
    it while it is shown, and stands still for a reader who asked for less
