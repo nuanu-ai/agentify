@@ -284,7 +284,7 @@ function ReadOnlyPanel({
         <p>
           Your shop didn't grant Read/Write access, so Agentify can't create orders there and agents
           can't buy. Connect again and approve Read/Write.
-          {connection.onCode
+          {connection.onCode && view.codeProducts !== 0
             ? ` When the new keys arrive, ${offSaleOnKeys(view.codeProducts)}.`
             : null}
         </p>

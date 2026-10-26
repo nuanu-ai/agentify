@@ -558,6 +558,26 @@ describe("what the shop screen says a switch does to the code's products", () =>
     expect(connectPanel(null)).toContain("the products your code published go off sale");
   });
 
+  it("says Connect again takes the code's products off sale only where the code published some", () => {
+    const again = (codeProducts: number) =>
+      readable(
+        blockOf(
+          shopPage({
+            state: {
+              kind: "connected",
+              shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date() },
+            },
+            through: "api",
+            codeProducts,
+          }),
+          "/woocommerce/connect",
+        ),
+      );
+
+    expect(again(12)).toContain("the 12 products your code published go off sale");
+    expect(again(0)).not.toMatch(/off sale/);
+  });
+
   it("says the code's products come back paused, where there are some, on the way back", () => {
     const back = (codeProducts: number) =>
       readable(
