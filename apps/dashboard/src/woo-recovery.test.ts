@@ -336,7 +336,6 @@ describe("merchant recovery pages", () => {
         product: "Agentify test download",
         shopOrigin: FACTS.shopOrigin,
         amount: "0.01 USD",
-        test: true,
         wooOrderId: "",
       },
     });

@@ -384,21 +384,23 @@ one, is shown to the buyer as your words.
 If a paid download was not delivered and the connector has a saved sale it can
 check, your Orders screen offers **Recover WooCommerce delivery** on that
 order. The recovery page shows the Agentify order ID, the product, the amount
-and the shop the sale came from, and a test purchase keeps its test mark.
+and the shop the sale came from.
 
 When the shop's answer to creating the order never arrived, find the order in
 that same shop whose Transaction ID is this Agentify order ID, and enter its
-**WooCommerce order ID**: the internal number in the order's address, which can
-differ from the order number customers see. **Link order and deliver download**
-checks that exact order and product against the saved sale, then delivers the
-download; it does not search for another order or create one. If your shop
+**Shop order ID**: the internal number in the order's address in WooCommerce,
+after `id=` or `post=`, which can differ from the order number customers see.
+**Link and deliver** checks that exact order and product against the saved
+sale, then delivers the download; it does not search for another order or
+create one. If your shop
 holds no order with that Transaction ID, nothing can be delivered from this
 page: close fulfillment on Orders with an explanation for the buyer.
 
 When the shop order and its download are already saved, **Retry delivery**
 sends that same download to Agentify, even after you disconnect the shop or
-switch to your own code. If an answer was lost, reload the page: it shows the
-saved order and says whether Agentify confirms the delivery. A check that could
+switch to your own code. If an answer was lost, the page offers a reload in
+place of the button: it shows the saved order and says whether Agentify
+confirms the delivery. A check that could
 not be made leaves the result unknown, which is not proof that nothing was
 recorded, and a saved order cannot be replaced by a different one.
 

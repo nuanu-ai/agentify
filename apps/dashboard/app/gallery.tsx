@@ -82,7 +82,7 @@ import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import { gapOf } from "../src/woo-money.js";
 import { findingsOf, rateFarSays } from "../src/woo-pages.js";
-import type { WooRecoveryView } from "../src/woo-recovery-pages.js";
+import { RECOVERY_UNKNOWN, type WooRecoveryView } from "../src/woo-recovery-pages.js";
 import {
   type Said,
   type ShopAnswer,
@@ -2679,7 +2679,6 @@ const RECOVERY_SALE = {
   product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
   amount: "25.00 USD",
-  test: true,
 };
 
 const RECOVERY_FRAME = {
@@ -2691,11 +2690,20 @@ const RECOVERY_FRAME = {
 /** A recovery page as the server draws it: drawn on opening, or answering a press. */
 const recovery = (
   told: Told,
-  view: Omit<WooRecoveryView, keyof typeof RECOVERY_SALE | "typedRefusal"> &
-    Partial<Pick<WooRecoveryView, "typedRefusal">>,
+  view: Omit<
+    WooRecoveryView,
+    keyof typeof RECOVERY_SALE | "typedRefusal" | "unknown" | "unavailable"
+  > &
+    Partial<Pick<WooRecoveryView, "typedRefusal" | "unknown" | "unavailable">>,
   answering = false,
 ): GalleryState => {
-  const drawn = { ...RECOVERY_SALE, typedRefusal: null, ...view } satisfies WooRecoveryView;
+  const drawn = {
+    ...RECOVERY_SALE,
+    typedRefusal: null,
+    unknown: false,
+    unavailable: null,
+    ...view,
+  } satisfies WooRecoveryView;
   return at(told, {
     ...RECOVERY_FRAME,
     ...(answering
@@ -2752,14 +2760,9 @@ const WOO_RECOVERY: GalleryState[] = [
       screen: "Recover WooCommerce delivery",
       when: "A press of Link and deliver failed inside Agentify partway.",
       cause:
-        "Whether a shop order or a delivery was recorded is not known, so the page says so and asks for a reload before another press.",
+        "Whether a shop order or a delivery was recorded is not known, so the page says so and offers a reload instead of another press.",
     },
-    {
-      mode: "link",
-      wooOrderId: "13",
-      message:
-        "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
-    },
+    { mode: "link", wooOrderId: "13", message: RECOVERY_UNKNOWN, unknown: true },
     true,
   ),
   recovery(
@@ -2768,13 +2771,16 @@ const WOO_RECOVERY: GalleryState[] = [
       screen: "Recover WooCommerce delivery",
       when: "A merchant opens recovery for a download whose shop was never asked to create the order.",
       cause:
-        "This page cannot create a shop order, so it offers no press and says what the merchant can do instead.",
+        "This page cannot create a shop order, so it offers no press and leads to closing fulfillment instead.",
     },
     {
       mode: "unavailable",
       wooOrderId: "",
-      message:
-        "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders.",
+      message: null,
+      unavailable: {
+        why: "Your shop never received this order, and this page can't create it.",
+        instead: "close",
+      },
     },
   ),
   recovery(
