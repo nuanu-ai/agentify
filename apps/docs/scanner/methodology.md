@@ -40,7 +40,9 @@ Coverage below 70% produces an incomplete, provisional result. Coverage below
 a bot challenge or a refusal, whatever the coverage: a 401, 403 or 429 status, a
 known challenge vendor's page, or an error page saying access is denied.
 Benchmarks stay hidden until at least thirty scans of the same segment have
-finished with coverage of 70% or more.
+finished with coverage of 70% or more. Coverage is shown as the whole percent
+it has reached, rounded down, so 69.8% reads 69% and only a scan that assessed
+everything reads 100%.
 :::
 
 - Invisible: 0–24
@@ -55,6 +57,35 @@ finished with coverage of 70% or more.
 - Fail — an accessible surface confirmed a negative fact.
 - Unavailable — we could not reach a verdict; this is not a failure.
 - Not applicable — the check does not apply to this site or segment.
+
+A result other than a pass names one cause, and its evidence lists the fields,
+sitemaps or codes involved.
+
+## What the scan could not read {#unread}
+
+The scanner reads each response up to a limit of its own: 512 KiB for
+robots.txt and llms.txt, 1 MiB for a discovery document such as an MCP server
+card, a UCP profile, an A2A agent card or OAuth metadata, 2 MiB for a page, and
+5 MiB for a sitemap. A longer response is cut at its limit, and a result that
+depends on it names the limit.
+
+What was read proves what it contains and says nothing about the rest. A
+heading, a link or a sitemap entry found before the limit counts. A check that
+would have to conclude that something is missing from a response that was cut
+is unavailable. A page longer than 2 MiB still fails the page-weight check,
+since its size is known.
+
+A 404 or 410 says a document is not there, and so does a web page served where
+a text or JSON document belongs. Any other answer, such as no answer at all, a
+server error, a refusal or a rate limit, says nothing about the document, so the
+check is unavailable and its evidence gives the status. robots.txt follows its
+own standard, under which a crawler treats a refused robots.txt as having no
+rules at all, and the scan reports it as refused. A document that is there but
+cannot be parsed is reported as unparseable.
+
+A verdict that nothing usable exists needs every location the check reads to
+have answered. A sitemap that a sitemap index lists and that did not answer is
+named in the evidence and does not lower the score.
 
 ## Non-scoring browser observations {#browser-observation}
 
