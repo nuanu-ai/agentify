@@ -64,7 +64,7 @@ export const WITHDRAWAL_NOTE = Object.freeze({
 
 /** Why a press on a merchant was refused, as the sentence under its button. */
 export const REFUSED_WORDS: Readonly<Record<string, string>> = Object.freeze({
-  not_live_channel: `Admission is decided ${inChannel("live")}, and none is asked here. Nothing was changed.`,
+  not_live_channel: `Admission is decided ${inChannel("live")} only. Nothing was changed.`,
   no_such_merchant: "There is no such merchant any more. Nothing was changed.",
   no_such_key: "That key is not one of this merchant's. Nothing was changed.",
 });

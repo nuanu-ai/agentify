@@ -1313,7 +1313,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
     rows.push({
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not offered" },
-      fact: ["The connector is not offered here, so no shop can be connected."],
+      fact: ["No shop can be connected here."],
     });
   } else {
     const shops = foundIn(reads.shops);
