@@ -654,7 +654,10 @@ against it play out in the ordinary way. Nothing removes a card altogether.
   something to check a request against to know that it came from us. A price
   handler has neither question — the subscription channel is authenticated when
   it connects.
-- The smallest price the live channel can charge. Its payment service documents
-  a minimum below which it does not settle a payment and does not publish the
+- The smallest price a payment can carry. The payment service documents a
+  minimum below which it does not take a payment and does not publish the
   number, so a price of a fraction of a cent is taken at publication and may be
-  refused when a buyer pays. Where that line lies has not been measured.
+  refused when a buyer pays. On the test channel a price of `0.000001` was
+  refused this way. The buyer is told that the payment network will not carry
+  that amount and that neither paying again nor buying again at that price
+  will pass. Where the line lies has not been measured.

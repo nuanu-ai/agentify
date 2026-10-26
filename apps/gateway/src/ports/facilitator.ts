@@ -106,6 +106,12 @@ export type VerifyOutcome =
       readonly verified: false;
       readonly reason: PaymentVerificationFailure;
       readonly message: string;
+      /**
+       * The payment layer's code for the refusal, a machine word kept for the
+       * operator's log so that a code nobody has given a meaning can be found.
+       * Absent where this gateway refused the payment itself.
+       */
+      readonly code?: string;
     }
   /**
    * No verdict on the payment, and nothing is claimed; `cause` says why.
@@ -117,12 +123,14 @@ export type VerifyOutcome =
   | { readonly verified: "unknown"; readonly cause: NoVerdict; readonly failure: string };
 
 /**
- * Why a payment got no verdict: the facilitator could not be reached or did
- * not answer, which asking again may cure; it turned Agentify itself away, its
- * credentials or the address it was sent to, which lasts until an operator
- * acts; the question could not be put, because the order as it stands cannot
- * pay its seller; or the facilitator vouched for the payment naming a payer
- * other than the wallet that signed it.
+ * Why a payment got no verdict: the facilitator could not be reached, did not
+ * answer or failed on its own side, which asking again may cure; it turned
+ * away Agentify itself (its credentials, the address it was sent to, the
+ * place it asked from) or the terms Agentify asked it to check, which lasts
+ * until an operator acts; the order as it stands cannot pay its seller,
+ * because nowhere to pay is recorded or the facilitator refused the seller's
+ * address; or the facilitator vouched for the payment naming a payer other
+ * than the wallet that signed it.
  */
 export type NoVerdict =
   | "no_answer"
