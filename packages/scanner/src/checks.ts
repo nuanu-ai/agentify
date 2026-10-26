@@ -706,7 +706,9 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
 
 const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
   const markdown = artifacts.markdown;
-  if (!markdown || inaccessible(markdown))
+  // A refusal or a bot challenge in place of the answer says nothing about
+  // whether the site negotiates Markdown.
+  if (!markdown || inaccessible(markdown) || isChallenge(markdown.status, markdown.body))
     return result({
       id: 7,
       status: "unavailable",
@@ -714,6 +716,7 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
       summaryCode: "markdown_unavailable",
       userImpactCode: "markdown_not_assessed",
       errorCode: markdown?.errorCode ?? "markdown_unavailable",
+      evidence: markdown?.status ? { status: markdown.status } : {},
     });
   const type = markdown.headers["content-type"] ?? "";
   const vary = varyNames(markdown.headers.vary);
