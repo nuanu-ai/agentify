@@ -128,17 +128,35 @@ const lengthsBy = (
   return lengths;
 };
 
-const MARKERS: ReadonlySet<string> = markersFromLocaleData();
-const BY_LAST = lengthsBy(MARKERS, (marker) => marker.charAt(marker.length - 1));
-const BY_FIRST = lengthsBy(MARKERS, (marker) => marker.charAt(0));
+type Markers = {
+  all: ReadonlySet<string>;
+  byLast: Map<string, number[]>;
+  byFirst: Map<string, number[]>;
+};
+// Building the table takes tens of milliseconds, so it is built for the first
+// price looked for in a page's text, not by every process that imports the
+// scanner.
+let markers: Markers | undefined;
+const table = (): Markers => {
+  if (!markers) {
+    const all = markersFromLocaleData();
+    markers = {
+      all,
+      byLast: lengthsBy(all, (marker) => marker.charAt(marker.length - 1)),
+      byFirst: lengthsBy(all, (marker) => marker.charAt(0)),
+    };
+  }
+  return markers;
+};
 const NONE: number[] = [];
 
 // The marker that ends at `end`, the longest first, that does not begin
 // inside a word.
 const markerBefore = (text: string, end: number): string | undefined => {
-  for (const length of BY_LAST.get(text.charAt(end - 1)) ?? NONE) {
+  const { all, byLast } = table();
+  for (const length of byLast.get(text.charAt(end - 1)) ?? NONE) {
     const marker = text.slice(end - length, end);
-    if (length <= end && MARKERS.has(marker) && !runsInto(marker[0], text[end - length - 1]))
+    if (length <= end && all.has(marker) && !runsInto(marker[0], text[end - length - 1]))
       return marker;
   }
   return undefined;
@@ -147,9 +165,10 @@ const markerBefore = (text: string, end: number): string | undefined => {
 // The marker that begins at `start`, the longest first, that does not run
 // into a word.
 const markerAfter = (text: string, start: number): string | undefined => {
-  for (const length of BY_FIRST.get(text.charAt(start)) ?? NONE) {
+  const { all, byFirst } = table();
+  for (const length of byFirst.get(text.charAt(start)) ?? NONE) {
     const marker = text.slice(start, start + length);
-    if (MARKERS.has(marker) && !runsInto(marker.at(-1), text[start + length])) return marker;
+    if (all.has(marker) && !runsInto(marker.at(-1), text[start + length])) return marker;
   }
   return undefined;
 };
