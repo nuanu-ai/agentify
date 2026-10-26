@@ -816,7 +816,7 @@ export interface Store {
    * Records that one of this merchant's processes polled their stream at this
    * instant. The mark never goes backwards, since two gateway processes write
    * it from two clocks without serialising, and it outlives a restart: a
-   * restarted gateway that knew of no poll would refuse every prepaid sale
+   * restarted gateway that knew of no poll would refuse every sale
    * until each merchant's process polled again. A merchant that is not there
    * is not an error, and nothing is written.
    */

@@ -184,7 +184,7 @@ export async function harness(
       throw new Error(`the harness could not make the merchant ${name}`);
     }
     // As though their process had just polled: a seller whose process never
-    // has is refused every purchase that charges before its goods, and a test
+    // has is refused every purchase and left out of the catalogue, and a test
     // about that moves the clock past the guard.
     await store.noteContact(made.id, now);
     await setServiceName(store, made.id, name, now);

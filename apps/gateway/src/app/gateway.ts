@@ -291,8 +291,8 @@ export type PurchaseAttempt =
   /** As many of the seller's purchases as the limit allows already wait for payment. */
   | { readonly step: "seller_busy" }
   /**
-   * The purchase charges before its goods, and the seller's own process has
-   * not polled for longer than `SILENT_AFTER_MS`; nothing was charged.
+   * The seller's own process has not polled for longer than
+   * `SILENT_AFTER_MS`; nothing was charged.
    */
   | { readonly step: "seller_not_taking_orders" }
   /**
