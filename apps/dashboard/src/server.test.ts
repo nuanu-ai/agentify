@@ -4054,10 +4054,10 @@ describe("the banner about the account", () => {
     expect(reasonsIn(after)).toStrictEqual([]);
   });
 
-  it("says new purchases are refused while twenty wait for payment", async () => {
+  it("says new purchases are refused while fifty wait for payment", async () => {
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, roomCard);
-    for (let one = 0; one < 20; one += 1) {
+    for (let one = 0; one < 50; one += 1) {
       await harnessed.gateway.beginPurchase(itemId, {});
     }
     await browser.signIn();

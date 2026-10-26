@@ -70,12 +70,12 @@ describe("the account banner", () => {
     );
   });
 
-  it("says in one sentence that new purchases are refused while twenty wait for payment", () => {
+  it("says in one sentence that new purchases are refused while fifty wait for payment", () => {
     const [note] = accountOf(READY, { selling: "open", through: "api", busy: true });
 
     expect(note?.reason).toBe("busy");
     expect(note?.says).toBe(
-      "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
+      "Fifty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
     );
   });
 

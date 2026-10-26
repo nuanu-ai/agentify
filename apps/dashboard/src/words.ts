@@ -114,7 +114,7 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
  * Why the account as a whole is not selling as usual: all sales are paused,
  * something publishing needs is missing, purchases charged before delivery are
  * refused while their integration is not connected, new purchases are refused
- * while twenty wait for payment, or the cards their own code published are off
+ * while fifty wait for payment, or the cards their own code published are off
  * sale while a WooCommerce shop sells; or that what would say so could not be
  * read.
  */
@@ -174,7 +174,7 @@ export const ACCOUNT_WORDS: Readonly<
   },
   busy: {
     title: "New purchases are refused",
-    says: "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
+    says: "Fifty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
     fix: null,
   },
   through_shop: {

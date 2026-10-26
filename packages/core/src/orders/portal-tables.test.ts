@@ -453,7 +453,7 @@ const FAILURES = [
  * `apps/gateway/src/http/purchase-door.test.ts`, which reads these rows too.
  */
 const AT_THE_DOOR = [
-  "Twenty of your purchases already wait for payment",
+  "Fifty of your purchases already wait for payment",
   "No process of yours has polled for ten minutes",
 ] as const;
 

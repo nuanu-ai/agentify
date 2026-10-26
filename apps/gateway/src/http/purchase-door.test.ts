@@ -98,8 +98,8 @@ const sellingThrough = async (
   return stored.id;
 };
 
-/** Twenty purchases priced and left unpaid, the seller answering each price. */
-const twentyWaiting = async (
+/** Fifty purchases priced and left unpaid, the seller answering each price. */
+const fiftyWaiting = async (
   harnessed: Harness,
   served: Served,
   itemId: string,
@@ -108,7 +108,7 @@ const twentyWaiting = async (
 ) => {
   const worker = workUntilStopped(harnessed, { onQuote: () => priced, merchantId, through });
   try {
-    for (let one = 0; one < 20; one += 1) {
+    for (let one = 0; one < 50; one += 1) {
       const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: {} },
       });
@@ -121,12 +121,12 @@ const twentyWaiting = async (
 
 describe("purchases waiting for payment", () => {
   it.each<Integration>(["api", "woocommerce"])(
-    "refuse the twenty-first, through %s, before the seller or their shop is asked its price",
+    "refuse the fifty-first, through %s, before the seller or their shop is asked its price",
     async (through) => {
       const { harnessed, served } = await started();
       const merchantId = harnessed.merchant.id;
       const itemId = await sellingThrough(harnessed, merchantId, through);
-      await twentyWaiting(harnessed, served, itemId, merchantId, through);
+      await fiftyWaiting(harnessed, served, itemId, merchantId, through);
 
       const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: {} },
@@ -142,15 +142,15 @@ describe("purchases waiting for payment", () => {
       // No price question went to the seller's stream, which is the only way a
       // question reaches their code or the connector that asks their shop.
       expect(await harnessed.queue.draw(merchantId, 100, 0)).toStrictEqual([]);
-      expect(await harnessed.store.orders(merchantId)).toHaveLength(20);
+      expect(await harnessed.store.orders(merchantId)).toHaveLength(50);
     },
   );
 
-  it("let a purchase through again once one of the twenty has lapsed unpaid", async () => {
+  it("let a purchase through again once one of the fifty has lapsed unpaid", async () => {
     const { harnessed, served } = await started();
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
     const [first] = await harnessed.store.orders(merchantId);
     if (first === undefined) throw new Error("no purchase was waiting");
 
@@ -173,7 +173,7 @@ describe("purchases waiting for payment", () => {
     const { harnessed, served } = await started();
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
 
     // No reminder is applied: in this harness they wait on real time.
     harnessed.advance(31_000);
@@ -187,11 +187,11 @@ describe("purchases waiting for payment", () => {
   });
 
   it("are said in the log at most once a minute while a seller's purchases are refused for them, naming the seller and how many wait", async () => {
-    // A price that holds five minutes, so the twenty still wait a minute on.
+    // A price that holds five minutes, so the fifty still wait a minute on.
     const { harnessed, served } = await started({ QUOTE_TTL_MS: String(5 * MINUTE) });
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
     // Another card of the same seller's, which asks the buyer where to send it.
     const mailed = await harnessed.store.publishCard(
       merchantId,
@@ -215,7 +215,7 @@ describe("purchases waiting for payment", () => {
 
     const lines = (said: string) => said.split("\n").filter((line) => line.includes(merchantId));
     expect(lines(first)).toHaveLength(1);
-    expect(lines(first)[0]).toContain("20 purchases");
+    expect(lines(first)[0]).toContain("50 purchases");
     expect(lines(later)).toHaveLength(1);
     expect(first + later).not.toContain("buyer@example.com");
   });
@@ -224,7 +224,7 @@ describe("purchases waiting for payment", () => {
     const { harnessed, served } = await started();
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await twentyWaiting(harnessed, served, itemId, merchantId, "api");
+    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
 
     const busy = await harnessed.gateway.standingOf(merchantId);
     harnessed.advance(31_000);
@@ -234,11 +234,11 @@ describe("purchases waiting for payment", () => {
     expect(free.busy).toBe(false);
   });
 
-  it("are counted for each seller apart, so one seller's twenty hold up nobody else", async () => {
+  it("are counted for each seller apart, so one seller's fifty hold up nobody else", async () => {
     const { harnessed, served } = await started();
     const busy = harnessed.merchant.id;
     const busyItem = await sellingThrough(harnessed, busy, "api");
-    await twentyWaiting(harnessed, served, busyItem, busy, "api");
+    await fiftyWaiting(harnessed, served, busyItem, busy, "api");
     const other = await harnessed.addMerchant();
     const otherItem = await sellingThrough(harnessed, other.id, "api");
 

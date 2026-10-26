@@ -324,12 +324,12 @@ interface HowTheySell {
  * can ask the seller's code or shop its price, and a shop asked a price is
  * called a dozen times over, so without a limit anyone could load a seller's
  * shop through Agentify until its firewall turned Agentify away. The cost is
- * named here: whoever keeps twenty unpaid purchases open stops this seller's
+ * named here: whoever keeps fifty unpaid purchases open stops this seller's
  * sales through Agentify while they do, but not their shop. A
  * constant rather than a setting, since a knob here either lets that load
  * back through or stops a seller's every sale.
  */
-const WAITING_FOR_PAYMENT_AT_MOST = 20;
+const WAITING_FOR_PAYMENT_AT_MOST = 50;
 
 /**
  * How long a seller's own process may go without polling before a purchase

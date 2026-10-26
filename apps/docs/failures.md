@@ -28,7 +28,7 @@ is recorded as unfulfilled after.
 | The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a paid order unfulfilled | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
 | The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; the risk is one sale's price |
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
-| Twenty of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses thirty seconds after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps twenty unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
+| Fifty of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses thirty seconds after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps fifty unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
 | No process of yours has polled for ten minutes | nothing changes: a purchase nobody answers ends with nothing charged | a new purchase is refused with `seller_not_taking_orders` before payment, and so is a payment for a price named before the silence; nothing is charged, and the agent tries again later | as in the asynchronous mode | keep a process running and polling: its first poll lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected |
 
 Silence from a price check is any of three things: no answer within five
@@ -39,9 +39,9 @@ message reach the agent word for word, so write the message for a stranger
 ([refusal codes](/cards#refusal-codes)).
 
 Neither of the last two is a pause, and nothing has to be switched back on.
-The limit of twenty keeps anybody from loading your price handler or your shop
+The limit of fifty keeps anybody from loading your price handler or your shop
 through Agentify with purchases nobody means to pay, and it is counted for you
-alone, so one seller's twenty hold up nobody else. The rule about polling
+alone, so one seller's fifty hold up nobody else. The rule about polling
 covers only a purchase that charges before its goods, an asynchronous one or a
 parcel, because without a process of yours running that buyer would pay for
 goods nothing is there to make; a synchronous purchase ends uncharged on its
