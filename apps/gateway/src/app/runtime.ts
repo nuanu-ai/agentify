@@ -12,6 +12,7 @@ import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
 import type { PaymentChain } from "../ports/payment-chain.js";
+import type { PayoutCheck } from "../ports/payout-check.js";
 import type { Queue } from "../ports/queue.js";
 import type {
   Integration,
@@ -45,6 +46,12 @@ export interface Runtime {
    * such an order then goes to the payment layer like any other payment.
    */
   readonly chain?: PaymentChain;
+  /**
+   * What a merchant's payout would bring if sent now, read through the same
+   * endpoint, absent where none is configured. Only the dashboard's payout
+   * screen asks it.
+   */
+  readonly payoutCheck?: PayoutCheck;
 }
 
 export function policyFor(card: Card, config: GatewayConfig): OrderPolicy {

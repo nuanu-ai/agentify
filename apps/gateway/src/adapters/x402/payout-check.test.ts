@@ -96,7 +96,7 @@ async function anEndpoint(
 
 describe("what a payout would bring, read from the chain", () => {
   it("is what the chain's run of it adds to the merchant's wallet", async () => {
-    const { url } = await anEndpoint(84532, dryRunAnswer(5n, 998_003n));
+    const { url } = await anEndpoint(84532, dryRunAnswer(5n, 999_003n));
 
     expect(await payoutCheckOn(NETWORK, url)?.wouldBring(PAYOUT)).toBe(998_998n);
   });
