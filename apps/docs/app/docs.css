@@ -113,6 +113,13 @@ input {
   font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
+/* A phone has no key to press, and the bar's width goes to the word. */
+@media (max-width: 600px) {
+  .docs-search-button kbd {
+    display: none;
+  }
+}
+
 /* Over the consent banner, which is not reached past the search, and under
    the consent's own preferences. */
 .search-backdrop {
