@@ -37,7 +37,7 @@ const reverted = (thrown: unknown): boolean =>
  * under way; a read that fails is not kept. A read that does not answer
  * within the time a page has for it is given up on, and for the next five
  * seconds every page about that payout is told so at once, unless the read
- * answers meanwhile.
+ * settles meanwhile.
  */
 export function payoutCheckOn(
   network: PayoutSplitNetwork,
@@ -127,6 +127,7 @@ export function payoutCheckOn(
         answer.then(
           () => slow.delete(payout.data),
           () => {
+            slow.delete(payout.data);
             if (kept.get(payout.data)?.answer === answer) kept.delete(payout.data);
           },
         );

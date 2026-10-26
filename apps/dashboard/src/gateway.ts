@@ -141,23 +141,31 @@ const payoutOf = (
   }
 };
 
-/**
- * What `transaction` would bring if sent now, or `UNKNOWN` where the chain
- * gave no answer within `withinMs`, which the check keeps to.
- */
-const broughtWithin = (
+/** What `transaction` would bring if sent now, or `UNKNOWN` where the chain gave no answer within `withinMs`. */
+const broughtWithin = async (
   check: PayoutCheck | undefined,
   transaction: PayoutTransaction,
   withinMs: number,
-): Promise<bigint | typeof UNKNOWN> =>
-  check === undefined
-    ? Promise.resolve(UNKNOWN)
-    : check.wouldBring(transaction, withinMs).catch((thrown: unknown): typeof UNKNOWN => {
-        console.error(
-          `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
-        );
-        return UNKNOWN;
-      });
+): Promise<bigint | typeof UNKNOWN> => {
+  if (check === undefined) return UNKNOWN;
+  let cut: ReturnType<typeof setTimeout> | undefined;
+  // The page keeps its own time too: Settings must be drawn in time even
+  // where a check does not keep to `withinMs`.
+  const late = new Promise<typeof UNKNOWN>((resolve) => {
+    cut = setTimeout(() => resolve(UNKNOWN), Math.max(0, withinMs));
+  });
+  const read = check.wouldBring(transaction, withinMs).catch((thrown: unknown): typeof UNKNOWN => {
+    console.error(
+      `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
+    );
+    return UNKNOWN;
+  });
+  try {
+    return await Promise.race([read, late]);
+  } finally {
+    clearTimeout(cut);
+  }
+};
 
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
