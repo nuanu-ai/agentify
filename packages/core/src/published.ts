@@ -119,7 +119,7 @@ export function durationInWords(ms: number, unit: Unit): string {
 }
 
 /** Agentify's part of a payout split's total, and the total. */
-interface CommissionRate {
+export interface CommissionRate {
   readonly commissionAllocation: number;
   readonly totalAllocation: number;
 }
@@ -151,3 +151,11 @@ export function percentOf(part: number, total: number): string {
   const fraction = (units % SCALE).toString().padStart(6, "0").replace(/0+$/, "");
   return fraction === "" ? `${whole}%` : `${whole}.${fraction}%`;
 }
+
+/** Agentify's percentage of every sale and the merchant's, such as "0.1%" and "99.9%". */
+export const percentagesOf = (
+  rate: CommissionRate,
+): { readonly commission: string; readonly share: string } => ({
+  commission: percentOf(rate.commissionAllocation, rate.totalAllocation),
+  share: percentOf(rate.totalAllocation - rate.commissionAllocation, rate.totalAllocation),
+});
