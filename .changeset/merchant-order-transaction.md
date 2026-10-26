@@ -9,7 +9,7 @@ goods have reached the buyer, and absent before that and on a payment that is
 `not_paid` or `unresolved`. It is the same transaction the buyer's order status
 names and, once there is one, the receipt. A paid order that was never
 delivered has no receipt, so until now nothing the merchant read named its
-payment.
+payment. The description of `GET /v0/receipts` points to the field.
 
 The field is added at the top of an order read, which a reader keeps closed, so
 `CONTRACT_VERSION` moves from `3` to `4`, and every schema's identity moves to
