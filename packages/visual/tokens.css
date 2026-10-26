@@ -450,6 +450,12 @@ textarea.field-input {
   margin: 0;
 }
 
+/* Whatever follows the buttons' answer, said or not yet, stands as far below
+   the buttons' group as the text above it. */
+.message-panel > .message-answer + * {
+  margin-top: var(--gap-actions);
+}
+
 .message-panel > h1 {
   font-size: var(--text-title);
   letter-spacing: var(--tracking-display);
