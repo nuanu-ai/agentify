@@ -230,6 +230,7 @@ describe("what the checks read from the markup real sites write", () => {
       '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Feed de Produtos" href="https://example.com/loja/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Laden &raquo; Produkte-Feed" href="https://example.com/shop/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Tienda" href="https://example.com/tienda/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Loja" href="https://example.com/cat%C3%A1logo/feed/" />',
     ])
       expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)).toMatchObject({
         status: "pass",
@@ -249,6 +250,8 @@ describe("what the checks read from the markup real sites write", () => {
       // A language alternate of the catalogue is a page, not a feed.
       '<link rel="alternate" hreflang="de" href="https://example.com/de/collections/all">',
       '<link rel="stylesheet" href="/assets/feedback.css">',
+      // An address with a broken escape is read as written.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/%E0%A4%A/feed/" />',
       // A word of the address counts whole, not inside another word.
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/workshop/feed/" />',
       '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/shopping-tips/feed/" />',
