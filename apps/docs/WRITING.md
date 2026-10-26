@@ -187,7 +187,10 @@ its own behaviour is read from the gateway's code, so a page names it rather
 than typing it: `{{quote-ttl}}` is how long a price holds, written "thirty
 seconds"; `{{quote-ttl:short}}` writes it "30 s" for a drawing, and
 `{{quote-ttl:number}}` writes "thirty" where the sentence already names the
-unit. A name written with a capital, as `{{Silent-after}}`, opens a sentence.
+unit. `{{commission}}` is Agentify's share of a payment, written "0.1%", and
+`{{commission:words}}` writes "0.1 percent" for a description a screen reader
+reads aloud. A name written with a capital, as `{{Silent-after}}`, opens a
+sentence.
 `app/build-values.ts` lists the names with the constant each one reads. A
 number the build cannot say in words in its unit, such as a wait of a second
 and a half, stops the build, and so does a name it does not know.

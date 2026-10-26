@@ -19,7 +19,7 @@ import {
   HANDLER_ANSWER_MS,
   inWords,
   LAPSED_KEPT_MS,
-  percentagesOf,
+  percentOf,
   QUOTE_RESPONSE_MS,
   QUOTE_TTL_MS,
   REDELIVERY_MAX_ATTEMPTS,
@@ -37,18 +37,18 @@ import { APP } from "./where.server.js";
 
 /**
  * A value the build writes in: a stretch of time with the unit its sentences
- * count it in, a count, or text written as it stands.
+ * count it in, a count, a part of a total said as a percentage, or text
+ * written as it stands.
  */
 type BuildValue =
   | { readonly ms: number; readonly unit: Unit }
   | { readonly count: number }
+  | { readonly part: number; readonly total: number }
   | { readonly text: string };
 
 const sdk = JSON.parse(
   readFileSync(join(APP, "..", "..", "packages", "sdk", "package.json"), "utf8"),
 ) as { version: string };
-
-const shares = percentagesOf(COMMISSION_RATE);
 
 const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "sdk-version": { text: sdk.version },
@@ -64,17 +64,24 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "waiting-for-payment-at-most": { count: WAITING_FOR_PAYMENT_AT_MOST },
   "silent-after": { ms: SILENT_AFTER_MS, unit: "minute" },
   "lapsed-kept": { ms: LAPSED_KEPT_MS, unit: "day" },
-  commission: { text: shares.commission },
-  "merchant-share": { text: shares.share },
+  commission: {
+    part: COMMISSION_RATE.commissionAllocation,
+    total: COMMISSION_RATE.totalAllocation,
+  },
+  "merchant-share": {
+    part: COMMISSION_RATE.totalAllocation - COMMISSION_RATE.commissionAllocation,
+    total: COMMISSION_RATE.totalAllocation,
+  },
 };
 
 /** How a drawing abbreviates each unit after its digits, as in "30 s". */
 const SHORT_UNIT: Readonly<Record<Unit, string>> = { second: "s", minute: "min", day: "d" };
 
 /**
- * A value as its sentence asks for it: with no form, in words with its unit;
- * `number`, the count of its unit in words alone; `short`, digits and the
- * unit's abbreviation. Only a stretch of time has the two forms.
+ * A value as its sentence asks for it. With no form, a stretch of time is in
+ * words with its unit and a rate is a percentage. A stretch of time also has
+ * `number`, the count of its unit in words alone, and `short`, digits and the
+ * unit's abbreviation; a rate has `words`, as a screen reader reads it.
  */
 function said(value: BuildValue, form: string | undefined): string {
   if ("ms" in value) {
@@ -83,7 +90,13 @@ function said(value: BuildValue, form: string | undefined): string {
     if (form === "short") return `${unitsIn(value.ms, value.unit)} ${SHORT_UNIT[value.unit]}`;
     throw new Error("a stretch of time is written with no form, or as :number or :short");
   }
-  if (form !== undefined) throw new Error("only a stretch of time has a form");
+  if ("part" in value) {
+    const percent = percentOf(value.part, value.total);
+    if (form === undefined) return percent;
+    if (form === "words") return percent.replace(/%$/, " percent");
+    throw new Error("a rate is written with no form, or as :words");
+  }
+  if (form !== undefined) throw new Error("a count or a text is written with no form");
   return "count" in value ? inWords(value.count) : value.text;
 }
 
