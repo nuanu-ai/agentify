@@ -182,6 +182,7 @@ const scannerVerdict = (reading: RobotsReading, path: string): boolean | undefin
 // reader a noticeable part of a second.
 type PageReading = {
   text?: string;
+  markdown?: string;
   signals?: ReturnType<typeof htmlSignals>;
   jsonLd?: JsonLdResult;
   sitemap?: ReturnType<typeof parseSitemap>;
@@ -201,6 +202,9 @@ const signalsOf = (artifact: FetchArtifact) =>
   (pageReadingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
 const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
   (pageReadingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+// A Markdown answer is text, whatever markup its prose or code names.
+const markdownTextOf = (artifact: FetchArtifact): string =>
+  (pageReadingOf(artifact).markdown ??= artifact.body.replace(/\s+/g, " ").trim());
 const sitemapOf = (artifact: FetchArtifact) =>
   (pageReadingOf(artifact).sitemap ??= parseSitemap(artifact.body));
 const NO_SIGNALS = htmlSignals("");
@@ -803,10 +807,10 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     ? markdown.body.trim() !== artifacts.base.body.trim()
     : false;
   const semanticParity = artifacts.base
-    ? comparableTexts(textOf(markdown), textOf(artifacts.base))
+    ? comparableTexts(markdownTextOf(markdown), textOf(artifacts.base))
     : false;
   const correctType = mediaType(type) === "text/markdown";
-  const nonEmpty = textOf(markdown).length > 20;
+  const nonEmpty = markdownTextOf(markdown).length > 20;
   if (
     markdown.status >= 200 &&
     markdown.status < 300 &&
