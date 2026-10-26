@@ -800,15 +800,14 @@ release may read the message, because nothing on your side can tell a broken
 message from one written in a shape added later. Only where the contract
 promises that Agentify adds something without a new version, an event of a new
 kind or a word such as a price question's purpose, does the problem say that a
-newer release reads it. Neither problem, nor any failure your package
-reports about an answer it could not read, repeats what that answer carried:
-the buyer's parameters and the prices stay out of your logs, and only the
-names of the fields and what was expected there are given. A name that could
-itself be data, such as a key among the buyer's parameters, is not written, a
-long one is cut and says so, and an order or a price question is named by its
-identifier only where that identifier is not itself what failed. An answer that is
-not JSON at all, such as a proxy's error page, is quoted, cut short where it is
-long.
+newer release reads it. No failure or problem the package reports repeats the
+contents of an answer it could not read, whatever that answer's status or
+content type: it names the call, the status, the content type and the length,
+and where JSON did not fit, the fields and what was expected there, so the
+buyer's details and the prices stay out of your logs. A name that could itself
+be data, such as a key among the buyer's parameters, is not written, a long one
+is cut and says so, and an order or a price question is named by its identifier
+only where that identifier is not itself what failed.
 
 Agentify therefore speaks a new contract version for a change your package
 cannot read past: a field or a word renamed or removed, a field that comes to
@@ -822,9 +821,9 @@ orders already in your handlers have sent their answers, or after fifty seconds
 with a `batch_abandoned` problem naming those that did not. Only an answer
 shaped as a poll answer, a version beside a list of messages, stops it. Anything
 else that comes back, such as a proxy's error page that happens to name a
-version, is reported as `poll_failed`, mentioning the version it named, and the
-subscription keeps asking. Once stopped, your process stays up and sells
-nothing until you upgrade.
+version, is reported as `poll_failed`, which says another version was named
+without repeating it, and the subscription keeps asking. Once stopped, your
+process stays up and sells nothing until you upgrade.
 
 Every call the package makes names its release to Agentify in its `user-agent`
 header, as `agentify-sdk/` and the version, and Agentify notes it beside the

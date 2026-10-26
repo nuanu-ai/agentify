@@ -186,9 +186,11 @@ address shape never reaches your handler narrowed, and is set aside with an
 `unread` problem naming the fields while the rest of the subscription goes on.
 `orders.list` returns every order it can read, and its `unread` problem names
 the orders it left out and counts those whose status word this release does not
-know. No failure or problem this package reports about an answer it could not
-read repeats what that answer carried: it names the fields and what was
-expected there, so the buyer's details stay out of your logs. A rename, a
+know. No failure or problem the package reports repeats the contents of an
+answer it could not read, whatever that answer's status or content type: it
+names the call, the status, the content type and the length, and where JSON did
+not fit, the fields and what was expected there, so the buyer's details and the
+prices stay out of your logs. A rename, a
 removal, a changed meaning or anything added to what an order delivers moves
 the contract version, and a
 process whose version Agentify does not share stops at the first poll answer,

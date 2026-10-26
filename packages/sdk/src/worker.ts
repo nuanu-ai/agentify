@@ -362,16 +362,17 @@ export const QUIET_POLL_FLOOR_MS = 1_000;
 const HANDLERS_AT_ONCE = 4;
 
 /**
- * The contract version named inside a body that is not a poll answer. It goes
- * into the merchant's sentence and no further: the body was held to no schema,
- * so a proxy's error page with a field of that name must not stop a worker.
+ * Whether a body that is not a poll answer names a contract version other
+ * than this SDK's. It earns a remark and no more: the body was held to no
+ * schema, so a proxy's error page with a field of that name must not stop a
+ * worker, and what it names is not repeated, as nothing of an unread answer is.
  */
-const versionSpokenIn = (body: unknown): string | undefined => {
-  if (typeof body !== "object" || body === null) return undefined;
+const namesAnotherVersion = (body: unknown): boolean => {
+  if (typeof body !== "object" || body === null) return false;
 
   const named = (body as { contract_version?: unknown }).contract_version;
 
-  return typeof named === "string" && named !== "" ? named : undefined;
+  return typeof named === "string" && named !== "" && !speaksContract(named);
 };
 
 /** A newer release's name, for the sentences about what it reads that this one cannot. */
@@ -836,15 +837,13 @@ export const startWorker = (
       if (stopping) break;
 
       if (!answer.ok) {
-        // The version a failed body names is passed on as a remark, never as a
+        // That another version was named is passed on as a remark, never as a
         // verdict: that body was held to no schema, and only an answer of the
         // poll's outer shape decides a mismatch. That shape is read whatever
         // the messages inside it are, so the version decides before they do.
-        const spoken = versionSpokenIn(answer.failure.body);
-        const remark =
-          spoken !== undefined && !speaksContract(spoken)
-            ? ` — what answered names contract version ${spoken} while this SDK speaks ${contractVersion}, which may mean the gateway is of another version`
-            : "";
+        const remark = namesAnotherVersion(answer.failure.body)
+          ? `; what answered names a contract version other than ${contractVersion}, which this SDK speaks, so the gateway may be of another version`
+          : "";
 
         // A refusal that says waiting will not help, such as a revoked key, is
         // still not taken as the end, since one such answer may come from a
