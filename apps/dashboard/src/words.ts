@@ -113,10 +113,10 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
 /**
  * Why the account as a whole is not selling as usual: all sales are paused,
  * something publishing needs is missing, purchases charged before delivery are
- * refused while their integration is not connected, new purchases are refused
- * while twenty wait for payment, or the cards their own code published are off
- * sale while a WooCommerce shop sells; or that what would say so could not be
- * read.
+ * refused while their integration is not connected, or new purchases are
+ * refused while twenty wait for payment; or that what would say so could not
+ * be read. Selling through a WooCommerce shop is not among them: it holds
+ * nothing, and the cards it leaves off sale say so on their own rows.
  */
 export type AccountReason =
   | "paused"
@@ -125,7 +125,6 @@ export type AccountReason =
   | "no_payout_wallet"
   | "out_of_touch"
   | "busy"
-  | "through_shop"
   | "unread";
 
 /**
@@ -138,72 +137,70 @@ export interface Way {
 }
 
 /**
- * One title and one sentence each, and the page that puts it right where one
- * does. The approval says what is known, that there is none, and not that a
- * review is under way, since nothing records one. The merchant cannot grant
- * it, so the banner leads to the test channel's own dashboard, where the first
- * sale is made under another account.
+ * Each reason's title, which heads the banner when it is the only one, its
+ * one line, and the page that puts it right where one does. Each line says
+ * who lifts the hold: the merchant at the way it names, Agentify, or nobody,
+ * since it lifts by itself. The approval says what is known, that there is
+ * none, and not that a review is under way, since nothing records one; the
+ * merchant cannot grant it, so the way leads to the test channel's own
+ * dashboard, where test sales need none.
  */
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
 > = Object.freeze({
   paused: {
-    title: "All sales are paused",
-    says: "No new orders are accepted; the orders you have already accepted play out as usual.",
-    fix: { to: "/cards", words: "Resume on Cards" },
+    title: "Sales are paused",
+    says: "You paused all sales.",
+    fix: { to: "/cards", words: "Resume them on Cards" },
   },
   not_approved: {
     title: "Not approved for live sales yet",
-    says: "Agents cannot buy your cards on the live site until an Agentify administrator approves your merchant. Test sales need no approval; your first test sale happens on the test channel, under an account of its own.",
-    fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Open the test dashboard" },
+    says: "Agents can buy your products once Agentify approves your account.",
+    fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Make a test sale" },
   },
   no_seller_name: {
-    title: "No seller name yet",
-    says: "Your cards are off sale, and every card you publish is refused, until you choose the name buyers see.",
-    fix: { to: "/settings", words: "Choose it in Settings" },
+    title: "Your products are off sale",
+    says: "Publishing and selling need a seller name.",
+    fix: { to: "/settings", words: "Choose one in Settings" },
   },
   no_payout_wallet: {
-    title: "No payout wallet yet",
-    says: "Your cards are off sale, and every card you publish is refused, until you set the wallet your share of every sale is paid out to.",
-    fix: { to: "/settings", words: "Set it in Settings" },
+    title: "Your products are off sale",
+    says: "Publishing and selling need a payout wallet.",
+    fix: { to: "/settings", words: "Set one in Settings" },
   },
   out_of_touch: {
-    title: "Prepaid purchases are refused",
-    says: "Your integration has not connected yet, so new purchases that charge before delivery are refused until it does.",
+    title: "Agents cannot buy products delivered later",
+    says: "Your integration has never connected. These sales start by themselves once it does.",
     fix: null,
   },
   busy: {
-    title: "New purchases are refused",
-    says: "Twenty purchases are waiting for payment, so new ones are refused until one is paid or its price runs out.",
+    title: "Agents cannot buy right now",
+    says: "20 purchases are waiting for payment, the most Agentify allows at once. Sales resume by themselves as they are paid or expire, usually within a minute.",
     fix: null,
   },
-  through_shop: {
-    title: "Selling through your WooCommerce shop",
-    says: "The cards your own code published are off sale until you switch back to it on the WooCommerce page.",
-    fix: { to: "/woocommerce", words: "Open WooCommerce" },
-  },
   unread: {
-    title: "Your account could not be checked",
-    says: "Whether anything holds your sales could not be read just now, so a reason may be missing here; reload the page to check again.",
+    title: "We could not check your account",
+    says: "We don't know right now whether anything holds your sales. Reload the page to check again.",
     fix: null,
   },
 });
+
+/** The heading over several reasons at once where one of them keeps every product off sale. */
+export const OFF_SALE = "Your products are off sale";
 
 /** The banner's title while Agentify's withdrawal of the merchant's admission stands. */
 export const LIVE_SALES_STOPPED = "Live sales are stopped";
 
 /**
- * Its sentence: since when, and the note Agentify wrote for the merchant,
- * quoted as written, or that there is none.
+ * Its line: since when, and the note Agentify wrote for the merchant, quoted
+ * as written, or nothing where there is none.
  */
 export const liveSalesStoppedSince = (when: string, note: string | null): string =>
-  `Agentify stopped your sales on the live site on ${when}, so agents cannot buy your cards there; orders already taken carry on.${
-    note === null ? "" : ` The note left for you: “${note}”`
-  }`;
+  `Agentify stopped your live sales on ${when}.${note === null ? "" : ` Its note: “${note}”`}`;
 
-/** The out-of-touch reason's sentence where the integration did connect once, at `when`. */
+/** The out-of-touch reason's line where the integration did connect once, at `when`. */
 export const notConnectedSince = (when: string): string =>
-  `Your integration has not connected since ${when}, so new purchases that charge before delivery are refused until it connects again.`;
+  `Your integration has not connected since ${when}. These sales resume by themselves once it does.`;
 
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on

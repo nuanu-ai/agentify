@@ -1,0 +1,15 @@
+/* Several reasons under the banner's one heading, each a line of its own
+   with a quiet marker, so they read as a list and not as one paragraph. */
+.reasons {
+  margin: 4px 0 0;
+  padding-left: 1.15em;
+  list-style: disc;
+}
+
+.reasons > li::marker {
+  color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+.reasons > li + li {
+  margin-top: 4px;
+}

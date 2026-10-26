@@ -5,7 +5,6 @@
  * behind, and the banner says instead that it could not check.
  */
 
-import type { Integration } from "@agentify/gateway";
 import type { MerchantFinding, SellingState } from "@nuanu-ai/agentify-contracts";
 import { readinessSeenBy, type Viewer } from "./viewer.js";
 import {
@@ -15,6 +14,7 @@ import {
   liveSalesStoppedSince,
   moment,
   notConnectedSince,
+  OFF_SALE,
   type Way,
 } from "./words.js";
 
@@ -29,7 +29,6 @@ export interface AccountNote {
 /** What was read beside the viewer; absent is not read. */
 export interface AccountRead {
   readonly selling?: SellingState;
-  readonly through?: Integration;
   /** True where a read was asked for and failed. */
   readonly unread?: boolean;
   /**
@@ -62,17 +61,28 @@ const FROM_SELLING: Readonly<Record<SellingState, AccountReason | null>> = {
   paused: "paused",
 };
 
-/** The order the banner says them in, broadest first. */
+/**
+ * The order the banner says them in: what the merchant puts right themselves
+ * first, then what Agentify lifts, then what lifts by itself, and last that
+ * something could not be read.
+ */
 const ORDER: readonly AccountReason[] = [
   "paused",
-  "not_approved",
   "no_seller_name",
   "no_payout_wallet",
   "out_of_touch",
+  "not_approved",
   "busy",
-  "through_shop",
   "unread",
 ];
+
+/** The reasons that each keep every product off sale. */
+const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
+  "paused",
+  "no_seller_name",
+  "no_payout_wallet",
+  "not_approved",
+]);
 
 const noteOf = (reason: AccountReason, read: AccountRead): AccountNote => {
   const since = read.outOfTouch?.since;
@@ -101,9 +111,21 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   );
   const selling = read.selling === undefined ? null : FROM_SELLING[read.selling];
   if (selling !== null) found.add(selling);
-  if (read.through === "woocommerce") found.add("through_shop");
   if (read.outOfTouch !== undefined) found.add("out_of_touch");
   if (read.busy === true) found.add("busy");
   if (read.unread === true) found.add("unread");
   return ORDER.filter((reason) => found.has(reason)).map((reason) => noteOf(reason, read));
+};
+
+/**
+ * One reason is headed by its own title; several by what they come to
+ * together where one of them keeps every product off sale, and otherwise by
+ * the first.
+ */
+export const headingOf = (notes: readonly AccountNote[]): string => {
+  const [first] = notes;
+  if (first === undefined) return "";
+  return notes.length > 1 && notes.some((note) => KEEP_OFF_SALE.has(note.reason))
+    ? OFF_SALE
+    : first.title;
 };

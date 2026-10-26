@@ -2411,12 +2411,9 @@ describe("choosing the name buyers read", () => {
     await running.browser.signIn();
 
     const cards = await running.browser.get("/cards");
-    const text = readable(cards.html);
 
     expect(cards.status).toBe(200);
-    expect(text).toMatch(
-      /every card you publish is refused, until you choose the name buyers see/i,
-    );
+    expect(reasonsIn(cards.html)).toContain("no_seller_name");
     expect(cards.html).toContain('href="/settings"');
     expect(await listedAs(running)).toBeNull();
   });
@@ -3102,11 +3099,8 @@ describe("a merchant who has chosen no name", () => {
 
     for (const path of ALL_SECTIONS) {
       const screen = await running.browser.get(path);
-      const text = readable(screen.html);
       expect(screen.status, path).toBe(200);
-      expect(text, path).toMatch(
-        /every card you publish is refused, until you choose the name buyers see/i,
-      );
+      expect(reasonsIn(screen.html), path).toContain("no_seller_name");
     }
     // The page it points to is the one that fixes it.
     const settings = await running.browser.get("/settings");
@@ -3121,9 +3115,8 @@ describe("a merchant who has chosen no name", () => {
     await running.browser.signIn();
 
     for (const path of ALL_SECTIONS) {
-      const text = readable((await running.browser.get(path)).html);
-      expect(text, path).not.toMatch(
-        /every card you publish is refused, until you choose the name buyers see/i,
+      expect(reasonsIn((await running.browser.get(path)).html), path).not.toContain(
+        "no_seller_name",
       );
     }
   });
@@ -3150,9 +3143,7 @@ describe("a merchant who has chosen no name", () => {
     expect(finding?.code).toBe("no_seller_name");
     expect(finding?.message).toContain("POST /v0/seller-name");
     // The dashboard says the same without sending anybody to a route.
-    expect(text).toMatch(
-      /every card you publish is refused, until you choose the name buyers see/i,
-    );
+    expect(reasonsIn(cards.html)).toContain("no_seller_name");
     expect(cards.html).toContain('href="/settings"');
     expect(text).not.toContain("POST /v0/seller-name");
   });
@@ -3216,7 +3207,6 @@ describe("the cards screen", () => {
     expect(text).toContain("eSIM Europe, 5 GB for 30 days");
     expect(text).toContain("8.00 USD");
     expect(text).toContain("Later, within 4 hours");
-    expect(text).toContain("80.00 USD On the card since");
     expect(text).toContain("On sale");
   });
 
@@ -3693,10 +3683,13 @@ describe("a card held off sale by what its merchant lacks", () => {
     await running.browser.signIn(FRESH.email);
     expect((await running.browser.makeMerchant()).status).toBe(200);
 
-    const settings = readable((await running.browser.get("/settings")).html);
+    const html = (await running.browser.get("/settings")).html;
+    const outsideTheBanner = readable(
+      html.replace(/<section class="account-banner"[\s\S]*?<\/section>/, ""),
+    );
 
-    expect(settings.split("Not approved for live sales yet")).toHaveLength(2);
-    expect(settings).not.toMatch(/has not approved your merchant/);
+    expect(reasonsIn(html)).toContain("not_approved");
+    expect(outsideTheBanner).not.toMatch(/approv/i);
   });
 
   it("on live, for a merchant Agentify has approved, says so and sells the card", async () => {
@@ -3956,7 +3949,7 @@ describe("the banner about the account", () => {
     await browser.post(STOP_SELLING);
 
     for (const path of ALL_SECTIONS) {
-      expect(readable((await browser.get(path)).html), path).toContain("All sales are paused");
+      expect(reasonsIn((await browser.get(path)).html), path).toContain("paused");
     }
   });
 
@@ -3972,7 +3965,7 @@ describe("the banner about the account", () => {
     const keys = await browser.get("/keys");
 
     expect(keys.status).toBe(200);
-    expect(readable(keys.html)).toContain("Your account could not be checked");
+    expect(reasonsIn(keys.html)).toStrictEqual(["unread"]);
   });
 
   it("does not hold a page past its own short deadline where the standing is slow to come", async () => {
@@ -3993,7 +3986,7 @@ describe("the banner about the account", () => {
     const took = Date.now() - begun;
 
     expect(keys.status).toBe(200);
-    expect(readable(keys.html)).toContain("Your account could not be checked");
+    expect(reasonsIn(keys.html)).toStrictEqual(["unread"]);
     expect(took).toBeLessThan(3_500);
   });
 
@@ -4033,7 +4026,7 @@ describe("the banner about the account", () => {
 
     expect(cards.status).toBe(200);
     expect(readable(cards.html)).toContain("A room for the night");
-    expect(readable(cards.html)).not.toContain("could not be checked");
+    expect(reasonsIn(cards.html)).toStrictEqual([]);
   });
 
   it("says over Cards and Orders when the integration last connected while prepaid purchases are refused, and no longer once it polls", async () => {
@@ -4049,7 +4042,7 @@ describe("the banner about the account", () => {
     const after = (await browser.get("/cards")).html;
 
     expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
-    expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
+    expect(readable(cards)).toContain(since);
     expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
     expect(reasonsIn(after)).toStrictEqual([]);
   });

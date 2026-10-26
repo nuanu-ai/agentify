@@ -514,25 +514,28 @@ describe("the state of each card", () => {
   });
 
   it.each([
-    ["the shop published, while the code sells", "api", /your own code/i],
+    ["the shop published, while the code sells", "api", /your code/i],
     ["the code published, while the shop sells", "woocommerce", /WooCommerce/],
-  ] as const)("says beside a card %s why it is off sale, with no switch", (_which, through, says) => {
-    // The banner names no reason for it: only this card's row can say which
-    // of the merchant's cards came from the integration not in use.
-    const list = listOf("open", { selling: "paused", paused: false });
-    const html = served(() => (
-      <CardsScreen
-        view={cardsView(list, "https://agentify.ad", false, { through, offSale: ["itm_0"] })}
-        base=""
-      />
-    ));
-    const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+  ] as const)(
+    "says beside a card %s why it is off sale, with no switch",
+    (_which, through, says) => {
+      // The banner names no reason for it: only this card's row can say which
+      // of the merchant's cards came from the integration not in use.
+      const list = listOf("open", { selling: "paused", paused: false });
+      const html = served(() => (
+        <CardsScreen
+          view={cardsView(list, "https://agentify.ad", false, { through, offSale: ["itm_0"] })}
+          base=""
+        />
+      ));
+      const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
 
-    expect(readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? "")).toMatch(
-      says,
-    );
-    expect(row).not.toContain("<form");
-  });
+      expect(
+        readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? ""),
+      ).toMatch(says);
+      expect(row).not.toContain("<form");
+    },
+  );
 
   it("does not call a card paused by the merchant while the other integration holds it", () => {
     // Resuming it would not put it on sale, so "Paused by you" would send the
@@ -632,12 +635,11 @@ describe("a card's row on a phone", () => {
     if (entry === undefined) throw new Error("the example catalogue has no card");
     const both = MerchantCardListSchema.parse({
       selling: "open",
-      cards: [
-        entry,
-        { ...entry, id: "itm_2", card: { ...entry.card, price_check: "handler" } },
-      ],
+      cards: [entry, { ...entry, id: "itm_2", card: { ...entry.card, price_check: "handler" } }],
     });
-    const html = served(() => <CardsScreen view={cardsView(both, "https://agentify.ad")} base="" />);
+    const html = served(() => (
+      <CardsScreen view={cardsView(both, "https://agentify.ad")} base="" />
+    ));
     const prices = [...html.matchAll(/<div class="cell cell-amount">([\s\S]*?)<\/div>/g)].map(
       ([, price = ""]) => price,
     );

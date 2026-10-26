@@ -39,14 +39,10 @@
   font-size: 0.875rem;
 }
 
-/* The two lines under the cards, one after the other as one note. */
-.notes {
+/* The line under the cards about what their switches do. */
+.note {
   margin: 0 0 32px;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.55;
-}
-
-.notes > p + p {
-  margin-top: 4px;
 }
