@@ -2642,37 +2642,6 @@ describe("the gate", () => {
   });
 });
 
-describe("Products' former address", () => {
-  it.each([
-    ["at the root of its origin", ""],
-    ["under its prefix", "/dashboard"],
-  ])(
-    "sends a link to it on to Products for good, %s, with the search it asked for",
-    async (_where, base) => {
-      const running = await started({ base });
-      await running.browser.signIn();
-
-      const old = await running.browser.get(`${base}/cards?q=room&show=off-sale`);
-      const bare = await running.browser.get(`${base}/cards`);
-
-      expect(old.status).toBe(308);
-      expect(old.to).toBe(`${base}/products?q=room&show=off-sale`);
-      expect(bare.to).toBe(`${base}/products`);
-      expect((await running.browser.get(old.to ?? "")).status).toBe(200);
-    },
-  );
-
-  it("sends a press posted to it on to Products as it was posted", async () => {
-    const running = await started();
-    await running.browser.signIn();
-
-    const pressed = await running.browser.post("/cards?selling=pause");
-
-    expect(pressed.status).toBe(308);
-    expect(pressed.to).toBe("/products?selling=pause");
-  });
-});
-
 describe("the address a press posts to, opened as a page", () => {
   it("leads to the page the press's form lives on, never to one that is not there", async () => {
     // Opened again from history or the address bar, the address would
@@ -5855,10 +5824,8 @@ describe("a page left open while another address signs in", () => {
     await running.browser.signIn(OTHER);
 
     // These answer without a session: the sign-out signs this browser out
-    // whichever page it was pressed on, and Products' former address sends a
-    // press on to Products, which refuses it there.
+    // whichever page it was pressed on.
     const above = new Set([
-      "/cards",
       "/sign-in",
       "/sign-in/open",
       "/sign-in/google",

@@ -11,5 +11,4 @@ export const PAGES_IN_FRONT_OF_THE_GATE: readonly string[] = [
   "/sign-in/google",
   "/sign-in/google/callback",
   "/woocommerce/return",
-  "/cards",
 ];
