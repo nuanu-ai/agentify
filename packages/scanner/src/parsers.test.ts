@@ -227,7 +227,7 @@ describe("what the parsers read from the markup real sites write", () => {
     });
   });
 
-  it("reads the text a visitor sees, without scripts, styles or navigation", () => {
+  it("reads the text a visitor sees, its character references decoded, without scripts, styles, comments or navigation", () => {
     const page = `<!doctype html><html lang="en"><head><title>Wool Runners &amp; More</title>
 <style>.card>.price{color:#212a2f}</style>
 <script>window.dataLayer=window.dataLayer||[];if(a<b&&c>d){track("view")}</script>
@@ -240,7 +240,7 @@ describe("what the parsers read from the markup real sites write", () => {
 <noscript><img src="/pixel.gif" alt=""> Enable JavaScript</noscript>
 <footer>&copy; 2026 Example</footer></body></html>`;
     expect(visibleText(page)).toBe(
-      "Wool Runners More Men's Wool Runners Soft merino wool, $98 USD. Free shipping returns Enable JavaScript &copy; 2026 Example",
+      "Wool Runners & More Men's Wool Runners Soft merino wool, $98 USD. Free shipping & returns Enable JavaScript © 2026 Example",
     );
   });
 
@@ -324,14 +324,16 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
       htmlSignals(`<link rel="alternate" hreflang="<%= l %><link rel="alternate" hreflang="de">`)
         .hreflangs,
     ).toEqual(["<%= l %><link rel="]);
-    expect(htmlSignals(`<link rel="alternate>x" hreflang="en">`).hreflangs).toEqual(["en"]);
+    expect(htmlSignals(`<link rel="alternate" title="a>b" hreflang="en">`).hreflangs).toEqual([
+      "en",
+    ]);
     expect(
       parseJsonLd(`<script type="application/ld+json; x=>" >{"@type":"Product"}</script>`),
     ).toMatchObject({ scriptCount: 1, invalidCount: 0 });
     expect(parseJsonLd(`<script type='application/ld+json;a>[]</script>'`).scriptCount).toBe(0);
   });
 
-  it("reads the last hreflang after an alternate rel, and none that is empty", () => {
+  it("reads the first hreflang of an alternate link, as a browser does, and none that is empty", () => {
     expect(
       htmlSignals('<link rel="alternate" hreflang="" href="https://example.com/">').hreflangs,
     ).toEqual([]);
@@ -339,8 +341,12 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
       htmlSignals('<link rel="alternate" hreflang="en" data-rel="alternate" href="/en">').hreflangs,
     ).toEqual(["en"]);
     expect(
-      htmlSignals('<link rel="alternate" hreflang="en" hreflang="<%= l %>"').hreflangs,
+      htmlSignals('<link rel="alternate" hreflang="en" hreflang="<%= l %>">').hreflangs,
     ).toEqual(["en"]);
+    expect(htmlSignals('<link rel="alternate stylesheet" hreflang="de">').hreflangs).toEqual([
+      "de",
+    ]);
+    expect(htmlSignals('<link rel="nonalternate" hreflang="de">').hreflangs).toEqual([]);
   });
 
   it("reads nothing from a tag or a value the page ends inside, as a page cut at the fetch limit does", () => {
@@ -376,6 +382,35 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
         `<script type="application/ld+json">{"text":"<script type='application/ld+json'>"}</script>`,
       ),
     ).toMatchObject({ scriptCount: 1, invalidCount: 0 });
+  });
+
+  it("reads nothing of a comment, one that holds a > or one closed at once included", () => {
+    expect(visibleText("<p>hi</p><!-- a > b c d --><p>there</p>")).toBe("hi there");
+    expect(visibleText("<p>a</p><!--><p>b</p><!---><p>c</p><!-- x --!><p>d</p>")).toBe("a b c d");
+  });
+
+  it("hides a script that writes a script inside a comment, as older pages do", () => {
+    const page = `<script type="text/javascript"><!--
+document.write('<script src="/js/legacy.js"></script>');
+//--></script><p>Wool Runner</p>`;
+    expect(visibleText(page)).toBe("Wool Runner");
+  });
+
+  it("reads no text from template content, SVG or MathML", () => {
+    const page = `<template id="price-template"><span class="price">{{ price }}</span></template>
+<svg class="icon icon-cart" viewBox="0 0 40 40"><title>Cart</title><style>.cls-1{fill:#121212}</style><path d="M0 0h40v40H0z"/></svg>
+<math><mi>x</mi></math><p>Wool Runner</p>`;
+    expect(visibleText(page)).toBe("Wool Runner");
+    expect(htmlSignals(page).hasTitle).toBe(false);
+  });
+
+  it("sees a heading whose text sits in an inner element, and none that holds only an image", () => {
+    expect(htmlSignals('<h1 class="product__title"><span>Wool Runner</span></h1>').hasH1).toBe(
+      true,
+    );
+    expect(htmlSignals('<h1 class="logo"><img src="/logo.svg" alt="Example"></h1>').hasH1).toBe(
+      false,
+    );
   });
 
   it("reads at most 5,000 addresses from a sitemap, and only its loc elements", () => {
@@ -527,13 +562,10 @@ describe("a page or a sitemap as large as the fetch admits", () => {
     expect(unclosed.ms).toBeLessThan(budgetMs);
   });
 
-  it.each([
-    ["an opening bracket", "<"],
-    ["a comment", "<!--"],
-  ])("reads the visible text around %s that never closes", (_shape, unit) => {
-    const run = fill(unit, pageCap);
-    const text = timed(() => visibleText(`<p>Hello</p>${run}tail`));
-    expect(outline(text.value)).toEqual(outline(`Hello ${run}tail`));
+  it("reads opening brackets that open nothing as text", () => {
+    const run = fill("<", pageCap);
+    const text = timed(() => visibleText(`<p>Hello</p>${run} tail`));
+    expect(outline(text.value)).toEqual(outline(`Hello ${run} tail`));
     expect(text.ms).toBeLessThan(budgetMs);
   });
 
@@ -541,14 +573,45 @@ describe("a page or a sitemap as large as the fetch admits", () => {
     ["a script", "<script"],
     ["a style", "<style"],
     ["a navigation", "<nav"],
-    ["a script whose tag closes each time", "<script>"],
-  ])("reads the visible text around %s that never ends", (_shape, unit) => {
+  ])("reads the visible text around %s tag that runs on for megabytes", (_shape, unit) => {
     const text = timed(() => visibleText(`<p>Hello</p>${fill(unit, pageCap)}<p>tail</p>`));
     expect(text.value).toBe("Hello tail");
     expect(text.ms).toBeLessThan(budgetMs);
   });
 
-  it("reads the JSON-LD around script tags that never declare a type or never end", () => {
+  // A page is cut at the fetch limit wherever it reached, and a store's page
+  // often carries its state in one large inline script. What the cut leaves
+  // open is not text a visitor sees, so it cannot make a thin page look
+  // substantive.
+  it.each([
+    ["a comment", "<!-- ", "a"],
+    ["a comment that holds a >", "<!-- ", "a > b "],
+    ["an inline script", "<script>window.__STATE__ = ", '{"price":"$1"},'],
+    [
+      "a script that writes a script inside a comment",
+      "<script><!-- ",
+      'document.write("<script></script>"); ',
+    ],
+    ["a style", "<style>", ".card>.price{color:#212a2f}"],
+    ["a script whose tag closes each time", "", "<script>"],
+  ])("reads none of %s the page is cut inside", (_shape, opening, unit) => {
+    const page = `<p>Wool Runner, $98</p>${opening}${fill(unit, pageCap)}`;
+    const signals = timed(() => htmlSignals(page));
+    expect(visibleText(page)).toBe("Wool Runner, $98");
+    expect(signals.value.textLength).toBe("Wool Runner, $98".length);
+    expect(signals.ms).toBeLessThan(budgetMs);
+  });
+
+  it("reads a tag of as many distinct attributes as the fetch admits, in time", () => {
+    // A reader that checks each attribute against those before it for a
+    // repeated name, as the standard's parse error asks, takes minutes here.
+    const attributes = Array.from({ length: 250_000 }, (_, index) => ` a${index}`).join("");
+    const signals = timed(() => htmlSignals(`<p${attributes}>Hello</p><h1>Wool Runner</h1>`));
+    expect(signals.value).toMatchObject({ hasH1: true, textLength: "Hello Wool Runner".length });
+    expect(signals.ms).toBeLessThan(budgetMs);
+  });
+
+  it("reads the JSON-LD before a script tag that runs on for megabytes, and none the page ends inside", () => {
     const script = (type: string) =>
       `<script type="application/ld+json">{"@type":"${type}"}</script>`;
     const read = (html: string) => {
@@ -558,7 +621,9 @@ describe("a page or a sitemap as large as the fetch admits", () => {
     const untyped = timed(() =>
       read(`${script("Organization")}${fill("<script ", pageCap)}>${script("Product")}`),
     );
-    expect(untyped.value).toEqual({ scriptCount: 2, types: ["Organization", "Product"] });
+    // The tag that runs on is a script of its own, which holds everything up
+    // to the next </script>, the Product's script tag included.
+    expect(untyped.value).toEqual({ scriptCount: 1, types: ["Organization"] });
     expect(untyped.ms).toBeLessThan(budgetMs);
     const unended = timed(() =>
       read(`${script("Organization")}${fill('<script type="application/ld+json">', pageCap)}`),
