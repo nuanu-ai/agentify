@@ -1080,6 +1080,28 @@ describe("a refusal the gateway put into words", () => {
       }
     },
   );
+
+  it("names a content type only where it has the shape of one, since the header came with the answer", async () => {
+    // A proxy can put anything in a header; a media type with its parameters
+    // left off is named, and anything else is said to be there, not repeated.
+    const agentify = await gatewayServing({
+      deliver_order: () => ({ status: 502, type: "text/html; charset=utf-8", text: "<p>down</p>" }),
+      refuse_order: () => ({ status: 502, type: "for buyer@example.com", text: "<p>down</p>" }),
+    });
+
+    const typed = await agentify.orders.forId("order-1").deliver({
+      access_url: "https://a.example",
+    });
+    const untyped = await agentify.orders.forId("order-1").refuse({
+      code: "out_of_stock",
+      message: "Нет в наличии",
+    });
+
+    expect(typed.ok === false && typed.error.message).toContain("text/html");
+    expect(typed.ok === false && typed.error.message).not.toContain("charset");
+    expect(untyped.ok === false && untyped.error.message).toContain("content type");
+    expect(untyped.ok === false && untyped.error.message).not.toContain("buyer@example.com");
+  });
 });
 
 describe("what is thrown where a route has no failure branch", () => {

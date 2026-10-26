@@ -1676,7 +1676,7 @@ describe("stopping", () => {
     ]);
     expect(problems[0]?.message).toMatch(/nothing was sent/);
     expect(problems[0]?.message).toMatch(/sent again/);
-    expect(problems[0]?.message).not.toMatch(/not known/);
+    expect(problems[0]?.message).not.toMatch(/not known|not called/);
 
     handlerMayFinish.resolve();
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1721,16 +1721,24 @@ describe("stopping", () => {
 
   it("says for each message the wait gave up on what follows for it, by where it stood", async () => {
     // An order still in its handler comes again; an event waiting behind it
-    // never reached its handler and is not sent again; a price question still
-    // being answered counts as a silent price check.
+    // never reached its handler, and one whose handler was running did, and
+    // neither is sent again; a price question still being answered counts as
+    // a silent price check.
     const problems: WorkerProblem[] = [];
     const clock = handClock();
-    const inTheHandlers = { order: false, quote: false };
+    const inTheHandlers = { order: false, quote: false, event: false };
+    const eventOfAnotherOrder = {
+      ...envelopes.event,
+      id: "env-4",
+      payload: { ...event, order_id: "order-2" },
+    };
 
     gateway = await startFakeGateway({
       apiKey: API_KEY,
       routes: {
-        poll_worker: polling(batch(envelopes.order, envelopes.event, envelopes.quote)),
+        poll_worker: polling(
+          batch(envelopes.order, envelopes.event, envelopes.quote, eventOfAnotherOrder),
+        ),
       },
     });
 
@@ -1745,13 +1753,19 @@ describe("stopping", () => {
           inTheHandlers.quote = true;
           return new Promise<never>(() => {});
         },
-        event: () => {},
+        event: () => {
+          inTheHandlers.event = true;
+          return new Promise<never>(() => {});
+        },
         problem: (problem) => problems.push(problem),
       },
       clock,
     );
 
-    await waitUntil(() => inTheHandlers.order && inTheHandlers.quote, "both handlers");
+    await waitUntil(
+      () => inTheHandlers.order && inTheHandlers.quote && inTheHandlers.event,
+      "three handlers",
+    );
     await stopGivingUp(worker, clock);
 
     const about = (subject: string) =>
@@ -1763,13 +1777,17 @@ describe("stopping", () => {
     const eventSaid = forTheOrder.find((message) => message.includes(event.type));
     const orderSaid = forTheOrder.find((message) => !message.includes(event.type));
 
-    expect(problems).toHaveLength(3);
+    expect(problems).toHaveLength(4);
     expect(forTheOrder).toHaveLength(2);
     expect(orderSaid).toMatch(/nothing was sent/);
     expect(orderSaid).toMatch(/sent again/);
+    expect(orderSaid).not.toMatch(/not called/);
     expect(eventSaid).toMatch(/order\.unfulfilled/);
     expect(eventSaid).toMatch(/not called/);
     expect(eventSaid).toMatch(/not sent again/);
+    expect(about("order-2")).toHaveLength(1);
+    expect(about("order-2")[0]).toMatch(/not sent again/);
+    expect(about("order-2")[0]).not.toMatch(/not called/);
     expect(about(question.price_id)).toHaveLength(1);
     expect(about(question.price_id)[0]).toMatch(/no price was sent/);
     expect(about(question.price_id)[0]).toMatch(/silent price check/);
