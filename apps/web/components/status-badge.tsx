@@ -15,7 +15,15 @@ const STATES: Record<BadgeStatus, readonly [label: string, tone: BadgeTone]> = {
   complete: ["Complete", "pass"],
 };
 
-export function StatusBadge({ status }: Readonly<{ status: BadgeStatus }>) {
+/** A state's badge; given a count, it says how many are in that state. */
+export function StatusBadge({ count, status }: Readonly<{ count?: number; status: BadgeStatus }>) {
   const [label, tone] = STATES[status];
-  return <Badge tone={tone}>{label}</Badge>;
+  if (count === undefined) return <Badge tone={tone}>{label}</Badge>;
+  return (
+    <Badge tone={tone}>
+      <span className="badge-count">
+        {label} <b>{count}</b>
+      </span>
+    </Badge>
+  );
 }
