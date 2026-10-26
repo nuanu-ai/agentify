@@ -337,10 +337,10 @@ order:
 
 | Heading | What happened | What you do |
 | --- | --- | --- |
-| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published, stock tracking (Manage stock) turned on, or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
+| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
 | No verdict | Agentify did not answer about it, so whether it was published is not known | import again; it does not double products |
 | Not attempted | the import stopped at the first product with no verdict | import again |
-| Not supported | the connector does not sell its kind, such as a variable or grouped product, or a download that also ships | nothing in the shop's product puts it right |
+| Not supported | the connector does not sell its kind, such as a variable or grouped product, a product with stock tracking, or a download that also ships | nothing in the shop's product puts it right |
 | Published | the product is on Products, folded under the other headings | nothing; whether it sells is on Products |
 
 ## When a product changes in the shop
