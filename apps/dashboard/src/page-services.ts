@@ -585,7 +585,10 @@ const pageToReturnTo = (form: FormData): string | null => {
   } catch {
     return null;
   }
-  return read.origin === HERE ? `${read.pathname}${read.search}` : null;
+  // Taken only as written: a path whose dots or doubled slashes resolve to
+  // something else can resolve to `//`, which a browser reads as another site.
+  const page = `${read.pathname}${read.search}`;
+  return read.origin === HERE && page === back && !page.startsWith("//") ? page : null;
 };
 
 /**
@@ -1699,13 +1702,16 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const shown = shownIn(form);
         const back = pageToReturnTo(form);
         const { payout_wallet: applies, pending } = read.document;
-        if (pending !== null && applies !== null) {
-          return await cancelWaiting(person, cookie, gateway, applies, pending, false, back);
-        }
         // A change that applied before the press is answered on Settings
-        // wherever it was pressed, since what to do next is done there.
+        // wherever it was pressed, since what to do next is done there. It is
+        // asked first: a change waiting now is then one the page never showed,
+        // such as the change back asked for since, which a cancel sent again by
+        // a reload would otherwise take away.
         if (shown !== null && applies === shown.waiting) {
           return await tookEffectBeforePress(person, cookie, shown, "pressed cancel");
+        }
+        if (pending !== null && applies !== null) {
+          return await cancelWaiting(person, cookie, gateway, applies, pending, false, back);
         }
         return backTo(back);
       },
