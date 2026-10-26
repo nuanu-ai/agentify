@@ -30,9 +30,9 @@ dashboard asks for](/#what-the-dashboard-asks-for)).
 
 ### What does it cost?
 
-We take 0.1% of every payment, inside the price on your card rather than on
-top of it, and nothing else: there is no subscription and no monthly fee
-([What we take](/money#what-we-take)).
+We take 0.1% of every payment, and it comes out of the price on your card.
+There is no subscription and no monthly fee ([What we
+take](/money#what-we-take)).
 
 ### Do you write the product cards, or do I?
 
