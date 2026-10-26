@@ -3935,11 +3935,11 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toContain("Agentify holds the goods");
+    expect(text).toMatch(/the buyer's payment failed after you delivered/i);
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
-    expect(text).toContain("until the buyer pays again for this order");
+    expect(text).toContain("only if they pay again for this order");
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
@@ -4223,10 +4223,10 @@ describe("the receipts screen", () => {
     await publish(gateway, roomCard);
     await browser.signIn();
 
-    const text = readable((await browser.get("/receipts")).html);
+    const { html } = await browser.get("/receipts");
 
-    expect(text).toContain("No receipts yet");
-    expect(text).not.toContain("Paid Product");
+    expect(readable(html)).toContain("No receipts yet");
+    expect(html).not.toContain('aria-label="Receipts"');
   });
 
   it("does not add money up", async () => {

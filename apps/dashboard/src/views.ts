@@ -892,7 +892,7 @@ const paidAfterClosureIn = (open: OrderList) => {
 };
 
 const PAID_AFTER_CLOSURE =
-  "The buyer's payment arrived after you closed this order, so they paid and got nothing. Close it again with a note that says what you did.";
+  "The buyer's payment arrived after you closed this order, so they paid and nothing was delivered through Agentify. Close it again with a note that says what you did.";
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
@@ -927,7 +927,7 @@ const whatHappened = (
 ): string =>
   order.status === "unfulfilled"
     ? `${cause === undefined ? "Paid, but not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it, or close fulfillment.`
-    : "The buyer's payment failed after you delivered, so Agentify holds the goods until the buyer pays again for this order. You can wait, or take back what you delivered.";
+    : "The buyer's payment failed after you delivered, so they get the goods only if they pay again for this order. You can wait, or take back what you delivered.";
 
 /**
  * The merchant's share of a payment into their payout split, after

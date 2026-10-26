@@ -481,6 +481,9 @@
  */
 .list-opens {
   position: relative;
+  /* Reached by its address, the row stands clear of the working header,
+     which stays 68px tall over the page on a laptop. */
+  scroll-margin-top: 80px;
 }
 
 .row-more > summary {
@@ -500,7 +503,7 @@
   outline-offset: -2px;
 }
 
-.list-opens > .list-row :is(a, button, details, input) {
+.list-opens > .list-row :is(a, button, details, input, .copy-whole) {
   position: relative;
   z-index: 1;
 }

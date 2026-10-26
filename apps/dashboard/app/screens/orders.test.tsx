@@ -747,22 +747,24 @@ describe("a closure made from the Needs you list", () => {
 });
 
 describe("an order's details", () => {
+  /** The opened part of the row the address names, its `details` tag. */
   const detailsOf = (html: string, id: string) =>
-    new RegExp(`<details[^>]*id="details-${id}"[^>]*>`).exec(html)?.[0] ?? "";
+    new RegExp(`id="details-${id}"[^>]*>[\\s\\S]*?(<details[^>]*>)`).exec(html)?.[1] ?? "";
 
-  it("open from every row on every width, each named by the product it is of", () => {
+  it("open from every row on every width, each named apart from another sale of its product", () => {
     // The order's ID, its payment and the merchant's share are in no column,
-    // so every row opens to them, whatever its state.
+    // so every row opens to them, whatever its state; two sales of one
+    // product read out by name alone could not be told apart.
     const orders = ordersOf([
-      { id: FIRST, status: "unfulfilled" },
-      { id: SAME_HEAD, status: "delivered", item: "number-sms" },
+      { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
+      { id: SAME_HEAD, status: "delivered", at: "2026-10-12T14:12:00Z" },
     ]);
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
     expect(detailsOf(html, FIRST)).toContain("row-more");
     expect(detailsOf(html, SAME_HEAD)).toContain("row-more");
-    expect(html).toContain('aria-label="Details of VPN, one month"');
-    expect(html).toContain('aria-label="Details of A virtual number"');
+    expect(html).toContain('aria-label="Details of VPN, one month, 16:40:00 UTC"');
+    expect(html).toContain('aria-label="Details of VPN, one month, 14:12:00 UTC"');
   });
 
   it("are drawn open where a press made on the order is said", () => {

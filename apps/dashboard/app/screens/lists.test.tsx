@@ -221,7 +221,7 @@ describe("a list where some of the money was real and some was not", () => {
     });
 
     const html = receiptsPage(receipts, ON_LIVE);
-    const rows = html.split('<li class="list-opens').slice(1);
+    const rows = html.split('class="list-opens').slice(1);
 
     expect(readable(html)).toContain("1 receipt here is a test purchase");
     // One row carries the mark and the other does not; a page that marked both
@@ -452,10 +452,10 @@ describe("an order delivered and not paid", () => {
     expect(text).toContain("Waiting on the buyer 1");
     expect(text).toContain("Needs you 0");
     expect(html).not.toContain('aria-label="Orders that need you"');
-    expect(text).toContain("Agentify holds the goods");
+    expect(text).toMatch(/the buyer's payment failed after you delivered/i);
     // Paid again for the same order, never bought again, which would deliver
     // twice.
-    expect(text).toContain("until the buyer pays again for this order");
+    expect(text).toContain("only if they pay again for this order");
   });
 
   it("leaves to the merchant whether to revoke what they delivered or to wait", () => {

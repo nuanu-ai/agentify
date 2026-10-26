@@ -31,9 +31,9 @@ export interface Word {
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
  * the buyer and the original payment is recorded. Goods the merchant delivered
- * against a charge that then failed never reached the buyer: Agentify holds
- * them until the buyer pays again, which the word says, so it does not read
- * as goods given away unpaid.
+ * against a charge that then failed have not reached the buyer, who receives
+ * them only by paying again, which the word says, so it does not read as goods
+ * given away unpaid.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   in_progress: { text: "In progress", tone: "busy" },

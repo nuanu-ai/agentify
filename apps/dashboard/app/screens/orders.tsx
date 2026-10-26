@@ -146,7 +146,7 @@ const CloseFulfillment = ({
       <p className={styles.help}>
         {again
           ? "The buyer paid after you closed this order. Close it again with a note saying what you did; this moves no money."
-          : "Agentify stops delivering this order, and this cannot be undone. It moves no money and changes nothing in your shop."}
+          : "Delivery through Agentify stops for this order, and this cannot be undone. It moves no money and changes nothing in your shop."}
       </p>
       <PostForm action="/orders" className="issue">
         {(pending) => (
@@ -206,9 +206,9 @@ const OrderFacts = ({ row, marked }: Readonly<{ row: Order; marked: boolean }>) 
  * while Agentify looks, and that a closure cancels no payment.
  */
 const UNKNOWN_OPEN =
-  "Nobody knows yet whether the buyer paid, and Agentify keeps checking. You can wait or close fulfillment now; if the payment still arrives, the order comes back to Needs you.";
+  "Nobody knows yet whether the buyer paid, and Agentify keeps checking. You can wait or close fulfillment now; closing does not cancel the payment, and if it arrives the order comes back to Needs you.";
 const UNKNOWN_CLOSED =
-  "Nobody knows yet whether the buyer paid, and Agentify keeps checking. If the payment arrives, the order comes back to Needs you.";
+  "Nobody knows yet whether the buyer paid, and Agentify keeps checking. Your closure does not cancel the payment: if it arrives, the order comes back to Needs you.";
 
 /** An order's opened part: its facts, then what became of a press on it and the closure. */
 const OrderDetails = ({
@@ -279,7 +279,7 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
             <Fragment key={row.id}>
               {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
               <DisclosedRow
-                of={row.product}
+                of={`${row.product}, ${"time" in row.priceSet ? row.priceSet.time : row.priceSet.text}`}
                 id={`details-${row.id}`}
                 open={row.opened || view.pressed?.id === row.id || undefined}
                 cells={
