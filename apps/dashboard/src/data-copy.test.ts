@@ -10,7 +10,7 @@ import { createHash } from "node:crypto";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import type { SendDataCopyRequest } from "@agentify/scanner-contracts/report-identity";
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { copierFor, JOURNAL_ROWS_MAX, memoryPersonRecords } from "./data-copy.js";
 import type { Handover, Message } from "./mail.js";
 import { memoryWooShops } from "./woo-shops.js";
@@ -177,8 +177,8 @@ async function aChannel() {
     mails,
     order,
     other,
-    refuseMail: () => {
-      handover = "refused";
+    handOver: (outcome: Handover) => {
+      handover = outcome;
     },
     copy: (email = OWNER, scanner: Record<string, unknown> = {}) =>
       copy({
@@ -346,9 +346,17 @@ describe("a copy of an address's data", () => {
     // A try whose answer was lost may have been mailed; the provider sends a
     // repeat with the same key and the same message only once.
     const channel = await aChannel();
-
-    await channel.copy();
-    await channel.copy();
+    // The second try a minute after the first, by the wall clock: nothing in
+    // the message may move with it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date("2026-10-26T09:00:00.000Z"));
+      await channel.copy();
+      vi.setSystemTime(new Date("2026-10-26T09:01:00.000Z"));
+      await channel.copy();
+    } finally {
+      vi.useRealTimers();
+    }
 
     const [first, second] = channel.mails;
     expect(first?.idempotencyKey).toBe(`data-copy/${REQUEST}`);
@@ -356,10 +364,13 @@ describe("a copy of an address's data", () => {
     expect(second?.attachments).toEqual(first?.attachments);
   });
 
-  it("is answered unavailable where the mail provider does not take it", async () => {
+  it.each([
+    ["refused", "the mail provider refused it"],
+    ["unknown", "whether the mail provider took it is not known"],
+  ] as const)("is answered %s where %s", async (handover, _where) => {
     const channel = await aChannel();
-    channel.refuseMail();
+    channel.handOver(handover);
 
-    await expect(channel.copy()).resolves.toEqual({ status: "unavailable" });
+    await expect(channel.copy()).resolves.toEqual({ status: handover });
   });
 });

@@ -142,10 +142,15 @@ export const sendDataCopyRequestSchema = z
   })
   .strict();
 
-/** `accepted` is the mail provider taking the message and nothing more. */
+/**
+ * `accepted` is the mail provider taking the message and nothing more;
+ * `refused` is a clear answer that it did not; `unknown` is everything that
+ * may still have gone.
+ */
 export const sendDataCopyResponseSchema = z.union([
   z.object({ status: z.literal("accepted") }).strict(),
-  z.object({ status: z.literal("unavailable") }).strict(),
+  z.object({ status: z.literal("refused") }).strict(),
+  z.object({ status: z.literal("unknown") }).strict(),
 ]);
 
 export const reportIdentityRequestSchema = z.union([

@@ -244,7 +244,8 @@ describe("a dashboard with a mail provider", () => {
     });
 
     const said = await logged(async () => {
-      await expect(postman(MESSAGE)).resolves.toBe("refused");
+      // The request may have been cut after the provider read it.
+      await expect(postman(MESSAGE)).resolves.toBe("unknown");
     });
 
     expect(said).toContain("could not be reached");
@@ -254,7 +255,7 @@ describe("a dashboard with a mail provider", () => {
     expect(said).not.toContain("token=abc");
   });
 
-  it("refuses a provider that stays silent past the fixed deadline", async () => {
+  it("cannot tell what became of a message whose provider stays silent past the fixed deadline", async () => {
     const sending = await provider(200, 250);
     const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
     const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => nativeTimeout(50));
@@ -265,9 +266,31 @@ describe("a dashboard with a mail provider", () => {
     });
 
     try {
-      await expect(postman(MESSAGE)).resolves.toBe("refused");
+      await expect(postman(MESSAGE)).resolves.toBe("unknown");
     } finally {
       deadline.mockRestore();
     }
+  });
+
+  it.each([
+    [400, "refused"],
+    [422, "refused"],
+    [429, "refused"],
+    // A repeat of a key with another message, or one still in flight: the
+    // first one under that key may have been sent.
+    [409, "unknown"],
+    [500, "unknown"],
+    [503, "unknown"],
+  ] as const)("reads an answer of %i as %s", async (status, outcome) => {
+    const sending = await provider(status);
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+
+    await logged(async () => {
+      await expect(postman(MESSAGE)).resolves.toBe(outcome);
+    });
   });
 });

@@ -66,12 +66,12 @@ function copySaid(copy: Copy, privacyEmail: string): string {
   if (copy.status === "too_large")
     return `The copy of the data held for ${copy.sent_to} is too large to send by email, so nothing was sent. Write to ${privacyEmail} for it.`;
   if (copy.status === "deleted")
-    return `The data held for ${copy.sent_to} was deleted while the copy was being made, so there is nothing more to send. We cannot tell whether a copy made before the deletion reached you.`;
+    return `The reports kept under ${copy.sent_to} were deleted while the copy was being made, and this request with them. We cannot tell whether a copy made before the deletion reached you. Asking again sends a copy of what is still held for the address, such as a seller account.`;
   const within = minutes(copy.within_minutes);
   if (copy.outcome === "refused")
     return `The mail service did not take the copy just now. It is tried again automatically for the next ${within}, and goes to ${copy.sent_to} as soon as a try works. ${writeAfter}`;
   if (copy.outcome === "no_answer")
-    return `No answer came back from sending the copy, so we cannot tell whether it reached ${copy.sent_to}. It is tried again automatically for the next ${within}, and at most one copy arrives. ${writeAfter}`;
+    return `No answer came back from sending the copy, so we cannot tell whether it reached ${copy.sent_to}. It is tried again automatically for the next ${within}, and every try carries the same request, which the mail service delivers at most once within a day, so at most one copy arrives. ${writeAfter}`;
   return `A copy for ${copy.sent_to} is already being sent. Tries go on for the next ${within}. ${writeAfter}`;
 }
 

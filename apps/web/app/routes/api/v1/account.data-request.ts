@@ -1,6 +1,10 @@
 import { accountDataRequestSchema } from "@agentify/scanner-contracts";
 import { visitorOf } from "../../../../lib/server/auth";
-import { type CopyAnswer, requestDataCopy } from "../../../../lib/server/data-copy";
+import {
+  answerDataCopyRequest,
+  type CopyAnswer,
+  recordDataCopyRequest,
+} from "../../../../lib/server/data-copy";
 import { errorResponse, hasSameOrigin, pageNotMatched } from "../../../../lib/server/http";
 import { methods } from "../../../../lib/server/methods";
 import { updateAccountState } from "../../../../lib/server/reporting";
@@ -63,15 +67,30 @@ async function requestData(request: Request): Promise<Response> {
   // the address is the person's; an address with no reports may still hold a
   // seller dashboard, so asking for a copy needs no lead.
   if (parsed.data.type === "access") {
-    let answer: CopyAnswer;
+    let recorded: Awaited<ReturnType<typeof recordDataCopyRequest>>;
     try {
-      answer = await requestDataCopy(visitor.email);
+      recorded = await recordDataCopyRequest(visitor.email);
     } catch {
       return errorResponse(
         request,
         503,
         "data_copy_not_recorded",
         "The request could not be recorded, so no copy was sent. Try again shortly.",
+        true,
+        60,
+      );
+    }
+    let answer: CopyAnswer;
+    try {
+      answer = await answerDataCopyRequest(recorded);
+    } catch {
+      // The request is kept and the background retry makes its tries; what
+      // became of this one is not known.
+      return errorResponse(
+        request,
+        503,
+        "data_copy_outcome_unknown",
+        `The request is recorded, but we cannot tell yet whether a copy went to ${visitor.email}. It is tried again automatically, and pressing again sends no second copy.`,
         true,
         60,
       );
