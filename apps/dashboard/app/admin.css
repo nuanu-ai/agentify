@@ -4,15 +4,15 @@
  * workspace's shared parts in packages/visual/workspace.css, which the
  * workspace's layout loads just before this file.
  * Every colour, face, radius and space is a token of packages/visual/tokens.css;
- * nothing here declares one. What is here: the funnel, the setup pips, the
- * merchant's checks, the order's timeline and voices, the health rows, the
- * journal, the lists' columns and a record's head.
+ * nothing here declares one. What is here: the funnel, the merchant's checks
+ * and keys, the actions and the answer to a press, the order's timeline and
+ * voices, the health rows, the journal, the lists' columns and a record's head.
  */
 
 /* --- the funnel ---------------------------------------------------------- */
 
-/* Each step a track as wide as the first step's count; what left before it
-   is the track's empty part, so a drop reads as a gap, not as a number. */
+/* Each step a track as wide as the first step's count, and the share beside
+   it of that same count, so the bar and the number say one thing. */
 .op-funnel {
   display: grid;
   gap: 12px;
@@ -49,14 +49,13 @@
 
 .op-funnel .n {
   color: var(--fg);
-  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .op-funnel .rate {
   color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -79,35 +78,6 @@
     display: flex;
     flex-wrap: wrap;
   }
-}
-
-/* --- setup pips ---------------------------------------------------------- */
-
-/* The four checks publication runs, as four dots in their order: seller
-   name, payout wallet, integration, live approval. A filled dot is a check
-   that holds; a hollow one is missing. The words beside them say which. */
-.pips {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.pips i {
-  width: 9px;
-  height: 9px;
-  border: 2px solid var(--line-strong);
-  border-radius: 50%;
-}
-
-.pips i.on {
-  border-color: var(--pass);
-  background: var(--pass);
-}
-
-.pips-said {
-  margin-left: 8px;
-  color: var(--muted);
-  font-size: var(--text-label);
 }
 
 /* --- the two voices of an order ----------------------------------------- */
@@ -203,7 +173,7 @@
 .op-told > .a {
   grid-area: aside;
   color: var(--muted);
-  font: var(--text-label) / var(--leading-ui) var(--font-mono);
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 
@@ -212,6 +182,22 @@
   max-width: 72ch;
   color: var(--fg-2);
   font-size: var(--text-small);
+}
+
+/* The gateway's own words behind a fact, opened only when wanted. */
+.op-told .op-why {
+  margin-top: var(--space-tight);
+  color: var(--muted);
+}
+
+.op-told .op-why > summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.op-told .op-why > p {
+  margin-top: var(--space-snug);
+  overflow-wrap: anywhere;
 }
 
 .op-told > .meta {
@@ -240,7 +226,7 @@
 /* Short rows inside a panel: a state, a subject, a figure, a moment. */
 .op-mini {
   display: grid;
-  margin: 12px 0 0;
+  margin: var(--space-control) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -264,15 +250,15 @@
 }
 
 .op-mini .fig {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .op-mini .when {
   grid-column: 1 / -1;
   color: var(--muted);
-  font: var(--text-label) / var(--leading-ui) var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--leading-ui);
 }
 
 /* --- checks on a merchant's page ---------------------------------------- */
@@ -331,7 +317,8 @@
   font-weight: 600;
 }
 
-.op-checks .what span {
+/* The check's own lines, and nothing drawn inside them, such as a badge or a form. */
+.op-checks .what > span {
   color: var(--muted);
   font-size: var(--text-small);
   overflow-wrap: anywhere;
@@ -363,39 +350,144 @@
   }
 }
 
-/* The decision, inside the checks panel, under a hairline. */
-.op-decide {
-  display: grid;
-  gap: 14px;
-  margin-top: 4px;
-  padding-top: 18px;
-  border-top: var(--hairline) solid var(--line);
+/* Two columns of panels stacked on a narrow screen stand as far apart as the
+   panels inside one column. */
+@media (max-width: 1100px) {
+  .op-two > div + div > .op-panel:first-child {
+    margin-top: calc(var(--space-section) - var(--space-card));
+  }
 }
 
-.op-decide .check {
+/* --- an action and the answer to its press ------------------------------ */
+
+/* The one line that answers a press. */
+.op-answer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-tight);
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+
+/* The step that asks for a fresh sign-in, then the form: a box, the box to
+   tick, a fact to read before pressing, the button, and the line that answers
+   the press, closer under the button than the button is under the rest. */
+.op-decide {
+  display: grid;
+  gap: var(--space-block);
+  margin-top: var(--space-block);
+}
+
+.op-form > :not(:first-child) {
+  margin-top: var(--space-block);
+}
+
+.op-form > .row {
+  margin-top: var(--gap-actions);
+}
+
+.op-form-title {
+  font-weight: 600;
+}
+
+.op-form .check {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  font-size: 0.9375rem;
-  font-weight: 500;
+  color: var(--fg);
+  font-size: var(--text-small);
+  font-weight: 400;
+  line-height: var(--leading-text);
 }
 
-.op-decide .check input {
+.op-form .check input {
+  flex: none;
   width: 18px;
   height: 18px;
-  margin-top: 3px;
+  margin: calc((var(--leading-text) * 1em - 18px) / 2) 0 0;
   accent-color: var(--accent);
 }
 
-.op-decide textarea {
+.op-form textarea {
   min-height: 88px;
 }
 
-.op-decide .row {
+.op-form .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-control);
+}
+
+/* An action that cannot be undone: the colour of a failure on the page's
+   own ground, never the accent a helping action wears. */
+.button.op-destructive {
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+.button.op-destructive:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fail) 8%, var(--surface));
+}
+
+/* A fact to read before pressing, such as a wallet change waiting. */
+.op-beside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-control);
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+
+.op-answer > svg {
+  flex: none;
+  margin-top: calc((var(--leading-text) * 1em - 16px) / 2);
+  fill: none;
+  stroke: var(--pass);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.op-answer-refused {
+  color: var(--fail);
+}
+
+/* The dashed mark in the line, the sentence running on after it. */
+.op-answer-unknown {
+  display: block;
+}
+
+.op-answer-unknown > .badge {
+  margin-right: var(--space-tight);
+}
+
+/* An action opened in place under the thing it acts on. */
+.op-in-place > summary.op-act {
+  width: fit-content;
+}
+
+.op-act.op-act-destructive,
+.op-act.op-act-destructive:hover {
+  color: var(--fail);
+}
+
+/* A record's actions, one under the other; the one that cannot be undone
+   last, under a rule of its own. */
+.op-acts {
+  display: grid;
+  gap: var(--gap-actions);
+}
+
+.op-act-slot {
+  display: grid;
+  gap: var(--gap-caption);
+}
+
+.op-act-apart {
+  padding-top: var(--gap-actions);
+  border-top: var(--hairline) solid var(--line);
 }
 
 /* --- the timeline -------------------------------------------------------- */
@@ -504,7 +596,7 @@
 /* --- the lists' columns, named here rather than inline ------------------- */
 
 .op-cols-merchants {
-  --columns: minmax(13rem, 1.6fr) 9.5rem 10.5rem 6rem 8rem 9.5rem;
+  --columns: minmax(13rem, 1.6fr) 10rem 9rem 6rem 8.5rem 9.5rem;
 }
 
 /*
@@ -548,6 +640,13 @@
 /* An address longer than its column breaks rather than running into What. */
 .op-cols-journal .cell-ident {
   overflow-wrap: anywhere;
+}
+
+/* An identifier inside a sentence of the journal stays in its line, short,
+   and opens to its whole value under the line. */
+.list-row .cell-title details.ident-whole,
+.list-row .cell-title details.ident-whole > summary {
+  display: inline;
 }
 
 .op-cols-ops {
@@ -609,37 +708,48 @@
   font-size: var(--text-small);
 }
 
-/* Three facts side by side, a caption over a figure. */
+/* Facts side by side, a caption over each; as many to a row as fit, so a
+   moment or an address never runs into the fact beside it. */
 .op-kv {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: var(--space-block);
   margin: 0;
 }
 
 .op-kv > div {
   display: grid;
-  gap: 4px;
+  align-content: start;
+  gap: var(--space-snug);
+  min-width: 0;
 }
 
 .op-kv dt {
   color: var(--muted);
-  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--text-small);
+  line-height: var(--leading-ui);
 }
 
 .op-kv dd {
   margin: 0;
-  font: 500 1.125rem / var(--leading-heading) var(--font-mono);
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
-/* The sparkline: a line over a soft area, the newest point marked. */
+.op-kv dd small {
+  color: var(--muted);
+  font-size: var(--text-small);
+  font-weight: 400;
+}
+
+/* The sparkline: a line over a soft area, the newest point marked, never
+   taller than it is on a wide screen when its panel takes a whole row. */
 .op-spark {
   display: block;
   width: 100%;
+  max-width: 26rem;
   height: auto;
-  margin-top: 16px;
+  margin-top: var(--space-block);
 }
 
 .op-spark .area {
@@ -697,28 +807,15 @@
 
 /* --- the step that asks for a fresh sign-in ------------------------------ */
 
-/* Stands where the action is, in the notice colours: nothing has happened
-   yet, and the operator is asked for one thing. */
-.op-stepup {
-  display: grid;
-  gap: 10px;
-  padding: 16px 18px;
-  border-radius: var(--radius-control);
-  background: var(--notice-bg);
-  color: var(--notice-ink);
-  font-size: var(--text-small);
+/* The dashboard's callout, where the action is: nothing has happened yet,
+   and the operator is asked for one thing. Its buttons stand as far under the
+   words as the callout's edge is under them. */
+.callout.op-stepup {
+  margin: 0;
 }
 
-.op-stepup b {
-  color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
-  font-size: 0.9375rem;
-  font-weight: 600;
-}
-
-.op-stepup .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.op-stepup > .message-actions {
+  margin-top: var(--space-block);
 }
 
 /* An action inside a line of facts: quiet until it is wanted. */
@@ -740,54 +837,221 @@
   color: var(--accent-hover);
 }
 
+/* A merchant's keys: the name and the identifier with the key's state at the
+   end of the line, when it was used under them, and the way to disable it. */
 .op-keys {
   display: grid;
-  gap: 8px;
-  margin: 6px 0 0;
+  margin: var(--space-block) 0 0;
   padding: 0;
   list-style: none;
 }
 
-.op-keys li {
+.op-key {
+  padding: var(--space-control) 0;
+  border-top: var(--hairline) solid var(--line-soft);
+}
+
+.op-key-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 14px;
-  padding: 10px 12px;
-  border: var(--hairline) solid var(--line-soft);
-  border-radius: 10px;
-  background: var(--surface-sunken);
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-control);
+}
+
+.op-key-head > .badge {
+  margin-left: auto;
+}
+
+.op-key-name {
+  font-weight: 600;
+}
+
+.op-key-when {
+  margin-top: var(--space-snug);
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.op-key > .op-in-place,
+.op-key > .op-answer {
+  margin-top: var(--space-tight);
+}
+
+/* A disabled key reads as one: its name in the muted ink. */
+.op-key-off .op-key-name {
+  color: var(--muted);
+}
+
+/* A sentence of a panel's own, in the panel's small text. */
+.op-text {
   color: var(--fg-2);
   font-size: var(--text-small);
 }
 
-.op-keys .k {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
-}
-
-/* A record's actions, opened under its row. */
-.op-row-acts {
-  grid-column: 1 / -1;
-  display: grid;
-  gap: 12px;
-  margin-top: 4px;
-  padding: 14px 16px;
-  border-radius: var(--radius-control);
-  background: var(--surface-sunken);
-}
-
-.op-row-acts .row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.op-text + .op-text {
+  margin-top: var(--space-tight);
 }
 
 .op-cols-accounts {
-  --columns: minmax(13rem, 1.4fr) minmax(9rem, 1fr) 7rem 7rem 9rem 6.5rem;
+  --columns: minmax(14rem, 1.6fr) minmax(9rem, 1fr) 8rem 10rem;
+}
+
+/* An operator's mark under their address, beside "You". */
+.op-cols-accounts .cell-title .op-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-snug) var(--space-control);
 }
 
 .op-cols-splits {
   --columns: minmax(9rem, 1fr) 11rem 11rem 8rem 9rem;
+}
+
+/* --- a page that says one thing ----------------------------------------- */
+
+/* The site's one message panel, inside the workspace's frame: under the bar
+   at a section's distance, as wide as it stands on a page of its own. */
+.app-content > .message-panel {
+  max-width: 40rem;
+  margin-top: var(--space-section);
+}
+
+/* --- the figures' pages --------------------------------------------------- */
+
+/* Four figures in a row where the page holds them, two by two where it does
+   not, so none is left alone on a row of its own. */
+.op-tiles {
+  container-type: inline-size;
+}
+
+.op-tiles > .op-figures {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@container (max-width: 52rem) {
+  .op-tiles > .op-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 24rem) {
+  .op-tiles > .op-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A part of the page whose read failed: the dashed mark, then what it is. */
+.op-unread {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-tight);
+  margin-top: var(--space-control);
+}
+
+.op-empty {
+  margin-top: var(--space-section);
+}
+
+/* When a page was read, and the way to the record of it over time. */
+.op-asof-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-control) var(--space-block);
+  margin-top: var(--space-card);
+}
+
+.op-asof-row > .op-asof {
+  margin: 0;
+}
+
+.op-period {
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-control) var(--space-block);
+}
+
+.op-period > .op-asof {
+  margin: 0;
+}
+
+/* A transaction's data, whole and ready to select at a press, with no script. */
+.op-data {
+  width: 100%;
+  min-height: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+.op-pays {
+  display: grid;
+  gap: var(--space-snug);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  overflow-wrap: anywhere;
+}
+
+/* A payout's facts start level with their names, the data's box among them. */
+.op-payout .more-facts > div {
+  align-items: start;
+}
+
+/* On a phone a payout's facts stand under their names, not beside them. */
+@media (max-width: 560px) {
+  .op-payout .more-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-snug);
+  }
+}
+
+/* --- set after the rules they refine ------------------------------------ */
+
+/* First in its panel, a short list starts where the panel's body does. */
+.op-panel-body > .op-mini:first-child {
+  margin-top: 0;
+}
+
+.op-panel-body > .op-mini:first-child > li:first-child {
+  padding-top: 0;
+}
+
+.op-mini .op-id {
+  font-family: var(--font-mono);
+}
+
+.op-form > .row + .op-answer {
+  margin-top: var(--gap-caption);
+}
+
+/* The lookup's own page: its box, what it reads clear under it, and the
+   bar's box, which would be a second one, put away. */
+.op-find .search {
+  max-width: 30rem;
+}
+
+.op-find + .op-find-note {
+  margin-top: var(--space-block);
+}
+
+.app-frame:has(.op-find) .op-lookup {
+  display: none;
+}
+
+.list-empty > p + p {
+  margin-top: var(--space-tight);
+}
+
+/* On a phone a decision takes its check's whole width, the mark's column included. */
+@media (max-width: 560px) {
+  .op-checks .what > .op-decide {
+    grid-column: 1 / -1;
+  }
 }

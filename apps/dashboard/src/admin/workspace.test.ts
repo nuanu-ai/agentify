@@ -160,6 +160,36 @@ describe("who the operator's workspace answers", () => {
     }
   });
 
+  it("answers a page whose read failed inside the workspace's frame, offering the same address again", async () => {
+    // Thrown out to the seller dashboard's own error page, an operator would
+    // lose their place and be offered a way into a merchant's screens.
+    const gone = async (): Promise<never> => {
+      throw new Error("the database does not answer");
+    };
+    const workspace = await serve({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: { ...real.merchants, list: gone, merchant: gone },
+      }),
+      identity: (real) => ({ ...real, operatorAccounts: gone }) as Identity,
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+
+    for (const path of [
+      "/admin/merchants?show=waiting",
+      `/admin/merchants/${workspace.harnessed.merchant.id}`,
+      "/admin/accounts?show=operators",
+    ]) {
+      const read = await operator.get(path);
+      expect(read.status, path).toBe(500);
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
+      expect(read.html, path).toContain('aria-label="Admin sections"');
+      expect(read.html, path).toContain(`href="${ADMIN_BASE}${path.replace("&", "&amp;")}"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/cards"`);
+    }
+  });
+
   it("answers no such page to an operator whose flag was taken away, from the next request", async () => {
     const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
@@ -263,6 +293,30 @@ describe("signing in again before an action", () => {
   });
 });
 
+describe("a page read with a sign-in older than fifteen minutes", () => {
+  it("asks for a fresh sign-in where its actions are, before the operator types a reason", async () => {
+    // A reason typed into a form the press then refuses for the sign-in's age
+    // is a reason written twice.
+    const workspace = await serve({ channel: "live" });
+    const { harnessed, identity } = workspace;
+    await identity.make(MERCHANT, harnessed.merchant.id);
+    const account = (await identity.byEmail(MERCHANT))?.id ?? "acc_missing";
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const pages = [`/admin/merchants/${harnessed.merchant.id}`, `/admin/accounts/${account}`];
+    for (const path of pages) {
+      expect((await operator.get(path)).html, path).toContain('name="reason"');
+    }
+
+    workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
+
+    for (const path of pages) {
+      const read = await operator.get(path);
+      expect(read.html, path).toContain(`action="${ADMIN_BASE}/admin/sign-in-again"`);
+      expect(read.html, path).not.toContain('name="reason"');
+    }
+  });
+});
+
 describe("a press made with a sign-in older than fifteen minutes", () => {
   /**
    * Everything a press could change: the gateway's rows, the journal's rows
@@ -307,7 +361,11 @@ describe("a press made with a sign-in older than fifteen minutes", () => {
       // A page with no press of its own is not handed a post at all; the
       // address that is no page is answered as none.
       const refused = pressed.status === 404 || pressed.status === 405;
-      const steppedUp = readable(pressed.html).includes("Confirm it is you");
+      // The step-up's own press sends the link and draws what became of it.
+      const steppedUp =
+        path === "/admin/sign-in-again"
+          ? pressed.status === 202
+          : pressed.html.includes(`action="${ADMIN_BASE}/admin/sign-in-again"`);
       expect(refused || steppedUp, `POST ${path} answered ${pressed.status}`).toBe(true);
     }
     expect(await stateOf(workspace)).toBe(before);

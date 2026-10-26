@@ -439,11 +439,15 @@ export function OrderScreen({ view }: Readonly<{ view: OrderPageView }>) {
   );
 }
 
+/**
+ * The lookup's own page: its box, holding what was pasted, and what it
+ * answered: nothing asked yet, what it reads, or that it could not search.
+ */
 export function FindScreen({ view }: Readonly<{ view: FindView }>) {
   const { base } = useChrome();
   return (
     <>
-      <form className="list-tools" method="get" action={`${base}/admin/find`}>
+      <form className="list-tools op-find" method="get" action={`${base}/admin/find`}>
         <search className="search">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -453,7 +457,7 @@ export function FindScreen({ view }: Readonly<{ view: FindView }>) {
             type="search"
             name="q"
             aria-label="Find a record"
-            placeholder="Paste an order ID, merchant ID, transaction, address, email or site"
+            placeholder="ID, email, site, address or transaction"
             defaultValue={view.q}
           />
         </search>
@@ -462,23 +466,26 @@ export function FindScreen({ view }: Readonly<{ view: FindView }>) {
         </button>
       </form>
       {view.kind === "asked" ? (
-        <p className="note">{FIND_READS}</p>
+        <p className="note op-find-note">{FIND_READS}</p>
       ) : view.kind === "unread" ? (
         <ListEmpty>
           <p>
-            <CouldNotBeRead /> The records could not be searched.{" "}
-            <a href={`${base}/admin/find?${new URLSearchParams({ q: view.q })}`}>Search again</a>.
+            <CouldNotBeRead />{" "}
+            <a href={`${base}/admin/find?${new URLSearchParams({ q: view.q })}`}>Search again</a>
           </p>
         </ListEmpty>
       ) : view.kind === "none" ? (
         <ListEmpty>
           <p>{view.said}</p>
+          {view.merchants === null ? null : (
+            <p>
+              <Link to={view.merchants}>Search merchants for “{view.q}”</Link>
+            </p>
+          )}
           {view.unknown === null ? null : (
             <p>
               {view.unknown}{" "}
-              <Link to="/admin/orders?segment=payment-unknown">
-                Payments whose outcome is unknown
-              </Link>
+              <Link to="/admin/orders?segment=payment-unknown">See unknown payments</Link>
             </p>
           )}
         </ListEmpty>

@@ -23,13 +23,17 @@ import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
 import { type StepUpView, stepUpViewOf } from "./step-up.js";
 import { NO_REASON, NOT_CONFIRMED } from "./words.js";
 
-/** How a press was answered, as the action form draws it. */
+/**
+ * How a press was answered, as the action form draws it. A press that changed
+ * nothing hands back the reason as it was typed, so the form is drawn again
+ * holding it; `field` names the box a refusal is about.
+ */
 export type ActionAnswer =
   | Readonly<{ kind: "done" }>
   | Readonly<{ kind: "unchanged" }>
-  | Readonly<{ kind: "refused"; said: string }>
+  | Readonly<{ kind: "refused"; said: string; typed: string | null; field?: "reason" }>
   | Readonly<{ kind: "unknown" }>
-  | Readonly<{ kind: "step-up"; stepUp: StepUpView }>;
+  | Readonly<{ kind: "step-up"; stepUp: StepUpView; typed: string | null }>;
 
 /**
  * What an area's change answers: what the store settled its row as, or a
@@ -83,14 +87,19 @@ export async function pressed(
     subject: press.subject,
     reason: null,
   };
-  const refuse = async (code: string, said: string, reason: string | null = null) => {
+  const typed = press.needsReason ? once(press.form, REASON_FIELD) : null;
+  const refuse = async (
+    code: string,
+    said: string,
+    { reason = null, field }: Readonly<{ reason?: string | null; field?: "reason" }> = {},
+  ): Promise<ActionAnswer> => {
     try {
       await pressing.refused({ ...base, reason, outcome: { kind: "refused", code } });
     } catch {
       // The press changed nothing either way; the refusal stands without its row.
       console.error("[dashboard] a refused administrative press could not be journaled");
     }
-    return { kind: "refused", said } as const;
+    return { kind: "refused", said, typed, ...(field === undefined ? {} : { field }) };
   };
 
   if (!signedInFreshly(press.operator, at)) {
@@ -98,6 +107,7 @@ export async function pressed(
     return {
       kind: "step-up",
       stepUp: stepUpViewOf(press.operator, press.destination, pressing.googleEnabled),
+      typed,
     };
   }
   if (once(press.form, CONFIRM_FIELD) !== CONFIRMED) {
@@ -105,17 +115,18 @@ export async function pressed(
   }
   let reason: string | null = null;
   if (press.needsReason) {
-    const typed = (once(press.form, REASON_FIELD) ?? "").trim();
-    if (typed === "") return await refuse("no_reason", NO_REASON);
-    const checked = JournalReasonSchema.safeParse(typed);
+    const trimmed = (typed ?? "").trim();
+    if (trimmed === "") return await refuse("no_reason", NO_REASON, { field: "reason" });
+    const checked = JournalReasonSchema.safeParse(trimmed);
     if (!checked.success) {
       const said = checked.error.issues[0]?.message ?? "that reason cannot be kept";
       return await refuse(
         "reason_refused",
         `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. Nothing was changed.`,
+        { field: "reason" },
       );
     }
-    reason = typed;
+    reason = trimmed;
   }
 
   let answered: ChangeAnswer;
@@ -125,6 +136,6 @@ export async function pressed(
     console.error("[dashboard] an administrative press was not answered");
     return { kind: "unknown" };
   }
-  if (answered.kind === "refused") return await refuse(answered.code, answered.said, reason);
+  if (answered.kind === "refused") return await refuse(answered.code, answered.said, { reason });
   return answered;
 }

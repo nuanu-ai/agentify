@@ -118,10 +118,16 @@ interface ImportedCard {
   readonly card: CardInput;
 }
 
+/**
+ * A product the connector leaves in the shop. `fixable` where a change to the
+ * product or to the shop's settings lets it import; otherwise the connector
+ * does not sell its kind at all, and the merchant has nothing to change.
+ */
 export interface SkippedProduct {
   readonly id: string;
   readonly title: string;
   readonly why: string;
+  readonly fixable: boolean;
 }
 
 export interface ImportedCatalogue {
@@ -190,18 +196,23 @@ export const cardsFromTheShop = (
     // Names a product nobody could map the way the merchant knows it.
     const named = title === "" ? (product.sku === "" ? id : product.sku) : title;
     const refused = (why: string): void => {
-      skipped.push({ id, title: named, why });
+      skipped.push({ id, title: named, why, fixable: true });
+    };
+    const unsupported = (why: string): void => {
+      skipped.push({ id, title: named, why, fixable: false });
     };
 
+    // The protected checks name a setting of the shop, or a shop that did not
+    // answer them, which importing again puts right.
     if (product.qualification_problem !== null) {
       refused(product.qualification_problem);
       continue;
     }
 
     if (product.type !== "simple") {
-      refused(
-        `The shop sells this as a "${product.type}" product. A card is one thing at one price,` +
-          " so a product with variations or parts has no single card to become.",
+      unsupported(
+        `${product.type.charAt(0).toUpperCase()}${product.type.slice(1)} products aren't supported:` +
+          " an agent buys one thing at one price.",
       );
       continue;
     }
@@ -223,18 +234,20 @@ export const cardsFromTheShop = (
     // once.
     const parcel = !product.virtual && !product.downloadable;
     if (!parcel && !product.virtual) {
-      refused(
-        "The shop sells this as a download that also ships. This connector sells a virtual" +
-          " download or a physical product that ships, not both at once.",
+      unsupported(
+        "This product is a download that also ships. The connector sells a virtual download or a" +
+          " physical product, not both at once.",
       );
       continue;
     }
     if (!parcel && !product.downloadable) {
-      refused("This product has no WooCommerce download to deliver to the agent.");
+      unsupported("This virtual product has no download, so there is nothing to deliver.");
       continue;
     }
     if (product.manage_stock) {
-      refused("Products whose stock is counted are not supported by this connector.");
+      unsupported(
+        "Stock tracking is on for this product, and the connector imports only products without it.",
+      );
       continue;
     }
     if (!parcel && (product.download_limit !== -1 || product.download_expiry !== -1)) {
@@ -303,7 +316,7 @@ export const cardsFromTheShop = (
     }
     const merchantItemId = merchantItemIdFor(shopOrigin, id);
     if (!IdentifierSchema.safeParse(merchantItemId).success) {
-      refused("The shop's own identifier for this product is not one a card can be keyed by.");
+      unsupported("The shop's own identifier for this product is not one a card can be keyed by.");
       continue;
     }
 

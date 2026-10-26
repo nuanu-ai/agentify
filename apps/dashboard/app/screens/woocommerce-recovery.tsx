@@ -1,39 +1,49 @@
 import { Button, Field } from "@agentify/ui";
+import type { ReactNode } from "react";
 import type { WooRecoveryView } from "../../src/woo-recovery-pages.js";
+import { shopNameOf } from "../../src/woo-views.js";
 import { ORDER_WORDS } from "../../src/words.js";
 import { Ident } from "../components/copy.js";
 import { Fact, Facts } from "../components/list.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
-import { TestMark } from "./orders.js";
 import styles from "./woocommerce-recovery.module.css";
 
-/** What the merchant can do here, in a line; the rules are in the documentation. */
-const INTRO: Readonly<Record<WooRecoveryView["mode"], string | null>> = {
-  link: "Your shop may hold this order without Agentify knowing it. Find the order whose Transaction ID is this order ID and enter its ID.",
-  retry:
-    "The shop order and its download are saved. Retry sends the same download; no new shop order is made.",
-  delivered: null,
-  unavailable: null,
-};
+/** Where the parcel's rules are written; this page recovers downloads only. */
+const PARCELS = "/docs/woocommerce#parcels";
 
-/** A shop is read by its name, which is its host, rather than by an address with a scheme. */
-const hostOf = (origin: string): string => {
-  try {
-    return new URL(origin).host;
-  } catch {
-    return origin;
-  }
-};
+/** What the merchant does here, in a line, under what the last press came to. */
+const introOf = (view: WooRecoveryView): string | null =>
+  view.mode === "link"
+    ? "Your shop may have created this order without telling Agentify. Find the WooCommerce order whose Transaction ID is the order ID below, and enter its number."
+    : view.mode === "retry"
+      ? `Shop order ${view.wooOrderId} is linked. Retry sends its download again without making a new order.`
+      : null;
+
+/** A link styled as the panel's one action, under the facts. */
+function Next({
+  to,
+  primary = false,
+  children,
+}: Readonly<{ to: string; primary?: boolean; children: ReactNode }>) {
+  return (
+    <div className={styles.next}>
+      <a className={primary ? "button button-primary" : "button button-secondary"} href={to}>
+        {children}
+      </a>
+    </div>
+  );
+}
 
 export function WooRecoveryScreen({
   view,
   base,
 }: Readonly<{ view: WooRecoveryView; base: string }>) {
   const link = view.mode === "link";
-  const acts = link || view.mode === "retry";
-  const intro = INTRO[view.mode];
-  const ordersPage = <a href={`${base}/orders`}>Orders</a>;
+  const acts = (link || view.mode === "retry") && !view.unknown;
+  const intro = introOf(view);
+  const here = `${base}/integrations/woocommerce/recover/${encodeURIComponent(view.orderId)}`;
+  const onOrders = `${base}/orders?${new URLSearchParams({ q: view.orderId })}`;
   return (
     <>
       <div className="settings-grid">
@@ -44,27 +54,39 @@ export function WooRecoveryScreen({
           <div className="lede">
             <div>
               <h2 id="recovery-sale">{view.product}</h2>
-              {intro === null ? null : <p>{intro}</p>}
+              {view.mode === "delivered" ? (
+                <p className={styles.result}>
+                  <Word word={ORDER_WORDS.delivered} /> Nothing more to do here.
+                </p>
+              ) : null}
+              {view.message === null ? null : (
+                <p className="problem" role="alert">
+                  {view.message}
+                </p>
+              )}
+              {view.unavailable === null ? null : <p>{view.unavailable.why}</p>}
+              {intro === null || view.unknown ? null : <p>{intro}</p>}
             </div>
           </div>
           <Facts>
             <Fact label="Order ID">
               <Ident value={view.orderId} what="order ID" whole />
             </Fact>
-            <Fact label="Price">
-              {view.amount}
-              <TestMark test={view.test} />
-            </Fact>
-            <Fact label="Shop">{hostOf(view.shopOrigin)}</Fact>
+            <Fact label="Price">{view.amount}</Fact>
+            <Fact label="Shop">{shopNameOf(view.shopOrigin)}</Fact>
             {view.wooOrderId === "" || link ? null : (
               <Fact label="Shop order ID">{view.wooOrderId}</Fact>
             )}
-            {view.mode === "delivered" ? (
-              <Fact label="State">
-                <Word word={ORDER_WORDS.delivered} />
-              </Fact>
-            ) : null}
           </Facts>
+          {view.unknown ? (
+            <Next to={here} primary>
+              Reload
+            </Next>
+          ) : view.unavailable?.instead === "close" ? (
+            <Next to={onOrders}>Close fulfillment</Next>
+          ) : view.unavailable?.instead === "parcel" ? (
+            <Next to={PARCELS}>Parcel rules</Next>
+          ) : null}
           {acts ? (
             <PostForm
               document
@@ -75,14 +97,14 @@ export function WooRecoveryScreen({
                 <>
                   {link ? (
                     <Field
-                      label="WooCommerce order ID"
+                      label="Shop order ID"
                       name="woo_order_id"
                       type="text"
                       inputMode="numeric"
                       pattern="[1-9][0-9]*"
                       defaultValue={view.wooOrderId}
                       autoComplete="off"
-                      hint="The number in the order's address in your shop, which can differ from its order number."
+                      hint="Open the order in WooCommerce and use the number after id= or post= in the address bar."
                       {...(view.typedRefusal === null ? {} : { error: view.typedRefusal })}
                       required
                     />
@@ -92,21 +114,11 @@ export function WooRecoveryScreen({
               )}
             </PostForm>
           ) : null}
-          <div className="panel-messages">
-            {view.message === null ? null : (
-              <p className="problem" role="alert">
-                {view.message}
-              </p>
-            )}
-            {acts ? (
-              <p className="quiet">
-                {link
-                  ? "If your shop holds no such order, nothing can be delivered from here; close fulfillment on "
-                  : "To stop delivery instead, close fulfillment on "}
-                {ordersPage}.
-              </p>
-            ) : null}
-          </div>
+          {acts && link ? (
+            <p className={`quiet ${styles.instead}`}>
+              No such order in your shop? <a href={onOrders}>Close fulfillment</a>
+            </p>
+          ) : null}
         </section>
       </div>
       <p className="quiet">

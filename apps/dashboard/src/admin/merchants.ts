@@ -13,7 +13,6 @@ import type { SurfaceMode } from "@agentify/core";
 import { grantLiveApproval, withdrawLiveApproval } from "@agentify/gateway";
 import type { JournalPress, JournalRow } from "@agentify/gateway/journal";
 import {
-  askedOn,
   MERCHANT_SEGMENTS,
   type MerchantList,
   type MerchantRecord,
@@ -30,12 +29,12 @@ import { askedIn, cutOfPage, type Listing, PAGE_ROWS } from "../listing.js";
 import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
 import { FULFILLMENT_WORDS, ORDER_WORDS, type Word } from "../words.js";
-import type { Operator } from "./access.js";
+import { type Operator, signedInFreshly } from "./access.js";
 import { type JournalLineView, journalLinesOf } from "./accounts.js";
 import { type ActionAnswer, type ChangeAnswer, pressed } from "./action.js";
 import {
   CHECK_WORDS,
-  checksSaid,
+  missingSaid,
   NO_SELLER_NAME,
   REFUSED_WORDS,
   SEGMENT_WORDS,
@@ -43,11 +42,18 @@ import {
   WITHDRAWN_WORD,
 } from "./merchants-words.js";
 import type { AdminParts } from "./parts.js";
+import { type StepUpView, stepUpViewOf } from "./step-up.js";
 import { LOST_ANSWER } from "./words.js";
 
 const PATH = "/admin/merchants";
 const SEGMENT_KEYS = ["all", ...MERCHANT_SEGMENTS] as const;
 const HISTORY_ROWS = 20;
+/**
+ * How recently a key was used for disabling it to be said to stop sales: a
+ * merchant's worker polls with its key without pause, and a key's use is
+ * written down at most every five minutes.
+ */
+const IN_USE_WITHIN_MS = 60 * 60_000;
 /** An identifier as the product makes them; anything else names no merchant or key. */
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -60,16 +66,20 @@ const dollars = (amount: string): string => `${amount} USD`;
 export interface MerchantListRow {
   readonly id: string;
   readonly href: string;
-  /** The seller name, or the words that say there is none. */
+  /**
+   * The seller name, or where none is chosen what the merchant is known by:
+   * its site, its account's address, or its identifier.
+   */
   readonly name: string;
-  readonly named: boolean;
-  /** The shop's site, or where there is none, the account's address; null where neither is known. */
+  /**
+   * Under the name: the site, or the account's address where there is no
+   * site; under a merchant with no seller name, that it has none.
+   */
   readonly under: string | null;
   readonly integration: string;
   readonly connection: Readonly<{ said: string; at: MomentView | null }>;
-  /** One per check the channel asks, in order; true where it holds. */
-  readonly dots: readonly boolean[];
-  readonly dotsSaid: string;
+  /** What the channel's checks find missing before it sells, in words. */
+  readonly missing: string;
   readonly cards: string;
   /** Settled sales over thirty days, or null for none. */
   readonly sales: string | null;
@@ -115,27 +125,21 @@ const connectionOf = (
 
 const stateOf = (segment: MerchantSegment): Word => STATE_WORDS[segment];
 
-function listRowOf(
-  row: MerchantRow,
-  mode: SurfaceMode,
-  accounts: readonly NamedAccount[] | null,
-): MerchantListRow {
-  const asked = askedOn(mode);
+function listRowOf(row: MerchantRow, accounts: readonly NamedAccount[] | null): MerchantListRow {
   const settled = row.thirtyDays.settled;
+  const site = row.sellerSite === null ? null : new URL(row.sellerSite).host;
+  const known = site ?? accounts?.[0]?.email ?? null;
   return {
     id: row.id,
     href: `${PATH}/${row.id}`,
-    name: row.serviceName ?? NO_SELLER_NAME,
-    named: row.serviceName !== null,
-    under: row.sellerSite ?? accounts?.[0]?.email ?? null,
+    name: row.serviceName ?? known ?? row.id,
+    under: row.serviceName === null ? NO_SELLER_NAME : known,
     integration: integrationWords(row),
     connection: connectionOf(row),
-    dots: asked.map((finding) => !row.missing.includes(finding)),
-    dotsSaid: checksSaid(
+    missing: missingSaid(
       row.missing.flatMap((finding) =>
         finding === "no_seller_site" ? [] : [CHECK_WORDS[finding]],
       ),
-      asked.length,
     ),
     cards: `${row.cards.onSale} of ${row.cards.published}`,
     sales: settled.count === 0 ? null : dollars(settled.amount),
@@ -156,6 +160,8 @@ export interface KeyLine {
   readonly issued: MomentView;
   readonly lastUsed: MomentView | null;
   readonly disabled: MomentView | null;
+  /** Used within the last hour, so a worker may be running on it. */
+  readonly inUse: boolean;
   /** How this key's own Disable was last answered on this page, or null. */
   readonly answer: ActionAnswer | null;
 }
@@ -202,10 +208,15 @@ export interface MerchantView {
   /** How the page's sentences call this merchant. */
   readonly called: string;
   readonly site: string | null;
-  /** The accounts' addresses, or null where they could not be read. */
-  readonly emails: readonly string[] | null;
+  /** The accounts behind it, or null where they could not be read. */
+  readonly accounts: readonly Readonly<{ id: string; email: string }>[] | null;
   readonly since: MomentView;
   readonly state: Word;
+  /**
+   * Where the page was read with a sign-in too old to act, the step that asks
+   * for a fresh one, drawn in place of every action before anything is typed.
+   */
+  readonly stepUp: StepUpView | null;
   readonly ready: Readonly<{
     sellerName: string | null;
     wallet: Readonly<{
@@ -252,7 +263,12 @@ export interface MerchantView {
    * The journal's rows about this merchant, newest first, drawn as the Journal
    * draws them, or null where they could not be read.
    */
-  readonly history: Readonly<{ lines: readonly JournalLineView[]; cut: string | null }> | null;
+  readonly history: Readonly<{
+    lines: readonly JournalLineView[];
+    /** How many rows the journal holds about the merchant in all. */
+    total: number;
+    cut: string | null;
+  }> | null;
   /** True where which orders worth a look have an uncertain shop order could not be read. */
   readonly shopOrdersUnread: boolean;
 }
@@ -306,7 +322,7 @@ export function merchantsViewOf({
   page,
 }: MerchantsRead): MerchantsView {
   const listed = askedIn(query, SEGMENT_KEYS);
-  const rows = found.rows.map((row) => listRowOf(row, mode, accounts?.get(row.id) ?? null));
+  const rows = found.rows.map((row) => listRowOf(row, accounts?.get(row.id) ?? null));
   const linkTo = (show: string, q: string, at = 1) => {
     const fields = new URLSearchParams();
     if (q !== "") fields.set("q", q);
@@ -336,7 +352,8 @@ export function merchantsViewOf({
       show: listed.show === "all" ? null : listed.show,
       cutAt: listed.cut ? listed.q.length : null,
     },
-    segments: SEGMENT_KEYS.map((key) => ({
+    // Off the live channel nobody waits for admission, so it is no segment.
+    segments: SEGMENT_KEYS.filter((key) => mode === "live" || key !== "waiting").map((key) => ({
       key,
       label: SEGMENT_WORDS[key],
       count: found.segments[key],
@@ -365,8 +382,8 @@ export interface MerchantRead {
   readonly actors: ReadonlyMap<string, string> | null;
   readonly readAt: number;
   readonly record: MerchantRecord;
-  /** The accounts' addresses, or null where they could not be read. */
-  readonly emails: readonly string[] | null;
+  /** The accounts behind it, or null where they could not be read. */
+  readonly accounts: readonly Readonly<{ id: string; email: string }>[] | null;
   readonly shop: ShopFacts | null | "unread";
   /**
    * The journal's newest rows about the merchant, as read and as the Journal
@@ -383,6 +400,8 @@ export interface MerchantRead {
   /** The orders worth a look whose shop order may or may not exist, or "unread" where that could not be read. */
   readonly uncertainIds: readonly string[] | "unread";
   readonly answers: Answers;
+  /** Where the sign-in is too old to act, the step that asks for a fresh one. */
+  readonly stepUp: StepUpView | null;
 }
 
 /** A merchant's page, from what was read. */
@@ -392,12 +411,13 @@ export function merchantViewOf({
   actors,
   readAt,
   record,
-  emails,
+  accounts,
   shop,
   history,
   withdrawal,
   uncertainIds,
   answers,
+  stepUp,
 }: MerchantRead): MerchantView {
   const called = record.serviceName ?? "this merchant";
   const keyLabels = new Map(record.keys.rows.map((key) => [key.id, key.label]));
@@ -413,9 +433,10 @@ export function merchantViewOf({
     name: record.serviceName ?? NO_SELLER_NAME,
     called,
     site: record.sellerSite,
-    emails,
+    accounts,
     since: at(record.createdAt),
     state: stands !== null ? WITHDRAWN_WORD : stateOf(record.segment),
+    stepUp,
     ready: {
       sellerName: record.serviceName,
       wallet:
@@ -445,6 +466,7 @@ export function merchantViewOf({
           issued: at(key.createdAt),
           lastUsed: key.lastUsedAt === null ? null : at(key.lastUsedAt),
           disabled: key.disabledAt === null ? null : at(key.disabledAt),
+          inUse: key.lastUsedAt !== null && readAt - key.lastUsedAt < IN_USE_WITHIN_MS,
           answer: answers.key?.id === key.id ? answers.key.answer : null,
         })),
         keysCut:
@@ -499,14 +521,14 @@ export function merchantViewOf({
       cut:
         record.cards.rows.length === record.cards.total
           ? null
-          : `${record.cards.rows.length} of ${record.cards.total} cards shown`,
+          : `${record.cards.rows.length} of ${record.cards.total} products shown`,
     },
     worth: {
       rows: record.worthALook.rows.map((order) => ({
         id: order.id,
         href: `/admin/orders/${order.id}`,
         state: ORDER_WORDS[order.status],
-        title: order.title ?? "A card no longer published",
+        title: order.title ?? "A product no longer published",
         price: dollars(order.price.amount),
         when: at(order.createdAt),
         shopUncertain: uncertainIds !== "unread" && uncertainIds.includes(order.id),
@@ -522,10 +544,11 @@ export function merchantViewOf({
         ? null
         : {
             lines: history.lines,
+            total: history.total,
             cut:
               history.rows.length === history.total
                 ? null
-                : `The newest ${history.rows.length} of ${history.total} rows; the Journal holds every one.`,
+                : `The newest ${history.rows.length} of ${history.total} rows.`,
           },
   };
 }
@@ -658,6 +681,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     record: MerchantRecord,
     answers: Answers,
     readAt: number,
+    stepUp: StepUpView | null,
   ): Promise<MerchantView> {
     const accounts = await accountsOf([record.id]);
     const own = accounts?.get(record.id) ?? (accounts === null ? null : []);
@@ -696,16 +720,18 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       actors: await actorsOf(history, withdrawal),
       readAt,
       record,
-      emails: own === null ? null : own.map((account) => account.email),
+      accounts: own === null ? null : own.map(({ id, email }) => ({ id, email })),
       shop,
       history,
       withdrawal,
       uncertainIds,
       answers,
+      stepUp,
     });
   }
 
   async function page(
+    operator: Operator,
     merchantId: string,
     answers: Answers = {},
     status = 200,
@@ -714,7 +740,10 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
     const { at: readAt, surface } = asked();
     const record = await reader.merchants.merchant(merchantId, { at: readAt, surface });
     if (record === null) return missing;
-    return { kind: "view", view: await pageOf(record, answers, readAt), status };
+    const stepUp = signedInFreshly(operator, new Date(readAt))
+      ? null
+      : stepUpViewOf(operator, `admin/merchants/${record.id}`, parts.pressing.googleEnabled);
+    return { kind: "view", view: await pageOf(record, answers, readAt, stepUp), status };
   }
 
   /**
@@ -723,6 +752,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
    * committed by then, and a broken page would read as a press to repeat.
    */
   async function pageAfter(
+    operator: Operator,
     merchantId: string,
     action: "admit" | "withdraw" | "disable_key",
     answer: ActionAnswer,
@@ -730,7 +760,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
   ): Promise<Outcome<MerchantView | PressedUnread>> {
     const status = answer.kind === "refused" ? 409 : 200;
     try {
-      return await page(merchantId, answers, status);
+      return await page(operator, merchantId, answers, status);
     } catch {
       console.error("[dashboard] a merchant's page could not be read again after a press");
       return {
@@ -818,7 +848,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
       };
     },
 
-    one: (_operator, merchantId) => page(merchantId),
+    one: (operator, merchantId) => page(operator, merchantId),
 
     async press(operator, merchantId, intent, form) {
       if (!IDENTIFIER.test(merchantId)) return missing;
@@ -836,7 +866,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           parts.pressing,
           admission(merchantId, intent.kind === "admit"),
         );
-        return await pageAfter(merchantId, intent.kind, answer, {
+        return await pageAfter(operator, merchantId, intent.kind, answer, {
           [intent.kind]: answer,
         });
       }
@@ -865,7 +895,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
             return { kind: disabled.changed ? "done" : "unchanged" };
           },
         );
-        return await pageAfter(merchantId, "disable_key", answer, {
+        return await pageAfter(operator, merchantId, "disable_key", answer, {
           key: { id: keyId, answer },
         });
       }

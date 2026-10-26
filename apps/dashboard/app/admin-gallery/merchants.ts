@@ -22,28 +22,32 @@ import {
   merchantViewOf,
 } from "../../src/admin/merchants.js";
 import { stepUpViewOf } from "../../src/admin/step-up.js";
+import { NO_REASON } from "../../src/admin/words.js";
 import type { NamedAccount } from "../../src/dashboard-entry.js";
 import type { Trouble } from "../answer.js";
 import { line } from "./accounts.js";
+import {
+  AT,
+  DAY,
+  GIFT_CARDS as GIFTS,
+  MERCHANTS_IN_ALL,
+  SALES,
+  TOURS as WALKS,
+} from "./examples.js";
 import type { AdminGalleryState } from "./state.js";
 
-const DAY = 86_400_000;
-/** The moment every state is read at: 23 Oct 2026, 14:05 UTC. */
-const NOW = Date.UTC(2026, 9, 23, 14, 5);
-const FROM = Date.UTC(2026, 8, 24);
+const NOW = AT;
+const FROM = Date.parse(`${SALES.days[0]?.day ?? ""}T00:00:00Z`);
 
 const OPERATOR_ID = "acc_operator_one";
 const ANOTHER_OPERATOR = "acc_operator_two";
 
-const GIFT_CARDS = "mch_4c1da2e95b7f0c3816de42a90e5b71c3";
-const TOURS = "mch_91b0e7d4c25a8f6013e9b2d7c4a50f18";
-/** The working key Example Tours's CI uses. */
+const GIFT_CARDS = GIFTS.id;
+const TOURS = WALKS.id;
+/** The working key City Walking Tours's CI uses. */
 const CI_KEY_ID = "mk_9f2c41d8e07b";
 const WOOL = "mch_2e7f4a91c0d8b35e6a14f9c2d07b8e55";
 const UNNAMED = "mch_7d03b8e1f4a92c6d5e0b13a8f7c29d40";
-
-const WALLET = "0xC41e079Ab233f8D51c0e9A6b47F2d388c1a05E7d";
-const SPLIT = "0x91fa3c27E0b84d65aF19c03e7B2d58c4A6e10c3d";
 
 const empty = (): MerchantRow["thirtyDays"] => ({
   from: FROM,
@@ -61,16 +65,24 @@ const selling = (perDay: (day: number) => string): MerchantRecord["thirtyDays"][
     };
   });
 
-const TOURS_DAYS = selling((day) => (day % 7 === 3 ? "0.00" : `${8 + ((day * 5) % 23)}.00`));
+/** The tours' days of sales, which are the channel's on Overview and Money. */
+const TOURS_DAYS: MerchantRecord["thirtyDays"]["days"] = SALES.days.map((day) => ({
+  day: day.day,
+  amount: (Number(day.delivered.amount) + Number(day.noDelivery.amount)).toFixed(2),
+  count: day.delivered.count + day.noDelivery.count,
+}));
 
-/** The tours' thirty days, the same on the list and on its page: the sales the sparkline draws. */
+/**
+ * The tours' thirty days, the same on the list and on its page: the sales the
+ * sparkline draws, and the orders made, which count the ones not paid too.
+ */
 const TOURS_THIRTY = {
   from: FROM,
-  orders: 56,
   settled: {
     amount: TOURS_DAYS.reduce((sum, day) => sum + Number(day.amount), 0).toFixed(2),
     count: TOURS_DAYS.reduce((n, day) => n + day.count, 0),
   },
+  orders: TOURS_DAYS.reduce((n, day) => n + day.count, 0) + 7,
 };
 
 const ROWS: readonly MerchantRow[] = [
@@ -148,10 +160,10 @@ const listed = (rows: readonly MerchantRow[], total = rows.length): MerchantList
   rows,
   total,
   segments: {
-    all: 23,
+    all: MERCHANTS_IN_ALL,
     waiting: 1,
     selling: 1,
-    setting_up: 21,
+    setting_up: MERCHANTS_IN_ALL - 2,
     paused: 0,
   },
 });
@@ -171,7 +183,7 @@ const listState = (
         mode: read.mode ?? "live",
         readAt: NOW,
         query: new URLSearchParams(query),
-        found: read.found ?? listed(ROWS, 23),
+        found: read.found ?? listed(ROWS, MERCHANTS_IN_ALL),
         accounts: read.unread === true ? null : ACCOUNTS,
         accountsUnread: read.unread === true,
         accountsCut: false,
@@ -203,8 +215,8 @@ const ADMITTED: MerchantRecord = {
   lastContactAt: NOW - 20_000,
   lastSaleAt: NOW - 34 * 60_000,
   selling: "open",
-  liveApprovedAt: Date.UTC(2026, 8, 14, 10, 2),
-  wallet: { address: WALLET, split: SPLIT, pending: null },
+  liveApprovedAt: WALKS.admittedAt,
+  wallet: { address: WALKS.wallet, split: WALKS.split, pending: null },
   keys: {
     rows: [
       {
@@ -302,10 +314,10 @@ const HISTORY: readonly JournalRow[] = [
     Date.UTC(2026, 9, 20, 16, 21),
     "disable_key",
     { kind: "key", id: "mk_3b7e05a1c94d", merchantId: TOURS },
-    "shared outside the team, by the merchant's own report",
+    "Shared outside the team, by the merchant's own report.",
     { kind: "done" },
   ),
-  row(1, Date.UTC(2026, 8, 14, 10, 2), "admit", { kind: "merchant", id: TOURS }, null, {
+  row(1, WALKS.admittedAt, "admit", { kind: "merchant", id: TOURS }, null, {
     kind: "done",
   }),
 ];
@@ -347,12 +359,15 @@ const pageRead = (record: MerchantRecord, more: Partial<MerchantRead> = {}): Mer
   actors: ADDRESSES,
   readAt: NOW,
   record,
-  emails: ["owner@tours.example"],
+  accounts: [
+    { id: `acc_of_${record.id}`, email: record.id === GIFT_CARDS ? GIFTS.owner : WALKS.owner },
+  ],
   shop: null,
   history: historyOf(HISTORY, 34),
   withdrawal: null,
   uncertainIds: [],
   answers: {},
+  stepUp: null,
   ...more,
 });
 
@@ -391,18 +406,18 @@ const pageState = (
 const WAITING: MerchantRecord = {
   ...ADMITTED,
   id: GIFT_CARDS,
-  serviceName: "Gift Card Shop",
-  sellerSite: "https://giftcards.example",
-  createdAt: Date.UTC(2026, 9, 19),
+  serviceName: GIFTS.name,
+  sellerSite: GIFTS.site,
+  createdAt: GIFTS.createdAt,
   segment: "waiting",
   missing: ["no_operator_approval"],
   lastContactAt: NOW - 3 * 60_000,
   lastSaleAt: null,
   liveApprovedAt: null,
   wallet: {
-    address: WALLET,
-    split: SPLIT,
-    pending: { landsAt: Date.UTC(2026, 9, 25, 9, 0) },
+    address: GIFTS.wallet,
+    split: GIFTS.split,
+    pending: { landsAt: GIFTS.walletLandsAt },
   },
   keys: {
     rows: [
@@ -472,6 +487,7 @@ const STEP_UP: ActionAnswer = {
     `admin/merchants/${GIFT_CARDS}`,
     true,
   ),
+  typed: null,
 };
 
 const chromeIn = (mode: SurfaceMode) => ({
@@ -493,7 +509,8 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     {
       id: "dashboard-admin-merchants-test",
       when: "An operator opens Merchants on the test channel.",
-      cause: "The test channel asks no admission, so each row draws two dots and nobody waits.",
+      cause:
+        "The test channel asks no admission, so nobody waits, and a merchant with a name and a wallet sells.",
     },
     {
       mode: "test",
@@ -501,7 +518,12 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
         rows: ROWS.map((one) => ({
           ...one,
           missing: one.missing.filter((finding) => finding !== "no_operator_approval"),
-          segment: one.segment === "waiting" ? "selling" : one.segment,
+          ...(one.segment === "waiting"
+            ? {
+                segment: "selling" as const,
+                cards: { onSale: one.cards.published, published: one.cards.published },
+              }
+            : {}),
         })),
         total: 4,
         segments: { all: 4, waiting: 0, selling: 2, setting_up: 2, paused: 0 },
@@ -541,8 +563,9 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       "The read failed, so the page says it could not be read rather than drawing no merchants.",
     path: "/admin/merchants",
     mode: "live",
+    loaded: { "routes/admin/merchants": null },
     failed: {
-      "routes/gate": new ErrorResponseImpl(500, "", {
+      "routes/admin/merchants": new ErrorResponseImpl(500, "", {
         kind: "unread",
         chrome: chromeIn("live"),
         again: "/admin/merchants",
@@ -565,7 +588,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       cause:
         "Admission is the one check missing; its four cards are published and off sale, and a wallet change waits.",
     },
-    pageRead(WAITING, { emails: ["owner@giftcards.example"], history: historyOf([], 0) }),
+    pageRead(WAITING, { history: historyOf([], 0) }),
   ),
   pageState(
     {
@@ -582,13 +605,24 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
   ),
   pageState(
     {
+      id: "dashboard-admin-merchant-stale-sign-in",
+      when: "An operator whose sign-in is two hours old opens a merchant that waits for admission.",
+      cause:
+        "Actions ask for a sign-in from the last fifteen minutes, so each action asks for one in its place before anything is typed.",
+    },
+    pageRead(WAITING, {
+      history: historyOf([], 0),
+      stepUp: STEP_UP.kind === "step-up" ? STEP_UP.stepUp : null,
+    }),
+  ),
+  pageState(
+    {
       id: "dashboard-admin-merchant-step-up",
       when: "An operator whose sign-in is two hours old presses Admit.",
       cause:
-        "Actions ask for a sign-in from the last fifteen minutes, so nothing changed and the step asking for one stands in the form's place.",
+        "Actions ask for a sign-in from the last fifteen minutes, so nothing changed; the step asking for one stands over the form, which keeps what was typed.",
     },
     pageRead(WAITING, {
-      emails: ["owner@giftcards.example"],
       history: historyOf([], 0),
       ...answered({ admit: STEP_UP }),
     }),
@@ -603,10 +637,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(ADMITTED, {
       ...answered({
-        withdraw: {
-          kind: "refused",
-          said: "Write the reason; it is kept in the journal. Nothing was changed.",
-        },
+        withdraw: { kind: "refused", said: NO_REASON, typed: "", field: "reason" },
       }),
     }),
     "withdraw",
@@ -619,7 +650,6 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
         "The change may or may not have been made, so the form says the outcome is unknown and that pressing again is safe.",
     },
     pageRead(WAITING, {
-      emails: ["owner@giftcards.example"],
       history: historyOf([], 0),
       ...answered({ admit: { kind: "unknown" } }),
     }),
@@ -700,7 +730,7 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
     },
     pageRead(
       { ...ADMITTED, integration: "woocommerce" },
-      { emails: null, history: null, shop: "unread", uncertainIds: "unread" },
+      { accounts: null, history: null, shop: "unread", uncertainIds: "unread" },
     ),
   ),
 ];

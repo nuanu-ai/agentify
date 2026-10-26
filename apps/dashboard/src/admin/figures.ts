@@ -43,8 +43,9 @@ import {
 import type { SectionCounts } from "@agentify/ui/workspace-view";
 import type { AdReportCounts, LinkPurpose } from "../dashboard-entry.js";
 import { LINK_CHANNEL_LIMIT } from "../identity.js";
-import { clockOf, dayOf, dayOfUtc, moment } from "../moments.js";
+import { dayOf, dayOfUtc } from "../moments.js";
 import type { Outcome } from "../page-services.js";
+import { type MomentView, momentView } from "../views.js";
 import { ORDER_WORDS } from "../words.js";
 import { type Operator, signedInFreshly } from "./access.js";
 import { type JournalLineView, journalLinesOf } from "./accounts.js";
@@ -90,8 +91,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 const two = (n: number) => String(n).padStart(2, "0");
 
-/** A moment as every page of the dashboard writes it: "2026-10-23 22:05:00 UTC+8". */
-const momentWritten = (at: number): string => moment(new Date(at).toISOString());
+/** A moment as the page prints it, through the one component that prints moments. */
+const momentOf = (at: number): MomentView => momentView(new Date(at).toISOString());
 
 /** A day as every page of the dashboard writes it: "23 October 2026". */
 const dayWritten = (at: number): string => dayOf(new Date(at).toISOString());
@@ -146,8 +147,12 @@ export interface Badge {
   readonly word: string;
 }
 
-/** A sentence of plain text and links, in order. */
-export type Said = readonly (string | Readonly<{ text: string; href: string; elsewhere?: true }>)[];
+/** A sentence of plain text, links and moments, in order. */
+export type Said = readonly (
+  | string
+  | Readonly<{ text: string; href: string; elsewhere?: true }>
+  | Readonly<{ at: MomentView }>
+)[];
 
 export interface TileView {
   readonly label: string;
@@ -182,10 +187,8 @@ export interface ChartView {
 interface FunnelStepView {
   readonly label: string;
   readonly merchants: number;
-  /** Of the first step, for the bar's length. */
-  readonly width: string;
-  /** Of the step before, empty for the first. */
-  readonly rate: string;
+  /** Of every merchant, the first step: the bar's length and the share written beside it. */
+  readonly share: string;
 }
 
 interface NeedsYouItem {
@@ -194,7 +197,23 @@ interface NeedsYouItem {
   readonly site: string | null;
   readonly why: string;
   readonly owner: string | null;
-  readonly created: string;
+  readonly created: MomentView;
+}
+
+/**
+ * A registry of splits the gateway would refuse to start on: the process
+ * running now sells on, and the next start or release stops the channel.
+ */
+export interface StartRefusedView {
+  /** The gateway's own sentence, its networks named as a wallet names them. */
+  readonly why: string;
+  /** The split the sentence begins with, where it names one. */
+  readonly split: string | null;
+  /**
+   * The split's merchant as the splits name it; null where they do not list
+   * the split, "unread" where they could not be read.
+   */
+  readonly merchant: Readonly<{ id: string; name: string | null }> | null | "unread";
 }
 
 interface WorthItem {
@@ -208,11 +227,16 @@ interface WorthItem {
 }
 
 export interface OverviewView {
-  readonly asOf: string;
-  readonly channel: string;
-  /** Null on a channel that admits nobody, where nothing can wait for admission. */
-  readonly needsYou: Readable<{ items: readonly NeedsYouItem[]; of: number }> | null;
+  readonly readAt: MomentView;
+  readonly needsYou: Readonly<{
+    /** Null on a channel that admits nobody, where nothing can wait for admission. */
+    admission: Readable<{ items: readonly NeedsYouItem[]; of: number }> | null;
+    /** Null where the gateway would start, and on a sandbox, which deploys no split. */
+    startRefused: Readable<StartRefusedView> | null;
+  }>;
   readonly worth: { readonly items: readonly WorthItem[]; readonly unread: readonly string[] };
+  /** True where the merchants were read and there are none: the channel is new. */
+  readonly empty: boolean;
   readonly tiles: readonly TileView[];
   readonly chart: Readable<{ head: string; chart: ChartView }>;
   readonly funnel: Readable<{ lead: string; steps: readonly FunnelStepView[] }>;
@@ -227,7 +251,10 @@ interface SplitRowView {
   readonly wallet: string;
   readonly settled: string;
   readonly empty: boolean;
+  /** The day the split was recorded. */
   readonly since: string;
+  /** Recorded for a wallet the merchant has since replaced. */
+  readonly earlier: boolean;
 }
 
 export type PayoutView =
@@ -247,14 +274,15 @@ export type PayoutView =
   | Readonly<{ kind: "said"; badge: Badge; said: string }>;
 
 export interface MoneyView {
-  readonly asOf: string;
+  readonly readAt: MomentView;
+  /** What the money is and where it moves: "USDC on Base". */
+  readonly currency: string;
   readonly periods: readonly {
     readonly label: string;
     readonly href: string;
     readonly here: boolean;
   }[];
   readonly tiles: readonly TileView[];
-  readonly explained: string;
   readonly chart: Readable<{ chart: ChartView; foot: string }>;
   readonly splits: Readable<{ rows: readonly SplitRowView[]; count: number; cut: string }>;
   readonly payout: Readable<PayoutView>;
@@ -265,19 +293,15 @@ export interface HealthRowView {
   readonly part: string;
   readonly badge: Badge;
   readonly fact: Said;
-  /** "14:05", or "—" for what is not read. */
-  readonly read: string;
   /** The check this row runs again at a press. */
   readonly check?: "key" | "listing";
 }
 
 export interface HealthView {
-  readonly asOf: string;
-  readonly lede: string;
+  readonly readAt: MomentView;
   readonly grafana: string;
   readonly read: readonly HealthRowView[];
   readonly unseen: readonly HealthRowView[];
-  readonly note: string;
   /**
    * Where a Check now press came from a sign-in older than the workspace
    * acts on, the step that asks for a fresh one; the check was not run.
@@ -298,8 +322,6 @@ const REPOSITORY = "https://github.com/nuanu-ai/agentify";
 /** Where the orders whose payment outcome is unknown are listed. */
 const UNKNOWN_ORDERS = "/admin/orders?segment=payment-unknown";
 
-const CHANNEL_NAMES = { live: "Live channel", test: "Test channel", sandbox: "Sandbox" } as const;
-
 const CHAIN_NAMES: Readonly<Record<string, string>> = {
   "eip155:8453": "Base",
   "eip155:84532": "Base Sepolia",
@@ -315,6 +337,43 @@ export interface Channel {
 }
 
 const chainOf = (channel: Channel) => CHAIN_NAMES[channel.network] ?? channel.network;
+
+/**
+ * A sentence of the gateway's with every network it names by identifier named
+ * as a wallet lists it, the longer identifier first, since Base's is the head
+ * of Base Sepolia's.
+ */
+const chainsNamed = (sentence: string): string =>
+  Object.entries(CHAIN_NAMES)
+    .sort(([one], [other]) => other.length - one.length)
+    .reduce((said, [id, name]) => said.replaceAll(id, name), sentence);
+
+const ADDRESS_IN = /0x[0-9a-fA-F]{40}/;
+
+/**
+ * Why the gateway would refuse to start, from its own sentence, with the
+ * split the sentence names and that split's merchant where the splits read
+ * name it. The sentence is the only form the refusal comes in, so the split
+ * is read out of it.
+ */
+export function startRefusedOf(why: string, splits: Splits | "unread"): StartRefusedView {
+  const split = ADDRESS_IN.exec(why)?.[0] ?? null;
+  const row =
+    split === null || splits === "unread"
+      ? undefined
+      : splits.rows.find((one) => one.address.toLowerCase() === split.toLowerCase());
+  const said = chainsNamed(why);
+  return {
+    why: `${said.slice(0, 1).toUpperCase()}${said.slice(1)}.`,
+    split,
+    merchant:
+      split !== null && splits === "unread"
+        ? "unread"
+        : row === undefined
+          ? null
+          : { id: row.merchantId, name: row.merchantName },
+  };
+}
 
 // --- the chart --------------------------------------------------------------
 
@@ -457,6 +516,11 @@ export interface OverviewReads {
   readonly links: Readable<Readonly<Record<LinkPurpose, number>>>;
   /** Null where the deployment offers no connector. */
   readonly uncertainShopOrders: Readable<number> | null;
+  /**
+   * Whether the gateway would start on the recorded splits, with the splits
+   * read where it would not, to name the merchant; null on a sandbox.
+   */
+  readonly startRefused: Readable<StartRefusedView | null> | null;
   readonly recovery: GatewayHealthFacts["recovery"];
   readonly merchants: Readable<MerchantCounts>;
   readonly orders: Readable<RecentOrders>;
@@ -474,7 +538,7 @@ const FUNNEL_WORDS: Readonly<Record<FunnelStep, string>> = {
   key_or_shop: "Issued a key or connected a shop",
   connected: "Integration connected",
   admitted: "Admitted",
-  card_on_sale: "Card on sale",
+  card_on_sale: "Product on sale",
   first_sale: "First sale",
 };
 
@@ -484,16 +548,12 @@ const percent = (part: number, whole: number) =>
 function funnelViewOf(funnel: Funnel): { lead: string; steps: readonly FunnelStepView[] } {
   const first = funnel.steps[0]?.merchants ?? 0;
   return {
-    lead: `All ${plural(first, "merchant")}, as they stand`,
-    steps: funnel.steps.map((step, index) => {
-      const before = funnel.steps[index - 1]?.merchants;
-      return {
-        label: FUNNEL_WORDS[step.step],
-        merchants: step.merchants,
-        width: first === 0 ? "0%" : `${Number(((step.merchants / first) * 100).toFixed(1))}%`,
-        rate: before === undefined ? "" : percent(step.merchants, before),
-      };
-    }),
+    lead: `Each step's share of all ${plural(first, "merchant")}`,
+    steps: funnel.steps.map((step) => ({
+      label: FUNNEL_WORDS[step.step],
+      merchants: step.merchants,
+      share: percent(step.merchants, first),
+    })),
   };
 }
 
@@ -504,23 +564,23 @@ const needsYouOf = (
 ): { items: readonly NeedsYouItem[]; of: number } => ({
   of: waiting.of,
   items: waiting.merchants.map((merchant) => {
+    const products =
+      merchant.cardsPublished === 0
+        ? "No product is published yet."
+        : `${plural(merchant.cardsPublished, "product")} ${merchant.cardsPublished === 1 ? "waits" : "wait"} off sale until you admit.`;
     const integration =
       merchant.integration === "woocommerce"
-        ? "It sells through a WooCommerce shop."
+        ? "Sells through a WooCommerce shop."
         : merchant.lastContact === null
-          ? "Its worker has never connected."
-          : `Its worker connected ${durationWritten(at - merchant.lastContact)} ago.`;
-    const cards =
-      merchant.cardsPublished === 0
-        ? "No card is published yet."
-        : `${plural(merchant.cardsPublished, "card")} ${merchant.cardsPublished === 1 ? "is" : "are"} published; they stay off sale on the live channel until it is admitted.`;
+          ? "Worker never connected."
+          : `Worker last seen ${durationWritten(at - merchant.lastContact)} ago.`;
     return {
       merchantId: merchant.merchantId,
       name: merchant.serviceName,
       site: merchant.sellerSite === null ? null : new URL(merchant.sellerSite).host,
-      why: `Seller name and payout wallet are set, so admission is the only check missing. ${integration} ${cards} The merchant's dashboard tells them they are not approved and gives them no way to ask.`,
+      why: `Only admission is missing. ${products} ${integration}`,
       owner: owners?.get(merchant.merchantId) ?? null,
-      created: `Merchant created ${momentWritten(merchant.createdAt)}`,
+      created: momentOf(merchant.createdAt),
     };
   }),
 });
@@ -542,8 +602,8 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
       aside:
         unknown.oldestSince === null ? "" : `oldest ${durationWritten(at - unknown.oldestSince)}`,
       why: reads.recovery.configured
-        ? "The facilitator did not say whether the money moved. Recovery reads the chain and settles each order once it finds the transfer or proof that it cannot happen. Nobody settles them by hand."
-        : "The facilitator did not say whether the money moved, and payment recovery is not configured on this channel, so nothing reads the chain for them. Nobody settles them by hand.",
+        ? "The facilitator did not say whether the money moved. Recovery reads the chain and settles each one; nobody settles them by hand."
+        : "The facilitator did not say whether the money moved, and recovery is off on this channel, so these stay unknown until the facilitator answers.",
       links: [
         { label: `See the ${unknown.count === 1 ? "order" : "orders"}`, href: UNKNOWN_ORDERS },
       ],
@@ -561,7 +621,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
       badge: { tone: "fail", word: "Recovery off" },
       title: "Payment recovery is not configured on this channel",
       aside: "",
-      why: "No chain endpoint is set, so a payment whose answer was lost stays unknown until the facilitator answers. Health says what recovery reads when it is set.",
+      why: "No chain endpoint is set, so a payment whose answer is lost stays unknown until the facilitator answers.",
       links: [{ label: "See Health", href: "/admin/health" }],
       meta: [],
     });
@@ -572,22 +632,20 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
   else {
     for (const silent of workers.silent) {
       items.push({
-        badge: { tone: "fail", word: "Worker out of touch" },
-        title: `${silent.name}'s worker has stopped polling`,
+        badge: { tone: "fail", word: "Sales stopped" },
+        title: `${silent.name}'s worker stopped polling`,
         href: `/admin/merchants/${silent.merchantId}`,
         aside:
-          silent.since === null
-            ? "never connected"
-            : `since ${durationWritten(at - silent.since)} ago`,
-        why: "Its cards on sale are paid before their goods, so the gateway refuses their purchases until the worker polls again; nothing was charged for them.",
+          silent.since === null ? "never connected" : `for ${durationWritten(at - silent.since)}`,
+        why: "Its products are paid before delivery, so the gateway refuses their purchases until the worker polls again. Nothing was charged.",
         links: [{ label: "See the merchant", href: `/admin/merchants/${silent.merchantId}` }],
         meta: [],
       });
     }
     if (workers.silentOf > workers.silent.length) {
       items.push({
-        badge: { tone: "fail", word: "Worker out of touch" },
-        title: `${plural(workers.silentOf - workers.silent.length, "more merchant")} out of touch`,
+        badge: { tone: "fail", word: "Sales stopped" },
+        title: `${plural(workers.silentOf - workers.silent.length, "more merchant")} whose worker stopped polling`,
         aside: "",
         why: "The list names the longest silent first.",
         links: [{ label: "See Health", href: "/admin/health" }],
@@ -604,8 +662,8 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
         badge: { tone: "partial", word: "Shop order uncertain" },
         title: `${plural(uncertain, "WooCommerce order")} whose shop order may or may not exist`,
         aside: "",
-        why: "An attempt sent each to its shop and never heard back. The merchant recovers such an order from their own Orders; the workspace does not.",
-        links: [],
+        why: "An attempt sent each to its shop and never heard back. The merchant recovers it from their own Orders.",
+        links: [{ label: "See WooCommerce in Health", href: "/admin/health" }],
         meta: [],
       });
     }
@@ -662,6 +720,15 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
   return { items, unread };
 }
 
+/** A start refusal worth saying: one that was found, or a read that failed; nothing where the gateway would start. */
+const refusedIn = (
+  read: Readable<StartRefusedView | null> | null,
+): Readable<StartRefusedView> | null => {
+  if (read === null) return null;
+  if (read.kind === "unread") return UNREAD;
+  return read.value === null ? null : { kind: "read", value: read.value };
+};
+
 /** From how many links of one purpose in the hour the channel is near its ceiling. */
 const NEAR_THE_CEILING = Math.floor(LINK_CHANNEL_LIMIT * 0.8);
 
@@ -679,10 +746,10 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
       ...(merchants === null ? {} : { of: `of ${merchants.total}` }),
       aside:
         merchants === null
-          ? "Merchants with a card on sale now"
+          ? "With a product on sale now"
           : live
             ? `${merchants.admitted} admitted · ${merchants.waitingForAdmission} waiting for admission`
-            : "With a card on sale now; the test channel admits nobody",
+            : "With a product on sale now",
     },
     {
       label: "Orders · 7 days",
@@ -690,10 +757,10 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
       aside:
         orders === null
           ? "Orders made in the last seven days"
-          : `${orders.delivered} delivered · ${orders.paymentUnknown} payment unknown · ${orders.count - orders.delivered - orders.paymentUnknown} other; ${plural(orders.lapsed, "lapsed attempt")} apart`,
+          : `${orders.delivered} delivered · ${orders.paymentUnknown} unknown · ${orders.count - orders.delivered - orders.paymentUnknown} other. ${plural(orders.lapsed, "unpaid attempt")} not counted.`,
     },
     {
-      label: "Settled sales · 7 days",
+      label: "Settled · 7 days",
       figure: week === null ? null : week.sales.amount,
       unit: "USD",
       aside:
@@ -702,23 +769,26 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
           : `${plural(week.sales.count, "order")} whose payment settled`,
     },
     {
-      label: "Commission accrued · 7 days",
+      label: "Commission · 7 days",
       figure: week === null ? null : week.commission,
       unit: "USD",
-      aside: `${share} of settled sales paid into splits, in the splits until paid out`,
+      aside: `${share} of sales paid into splits, held there until paid out`,
     },
   ];
   const sales = foundIn(reads.sales);
   const journal = foundIn(reads.journal);
   return {
-    asOf: `${CHANNEL_NAMES[channel.surface]} · figures read ${momentWritten(at)} · read the page again to read them again`,
-    channel: CHANNEL_NAMES[channel.surface],
-    needsYou: !live
-      ? null
-      : reads.waiting.kind === "unread"
-        ? UNREAD
-        : { kind: "read", value: needsYouOf(reads.waiting.value, foundIn(reads.owners), at) },
+    readAt: momentOf(at),
+    needsYou: {
+      admission: !live
+        ? null
+        : reads.waiting.kind === "unread"
+          ? UNREAD
+          : { kind: "read", value: needsYouOf(reads.waiting.value, foundIn(reads.owners), at) },
+      startRefused: refusedIn(reads.startRefused),
+    },
     worth: worthOf(reads),
+    empty: merchants !== null && merchants.total === 0,
     tiles,
     chart:
       sales === null
@@ -786,9 +856,6 @@ const stateWords = (state: string): string =>
         ? ORDER_WORDS.in_progress.text.toLowerCase()
         : state.replaceAll("_", " ");
 
-/** The day payments began to go into splits, before which live payments went straight to the wallet. */
-const SPLITS_SINCE = "15 October 2026";
-
 const waitingLeftOut = (waiting: number): string =>
   waiting === 0
     ? ""
@@ -806,7 +873,7 @@ export function payoutViewOf(listing: PayoutListing): PayoutView {
       return {
         kind: "said",
         badge: { tone: "fail", word: "Not shown" },
-        said: `No payout is shown, because the gateway would refuse to start on these splits: ${listing.why}.`,
+        said: `No payout is shown, because the gateway would refuse to start on these splits: ${chainsNamed(listing.why)}.`,
       };
     case "nothing_recorded":
       return {
@@ -821,7 +888,7 @@ export function payoutViewOf(listing: PayoutListing): PayoutView {
       return {
         kind: "listed",
         network: listing.chain.name,
-        intro: `${listing.parts.length === 1 ? "One transaction" : `${listing.parts.length} transactions`} for all ${plural(listing.splits, "recorded split")}, in parts of twenty: each split is created where it has no code yet, distributed, and its merchant's share withdrawn; the commission comes last. Send ${listing.parts.length === 1 ? "it" : "each"} on ${listing.chain.name} only, from a wallet of your own, which pays the gas. Agentify signs and sends nothing.${waitingLeftOut(listing.waiting)}`,
+        intro: `${listing.parts.length === 1 ? "One transaction pays" : `${listing.parts.length} transactions pay`} out all ${plural(listing.splits, "recorded split")}, the commission last. Send ${listing.parts.length === 1 ? "it" : "each"} on ${listing.chain.name} only, from your own wallet, which pays the gas. Agentify signs and sends nothing.${waitingLeftOut(listing.waiting)}`,
         parts: listing.parts.map((part, index) => ({
           title: `Payout ${index + 1} of ${listing.parts.length}`,
           network: listing.chain.name,
@@ -868,8 +935,8 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
           : `${share} of ${usd(money.intoSplits.amount)} paid into splits${
               money.straightToWallet.count === 0
                 ? ""
-                : `; ${usd(money.straightToWallet.amount)} went straight to the wallet, with no commission`
-            }; in the splits until paid out`,
+                : `; ${usd(money.straightToWallet.amount)} went straight to wallets, with no commission`
+            }. Held in the splits until paid out.`,
     },
     {
       label: "Paid, no delivery recorded",
@@ -877,9 +944,9 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
       unit: "USD",
       aside:
         money === null
-          ? "Orders whose payment settled with no delivery recorded"
+          ? "Orders paid with no delivery recorded"
           : money.noDelivery.count === 0
-            ? "No such order"
+            ? "None"
             : `${plural(money.noDelivery.count, "order")}: ${money.noDeliveryByState
                 .map((each) => `${each.count} ${stateWords(each.state)}`)
                 .join(", ")}`,
@@ -890,22 +957,22 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
       unit: "USD",
       aside:
         unknown === null
-          ? "Payments counted apart, never as sales or failures"
-          : `${plural(unknown.count, "payment")} now, counted apart, never as sales or failures`,
+          ? "Counted apart from sales and failures"
+          : `${plural(unknown.count, "payment")} now, counted apart from sales and failures`,
     },
   ];
 
   const sales = foundIn(reads.sales);
   const splits = foundIn(reads.splits);
   return {
-    asOf: `${CHANNEL_NAMES[channel.surface]} · read ${momentWritten(at)} · USDC on ${chainOf(channel)}, in US dollars`,
+    readAt: momentOf(at),
+    currency: `USDC on ${chainOf(channel)}`,
     periods: PERIODS.map(([key, label]) => ({
       label,
       href: key === "30d" ? "/admin/money" : `/admin/money?period=${key}`,
       here: key === period,
     })),
     tiles,
-    explained: `A settled sale is an order whose payment settled, whatever became of the goods, dated by the moment the order records it as paid, in UTC. The money of an unfulfilled or closed order is in the merchant's split like any other, so it counts, and the third figure shows how much of the total it is. Commission accrues only where a payment went into a split${channel.surface === "live" ? `; before ${SPLITS_SINCE} live payments went straight to the merchant's wallet, with no commission` : ""}. Amounts are summed from each order when the page is read.`,
     chart:
       sales === null
         ? UNREAD
@@ -927,7 +994,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
                   sales.undated.count === 0
                     ? ""
                     : ` ${plural(sales.undated.count, "sale")} with no moment of payment recorded ${sales.undated.count === 1 ? "is" : "are"} on no day.`;
-                return `${usd(whole)} across ${plural(count, "order")}${nodel === 0 ? "" : `, of which ${usd(nodelAmount)} paid for ${plural(nodel, "order")} with no delivery recorded`}.${undated} A past day can still grow when a late outcome lands.`;
+                return `${usd(whole)} across ${plural(count, "order")}${nodel === 0 ? "" : `, ${usd(nodelAmount)} of it with no delivery recorded`}.${undated} By payment date; a past day can still grow when a late outcome lands.`;
               })(),
             },
           },
@@ -947,9 +1014,8 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
                 wallet: row.merchantWallet,
                 settled: usd(row.settled.amount),
                 empty: row.settled.count === 0,
-                since: row.inForce
-                  ? `Since ${dayWritten(row.recordedAt)}`
-                  : `${dayWritten(row.recordedAt)}, an earlier wallet`,
+                since: dayWritten(row.recordedAt),
+                earlier: !row.inForce,
               })),
               cut: [
                 `${splits.rows.length} of ${plural(splits.of, "split")} shown`,
@@ -966,7 +1032,7 @@ export function moneyViewOf(reads: MoneyReads): MoneyView {
       reads.payout.kind === "unread"
         ? UNREAD
         : { kind: "read", value: payoutViewOf(reads.payout.value) },
-    note: `Settled into it is summed from the orders. What a split has already paid out, and so what Agentify's commission wallet has received, is read on the chain's explorer, and this screen does not claim it.`,
+    note: "Not shown: what each split has paid out. Its explorer page says.",
   };
 }
 
@@ -983,6 +1049,8 @@ export interface HealthReads {
   readonly links: Readable<Readonly<Record<LinkPurpose, number>>>;
   /** Null where the deployment offers no connector. */
   readonly shops: Readable<{ connected: number; uncertain: number }> | null;
+  /** Whether the gateway would start on the recorded splits; null on a sandbox. */
+  readonly startRefused: Readable<StartRefusedView | null> | null;
   readonly keyCheck: FacilitatorKeyCheck | null;
   readonly listingCheck: (ListingCheck & { readonly checkedAt: number }) | null;
 }
@@ -997,7 +1065,6 @@ function keyRowOf(check: FacilitatorKeyCheck | null): HealthRowView {
       fact: [
         "The release checks the key before it activates a revision. Check now asks Coinbase again; nothing is bought.",
       ],
-      read: "—",
       check: "key",
     };
   }
@@ -1012,8 +1079,12 @@ function keyRowOf(check: FacilitatorKeyCheck | null): HealthRowView {
   return {
     part: "Facilitator key",
     badge,
-    fact: [`Asked ${momentWritten(check.checkedAt)}: ${check.said}.`],
-    read: clockOf(check.checkedAt),
+    fact: [
+      "Asked ",
+      { at: momentOf(check.checkedAt) },
+      // Coinbase's own words for a key it took are about the payment it judged.
+      check.outcome === "taken" ? ": Coinbase accepted the key." : `: ${check.said}.`,
+    ],
     check: "key",
   };
 }
@@ -1029,25 +1100,21 @@ export function listingRowOf(
       fact: [
         "Whether Coinbase's x402 validator would take the channel's paid resources. Check now asks it; nothing is bought.",
       ],
-      read: "—",
     };
   }
-  const asked = `Asked ${momentWritten(check.checkedAt)}`;
-  const read = clockOf(check.checkedAt);
+  const asked = ["Asked ", { at: momentOf(check.checkedAt) }] as const;
   switch (check.kind) {
     case "catalog_unreadable":
       return {
         ...base,
         badge: { tone: "partial", word: "Catalog unread" },
-        fact: [`${asked}: the catalog could not be read (${check.why}), so nothing was checked.`],
-        read,
+        fact: [...asked, `: the catalog could not be read (${check.why}), so nothing was checked.`],
       };
     case "nothing_on_sale":
       return {
         ...base,
         badge: { tone: "quiet", word: "Nothing on sale" },
-        fact: [`${asked}: nothing is on sale, so there was nothing to check.`],
-        read,
+        fact: [...asked, ": nothing is on sale, so there was nothing to check."],
       };
     case "checked": {
       const products = check.resources.length;
@@ -1056,9 +1123,9 @@ export function listingRowOf(
           ...base,
           badge: { tone: "pass", word: `Would take all ${products}` },
           fact: [
-            `${asked}: Coinbase's x402 validator and the gateway's own door accepted all ${check.probes} probes over ${plural(products, "paid resource")}.`,
+            ...asked,
+            `: Coinbase's x402 validator and the gateway's own door accepted all ${check.probes} probes over ${plural(products, "paid resource")}.`,
           ],
-          read,
         };
       }
       const said = [
@@ -1086,16 +1153,54 @@ export function listingRowOf(
             : check.unanswered.length > 0
               ? { tone: "partial", word: "No verdict" }
               : { tone: "partial", word: "Partly checked" },
-        fact: [`${asked}: ${said || "some products had no address to check"}.`],
-        read,
+        fact: [...asked, `: ${said || "some products had no address to check"}.`],
       };
     }
   }
 }
 
+/** Whether the gateway would start on the recorded splits, said where the operator looks for what can stop it. */
+function startRowOf(read: Readable<StartRefusedView | null>): HealthRowView {
+  const part = "Payout splits";
+  if (read.kind === "unread") {
+    return {
+      part,
+      badge: COULD_NOT,
+      fact: ["Whether the recorded splits match this code could not be read."],
+    };
+  }
+  const refused = read.value;
+  if (refused === null) {
+    return {
+      part,
+      badge: { tone: "pass", word: "Would start" },
+      fact: ["The gateway would start on the recorded splits."],
+    };
+  }
+  return {
+    part,
+    badge: { tone: "fail", word: "Would stop a restart" },
+    fact: [
+      "The gateway runs now, but its next start or release would stop here. ",
+      refused.why,
+      ...(refused.merchant === null
+        ? []
+        : refused.merchant === "unread"
+          ? [" Whose split it is could not be read."]
+          : [
+              " The split is ",
+              {
+                text: `${refused.merchant.name ?? refused.merchant.id}'s`,
+                href: `/admin/merchants/${refused.merchant.id}`,
+              },
+              ".",
+            ]),
+    ],
+  };
+}
+
 export function healthViewOf(reads: HealthReads): HealthView {
   const { at, channel, facts } = reads;
-  const now = clockOf(at);
   const rows: HealthRowView[] = [];
 
   rows.push(
@@ -1106,7 +1211,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
           fact: [
             'The image carries no source revision, as one built on a laptop does, so it says "unknown" and links nowhere.',
           ],
-          read: now,
         }
       : {
           part: "Release",
@@ -1120,9 +1224,12 @@ export function healthViewOf(reads: HealthReads): HealthView {
             },
             ", written into the image by the build.",
           ],
-          read: now,
         },
   );
+
+  if (reads.startRefused !== null) {
+    rows.push(startRowOf(reads.startRefused));
+  }
 
   const unknown = foundIn(reads.unknown);
   const unknownSaid: Said =
@@ -1148,7 +1255,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
             { text: "Grafana", href: GRAFANA, elsewhere: true },
             ".",
           ],
-          read: now,
         }
       : {
           part: "Payment recovery",
@@ -1157,7 +1263,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
             "No chain endpoint is set, so recovery is off and a payment whose answer was lost waits for the facilitator. ",
             ...unknownSaid,
           ],
-          read: now,
         },
   );
 
@@ -1169,40 +1274,38 @@ export function healthViewOf(reads: HealthReads): HealthView {
           part: "Merchants' workers",
           badge: COULD_NOT,
           fact: ["When the merchants' workers last polled could not be read."],
-          read: now,
         }
       : workers.silentOf > 0
         ? {
             part: "Merchants' workers",
             badge: { tone: "fail", word: `${workers.silentOf} out of touch` },
             fact: [
-              `${plural(workers.silentOf, "merchant")} with cards on sale paid before their goods ${workers.silentOf === 1 ? "has" : "have"} not polled within the last ${minutes} minutes, so their purchases are refused: `,
+              `${plural(workers.silentOf, "merchant")} with products on sale paid before delivery ${workers.silentOf === 1 ? "has" : "have"} not polled within the last ${minutes} minutes, so their purchases are refused: `,
               ...workers.silent.flatMap((silent, index) => [
                 ...(index === 0 ? [] : [", "]),
                 { text: silent.name, href: `/admin/merchants/${silent.merchantId}` },
-                silent.since === null ? " (never)" : ` (since ${momentWritten(silent.since)})`,
+                ...(silent.since === null
+                  ? [" (never)"]
+                  : [" (since ", { at: momentOf(silent.since) }, ")"]),
               ]),
               ...(workers.silentOf > workers.silent.length
                 ? [`, and ${workers.silentOf - workers.silent.length} more`]
                 : []),
               `. ${workers.connectedWithin} of ${workers.everConnected} ever connected polled within the window.`,
             ],
-            read: now,
           }
         : workers.everConnected === 0
           ? {
               part: "Merchants' workers",
               badge: { tone: "quiet", word: "None yet" },
               fact: ["No merchant's worker has ever connected."],
-              read: now,
             }
           : {
               part: "Merchants' workers",
               badge: { tone: "pass", word: "Connected" },
               fact: [
-                `${workers.connectedWithin} of the ${plural(workers.everConnected, "merchant")} whose worker ever connected did so within the last ${minutes} minutes. No merchant with cards on sale is out of touch.`,
+                `${workers.connectedWithin} of the ${plural(workers.everConnected, "merchant")} whose worker ever connected did so within the last ${minutes} minutes. No merchant with products on sale is out of touch.`,
               ],
-              read: now,
             },
   );
 
@@ -1213,14 +1316,12 @@ export function healthViewOf(reads: HealthReads): HealthView {
       fact: [
         "The connector is offered on the test channel only, until its orders pass end to end there.",
       ],
-      read: now,
     });
   } else if (reads.shops === null) {
     rows.push({
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not on this deployment" },
       fact: ["This deployment offers no connector, so no shop can be connected."],
-      read: now,
     });
   } else {
     const shops = foundIn(reads.shops);
@@ -1230,7 +1331,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
             part: "WooCommerce",
             badge: COULD_NOT,
             fact: ["The connected shops could not be read."],
-            read: now,
           }
         : {
             part: "WooCommerce",
@@ -1243,7 +1343,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
             fact: [
               `${plural(shops.connected, "shop")} connected. ${shops.uncertain === 0 ? "No order waits to learn whether its shop order exists." : `${plural(shops.uncertain, "order")} sent to ${shops.uncertain === 1 ? "its shop" : "their shops"} never heard back, so ${shops.uncertain === 1 ? "its" : "their"} shop order may or may not exist; the merchant recovers ${shops.uncertain === 1 ? "it" : "them"} from their Orders.`}`,
             ],
-            read: now,
           },
     );
   }
@@ -1254,7 +1353,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
       part: "Sign-in and report links",
       badge: COULD_NOT,
       fact: ["The links sent this hour could not be read."],
-      read: now,
     });
   } else {
     const most = Math.max(links.dashboard, links.report);
@@ -1269,7 +1367,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
       fact: [
         `Sign-in links ${links.dashboard} of ${LINK_CHANNEL_LIMIT} this hour; report links ${links.report} of ${LINK_CHANNEL_LIMIT}; links to sign in afresh ${links["step-up"]} of ${LINK_CHANNEL_LIMIT}.`,
       ],
-      read: now,
     });
   }
 
@@ -1280,7 +1377,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
           part: "Commerce analytics",
           badge: COULD_NOT,
           fact: ["The analytics outbox could not be read."],
-          read: now,
         }
       : {
           part: "Commerce analytics",
@@ -1291,7 +1387,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
           fact: [
             `${plural(analytics.givenUp, "event")} given up after waiting too long${analytics.givenUpSince === null ? "" : `, since ${dayWritten(analytics.givenUpSince)}`}; ${analytics.refused} refused by Nuanu Analytics; ${analytics.waiting} waiting now. Rows leave thirty days after they settle. Sales are not affected.`,
           ],
-          read: now,
         },
   );
 
@@ -1302,7 +1397,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
           part: "Ad reports",
           badge: COULD_NOT,
           fact: ["The ad reports could not be read."],
-          read: now,
         }
       : {
           part: "Ad reports",
@@ -1313,7 +1407,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
           fact: [
             `${plural(ads.delivered, "sign-up report")} delivered in 30 days; ${ads.refused} refused and ${ads.givenUp} given up; ${ads.waiting} waiting.`,
           ],
-          read: now,
         },
   );
 
@@ -1326,7 +1419,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
       { text: "see the scanner's page", href: SCANNER_PAGE, elsewhere: true },
       ".",
     ],
-    read: "—",
   });
 
   const notMeasured: Badge = { tone: "unknown", word: "Not measured" };
@@ -1335,7 +1427,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
       part: "Release tag",
       badge: notMeasured,
       fact: ["In a file on the host the release ran on. No application container reads it."],
-      read: "—",
     },
     channel.surface === "live"
       ? {
@@ -1344,7 +1435,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
           fact: [
             "In the backup status file on the production host, and in the backup job's log there.",
           ],
-          read: "—",
         }
       : {
           part: "Last backup",
@@ -1354,7 +1444,6 @@ export function healthViewOf(reads: HealthReads): HealthView {
               ? "The test channel is not backed up, by decision."
               : "A sandbox runs on one machine and is not backed up.",
           ],
-          read: "—",
         },
     {
       part: "Facilitator",
@@ -1362,24 +1451,20 @@ export function healthViewOf(reads: HealthReads): HealthView {
       fact: [
         "Recorded nowhere; its silence shows up as unknown payments above and as request errors in Grafana.",
       ],
-      read: "—",
     },
     {
       part: "Mail provider",
       badge: notMeasured,
       fact: ["Bounces and complaints are recorded by the provider only."],
-      read: "—",
     },
   ];
 
   return {
-    asOf: `Read ${momentWritten(at)}`,
-    lede: `Each moving part of the ${CHANNEL_NAMES[channel.surface].toLowerCase()}, as the application reads it now. Requests, errors, latency and the hosts are in Grafana, over time.`,
+    readAt: momentOf(at),
     grafana: GRAFANA,
     read: rows,
     unseen,
     stepUp: null,
-    note: "Mounting the host's release and backup status files read-only into the application would turn the first two into facts. That is a change to the deployment, with its own review. The release keeps running the facilitator-key check before it activates a revision, and the validation stays among engineering's smoke checks; Check now runs the same checks on demand.",
   };
 }
 
@@ -1428,10 +1513,32 @@ export function figuresFor(
     readable("the links sent this hour", () => identity.linksSentInTheHour(parts.now()));
   const adReports = (at: number) =>
     readable("the ad reports", () => identity.adReportsSince(new Date(at - 30 * 86_400_000)));
+  /**
+   * Whether the gateway would start on the recorded splits, asked the way its
+   * start asks it, with the splits read only where it would not, to name the
+   * merchant. It reads every merchant and every split, so Overview and Health
+   * alone ask it, and not the sections' counts on every page.
+   */
+  const startRefused = async (
+    asked: FiguresAsked,
+  ): Promise<Readable<StartRefusedView | null> | null> =>
+    config.surfaceMode === "sandbox"
+      ? null
+      : await readable("whether the gateway would start", async () => {
+          try {
+            await gateway.refuseUnlessTheSplitsAgree();
+            return null;
+          } catch (thrown) {
+            // Any other failure is a read that failed, said as unread.
+            if (!(thrown instanceof Error) || thrown.name !== "RefusedToStart") throw thrown;
+            const splits = await reader.splits.splits(asked).catch(() => "unread" as const);
+            return startRefusedOf(thrown.message, splits);
+          }
+        });
 
   const healthReads = async (): Promise<HealthReads> => {
     const asked = askedAt();
-    const [unknown, workers, analytics, ads, sent, shops] = await Promise.all([
+    const [unknown, workers, analytics, ads, sent, shops, refused] = await Promise.all([
       readable("the unknown payments", () => reader.figures.unknownPayments(asked)),
       readable("the workers", () => reader.figures.workers(asked)),
       readable("the analytics outbox", () => reader.figures.analyticsOutbox(asked)),
@@ -1448,6 +1555,7 @@ export function figuresFor(
             ]);
             return { connected: connected.length, uncertain };
           }),
+      startRefused(asked),
     ]);
     return {
       at: asked.at,
@@ -1459,6 +1567,7 @@ export function figuresFor(
       adReports: ads,
       links: sent,
       shops,
+      startRefused: refused,
       keyCheck,
       listingCheck,
     };
@@ -1488,6 +1597,7 @@ export function figuresFor(
         sales,
         funnel,
         journal,
+        refused,
       ] = await Promise.all([
         readable("the merchants waiting", () => reader.figures.waitingForAdmission(asked)),
         readable("the unknown payments", () => reader.figures.unknownPayments(asked)),
@@ -1511,6 +1621,7 @@ export function figuresFor(
           const page = await gateway.runtime.store.journal({ limit: 5 });
           return { lines: await journalLinesOf(parts, page.rows), total: page.total };
         }),
+        startRefused(asked),
       ]);
       const owners = await readable("the owners", async () => {
         const ids = waiting.kind === "read" ? waiting.value.merchants.map((m) => m.merchantId) : [];
@@ -1534,6 +1645,7 @@ export function figuresFor(
           adReports: ads,
           links: sent,
           uncertainShopOrders: uncertain,
+          startRefused: refused,
           recovery: facts().recovery,
           merchants,
           orders,

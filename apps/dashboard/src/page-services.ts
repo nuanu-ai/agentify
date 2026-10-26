@@ -1721,16 +1721,28 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       // A shops read that fails is drawn as one that could not be read, never as
       // no block, which would tell a merchant who connected a shop that none is.
       // The failure is logged as a line: a store's exception can carry a shop's
-      // key.
+      // key. The integration failing to read marks neither way rather than
+      // failing the page.
       async page(person) {
-        if (parts.woo === null) return { kind: "view", view: integrationsView(undefined) };
-        const shop = await parts.woo.stateOf(person.id).catch((): ShopTile => {
-          console.error(
-            "[dashboard] the WooCommerce connection could not be read for the integrations screen",
-          );
-          return { kind: "unread" };
-        });
-        return { kind: "view", view: integrationsView(shop) };
+        if (parts.woo === null) return { kind: "view", view: integrationsView() };
+        const [shop, integration] = await Promise.all([
+          parts.woo.stateOf(person.id).catch((): ShopTile => {
+            console.error(
+              "[dashboard] the WooCommerce connection could not be read for the integrations screen",
+            );
+            return { kind: "unread" };
+          }),
+          gatewayAs(person).integration(),
+        ]);
+        return {
+          kind: "view",
+          view: integrationsView(
+            shop,
+            integration.ok
+              ? { through: integration.document.through, offSale: integration.document.offSale }
+              : { unread: true },
+          ),
+        };
       },
     },
 

@@ -7,6 +7,7 @@
 import type { SurfaceMode } from "@agentify/core";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { UNSAFE_ErrorResponseImpl as ErrorResponseImpl } from "react-router";
+import { findView } from "../../src/admin/orders-view.js";
 import type { StepUpLink, StepUpView } from "../../src/admin/step-up.js";
 import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
@@ -19,7 +20,7 @@ const chromeIn = (mode: SurfaceMode) => ({
 });
 
 const stepUp = (link: StepUpLink | null): StepUpView => ({
-  email: "owner@example.com",
+  email: "operator@example.com",
   signedInAt: momentView("2026-10-23T12:05:00Z"),
   destination: "admin/merchants/mch_78f0c3eaf1edb0c9086a6d2ae1731c28",
   googleEnabled: true,
@@ -55,17 +56,18 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
     screen: "There is no such page",
     when: "Somebody signed in without the operator flag opens any page of the workspace.",
     cause:
-      "The workspace's layout reads the flag before any page runs and answers as for a page that is not there.",
+      "The workspace's layout reads the flag before any page runs and answers as the dashboard answers an address it does not have; an account with no merchant is sent to make one instead.",
     path: "/admin/merchants",
     mode: "live",
     // Signed in as a merchant, whose header has no door into the workspace.
     loaded: { "routes/gate": { who: "owner@example.com" } },
     failed: {
-      // Drawn by the gate's boundary, the nearest above the layout that threw.
+      // Drawn by the gate's boundary, the nearest above the layout that threw,
+      // as the dashboard's own page for an address it does not have.
       "routes/gate": new ErrorResponseImpl(404, "", {
-        kind: "problem",
+        kind: "no-such-page",
         chrome: chromeIn("live"),
-        said: "There is no such page.",
+        drawn: { who: "owner@example.com", framed: { account: [] } },
       } satisfies Trouble),
     },
   },
@@ -93,6 +95,18 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
     },
     { unavailable: true },
   ),
+  {
+    id: "dashboard-admin-find-not-read",
+    screen: "Find a record",
+    when: "An operator types a shop's name into Find, as a merchant said it on a call.",
+    cause:
+      "Find reads identifiers, addresses, sites and transactions, so it looked nothing up and offers the merchants' search for the text instead.",
+    path: "/admin/find?q=City+Walking+Tours",
+    mode: "live",
+    loaded: {
+      "routes/admin/find": findView("City Walking Tours", [], false, "not-read"),
+    },
+  },
   {
     id: "dashboard-admin-no-such-page",
     screen: "There is no such page",

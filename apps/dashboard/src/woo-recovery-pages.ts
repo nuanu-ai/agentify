@@ -18,13 +18,28 @@ export interface WooRecoveryView {
   readonly product: string;
   readonly shopOrigin: string;
   readonly amount: string;
-  readonly test: boolean;
   readonly mode: "link" | "retry" | "delivered" | "unavailable";
   readonly wooOrderId: string;
-  /** What became of the page or the last press, about the sale as a whole. */
+  /** What became of the last press, about the sale as a whole. */
   readonly message: string | null;
-  /** Why the WooCommerce order ID just typed was refused, said under its box. */
+  /**
+   * What the last press did is not known, so the page is read again before
+   * anything is pressed: a second press could repeat what the first did.
+   */
+  readonly unknown: boolean;
+  /** Why nothing can be done here, and where the merchant goes instead. */
+  readonly unavailable: Unavailable | null;
+  /** Why the shop order ID just typed was refused, said under its box. */
   readonly typedRefusal: string | null;
+}
+
+/**
+ * Closing fulfillment is on Orders; a parcel is followed by its shop's
+ * Completed; an order no longer waiting needs nothing.
+ */
+export interface Unavailable {
+  readonly why: string;
+  readonly instead: "close" | "parcel" | "nothing";
 }
 
 export interface WooRecoveryPages {
@@ -60,18 +75,36 @@ const modeOf = ({ record, order }: Known): WooRecoveryView["mode"] => {
 };
 
 /** Why nothing can be done here, said in place of a form. */
-const unavailableBecause = ({ record }: Known): string =>
+const unavailableBecause = ({ record }: Known): Unavailable =>
   record.facts.kind === "parcel"
-    ? "This page recovers downloads. A parcel order follows its shipping rules on the WooCommerce page."
+    ? {
+        why: "This page recovers downloads only. A parcel counts as shipped once you mark it Completed in WooCommerce.",
+        instead: "parcel",
+      }
     : record.phase === "precreate_refused"
-      ? "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders."
+      ? {
+          why: "Your shop never received this order, and this page can't create it.",
+          instead: "close",
+        }
       : record.phase === "placed" && record.placed?.permission == null
-        ? "The saved shop order has no download to send. To stop delivery, close fulfillment on Orders."
-        : "This order is not waiting for a late delivery, so there is nothing to recover.";
+        ? { why: "The linked shop order has no download to send.", instead: "close" }
+        : {
+            why: "This order isn't waiting for a late delivery, so there's nothing to recover.",
+            instead: "nothing",
+          };
+
+/** Said where what a press did is not known; the page then asks for a reload, not a press. */
+export const RECOVERY_UNKNOWN =
+  "We don't know if this worked: a shop order or a delivery may already be recorded. Reload to see where it stands.";
 
 const viewOf = (
   known: Known,
-  said: Readonly<{ message?: string | null; typedRefusal?: string | null; typed?: string }> = {},
+  said: Readonly<{
+    message?: string | null;
+    unknown?: boolean;
+    typedRefusal?: string | null;
+    typed?: string;
+  }> = {},
 ): WooRecoveryView => {
   const mode = modeOf(known);
   return {
@@ -79,10 +112,11 @@ const viewOf = (
     product: known.title,
     shopOrigin: known.record.facts.shopOrigin,
     amount: money({ amount: known.record.facts.amount, currency: known.record.facts.currency }),
-    test: known.order.test,
     mode,
     wooOrderId: known.record.placed?.id ?? said.typed ?? "",
-    message: said.message ?? (mode === "unavailable" ? unavailableBecause(known) : null),
+    message: said.message ?? null,
+    unknown: said.unknown ?? false,
+    unavailable: mode === "unavailable" ? unavailableBecause(known) : null,
     typedRefusal: said.typedRefusal ?? null,
   };
 };
@@ -138,7 +172,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           status: 400,
           view: viewOf(known, {
             typedRefusal:
-              "Enter the order's numeric ID from its address in your shop, which can differ from its order number.",
+              "Enter the number from the order's address in WooCommerce, the one after id= or post=.",
             typed,
           }),
         };
@@ -148,7 +182,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       }
       // Every other press, one this page offers no form for included, is
       // decided by the recovery itself, which turns away what it cannot do.
-      let said: { message?: string; typedRefusal?: string } = {};
+      let said: { message?: string; unknown?: boolean; typedRefusal?: string } = {};
       let status = 200;
       try {
         const outcome = await recoverWooOrderAs(
@@ -161,10 +195,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           status = outcome.state === "unresolved" ? 503 : 409;
         }
       } catch {
-        said = {
-          message:
-            "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
-        };
+        said = { message: RECOVERY_UNKNOWN, unknown: true };
         status = 503;
       }
       const after = await read(person, orderId);
@@ -179,8 +210,9 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
             {
               message:
                 saved.placed === null
-                  ? "The recovery result could not be read. Reload this page before deciding whether anything was recorded."
-                  : "The delivery result could not be read. The linked shop order shown here is saved; reload this page to check delivery before trying again.",
+                  ? "We couldn't read the result, so we don't know if anything was recorded. Reload to see where it stands."
+                  : `Shop order ${saved.placed.id} is linked, but we couldn't read whether its download was delivered. Reload to check.`,
+              unknown: true,
               typed,
             },
           ),
@@ -193,7 +225,11 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       const told =
         now === "link"
           ? said
-          : { message: said.message ?? said.typedRefusal ?? null, typedRefusal: null };
+          : {
+              message: said.message ?? said.typedRefusal ?? null,
+              unknown: said.unknown ?? false,
+              typedRefusal: null,
+            };
       return { kind: "view", status, view: viewOf(after, { ...told, typed }) };
     },
   };

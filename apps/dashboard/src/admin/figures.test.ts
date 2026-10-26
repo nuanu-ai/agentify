@@ -33,6 +33,7 @@ import {
   type OverviewView,
   payoutViewOf,
   periodIn,
+  startRefusedOf,
 } from "./figures.js";
 import { memoryJournal } from "./journal.js";
 
@@ -176,7 +177,7 @@ describe("the overview", () => {
     expect(view.tiles.map((tile) => tile.figure)).toStrictEqual([null, null, null, null]);
     expect(view.chart.kind).toBe("unread");
     expect(view.funnel.kind).toBe("unread");
-    expect(view.needsYou?.kind).toBe("unread");
+    expect(view.needsYou.admission?.kind).toBe("unread");
     expect(view.worth.unread.length).toBeGreaterThan(0);
   });
 
@@ -197,11 +198,11 @@ describe("the overview", () => {
 
     const admitted = viewOf<OverviewView>(
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
-    ).needsYou;
+    ).needsYou.admission;
     await harnessed.store.withdrawLiveApproval(harnessed.merchant.id);
     const waiting = viewOf<OverviewView>(
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
-    ).needsYou;
+    ).needsYou.admission;
 
     expect(admitted?.kind === "read" && admitted.value.of).toBe(0);
     expect(
@@ -216,7 +217,53 @@ describe("the overview", () => {
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
     );
 
-    expect(view.needsYou).toBeNull();
+    expect(view.needsYou.admission).toBeNull();
+  });
+
+  it("says nothing of a gateway that would start on its splits, as on a channel whose splits agree", async () => {
+    const { harnessed, pages } = await served({ channel: "live" });
+
+    const view = viewOf<OverviewView>(
+      await pages.overview(operatorAt(harnessed), new URLSearchParams()),
+    );
+
+    expect(view.needsYou.startRefused).toBeNull();
+  });
+});
+
+describe("a registry of splits the gateway would refuse to start on", () => {
+  const SPLIT = "0x91fa2e3d4c5b6a798867a5b4c3d2e1f00f1e0c3d";
+  const refusal = `1 recorded split of a wallet in force or waiting on eip155:84532, beginning with ${SPLIT}, is no longer what this code makes for that merchant and wallet, so the gateway does not start`;
+  const splits = {
+    readAt: 0,
+    of: 1,
+    empty: 0,
+    waiting: 0,
+    rows: [
+      {
+        address: SPLIT.toUpperCase().replace("0X", "0x"),
+        merchantId: "mch_tours",
+        merchantName: "City Walking Tours",
+        merchantWallet: WALLET,
+        commissionWallet: WALLET,
+        recordedAt: 0,
+        inForce: true,
+        settled: { amount: "0.00", count: 0 },
+      },
+    ],
+  };
+
+  it("names the split's merchant and the network as a wallet lists it", () => {
+    const refused = startRefusedOf(refusal, splits);
+
+    expect(refused?.split).toBe(SPLIT);
+    expect(refused?.merchant).toStrictEqual({ id: "mch_tours", name: "City Walking Tours" });
+    expect(refused?.why).toContain("on Base Sepolia,");
+    expect(refused?.why).not.toContain("eip155");
+  });
+
+  it("says the merchant could not be read where the splits could not be, rather than naming none", () => {
+    expect(startRefusedOf(refusal, "unread")).toMatchObject({ split: SPLIT, merchant: "unread" });
   });
 });
 

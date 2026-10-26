@@ -742,12 +742,19 @@ interface FoundView {
 export type FindView =
   /** Opened with nothing asked: what the box reads. */
   | Readonly<{ kind: "asked"; q: "" }>
-  | Readonly<{ kind: "none"; q: string; said: string; unknown: string | null }>
+  | Readonly<{
+      kind: "none";
+      q: string;
+      said: string;
+      unknown: string | null;
+      /** Where text the lookup does not read is searched instead, among the merchants. */
+      merchants: string | null;
+    }>
   | Readonly<{ kind: "several"; q: string; found: readonly FoundView[] }>
   | Readonly<{ kind: "unread"; q: string }>;
 
 export const FIND_READS =
-  "Paste an order ID, a merchant ID, a transaction, a wallet or split address, an email address or a shop's site; one match opens its record.";
+  "Find reads an order or merchant ID, a whole email address, a site, a wallet or split address, or a transaction. One match opens its record.";
 
 const BY: Readonly<Record<string, string>> = {
   id: "its identifier",
@@ -758,7 +765,7 @@ const BY: Readonly<Record<string, string>> = {
   email: "its email address",
 };
 
-const foundView = (found: Found | AccountFound): FoundView => {
+const foundView = (found: Found | AccountFound, q: string): FoundView => {
   if (found.kind === "account") {
     return {
       kind: "Account",
@@ -782,7 +789,8 @@ const foundView = (found: Found | AccountFound): FoundView => {
     kind: "Merchant",
     label: merchantName(found.merchant),
     id: found.merchant.id,
-    by: BY[found.by] ?? found.by,
+    // Two merchants may name one site; the line says which site it was.
+    by: found.by === "site" ? `${BY.site}, ${q.trim()}` : (BY[found.by] ?? found.by),
     to: `/admin/merchants/${encodeURIComponent(found.merchant.id)}`,
   };
 };
@@ -794,24 +802,51 @@ export interface AccountFound {
   readonly email: string;
 }
 
-/** What the lookup answers for what it found: none, one to open, or several to list. */
+/**
+ * What the lookup answers for what it found: none, one to open, or several to
+ * list. `read` says whether the text was looked up at all: text that is no
+ * identifier, address, site or transaction is not.
+ */
 export function findView(
   q: string,
   found: readonly (Found | AccountFound)[] | "unread",
   isTransaction: boolean,
+  read: "looked-up" | "not-read" = "looked-up",
 ): FindView | Readonly<{ kind: "open"; to: string }> {
   if (q === "") return { kind: "asked", q: "" };
   if (found === "unread") return { kind: "unread", q };
   const first = found[0];
-  if (found.length === 1 && first !== undefined) return { kind: "open", to: foundView(first).to };
-  if (found.length > 1) return { kind: "several", q, found: found.map(foundView) };
-  return isTransaction
-    ? {
-        kind: "none",
-        q,
-        said: `No order on this channel names the transaction “${q}” yet.`,
-        unknown:
-          "An order whose payment outcome is unknown may hold no transaction yet; the orders whose payment is unknown are listed apart.",
-      }
-    : { kind: "none", q, said: `Nothing on this channel matches “${q}”.`, unknown: null };
+  if (found.length === 1 && first !== undefined) {
+    return { kind: "open", to: foundView(first, q).to };
+  }
+  if (found.length > 1) {
+    return { kind: "several", q, found: found.map((one) => foundView(one, q)) };
+  }
+  if (isTransaction) {
+    return {
+      kind: "none",
+      q,
+      said: `No order on this channel names the transaction “${q}” yet.`,
+      unknown: "Orders with an unknown payment may have no transaction yet.",
+      merchants: null,
+    };
+  }
+  // Text that is no identifier, address, site or transaction was not looked
+  // up at all, so "nothing matches" would claim a search that never ran.
+  if (read === "not-read") {
+    return {
+      kind: "none",
+      q,
+      said: `Find does not read text like “${q}”: it reads order and merchant IDs, whole email addresses, sites, wallet addresses and transactions.`,
+      unknown: null,
+      merchants: `/admin/merchants?${new URLSearchParams({ q })}`,
+    };
+  }
+  return {
+    kind: "none",
+    q,
+    said: `Nothing on this channel matches “${q}”. An ID from another environment is not found here.`,
+    unknown: null,
+    merchants: null,
+  };
 }
