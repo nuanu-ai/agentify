@@ -145,6 +145,18 @@ describe("a merchant's own code", () => {
     expect(record.answerable).toBe(true);
   });
 
+  it("answers for an order its merchant accepted before any hand-over was recorded, and let run past its deadline", async () => {
+    const harnessed = await started();
+    const orderId = await paidOrder(harnessed, prepaidCard, "api");
+    await harnessed.gateway.acceptOrder(harnessed.merchant.id, orderId, {});
+    expect((await stored(harnessed, orderId)).order.timestamps.dispatchedAt).toBeNull();
+    await missed(harnessed, orderId);
+
+    const record = await stored(harnessed, orderId);
+    expect(record.order.state).toBe("unfulfilled");
+    expect(record.answerable).toBe(true);
+  });
+
   it("does not answer for an order never handed over before its deadline", async () => {
     // Nothing records why the hand-over did not happen, and Agentify failing
     // to make it is one of the reasons.
@@ -178,6 +190,31 @@ describe("a merchant's own code", () => {
     await harnessed.gateway.refuseOrder(merchantId, "ord_before", REFUSAL);
 
     expect((await stored(harnessed, "ord_before")).answerable).toBeUndefined();
+  });
+
+  it("does not answer for an order born before its integration was kept on it", async () => {
+    // Nothing on such an order says which integration sold it, and the
+    // decision is not made by reading its card while the order is held.
+    const harnessed = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = (await harnessed.store.publishCard(merchantId, prepaidCard, harnessed.now())).id;
+    const base = anOrder("ord_older", "paid", { merchantId });
+    await harnessed.store.addOrder({
+      ...base,
+      itemId,
+      order: {
+        ...base.order,
+        mode: { settle: "on_purchase" },
+        payment: "settled",
+        price: { amount: "25.00", currency: "USD", asOf: 0 },
+      },
+    });
+
+    await harnessed.gateway.refuseOrder(merchantId, "ord_older", REFUSAL);
+
+    const record = await stored(harnessed, "ord_older");
+    expect(record.order.state).toBe("unfulfilled");
+    expect(record.answerable).toBe(false);
   });
 
   it("keeps nothing of it once the order is delivered late", async () => {
