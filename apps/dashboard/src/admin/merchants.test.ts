@@ -69,7 +69,7 @@ describe("the Merchants list", () => {
   });
 
   it("leads past the first fifty merchants a page at a time, and draws the last for a page past it", async () => {
-    // Past fifty rows the list had no way to the rest but a search.
+    // An operator reaches every merchant a page at a time, not only by a search.
     served = await adminServed();
     for (let at = 0; at < 52; at += 1) {
       await served.harnessed.addMerchant(`Shop ${String(at).padStart(2, "0")}`);

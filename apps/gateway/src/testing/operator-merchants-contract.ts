@@ -260,11 +260,14 @@ export function describeOperatorMerchants(
 
         const second = await merchants.list({ ...LIVE, limit: 2, offset: 1 });
         const past = await merchants.list({ ...LIVE, limit: 2, offset: 3 });
+        const far = await merchants.list({ ...LIVE, limit: 2, offset: 5e21 });
 
         expect(second.rows.map((row) => row.id)).toStrictEqual(["mch_old_sale", "mch_never"]);
         expect(second.total).toBe(3);
         expect(past.rows).toStrictEqual([]);
         expect(past.total).toBe(3);
+        expect(far.rows).toStrictEqual([]);
+        expect(far.total).toBe(3);
       });
 
       it("finds a merchant by seller name, site or identifier ignoring case, and by identifiers the caller found", async () => {

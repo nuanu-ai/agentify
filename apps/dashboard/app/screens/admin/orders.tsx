@@ -207,7 +207,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
           </div>
           <Pager
             range={result.cut}
-            previous={{ to: result.newest, words: "Newest" }}
+            previous={{ to: result.newest, words: "Newest", beside: false }}
             next={{ to: result.earlier, words: "Earlier" }}
           />
         </>

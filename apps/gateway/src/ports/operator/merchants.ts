@@ -242,9 +242,13 @@ export const WORTH_A_LOOK_STATES = [
 export const merchantLimitOf = (query: MerchantListQuery): number =>
   Math.max(1, Math.min(MERCHANT_LIST_MAX, Math.floor(query.limit)));
 
-/** A list query's offset, a whole number from nought. */
+/**
+ * A list query's offset, a whole number from nought, and no larger than a
+ * database reads, so a page far past the last reads no rows rather than
+ * failing.
+ */
 export const merchantOffsetOf = (query: MerchantListQuery): number =>
-  Math.max(0, Math.floor(query.offset ?? 0));
+  Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(query.offset ?? 0)));
 
 /** The search as it is matched: trimmed and in lower case, or null where it finds everybody. */
 export const searchOf = (query: MerchantListQuery): string | null => {

@@ -110,10 +110,15 @@ export const KeptPlace = ({ place }: Readonly<{ place: Listing<unknown>["place"]
     <input key={name} type="hidden" name={name} value={value} autoComplete="off" />
   ));
 
-/** A way to the page before or after the one shown, and where there is none, its words in grey. */
+/**
+ * A way back or on from the page shown, and where there is none, its words in
+ * grey. `beside` is false for a way that leads further than the page next to
+ * this one, as the way to the newest page does.
+ */
 interface PageStep {
   readonly to: string | null;
   readonly words: string;
+  readonly beside?: false;
 }
 
 const Step = ({ step, rel }: Readonly<{ step: PageStep; rel: "prev" | "next" }>) =>
@@ -122,7 +127,12 @@ const Step = ({ step, rel }: Readonly<{ step: PageStep; rel: "prev" | "next" }>)
       {step.words}
     </span>
   ) : (
-    <Link className={`pager-step ${rel}`} to={step.to} rel={rel} prefetch="intent">
+    <Link
+      className={`pager-step ${rel}`}
+      to={step.to}
+      {...(step.beside === false ? {} : { rel })}
+      prefetch="intent"
+    >
       {step.words}
     </Link>
   );

@@ -39,7 +39,7 @@ const minutes = (count: number) => AT - count * 60_000;
 const TRAVEL_SHOP = {
   id: "mch_9e2b7c41d0",
   name: "A merchant",
-  serviceName: "Roam Easy – Travel eSIM, Virtual Numbers & VPN Store",
+  serviceName: "A travel eSIM, virtual number and VPN shop for people abroad",
 };
 
 const LONG_ESIM = {

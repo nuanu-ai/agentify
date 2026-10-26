@@ -292,6 +292,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
         previous={{
           to: view.before === null ? null : addressOf(view.kind, view.query, null),
           words: "Newest",
+          beside: false,
         }}
         next={{
           to: view.next === null ? null : addressOf(view.kind, view.query, view.next),

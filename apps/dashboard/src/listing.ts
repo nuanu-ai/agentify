@@ -99,10 +99,9 @@ const pagesOf = (page: number, pages: number, at: (page: number) => string): Pag
 };
 
 /**
- * The cut under page `page` of a list of `of` rows read a page of
- * `PAGE_ROWS` at a time, where they are read by another and not found among
- * the list's own; null where one page holds them all. `at` is a page's
- * address.
+ * The cut under a list another reader reads a page at a time: page `page` of
+ * `of` rows, `at` giving each page's address; null where one page holds every
+ * row.
  */
 export const cutOfPage = (
   page: number,
