@@ -1,8 +1,6 @@
 /**
- * A card for a parcel at the gateway: who may publish one, and on which
- * channel. A parcel sells on the test channel only: the live one does not yet
- * refund a lost parcel, show the merchant whom to pay back, or limit who may
- * read a tracking number.
+ * A card for a parcel at the gateway: who may publish one, and that it sells
+ * on every channel alike.
  */
 
 import {
@@ -10,9 +8,17 @@ import {
   CardSchema,
   CatalogPageSchema,
   publicCardOf,
+  type ShipTo,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { type Harness, harness, testConfig } from "../testing/harness.js";
+import {
+  buyOverHttp,
+  type Harness,
+  harness,
+  type Served,
+  serve,
+  testConfig,
+} from "../testing/harness.js";
 import { policyFor } from "./runtime.js";
 import { checksBeforeSending } from "./written.js";
 
@@ -26,10 +32,24 @@ const parcelCard: Card = CardSchema.parse({
   price_check: "handler",
 });
 
+/** An address in a real place, with the person and the number taken out of it. */
+const address: ShipTo = {
+  name: "The buyer",
+  line_one: "Jl. Raya Kediri, Beraban",
+  city: "Tabanan",
+  state: "BA",
+  postal_code: "82121",
+  country: "ID",
+  phone_number: "+62 000 0000 0000",
+};
+
 let open: Harness | null = null;
+let served: Served | null = null;
 
 afterEach(async () => {
+  await served?.close();
   await open?.stop();
+  served = null;
   open = null;
 });
 
@@ -100,16 +120,32 @@ describe("a card for a parcel", () => {
     expect(published.ok).toBe(true);
   });
 
-  it("is refused on the live channel, as a finding on its mode", async () => {
+  it("is published and sold on the live channel, as on the test channel", async () => {
     open = await harness(LIVE);
     await withSite(open);
 
     const published = await open.gateway.publishCard(open.merchant.id, parcelCard);
-
-    if (published.ok) throw new Error("a parcel's card was published on the live channel");
-    expect(published.error.problems).toContainEqual(
-      expect.objectContaining({ path: ["fulfillment"], code: "not_sold_yet" }),
+    if (!published.ok) {
+      throw new Error(`the live channel refused a parcel's card: ${JSON.stringify(published)}`);
+    }
+    served = await serve(open);
+    const bought = await buyOverHttp(
+      open,
+      served,
+      published.id,
+      {
+        onQuote: () => ({
+          available: true,
+          price: { amount: "21.00", currency: "USD" },
+          as_of: "2026-08-26T10:15:00Z",
+        }),
+        onOrder: () => ({ accepted: {} }),
+      },
+      { priced: { params: {}, ship_to: address }, paid: { params: {}, ship_to: address } },
     );
+
+    expect(bought.status).toBe(200);
+    expect(bought.body).toMatchObject({ payment_status: "paid", test: false, shipment: null });
   });
 
   it("holds its orders to the time to ship, counted from the charge", () => {

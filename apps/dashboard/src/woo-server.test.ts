@@ -1443,6 +1443,38 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toHaveLength(1);
   });
 
+  it("on the live channel, imports a physical product as a parcel, as on the test channel", async () => {
+    const running = await started({
+      channel: "live",
+      catalogue: async () => ({
+        ok: true,
+        products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
+      }),
+      inspectProduct: async () => ({
+        ok: true,
+        product: {
+          kind: "parcel",
+          productId: "11",
+          price: { amount: "25.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" as const },
+        },
+      }),
+    });
+    await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
+      seller_site: SHOP,
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    const listed = (await cardsOf(running)) as unknown as readonly {
+      card: { fulfillment: string };
+    }[];
+    expect(listed.map((one) => one.card.fulfillment)).toStrictEqual(["ship"]);
+  });
+
   it("on the live channel, publishes nothing for a merchant the operator has not approved, and says so", async () => {
     // The harness's own merchant is approved on live; one registered through
     // the gateway is not, and sets its wallet in Settings as anybody does.
