@@ -9,8 +9,6 @@ import { type Outcome, problemOf } from "./page-services.js";
 import {
   matchesSavedWooSale,
   ownWooRecoveryOrder,
-  PARCEL_NOT_CREATED,
-  RECONNECT_FIRST,
   type RecoveryGateway,
   recoverWooOrderAs,
   type WooRecoveryParts,
@@ -40,12 +38,14 @@ export interface WooRecoveryView {
 }
 
 /**
- * Closing fulfillment is on Orders; a shop is connected again on the
- * WooCommerce page; a parcel is followed by its shop's Completed; an order no
- * longer waiting needs nothing.
+ * Why nothing can be done here. `shopOrder` is what is known of the shop's
+ * order for the sale: the shop never got one, nobody knows whether it holds
+ * one, or the one it holds. Closing fulfillment is on Orders; a shop is
+ * connected again on the WooCommerce page; a parcel is followed by its shop's
+ * Completed; an order no longer waiting needs nothing.
  */
 export interface Unavailable {
-  readonly why: string;
+  readonly shopOrder: "none" | "unknown" | { readonly id: string };
   readonly instead: "close" | "reconnect" | "parcel" | "nothing";
 }
 
@@ -90,46 +90,40 @@ const modeOf = ({ record, order, reconnected }: Known): WooRecoveryView["mode"] 
       : "link";
 };
 
-/** Where the shop may hold an order nobody here can see, the merchant looks for it by this. */
-export const unknownCreate = (orderId: string): string =>
-  `We don't know if your shop created this order; look for its Transaction ID ${orderId} in your shop.`;
+/** What of a saved sale decides why nothing can be done for it here. */
+export interface SavedSale {
+  readonly facts: Pick<RecoveryOrder["facts"], "kind">;
+  readonly phase: RecoveryOrder["phase"];
+  readonly placed: Pick<NonNullable<RecoveryOrder["placed"]>, "id" | "permission"> | null;
+}
 
 /**
  * Why nothing can be done here, said in place of a form. It is read from the
- * saved sale alone, so a reload says the same as the press that led here.
+ * saved sale and its order's status alone, so a reload says the same as the
+ * press that led here.
  */
-const unavailableBecause = ({ record, order }: Known): Unavailable => {
-  const waiting = order.status === "unfulfilled";
+export const unavailableOf = (
+  record: SavedSale,
+  status: OrderWithStatus["status"],
+): Unavailable => {
+  const waiting = status === "unfulfilled";
+  const shopOrder: Unavailable["shopOrder"] =
+    record.placed !== null
+      ? { id: record.placed.id }
+      : record.phase === "create_unknown"
+        ? "unknown"
+        : "none";
   if (record.facts.kind === "parcel") {
-    if (record.phase === "precreate_refused" && waiting) {
-      return { why: PARCEL_NOT_CREATED, instead: "close" };
-    }
+    if (record.phase === "precreate_refused" && waiting) return { shopOrder, instead: "close" };
     if (record.phase === "create_unknown") {
-      return waiting
-        ? {
-            why: `${unknownCreate(record.orderId)} This page recovers downloads only, so don't ship it; close fulfillment instead.`,
-            instead: "close",
-          }
-        : { why: unknownCreate(record.orderId), instead: "nothing" };
+      return { shopOrder, instead: waiting ? "close" : "nothing" };
     }
-    return {
-      why: "This page recovers downloads only. A parcel counts as shipped once you mark it Completed in WooCommerce.",
-      instead: "parcel",
-    };
+    return { shopOrder, instead: "parcel" };
   }
   if (record.phase === "placed" && record.placed?.permission == null) {
-    return { why: "The linked shop order has no download to send.", instead: "close" };
+    return { shopOrder, instead: "close" };
   }
-  if (!waiting) {
-    return {
-      why:
-        record.phase === "create_unknown"
-          ? unknownCreate(record.orderId)
-          : `${record.placed == null ? "" : `Your shop has order ${record.placed.id} for this sale. `}This order isn't waiting for a late delivery, so there's nothing to recover.`,
-      instead: "nothing",
-    };
-  }
-  return { why: `Your shop never got this order. ${RECONNECT_FIRST}`, instead: "reconnect" };
+  return { shopOrder, instead: waiting ? "reconnect" : "nothing" };
 };
 
 /** Said where what a press did is not known; the page then asks for a reload, not a press. */
@@ -155,7 +149,7 @@ const viewOf = (
     wooOrderId: known.record.placed?.id ?? said.typed ?? "",
     message: said.message ?? null,
     unknown: said.unknown ?? false,
-    unavailable: mode === "unavailable" ? unavailableBecause(known) : null,
+    unavailable: mode === "unavailable" ? unavailableOf(known.record, known.order.status) : null,
     typedRefusal: said.typedRefusal ?? null,
   };
 };

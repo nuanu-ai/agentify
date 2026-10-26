@@ -23,6 +23,7 @@ import {
   type WooOrderRead,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
+import { PARCEL_NOT_CREATED, RECONNECT_FIRST } from "./woo-views.js";
 import { deliveryFromWooPermission } from "./woo-worker.js";
 
 export interface WooRecoveryRequest {
@@ -447,12 +448,6 @@ const keysOf = (connection: WooConnection): ShopKeys => ({
   consumerKey: connection.consumerKey,
   consumerSecret: connection.consumerSecret,
 });
-
-export const RECONNECT_FIRST =
-  "Connect the same shop again on the WooCommerce page first, then create the order here.";
-
-export const PARCEL_NOT_CREATED =
-  "Your shop never got this order, and a parcel's order can't be made later: Agentify doesn't keep the delivery address.";
 
 /** Said once a create was sent and its answer is not one the shop can be held to. */
 export const CREATE_UNKNOWN =

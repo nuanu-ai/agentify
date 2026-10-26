@@ -83,10 +83,11 @@ import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import { gapOf } from "../src/woo-money.js";
 import { findingsOf, rateFarSays } from "../src/woo-pages.js";
-import { CREATE_UNKNOWN, PARCEL_NOT_CREATED, RECONNECT_FIRST } from "../src/woo-recovery.js";
+import { CREATE_UNKNOWN } from "../src/woo-recovery.js";
 import {
   RECOVERY_UNKNOWN,
-  unknownCreate,
+  type SavedSale,
+  unavailableOf,
   type WooRecoveryView,
 } from "../src/woo-recovery-pages.js";
 import {
@@ -2888,6 +2889,13 @@ const RECOVERY_SALE = {
   amount: "25.00 USD",
 };
 
+/** Sales saved with no shop order yet, as the recovery page reads them. */
+const DOWNLOAD_SALE = { facts: {}, placed: null } as const satisfies Omit<SavedSale, "phase">;
+const PARCEL_SALE = { facts: { kind: "parcel" }, placed: null } as const satisfies Omit<
+  SavedSale,
+  "phase"
+>;
+
 const RECOVERY_FRAME = {
   path: `/integrations/woocommerce/recover/${RECOVERY_SALE.orderId}`,
   mode: "test" as const,
@@ -3025,10 +3033,7 @@ const WOO_RECOVERY: GalleryState[] = [
       mode: "unavailable",
       wooOrderId: "",
       message: null,
-      unavailable: {
-        why: `Your shop never got this order. ${RECONNECT_FIRST}`,
-        instead: "reconnect",
-      },
+      unavailable: unavailableOf({ ...DOWNLOAD_SALE, phase: "precreate_refused" }, "unfulfilled"),
     },
   ),
   recovery(
@@ -3037,13 +3042,16 @@ const WOO_RECOVERY: GalleryState[] = [
       screen: "Recover WooCommerce delivery",
       when: "A merchant reloads recovery for a download whose create got no clear answer, after closing its fulfillment.",
       cause:
-        "The saved sale still says nobody knows whether the shop holds the order, so the page names the Transaction ID to look for in the shop, and offers no press.",
+        "The saved sale still says nobody knows whether the shop holds the order, so the page asks the merchant to look in the shop for the one whose Transaction ID is this order ID, and offers no press.",
     },
     {
       mode: "unavailable",
       wooOrderId: "",
       message: null,
-      unavailable: { why: unknownCreate(RECOVERY_SALE.orderId), instead: "nothing" },
+      unavailable: unavailableOf(
+        { ...DOWNLOAD_SALE, phase: "create_unknown" },
+        "fulfillment_closed",
+      ),
     },
   ),
   recovery(
@@ -3058,10 +3066,7 @@ const WOO_RECOVERY: GalleryState[] = [
       mode: "unavailable",
       wooOrderId: "",
       message: null,
-      unavailable: {
-        why: PARCEL_NOT_CREATED,
-        instead: "close",
-      },
+      unavailable: unavailableOf({ ...PARCEL_SALE, phase: "precreate_refused" }, "unfulfilled"),
     },
   ),
   recovery(

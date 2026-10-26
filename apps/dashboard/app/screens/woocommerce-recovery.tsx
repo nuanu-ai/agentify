@@ -1,7 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import type { ReactNode } from "react";
-import type { WooRecoveryView } from "../../src/woo-recovery-pages.js";
-import { shopNameOf } from "../../src/woo-views.js";
+import type { Unavailable, WooRecoveryView } from "../../src/woo-recovery-pages.js";
+import { PARCEL_NOT_CREATED, RECONNECT_FIRST, shopNameOf } from "../../src/woo-views.js";
 import { ORDER_WORDS } from "../../src/words.js";
 import { Ident } from "../components/copy.js";
 import { Fact, Facts } from "../components/list.js";
@@ -21,6 +21,32 @@ const introOf = (view: WooRecoveryView): string | null =>
       : view.mode === "retry"
         ? `Shop order ${view.wooOrderId} is linked. Retry sends its download again without making a new order.`
         : null;
+
+/**
+ * Why nothing can be pressed here, from what is known of the shop's order.
+ * Without a shop order only a parcel is sent to close its fulfillment: a
+ * download's order is made here once its shop is connected again.
+ */
+const unavailableSaid = ({ shopOrder, instead }: Unavailable): string => {
+  if (shopOrder === "unknown") {
+    return instead === "close"
+      ? "We don't know if your shop created this order. Don't ship it from the shop: close fulfillment here instead."
+      : "We don't know if your shop created this order. Look in your shop for one whose Transaction ID is the order ID below.";
+  }
+  if (shopOrder === "none") {
+    return instead === "reconnect"
+      ? `Your shop never got this order. ${RECONNECT_FIRST}`
+      : instead === "close"
+        ? PARCEL_NOT_CREATED
+        : "Your shop never got this order, and it isn't waiting for delivery any more.";
+  }
+  const held = `Your shop has order ${shopOrder.id} for this sale`;
+  return instead === "parcel"
+    ? `${held}. This page recovers downloads only: a parcel counts as shipped once you mark it Completed in WooCommerce.`
+    : instead === "close"
+      ? `${held}, but it has no download to send.`
+      : `${held}, and the sale isn't waiting for delivery any more.`;
+};
 
 /** A link styled as the panel's one action, under the facts. */
 function Next({
@@ -66,7 +92,7 @@ export function WooRecoveryScreen({
                   {view.message}
                 </p>
               )}
-              {view.unavailable === null ? null : <p>{view.unavailable.why}</p>}
+              {view.unavailable === null ? null : <p>{unavailableSaid(view.unavailable)}</p>}
               {intro === null || view.unknown ? null : <p>{intro}</p>}
             </div>
           </div>

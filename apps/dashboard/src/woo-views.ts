@@ -618,3 +618,11 @@ export const wooImportView = (
     published: published.map((one) => ({ ...one, code: merchantItemIdFor(shopUrl, one.id) })),
   };
 };
+
+/** Said where a download's shop order waits for its shop to be connected again. */
+export const RECONNECT_FIRST =
+  "Connect the same shop again on the WooCommerce page first, then create the order here.";
+
+/** Said where a parcel's shop order was never made; nothing is kept to make it from. */
+export const PARCEL_NOT_CREATED =
+  "Your shop never got this order, and a parcel's order can't be made later: Agentify doesn't keep the delivery address.";
