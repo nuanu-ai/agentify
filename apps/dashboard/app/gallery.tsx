@@ -663,6 +663,15 @@ const asked = (answer: LinkAnswer): SignInView => ({
   googleEnabled: GOOGLE_ON,
 });
 
+/**
+ * A page whose resend waits, as its script leaves it: the button taken away
+ * and counting, which is what a person sees, rather than as it is served.
+ */
+const waiting = (state: GalleryState): GalleryState => ({
+  ...state,
+  scene: { shows: "Send another link in" },
+});
+
 const SIGNING_IN: GalleryState[] = [
   signIn(
     {
@@ -776,79 +785,93 @@ const SIGNING_IN: GalleryState[] = [
     "/sign-in",
     { screen: "ask", destination: "default", googleEnabled: GOOGLE_ON, problem: NOT_AN_ADDRESS },
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-link-sent",
-      screen: "Sign in",
-      when: "Somebody asks for a sign-in link.",
-      cause:
-        "The mail provider accepted the message; the button counts down the minute before another link.",
-    },
-    "/sign-in",
-    asked({ sent: true, seconds: 60 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-link-sent",
+        screen: "Sign in",
+        when: "Somebody asks for a sign-in link.",
+        cause:
+          "The mail provider accepted the message; the button counts down the minute before another link.",
+      },
+      "/sign-in",
+      asked({ sent: true, seconds: 60 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-last-link-this-hour",
-      screen: "Sign in",
-      when: "Somebody asks for their third link within an hour.",
-      cause: "The link went out, and it was the last of the three an address gets in an hour.",
-    },
-    "/sign-in",
-    asked({ sent: true, seconds: 2_820 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-last-link-this-hour",
+        screen: "Sign in",
+        when: "Somebody asks for their third link within an hour.",
+        cause: "The link went out, and it was the last of the three an address gets in an hour.",
+      },
+      "/sign-in",
+      asked({ sent: true, seconds: 2_820 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-wait-a-minute",
-      screen: "Sign in",
-      when: "Somebody asks for another link less than a minute after the last one.",
-      cause: "One address gets one link a minute, so no new link was sent.",
-    },
-    "/sign-in",
-    asked({ wall: "interval", seconds: 43 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-wait-a-minute",
+        screen: "Sign in",
+        when: "Somebody asks for another link less than a minute after the last one.",
+        cause: "One address gets one link a minute, so no new link was sent.",
+      },
+      "/sign-in",
+      asked({ wall: "interval", seconds: 43 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-hour-spent",
-      screen: "Sign in",
-      when: "Somebody asks for a fourth link within an hour.",
-      cause: "One address gets three links an hour, so no new link was sent.",
-    },
-    "/sign-in",
-    asked({ wall: "hourly", seconds: 2_820 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-hour-spent",
+        screen: "Sign in",
+        when: "Somebody asks for a fourth link within an hour.",
+        cause: "One address gets three links an hour, so no new link was sent.",
+      },
+      "/sign-in",
+      asked({ wall: "hourly", seconds: 2_820 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-client-spent",
-      screen: "Sign in",
-      when: "Somebody asks for a link from a connection that has asked for many in the last hour.",
-      cause:
-        "One connection gets a set number of links an hour whatever addresses it types, so no link was sent; Google sign-in still works.",
-    },
-    "/sign-in",
-    asked({ wall: "client", seconds: 2_820 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-client-spent",
+        screen: "Sign in",
+        when: "Somebody asks for a link from a connection that has asked for many in the last hour.",
+        cause:
+          "One connection gets a set number of links an hour whatever addresses it types, so no link was sent; Google sign-in still works.",
+      },
+      "/sign-in",
+      asked({ wall: "client", seconds: 2_820 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-shared-spent",
-      screen: "Sign in",
-      when: "Somebody asks for a link through an address that names no single visitor, such as the test channel's ingress, after many links went out through such addresses this hour.",
-      cause:
-        "Requests whose address names no visitor share one hourly allowance, so no link was sent; Google sign-in still works.",
-    },
-    "/sign-in",
-    asked({ wall: "shared", seconds: 1_980 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-shared-spent",
+        screen: "Sign in",
+        when: "Somebody asks for a link through an address that names no single visitor, such as the test channel's ingress, after many links went out through such addresses this hour.",
+        cause:
+          "Requests whose address names no visitor share one hourly allowance, so no link was sent; Google sign-in still works.",
+      },
+      "/sign-in",
+      asked({ wall: "shared", seconds: 1_980 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-ceiling",
-      screen: "Sign in",
-      when: "Somebody asks for a link in an hour the site has already sent its share of links in.",
-      cause:
-        "The site sends a set number of sign-in links an hour to everybody together, so no link was sent; Google sign-in still works.",
-    },
-    "/sign-in",
-    asked({ wall: "ceiling", seconds: 1_260 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-ceiling",
+        screen: "Sign in",
+        when: "Somebody asks for a link in an hour the site has already sent its share of links in.",
+        cause:
+          "The site sends a set number of sign-in links an hour to everybody together, so no link was sent; Google sign-in still works.",
+      },
+      "/sign-in",
+      asked({ wall: "ceiling", seconds: 1_260 }),
+    ),
   ),
   signIn(
     {
@@ -952,25 +975,30 @@ const SETTING_UP: GalleryState[] = [
       pressed: { "routes/merchant": { unavailable: true } },
     },
   ),
-  at(
-    {
-      id: "dashboard-choose-name",
-      screen: "Choosing the seller name",
-      when: "A new merchant's dashboard has just been opened.",
-      cause: "The merchant has no seller name yet; this is the last step of setting up.",
-    },
-    {
-      path: "/choose-name",
-      mode: "live",
-      loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-    },
-  ),
+  {
+    ...at(
+      {
+        id: "dashboard-choose-name",
+        screen: "Choosing the seller name",
+        when: "A new merchant's dashboard has just been opened.",
+        cause:
+          "The merchant has no seller name yet; this is the last step of setting up, and the button waits for a name to be typed.",
+      },
+      {
+        path: "/choose-name",
+        mode: "live",
+        loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
+      },
+    ),
+    scene: { shows: "Choose a seller name" },
+  },
   at(
     {
       id: "dashboard-choose-name-needed",
       screen: "Choosing the seller name",
-      when: "A new merchant presses Use this name with the box empty.",
-      cause: "An empty name is refused, and the page offers to leave it for later.",
+      when: "A new merchant's browser, which runs no script, sends the name form with the box empty.",
+      cause:
+        "Where the script runs the button waits for a name; here the server refuses the empty one and the page offers to choose later.",
     },
     {
       path: "/choose-name",
