@@ -356,8 +356,13 @@ for route in /=200 /owner=308 /api/health/live=200 /api/health=200 /dashboard/si
     || refuse "https://$origin${route%=*} answered ${status:-nothing} where ${route#*=} was expected, so $revision runs unverified."
 done
 at "checking the cards on sale"
-# Read-only: a GET on a purchase address is always answered with its payment
-# challenge and never read for payment. The catalog is one unpaged document.
+# Read-only: a GET on a purchase address is answered with its payment challenge,
+# or refused, and never read for payment. The catalog is one unpaged document.
+# A card also leaves the catalog for its seller's own state, whatever is
+# released; a card gone whose look is refused with such a code is not held
+# against the release. A seller whose process has gone quiet still answers the
+# look with the challenge, so the release cannot tell that card from one it
+# broke, and holds it against the release.
 python3 - "$origin" "$address" "$network" "$cards" <<'PY' \
   || refuse "the cards on sale do not answer as they did before the release, for the reason above, so $revision runs unverified."
 import base64, json, os, subprocess, sys, urllib.parse
@@ -371,6 +376,19 @@ leaving = set(os.environ.get("AGENTIFY_LEAVING", "").split())
 if leaving and known is None:
     sys.exit(f"activate: no catalog was read before the release, so the card(s) named as leaving cannot be checked: {' '.join(sorted(leaving))}")
 gone = known - set(cards) if known is not None else set()
+SELLERS_OWN_STATE = {"seller_not_fulfilling", "seller_not_taking_orders"}
+def refused_for(card):
+    url = f"https://{origin}/x402/{urllib.parse.quote(card, safe='')}/purchase"
+    # Read as text, so the header ends at a blank line however it was spelled.
+    head, _, body = get(url, "-D", "-").partition("\n\n")
+    if head.split()[1:2] != ["409"]:
+        return None
+    try:
+        return json.loads(body)["error"]["code"]
+    except (ValueError, KeyError, TypeError):
+        return None
+sellers = sorted(card for card in gone - leaving if refused_for(card) in SELLERS_OWN_STATE)
+gone -= set(sellers)
 unnamed = sorted(gone - leaving)
 if unnamed:
     sys.exit(f"activate: {len(unnamed)} card(s) on sale before the release are gone from the catalog: {' '.join(unnamed)}; "
@@ -390,6 +408,7 @@ for card in cards:
         sys.exit(f"activate: card {card} answered {status} without a payment challenge for {url} on {network}")
 compared = "none compared, since nothing answered before" if known is None else f"{len(known)} compared"
 left = f"; {len(gone)} left the catalog as named: {' '.join(sorted(gone))}" if gone else ""
+left += f"; {len(sellers)} left the catalog for their seller's own state: {' '.join(sellers)}" if sellers else ""
 print(f"activate: {len(cards)} card(s) on sale ({compared}), each answering its payment challenge on {network}{left}", file=sys.stderr)
 PY
 
