@@ -229,7 +229,7 @@ const FORGET_LAPSED = "agentify_forget_lapsed_attempts";
  * for its buyer or merchant to ask about a failed purchase, after which
  * nothing it records is anybody's money or goods.
  */
-export const LAPSED_KEPT_MS = 30 * 24 * 60 * 60 * 1_000;
+const LAPSED_KEPT_MS = 30 * 24 * 60 * 60 * 1_000;
 
 /**
  * How many lapsed attempts one statement forgets, so a run over a long
@@ -329,7 +329,7 @@ interface HowTheySell {
  * constant rather than a setting, since a knob here either lets that load
  * back through or stops a seller's every sale.
  */
-export const WAITING_FOR_PAYMENT_AT_MOST = 20;
+const WAITING_FOR_PAYMENT_AT_MOST = 20;
 
 /**
  * How long a seller's own process may go without polling before a purchase
