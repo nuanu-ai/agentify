@@ -356,8 +356,8 @@ released: while the seller has left too many paid orders without delivery or
 closure, or while the seller's own process has not polled for ten minutes.
 For each card gone and not named, activation asks its purchase address with a
 GET, as a crawler does, and a card whose look is refused with
-`seller_not_fulfilling` or `seller_not_taking_orders` is not held against the
-release; the success line names it. A seller whose process has gone quiet
+`seller_not_fulfilling` is not held against the release; the success line
+names it. A seller whose process has gone quiet
 still answers that look with the payment challenge, because listings other
 people run must not drop a card for a pause that ends by itself, so activation
 cannot tell such a card from one the release broke and fails the release. A

@@ -376,7 +376,7 @@ leaving = set(os.environ.get("AGENTIFY_LEAVING", "").split())
 if leaving and known is None:
     sys.exit(f"activate: no catalog was read before the release, so the card(s) named as leaving cannot be checked: {' '.join(sorted(leaving))}")
 gone = known - set(cards) if known is not None else set()
-SELLERS_OWN_STATE = {"seller_not_fulfilling", "seller_not_taking_orders"}
+SELLERS_OWN_STATE = {"seller_not_fulfilling"}
 def refused_for(card):
     url = f"https://{origin}/x402/{urllib.parse.quote(card, safe='')}/purchase"
     # Read as text, so the header ends at a blank line however it was spelled.
