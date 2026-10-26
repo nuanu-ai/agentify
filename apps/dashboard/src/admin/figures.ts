@@ -588,7 +588,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
     }
   }
 
-  if (channel.surface !== "live" && reads.uncertainShopOrders !== null) {
+  if (reads.uncertainShopOrders !== null) {
     const uncertain = foundIn(reads.uncertainShopOrders);
     if (uncertain === null) unread.push("the WooCommerce orders");
     else if (uncertain > 0) {
