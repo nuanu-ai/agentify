@@ -152,8 +152,9 @@ export interface CardsIntegration {
  * meanwhile can be taken back. A card published by the integration not in use
  * is offered none, and its word does not say its own pause either: the move
  * between integrations is made on the WooCommerce page, which its words lead
- * to. They name the merchant's choice and not a sale, since a shop whose
- * Connect was never approved sells nothing, and neither does code never run.
+ * to. They name only the merchant's choice: the state beside them already
+ * says the card is off sale, and naming a sale would be wrong where a shop's
+ * Connect was never approved or the code never ran.
  */
 const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
   if (integration.offSale.includes(entry.id)) {
@@ -161,8 +162,8 @@ const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardCo
       kind: "reason",
       text:
         integration.through === "woocommerce"
-          ? "Off sale while you sell through WooCommerce"
-          : "Off sale while you sell through your code",
+          ? "You sell through WooCommerce"
+          : "You sell through your code",
       to: "/woocommerce",
     };
   }

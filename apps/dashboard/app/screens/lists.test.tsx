@@ -523,7 +523,7 @@ describe("the state of each card", () => {
     ["the shop published, while the code sells", "api", /your code/i],
     ["the code published, while the shop sells", "woocommerce", /WooCommerce/],
   ] as const)(
-    "says beside a card %s why it is off sale, with the way to the switch and no switch of its own",
+    "says beside a card %s which integration the merchant chose, with the way to the switch and no switch of its own",
     (_which, through, says) => {
       // The banner names no reason for it: only this card's row can say which
       // of the merchant's cards came from the integration not in use.
@@ -535,10 +535,11 @@ describe("the state of each card", () => {
         />
       ));
       const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+      const note = readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? "");
 
-      expect(
-        readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? ""),
-      ).toMatch(says);
+      expect(note).toMatch(says);
+      // The state beside it already says the card is off sale.
+      expect(note).not.toMatch(/off sale/i);
       // The choice between the two is the merchant's, not a sale anybody makes:
       // a shop never approved sells nothing, and neither does code never run.
       expect(readable(row)).not.toMatch(/\bsells\b/);
