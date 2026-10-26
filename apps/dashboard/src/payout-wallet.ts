@@ -104,7 +104,7 @@ export const NOT_A_PAYOUT_WALLET: Readonly<Record<NotAWallet, string>> = {
   multicall3: `This is Multicall3, the public contract a payout is sent to, not a wallet: anybody could take a share paid to it. ${NOTHING_WAS_SAVED}`,
   usdc: `This is the USDC token contract, not a wallet, so your share could never come back from it. ${NOTHING_WAS_SAVED}`,
   own_payout_split: `This is one of your own payout contracts, not a wallet: a share paid to it would be split again, with Agentify's commission taken a second time, on its way to the wallet that contract pays. ${NOTHING_WAS_SAVED}`,
-  another_merchants_payout_split: `This is another merchant's payout contract, not a wallet: a share paid to it would go to that merchant. ${NOTHING_WAS_SAVED}`,
+  another_merchants_payout_split: `This is another business's payout contract, not a wallet: a share paid to it would go to that business. ${NOTHING_WAS_SAVED}`,
 };
 
 /** The address a screen read from the gateway; null where none is set. */

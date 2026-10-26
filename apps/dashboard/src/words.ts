@@ -108,8 +108,6 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
  */
 export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import again.";
 
-export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
-
 /**
  * Why the account as a whole is not as usual: a change of the payout wallet
  * waits to apply, all sales are paused, something publishing needs is

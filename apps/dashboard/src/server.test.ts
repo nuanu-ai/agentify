@@ -3040,9 +3040,9 @@ describe("the wallet a merchant's share is paid out to", () => {
     const ofAnotherMerchant = await said(theirs?.address);
 
     expect(ofAnEarlierWallet).toMatch(/one of your own payout contracts, not a wallet/);
-    expect(ofAnEarlierWallet).not.toMatch(/another merchant/);
-    expect(ofAnotherMerchant).toMatch(/another merchant's payout contract, not a wallet/);
-    expect(ofAnotherMerchant).toMatch(/go to that merchant/);
+    expect(ofAnEarlierWallet).not.toMatch(/another business/);
+    expect(ofAnotherMerchant).toMatch(/another business's payout contract, not a wallet/);
+    expect(ofAnotherMerchant).toMatch(/go to that business/);
     expect(ofAnotherMerchant).not.toMatch(/your own/);
     expect(await paidInto(running)).toBe(AS_A_WALLET_SHOWS_IT);
   });
