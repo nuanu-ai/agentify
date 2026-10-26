@@ -3,9 +3,10 @@
  * every identity and every session on the site, and the scanner never handles
  * a token or mints a session. Over this route, reachable only on the compose
  * network and authenticated by a secret the two processes share, the scanner
- * asks three things: send a link for this address with this destination; whose
- * session is this cookie, and is its account an operator; and, for a privacy
- * deletion, remove this person if they own no merchant.
+ * asks four things: send a link for this address with this destination; whose
+ * session is this cookie, and is its account an operator; for a privacy
+ * deletion, remove this person if they own no merchant; and for a privacy
+ * access request, mail this address a copy of what both sides hold about it.
  */
 
 import { z } from "zod";
@@ -124,10 +125,32 @@ export const deleteUnattachedPersonResponseSchema = z.union([
   z.object({ status: z.literal("refused") }).strict(),
 ]);
 
+/**
+ * A copy of the data held about one address, to be mailed to that address and
+ * no other: the dashboard adds what it holds to `scanner`, which is what the
+ * scanner holds, and reads nothing in it. `request` is the scanner's own
+ * identifier for the request, printed in the copy.
+ */
+export const sendDataCopyRequestSchema = z
+  .object({
+    operation: z.literal("copy"),
+    request: z.uuid(),
+    email: normalizedEmailSchema,
+    scanner: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+/** `accepted` is the mail provider taking the message and nothing more. */
+export const sendDataCopyResponseSchema = z.union([
+  z.object({ status: z.literal("accepted") }).strict(),
+  z.object({ status: z.literal("unavailable") }).strict(),
+]);
+
 export const reportIdentityRequestSchema = z.union([
   sendReportLinkRequestSchema,
   readSessionRequestSchema,
   deleteUnattachedPersonRequestSchema,
+  sendDataCopyRequestSchema,
 ]);
 
 export type SendReportLinkRequest = z.infer<typeof sendReportLinkRequestSchema>;
@@ -135,3 +158,5 @@ export type SendReportLinkResponse = z.infer<typeof sendReportLinkResponseSchema
 export type ReadSessionResponse = z.infer<typeof readSessionResponseSchema>;
 export type DeleteUnattachedPersonRequest = z.infer<typeof deleteUnattachedPersonRequestSchema>;
 export type DeleteUnattachedPersonResponse = z.infer<typeof deleteUnattachedPersonResponseSchema>;
+export type SendDataCopyRequest = z.infer<typeof sendDataCopyRequestSchema>;
+export type SendDataCopyResponse = z.infer<typeof sendDataCopyResponseSchema>;
