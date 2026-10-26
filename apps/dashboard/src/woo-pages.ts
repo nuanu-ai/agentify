@@ -341,7 +341,12 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       kind: "view",
       status,
       view: wooShopView(
-        { state, through: integration.document.through, ...(rate === null ? {} : { rate }) },
+        {
+          state,
+          through: integration.document.through,
+          testMoney: config.surfaceMode !== "live",
+          ...(rate === null ? {} : { rate }),
+        },
         answer,
       ),
     };

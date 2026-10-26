@@ -891,6 +891,8 @@ export type PaidIntoSplit = SplitTerms & { readonly address: string };
 export interface SoldItem {
   /** Goes onto the shop's order as the thread between the two. */
   readonly orderId: string;
+  /** Sold on the test channel, paid in test USDC, which the shop's order says. */
+  readonly test: boolean;
   /** The card's `merchant_item_id`. */
   readonly productId: string;
   readonly email: string;
@@ -919,20 +921,26 @@ export interface Converted {
  * from a shop in another currency the amount it was priced at and the rate
  * the buyer paid at, and for a payment into a split two lines the merchant
  * reads beside the order, the commission on what was paid and the split it
- * went to. No key begins with an underscore, which WooCommerce hides. The
- * answer check reads only the identifier, so the lines neither break nor
- * weaken it.
+ * went to. A test channel's order says so in a line of its own and beside
+ * what was paid, because a merchant may connect their real shop there and
+ * must not ship for money that is not real. No key begins with an underscore,
+ * which WooCommerce hides. The answer check reads only the identifier, so the
+ * lines neither break nor weaken it.
  */
 const metadataOf = (
-  orderId: string,
+  sold: Readonly<{ orderId: string; test: boolean }>,
   inTheShop: Money,
   converted: Converted | undefined,
   into: PaidIntoSplit | null,
 ): readonly { readonly key: string; readonly value: string }[] => {
   const paid = converted?.paid ?? inTheShop;
   return [
-    { key: "agentify_order_id", value: orderId },
-    { key: "agentify_paid", value: `${paid.amount} ${paid.currency}` },
+    { key: "agentify_order_id", value: sold.orderId },
+    ...(sold.test ? [{ key: "agentify_channel", value: "test" }] : []),
+    {
+      key: "agentify_paid",
+      value: `${paid.amount} ${paid.currency}${sold.test ? " in test USDC, not real money" : ""}`,
+    },
     ...(converted === undefined
       ? []
       : [
@@ -1584,7 +1592,7 @@ export const createTheOrderInTheShop = async (
     set_paid: true,
     currency: sold.price.currency,
     billing: { email: sold.email },
-    meta_data: metadataOf(sold.orderId, sold.price, sold.converted, sold.paidInto),
+    meta_data: metadataOf(sold, sold.price, sold.converted, sold.paidInto),
     line_items: [
       sold.tax.mode === "off"
         ? {
@@ -1767,6 +1775,8 @@ const postTheOrder = async (
 export interface ParcelSold {
   /** Goes onto the shop's order as the thread between the two. */
   readonly orderId: string;
+  /** Sold on the test channel, paid in test USDC, which the shop's order says. */
+  readonly test: boolean;
   readonly productId: string;
   /**
    * The merchant's own address, as on a download's order, so no shop mail
@@ -1877,7 +1887,7 @@ export const createTheParcelInTheShop = async (
     shipping,
     // On what was paid, the goods and the shipping together: the split took
     // the whole of it.
-    meta_data: metadataOf(sold.orderId, sold.total, sold.converted, sold.paidInto),
+    meta_data: metadataOf(sold, sold.total, sold.converted, sold.paidInto),
     line_items: [
       sold.tax === "off"
         ? { product_id: productId, quantity: 1, subtotal: sold.goods, total: sold.goods }

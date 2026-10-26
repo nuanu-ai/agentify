@@ -331,6 +331,7 @@ export const fillFromTheShop = async (
 
   const made = await place(connection, {
     orderId: order.id,
+    test: order.test,
     productId: eligible.productId,
     // The merchant's own address, not the buyer's: creating an order makes
     // WooCommerce mail whatever address is on it, and nothing in the request
@@ -651,6 +652,7 @@ const fillParcelFromTheShop = async (
 
   const made = await (parts.placeParcel ?? createTheParcelInTheShop)(connection, {
     orderId: order.id,
+    test: order.test,
     productId,
     email: orderEmail,
     total: heldTo,

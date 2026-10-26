@@ -538,6 +538,7 @@ const WAITING = PayoutWalletSchema.parse({
 
 const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => ({
   state,
+  testMoney: true,
   through: "woocommerce",
   ...more,
 });
