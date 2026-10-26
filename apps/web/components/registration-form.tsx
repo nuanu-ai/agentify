@@ -231,7 +231,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
           name="phone"
           pattern={PHONE_INPUT_PATTERN}
           placeholder="+1 415 555 0123"
-          title="Start with + and the country code, as in +1 415 555 0123: 8 to 15 digits in all. Spaces, dots, dashes and brackets between digits are fine."
+          title="Start with + and the country code, as in +1 415 555 0123: 8 to 15 digits, with a space, dot, dash or bracket between them if you like."
           type="tel"
         />
         <span className={styles.hint} id={`${phoneId}-hint`}>
