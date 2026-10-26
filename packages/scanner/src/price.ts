@@ -264,21 +264,11 @@ const stated = (
 
 const PRICE_KEYS = ["price", "lowPrice", "highPrice"];
 
-/** A price an offer in the JSON-LD states, at any depth of its scripts' values. */
-export const jsonLdPrice = (values: readonly unknown[]): PriceSignal | undefined => {
-  const pending: unknown[] = [...values];
-  for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
-    if (Array.isArray(value)) {
-      pending.push(...value);
-      continue;
-    }
-    if (!value || typeof value !== "object") continue;
-    const record = value as Record<string, unknown>;
-    for (const key of PRICE_KEYS) {
-      const found = stated("json-ld", record[key], record.priceCurrency);
-      if (found) return found;
-    }
-    pending.push(...Object.values(record));
+/** The price a JSON-LD object states as an offer, if it states one. */
+export const offerPrice = (record: Record<string, unknown>): PriceSignal | undefined => {
+  for (const key of PRICE_KEYS) {
+    const found = stated("json-ld", record[key], record.priceCurrency);
+    if (found) return found;
   }
   return undefined;
 };

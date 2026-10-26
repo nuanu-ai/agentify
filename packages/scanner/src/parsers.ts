@@ -1,6 +1,6 @@
 import { readHtml, type StartTag } from "./html.js";
 import { asciiLower } from "./markup.js";
-import { jsonLdPrice, type MarkedPrice, markedPrice, textPrice } from "./price.js";
+import { type MarkedPrice, markedPrice, offerPrice, textPrice } from "./price.js";
 
 export type SitemapResult = {
   valid: boolean;
@@ -158,6 +158,10 @@ type PageReading = {
   jsonLdScripts: string[];
   microdata: MarkedPrice;
   meta: MarkedPrice;
+  productFeed: boolean;
+  ownProductFeed: boolean;
+  product: boolean;
+  availability: boolean;
 };
 
 const PRODUCT_WORDS = ["product", "shop", "item"];
@@ -167,6 +171,126 @@ const META_AMOUNTS = ["product:price:amount", "og:price:amount"];
 const META_CURRENCIES = ["product:price:currency", "og:price:currency"];
 const SEEN = /\S/;
 const SHADOW_ROOT_MODES = ["open", "closed"];
+// A link declares a feed by its media type or by the file it names.
+const FEED_TYPES = [
+  "application/rss+xml",
+  "application/atom+xml",
+  "application/xml",
+  "text/xml",
+  "text/csv",
+  "text/tab-separated-values",
+];
+const FEED_FILE = /\.(?:xml|rss|atom|csv|tsv)$/;
+// A products feed is known by its own words and by the forms of its
+// address, never by words that belong to the site or the page around it: a
+// site's name or a product's name may say produce, Produk or catalog. The
+// words, whole, are those for products in the languages WooCommerce shops
+// title their feeds in, and for a catalog or a merchant feed.
+const PRODUCT_WORD =
+  /^(?:products?|produk|produits?|produkte?n?|productos?|produtos?|prodott[oi]|catalog(?:ue)?s?|katalog|cat[aá]logos?|merchant)$/;
+// The words of a product category's or tag's base, which WooCommerce writes
+// as product-category or kategori-produk.
+const ARCHIVE_WORD =
+  /^(?:category|categorie|categoria|kategori|kategorie|tag|etiquette|etiqueta|schlagwort)$/;
+// The parts WordPress puts between a site's name and a feed's own title.
+const TITLE_SEPARATOR = / (?:»|\||·|–|—) /;
+// An address as written, where its escapes are well formed.
+const decoded = (address: string): string => {
+  try {
+    return decodeURIComponent(address);
+  } catch {
+    return address;
+  }
+};
+// A feed titled as one of comments, in the words WordPress titles it with.
+const COMMENTS = /comment|koment|kommentar|coment/;
+const words = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+// Microdata properties that identify a product.
+const PRODUCT_PROPERTIES = [
+  "sku",
+  "gtin",
+  "gtin8",
+  "gtin12",
+  "gtin13",
+  "gtin14",
+  "mpn",
+  "productID",
+];
+const PRODUCT_TYPE = /^https?:\/\/schema\.org\/product$/;
+
+// The words of a feed's own title: what follows the last separator after a
+// site's name, or the whole title when there is none.
+const feedTitleWords = (title: string): string[] =>
+  words(title.split(TITLE_SEPARATOR).at(-1) ?? "");
+
+// Whether an address has the form of a products feed: WooCommerce's feed of
+// the product post type or of a product category, Shopify's feed of a
+// collection, a product category's or tag's archive feed, a feed whose
+// path segment right before `feed` names products, or a feed file whose
+// name does.
+const productFeedAddress = (address: URL): boolean => {
+  const query = address.searchParams;
+  if (query.get("post_type") === "product" || query.has("product_cat") || query.has("product_tag"))
+    return true;
+  const segments = address.pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decoded(segment).toLowerCase());
+  const last = segments.at(-1) ?? "";
+  if (segments.at(-2) === "collections" && /\.(?:atom|rss)$/.test(last)) return true;
+  const feed = segments.lastIndexOf("feed");
+  if (feed > 0) {
+    if (words(segments[feed - 1] ?? "").some((word) => PRODUCT_WORD.test(word))) return true;
+    const base = words(segments[feed - 2] ?? "");
+    return (
+      base.some((word) => PRODUCT_WORD.test(word)) && base.some((word) => ARCHIVE_WORD.test(word))
+    );
+  }
+  return (
+    FEED_FILE.test(last) &&
+    words(last.replace(FEED_FILE, "")).some((word) => PRODUCT_WORD.test(word))
+  );
+};
+
+type FeedLink = "products" | "own" | undefined;
+
+// Whether a `<link>` declares a feed of the shop's products, and whether it
+// is at the page's own address plus `feed/`, where WordPress puts the feed
+// of the page's comments. The page decides what that one is: a product
+// page's is its reviews feed, whatever its title says. Addresses are
+// compared by path, since an install may write its host or scheme otherwise.
+const productFeedLink = (attributes: ReadonlyMap<string, string>, page?: URL): FeedLink => {
+  if (!tokens(asciiLower(attributes.get("rel") ?? "")).includes("alternate")) return undefined;
+  if (attributes.has("hreflang")) return undefined;
+  let address: URL;
+  try {
+    address = new URL(attributes.get("href") ?? "", page ?? "https://page.invalid/");
+  } catch {
+    return undefined;
+  }
+  const path = address.pathname.toLowerCase();
+  if (
+    decoded(path + address.search)
+      .toLowerCase()
+      .includes("sitemap")
+  )
+    return undefined;
+  const type =
+    asciiLower(attributes.get("type") ?? "")
+      .split(";")[0]
+      ?.trim() ?? "";
+  if (!FEED_TYPES.includes(type) && !FEED_FILE.test(path)) return undefined;
+  const title = feedTitleWords(attributes.get("title") ?? "");
+  if (COMMENTS.test(title.join(" "))) return undefined;
+  if (!title.some((word) => PRODUCT_WORD.test(word)) && !productFeedAddress(address))
+    return undefined;
+  const own = page?.pathname.toLowerCase() ?? "";
+  return page && path === `${own.endsWith("/") ? own : `${own}/`}feed/` ? "own" : "products";
+};
 const DIGIT = /\p{Nd}/u;
 
 const tokens = (value: string | undefined): string[] =>
@@ -177,7 +301,13 @@ const isJsonLd = (tag: StartTag): boolean =>
     .split(";")[0]
     ?.trim() === "application/ld+json";
 
-const walkPage = (html: string): PageReading => {
+const walkPage = (html: string, url?: string): PageReading => {
+  let page: URL | undefined;
+  try {
+    page = url === undefined ? undefined : new URL(url);
+  } catch {
+    page = undefined;
+  }
   const pieces: string[] = [];
   let joined = false;
   const reading: PageReading = {
@@ -189,6 +319,10 @@ const walkPage = (html: string): PageReading => {
     jsonLdScripts: [],
     microdata: {},
     meta: {},
+    productFeed: false,
+    ownProductFeed: false,
+    product: false,
+    availability: false,
   };
   // Template content is inert, unless the template is a declarative shadow
   // root, which the browser attaches and shows. Navigation is not the page's
@@ -244,15 +378,37 @@ const walkPage = (html: string): PageReading => {
       ) {
         const hreflang = attributes.get("hreflang");
         if (hreflang) reading.hreflangs.push(hreflang);
+        const feed = productFeedLink(attributes, page);
+        if (feed === "products") reading.productFeed = true;
+        if (feed === "own") reading.ownProductFeed = true;
       }
       if (tag.name === "meta") {
         const property = asciiLower(attributes.get("property") ?? attributes.get("name") ?? "");
-        if (META_AMOUNTS.includes(property))
-          mark(reading.meta, "amount", attributes.get("content"));
-        if (META_CURRENCIES.includes(property))
-          mark(reading.meta, "currency", attributes.get("content"));
+        const content = attributes.get("content");
+        if (META_AMOUNTS.includes(property)) mark(reading.meta, "amount", content);
+        if (META_CURRENCIES.includes(property)) mark(reading.meta, "currency", content);
+        // Open Graph's product type, and the tags of its product namespace.
+        if (
+          (property === "og:type" &&
+            asciiLower(content ?? "")
+              .trim()
+              .startsWith("product")) ||
+          property.startsWith("product:")
+        )
+          reading.product = true;
+        if (
+          (property === "product:availability" || property === "og:availability") &&
+          SEEN.test(content ?? "")
+        )
+          reading.availability = true;
       }
       const itemprop = tokens(attributes.get("itemprop"));
+      if (
+        itemprop.some((name) => PRODUCT_PROPERTIES.includes(name)) ||
+        tokens(asciiLower(attributes.get("itemtype") ?? "")).some((type) => PRODUCT_TYPE.test(type))
+      )
+        reading.product = true;
+      if (itemprop.includes("availability")) reading.availability = true;
       const key = itemprop.some((name) => MICRODATA_PRICES.includes(name))
         ? "amount"
         : itemprop.includes("priceCurrency")
@@ -317,20 +473,58 @@ const jsonLdOf = (scripts: readonly string[]): { jsonLd: JsonLdResult; values: u
   return { jsonLd: { nodes, scriptCount: scripts.length, invalidCount }, values };
 };
 
-const signalsOf = (reading: PageReading, text: string, jsonLd: readonly unknown[]) => {
+const isProduct = (record: Record<string, unknown>): boolean =>
+  jsonLdTypes(record).some((type) => /(?:^|[/:])Product(?:Group)?$/.test(type));
+const statesAvailability = (record: Record<string, unknown>): boolean =>
+  typeof record.availability === "string" && SEEN.test(record.availability);
+
+// What the JSON-LD states, from one walk over each script's value: the first
+// price an offer states, whether a product is declared, and whether an
+// availability is stated, at any depth.
+const jsonLdFacts = (values: readonly unknown[]) => {
+  let price: ReturnType<typeof offerPrice>;
+  let product = false;
+  let availability = false;
+  const pending: unknown[] = [...values];
+  for (let value = pending.pop(); value !== undefined; value = pending.pop()) {
+    if (Array.isArray(value)) pending.push(...value);
+    else if (value && typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      price ??= offerPrice(record);
+      product ||= isProduct(record);
+      availability ||= statesAvailability(record);
+      if (price && product && availability) break;
+      pending.push(...Object.values(record));
+    }
+  }
+  return { price, product, availability };
+};
+
+const signalsOf = (reading: PageReading, jsonLd: readonly unknown[]) => {
+  const stated = jsonLdFacts(jsonLd);
+  const describesProduct = reading.product || stated.product;
   const price =
-    jsonLdPrice(jsonLd) ??
+    stated.price ??
     markedPrice("microdata", reading.microdata) ??
     markedPrice("meta", reading.meta) ??
-    textPrice(text);
+    textPrice(reading.text);
   return {
-    textLength: text.length,
+    textLength: reading.text.length,
     hasH1: reading.hasH1,
     hasTitle: reading.hasTitle,
     hasPrice: price !== undefined,
     price,
     productLinkCount: reading.productLinkCount,
     hreflangs: reading.hreflangs,
+    /** A link to a feed of the shop's products. */
+    productFeed: reading.productFeed || (reading.ownProductFeed && !describesProduct),
+    /** A product declared in Open Graph, microdata or JSON-LD. */
+    describesProduct,
+    /** A price or an availability stated in structured data. */
+    statesOffer:
+      (price !== undefined && price.source !== "text") ||
+      reading.availability ||
+      stated.availability,
   };
 };
 
@@ -343,26 +537,17 @@ export const parseJsonLd = (html: string): JsonLdResult =>
   jsonLdOf(walkPage(html).jsonLdScripts).jsonLd;
 
 /**
- * The text a reader that runs no scripts sees: character data and the text
- * of `title` and `textarea`, without scripts, styles, comments, template
- * content, SVG or MathML, or navigation.
+ * What the checks read of a page, from one pass over it and one parse of its
+ * JSON-LD: the text a reader that runs no scripts sees (character data and
+ * the text of `title` and `textarea`, without scripts, styles, comments,
+ * template content, SVG or MathML, or navigation), the page's signals, and
+ * its JSON-LD as `parseJsonLd` reads it. `url` is the page's address, which
+ * tells the feed of its own comments from a feed of the shop's products.
  */
-export const visibleText = (html: string): string => walkPage(html).text;
-
-// `text` is the page's visible text, for a caller that has read it already.
-export const htmlSignals = (html: string, text?: string) => {
-  const reading = walkPage(html);
-  return signalsOf(reading, text ?? reading.text, jsonLdOf(reading.jsonLdScripts).values);
-};
-
-/**
- * What `visibleText`, `htmlSignals` and `parseJsonLd` say of a page, from one
- * pass over it and one parse of its JSON-LD.
- */
-export const readPage = (html: string) => {
-  const reading = walkPage(html);
+export const readPage = (html: string, url?: string) => {
+  const reading = walkPage(html, url);
   const { jsonLd, values } = jsonLdOf(reading.jsonLdScripts);
-  return { text: reading.text, signals: signalsOf(reading, reading.text, values), jsonLd };
+  return { text: reading.text, signals: signalsOf(reading, values), jsonLd };
 };
 
 // A bot challenge served in place of the page: a 401, 403 or 429, or a

@@ -3,7 +3,7 @@ import type { CheckResult, Segment } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import { evaluateScan } from "./engine.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
-import { visibleText } from "./parsers.js";
+import { readPage } from "./parsers.js";
 import { baseBlocked, levelForScore, scoreChecks } from "./scoring.js";
 
 const artifact = (
@@ -212,24 +212,82 @@ describe("what the checks read from the markup real sites write", () => {
     expect(evaluation.score.terminalStatus).toBe("partial");
   });
 
-  it("finds a feed a page links to by its type or by its address", () => {
+  it("finds a product feed a page links to, by a feed's type or file and an address or title that names products", () => {
     for (const link of [
-      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
-      '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
-      '<link href="/blog_rss.xml" rel="alternate" title="RSS" type="application/rss+xml">',
+      // WooCommerce links its products feed from the shop's pages, with the
+      // ampersand of the query written as a character reference.
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Products Feed" href="https://example.com/shop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain" href="https://example.com/?post_type=product&#038;feed=rss2" />',
       "<LINK REL='alternate' HREF='https://example.com/merchant/products.csv'>",
       '<link rel="alternate" type="text/csv" title="Catalog" href="/catalog">',
       '<link rel="alternate" type="application/xml" title="Catalog" href="/catalog">',
-      '<link rel="alternate" href="https://example.com/feed/">',
-      '<link rel="alternate" href="https://example.com/google-merchant-center">',
       '<link rel="alternate" href="https://example.com/products.xml">',
+      '<link rel="alternate" type="application/atom+xml" href="/collections/all.atom">',
+      // WooCommerce's products feed in the shop's own language.
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Produk Feed" href="https://example.com/toko/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Boutique &raquo; Flux des produits" href="https://example.com/boutique/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Negozio &raquo; Feed Prodotti" href="https://example.com/acquista/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Feed de Produtos" href="https://example.com/loja/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Laden &raquo; Produkte-Feed" href="https://example.com/shop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Umpan Produk" href="https://example.com/toko/feed/" />',
+      // A product category's or tag's archive lists products, in the shop's
+      // language, and a path's escapes are read as what they escape.
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Category Feed" href="https://example.com/product-category/kain/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Umpan Kategori" href="https://example.com/kategori-produk/kain/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko" href="https://example.com/%70roduk/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Loja" href="https://example.com/cat%C3%A1logo/feed/" />',
     ])
-      expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)?.evidence).toMatchObject({
-        feed_link: true,
+      expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)).toMatchObject({
+        status: "pass",
+        earnedWeight: 4,
+        evidence: { feed_link: true },
       });
-    expect(
-      check(withBase('<link rel="stylesheet" href="/assets/base.css"><p>Wool</p>'), 15)?.status,
-    ).toBe("fail");
+  });
+
+  it("takes no blog's feed, stylesheet, or link in a comment or a script for a product feed", () => {
+    for (const head of [
+      // WordPress links the posts' and the comments' feeds from every page.
+      `<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Example &raquo; Comments Feed" href="https://example.com/comments/feed/" />`,
+      '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
+      // A site named for its shop still links its posts' feed.
+      '<link rel="alternate" type="application/rss+xml" title="Example Shop &raquo; Feed" href="https://example.com/feed/" />',
+      // A language alternate of the catalogue is a page, not a feed.
+      '<link rel="alternate" hreflang="de" href="https://example.com/de/collections/all">',
+      '<link rel="stylesheet" href="/assets/feedback.css">',
+      // An address with a broken escape is read as written.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/%E0%A4%A/feed/" />',
+      // A product's reviews feed, titled in Portuguese.
+      '<link rel="alternate" type="application/rss+xml" title="Loja &raquo; Kain Tenun Ikat Feed de comentários" href="https://example.com/produto/kain-tenun-ikat/feed/" />',
+      // A site's name is not its feed's: the title counts after the last
+      // separator.
+      '<link rel="alternate" type="application/rss+xml" title="Green Valley Produce &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Blue Sky Productions &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Produk Lokal &raquo; Feed" href="https://example.com/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Catalog Living &raquo; Feed" href="https://example.com/feed/" />',
+      // WordPress installed under a shop's word links its posts' and
+      // comments' feeds there.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/shop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Umpan" href="https://example.com/toko/feed/" />',
+      // A blog's category and post feeds whose slugs hold a product's word.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Shop News Category Feed" href="https://example.com/category/shop-news/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/produce-guide/feed/" />',
+      // A sitemap or a list of stores is not a products feed.
+      '<link rel="alternate" type="application/xml" href="/product-sitemap.xml">',
+      '<link rel="alternate" type="application/xml" href="/sitemap_products_1.xml?from=1&amp;to=99">',
+      '<link rel="alternate" type="application/xml" href="/store-locator/stores.xml">',
+      // A word of the address counts whole, not inside another word.
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/workshop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/blog/shopping-tips/feed/" />',
+      // A language alternate is a page, whatever its address ends in.
+      '<link rel="alternate" hreflang="de" href="https://example.com/de/products/kain.xml">',
+      '<!-- <link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/"> -->',
+      `<script>document.head.insertAdjacentHTML("beforeend", '<link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/">');</script>`,
+    ])
+      expect(check(withBase(`<head>${head}</head><body>Wool</body>`), 15)).toMatchObject({
+        status: "fail",
+        earnedWeight: 0,
+      });
   });
 
   it("recognizes a product page by its Open Graph type when it links no feed", () => {
@@ -248,6 +306,206 @@ describe("what the checks read from the markup real sites write", () => {
     // an Open Graph type.
     const card = `<meta property="og:type" content="website"><meta name="twitter:card" content="product"><p>Wool</p>`;
     expect(check(withBase(card), 15)?.status).toBe("fail");
+  });
+
+  it("recognizes a product page by its Open Graph type in any attribute order or quoting", () => {
+    for (const meta of [
+      '<meta content="product" property="og:type">',
+      "<meta property=og:type content=product>",
+      '<meta property="og:type" content="product.item">',
+    ])
+      expect(check(withBase(`<head>${meta}</head><body>Wool</body>`), 15)).toMatchObject({
+        status: "partial",
+        earnedWeight: 1,
+        evidence: { feed_link: false, product_identifiers: true, price_availability: false },
+      });
+  });
+
+  it("takes no word in a page's markup, scripts or text for a product, a price or an availability", () => {
+    const page = `<style>.price,.availability{color:#212a2f}</style>
+<script>var sku = "KT-01"; dataLayer.push({ gtin: "8992761002013", availability: "in_stock", price: 19 });</script>
+<div class="product-price in_stock">Ask us about any SKU or GTIN, and product:price questions.</div>`;
+    expect(check(withBase(page), 15)).toMatchObject({ status: "fail", earnedWeight: 0 });
+  });
+
+  it("takes a price shown only in the text for no structured offer", () => {
+    const page = `<meta property="og:type" content="product"><h1>Wool Runner</h1><p class="price">$98.00</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 1,
+      evidence: { product_identifiers: true, price_availability: false },
+    });
+  });
+
+  it("reads a product's identifiers, price and availability from microdata", () => {
+    const page = `<div itemscope itemtype="https://schema.org/Product"><h1 itemprop="name">Wool Runner</h1><span itemprop="sku">WR-01</span>
+<div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><link itemprop="availability" href="https://schema.org/InStock"><span itemprop="price" content="98.00">$98.00</span></div></div>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  it("reads a product's identifiers from microdata on its offer alone", () => {
+    const page = `<div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><meta itemprop="sku" content="KT-01"><meta itemprop="gtin13" content="8992761002013"></div><p>Kain Tenun Ikat</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 1,
+      evidence: { product_identifiers: true, price_availability: false },
+    });
+  });
+
+  it("reads a sold-out product's availability from JSON-LD when it states no price", () => {
+    const product = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: "Kain Tenun Ikat",
+      offers: { "@type": "Offer", availability: "https://schema.org/OutOfStock" },
+    };
+    const page = `<script type="application/ld+json">${JSON.stringify(product)}</script><h1>Kain Tenun Ikat</h1><p>Sold out</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { product_identifiers: true, price_availability: true },
+    });
+  });
+
+  // The pages below are what the platforms serve, anonymized and cut to the
+  // parts the check reads.
+  it("scores a WooCommerce product page by its JSON-LD, not by the blog's feeds", () => {
+    const offer = {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      "@id": "https://example.com/product/kain-tenun-ikat/#product",
+      name: "Kain Tenun Ikat",
+      sku: "KT-01",
+      offers: [
+        {
+          "@type": "Offer",
+          price: "150000",
+          priceValidUntil: "2027-12-31",
+          priceSpecification: { price: "150000", priceCurrency: "IDR" },
+          priceCurrency: "IDR",
+          availability: "http://schema.org/InStock",
+          url: "https://example.com/product/kain-tenun-ikat/",
+        },
+      ],
+    };
+    // WordPress links the posts' and comments' feeds from every page, and a
+    // product page with reviews on, as WooCommerce has by default, links the
+    // feed of its own reviews, at its address plus `feed/`.
+    const page = `<head><link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Feed" href="https://example.com/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Comments Feed" href="https://example.com/comments/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Kain Tenun Ikat Comments Feed" href="https://example.com/product/kain-tenun-ikat/feed/" /></head>
+<body class="product-template-default single single-product woocommerce"><h1 class="product_title entry-title">Kain Tenun Ikat</h1>
+<p class="price"><span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">Rp</span>150.000</bdi></span></p>
+<p class="stock in-stock">12 in stock</p><script type="application/ld+json">${JSON.stringify(offer)}</script></body>`;
+    const input = withBase("<title>Toko Kain</title><p>Selamat datang.</p>");
+    input.representative = artifact("https://example.com/product/kain-tenun-ikat/", page);
+    expect(check(input, 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  it("takes a product page's own feed for its reviews, in any language, and a shop page's own feed for its products", () => {
+    const productPage = (feed: string) => {
+      const input = withBase("<title>Toko Kain</title><p>Selamat datang.</p>");
+      input.representative = artifact(
+        "https://example.com/product/kain-tenun-ikat/",
+        `<head>${feed}</head><body><h1>Kain Tenun Ikat</h1></body>`,
+      );
+      return check(input, 15);
+    };
+    // A Japanese site titles the reviews' feed in words the reader does not
+    // know, so its address tells it apart; an Indonesian one says Komentar.
+    for (const feed of [
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Tenun Ikat のコメントのフィード" href="https://example.com/product/kain-tenun-ikat/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Kain Tenun Ikat Umpan Komentar" href="https://example.com/produk/kain-tenun-ikat/feed/" />',
+    ])
+      expect(productPage(feed)).toMatchObject({ status: "fail", earnedWeight: 0 });
+    const input = withBase("<title>Toko Kain</title><p>Selamat datang.</p>");
+    input.representative = artifact(
+      "https://example.com/shop/",
+      '<head><link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Products Feed" href="https://example.com/shop/feed/" /></head><body><h1>Shop</h1></body>',
+    );
+    expect(check(input, 15)).toMatchObject({ status: "pass", earnedWeight: 4 });
+  });
+
+  it("never takes a product page's own feed for a products feed, whatever its title or host", () => {
+    const product = {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      name: "Katalog Rak",
+      offers: {
+        "@type": "Offer",
+        price: "150000",
+        priceCurrency: "IDR",
+        availability: "http://schema.org/InStock",
+      },
+    };
+    // A product's name may be a product's word, and its reviews feed is
+    // titled with it, here in Dutch; an install may write its own host or
+    // scheme differently.
+    for (const [address, feed] of [
+      [
+        "https://example.com/produk/katalog-rak/",
+        '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Katalog Rak Reacties feed" href="https://example.com/produk/katalog-rak/feed/" />',
+      ],
+      [
+        "https://example.com/produk/katalog-rak/",
+        '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Katalog Rak Reacties feed" href="https://www.example.com/produk/katalog-rak/feed/" />',
+      ],
+      [
+        "https://example.com/produk/katalog-rak",
+        '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Katalog Rak Reacties feed" href="http://example.com/produk/katalog-rak/feed/" />',
+      ],
+      [
+        "https://example.com/product/productivity-planner/",
+        '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Productivity Planner Reacties feed" href="https://example.com/product/productivity-planner/feed/" />',
+      ],
+    ] as const) {
+      const input = withBase("<title>Winkel</title><p>Welkom.</p>");
+      input.representative = artifact(
+        address,
+        `<head>${feed}</head><body><h1>${product.name}</h1><script type="application/ld+json">${JSON.stringify(product)}</script></body>`,
+      );
+      expect(check(input, 15)).toMatchObject({ status: "partial", earnedWeight: 3 });
+    }
+  });
+
+  it("scores a Shopify product page by its Open Graph and JSON-LD facts", () => {
+    const product = {
+      "@context": "http://schema.org/",
+      "@type": "Product",
+      name: "Wool Runner",
+      url: "https://example.com/products/wool-runner",
+      sku: "WR-01",
+      offers: [
+        {
+          "@type": "Offer",
+          availability: "http://schema.org/InStock",
+          price: 98.0,
+          priceCurrency: "USD",
+        },
+      ],
+    };
+    const page = `<head><meta property="og:type" content="product"><meta property="og:price:amount" content="98.00"><meta property="og:price:currency" content="USD">
+<link rel="alternate" type="application/json+oembed" href="https://example.com/products/wool-runner.oembed"></head>
+<body><h1 class="product__title">Wool Runner</h1><script type="application/ld+json">${JSON.stringify(product)}</script></body>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  it("scores a WordPress blog that links its posts' feed as having no product feed", () => {
+    const page = `<head><link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />
+<meta property="og:type" content="article"></head><body><article><h1>Choosing a pricing table</h1><div class="price-table">Our plans</div></article></body>`;
+    expect(check(withBase(page), 15)).toMatchObject({ status: "fail", earnedWeight: 0 });
   });
 
   it("counts an llms.txt link only when it leads to an absolute address", () => {
@@ -461,7 +719,7 @@ describe("a scan of a truncated HTML response", () => {
   it("keeps sufficient content and successful comparisons already proved by the prefix", () => {
     const input = withBase(html);
     input.base = artifact("https://example.com/", html, { truncated: true });
-    input.markdown = artifact("https://example.com/", visibleText(html), {
+    input.markdown = artifact("https://example.com/", readPage(html).text, {
       headers: { "content-type": "text/markdown", vary: "Accept" },
     });
     for (const id of [7, 12, 13, 18]) {
@@ -560,7 +818,7 @@ describe("a scan of pages as large as the fetch admits", () => {
   it("finds the feed link after link tags that run on for megabytes", () => {
     const closed = scan(
       withBase(
-        `${fill("<link ", pageCap)}><link rel="alternate" type="application/rss+xml" href="/feed/">`,
+        `${fill("<link ", pageCap)}><link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/">`,
       ),
     );
     expect(checkIn(closed.evaluation, 15)?.evidence).toMatchObject({ feed_link: true });
@@ -836,6 +1094,22 @@ describe("18-check engine", () => {
       earnedWeight: 8,
       summaryCode: "markdown_negotiation_valid",
       evidence: { differentiated: true, semantic_parity: true },
+    });
+  });
+
+  it("reads a Markdown answer as text, whatever markup its prose or code mentions", () => {
+    // Markdown that names a `<textarea>` or a `<script>` tag in inline code,
+    // read as HTML, opens one and hides everything after it.
+    const input = makeArtifacts("owner");
+    input.markdown = artifact(
+      "https://example.com/",
+      `Leave a \`<textarea>\` for notes, and add the \`<script>\` tag the widget needs.\n\n# Fixture Store\n\n${"Substantive deterministic product information for machines. ".repeat(12)}`,
+      { headers: { "content-type": "text/markdown", vary: "Accept" } },
+    );
+    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
+      status: "pass",
+      earnedWeight: 8,
+      evidence: { semantic_parity: true },
     });
   });
 

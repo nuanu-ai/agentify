@@ -3,10 +3,12 @@
 The scanner reads the HTML of a site's home page and of one product page for
 the server-rendered content check and several others. From each page it takes
 the text a visitor sees, the title and the first-level heading, the links to
-products, the hreflang alternates, the JSON-LD, and whether a price is stated.
-This note records how that reading is built, why it does not use a parser
-library, how a price is recognised, and what the reading still gets wrong. The
-code is in `packages/scanner/src/`: `html.ts`, `parsers.ts` and `price.ts`.
+products, the hreflang alternates, the JSON-LD, whether a price is stated, and
+the facts the product feed check reads. This note records how that reading is
+built, why it does not use a parser library, how a price is recognised, what
+the product feed check takes from it, and what the reading still gets wrong.
+The code is in `packages/scanner/src/`: `html.ts`, `parsers.ts` and
+`price.ts`, with the checks in `checks.ts`.
 
 ## The defect it replaced
 
@@ -46,14 +48,17 @@ HTML inside them.
 
 The readers in `parsers.ts` take everything from one pass over the tokens.
 `readPage` gives the visible text, the signals and the JSON-LD of a page
-together, with one parse of its JSON-LD, so a check need not read a page
-three times. Template content is inert, unless the template is a declarative
-shadow root (`shadowrootmode` or the older `shadowroot`, open or closed),
-which the browser attaches and shows, and which a web component rendered on
-the server, as Lit renders one, writes its content into. Navigation is left
-out of the visible text, and `noscript` is read as markup, since the scanner
-sees a page as a reader that runs no scripts does. A heading counts when it
-holds text anywhere inside it, not only right after its tag.
+together, with one parse of its JSON-LD, and the checks keep one such reading
+for each page a scan fetched, however many checks and rounds read it. A
+Markdown answer is not a page: the Markdown check reads it as the text it is,
+so a `<script>` or `<textarea>` that its prose or inline code names hides
+nothing after it. Template content is inert, unless the template is a
+declarative shadow root (`shadowrootmode` or the older `shadowroot`, open or
+closed), which the browser attaches and shows, and which a web component
+rendered on the server, as Lit renders one, writes its content into.
+Navigation is left out of the visible text, and `noscript` is read as markup,
+since the scanner sees a page as a reader that runs no scripts does. A heading
+counts when it holds text anywhere inside it, not only right after its tag.
 
 Character references are decoded with `entities` 8.1.0, the decoder the
 workspace already pins and parse5 itself uses. It carries the standard's table
@@ -187,8 +192,9 @@ word for a price when the number beside it is written like money, as in
 list, a year included (`Sale 2024 USD`); and it takes three digits a space
 from a one-letter or two-capital marker for a price, whatever the letters
 stand for, as in `RF 433 MHz`. It misses a price whose currency is spelled
-out (`199 kronor`, `150 rubles`) or abbreviated in a way the data and the table do not hold
-(`150.000 VNĐ`, `S/. 59.90`, `Fr. 49.90`, `Dhs 50`), the Nordic `199:-`, a
+out (`199 kronor`, `150 rubles`) or abbreviated in a way the data and the
+table do not hold (`150.000 VNĐ`, `S/. 59.90`, `Fr. 49.90`, `Dhs 50`), the
+Nordic `199:-`, a
 code written in lower case, and a marker parted from the amount by anything
 other than a single space. Next to a short marker or one on the list it
 misses two digits (`RM 25`, `SAR 99`, `CAD 25`, `PEN 59`), an amount with no
@@ -196,6 +202,74 @@ space before it (`R299`), a Hungarian price under 10 000 forints written
 without grouping (`990 Ft`, `1990 Ft`), and a round price that looks like a
 year (`2000 TL`, `R 1999`). The evidence shows the words it matched, so a
 wrong signal can be seen in the report.
+
+## What the product feed check reads
+
+The product feed check scores a store's home page and product page by three
+facts from the same reading, and nothing in a comment, a script, a class
+name or the visible text counts toward any of them.
+
+A products feed is known by its own words and by the forms of its address,
+never by words that belong to the site or the page around it, since a site's
+name or a product's name may say produce, Produk or catalog. It is a
+`<link rel="alternate">` with a feed's media type (RSS, Atom, XML, CSV or
+tab-separated values), or a link to a file of one of those kinds, and one of
+two things names it a feed of products.
+
+The first is the feed's own title: what follows the last separator after the
+site's name (`»`, `|`, `·`, `–` or `—`, with spaces around it), or the whole
+title when there is none. "Site » Products Feed", "Products feed",
+"Umpan Produk" and "Flux des produits" count; "Green Valley Produce » Feed",
+"Blue Sky Productions » Feed", "Toko Produk Lokal » Feed" and
+"Catalog Living » Feed" do not. The title counts by whole words for products
+in the languages WooCommerce shops title their feeds in (products, Produk,
+produits, Produkte, productos, Produtos, prodotti), for a catalog (catalog,
+catalogue, Katalog, catálogo) or for a merchant feed, so Productions and
+Productivity are not among them. A title that says the feed is one of comments
+(comment, Komentar, Kommentar, commentaires, commenti, comentarios,
+comentários) never counts.
+
+The second is the address's form: WooCommerce's feed of the product post type
+(`?post_type=product&feed=rss2`) or of a product category or tag in the query,
+Shopify's feed of a collection (`/collections/all.atom`), a product category's
+or tag's archive feed (`/product-category/kain/feed/`,
+`/kategori-produk/kain/feed/`), a feed whose path segment right before `feed`
+names products (`/produk/feed/`), and a feed file whose name does
+(`/merchant/products.csv`). A shop's base word alone counts for nothing, so a
+WordPress installed under `/shop/` or `/toko/` links no products feed, and an
+address that holds "sitemap" never counts. The host is left out of every
+comparison, since it may name the shop rather than the feed.
+
+On a page that declares a product, the page's own address plus `feed/` is the
+feed of its reviews, which WordPress links from a product page with reviews
+on, WooCommerce's default, and it never counts, whatever its title says: the
+title carries the product's name, as in "Katalog Rak Reacties feed". The
+address is compared by path, so a link that writes another host or scheme is
+still the page's own. On any other page, such as a shop page, the own feed
+counts as any other feed does, by its title or its form, and a shop page's own
+feed titled "Products Feed" is its products feed. WordPress's posts feed, a
+Shopify blog's Atom feed, a language alternate and a stylesheet do not count.
+A page that links a products feed earns the check's 4 points.
+
+The reading misses a products feed titled and addressed in a language its
+words do not hold, such as Russian ("Лента товаров" at `/magazin/feed/`), a
+merchant feed whose name says only where it goes ("Google Shopping" at
+`/feeds/google.xml`), and a product category whose base is one word or in
+another language (`/productcategorie/`), its category page's own feed
+included. It counts a product page's reviews feed when the page declares no
+product and its title or slug names products.
+
+A product is declared by an Open Graph `og:type` of product, written in any
+attribute order or quoting, by any tag of Open Graph's `product:` namespace,
+by a microdata sku, gtin, mpn or productID or a schema.org Product item, or by
+a JSON-LD Product at any depth. An offer is a price that structured data
+states, or an availability in JSON-LD, microdata or the `product:` and
+`og:availability` meta tags; a price shown only in the text is not one. A
+page that declares a product without a feed earns 3 points with an offer and
+1 without. A WooCommerce product page, with its reviews feed linked, and a
+Shopify product page earn 3 by their JSON-LD and Open Graph tags, and a
+WordPress blog that links its posts' feed earns 0, where it earned 4. The
+JSON-LD is walked once for the price, the product and the availability.
 
 ## Sitemaps
 

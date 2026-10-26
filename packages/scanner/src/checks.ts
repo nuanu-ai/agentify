@@ -1,6 +1,6 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
 import { authSchemes, mediaType, varyNames } from "./http-fields.js";
-import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
+import { asciiLower } from "./markup.js";
 import {
   type FetchArtifact,
   GZIP_UNPACKING_FAILED,
@@ -9,14 +9,12 @@ import {
 } from "./model.js";
 import {
   comparableTexts,
-  htmlSignals,
   isChallenge,
   type JsonLdResult,
   jsonLdTypes,
-  parseJsonLd,
   parseSitemap,
+  readPage,
   type SitemapResult,
-  visibleText,
 } from "./parsers.js";
 import {
   byteSize,
@@ -183,13 +181,12 @@ const scannerVerdict = (reading: RobotsReading, path: string): boolean | undefin
 };
 
 // The same scan is evaluated several times over the same artifacts, and
-// several checks read the same page: each artifact's visible text, signals,
-// JSON-LD and sitemap are read once, since a page of up to 2 MiB can cost a
-// reader a noticeable part of a second.
+// several checks read the same page: each artifact is read once, its visible
+// text, signals and JSON-LD from one pass over it, since a page of up to
+// 2 MiB can cost a reader a noticeable part of a second.
 type PageReading = {
-  text?: string;
-  signals?: ReturnType<typeof htmlSignals>;
-  jsonLd?: JsonLdResult;
+  page?: ReturnType<typeof readPage>;
+  markdown?: string;
   sitemap?: ReturnType<typeof parseSitemap>;
 };
 const pageReadings = new WeakMap<FetchArtifact, PageReading>();
@@ -201,15 +198,17 @@ const pageReadingOf = (artifact: FetchArtifact): PageReading => {
   }
   return reading;
 };
-const textOf = (artifact: FetchArtifact): string =>
-  (pageReadingOf(artifact).text ??= visibleText(artifact.body));
-const signalsOf = (artifact: FetchArtifact) =>
-  (pageReadingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
-const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
-  (pageReadingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+const pageOf = (artifact: FetchArtifact) =>
+  (pageReadingOf(artifact).page ??= readPage(artifact.body, artifact.url));
+const textOf = (artifact: FetchArtifact): string => pageOf(artifact).text;
+const signalsOf = (artifact: FetchArtifact) => pageOf(artifact).signals;
+const jsonLdOf = (artifact: FetchArtifact): JsonLdResult => pageOf(artifact).jsonLd;
+// A Markdown answer is text, whatever markup its prose or code names.
+const markdownTextOf = (artifact: FetchArtifact): string =>
+  (pageReadingOf(artifact).markdown ??= artifact.body.replace(/\s+/g, " ").trim());
 const sitemapOf = (artifact: FetchArtifact) =>
   (pageReadingOf(artifact).sitemap ??= parseSitemap(artifact.body));
-const NO_SIGNALS = htmlSignals("");
+const NO_SIGNALS = readPage("").signals;
 
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
@@ -852,10 +851,10 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     ? markdown.body.trim() !== artifacts.base.body.trim()
     : false;
   const semanticParity = artifacts.base
-    ? comparableTexts(textOf(markdown), textOf(artifacts.base))
+    ? comparableTexts(markdownTextOf(markdown), textOf(artifacts.base))
     : false;
   const correctType = mediaType(type) === "text/markdown";
-  const nonEmpty = textOf(markdown).length > 20;
+  const nonEmpty = markdownTextOf(markdown).length > 20;
   if (
     markdown.status >= 200 &&
     markdown.status < 300 &&
@@ -1439,46 +1438,6 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
-const FEED_TYPES = ["application/rss+xml", "application/atom+xml", "application/xml", "text/csv"];
-const FEED_ADDRESSES = ["feed", "merchant", "products.xml", "products.csv"];
-
-// Whether some `<link>` declares a feed, by a feed's media type or by an
-// address that names one. `lower` is the page through asciiLower.
-const linksFeed = (lower: string): boolean => {
-  const text = (span: Span): string => lower.slice(span.start, span.end);
-  for (let tag = nextTag(lower, "link", 0); tag; tag = nextTag(lower, "link", tag.end + 1)) {
-    if (quotedValues(lower, "type=", tag).some((type) => FEED_TYPES.includes(text(type))))
-      return true;
-    if (
-      quotedValues(lower, "href=", tag).some((href) => {
-        const address = text(href);
-        return FEED_ADDRESSES.some((word) => address.includes(word));
-      })
-    )
-      return true;
-  }
-  return false;
-};
-
-// Whether an Open Graph type of product is declared: `og:type` and a quote,
-// then, before the next `>`, a content attribute whose quoted value begins
-// with "product". `lower` is the page through asciiLower.
-const declaresProduct = (lower: string): boolean => {
-  for (let at = lower.indexOf("og:type"); at !== -1; ) {
-    const quote = at + "og:type".length;
-    if (!isQuote(lower.charCodeAt(quote))) {
-      at = lower.indexOf("og:type", at + 1);
-      continue;
-    }
-    const close = lower.indexOf(">", quote + 1);
-    const rest = lower.slice(quote + 1, close === -1 ? lower.length : close);
-    if (rest.includes('content="product') || rest.includes("content='product")) return true;
-    if (close === -1) return false;
-    at = lower.indexOf("og:type", close + 1);
-  }
-  return false;
-};
-
 const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
   if (artifacts.segment !== "store")
     return result({
@@ -1502,16 +1461,10 @@ const feedCheck = (artifacts: ScanArtifacts): CheckResult => {
       errorCode:
         artifacts.base?.errorCode ?? artifacts.representative?.errorCode ?? "base_unavailable",
     });
-  const body = pages.map((page) => page.body).join("\n");
-  const lower = asciiLower(body);
-  const feedLink = linksFeed(lower);
-  const product =
-    declaresProduct(lower) ||
-    /(?:product:price|\bsku\b|\bgtin\b)/i.test(body) ||
-    pages.some((page) =>
-      jsonLdOf(page).nodes.some((node) => jsonLdTypes(node).includes("Product")),
-    );
-  const priceAvailability = /(?:price|availability|in_stock|out_of_stock)/i.test(body);
+  const read = pages.map(signalsOf);
+  const feedLink = read.some((page) => page.productFeed);
+  const product = read.some((page) => page.describesProduct);
+  const priceAvailability = read.some((page) => page.statesOffer);
   if (feedLink)
     return result({
       id: 15,
