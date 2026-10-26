@@ -190,6 +190,30 @@ describe("who the operator's workspace answers", () => {
     }
   });
 
+  it("answers Orders and an order inside the workspace's frame where their read answers what the page cannot draw", async () => {
+    // Each read there catches its own failure; anything else that throws on
+    // the way to the page is still said in the frame, never on the seller
+    // dashboard's error page.
+    const malformed = async (): Promise<never> => undefined as never;
+    const workspace = await serve({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        orders: { ...real.orders, orders: malformed, order: malformed },
+      }),
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+
+    for (const path of ["/admin/orders?segment=unfulfilled", "/admin/orders/ord_something"]) {
+      const read = await operator.get(path);
+      expect(read.status, path).toBe(500);
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
+      expect(read.html, path).toContain('aria-label="Admin sections"');
+      expect(read.html, path).toContain(`href="${ADMIN_BASE}${path}"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/cards"`);
+    }
+  });
+
   it("answers no such page to an operator whose flag was taken away, from the next request", async () => {
     const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
