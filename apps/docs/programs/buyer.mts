@@ -67,21 +67,24 @@ async function buy(): Promise<void> {
   // The same purchase again, carrying the payment. It is sent once.
   const headers = { ...purchase.headers, ...payer.encodePaymentSignatureHeader(payment) }
   let order = await orderIn(fetch(card.purchase_url, { ...purchase, headers }))
-  if (order === undefined)
-    throw new Error("No order came back; your dashboard's Orders shows if one was made.")
+  if (order === undefined) {
+    throw new Error(
+      "No order came back; your dashboard's Orders shows if one was made. " +
+        'Running this again is a new purchase.',
+    )
+  }
   appendFileSync(ADDRESSES, `${order.order_id} ${order.status_url}\n`, { mode: 0o600 })
   console.log(`Order ${order.order_id}: ${order.status}`)
 
-  // Goods that come later are read at the order's address, every five seconds for five minutes.
+  // Goods that come later are read at the order's address, every five seconds for
+  // five minutes. A read that failed is printed, and reading goes on.
   for (let reads = 0; order.status === 'in_progress' && reads < 60; reads += 1) {
     await sleep(5_000)
-    const latest: Order | undefined = await orderIn(fetch(order.status_url))
-    if (latest === undefined) throw stopped(order, 'could not be read')
-    order = latest
+    order = (await orderIn(fetch(order.status_url))) ?? order
   }
   // Everything the order says, the goods included, except its address.
   console.log(JSON.stringify({ ...order, status_url: undefined }, null, 2))
-  if (order.status === 'in_progress') throw stopped(order, 'has not finished in five minutes')
+  if (order.status === 'in_progress') throw stopped(order, 'was not read to an end in five minutes')
   if (order.status !== 'delivered') throw stopped(order, `reads ${order.status}`)
 }
 

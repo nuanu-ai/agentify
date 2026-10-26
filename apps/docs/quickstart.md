@@ -437,23 +437,28 @@ and delete it once you are done. `order_id` is the order's ordinary reference,
 the one your handler saw as `order.id`, and the program prints it.
 
 While the order reads `in_progress`, the goods have not come yet, and the
-program reads it again at its address every five seconds for five minutes.
-Then it prints everything the order says except its address, and it exits
-with `0` when the order reads `delivered`, with the goods in `delivered`.
+program reads it again at its address every five seconds for five minutes. A
+read that fails is printed, and reading goes on. Then it prints everything the
+order says except its address, and it exits with `0` when the order reads
+`delivered`, with the goods in `delivered`.
 
 Anything else stops the program with a non-zero exit code and a line that says
 what happened. A purchase refused before the payment, or a payment request the
-program would not sign, charges nothing. When an order came back and ended
-without the goods, its payment is not settled, a read of it failed or five
-minutes passed without an end, its address is in `orders.txt` and the order is
-on your dashboard's Orders screen, which shows what became of it; an order
-that ended names its refusal or its reason in what the program printed. When
-the answer to the payment never arrives, the program has no address to keep,
-and the Orders screen shows whether an order was made. The program never signs
-a second time, and running it again is a new purchase, charged again once
-paid. A buyer that recovers a lost answer keeps the payment request and signs
-it again, as [Telling a repeat apart](/orders#telling-a-repeat-apart)
-describes.
+program would not sign, charges nothing, and a refused payment says in its own
+words that it charged nothing. When an order came back and ended without the
+goods, its payment is not settled, or five minutes of reads passed without an
+end, its address is in `orders.txt` and the order is on your dashboard's
+Orders screen, which shows what became of it; an order that ended names its
+refusal or its reason in what the program printed. When no order comes back,
+because the payment was refused or its answer never arrived, the program has
+no address to keep, and the Orders screen shows whether an order was made.
+The program never signs a second time, and running it again is a new
+purchase, charged again once paid. A buyer that recovers a lost answer keeps
+the payment request and signs it again, as [Telling a repeat
+apart](/orders#telling-a-repeat-apart) describes. The reason a
+`delivered_unpaid` order prints asks for that kept request; this program
+keeps none, so releasing the goods held for that order takes a buyer of the
+recovering kind.
 
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the
