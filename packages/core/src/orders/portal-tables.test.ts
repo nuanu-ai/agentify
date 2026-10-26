@@ -450,7 +450,7 @@ const FAILURES = [
 /**
  * The rows about a purchase refused before any order exists, which this
  * machine never sees: their scenarios are the gateway's, in
- * `apps/gateway/src/http/purchase-door.test.ts`, which reads these rows too.
+ * `apps/gateway/src/http/purchase-door.test.ts`.
  */
 const AT_THE_DOOR = [
   "Fifty of your purchases already wait for payment",
