@@ -487,6 +487,12 @@ describe("what the scanner takes for a price", () => {
       '<span class="price">١٥٠٫٠٠ ر.س.</span>',
       "١٥٠٫٠٠ ر.س",
     ],
+    ["a Korean shop", '<span class="price">15,000원</span>', "15,000원"],
+    ["a shop in the United Arab Emirates", '<span class="price">AED 99</span>', "AED 99"],
+    ["an Indian shop that abbreviates rupees", '<span class="price">Rs. 1,299</span>', "Rs. 1,299"],
+    ["a Danish shop", '<span class="price">kr. 199</span>', "kr. 199"],
+    ["a Hungarian shop", '<span class="price">1&nbsp;990&nbsp;Ft</span>', "1 990 Ft"],
+    ["a South African shop", '<span class="price">R 1 299</span>', "R 1 299"],
   ])("finds the price %s writes in its visible text", (_shop, markup, price) => {
     const page = `<h1 class="product_title">Kain Tenun Ikat</h1>${markup}`;
     expect(htmlSignals(page)).toMatchObject({ hasPrice: true, price: { source: "text", price } });
@@ -530,6 +536,27 @@ describe("what the scanner takes for a price", () => {
     ["a number without a currency", "<p>Size 42, Qty 3, Model 2026, Q4 2025</p>"],
     ["a currency code inside a word", "<h3>DISNEY PIXAR CARS 3 DIE-CAST</h3>"],
     ["an initial before a number", "<p>Free shipping to the U.S. 48 contiguous states</p>"],
+    [
+      "a model number or a size",
+      "<h1>Samsung Galaxy S24 Ultra 256GB</h1><p>Philips LED bulb E27 9W, hex bolt M10 x 40, Canon EOS R10 body, Infiniti Q50, BMW M340i, Levi's 501 W32 L34</p>",
+    ],
+    [
+      "an English word that is also a currency code",
+      "<h2>TOP 10 BEST SELLERS</h2><p>TRY 30 DAYS FREE. SHOWER GEL 250ML. MEASURING SET, 2 CUPS</p><footer>© 2025 ALL RIGHTS RESERVED</footer>",
+    ],
+    [
+      "an event, a version or a team",
+      "<p>WORLD CUP 2026 HOME JERSEY. Requires PHP 8.2. EA SPORTS FC 25. COP 28 climate summit.</p>",
+    ],
+    [
+      "a unit or a word written like a currency's abbreviation",
+      "<p>10 Ft USB-C Cable. Run 5 KM. Livraison: Le 15 mars.</p>",
+    ],
+    ["a year next to a currency code", "<p>Sale 2024 USD</p>"],
+    [
+      "a Korean or Chinese word that ends in a currency's character",
+      "<p>고객지원 1588-1234</p><p>인원 10명</p><p>公元2024年</p>",
+    ],
     [
       "a price only in a script, a comment, an attribute or a template",
       '<script>var freeShippingOver = "$1";</script><!-- was $5 --><img src="/a.jpg" alt="$5 off"><template><span class="price">$98.00</span></template><p>Wool Runner</p>',
