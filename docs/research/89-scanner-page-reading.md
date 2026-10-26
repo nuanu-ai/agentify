@@ -211,13 +211,32 @@ name or the visible text counts toward any of them.
 
 A product feed is a `<link rel="alternate">` with a feed's media type (RSS,
 Atom, XML, CSV or tab-separated values) or a link to a file of one of those
-kinds, whose address or title names products. The words are product,
-catalog, catalogue and merchant, and in the address also shop and
-collections; the title is held to the plainer words because it usually
-carries the site's name, which may say "shop". WooCommerce's products feed
-(`/shop/feed/`, `?post_type=product&feed=rss2`, titled "Products Feed")
-counts. WordPress's posts and comments feeds, a Shopify blog's Atom feed, a
-language alternate of the catalogue and a stylesheet do not, which they did
+kinds, whose title or address names the shop's products. A word of either
+counts when it begins with produ or prodott (product, Produk, produits,
+Produkte, prodotti, Produtos), catalog, Katalog or catálogo, or merchant. A
+word of the address also counts when it is a shop's base as WooCommerce
+shops write it: shop, store, toko, boutique, tienda, negozio, loja, laden,
+or Shopify's collections. Words count whole, so `/workshop/` and
+`/shopping-tips/` do not, and the host is left out, since it may name the
+shop rather than the feed. The title is held to the first kind of word
+because it usually carries the site's name, which may say "shop".
+WooCommerce's products feed counts, in the shop's language
+(`/shop/feed/` titled "Products Feed", `/toko/feed/` titled "Produk Feed",
+`?post_type=product&feed=rss2`), and so do a product category's and a
+product tag's feeds, which list products too.
+
+A feed of comments does not count. WordPress links one from a product page
+with reviews on, which is WooCommerce's default, at the page's own address
+plus `feed/` and titled "Kain Tenun Ikat Comments Feed"; its address holds
+`/product/`, so the address alone would have earned a product page 4
+points, or 3 where the shop's language writes `/produk/`. A feed titled as
+one of comments (comment, Komentar, Kommentar, commentaires, commenti,
+comentarios, comentários) is left out, and so is a feed at the page's own
+address plus `feed/` whose title does not name products, which covers a
+title in a language those words miss. A shop page's own feed at that
+address is its products feed and is titled so, which is why the title
+decides there. WordPress's posts feed, a Shopify blog's Atom feed, a
+language alternate and a stylesheet do not count either; all of these did
 when any address holding "feed" counted. A page that links a product feed
 earns the check's 4 points.
 
@@ -228,9 +247,10 @@ a JSON-LD Product at any depth. An offer is a price that structured data
 states, or an availability in JSON-LD, microdata or the `product:` and
 `og:availability` meta tags; a price shown only in the text is not one. A
 page that declares a product without a feed earns 3 points with an offer and
-1 without. A WooCommerce or Shopify product page earns 3 by its JSON-LD and
-Open Graph tags, and a WordPress blog that links its posts' feed earns 0,
-where it earned 4.
+1 without. A WooCommerce product page, with its reviews feed linked, and a
+Shopify product page earn 3 by their JSON-LD and Open Graph tags, and a
+WordPress blog that links its posts' feed earns 0, where it earned 4. The
+JSON-LD is walked once for the price, the product and the availability.
 
 ## Sitemaps
 
