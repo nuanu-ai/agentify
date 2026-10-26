@@ -1,23 +1,26 @@
-/* The menu's panel opens under the whole bar, so the bar is its box. */
+/* The menu's panel opens under the whole bar, so the bar is its box. Its row
+   keeps to the page's container, so the lockup stands where the site header's
+   and the footer's do. */
 .top {
   position: relative;
-  min-height: 64px;
+  border-bottom: var(--hairline) solid var(--line);
+  background: var(--bg);
+}
+
+.row {
+  min-height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px 24px;
-  border-bottom: var(--hairline) solid var(--line);
-  padding: 0 28px;
-  background: var(--bg);
 }
 
 /* Narrow enough that the doors of a signed-in visitor stay beside the lockup
    on the narrowest phone, rather than dropping under it once the visitor is
    known. */
-@media (max-width: 600px) {
-  .top {
+@media (max-width: 640px) {
+  .row {
     min-height: 60px;
     column-gap: 12px;
-    padding: 0 16px;
   }
 }

@@ -386,6 +386,99 @@ textarea.field-input {
   color: var(--fail);
 }
 
+/*
+ * A page that says one thing (a refusal, a wait, a way in) says it in one
+ * panel at the top of its column. The top, not the window's middle: the
+ * window's height is unknown, so a centred panel would stand somewhere else
+ * on every screen. Inside, an optional line of context, the heading, a
+ * sentence, then the actions. A row of buttons, or one button, stands the
+ * same distance from the text above it as from the text below it.
+ */
+.message-page {
+  flex: 1;
+  width: min(100% - 32px, 40rem);
+  margin-inline: auto;
+  padding-block: var(--space-section) 64px;
+}
+
+.message-panel {
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: var(--space-section);
+  background: var(--surface);
+}
+
+.message-panel > * + * {
+  margin-top: var(--gap-paragraph);
+}
+
+.message-panel > h1 + * {
+  margin-top: var(--gap-heading);
+}
+
+.message-panel > :is(.message-actions, .button),
+.message-panel > :is(.message-actions, .button) + * {
+  margin-top: var(--gap-actions);
+}
+
+.message-panel > .message-meta + * {
+  margin-top: var(--gap-actions);
+}
+
+/* The line that answers a press sits closer under its buttons, and takes no
+   room while it has nothing to say: it is on the page from the start, so
+   what it says next is read out. */
+.message-panel > :is(.message-actions, .button) + .message-answer {
+  margin-top: var(--gap-caption);
+}
+
+.message-panel > .message-answer:empty {
+  margin: 0;
+}
+
+.message-panel > h1 {
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
+}
+
+/* Without weight, so a page's own kinds of line (a refusal in red) keep their colour. */
+.message-panel > :where(p) {
+  max-width: 60ch;
+  color: var(--muted);
+}
+
+/* What the panel is about and its state, one quiet line above the heading. */
+.message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-snug) var(--space-block);
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-control);
+}
+
+@media (max-width: 600px) {
+  .message-panel {
+    padding: var(--space-card);
+  }
+
+  .message-actions > * {
+    flex: 1 1 100%;
+  }
+
+  .message-panel > .button {
+    width: 100%;
+  }
+}
+
 /* A state in a few words of plain sentence case with a dot before it, the dot
    telling the state from the sentence beside it; it is hollow for a state that
    is not settled yet, so the two read apart without relying on colour. No

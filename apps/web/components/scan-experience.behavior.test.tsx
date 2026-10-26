@@ -142,7 +142,7 @@ describe("the token that reads a scan", () => {
 
     visit();
 
-    expect(await screen.findByText("Open the original private scan link")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /from its private link/ })).toBeTruthy();
     expect(statusAsks).toEqual([]);
   });
 
@@ -154,7 +154,7 @@ describe("the token that reads a scan", () => {
     visit();
     await timePasses(0);
 
-    expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /link no longer works/ })).toBeTruthy();
     await timePasses(5_000);
     expect(statusAsks).toHaveLength(1);
   });
@@ -187,7 +187,7 @@ describe("how often the page asks", () => {
     apiAnswers(() => json(200, blockedScan));
     visit();
     await timePasses(0);
-    expect(screen.getByText("The site blocked our reader")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /turned the scanner away/ })).toBeTruthy();
 
     await timePasses(5_000);
     expect(statusAsks).toHaveLength(1);
@@ -284,7 +284,7 @@ describe("a scan's states", () => {
       });
       told.push({
         headline: headline.textContent ?? "",
-        words: headline.parentElement?.querySelector("p")?.textContent ?? "",
+        words: headline.nextElementSibling?.textContent ?? "",
       });
       cleanup();
       vi.restoreAllMocks();
@@ -329,8 +329,9 @@ describe("a scan's states", () => {
     visit();
 
     expect(
-      await screen.findByText("The scanner returned an invalid or unavailable status response."),
+      await screen.findByRole("heading", { name: /cannot read this scan's status/ }),
     ).toBeTruthy();
+    expect(screen.queryByText("somewhere")).toBeNull();
   });
 
   it("says it cannot reach the scanner while it cannot, and recovers once it answers again", async () => {
@@ -342,10 +343,10 @@ describe("a scan's states", () => {
 
     visit();
     await timePasses(0);
-    expect(screen.getByText(/temporarily unreachable/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /cannot read this scan's status/ })).toBeTruthy();
     await timePasses(2_100);
 
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
-    expect(screen.queryByText(/temporarily unreachable/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: /cannot read this scan's status/ })).toBeNull();
   });
 });

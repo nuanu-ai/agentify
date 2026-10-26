@@ -74,16 +74,17 @@ describe("a report", () => {
     expect(answered.status).toBe(200);
     expect(answered.headers.get("cache-control")).toBe("private, no-store");
     expect(answered.headers.get("referrer-policy")).toBe("strict-origin");
-    expect(h1).toBe("Private report access required");
+    expect(h1).toBe("Sign in to open this report");
     expect(section).toContain('href="/dashboard/sign-in"');
   });
 
-  it("says it cannot tell who is visiting when the dashboard does not answer, and that nothing is wrong with the report", async () => {
-    const { h1, html, links } = await page(`/report/${SCAN}`, SESSION);
+  it("says it cannot tell who is visiting when the dashboard does not answer, rather than asking a stranger to sign in", async () => {
+    const { h1, html } = await page(`/report/${SCAN}`, SESSION);
+    const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
 
     expect(h1).toBe("We cannot tell who is visiting right now");
-    expect(html).toContain("Nothing is wrong with the report.");
-    expect(links).toContain(`/report/${SCAN}`);
+    expect(section).not.toContain('href="/dashboard/sign-in"');
+    expect(section).toContain(`href="/report/${SCAN}"`);
   });
 
   it("is titled as a private report, asks no crawler to index or follow it, and leaves only its origin as referrer", async () => {

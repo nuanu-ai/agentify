@@ -33,7 +33,7 @@ export function GatePage({
         }
       />
       <SurfaceNote surface={chrome.surface} />
-      <main className="gate" id="main">
+      <main className="gate message-page" id="main">
         {children}
       </main>
       <SiteFooter surface="dashboard" link={Link} />

@@ -42,7 +42,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
   const pressed = usePressed();
   return (
     <GatePage chrome={chrome} title="Sign in">
-      <div className="gate-card">
+      <div className="message-panel">
         <h1>Sign in</h1>
         {view.reason === undefined ? null : <p>{view.reason}</p>}
         <p>Enter your email address and we will send you a sign-in link.</p>
@@ -186,7 +186,7 @@ export function LinkRequestedScreen({
   const heading = wall === null || wall === "interval" ? "Check your mail" : "Try again later";
   return (
     <GatePage chrome={chrome} title={heading}>
-      <div className="gate-card">
+      <div className="message-panel">
         <h1>{heading}</h1>
         {wall === null ? (
           <>
@@ -283,7 +283,7 @@ export function MailUnavailableScreen({
 }: Readonly<{ chrome: Chrome; clickId?: string }>) {
   return (
     <GatePage chrome={chrome} title="We could not confirm your sign-in link went out">
-      <Form className="gate-card" method="get" action="/sign-in">
+      <Form className="message-panel" method="get" action="/sign-in">
         <h1>We could not confirm your sign-in link went out</h1>
         <p>
           Something went wrong while sending the email, so we do not know whether it was delivered.
@@ -308,7 +308,7 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
     // says nothing about whose the link was.
     return (
       <GatePage chrome={chrome} title="That link no longer works">
-        <div className="gate-card">
+        <div className="message-panel">
           <h1>That link no longer works</h1>
           <p>
             A sign-in link opens once and expires an hour after it is sent. This one no longer opens
@@ -327,7 +327,7 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
   }
   return (
     <GatePage chrome={chrome} title="Sign in">
-      <Form className="gate-card" method="post" action="/sign-in/open" reloadDocument>
+      <Form className="message-panel" method="post" action="/sign-in/open" reloadDocument>
         <h1>Sign in</h1>
         <p>
           This link signs <strong>{view.email}</strong> in on this browser.
