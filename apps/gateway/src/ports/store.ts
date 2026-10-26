@@ -97,6 +97,29 @@ export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
 };
 
 /**
+ * Whether an order is one its buyer paid for and its merchant took on and left
+ * with nothing delivered, given the integration its card sells through. Only
+ * an `unfulfilled` order is, and only where the merchant was given it: their
+ * own code refused it, or was handed it and let its deadline pass, or took it
+ * on. A shop's order counts only once taken on, because the connector that
+ * draws and refuses it runs inside Agentify. An order never handed over, such
+ * as one whose charge settled only after it was closed on that charge's
+ * silence, does not count: nothing records whether the merchant or Agentify
+ * failed it.
+ */
+export const leftUnserved = (record: StoredOrder, through: Integration): boolean => {
+  const { order } = record;
+  if (order.state !== "unfulfilled") return false;
+  if (order.dispatch.accepted) return true;
+  if (through !== "api") return false;
+  const cause = order.closure?.cause;
+  return (
+    cause === "merchant_refused" ||
+    (cause === "deadline_expired" && order.timestamps.dispatchedAt !== null)
+  );
+};
+
+/**
  * Whether an order is an attempt that lapsed unpaid: it ended rejected or
  * expired with no payment ever verified, no goods held for its buyer and
  * nothing presented to pay with. Nothing of anybody's money or goods rests on
@@ -965,8 +988,8 @@ export interface Store {
   waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
 
   /**
-   * How many of this merchant's orders were paid for and left with nothing
-   * delivered (`unfulfilled`), counted up to `atMost` and no further.
+   * How many of this merchant's orders were paid for, taken on and left with
+   * nothing delivered (`leftUnserved`), counted up to `atMost` and no further.
    */
   unservedOrders(merchantId: string, atMost: number): Promise<number>;
 

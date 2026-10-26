@@ -33,6 +33,7 @@ import {
   type Integration,
   type IntegrationSwitch,
   lapsedAttempt,
+  leftUnserved,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderAnalytics,
@@ -804,9 +805,10 @@ export class MemoryStore implements Store {
   }
 
   async unservedOrders(merchantId: string, atMost: number): Promise<number> {
-    const unserved = [...this.#orders.values()].filter(
-      (held) => held.merchantId === merchantId && held.order.state === "unfulfilled",
-    ).length;
+    const unserved = [...this.#orders.values()].filter((held) => {
+      const through = this.#cards.get(held.itemId)?.integration;
+      return held.merchantId === merchantId && through !== undefined && leftUnserved(held, through);
+    }).length;
     return Math.min(unserved, atMost);
   }
 

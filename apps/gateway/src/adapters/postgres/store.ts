@@ -76,6 +76,7 @@ import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 import { journalAlong, readJournal, readStandingWithdrawal } from "./journal.js";
 import {
   cards,
+  mayBeLeftUnserved,
   merchantContact,
   merchantKeys,
   merchants,
@@ -1014,9 +1015,9 @@ export class PostgresStore implements Store {
   }
 
   /**
-   * An unfulfilled order is an open one, and `open` is named beside the state
-   * so the index on a merchant's open orders serves the count; it reads at
-   * most `atMost` rows.
+   * `leftUnserved`, spelled in SQL: the partial index's own predicate, and a
+   * shop's order only once taken on, which its card says. It reads at most
+   * `atMost` rows.
    */
   async unservedOrders(merchantId: string, atMost: number): Promise<number> {
     const [counted] = await this.#db.select({ unserved: sql<number>`count(*)::int` }).from(
@@ -1026,8 +1027,8 @@ export class PostgresStore implements Store {
         .where(
           and(
             eq(orders.merchantId, merchantId),
-            eq(orders.open, true),
-            eq(orders.state, "unfulfilled"),
+            mayBeLeftUnserved(orders.state, orders.record),
+            sql`((${orders.record} -> 'order' -> 'dispatch' ->> 'accepted') = 'true' or exists (select 1 from ${cards} where ${cards.id} = ${orders.itemId} and ${cards.integration} = 'api'))`,
           ),
         )
         .limit(atMost)

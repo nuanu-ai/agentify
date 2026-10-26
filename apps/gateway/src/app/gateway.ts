@@ -255,6 +255,11 @@ export interface PaidResource {
   /** The seller's name in a discovery catalog. */
   readonly serviceName: string | null;
   /**
+   * Whether every purchase of this seller is refused for the paid orders they
+   * left unserved, which an off-sale card's challenge would hide.
+   */
+  readonly unserved: boolean;
+  /**
    * Where an agent is asked to pay for this card: its own merchant's recorded
    * split, read from the card's owner and nowhere else, or one seller's
    * takings go to another. Null where there is nowhere to pay.
@@ -337,15 +342,16 @@ interface HowTheySell {
 const WAITING_FOR_PAYMENT_AT_MOST = 50;
 
 /**
- * How many of a seller's paid orders may be left with nothing delivered before
- * every new purchase of theirs is refused, a synchronous one too. Only an order
- * a buyer paid for counts, so nobody can stop a seller's sales without paying.
+ * How many of a seller's paid orders may be taken on and left with nothing
+ * delivered (`leftUnserved`) before every new purchase of theirs is refused, a
+ * synchronous one too, and their cards leave the catalogue. Only an order a
+ * buyer paid for counts, so nobody can stop a seller's sales without paying.
  * Nothing is stored and nothing has to be resumed: a late delivery or a
  * closure that leaves fewer lets the next purchase through. A constant rather
  * than a setting, since a knob here could switch the guard off or stop a
  * seller's every sale.
  */
-const UNSERVED_AT_MOST = 10;
+export const UNSERVED_AT_MOST = 10;
 
 /**
  * How long a seller's own process may go without polling before a purchase
@@ -824,15 +830,22 @@ export class Gateway {
   /**
    * The catalog an agent reads: the cards that are actually for sale. A paused
    * card is left out rather than listed and then refused, because an agent
-   * budgets against what it lists and would only find out at the till.
+   * budgets against what it lists and would only find out at the till, and so
+   * is every card of a seller stopped for their unserved orders. That costs
+   * one count per seller listed.
    */
   async catalog(): Promise<{ readonly items: ProjectedCard[] }> {
     const entries = await this.runtime.store.catalogEntries();
     const at = this.runtime.clock();
+    const stopped = new Set<string>();
+    for (const merchantId of new Set(entries.map((entry) => entry.card.merchantId))) {
+      if (await this.#unserved(merchantId)) stopped.add(merchantId);
+    }
     return {
       items: entries
         .filter(
           (entry) =>
+            !stopped.has(entry.card.merchantId) &&
             sellingFor(
               entry.merchant,
               entry.card,
@@ -879,6 +892,7 @@ export class Gateway {
               merchant.integration,
             ),
       serviceName: merchant?.serviceName ?? null,
+      unserved: merchant !== null && (await this.#unserved(merchant.id)),
       // A pending wallet change's split is the one paid once its moment has
       // come, and not before.
       payTo: merchant === null ? null : payToAt(merchant, this.runtime.config, at),
@@ -1035,7 +1049,8 @@ export class Gateway {
           at,
           WAITING_FOR_PAYMENT_AT_MOST,
         )) >= WAITING_FOR_PAYMENT_AT_MOST,
-      unserved: merchant.selling === "open" && (await this.#unserved(merchant.id)),
+      // Read while paused too, so a seller learns of it before resuming into it.
+      unserved: await this.#unserved(merchant.id),
       withdrawn: await this.#standingWithdrawal(merchant),
     };
   }
