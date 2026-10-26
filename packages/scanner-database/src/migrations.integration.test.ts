@@ -28,6 +28,7 @@ const TABLES = [
   "browser_observation_budget_days",
   "browser_observations",
   "consent_snapshots",
+  "data_copy_requests",
   "delivery_outbox",
   "lead_scans",
   "leads",
@@ -104,7 +105,7 @@ describe("initial database migration", () => {
              or (table_name = 'registration_intents'
                  and column_name = 'partner_click_id_ciphertext')
              or (table_name = 'leads'
-                 and column_name in ('supabase_user_id', 'name', 'volume_bucket'))
+                 and column_name in ('supabase_user_id', 'name', 'volume_bucket', 'data_access_requested_at'))
              or (table_name = 'sessions' and column_name = 'geo_country')
              or (table_name = 'consent_snapshots' and column_name = 'country'))`,
       );

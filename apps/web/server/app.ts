@@ -30,9 +30,10 @@ import express, {
 } from "express";
 import { matchRoutes, type RouteObject, type ServerBuild } from "react-router";
 import { pageOf, SECURITY_HEADERS, UNKEPT_PAGE_CACHE } from "../lib/server/answer-headers";
+import { retryDueDataCopies } from "../lib/server/data-copy";
 import { logBackgroundFailure, logUnhandledRequestError } from "../lib/server/http";
 import { retryPendingScannerIdentityDeletions } from "../lib/server/scanner-identity-deletion";
-import { startDeletionRetries } from "./deletion-retries";
+import { startPrivacyRetries } from "./privacy-retries";
 
 export { build };
 
@@ -248,7 +249,9 @@ export async function serve({ client }: Readonly<{ client: string }>): Promise<S
   });
   console.log(`[web] listening on ${host}:${port}`);
   const metrics = listenForMetrics();
-  const retries = startDeletionRetries(process.env, retryPendingScannerIdentityDeletions);
+  const retries = startPrivacyRetries(process.env, () =>
+    Promise.all([retryPendingScannerIdentityDeletions(), retryDueDataCopies()]),
+  );
   for (const [signal, code] of [
     ["SIGTERM", 143],
     ["SIGINT", 130],

@@ -361,19 +361,12 @@ export async function revokePublicShare(
 
 export async function updateAccountState(
   leadId: string,
-  action: "unsubscribe" | "access" | "deletion",
+  action: "unsubscribe" | "deletion",
 ): Promise<"requested" | "completed"> {
-  const { db } = getDatabase();
-  const now = new Date();
   if (action === "unsubscribe") {
-    await db.update(leads).set({ unsubscribedAt: now }).where(eq(leads.id, leadId));
-    return "requested";
-  }
-  if (action === "access") {
-    // A repeated request keeps the first moment, so the wait is not reset.
-    await db
-      .update(leads)
-      .set({ dataAccessRequestedAt: sql`coalesce(${leads.dataAccessRequestedAt}, ${now})` })
+    await getDatabase()
+      .db.update(leads)
+      .set({ unsubscribedAt: new Date() })
       .where(eq(leads.id, leadId));
     return "requested";
   }

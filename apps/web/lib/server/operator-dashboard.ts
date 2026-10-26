@@ -19,9 +19,14 @@ import {
  * says so beside it. Scans and registrations are read from their own records.
  * Days are UTC days, as the browser budget's are, whatever the zone of the
  * database session or of this process.
- * A data access request waits on its lead until the address is deleted,
- * which clears it: nothing records an answer to it.
+ * A copy of a person's data the mail service never took after every try is
+ * counted until a later copy to the same address is mailed.
  */
+const UNANSWERED_COPY = `failed.state = 'failed' and not exists (
+      select 1 from public.data_copy_requests later
+      where later.email_lookup_hash = failed.email_lookup_hash
+        and later.state = 'sent' and later.requested_at > failed.requested_at)`;
+
 const OVERVIEW = `
   select
     (select count(*)::bigint from public.sessions) as visitors_total,
@@ -36,8 +41,8 @@ const OVERVIEW = `
     (select count(*)::bigint from public.scans where accepted_at >= now() - interval '24 hours') as accepted_requests_24h,
     (select count(*)::bigint from public.rate_limit_events where kind = 'scan_ip_hour' and challenge_passed and occurred_at >= now() - interval '1 hour') as challenge_passes_1h,
     (select coalesce(sum(usage_usd), 0)::numeric(12, 6) from public.browser_observations where budget_day = (now() at time zone 'UTC')::date) as browser_usage_usd_today,
-    (select count(*)::bigint from public.leads where data_access_requested_at is not null) as data_access_waiting,
-    (select min(data_access_requested_at) from public.leads where data_access_requested_at is not null) as data_access_oldest_at`;
+    (select count(*)::bigint from public.data_copy_requests failed where ${UNANSWERED_COPY}) as data_copies_unsent,
+    (select min(requested_at) from public.data_copy_requests failed where ${UNANSWERED_COPY}) as data_copies_oldest_at`;
 
 const DAILY = `
   with today as (
@@ -164,8 +169,8 @@ export type OperatorDashboard = {
   generatedAt: string;
   turnstileEnforced: boolean;
   overview: OperatorOverview;
-  /** Data access requests still waiting, and when the oldest of them was made. */
-  dataAccess: { waiting: number; oldestAt: string | null };
+  /** Data copies every try failed to mail, and when the oldest of them was asked for. */
+  dataCopies: { unsent: number; oldestAt: string | null };
   /** The last thirty days, oldest first; the last is today, read part of the way through. */
   daily: OperatorDay[];
   recentScans: OperatorRecentScan[];
@@ -210,10 +215,10 @@ export async function getOperatorDashboard(): Promise<OperatorDashboard> {
       challengePasses1h: asNumber(overview.challenge_passes_1h),
       browserUsageUsdToday: asNumber(overview.browser_usage_usd_today),
     },
-    dataAccess: {
-      waiting: asNumber(overview.data_access_waiting),
+    dataCopies: {
+      unsent: asNumber(overview.data_copies_unsent),
       oldestAt:
-        overview.data_access_oldest_at === null ? null : asIso(overview.data_access_oldest_at),
+        overview.data_copies_oldest_at === null ? null : asIso(overview.data_copies_oldest_at),
     },
     daily: dailyResult.rows.map((row) => ({
       day: String(row.day),

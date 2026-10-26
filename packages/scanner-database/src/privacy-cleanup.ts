@@ -6,6 +6,7 @@ import {
   analyticsEvents,
   browserObservationFindings,
   browserObservations,
+  dataCopyRequests,
   deliveryOutbox,
   leadScans,
   leads,
@@ -113,6 +114,9 @@ export async function anonymizeLeadData(
     await tx
       .delete(registrationIntents)
       .where(eq(registrationIntents.emailLookupHash, lead.email_lookup_hash));
+    await tx
+      .delete(dataCopyRequests)
+      .where(eq(dataCopyRequests.emailLookupHash, lead.email_lookup_hash));
     await tx.delete(waitlistEntries).where(eq(waitlistEntries.leadId, leadId));
 
     const leadEventIds = tx
@@ -190,7 +194,6 @@ export async function anonymizeLeadData(
         verifiedAt: null,
         unsubscribedAt: now,
         deletionRequestedAt: now,
-        dataAccessRequestedAt: null,
         anonymizedAt: now,
         firstSessionId: anonymizedSessionId,
       })

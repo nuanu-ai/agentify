@@ -359,7 +359,7 @@ export function OperatorDashboard({
   data,
   zone,
 }: Readonly<{ data: OperatorDashboardData; zone: string | null }>) {
-  const { overview, selfScan, dataAccess } = data;
+  const { overview, selfScan, dataCopies } = data;
   const shown = data.recentScans.length;
   const total = Math.max(shown, overview.scansTotal);
 
@@ -392,12 +392,12 @@ export function OperatorDashboard({
           aside={`${ratio(overview.verifiedRegistrations30d, overview.scans30d)} of scans; ${counted(overview.shares30d, "report", "reports")} shared by visitors who allowed measurement`}
         />
         <Tile
-          label="Data access requests"
-          figure={number.format(dataAccess.waiting)}
+          label="Data copies not sent"
+          figure={number.format(dataCopies.unsent)}
           aside={
-            dataAccess.waiting > 0 && dataAccess.oldestAt !== null
-              ? `Oldest ${day(new Date(dataAccess.oldestAt), zone)}. Nothing records an answer, so a request stays counted until its address is deleted.`
-              : "None waiting."
+            dataCopies.unsent > 0 && dataCopies.oldestAt !== null
+              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. The mail service took none of five tries over an hour; each stays counted until a later copy to its address is sent.`
+              : "Every copy asked for was sent or is still being tried."
           }
         />
       </div>

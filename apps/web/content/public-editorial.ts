@@ -139,10 +139,14 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content: [
-            text("Use the "),
-            link("data-request route", "/data-request"),
+            text("Ask for a copy of your data, or for its deletion, on the "),
+            link("data request page", "/data-request"),
             text(
-              " for access, correction, unsubscribe, or verified deletion. Deletion closes report access, revokes public shares, and removes or irreversibly anonymizes lead, waitlist, analytics-delivery, and owned-scan identifiers. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
+              " while signed in with your address. A copy of what Agentify holds for that address is emailed to it as a JSON file while you wait; if the mail service does not take it, it is tried again automatically for up to an hour, and the page says how long. The file lists what it leaves out, such as sign-in secrets and other people's data. The same page gives the address to write to for a correction, and ",
+            ),
+            link("the unsubscribe page", "/email/unsubscribe"),
+            text(
+              " ends marketing email. Deletion closes report access, revokes public shares, and removes or irreversibly anonymizes lead, waitlist, analytics-delivery, and owned-scan identifiers. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
             ),
           ],
         },
