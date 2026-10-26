@@ -179,35 +179,45 @@ const markerAfter = (text: string, start: number): string | undefined => {
 // ZAR are English words or names; PHP is a programming language, COP a
 // climate conference, AWG a wire gauge, AMD and NAD makers of processors and
 // amplifiers, RON a fuel's octane rating, SAR a phone's radiation rate and
-// CRC a checksum. Ft is feet in a title-cased name, kn is knots, and Le is a
-// French article.
+// CRC a checksum. Ft is feet in a title-cased name, KM kilometres in
+// capitals, kn knots, and Le a French article.
 const WORDS = new Set(
-  "ALL TOP TRY CUP PEN MAD GEL SOS BOB MOP CAD BAM ZAR PHP COP AWG AMD NAD RON SAR CRC Ft kn Le".split(
+  "ALL TOP TRY CUP PEN MAD GEL SOS BOB MOP CAD BAM ZAR PHP COP AWG AMD NAD RON SAR CRC Ft KM kn Le".split(
     " ",
   ),
 );
+// Of those, the codes of large markets' currencies, which their shops write
+// before or after a plain amount: SAR 500, ZAR 299, PHP 500.
+const MARKET_CODES = new Set(["SAR", "MAD", "PEN", "PHP", "CAD", "ZAR"]);
 
 // A marker of one Latin letter, such as R for the rand or Q for the quetzal,
-// is also a size, a model or an initial, and two Latin capitals such as FC,
-// KM or RM are an abbreviation as often. Such a marker, and one that is a
-// word, counts only next to an amount written the way money is, with its
-// thousands grouped or a decimal part of two or three digits; one letter
-// counts only right before it, where the countries that use it write it.
+// is also a size, a model or an initial, and two Latin capitals such as FC
+// or RM are an abbreviation as often. Such a marker counts next to an amount
+// written the way money is, with its thousands grouped or a decimal part of
+// two or three digits, or next to three digits or more a space apart, as in
+// R 299 or 150 TL, and never next to a bare year. A marker that is a word
+// counts only next to money. One letter counts only before the amount, where
+// the countries that use it write it.
 const oneLetter = (marker: string): boolean => /^[A-Za-z]$/.test(marker);
-const wordLike = (marker: string): boolean =>
-  oneLetter(marker) || /^[A-Z]{2}$/.test(marker) || WORDS.has(marker);
 const MONEY =
   /^\p{Nd}{1,3}(?:[.,'\u2019\u066b\u066c\uff0c \u00a0\u202f\u2009]\p{Nd}{2,3})+(?:[.,](?:--?|\u2013|\u2014))?$|^\p{Nd}+[.,](?:\p{Nd}{2,3}|--?|\u2013|\u2014)$/u;
-// A marker of Latin letters next to a year is a date or an edition: Sale 2024
-// USD, WORLD CUP 2026.
-const LATIN = /^\p{Script=Latin}+$/u;
 const YEAR = /^(?:19|20)\d{2}$/;
+const DIGIT = /\p{Nd}/gu;
 // Japanese, Chinese and Korean shops write 円, 元 and 원 after the amount; before
 // a number they end a word, as in 고객지원 1588 or 公元2024.
 const AFTER_ONLY = new Set(["円", "元", "원"]);
 
-const counts = (marker: string, amount: string): boolean =>
-  !(wordLike(marker) && !MONEY.test(amount)) && !(LATIN.test(marker) && YEAR.test(amount));
+// Whether `amount` makes a price with `marker`; `apart` is whether one space
+// stands between them.
+const counts = (marker: string, amount: string, apart: boolean): boolean => {
+  const market = MARKET_CODES.has(marker);
+  const word = WORDS.has(marker) && !market;
+  const short = oneLetter(marker) || /^[A-Z]{2}$/.test(marker);
+  if (!word && !short && !market) return true;
+  if (YEAR.test(amount)) return false;
+  if (MONEY.test(amount)) return true;
+  return !word && apart && (amount.match(DIGIT)?.length ?? 0) >= 3;
+};
 
 /**
  * The first amount in the visible text written next to a currency marker:
@@ -226,11 +236,11 @@ export const textPrice = (text: string): PriceSignal | undefined => {
     const spaced = text[start - 1] === " " ? start - 1 : start;
     const before = text[spaced - 1] === "." && isLetter(text[spaced - 2]) ? spaced - 1 : spaced;
     const prefix = markerBefore(text, before);
-    if (prefix && !AFTER_ONLY.has(prefix) && counts(prefix, amount))
+    if (prefix && !AFTER_ONLY.has(prefix) && counts(prefix, amount, before === start - 1))
       return { source: "text", price: text.slice(before - prefix.length, end) };
     const after = text[end] === " " ? end + 1 : end;
     const suffix = markerAfter(text, after);
-    if (suffix && !oneLetter(suffix) && counts(suffix, amount))
+    if (suffix && !oneLetter(suffix) && counts(suffix, amount, after === end + 1))
       return { source: "text", price: text.slice(start, after + suffix.length) };
   }
   return undefined;
