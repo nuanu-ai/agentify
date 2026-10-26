@@ -144,9 +144,8 @@ dispute — are in the [common questions](/faq).
 
 1. Open the [test channel's dashboard](https://test.agentify.ad/dashboard),
    enter your email address, open the link in the message and press the
-   confirmation button. The dashboard then offers one button, "Open my seller
-   dashboard", whose press sets up your business and asks for the name buyers
-   will see.
+   confirmation button. That first sign-in sets up your business and asks for
+   the name buyers will see.
 2. In Settings, save the wallet where your share arrives; on the test channel
    it only ever receives test USDC. [Money](/money#if-you-have-no-wallet-yet)
    says how to get one, and replacing a wallet you saved on the live channel

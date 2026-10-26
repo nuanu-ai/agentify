@@ -4,8 +4,9 @@ Date: 2026-09-24
 Status: accepted (the product owner, 2026-08-28 to 2026-09-25; Google sign-in,
 2026-10-15; signing out everywhere, revised 2026-10-23; administration moves
 from the terminal to the operator's workspace, 2026-10-23; the admission as the
-one lever over a merchant, with a note the merchant reads, 2026-10-24); merges
-what were ADR-0009 and ADR-0024
+one lever over a merchant, with a note the merchant reads, 2026-10-24; a sign-in
+on the dashboard's page asks for the merchant, 2026-10-26); merges what were
+ADR-0009 and ADR-0024
 
 ## Context
 
@@ -19,8 +20,9 @@ scanner or dashboard receives a hashed, single-use link lasting an hour. Only
 its page's same-origin button spends it and creates any missing account; a mail
 preview cannot. Spent, expired and unknown links are refused alike, without
 revealing whether an address has an account or report. The destination lives
-with the token. A destinationless link, or a dead one while signed in, leads to
-the latest report for a person with reports and no merchant, else the dashboard.
+with the token. A link asked for from one of the scanner's doors, or a dead one
+while signed in, leads to the latest report for a person with reports and no
+merchant, else the dashboard.
 The token's claim may also keep the ad click the sign-in page was opened with
 (ADR-0039).
 
@@ -64,9 +66,17 @@ would keep the copy.
 Every dashboard form behind the gate and scanner account form names the address
 it was drawn for; another address or no address is refused without action.
 
-**4. Only an explicit dashboard request creates a merchant.** A signed-in person
-without one sees one control. Only its same-origin POST asks the gateway inside
-the shared process (`docs/research/35-one-process.md`) to create one (ADR-0014).
+**4. Only an explicit dashboard request creates a merchant.** The scanner signs
+people in too, and somebody who signs in only to read a report does not become
+a merchant. A sign-in asked for on the dashboard's sign-in page is itself the
+request: the page records it with the link's token or the Google state, and
+that sign-in, finished in any browser, creates the merchant of a person who has
+none. The scanner's doors open the same page marked as a sign-in to read
+reports, which creates nothing, and nothing the end of a sign-in carries
+changes what was recorded. A person signed in any other way without a merchant
+sees one control, and only its same-origin POST is the request. Either asks the
+gateway inside the shared process (`docs/research/35-one-process.md`) to create
+one (ADR-0014); a failure leaves the person signed in, on that control.
 
 **5. Live publication guards the shared catalogue.** `readinessOf` in core is
 used by every publication and selling path: a seller name everywhere, a payout

@@ -182,13 +182,14 @@ describe("the account requests on the site's own pages", () => {
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
   });
 
-  it("offer nothing to press to somebody not signed in", async () => {
+  it("offer nothing to press to somebody not signed in, only a sign-in to read their reports", async () => {
     // There is no address to act for, so there is nothing a press could do but
     // be refused.
     siteWith({ visitor: { status: 200, body: { status: "signed_out" } } });
     render(<AccountActions mode="data" />);
 
-    expect(await screen.findByRole("link", { name: /sign in/i })).toBeTruthy();
+    const signIn = await screen.findByRole("link", { name: /sign in/i });
+    expect(signIn.getAttribute("href")).toBe("/dashboard/sign-in?destination=reports");
     expect(screen.queryByRole("button")).toBeNull();
   });
 

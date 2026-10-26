@@ -14,8 +14,13 @@ import { MerchantScreen } from "../screens/setup.js";
 import { services, signedIn } from "../services.js";
 
 export function loader(asked: LoaderFunctionArgs) {
-  const { context } = asked;
-  return answer(context.get(services).start.merchant(context.get(signedIn)), asked);
+  const { request, context } = asked;
+  return answer(
+    context
+      .get(services)
+      .start.merchant(context.get(signedIn), request.headers.get("cookie") ?? undefined),
+    asked,
+  );
 }
 
 export async function action(asked: ActionFunctionArgs) {

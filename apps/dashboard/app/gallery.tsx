@@ -940,7 +940,7 @@ const SIGNING_IN: GalleryState[] = [
         "The mail provider refused the message or did not answer in time, so the send is not confirmed.",
     },
     "/sign-in",
-    { screen: "unavailable" },
+    { screen: "unavailable", destination: "default" },
   ),
   at(
     {

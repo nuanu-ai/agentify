@@ -6,7 +6,8 @@ path except the one main path is removed; 2026-10-09: the key made for a
 dashboard and the registration route are deleted when the dashboard joined the
 gateway's process, `docs/research/35-one-process.md`; 2026-10-15: Google sign-in;
 2026-10-23: administration moves from the terminal to the operator's workspace,
-`docs/research/85-operator-admin.md`)
+`docs/research/85-operator-admin.md`; 2026-10-26: a sign-in on the dashboard's
+page asks for the merchant)
 
 ## Context
 
@@ -21,8 +22,7 @@ wait for perfection: the road's order is ADR-0010's.
 
 An account comes into being at a successful sign-in: a person consumes the link
 mailed to their address or uses an eligible Google account (ADR-0026 §1); a
-merchant, when that signed-in person presses the one control the dashboard
-offers (§1). No command at a server's terminal makes an account, a merchant or a
+merchant, when that person asks the dashboard for one (§1). No command at a server's terminal makes an account, a merchant or a
 key, and no deployed channel's gateway seeds a merchant at start-up: the release
 refuses a channel configured to. An operator looks after what exists — lists
 merchants, keys and accounts, disables a key, ends a
@@ -37,8 +37,9 @@ it up selling (ADR-0010).
 **1. The account is written at sign-in, the merchant on the dashboard's explicit
 request.** The account appears when a successful sign-in proves an address
 that has none (ADR-0026 §1), and no form asks for a password or an invitation.
-The merchant is made later, when the signed-in person presses the one control
-the dashboard offers (ADR-0026 §4). The press calls the gateway inside the
+The merchant is made when the person asks the dashboard for one: by signing in
+on its sign-in page, or, signed in elsewhere, by pressing the one control it
+offers (ADR-0026 §4). Either calls the gateway inside the
 process the two share (`docs/research/35-one-process.md`), and each side writes
 in a transaction of its own: the gateway makes the merchant, with no key, and
 the dashboard writes its identifier on the person. A database that does not
@@ -82,9 +83,9 @@ nobody has decided to refuse; the way back in is the mailed link.
 ## Consequences
 
 The dashboard is multi-tenant; the process-wide client and its variable are
-gone. A person who has only signed in owns no merchant yet (ADR-0026 §4); one
-who has asked the dashboard for one owns exactly one, and a merchant who has
-only ever signed in has no keys. Not built and not pretended: a second person at
+gone. A person who has only signed in to read a report owns no merchant yet
+(ADR-0026 §4); one who has asked the dashboard for one owns exactly one, and a
+merchant who has only ever signed in has no keys. Not built and not pretended: a second person at
 a merchant, roles, deleting a merchant.
 
 ## Alternatives rejected

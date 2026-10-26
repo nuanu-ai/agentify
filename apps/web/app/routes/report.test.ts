@@ -38,11 +38,11 @@ const page = async (path: string, headers: Record<string, string> = {}) => {
 };
 
 describe("the latest report", () => {
-  it("sends a stranger to the dashboard's sign-in, kept by nobody", async () => {
+  it("sends a stranger to the dashboard's sign-in to read their reports, kept by nobody", async () => {
     const answered = await ask("/report/latest");
 
     expect(answered.status).toBe(307);
-    expect(answered.headers.get("location")).toBe("/dashboard/sign-in");
+    expect(answered.headers.get("location")).toBe("/dashboard/sign-in?destination=reports");
     expect(answered.headers.get("cache-control")).toBe("private, no-store");
     expect(answered.headers.get("x-robots-tag")).toBe("noindex, nofollow");
   });
@@ -67,7 +67,7 @@ describe("the latest report", () => {
 const SCAN = "0190f4c5-0000-7000-8000-000000000000";
 
 describe("a report", () => {
-  it("asks a stranger to sign in with the address it is filed under, kept by nobody", async () => {
+  it("asks a stranger to sign in, to read reports, with the address it is filed under, kept by nobody", async () => {
     const { answered, h1, html } = await page(`/report/${SCAN}`);
     const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
 
@@ -75,7 +75,7 @@ describe("a report", () => {
     expect(answered.headers.get("cache-control")).toBe("private, no-store");
     expect(answered.headers.get("referrer-policy")).toBe("strict-origin");
     expect(h1).toBe("Sign in to open this report");
-    expect(section).toContain('href="/dashboard/sign-in"');
+    expect(section).toContain('href="/dashboard/sign-in?destination=reports"');
   });
 
   it("says it cannot tell who is visiting when the dashboard does not answer, rather than asking a stranger to sign in", async () => {
@@ -83,7 +83,7 @@ describe("a report", () => {
     const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
 
     expect(h1).toBe("We cannot tell who is visiting right now");
-    expect(section).not.toContain('href="/dashboard/sign-in"');
+    expect(section).not.toContain('href="/dashboard/sign-in');
     expect(section).toContain(`href="/report/${SCAN}"`);
   });
 

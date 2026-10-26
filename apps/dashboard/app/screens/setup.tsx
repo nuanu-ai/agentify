@@ -16,11 +16,12 @@ import { PostForm } from "../components/post-form.js";
 import styles from "./sign-in.module.css";
 
 /**
- * Only the same-origin press makes the merchant: an account is made at sign-in,
- * and the scanner signs people in too, so a merchant is made only for somebody
- * who asked the dashboard for one. A press that did not make one leaves the
- * person here, signed in, to press again. The card names the address the
- * merchant will belong to, because the header hides it on a phone.
+ * For a person signed in somewhere other than the dashboard's own sign-in page:
+ * the scanner signs people in too, and only this same-origin press asks the
+ * dashboard for their merchant. A sign-in on that page makes the merchant
+ * itself and comes here only when it could not, as a press that did not make
+ * one does, to press again. The card names the address the merchant will
+ * belong to, because the header hides it on a phone.
  */
 export function MerchantScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: MerchantView }>) {
   const gate = useRouteLoaderData<{ who: string }>("routes/gate");

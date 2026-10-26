@@ -274,8 +274,9 @@ export function LinkRequestedScreen({
  */
 export function MailUnavailableScreen({
   chrome,
+  destination,
   clickId,
-}: Readonly<{ chrome: Chrome; clickId?: string }>) {
+}: Readonly<{ chrome: Chrome; destination: DashboardDestination; clickId?: string }>) {
   return (
     <GatePage chrome={chrome} title="Your sign-in link may not have been sent">
       <Form className={`message-panel ${styles.card}`} method="get" action="/sign-in">
@@ -284,6 +285,7 @@ export function MailUnavailableScreen({
           Our email service did not confirm it. If the email arrives anyway, its link will not work,
           so ask for a new one.
         </p>
+        <Destination destination={destination} />
         <Click clickId={clickId} />
         <Button>Try again</Button>
       </Form>
