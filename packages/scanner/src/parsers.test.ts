@@ -404,6 +404,13 @@ document.write('<script src="/js/legacy.js"></script>');
     expect(htmlSignals(page).hasTitle).toBe(false);
   });
 
+  it("reads the page after an SVG icon a theme left open, as a browser does", () => {
+    const page = `<a class="header__icon" href="/cart"><svg class="icon icon-cart" viewBox="0 0 40 40"><path d="M15.75 11.8h-3.16l-.77 11.6"/></a>
+<div class="product"><h1>Wool Runner</h1><p>Soft merino wool.</p></div>`;
+    expect(visibleText(page)).toBe("Wool Runner Soft merino wool.");
+    expect(htmlSignals(page).hasH1).toBe(true);
+  });
+
   it("sees a heading whose text sits in an inner element, and none that holds only an image", () => {
     expect(htmlSignals('<h1 class="product__title"><span>Wool Runner</span></h1>').hasH1).toBe(
       true,
