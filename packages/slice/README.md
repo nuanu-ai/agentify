@@ -858,16 +858,16 @@ dashboard on a host of Coinbase's, which would otherwise become reachable. A
 dashboard that does not answer is named in one sentence, and the browser
 closes.
 
-The Coinbase buttons are drawn only where payments settle on a chain, so a
-dashboard in the sandbox has none. The local stack is in the sandbox unless it
-is started with `AGENTIFY_FACILITATOR_URL` naming some other address. Name
-one where nothing listens, such as `http://127.0.0.1:9/facilitator`: the
-stack then calls itself TEST, the buttons are drawn, and no purchase can be
-paid, which none of these stories needs. A facilitator that answers would make
-purchases payable, and the gateway refuses a host of Coinbase's here without
-its keys. The
-payout button appears once a payout wallet is saved. The test channel's
-dashboard has both buttons as it is.
+The Coinbase buttons are drawn only where payments settle on Base, because
+Coinbase's window refuses Base Sepolia to the wallets it creates now
+(`docs/research/48-merchant-wallet-onboarding.md`). The test channel and a
+local stack on its default network, Base Sepolia, show a line saying so
+instead, and a stack on Base settles through Coinbase's facilitator alone,
+with its keys. So this command reaches the buttons only on a dashboard whose
+payments settle on Base. The payout button appears once a payout wallet is
+saved and the payout is offered: when a payout would bring something, or when
+the dashboard could not read what it would bring, as on a stack whose
+`AGENTIFY_PAYMENT_RPC_URL` is empty.
 
 The browser starts with nothing kept: no session and nothing of Coinbase's.
 Sign in by asking for a link and pasting the link into this browser's address

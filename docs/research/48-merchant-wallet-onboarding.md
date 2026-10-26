@@ -207,10 +207,11 @@ was not run.
 
 **Who can use it, and testing.** The terms name no countries beyond the bar
 on use where the law forbids it [checked]; whether a business may hold a
-wallet the terms describe as an individual's I don't know. Base Sepolia works
-in the window [checked], so creating the wallet and receiving test USDC can be
-tried without money; seeing and sending it in Coinbase's interface on the test
-network I don't know. Coinbase needs nothing from Agentify for the button:
+wallet the terms describe as an individual's I don't know. Base Sepolia opens
+in the window [checked], but a later run found the window refusing Base
+Sepolia to the wallets it creates now, so the test channel does not offer the
+Coinbase buttons (see "Coinbase's window on Base Sepolia" below); seeing and
+sending test USDC in Coinbase's interface I don't know. Coinbase needs nothing from Agentify for the button:
 checked, the SDK's options take no key. A paymaster or the offramp would need
 a Coinbase Developer Platform project and its keys.
 
@@ -508,6 +509,88 @@ check's rounding; and a press can fetch 161.0 KB more, Coinbase Wallet's code
 with the dashboard's requests to it, as the budget check prints beside the
 page.
 
+## Coinbase's window on Base Sepolia
+
+On 2026-10-26 a person signed in with a real Coinbase account on the test
+channel's Settings, and Coinbase's window then said "Base Sepolia is not
+supported", with Close as its only button. The page said the window had
+closed before the payout was asked for, which is its wording for a close
+during the sign-in or the switch to the payout's network.
+
+The SDK sends the window the application's chains (`appChainIds`) and each
+request's chain, and keeps no list of supported chains and no switch for test
+networks of its own [checked, `@base-org/account` 2.5.13:
+`dist/core/communicator/Communicator.js`, `dist/sign/base-account/Signer.js`,
+`dist/util/validatePreferences.js`]. The refusal is the window's. In the
+script keys.coinbase.com served that day, the window's "Upgrade your wallet"
+flow refuses any chain marked as a test network with the words "is not
+supported. Please try a different chain." and a Close button, and Base Sepolia
+is marked as one [checked, the served script]. Accounts made by the older
+ERC-4337 factory skip that flow; the wallets the window creates now are
+EIP-7702 accounts and go through it [checked, the served script]. Coinbase's
+documentation lists Base Sepolia as supported with no condition [checked,
+`coinbase-wallet` guides and reference], and an issue open in Coinbase's SDK
+repository since July 2026 reports this refusal for newly created accounts,
+with no answer from Coinbase there [checked, github.com/base/account-sdk/issues/363].
+Closing the window reaches the page as one error, code 4001, whatever made it
+close [checked, `Communicator.js`], so the page cannot tell a person's close
+from Coinbase's refusal.
+
+By the script, the flow starts on a transaction (`wallet_sendCalls`) and not on
+`eth_requestAccounts`, yet the page's words in that run belong to a close
+before the transaction was asked for. Which request the window refused there
+I don't know. Neither Coinbase button is therefore known to work on Base
+Sepolia for a wallet created today, and the dashboard offers them on Base
+alone; the test channel's Settings says why in one line on each panel and
+keeps the address box and the transaction for another wallet. On Base the
+same check passes, and a new wallet is first asked to set itself up on the
+network, sponsored or for a one-time fee [checked, the served script]; nobody
+has yet sent a payout from Coinbase Wallet on Base through Settings. The
+wallet fault browser of `packages/slice` reaches the buttons only on a stack
+whose payments settle on Base, which needs Coinbase's facilitator and its
+keys.
+
+The words for a closed window now fit every way it can close: they name
+neither the person nor Coinbase and point to what the same screen offers
+without the window, the address box or the transaction for another wallet.
+While a button waits, the page says that pressing it again is safe.
+
+## What Settings reads before it offers a payout
+
+Settings used to offer the payout whenever a wallet was saved, before any
+sale, and to say after a send that Coinbase Wallet had sent it. At a balance
+of zero the warehouse's withdrawal reverts, but inside the payout's batch the
+transaction succeeds and pays nothing, and the merchant pays the fee and
+deploys the split on the first send.
+
+The gateway now runs the payout before it is offered. One `eth_call` to
+Multicall3 reads the USDC of each wallet the payout pays, runs the payout's
+own data through Multicall3, where every call in it runs as it does when sent,
+and reads each wallet again; the difference is what the payout would bring.
+The contracts' own arithmetic is then in the answer: the split keeps one unit
+of what it distributes, each share is rounded down, and the warehouse keeps
+one unit of each withdrawal (`39-commission-split-experiment.md`). Read on
+2026-10-26 against https://sepolia.base.org and https://mainnet.base.org, for
+a split that had never been created and was given USDC by overriding the
+token's balance slot in the call, the run answered the same on both networks
+[checked]:
+
+| The split holds, in USDC's millionths | The payout would bring |
+|---|---|
+| nothing | 0 |
+| 1 | 0 |
+| 2 | 0 |
+| 1,000,000 | 998,998 |
+| 12,345,678 | 12,333,330 |
+
+Settings names that amount, offers no payout where it is zero, and where the
+read fails says it does not know rather than that nothing waits, still giving
+the transaction, which pays out only what is there. The read goes through
+the payment RPC that recovery uses, gets half the page's deadline so a hanging
+endpoint costs the panel its amount and not the page, and keeps each payout's
+answer for five seconds, shared while it is under way. A deployment without
+that RPC says it does not know.
+
 ## What is not known
 
 The research left these open, each of which a live run or Coinbase can
@@ -523,7 +606,11 @@ was found for any of the three. Whether the embedded wallet's code runs in a
 browser without a stand-in for Node's `Buffer` was not tested, and the build of
 Coinbase's interface for it warned that it lacks one; its smart account was
 not measured separately. Whether Coinbase's service still answers the
-deprecated export of a wallet's raw key from the page I don't know.
+deprecated export of a wallet's raw key from the page I don't know. Which
+request Coinbase's window refused on Base Sepolia in the run of 2026-10-26,
+whether Coinbase will let the wallets it creates now use Base Sepolia, and
+whether a wallet created now can send a payout on Base without a paymaster of
+Agentify's are open too.
 
 These were checked and are absent: a key or registration for the Coinbase
 Wallet window; a field for contract data in a Coinbase.com account's sending

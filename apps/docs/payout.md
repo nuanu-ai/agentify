@@ -8,29 +8,50 @@ to our balance in the 0xSplits warehouse, and it costs only the network's
 fee. Why it works that way is on
 [Money](/money#getting-paid-out).
 
+## What Settings shows before you send it
+
+The Get your payout section of Settings names what a payout sent now would
+bring your wallet. Agentify works this out by asking the network to run the
+payout without sending it, so the amount is what the contracts would pay at
+the moment the page was drawn, with their rounding included. A buyer who pays
+before you send adds to it. If Agentify's own payout goes out first, that one
+brings your share to you instead, and yours then brings nothing more.
+
+When a payout would bring nothing, Settings says so and offers no transaction
+to send. When Agentify could not read the network, Settings says it does not
+know what the payout would bring and still gives you the transaction. Sending
+it then does no harm, since it can pay out only what is there, but it costs
+the network's fee even when that is nothing.
+
 ## With a Coinbase Wallet
+
+Coinbase Wallet sends payouts from Settings on the live channel only. On the
+test channel, Coinbase's window refuses Base Sepolia for the wallets it
+creates now, so there is no Coinbase button there; send the test channel's
+payout from another wallet, as described below.
 
 1. Open the Settings screen of your dashboard.
 2. Press Pay out with Coinbase Wallet. Coinbase's window opens and asks you to
    approve the transaction; nothing is sent until you do.
 3. Approve it. Your share reaches your wallet in that same transaction.
 
-Once you approve it, Settings says that Coinbase Wallet sent the payout. That
-means the wallet accepted the transaction, not yet that the network has
-carried it out. Otherwise Settings says it does not know whether the payout
-went out: when Coinbase's window closes without confirming the payout, when
-the wallet's answer cannot be read, and when no answer comes within ten
-minutes, after which the page stops waiting. You may have approved the payout
-in Coinbase's window before it went away, so in each of these cases look at
-your payout contract before you send another. Its page on the block explorer,
-linked beside your wallet on Settings, lists the transactions that reached it
-and the USDC it holds now.
+Once you approve it, Settings says that you asked Coinbase Wallet to send the
+payout and that it accepted, with the amount the page showed. That means the
+wallet accepted the transaction, not yet that the network has carried it out;
+reload Settings to see what is left to pay out. Otherwise Settings says it
+does not know whether the payout went out: when Coinbase's window closes
+without confirming the payout, when the wallet's answer cannot be read, and
+when no answer comes within ten minutes, after which the page stops waiting.
+You may have approved the payout in Coinbase's window before it went away, so
+in each of these cases reload Settings and look at what a payout would still
+bring before you send another.
 
 Settings says that nothing was sent only when the wallet stopped before the
-payout was asked for: you closed Coinbase's window while it asked to connect,
-the wallet did not move to the payout's network, or the page could not open
-Coinbase Wallet at all. Then you can press again, or send the payout from
-another wallet as described below.
+payout was asked for. Coinbase's window closes the same way whether you closed
+it or it stopped on an error of its own, so Settings does not say which; in
+either case you can press again, or send the payout from another wallet as
+described below. While Coinbase's window is open, pressing the button again
+is safe: a second payout pays out only what the first left.
 
 A wallet that holds nothing yet may have nothing to pay the fee with. Then
 that first payout arrives when Agentify next pays out every payout contract.
