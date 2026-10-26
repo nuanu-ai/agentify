@@ -1257,3 +1257,93 @@ describe("the way on for an unfulfilled order", () => {
     expect(details).not.toContain(SDK_DOCS);
   });
 });
+
+describe("the transaction that paid an order", () => {
+  const PAID_WITH = `0x${"5e".repeat(32)}`;
+  const EXPLORER = "https://basescan.org/tx/";
+  const REFUND = "/docs/money#if-the-buyer-did-not-get-the-goods";
+
+  /** One order of these words, carrying `transaction` where it is given. */
+  const one = (status: string, payment: string, transaction?: string, closed?: string) =>
+    OrderListSchema.parse({
+      orders: [
+        {
+          ...THREE.orders[0],
+          status,
+          payment_status: payment,
+          ...(transaction === undefined ? {} : { transaction }),
+          ...(closed === undefined ? {} : { merchant_closure: { closed_at: closed } }),
+        },
+      ],
+    });
+
+  const drawn = (orders: ReturnType<typeof one>, transactionPage: string | null = EXPLORER) => {
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(
+          "live",
+          CARDS,
+          orders,
+          orders,
+          new URLSearchParams({ details: FIRST }),
+          {},
+          {},
+          { page: null, of: 0 },
+          {},
+          {},
+          new Set(),
+          transactionPage,
+        )}
+      />
+    ));
+    const details = new RegExp(`<details[^>]*id="details-${FIRST}"[\\s\\S]*?</details>`).exec(
+      html,
+    )?.[0];
+    return { html, details: details ?? "", text: readable(details ?? "") };
+  };
+
+  it("is shown in the details of a paid order that was never delivered, with the way to the chain's explorer and to sending the money back", () => {
+    for (const orders of [
+      one("unfulfilled", "paid", PAID_WITH),
+      one("fulfillment_closed", "paid", PAID_WITH, "2026-10-19T09:30:00Z"),
+    ]) {
+      const { details, text } = drawn(orders);
+
+      expect(details).toMatch(/<details[^>]*class="[^"]*wide/);
+      expect(text).toContain(`Transfer ${shortened(PAID_WITH)}`);
+      expect(details).toContain(`href="${EXPLORER}${PAID_WITH}"`);
+      expect(details).toContain(`href="${REFUND}"`);
+    }
+  });
+
+  it("is shown as written where this deployment has no explorer to link it to", () => {
+    const { details, text } = drawn(one("unfulfilled", "paid", PAID_WITH), null);
+
+    expect(text).toContain(`Transfer ${shortened(PAID_WITH)}`);
+    expect(details).not.toContain(`href="${EXPLORER}`);
+  });
+
+  it("is shown on a paid order whose goods are still to come or delivered, with no word of sending money back", () => {
+    for (const status of ["in_progress", "delivered"]) {
+      const { details, text } = drawn(one(status, "paid", PAID_WITH));
+
+      expect(details, status).toMatch(/<details[^>]*class="[^"]*wide/);
+      expect(text, status).toContain(`Transfer ${shortened(PAID_WITH)}`);
+      expect(details, status).not.toContain(REFUND);
+    }
+  });
+
+  it("is not said, nor the way to sending money back, on an order with no transaction", () => {
+    for (const [status, payment] of [
+      ["in_progress", "not_paid"],
+      ["payment_unresolved", "unresolved"],
+      ["unfulfilled", "paid"],
+    ] as const) {
+      const { details, text } = drawn(one(status, payment));
+
+      expect(text, status).not.toContain("Transfer");
+      expect(details, status).not.toContain(EXPLORER);
+    }
+    expect(drawn(one("in_progress", "not_paid")).details).not.toContain(REFUND);
+  });
+});
