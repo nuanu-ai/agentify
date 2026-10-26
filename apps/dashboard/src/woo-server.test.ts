@@ -1492,7 +1492,7 @@ describe("importing the catalogue", () => {
     expect(listed.map((one) => one.card.fulfillment)).toStrictEqual(["ship"]);
   });
 
-  it("on the live channel, publishes nothing for a merchant the operator has not approved, and says so", async () => {
+  it("on the live channel, reads nothing from the shop and publishes nothing for a merchant the operator has not approved, and says why", async () => {
     // The harness's own merchant is approved on live; one registered through
     // the gateway is not, and sets its wallet in Settings as anybody does.
     const running = await started({
@@ -1505,7 +1505,9 @@ describe("importing the catalogue", () => {
 
     const imported = await running.post("/woocommerce/import");
 
-    expect(readable(imported.html)).toMatch(/not been approved by the operator/i);
+    expect(imported.status).toBe(409);
+    expect(imported.html).toContain('class="problem"');
+    expect(running.read).toEqual([]);
     expect(await cardsOf(running)).toEqual([]);
   });
 
