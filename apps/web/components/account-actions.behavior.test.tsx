@@ -68,6 +68,18 @@ afterEach(() => {
 });
 
 describe("the account requests on the site's own pages", () => {
+  it("keeps the irreversible deletion off the primary button until it is confirmed", async () => {
+    siteWith({ visitor: signedIn });
+    render(<AccountActions mode="data" />);
+
+    const asked = await screen.findByRole("button", { name: "Delete my data" });
+    expect(asked.classList.contains("button-primary")).toBe(false);
+    await userEvent.click(asked);
+    expect(
+      screen.getByRole("button", { name: "Confirm deletion" }).classList.contains("button-primary"),
+    ).toBe(true);
+  });
+
   it("say which address they act for, and send it with the press", async () => {
     siteWith({ visitor: signedIn });
     render(<AccountActions mode="data" />);

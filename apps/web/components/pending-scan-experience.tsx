@@ -33,16 +33,18 @@ const SAID: Readonly<Record<StartState, { label: string; title: string }>> = {
 };
 
 /**
- * The time on the visitor's own clock when a wait ends, rounded up to the
- * minute so it never names a moment before the scanner frees up; with the
- * day when that is not today.
+ * The time on the visitor's own clock after which a scan may be asked for
+ * again, rounded up to the minute so it never names a moment before the wait
+ * ends; with the day when that is not today. It is a floor, not a promise:
+ * others on the same network can spend what frees up. Written in English
+ * words whatever the browser's language, since the sentence around it is.
  */
 function freeAt(waitSeconds: number): string {
   const at = new Date(Math.ceil((Date.now() + waitSeconds * 1000) / 60_000) * 60_000);
   const today = at.toDateString() === new Date().toDateString();
-  return at.toLocaleString([], {
+  return at.toLocaleString("en", {
     ...(today ? {} : { weekday: "short" }),
-    hour: "2-digit",
+    hour: "numeric",
     minute: "2-digit",
   });
 }
@@ -115,8 +117,8 @@ export function PendingScanExperience({
       const wait = outcome.refusal.retry_after_seconds;
       setMessage(
         wait === undefined
-          ? "Scans from this network or for this website are used up for now. Try again later."
-          : `Scans from this network or for this website are used up until ${freeAt(wait)}.`,
+          ? "Scans from this network or for this website are used up. Try again later."
+          : `Scans from this network or for this website are used up. Try again after ${freeAt(wait)}.`,
       );
       return;
     }

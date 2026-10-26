@@ -51,13 +51,13 @@ describe("pending scan acceptance", () => {
     window.sessionStorage.clear();
   });
 
-  it("says at what time of the visitor's day scans free up, from the wait the scanner gave, never earlier", async () => {
+  it("says after what time of the visitor's day to try again, from the wait the scanner gave, never earlier", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-26T10:00:00Z"));
     savePendingScan(window.sessionStorage, pending("hard-wait"));
     installNetwork(
       response(
-        { error: { ...errorEnvelope("hard_rate_limit", true).error, retry_after_seconds: 1_790 } },
+        { error: { ...errorEnvelope("hard_rate_limit", true).error, retry_after_seconds: 1_750 } },
         429,
       ),
     );
@@ -65,11 +65,11 @@ describe("pending scan acceptance", () => {
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
 
     await screen.findByRole("heading", { name: "Too many scans for now" });
-    const freesAt = new Date("2026-10-26T10:30:00Z").toLocaleTimeString([], {
-      hour: "2-digit",
+    const freesAt = new Date("2026-10-26T10:30:00Z").toLocaleTimeString("en", {
+      hour: "numeric",
       minute: "2-digit",
     });
-    expect(screen.getByRole("status").textContent).toContain(freesAt);
+    expect(screen.getByRole("status").textContent).toContain(`Try again after ${freesAt}.`);
     vi.useRealTimers();
   });
 
