@@ -931,3 +931,37 @@ describe("18-check engine", () => {
     });
   });
 });
+
+describe("what the server-rendered content check takes for a store's product page", () => {
+  // A home page too thin to pass on its own, so the product page decides.
+  const withProductPage = (page: string): ScanArtifacts => ({
+    ...makeArtifacts("store"),
+    base: artifact("https://example.com/", "<title>Toko Kain</title><p>Selamat datang.</p>"),
+    representative: artifact("https://example.com/product/kain-tenun-ikat", page),
+  });
+  const description = `<p>${"Kain tenun ikat dari Sumba, ditenun dengan tangan dan diwarnai alami. ".repeat(3)}</p>`;
+
+  it("passes a product page whose price is written with its currency code first, and says what it found", () => {
+    const page = `<title>Kain Tenun Ikat</title><h1 class="product_title">Kain Tenun Ikat</h1>${description}<span class="price">USD 0.01</span>`;
+    expect(check(withProductPage(page), 12)).toMatchObject({
+      status: "pass",
+      evidence: { has_price_signal: true, price_signal: "USD 0.01", price_signal_source: "text" },
+    });
+  });
+
+  it("does not pass a product page cut inside its inline state, and says the cut page could not be assessed", () => {
+    // The fetch stops at its limit inside the script, so the page arrives
+    // truncated, and a thin prefix proves nothing about the rest.
+    const state = `{"product":{"price":"$1","title":"${"x".repeat(64)}"}},`;
+    const page = `<title>Kain Tenun Ikat</title><h1 class="product_title">Kain Tenun Ikat</h1>${description}<script>window.__STATE__ = ${state.repeat(30_000)}`;
+    const input = withProductPage(page);
+    input.representative = artifact("https://example.com/product/kain-tenun-ikat", page, {
+      truncated: true,
+    });
+    expect(check(input, 12)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "html_truncated",
+      evidence: { has_price_signal: false, truncated: true },
+    });
+  });
+});
