@@ -37,6 +37,7 @@ import {
   type LinkWall,
   type Person,
 } from "./dashboard-entry.js";
+import { WALLET_CHANGE_MS } from "./deadlines.js";
 import { clearingLines, type Gate, gateFor, pathAfterSignIn, startOf } from "./gate.js";
 import {
   type Acting,
@@ -49,7 +50,7 @@ import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
 import { noted } from "./noted.js";
-import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
+import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
@@ -112,6 +113,11 @@ export type Outcome<View> =
 interface Problem {
   readonly status: number;
   readonly said: string;
+  /**
+   * What is known of the work a press asked for: refused where nothing was
+   * done, unconfirmed where it may have been; left out where nothing says.
+   */
+  readonly outcome?: "refused" | "unconfirmed";
 }
 
 /** A screen of the cabinet, as product analytics names it. */
@@ -385,10 +391,28 @@ export interface PageParts {
 const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
   `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
 
-export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
-  kind: "problem",
-  problem: { status: answer.status === 0 ? 504 : answer.status, said: saidOf(answer) },
-});
+/**
+ * Nothing answered in time may have been done; a refusal that says nothing was
+ * written, or one the route gives before it writes (a 4xx), was not.
+ */
+const outcomeOf = (answer: Answer<unknown> & { ok: false }): Problem["outcome"] =>
+  answer.status === 0
+    ? "unconfirmed"
+    : answer.nothingRecorded === true || (answer.status >= 400 && answer.status < 500)
+      ? "refused"
+      : undefined;
+
+export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => {
+  const outcome = outcomeOf(answer);
+  return {
+    kind: "problem",
+    problem: {
+      status: answer.status === 0 ? 504 : answer.status,
+      said: saidOf(answer),
+      ...(outcome === undefined ? {} : { outcome }),
+    },
+  };
+};
 
 /**
  * Not the real grammar of an address: it catches the mistakes made in a form (a

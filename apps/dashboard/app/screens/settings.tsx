@@ -1,6 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import { useState } from "react";
 import { Form } from "react-router";
+import { WALLET_CHANGE_MS } from "../../src/deadlines.js";
 import type {
   CoinbaseView,
   PayoutView,
@@ -198,7 +199,12 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
             {pending.split === null ? null : (
               <SplitBeside split={pending.split} label="Buyers will pay into" />
             )}
-            <PostForm document action="/settings/payout-wallet/cancel" className="inline">
+            <PostForm
+              document
+              action="/settings/payout-wallet/cancel"
+              answeredWithinMs={WALLET_CHANGE_MS}
+              className="inline"
+            >
               {(pressed) => (
                 <>
                   <Shown pending={pending} saved={saved} />
@@ -223,7 +229,12 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
       ) : (
         <NoCoinbase coinbase={wallet.coinbase} />
       )}
-      <PostForm document action="/settings/payout-wallet" className="issue">
+      <PostForm
+        document
+        action="/settings/payout-wallet"
+        answeredWithinMs={WALLET_CHANGE_MS}
+        className="issue"
+      >
         {(pressed) => (
           <>
             {pending === null ? null : <Shown pending={pending} saved={saved} />}

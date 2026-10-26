@@ -2748,7 +2748,9 @@ describe("the settings screen", () => {
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
   });
 
-  it("says the gateway would not answer rather than drawing a page with no name on it", async () => {
+  it("says the settings could not be loaded rather than drawing a page with no name on it", async () => {
+    // A read changes nothing, so the page says it could not load them rather
+    // than repeating the gateway's words about a press that may have been done.
     const running = await started({ answerWithinMs: 100 });
     await running.browser.signIn();
     running.silenceGateway();
@@ -2756,7 +2758,8 @@ describe("the settings screen", () => {
     const screen = await running.browser.get("/settings");
 
     expect(screen.status).toBe(504);
-    expect(readable(screen.html)).toMatch(/did not answer/i);
+    expect(readable(screen.html)).toMatch(/your settings could not be loaded/i);
+    expect(readable(screen.html)).not.toMatch(/may or may not/i);
   });
 });
 
@@ -4699,7 +4702,7 @@ describe("the keys screen", () => {
     await browser.signIn();
 
     const refused = await browser.post("/keys/key_nobody_has/disable");
-    const said = /<h1>Something went wrong<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
+    const said = /<h1>[^<]*<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
 
     expect(said).toMatch(/^[A-Z]/);
     expect(said.toLowerCase()).toContain("there is no such key");
@@ -5033,7 +5036,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
       expect(answered.status).toBe(500);
       const text = readable(answered.html);
-      expect(text).toContain("Something in the dashboard is broken");
+      expect(text).toContain("We don't know if this was done");
       expect(text).not.toContain("Nothing was changed");
     } finally {
       await close();
@@ -5338,6 +5341,7 @@ describe("the page that says a call to the gateway failed", () => {
 
     expect(failed.status).toBe(504);
     expect(again).toMatch(/\/settings$/);
+    expect(failed.html).toContain('aria-label="Dashboard sections"');
   });
 
   it("offers the page again, not its data, when the page was opened inside the application", async () => {
@@ -5704,6 +5708,63 @@ describe("a list, when it could not be read", () => {
     },
   );
 
+  it("says a page whose session could not be checked could not be loaded, and a press it could not check changed nothing", async () => {
+    // Opening a list is a read: nothing could have been done, so the person
+    // is not told to wonder about it, and the way on is the list they asked
+    // for, filter and all. The gate runs before any press, so a press it
+    // could not check changed nothing either, and the page says so.
+    let breaking = false;
+    const { browser } = await started({
+      identity: (real) => ({
+        ...real,
+        whoIs: async (cookie) => {
+          if (breaking) throw new Error("the session store is not answering");
+          return await real.whoIs(cookie);
+        },
+      }),
+    });
+    await browser.signIn();
+    breaking = true;
+
+    const read = await quietly(async () => await browser.get("/orders?show=open"));
+    const pressed = await quietly(async () => await browser.post("/orders", {}));
+
+    expect(read.status).toBe(500);
+    expect(readable(read.html)).toContain("could not be loaded");
+    expect(readable(read.html)).not.toMatch(/may or may not|went through/);
+    expect(read.html).toMatch(/<a [^>]*href="\/orders\?show=open"[^>]*>Try again<\/a>/);
+    expect(readable(pressed.html)).toContain("Nothing was changed");
+    expect(readable(pressed.html)).not.toContain("We don't know if this was done");
+    expect(pressed.html).toMatch(
+      /<a class="button button-primary" href="\/orders">Open Orders<\/a>/,
+    );
+  });
+
+  it.each(LISTS)(
+    "%s says a refusal in the gateway's own words beside the sections, and offers no read that would only be refused again",
+    async (path, read) => {
+      let refusing = false;
+      const { browser } = await started({
+        client: (real) => ({
+          ...real,
+          [read]: async (...asked: unknown[]) =>
+            refusing
+              ? { ok: false as const, status: 403, why: "this merchant is suspended" }
+              : await (real[read] as (...given: unknown[]) => Promise<unknown>)(...asked),
+        }),
+      });
+      await browser.signIn();
+      refusing = true;
+
+      const refused = await browser.get(path);
+
+      expect(refused.status).toBe(403);
+      expect(refused.html).toContain('aria-label="Dashboard sections"');
+      expect(readable(mainOf(refused.html))).toContain("This merchant is suspended");
+      expect(waysOnIn(refused.html)).toStrictEqual([]);
+    },
+  );
+
   it.each(LISTS)("%s says the same of a read Agentify did not answer", async (path) => {
     const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
     await browser.signIn();
@@ -5720,6 +5781,11 @@ describe("a list, when it could not be read", () => {
 });
 
 describe("a press that fails in a way nobody planned for", () => {
+  /** Where the error page's one way on, "Open" and the screen's name, leads. */
+  const reopened = (html: string): string | undefined =>
+    /<a class="button button-primary" href="([^"]*)">Open [^<]+<\/a>/
+      .exec(html)?.[1]
+      ?.replaceAll("&amp;", "&");
   const said = async (during: () => Promise<void>): Promise<string> => {
     const lines: string[] = [];
     const collect = (...parts: unknown[]) => lines.push(parts.map(String).join(" "));
@@ -5756,10 +5822,10 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-session");
   });
 
-  it("answers on the dashboard's own page, which says to look before pressing again and leads on", async () => {
+  it("answers on the dashboard's own page, which says the outcome is unknown and leads back to the page with a read", async () => {
     // A press can fail after its work was done, so the page cannot say
-    // whether it went through; a bare line would leave the person with no
-    // way on and nothing to tell them what to check.
+    // whether it was done; the way on reads the press's own address, which
+    // leads to the page it was made on and sends nothing again.
     const { browser } = await started({
       registrar: {
         register: async () => {
@@ -5772,19 +5838,20 @@ describe("a press that fails in a way nobody planned for", () => {
     const answered = await said(async () => {
       const failed = await browser.makeMerchant();
       expect(failed.status).toBe(500);
-      expect(readable(failed.html)).toContain(
-        "Check the page you were on before deciding whether it went through.",
+      expect(readable(failed.html)).toContain("We don't know if this was done");
+      expect(failed.html).toMatch(
+        /<a class="button button-primary" href="\/merchant">Open [^<]+<\/a>/,
       );
-      expect(failed.html).toMatch(/<a [^>]*href="\/cards"[^>]*>Back to Cards<\/a>/);
     });
 
     expect(answered).toMatch(/request failed/i);
   });
 
-  it("answers every press inside the dashboard that fails on the dashboard's page saying so", async () => {
-    // Whichever press it was, the merchant learns that something broke and to
-    // look before pressing again, on a page with a way on; a bare line of text
-    // gives them neither.
+  it("answers every press inside the dashboard that fails on the dashboard's page saying the outcome is unknown, with a read of the press's own address as the way on", async () => {
+    // Whichever press it was, the merchant learns that it may or may not have
+    // been done, and the way on is a read of the address the press went to,
+    // which leads to the page it was made on: Settings for a setting, never
+    // another section.
     const broken = (): never => {
       throw new Error("the answer was not a document this contract knows");
     };
@@ -5832,9 +5899,8 @@ describe("a press that fails in a way nobody planned for", () => {
           status: 500,
           to: null,
         });
-        expect(readable(pressed.html), path).toContain(
-          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
-        );
+        expect(readable(pressed.html), path).toContain("We don't know if this was done");
+        expect(reopened(pressed.html), path).toBe(path);
       }
     });
   });
@@ -5858,9 +5924,8 @@ describe("a press that fails in a way nobody planned for", () => {
         const pressed = await browser.post(path, form);
 
         expect(pressed.status, path).toBe(500);
-        expect(readable(pressed.html), path).toContain(
-          "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
-        );
+        expect(readable(pressed.html), path).toContain("We don't know if this was done");
+        expect(reopened(pressed.html), path).toBe(path);
       }
     });
 
@@ -6308,6 +6373,36 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(pressed.status).toBe(409);
     expect(await waitingNow(running)).toMatchObject({ payout_wallet: OVERTAKING });
     expect((await otherDevice.get("/settings")).status).toBe(200);
+  });
+
+  it("titles a change the gateway refused as nothing changed when its words say nothing was recorded, and a fault it did not word as not known", async () => {
+    // The message about the change could not be confirmed as sent: a 503 whose
+    // words say nothing was recorded, so the page must not say the change may
+    // have been made. A 500 nobody worded promises nothing either way.
+    const running = await live({
+      client: (real) => ({
+        ...real,
+        issueKey: async () => ({
+          ok: false as const,
+          status: 500,
+          why: "something failed inside Agentify",
+        }),
+      }),
+    });
+    await running.browser.signIn();
+    running.harnessed.announcer.answer = "not_handed_over";
+
+    const refused = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: WAITING,
+    });
+    const faulted = await running.browser.post("/keys", { label: "the nightly job" });
+
+    expect(refused.status).toBe(503);
+    expect(readable(refused.html)).toContain("Nothing was changed");
+    expect(readable(refused.html)).toContain("nothing was recorded");
+    expect(readable(refused.html)).not.toContain("We don't know if this was done");
+    expect(faulted.status).toBe(500);
+    expect(readable(faulted.html)).toContain("We don't know if this was done");
   });
 
   it("says a change that took effect before the press did take effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {

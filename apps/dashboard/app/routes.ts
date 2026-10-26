@@ -14,9 +14,9 @@
  * hands a loader the request as it arrived, and a data request's address
  * carries `.data` and `_routes`.
  * Every form behind the gate is a `PostForm`. Route modules import nothing at
- * run time from `src/` but `drawn-for.ts`, which imports nothing itself, so the
- * browser's build carries no schema library and no copy of the server; types
- * may be imported from anywhere.
+ * run time from `src/` but `drawn-for.ts` and `deadlines.ts`, which import
+ * nothing themselves, so the browser's build carries no schema library and no
+ * copy of the server; types may be imported from anywhere.
  *
  * Tests answer these routes from source, compiled by Vite in middleware mode
  * (`src/testing/pages.ts`), so `pnpm test` builds nothing first.
