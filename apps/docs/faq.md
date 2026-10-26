@@ -17,8 +17,8 @@ Agentify](/#your-code-or-your-woocommerce-shop).
 
 For the SDK, yes: your engineer writes the integration that publishes your
 cards and delivers paid orders through your API. A WooCommerce shop needs no
-code and is connected in the dashboard, on the test channel for now ([Selling
-through a WooCommerce shop](/woocommerce)).
+code and is connected in the dashboard, on the test channel and on the live
+one ([Selling through a WooCommerce shop](/woocommerce)).
 
 ### Can a restaurant or a hotel sell this way?
 

@@ -46,7 +46,7 @@ export const SELL_LANDING = {
     steps: [
       {
         title: "Bring your products to Agentify",
-        text: "Connect your catalog through the SDK, or import supported products from your WooCommerce store, on the test channel for now.",
+        text: "Connect your catalog through the SDK, or import supported products from your WooCommerce store.",
       },
       {
         title: "Agentify publishes cards",
@@ -107,7 +107,7 @@ export const SELL_LANDING = {
     woo: {
       tag: "No new storefront",
       title: "A WooCommerce store",
-      text: "Connect your store, import supported products, and manage their cards from the dashboard. Agentify never gets your store password. The connector works on the test channel only for now and supports a limited set of WooCommerce product configurations.",
+      text: "Connect your store, import supported products, and manage their cards from the dashboard. Agentify never gets your store password. The connector supports a limited set of WooCommerce product configurations, and physical products sell on the test channel only.",
       points: [
         "Product cards imported from your store",
         "Orders created in your store",

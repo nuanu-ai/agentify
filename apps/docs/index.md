@@ -103,7 +103,7 @@ channel, where the money is not real, is the one exception.
 | --- | --- | --- |
 | Who builds it | your engineer, with the Agentify SDK, following [The first test sale](/quickstart) | nobody: the dashboard connects the shop and imports its products as cards |
 | What it sells | anything your systems can deliver | downloads and parcels from the shop ([what can be imported](/woocommerce#what-can-be-imported)) |
-| Where it sells | the test channel, then the live one | the test channel, until its orders have gone through there end to end |
+| Where it sells | the test channel, then the live one | the test channel, then the live one |
 
 You sell through one of the two at a time. A third way, an order sent to you as
 a message that you confirm by hand before the buyer pays, is not available.
@@ -151,8 +151,9 @@ dispute — are in the [common questions](/faq).
    step](/quickstart#_6-make-your-first-test-purchase) shows.
 5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
    as a separate account, save a wallet for real money there, and have your
-   cards published again with a live key. An Agentify operator approves your
-   merchant before anything sells live.
+   cards published again with a live key, or connect your shop there and
+   import it again. An Agentify operator approves your merchant before
+   anything sells live.
 
 What changes between the two channels:
 
@@ -166,7 +167,7 @@ What changes between the two channels:
 | Your first purchase | you make it yourself, with test USDC | — |
 | Agentify's operator | not involved | approves your merchant before anything sells |
 | Cards | published with a test key | published again with a live key; nothing is copied |
-| WooCommerce | available | not yet |
+| WooCommerce | available | available: the shop is connected again under the live account |
 | Parcels | sold | not sold yet |
 
 ## What is not settled yet

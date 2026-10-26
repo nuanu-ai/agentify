@@ -95,7 +95,7 @@ export const AGENTIC_SHOP = {
           text("Use the "),
           link("SDK", "/docs/quickstart"),
           text(
-            " to publish the offer, price and fulfilment promises, or import products from a WooCommerce store, on the test channel for now.",
+            " to publish the offer, price and fulfilment promises, or import products from a WooCommerce store.",
           ),
         ],
       },
