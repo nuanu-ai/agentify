@@ -6,6 +6,7 @@ import {
   parseJsonLd,
   parseSafeJson,
   parseSitemap,
+  readPage,
   visibleText,
 } from "./parsers.js";
 import { explicitAiPolicies, isPathAllowed, parseRobots } from "./robots.js";
@@ -260,6 +261,16 @@ sourced from New Zealand.</p><table><tr><td>Size:\t10</td></tr></table>`;
     expect(htmlSignals("<title></title><h1></h1>")).toMatchObject({
       hasTitle: false,
       hasH1: false,
+    });
+  });
+
+  it("reads a page once for its text, its signals and its JSON-LD, as the separate readings do", () => {
+    const page = `<title>Wool Runners</title><script type="application/ld+json">{"@type":"Product","offers":{"price":"98.00","priceCurrency":"USD"}}</script>
+<nav><a href="/">Home</a></nav><h1>Wool Runner</h1><a href="/products/wool-runner">Wool Runner</a><p>$98.00</p>`;
+    expect(readPage(page)).toEqual({
+      text: visibleText(page),
+      signals: htmlSignals(page),
+      jsonLd: parseJsonLd(page),
     });
   });
 
@@ -710,6 +721,19 @@ describe("a page or a sitemap as large as the fetch admits", () => {
     const parsed = parseJsonLd(page);
     expect(parsed).toMatchObject({ scriptCount: 1, invalidCount: 0 });
     expect(parsed.nodes).toHaveLength(166_651);
+  });
+
+  it("finds no price in JSON-LD graphs nested as deep as a script may be, in time", () => {
+    // Each script nests @graph 19 deep, the innermost holding as many empty
+    // objects as fit in the 512 KiB a script is parsed up to. A reader that
+    // walked each node's subtree once per graph around it would walk the
+    // innermost objects 19 times.
+    let graph = `{"@graph":[${Array(10_000).fill("[{},{},{},{},{},{},{},{},{},{},{},{}]").join(",")}]}`;
+    for (let level = 0; level < 18; level += 1) graph = `{"@graph":[${graph}]}`;
+    const page = `${`<script type="application/ld+json">${graph}</script>`.repeat(4)}<h1>Wool Runner</h1>`;
+    const signals = timed(() => htmlSignals(page));
+    expect(signals.value.hasPrice).toBe(false);
+    expect(signals.ms).toBeLessThan(budgetMs);
   });
 
   it("reads the hreflang links around an alternate link that runs on for megabytes", () => {
