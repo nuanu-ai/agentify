@@ -3129,7 +3129,9 @@ const SETTINGS: GalleryState[] = [
         {
           shows: "Send it from another wallet",
           does: (page) => {
-            page.querySelector("details")?.setAttribute("open", "");
+            [...page.querySelectorAll("main details")]
+              .find((one) => one.textContent?.includes("Send it from another wallet"))
+              ?.setAttribute("open", "");
             pressIn(page, "Copy the data", clipboardGranted);
           },
         },
@@ -3208,6 +3210,11 @@ const SETTINGS: GalleryState[] = [
       }),
       liveApproval: true,
     }),
+    {
+      account: bannerOf(seenBy("live"), {
+        walletChange: { wallet: ASKED_FOR, takesEffectAt: "2026-10-14T16:05:00Z" },
+      }),
+    },
   ),
   settings(
     {

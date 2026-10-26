@@ -17,9 +17,9 @@
   padding: var(--space-card);
 }
 
-/* Inside the panel's own inset, which the shared panel rule would add again. */
-:global(.settings-panel) /* Written twice, so it wins over the panel's own inset for a form. */
-.section.section > :global(.issue) {
+/* Inside the section's own inset, which the shared panel rule for a form
+   would add again. */
+:global(.settings-panel).section > :global(.issue) {
   padding: 0;
 }
 
