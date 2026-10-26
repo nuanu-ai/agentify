@@ -47,17 +47,22 @@ const likelyMeant = (typed: string): string | null => {
 };
 
 /**
- * The folder a typed address puts the shop in, after leaving out WordPress's
- * own admin and sign-in pages, which a merchant copies from their dashboard's
- * address bar; null at the root. A shop in a folder is a WordPress of its
- * own, so its site's root is no address to suggest.
+ * WordPress's and WooCommerce's own pages, whose addresses a merchant copies
+ * from the address bar of their shop or its dashboard: everything from one of
+ * them on is left out to find the site the shop is.
+ */
+const OWN_PAGE =
+  /\/(wp-admin|wp-login\.php|index\.php|shop|product|product-category|product-tag|cart|checkout|my-account)(\/.*)?$/;
+
+/**
+ * What a typed address carries before the shop's own pages, which may be a
+ * WordPress installed in that folder; null where nothing does. Its site's root
+ * would then be another WordPress, so no address is suggested for it.
  */
 const folderOf = (typed: string): string | null => {
   const written = /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`;
   if (!URL.canParse(written)) return null;
-  const folder = new URL(written).pathname
-    .replace(/\/(wp-admin|wp-login\.php)(\/.*)?$/, "")
-    .replace(/\/+$/, "");
+  const folder = new URL(written).pathname.replace(OWN_PAGE, "").replace(/\/+$/, "");
   return folder === "" ? null : folder;
 };
 
@@ -76,7 +81,7 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
   }
   const folder = folderOf(trimmed);
   if (folder !== null) {
-    return `Agentify connects a shop only at the root of its address, and this one is in the folder ${folder}.`;
+    return `Enter the address of your site's home page. If your shop's WordPress is installed in ${folder}, Agentify can't connect it yet.`;
   }
   const meant = likelyMeant(trimmed);
   if (!URL.canParse(trimmed)) {
@@ -93,7 +98,8 @@ export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
     return `Leave out the user name and password: ${meant}`;
   }
   // A query or a fragment would be swallowed once a path is appended, reaching
-  // an address nobody meant; what is left of a path is an admin page.
+  // an address nobody meant; what is left of a path is one of the site's own
+  // pages.
   if (
     address.search !== "" ||
     address.hash !== "" ||
