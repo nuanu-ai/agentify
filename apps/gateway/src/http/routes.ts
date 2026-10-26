@@ -9,6 +9,7 @@
  */
 
 import { outcomeFor } from "@agentify/core";
+import { durationInWords, SILENT_AFTER_MS } from "@agentify/core/published";
 import type {
   OrderListQuery,
   PurchaseRequest,
@@ -645,7 +646,7 @@ async function answerPurchase(
         CONFLICT,
         refusal(
           "seller_not_taking_orders",
-          "this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ten minutes; try again later",
+          `this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}; try again later`,
         ),
       );
 

@@ -24,6 +24,7 @@ import {
   outcomeFor,
 } from "@agentify/core";
 import {
+  durationInWords,
   LAPSED_KEPT_MS,
   SILENT_AFTER_MS,
   WAITING_FOR_PAYMENT_AT_MOST,
@@ -625,8 +626,8 @@ export class Gateway {
   }
 
   /**
-   * Forgets every attempt that lapsed unpaid more than thirty days ago, a batch
-   * at a time, and returns how many went.
+   * Forgets every attempt that lapsed unpaid longer than `LAPSED_KEPT_MS` ago,
+   * a batch at a time, and returns how many went.
    */
   async forgetLapsedAttempts(): Promise<number> {
     const before = this.runtime.clock() - LAPSED_KEPT_MS;
@@ -637,7 +638,9 @@ export class Gateway {
       if (batch < LAPSED_FORGOTTEN_AT_ONCE) break;
     }
     if (gone > 0) {
-      console.log(`[gateway] forgot ${gone} purchases that lapsed unpaid over thirty days ago`);
+      console.log(
+        `[gateway] forgot ${gone} purchases that lapsed unpaid over ${durationInWords(LAPSED_KEPT_MS, "day")} ago`,
+      );
     }
     return gone;
   }
