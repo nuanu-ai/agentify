@@ -4991,7 +4991,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           payoutWallet: answer,
           integration: answer,
           standing: answer,
-          orderRecords: answer,
+          ordersWithRecords: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -6829,14 +6829,21 @@ describe("closing fulfillment from Orders", () => {
         },
         getOrder: async () => lateAnswer(10),
         orders: async (open) => {
-          if (pressed) {
-            readsAfter += 1;
-            if (readsAfter > 2) throw new Error("a second read failed");
-          }
+          readAfter();
           return await real.orders(open);
+        },
+        ordersWithRecords: async () => {
+          readAfter();
+          return await real.ordersWithRecords();
         },
       }),
     });
+    function readAfter() {
+      if (pressed) {
+        readsAfter += 1;
+        if (readsAfter > 2) throw new Error("a second read failed");
+      }
+    }
     const id = await paid(running);
     await running.browser.signIn();
     const typed = "Payment returned outside Agentify.";
@@ -6876,7 +6883,7 @@ describe("closing fulfillment from Orders", () => {
           getOrder: async (id) => (down ? lateAnswer(10) : await real.getOrder(id)),
           cards: async () => (down ? await failed() : await real.cards()),
           orders: async (open) => (down ? await failed() : await real.orders(open)),
-          orderRecords: async () => (down ? await failed() : await real.orderRecords()),
+          ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
           paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
         }),
       });
@@ -6916,7 +6923,7 @@ describe("closing fulfillment from Orders", () => {
         ...real,
         cards: async () => (down ? await failed() : await real.cards()),
         orders: async (open) => (down ? await failed() : await real.orders(open)),
-        orderRecords: async () => (down ? await failed() : await real.orderRecords()),
+        ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
         paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
       }),
     });
@@ -6957,7 +6964,7 @@ describe("closing fulfillment from Orders", () => {
     return {
       cards: async () => (down() ? await failed() : await real.cards()),
       orders: async (open: boolean) => (down() ? await failed() : await real.orders(open)),
-      orderRecords: async () => (down() ? await failed() : await real.orderRecords()),
+      ordersWithRecords: async () => (down() ? await failed() : await real.ordersWithRecords()),
       paidIntoSplits: async () => (down() ? await failed() : await real.paidIntoSplits()),
     };
   };

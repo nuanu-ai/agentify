@@ -734,8 +734,8 @@ describe("what an order's record says beside its document", () => {
     if (!room.ok) throw new Error("the room was refused");
     const worker = workUntilStopped(harnessed, {
       onOrder: () => {
-        // The goods take a minute, so the charge settles after the payment was checked.
-        harnessed.advance(60_000);
+        // The goods take two seconds, so the charge settles after the payment was checked.
+        harnessed.advance(2_000);
         return { delivered: { access_code: "SESAME" } };
       },
     });
@@ -752,7 +752,7 @@ describe("what an order's record says beside its document", () => {
 
     const record = (await recordsOf(client))[id];
 
-    expect(receipt?.paid_at).toBe(iso(checkedAt + 60_000));
+    expect(receipt?.paid_at).toBe(iso(checkedAt + 2_000));
     expect(record).toStrictEqual({ unfulfilled: null, paidAt: receipt?.paid_at, deadline: null });
   });
 

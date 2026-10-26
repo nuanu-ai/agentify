@@ -1602,12 +1602,14 @@ const ordersAt = (
     open = openAmong(listed),
     owed = {},
     lapsed,
+    connector = {},
   }: Readonly<{
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
     owed?: Parameters<typeof ordersView>[5];
     lapsed?: Parameters<typeof ordersView>[7];
+    connector?: Parameters<typeof ordersView>[9];
   }> = {},
 ) =>
   ordersView(
@@ -1619,6 +1621,8 @@ const ordersAt = (
     owed,
     paidIntoSplit(mode, listed.orders),
     lapsed,
+    {},
+    connector,
   );
 
 /** The layout reads the banner from the same selling state the orders' cards carry. */
@@ -1841,34 +1845,24 @@ const ORDERS: GalleryState[] = [
       cause:
         "The connector holds the sale for recovery, so the unfulfilled order leads to the recovery page in place of the general link.",
     },
-    (() => {
-      const view = ordersAt("/orders", OWING, { owed: OWED_BECAUSE });
-      const first = view.needsYou.rows[0]?.id ?? "";
-      return {
-        path: "/orders",
-        mode: "live",
-        account: bannerOf(seenBy("live"), { through: "woocommerce", selling: "open" }),
-        loaded: {
-          "routes/orders": {
-            ...view,
-            needsYou: {
-              ...view.needsYou,
-              rows: view.needsYou.rows.map((row) =>
-                row.id === first
-                  ? {
-                      ...row,
-                      rest: {
-                        href: `/integrations/woocommerce/recover/${first}`,
-                        words: "Recover WooCommerce delivery",
-                      },
-                    }
-                  : row,
-              ),
-            },
-          },
-        },
-      };
-    })(),
+    {
+      path: "/orders",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { through: "woocommerce", selling: "open" }),
+      loaded: {
+        "routes/orders": ordersAt("/orders", OWING, {
+          owed: OWED_BECAUSE,
+          connector: Object.fromEntries(
+            Object.keys(OWED_BECAUSE)
+              .slice(0, 1)
+              .map((id) => [
+                id,
+                { kind: "download", recover: `/integrations/woocommerce/recover/${id}` },
+              ]),
+          ),
+        }),
+      },
+    },
   ),
   orders(
     {

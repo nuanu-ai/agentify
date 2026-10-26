@@ -12,7 +12,7 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
-import { fulfillmentDeadline, type Order, outcomeFor } from "@agentify/core";
+import { fulfillmentDeadline, outcomeFor } from "@agentify/core";
 import type {
   Caller,
   Gateway,
@@ -102,10 +102,7 @@ export type UnfulfilledCause = "refused" | "deadline_passed" | "charge_confirmed
 export interface OrderRecord {
   /** Why a paid order was left unfulfilled; null for an order that is not, or whose cause is not recorded. */
   readonly unfulfilled: UnfulfilledCause | null;
-  /**
-   * When the money moved, for an order charged at purchase. An order charged
-   * after its goods records when its payment was checked, which is not this.
-   */
+  /** When the money moved, where the order's receipt or its charge records it. */
   readonly paidAt: string | null;
   /**
    * The deadline on the goods, while it still runs or where its passing left
@@ -164,8 +161,16 @@ export interface GatewayClient {
   ): Promise<Answer<{ readonly attempts: readonly LapsedAttempt[]; readonly of: number }>>;
   /** How many purchases lapsed unpaid, with none of them read. */
   lapsedCount(): Promise<Answer<number>>;
-  /** What each order's record keeps beside its document, by order; the purchases that lapsed unpaid are not read. */
-  orderRecords(): Promise<Answer<Readonly<Record<string, OrderRecord>>>>;
+  /**
+   * Every order but the purchases that lapsed unpaid, and what each one's
+   * record keeps beside its document, from one read so the two agree.
+   */
+  ordersWithRecords(): Promise<
+    Answer<{
+      readonly orders: OrderList;
+      readonly records: Readonly<Record<string, OrderRecord>>;
+    }>
+  >;
   receipts(): Promise<Answer<ReceiptList>>;
   /**
    * The payout split this order's payment was checked against, as recorded,
@@ -492,23 +497,41 @@ const UNFULFILLED_BY: Readonly<Partial<Record<string, UnfulfilledCause>>> = {
 };
 
 /**
+ * When the money moved: what the order's receipt says, where it has one, since
+ * that is the moment already given to the buyer; otherwise the charge's own
+ * record, then the moment an order charged at purchase was paid, then the
+ * moment a payment completed after the merchant's closure. An order charged
+ * after its goods records as paid the moment its payment was checked, which
+ * is not when the money moved.
+ */
+const moneyMovedAt = (record: StoredOrder, receipted: string | null): string | null => {
+  const { order } = record;
+  if (order.payment !== "settled") return null;
+  if (receipted !== null) return receipted;
+  const completion = record.paymentAttempt?.completion;
+  const at =
+    (completion?.settled === true ? completion.executedAt : null) ??
+    (order.mode.settle === "on_purchase" ? order.timestamps.paidAt : null) ??
+    order.merchantClosure?.paymentCompletedAt ??
+    null;
+  return at === null ? null : new Date(at).toISOString();
+};
+
+/**
  * A deadline is said to have passed only where its passing is why the order
  * is unfulfilled: an order refused after payment may have been refused well
  * inside it.
  */
-const orderRecordOf = (order: Order): OrderRecord => {
+const orderRecordOf = (record: StoredOrder, receipted: string | null): OrderRecord => {
+  const { order } = record;
   const unfulfilled =
     order.state === "unfulfilled" ? (UNFULFILLED_BY[order.closure?.cause ?? ""] ?? null) : null;
   const running = order.state === "paid" || order.state === "dispatched";
   const due =
     running || unfulfilled === "deadline_passed" ? fulfillmentDeadline(order)[0] : undefined;
-  const { paidAt } = order.timestamps;
   return {
     unfulfilled,
-    paidAt:
-      paidAt !== null && order.payment === "settled" && order.mode.settle !== "after_fulfillment"
-        ? new Date(paidAt).toISOString()
-        : null,
+    paidAt: moneyMovedAt(record, receipted),
     deadline: due === undefined ? null : { at: new Date(due.at).toISOString(), passed: !running },
   };
 };
@@ -604,15 +627,26 @@ export const gatewayFor = (
       call("counting the purchases that lapsed unpaid", async () =>
         done((await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 })).of),
       ),
-    orderRecords: () =>
-      call("reading the orders' records", async () => {
-        const records: Record<string, OrderRecord> = {};
-        for (const { order } of await application.orders(merchantId, undefined, {
-          leaveOutLapsed: true,
-        })) {
-          records[order.id] = orderRecordOf(order);
-        }
-        return done(records);
+    ordersWithRecords: () =>
+      call("reading the orders", async () => {
+        const read = await application.orders(merchantId, undefined, { leaveOutLapsed: true });
+        const paid = new Map(
+          (await application.receipts(merchantId)).receipts.map((one) => [
+            one.order_id,
+            one.paid_at,
+          ]),
+        );
+        return done({
+          orders: API_ROUTES.list_orders.response.document.parse(
+            merchantOrderList(read),
+          ) as OrderList,
+          records: Object.fromEntries(
+            read.map((record) => [
+              record.order.id,
+              orderRecordOf(record, paid.get(record.order.id) ?? null),
+            ]),
+          ),
+        });
       }),
     receipts: () =>
       call("reading the receipts", async () =>

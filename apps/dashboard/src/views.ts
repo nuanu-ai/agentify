@@ -363,8 +363,6 @@ interface OrderRow {
   readonly day: string;
   /** What happened to the order and when, in the order it happened. */
   readonly facts: readonly OrderFact[];
-  /** Whether the order waits on the merchant: unfulfilled, or paid after their closure. */
-  readonly needsYou: boolean;
   /** What happened that the merchant or the buyer still has to act on, and what can be done; null otherwise. */
   readonly why: string | null;
   readonly rest: Rest | null;
@@ -662,9 +660,9 @@ const factsOf = (kept: {
   readonly record?: OrderRecord | undefined;
   readonly closed?: string | undefined;
 }): OrderFact[] => {
-  const facts: OrderFact[] = [];
+  const facts: { label: string; at: string }[] = [];
   const add = (label: string, at: string | null | undefined) => {
-    if (at != null) facts.push({ label, at: momentView(at) });
+    if (at != null) facts.push({ label, at });
   };
   add("Asked to buy", kept.asked);
   add("Price set", kept.priced);
@@ -672,7 +670,10 @@ const factsOf = (kept: {
   const deadline = kept.record?.deadline ?? null;
   add(deadline?.passed ? "Delivery deadline passed" : "Delivery deadline", deadline?.at);
   add("Closed by you", kept.closed);
-  return facts;
+  // In the order they happened; two of one moment keep the order of the steps above.
+  return facts
+    .sort((one, other) => Date.parse(one.at) - Date.parse(other.at))
+    .map(({ label, at }) => ({ label, at: momentView(at) }));
 };
 
 export const ordersView = (
@@ -685,6 +686,7 @@ export const ordersView = (
   paidInto: PaidIntoSplits = {},
   lapsed: LapsedAttempts = NO_LAPSED,
   shopTotals: Readonly<Record<string, ShopTotal>> = {},
+  connector: Readonly<Record<string, ConnectorSale>> = {},
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -725,13 +727,11 @@ export const ordersView = (
       record: records[order.id],
       closed: order.merchant_closure?.closed_at,
     }),
-    needsYou: needing(order),
-    why: reopened(order)
-      ? PAID_AFTER_CLOSURE
+    ...(reopened(order)
+      ? { why: PAID_AFTER_CLOSURE, rest: null }
       : needsYou(order.status) || waitsOnTheBuyer(order.status)
-        ? whatHappened(order, records[order.id]?.unfulfilled ?? null)
-        : null,
-    rest: whereTheRestIs(order.status),
+        ? wayOn(order, records[order.id]?.unfulfilled ?? null, connector[order.id])
+        : { why: null, rest: null }),
   });
   // Newest first, whatever order the gateway lists them in, so the page a long
   // list opens on holds what just happened and a day's orders sit together.
@@ -783,7 +783,6 @@ export const ordersView = (
           priced: attempt.priced_at === null ? null : momentView(attempt.priced_at),
           day: dayOf(attempt.priced_at ?? attempt.asked_at),
           facts: factsOf({ asked: attempt.asked_at, priced: attempt.priced_at }),
-          needsYou: false,
           why: null,
           rest: null,
           payment: "Not paid",
@@ -970,38 +969,76 @@ const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
     "Paid, but the payment was confirmed only after Agentify had stopped waiting for it, so the order was never sent to your integration and nothing was delivered.",
 };
 
-const whatHappened = (
+/**
+ * How an order the shop connector holds can still be delivered: a parcel by
+ * marking its shop order Completed in WooCommerce, a download by the
+ * connector's recovery, where it can still deliver one.
+ */
+export type ConnectorSale =
+  | Readonly<{ kind: "parcel" }>
+  | Readonly<{ kind: "download"; recover: string | null }>;
+
+const CLOSE = "close fulfillment with an explanation to the buyer";
+
+const PARCELS: Rest = { href: "/docs/woocommerce#parcels", words: "Parcels" };
+
+/**
+ * What happened to an order that waits on the merchant or the buyer, and the
+ * ways on that suit who holds the sale. A late delivery happens in the
+ * merchant's integration, never on this page, so it is linked where there is
+ * one; closure is linked once over all of them. Held goods owe nobody
+ * anything: what can still happen is a payment the buyer makes.
+ */
+const wayOn = (
   order: OrderList["orders"][number],
   cause: UnfulfilledCause | null,
-): string =>
-  order.status === "unfulfilled"
-    ? `${cause === null ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it late, or close fulfillment with an explanation to the buyer.`
-    : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
+  sale: ConnectorSale | undefined,
+): Readonly<{ why: string; rest: Rest | null }> => {
+  if (order.status !== "unfulfilled") {
+    return {
+      why: "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.",
+      rest: {
+        href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
+        words: "What can still happen",
+      },
+    };
+  }
+  const said =
+    cause === null ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause];
+  if (sale?.kind === "parcel") {
+    // Only a parcel whose seven days ran out can still be marked Completed;
+    // one the connector refused may hold a shop order it could not confirm.
+    return cause === "deadline_passed"
+      ? {
+          why: `${said} You can still ship it: mark the order Completed in WooCommerce within thirty days of it being placed, or ${CLOSE}.`,
+          rest: PARCELS,
+        }
+      : {
+          why: `${said} Do not ship it: ${CLOSE}, and settle any order your shop holds for it by your own policy.`,
+          rest: PARCELS,
+        };
+  }
+  if (sale?.kind === "download") {
+    return sale.recover === null
+      ? { why: `${said} Close fulfillment with an explanation to the buyer.`, rest: null }
+      : {
+          why: `${said} You can still deliver it late, or ${CLOSE}.`,
+          rest: { href: sale.recover, words: "Recover WooCommerce delivery" },
+        };
+  }
+  return {
+    why: `${said} You can still deliver it late, or ${CLOSE}.`,
+    rest: {
+      href: "/docs/orders#confirming-a-delivery-with-a-separate-call",
+      words: "Delivering late",
+    },
+  };
+};
 
 const sharesIn = (
   price: { readonly amount: string; readonly currency: string },
   terms: SplitTerms | undefined,
 ): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
-
-/**
- * Merchant closure is linked once over unfulfilled orders, and each of them
- * links the other way on, a late delivery, which happens in the merchant's
- * integration rather than on this page. Held goods owe nobody anything: what
- * can still happen is a payment the buyer makes, and the documentation says
- * what settles it and what the merchant's choice is.
- */
-const whereTheRestIs = (status: OrderStatus): Rest | null =>
-  status === "delivered_unpaid"
-    ? {
-        href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
-        words: "What can still happen",
-      }
-    : status === "unfulfilled"
-      ? {
-          href: "/docs/orders#confirming-a-delivery-with-a-separate-call",
-          words: "Delivering late",
-        }
-      : null;
 
 // --- receipts ----------------------------------------------------------------
 
