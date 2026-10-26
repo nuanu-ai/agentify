@@ -30,6 +30,7 @@ import type { WorkspaceDoor } from "./admin/index.js";
 import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
+  adminDestinationIn,
   asksForSellerDashboard,
   type DashboardDestination,
   type DashboardIdentity,
@@ -450,12 +451,15 @@ const textOf = (value: unknown): string | null => (typeof value === "string" ? v
 
 /**
  * What the page of a link carries from the link's address: whether that link
- * makes no merchant, so the next link asked for from there makes none either.
- * It can only keep a merchant from being made; the link's own record decides
- * whether its press makes one.
+ * makes no merchant, so the next link asked for from there makes none either,
+ * and the page of the operator's workspace it was for. It can only keep a
+ * merchant from being made; the link's own record decides whether its press
+ * makes one.
  */
-const readingIn = (named: URLSearchParams | FormData): DashboardDestination =>
-  once(named.getAll("destination")) === "reports" ? "reports" : "default";
+const readingIn = (named: URLSearchParams | FormData): DashboardDestination => {
+  const asked = once(named.getAll("destination"));
+  return asked === "reports" ? "reports" : (adminDestinationIn(asked) ?? "default");
+};
 
 /**
  * The click an address or a form names once, in the tracker's form; null for
