@@ -263,6 +263,7 @@ describe("one paid order, in the merchant's own shop", () => {
     expect(shop.placed).toEqual([
       {
         orderId: "ord_1",
+        test: true,
         productId: "11",
         email: MERCHANT_EMAIL,
         price: { amount: "25.00", currency: "USD" },
@@ -1819,8 +1820,10 @@ describe("a parcel's paid order", () => {
       postal_code: "82121",
     });
     expect(shop.placed).toHaveLength(1);
+    // Sold on the test channel, so the shop's order is marked as paid in test USDC.
     expect(shop.placed[0]).toMatchObject({
       orderId: "ord_1",
+      test: true,
       productId: "28",
       email: MERCHANT_EMAIL,
       total: { amount: "25.00", currency: "USD" },

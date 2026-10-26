@@ -1443,6 +1443,23 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toHaveLength(1);
   });
 
+  it.each([
+    ["the test channel", "test", true],
+    ["the live channel", "live", false],
+  ] as const)(
+    "on %s, notes on the Connect form that a purchase makes a paid shop order only where the money is not real",
+    async (_, channel, noted) => {
+      // A test purchase still makes a paid order in whatever shop is connected,
+      // and a merchant may connect their real one.
+      const running = await started({ channel });
+      await running.signIn();
+
+      const screen = await running.get("/woocommerce");
+
+      expect(screen.html.includes('aria-label="Test purchases"')).toBe(noted);
+    },
+  );
+
   it("on the live channel, imports a physical product as a parcel, as on the test channel", async () => {
     const running = await started({
       channel: "live",
