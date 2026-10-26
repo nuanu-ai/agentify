@@ -26,7 +26,12 @@ import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { PayoutSplits } from "../../src/gateway.js";
-import { type SettingsPress, settingsView } from "../../src/settings-view.js";
+import {
+  PAYOUT_NOTES,
+  type PayoutView,
+  type SettingsPress,
+  settingsView,
+} from "../../src/settings-view.js";
 import { readable } from "../../src/testing/html.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
 import { WALLET_WORDS } from "../wallet/buttons.js";
@@ -274,6 +279,8 @@ const viewOf = ({
     },
     press,
   );
+
+type PayoutKind = PayoutView["kind"];
 
 /** Inside the gate, as the screen is, so a form that posts knows its address. */
 const routed = (drawn: () => ReactElement) => {
@@ -762,7 +769,7 @@ describe("the payout instruction", () => {
     const html = settingsPage({ mode: "test", wallet: W });
 
     expect(html).toContain('href="/docs/payout#with-any-other-wallet"');
-    expect(readable(html)).toMatch(/Agentify's next payout pays it out\. It has no fixed date/);
+    expect(readable(html)).toContain(PAYOUT_NOTES.orAgentify);
   });
 
   it("is not drawn in the sandbox, where nothing is ever deployed", () => {
@@ -819,10 +826,6 @@ describe("the payout instruction", () => {
       [earlier.address, W1],
       [now.address, W],
     ]);
-    expect(shownText(html)).toMatch(/each share arrives in the wallet beside its contract/i);
-    expect(shownText(settingsPage({ mode: "live", wallet: W }))).toMatch(
-      /your share arrives in the same transaction/i,
-    );
     // Each wallet is the owner of a withdrawal in the data: `withdraw(owner, token)`.
     for (const [, wallet] of pairs) {
       expect(data).toContain(`f940e385${(wallet ?? "").slice(2).toLowerCase().padStart(64, "0")}`);
@@ -841,6 +844,66 @@ describe("the payout instruction", () => {
     expect(text).toMatch(/no fixed date/);
     expect(html).not.toContain(MULTICALL3);
     expect(html).not.toContain("<textarea");
+  });
+});
+
+describe("what Getting paid says in each state", () => {
+  const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+  const W1 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+  /**
+   * Every state the section can be in, keyed by its kind so a kind added to the
+   * view does not compile here until it has a case.
+   */
+  const STATES: Readonly<Record<PayoutKind, readonly (readonly [string, Looking])[]>> = {
+    send: [
+      ["one contract", { mode: "test", wallet: W }],
+      ["on the live channel", { mode: "live", wallet: W }],
+      [
+        "contracts paying two wallets",
+        {
+          mode: "live",
+          wallet: W,
+          splits: splitsFor("live", W, { toPayOut: [splitOf("live", W1), splitOf("live", W)] }),
+        },
+      ],
+    ],
+    too_many: [
+      [
+        "more contracts than one transaction carries",
+        { mode: "test", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) },
+      ],
+    ],
+    unbuilt: [
+      [
+        "a transaction that could not be built",
+        { mode: "test", wallet: W, splits: { ...splitsFor("test", W), payout: "unbuilt" } },
+      ],
+    ],
+  };
+  // The page reads which payout contracts there are and never what they hold,
+  // so a merchant with no sale yet reads the same words as one with many.
+  const CLAIMS_MONEY = /\b(?:your money|your share|each share|holds?|waits?|stays?|arrives?)\b/i;
+  const sectionIn = (html: string): string =>
+    /<section[^>]*aria-labelledby="getting-paid"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+
+  it.each(Object.values(STATES).flat())(
+    "claims no money in its contracts for %s, and still says what happens next",
+    (_state, looking) => {
+      const said = readable(sectionIn(settingsPage(looking)));
+
+      expect(said).toMatch(/getting paid/i);
+      expect(said).not.toMatch(CLAIMS_MONEY);
+      // Who pays out if the merchant does not, or whom to tell.
+      expect(said).toMatch(/Agentify's next payout|admin@agentify\.ad/);
+    },
+  );
+
+  it("draws each state as the kind it is cased under", () => {
+    const drawn = Object.entries(STATES).flatMap(([kind, cases]) =>
+      cases.map(([, looking]) => [kind, viewOf(looking).payout?.kind]),
+    );
+
+    expect(drawn.filter(([kind, as]) => kind !== as)).toStrictEqual([]);
   });
 });
 

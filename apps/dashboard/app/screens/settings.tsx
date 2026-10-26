@@ -378,14 +378,7 @@ function GettingPaid({ payout }: Readonly<{ payout: PayoutView }>) {
   return (
     <section className={`settings-panel ${styles.section}`} aria-labelledby="getting-paid">
       <Head id="getting-paid" title="Getting paid">
-        {payout.kind === "send" ? (
-          <p>
-            Your money waits in your payout contract until someone pays it out. If you don't,
-            Agentify's next payout pays it out. It has no fixed date.
-          </p>
-        ) : (
-          <p>{payout.said}</p>
-        )}
+        <p>{payout.said}</p>
       </Head>
       {payout.kind !== "send" ? null : (
         <>
