@@ -12,7 +12,7 @@ import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
 import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
-import { type CommissionRate, percentagesOf } from "./shares.js";
+import { type CommissionRate, percentagesOf, usdcOf } from "./shares.js";
 import { type MomentView, momentView } from "./views.js";
 import { APPROVAL_GIVEN } from "./words.js";
 
@@ -46,24 +46,36 @@ export interface SplitView {
 }
 
 /**
+ * Coinbase Wallet's button on a panel: offered on the chain it works on, or
+ * the one line that says why there is none; null where the panel says
+ * nothing of it, as in the sandbox.
+ */
+export type CoinbaseView = Readonly<{ chain: number }> | Readonly<{ absent: string }> | null;
+
+/**
  * The one transaction that pays out every split that can hold the merchant's
  * money, as a wallet asks for it, or why there is none to send.
  */
 export type PayoutView =
   | Readonly<{
       kind: "send";
-      /** Where the money waits, and on which one chain, from what, it is sent. */
+      /**
+       * What sending it now would bring, or that this is not known, and on
+       * which one chain, from what, it is sent.
+       */
       lead: string;
+      /** The amount `lead` names, with its currency; null where it is not known. */
+      brings: string | null;
       to: string;
       data: string;
       /** Each split it pays out, beside the wallet written into it. */
       pays: readonly Readonly<{ split: string; wallet: string }>[];
       /** What sending it can and cannot do, and when the merchant is paid without it. */
       after: string;
-      /** The chain a Coinbase Wallet sends it on, the one `lead` names; null where there is none. */
-      chain: number | null;
+      /** Coinbase Wallet's way of sending it, on the chain `lead` names. */
+      coinbase: CoinbaseView;
     }>
-  | Readonly<{ kind: "too_many" | "unbuilt"; said: string }>;
+  | Readonly<{ kind: "nothing" | "too_many" | "unbuilt"; said: string }>;
 
 /** What a press did, where it answers with the page rather than sending the browser on. */
 export type SettingsPress =
@@ -93,8 +105,8 @@ export interface WalletView {
   readonly onItsWay: string | null;
   readonly typed: string;
   readonly problem: string | null;
-  /** The chain a Coinbase Wallet is opened on to fill the box; null in the sandbox, where no wallet is paid. */
-  readonly chain: number | null;
+  /** Coinbase Wallet's way of filling the box; null in the sandbox, where no wallet is paid. */
+  readonly coinbase: CoinbaseView;
 }
 
 export interface SettingsView {
@@ -139,6 +151,34 @@ const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
 /** When a merchant who sends nothing is paid: Agentify's own payout pays out every contract, whenever it is sent. */
 const PAID_ON_NO_SET_DATE = "paid when Agentify next pays out every contract, on no set date.";
 
+/** The token a payout brings on each channel that settles. */
+const PAID_IN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
+  test: "test USDC",
+  live: "USDC",
+};
+
+/**
+ * Where Coinbase Wallet's window is offered, by the EIP-155 chain it works
+ * on, with the line each panel says where it is not. Coinbase's window
+ * refuses Base Sepolia to the wallets it creates now, so the test channel
+ * offers neither button. A chain not written here offers neither, without a
+ * word.
+ */
+const COINBASE_ON: Readonly<Record<number, true | Readonly<{ box: string; payout: string }>>> = {
+  8453: true,
+  84532: {
+    box: "There is no Coinbase Wallet button on the test channel, because Coinbase's window refuses Base Sepolia to the wallets it creates now. Enter your wallet's address by hand.",
+    payout:
+      "Coinbase Wallet cannot send it on the test channel, because Coinbase's window refuses Base Sepolia to the wallets it creates now. Send it from another wallet, as below.",
+  },
+};
+
+const coinbaseOn = (chain: number | null, panel: "box" | "payout"): CoinbaseView => {
+  if (chain === null) return null;
+  const on = COINBASE_ON[chain];
+  return on === undefined ? null : on === true ? { chain } : { absent: on[panel] };
+};
+
 const sameAddress = (one: string, other: string): boolean =>
   one.toLowerCase() === other.toLowerCase();
 
@@ -167,6 +207,12 @@ const splitBeside = (
         explorer: addressPage === null ? null : `${addressPage}${split.address}`,
       };
 
+/**
+ * The payout as the chain's run of it answered when the page was drawn. A
+ * payout that would bring nothing is not offered; one whose amount is not
+ * known is, since it pays out only what is there, and the page says it does
+ * not know rather than that nothing waits.
+ */
 const payoutView = (
   mode: SurfaceMode,
   splits: PayoutSplits,
@@ -177,7 +223,7 @@ const payoutView = (
   if (payout === "unbuilt") {
     return {
       kind: "unbuilt",
-      said: "Agentify could not build the transaction that pays out your payout contracts as they are recorded, so there is none to send here. Buyers' payments wait in them until somebody pays them out.",
+      said: "Agentify could not build the transaction that pays out your payout contracts as they are recorded, so there is none to send here. Whatever buyers paid into them stays there until somebody pays it out.",
     };
   }
   if ("tooMany" in payout) {
@@ -186,23 +232,37 @@ const payoutView = (
       said: `You have ${payout.tooMany} payout contracts that can hold money, more than one transaction can pay out, so there is no transaction for you to send here. You are ${PAID_ON_NO_SET_DATE}`,
     };
   }
-  const pays = payout.splits.map((split) => ({
+  const { transaction, brings } = payout;
+  if (brings === 0n) {
+    return {
+      kind: "nothing",
+      said: "A payout sent now would bring you nothing, as the network stood when this page was drawn, so there is none to send here. Once a buyer has paid into your payout contract, the payout shows here with what it would bring.",
+    };
+  }
+  const pays = transaction.splits.map((split) => ({
     split: split.address,
     wallet: split.merchantWallet,
   }));
-  const wallets = new Set(pays.map((pair) => pair.wallet.toLowerCase()));
+  const one = new Set(pays.map((pair) => pair.wallet.toLowerCase())).size === 1;
+  const amount = brings === UNKNOWN ? null : `${usdcOf(brings)} ${PAID_IN[mode]}`;
   return {
     kind: "send",
-    lead: `Buyers' payments wait in your payout contract until someone pays it out. ${SENT_ON[mode]}`,
-    to: payout.to,
-    data: payout.data,
+    lead:
+      amount === null
+        ? `Agentify could not read from the network what this payout would bring, so it does not know whether anything is waiting for you. Sending it anyway does no harm: it pays out only what is there, though it costs the network's fee even when that is nothing. ${SENT_ON[mode]}`
+        : `Sent now, this payout would bring ${amount} ${
+            one ? "to your wallet" : "to the wallets beside your payout contracts, between them"
+          }. That is what the network showed when this page was drawn: a buyer who pays before the payout goes out adds to it, and if Agentify's own payout goes out first, that one brings it to you instead. ${SENT_ON[mode]}`,
+    brings: amount,
+    to: transaction.to,
+    data: transaction.data,
     pays,
     after: `It carries no money and can take nothing from the wallet that sends it; ${
-      wallets.size === 1
+      one
         ? "your share arrives in the same transaction"
         : "each share arrives in the wallet beside its contract, in the same transaction"
     }. Otherwise you are ${PAID_ON_NO_SET_DATE}`,
-    chain: walletChain,
+    coinbase: coinbaseOn(walletChain, "payout"),
   };
 };
 
@@ -284,7 +344,7 @@ export const settingsView = (
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,
       typed: wallet?.typed ?? "",
       problem: wallet?.problem ?? null,
-      chain: walletChain,
+      coinbase: coinbaseOn(walletChain, "box"),
     },
     payout: saved === null ? null : payoutView(mode, payoutSplits, walletChain),
     account: {

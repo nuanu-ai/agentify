@@ -12,13 +12,14 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
-import { outcomeFor } from "@agentify/core";
+import { outcomeFor, UNKNOWN } from "@agentify/core";
 import type {
   Caller,
   Gateway,
   Integration,
   IssuedMerchantKey,
   MerchantKey,
+  PayoutCheck,
   PayoutTransaction,
   RecordedPayoutSplit,
   StoredOrder,
@@ -95,19 +96,29 @@ export type Answer<T> =
  */
 export type UnfulfilledCause = "refused" | "deadline_passed" | "charge_confirmed_late";
 
+/** The one transaction that pays out every split that can hold a merchant's money. */
+interface PayoutToSend {
+  readonly transaction: PayoutTransaction;
+  /**
+   * The USDC, in millionths, that sending it now would bring the merchant's
+   * wallets, as the chain ran it without sending it; `UNKNOWN` where the
+   * chain could not be asked or did not answer in time.
+   */
+  readonly brings: bigint | typeof UNKNOWN;
+}
+
 /**
  * A merchant's payout splits on this network, for the payout wallet screen,
- * and the one transaction that pays out every split that can hold their
- * money. `payout` is null where no split can hold any, says how many there
- * are where one transaction cannot carry them all, and is `unbuilt` where the
- * builder refused the splits as recorded.
+ * and their payout. `payout` is null where no split can hold any money, says
+ * how many there are where one transaction cannot carry them all, and is
+ * `unbuilt` where the builder refused the splits as recorded.
  */
 export interface PayoutSplits {
   /** The terms every split recorded on this network from now is made with. */
   readonly rate: CommissionRate;
   readonly inForce: RecordedPayoutSplit | null;
   readonly pending: RecordedPayoutSplit | null;
-  readonly payout: PayoutTransaction | { readonly tooMany: number } | "unbuilt" | null;
+  readonly payout: PayoutToSend | { readonly tooMany: number } | "unbuilt" | null;
 }
 
 /**
@@ -127,6 +138,35 @@ const payoutOf = (
       `[dashboard] no payout was built for ${merchantId}: ${refused instanceof Error ? refused.message : String(refused)}`,
     );
     return "unbuilt";
+  }
+};
+
+/**
+ * What `transaction` would bring if sent now, or `UNKNOWN`. The chain gets at
+ * most half the page's own deadline, so a hanging endpoint costs the payout
+ * panel its amount and never the rest of the page; a read the page stopped
+ * waiting for goes on, and its answer is kept for the next page.
+ */
+const broughtWithin = async (
+  check: PayoutCheck | undefined,
+  transaction: PayoutTransaction,
+  withinMs: number,
+): Promise<bigint | typeof UNKNOWN> => {
+  if (check === undefined) return UNKNOWN;
+  let cut: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<typeof UNKNOWN>((resolve) => {
+    cut = setTimeout(() => resolve(UNKNOWN), withinMs);
+  });
+  const read = check.wouldBring(transaction).catch((thrown: unknown): typeof UNKNOWN => {
+    console.error(
+      `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
+    );
+    return UNKNOWN;
+  });
+  try {
+    return await Promise.race([read, late]);
+  } finally {
+    clearTimeout(cut);
   }
 };
 
@@ -668,6 +708,12 @@ export const gatewayFor = (
       call("reading the payout splits", async () => {
         const { payoutSplit: network, payoutSplitNetworks } = application.runtime.config;
         const { inForce, pending, toPayOut } = await application.payoutSplitsOf(merchantId);
+        const built =
+          toPayOut.length === 0
+            ? null
+            : toPayOut.length > SPLITS_PER_PAYOUT
+              ? { tooMany: toPayOut.length }
+              : payoutOf(merchantId, () => merchantPayout(network, toPayOut, payoutSplitNetworks));
         return done({
           rate: {
             commissionAllocation: network.commissionAllocation,
@@ -676,13 +722,16 @@ export const gatewayFor = (
           inForce,
           pending,
           payout:
-            toPayOut.length === 0
-              ? null
-              : toPayOut.length > SPLITS_PER_PAYOUT
-                ? { tooMany: toPayOut.length }
-                : payoutOf(merchantId, () =>
-                    merchantPayout(network, toPayOut, payoutSplitNetworks),
+            built === null || built === "unbuilt" || "tooMany" in built
+              ? built
+              : {
+                  transaction: built,
+                  brings: await broughtWithin(
+                    application.runtime.payoutCheck,
+                    built,
+                    answerWithinMs / 2,
                   ),
+                },
         });
       }),
     setPayoutWallet: (address) =>
