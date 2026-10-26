@@ -413,7 +413,7 @@ describe("the sidebar", () => {
     framed("cards", { account: [] });
     await screen.findByText("The screen");
 
-    expect(within(sections()).getByText("Cards").textContent).toBe("Cards");
+    expect(within(sections()).getByText("Products").textContent).toBe("Products");
     expect(orders().textContent).toBe("Orders");
   });
 

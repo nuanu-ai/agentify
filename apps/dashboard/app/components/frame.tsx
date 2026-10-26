@@ -29,7 +29,7 @@ import { useGoingTo } from "./going-to.js";
 export type Tab = "cards" | Exclude<SectionDestination, "default" | "woocommerce">;
 
 const TABS: readonly (readonly [Tab, string])[] = [
-  ["cards", "Cards"],
+  ["cards", "Products"],
   ["orders", "Orders"],
   ["receipts", "Receipts"],
   ["integrations", "Integrations"],
