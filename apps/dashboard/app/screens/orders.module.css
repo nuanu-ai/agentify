@@ -1,18 +1,17 @@
 /*
  * An order said in a row of its own, in a list's one surface. Where the
  * list's box is wide: its state, product and sum on one line, then what
- * happened and what to do, then its ID and when its price was set. Where it is
- * narrow, as the stacked rows below it are: the product and the sum, then the
- * state on a line of its own.
+ * happened and what to do, then the one way on, the three under the product.
+ * Where it is narrow: the product and the sum, then the state, then the rest.
  */
 .told {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
     "state product amount"
-    "why why why"
-    "meta meta meta";
-  gap: 8px 14px;
+    ". why why"
+    ". way way";
+  gap: 6px 14px;
   align-items: baseline;
   padding: 18px 20px;
 }
@@ -40,21 +39,16 @@
 
 .why {
   grid-area: why;
-  max-width: 48rem;
+  max-width: 44rem;
   margin: 0;
   color: var(--fg-2);
   font-size: 0.9375rem;
   line-height: 1.55;
 }
 
-.meta {
-  grid-area: meta;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
-  color: var(--muted);
-  font-size: 0.875rem;
+.way {
+  grid-area: way;
+  margin-top: 8px;
 }
 
 @container (max-width: 860px) {
@@ -64,7 +58,7 @@
       "product amount"
       "state state"
       "why why"
-      "meta meta";
+      "way way";
     gap: 6px 10px;
     padding: 16px;
   }
@@ -77,6 +71,42 @@
 
 .end {
   font-weight: 500;
+}
+
+/*
+ * The closure that opens in its row reads as the row's one button, and what
+ * it opens stands under it across the row.
+ */
+.opens {
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.opens > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  list-style: none;
+}
+
+.opens > summary::-webkit-details-marker {
+  display: none;
+}
+
+.opens[open] > summary {
+  background: var(--raised);
+}
+
+.opens > :global(.more-body) {
+  margin-top: var(--space-block);
 }
 
 /*
@@ -93,30 +123,30 @@
   margin-top: calc((1.4em - 8px) / 2);
 }
 
-/* A sum too long for its column breaks at a space, before its currency, its
-   test mark or a word of its share, and never inside a number. */
-.sum {
-  white-space: normal;
-}
-
-/* An order's details hold its facts, then what can still be done with it. */
+/*
+ * An order's details hold its facts, then what can still be done with it.
+ * Each fact's label takes the width of the row's first column, so the values
+ * start under the product they belong to.
+ */
 .details {
   display: grid;
   gap: var(--space-block);
-  max-width: 44rem;
-  padding-bottom: var(--space-tight);
+  max-width: 50rem;
 }
 
-.details p,
-.details h3 {
+@container (min-width: 561px) {
+  .details :global(.more-facts) > div {
+    grid-template-columns: 7rem minmax(0, 1fr);
+  }
+
+  .details > :not(:global(.more-facts)) {
+    margin-left: calc(7rem + var(--space-block));
+  }
+}
+
+.details p {
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.details h3 {
-  color: var(--fg);
-  font-size: var(--text-small);
-  font-weight: 600;
 }
 
 .close {

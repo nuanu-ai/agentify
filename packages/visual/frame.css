@@ -370,7 +370,8 @@
   background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
 }
 
-.list-row.needs-you {
+.list-row.needs-you,
+.list-opens.needs-you {
   background: color-mix(in oklab, var(--fail) 7%, var(--surface));
 }
 
@@ -468,6 +469,68 @@
   margin-top: 4px;
   color: var(--fg-2);
   font-size: 0.875rem;
+}
+
+/*
+ * A row that opens: the press is the whole line, drawn over it, and the
+ * chevron in the row's last column is only its sign. Whatever in a cell is a
+ * link or a button of its own stands over the press, and so does the opened
+ * part, so a press inside it does not close it.
+ */
+.list-opens {
+  position: relative;
+}
+
+.row-more > summary {
+  position: absolute;
+  inset: 0;
+  list-style: none;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.row-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-more > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.list-opens > .list-row :is(a, button, details, input) {
+  position: relative;
+  z-index: 1;
+}
+
+.list-opens:has(> .row-more > summary:hover) > .list-row {
+  background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
+}
+
+.row-more > .more-body {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: 2px 20px 20px;
+}
+
+.cell-chevron {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--muted);
+}
+
+.cell-chevron svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 150ms ease;
+}
+
+.list-opens:has(> .row-more[open]) .cell-chevron svg {
+  transform: rotate(180deg);
 }
 
 /* A row's facts, a label beside each value; a box narrower than a label and an
@@ -574,6 +637,18 @@
     align-self: flex-start;
   }
 
+  /* Beside the amount, at the end of the row's first line. */
+  .cell-chevron {
+    order: 2;
+    flex: none;
+    align-self: flex-start;
+    margin-top: 4px;
+  }
+
+  .row-more > .more-body {
+    padding: 2px 16px 16px;
+  }
+
   .cell-aside {
     display: none;
   }
@@ -657,10 +732,6 @@
   margin-top: 14px;
 }
 
-.pager-range {
-  font-variant-numeric: tabular-nums;
-}
-
 .pager-ways {
   display: flex;
   flex-wrap: wrap;
@@ -679,7 +750,6 @@
   padding: 0 10px;
   border-radius: 10px;
   color: var(--fg-2);
-  font-variant-numeric: tabular-nums;
 }
 
 .pager a.pager-step,

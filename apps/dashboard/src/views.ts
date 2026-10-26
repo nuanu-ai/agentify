@@ -32,7 +32,7 @@ import {
   placeOf,
   type SegmentRule,
 } from "./listing.js";
-import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
+import { percentOf, type SplitTerms, sharesOf } from "./shares.js";
 import type { Viewer } from "./viewer.js";
 import type { ShopTotal } from "./woo-shops.js";
 import {
@@ -351,11 +351,11 @@ interface OrderRow {
   readonly amount: string;
   /**
    * An unmarked sum for a test purchase is a payment that never happened, so
-   * every test sum carries the mark.
+   * a page that does not otherwise say which sums are tests marks each.
    */
   readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
-  readonly shares: Shares | null;
+  readonly share: string | null;
   readonly state: Word;
   readonly priceSet: MomentView;
   /** The day of `priceSet`, for the heading over that day's orders. */
@@ -657,7 +657,7 @@ export const ordersView = (
     itemId: order.merchant_item_id,
     amount: money(order.price),
     test: order.test,
-    shares: sharesIn(order.price, paidInto[order.id]),
+    share: shareIn(order.price, paidInto[order.id]),
     state: merchantOrderWord(order, reopened(order)),
     paymentUnresolved: order.payment_status === "unresolved",
     opened: query.get("details") === order.id,
@@ -726,7 +726,7 @@ export const ordersView = (
           itemId: attempt.merchant_item_id,
           amount: attempt.price === null ? "No price" : money(attempt.price),
           test: attempt.test,
-          shares: null,
+          share: null,
           state: ORDER_WORDS[attempt.status],
           shopTotal: null,
           inTheShop: null,
@@ -764,7 +764,7 @@ export const ordersView = (
           ? "Close fulfillment"
           : row.closing === "again"
             ? "Close again"
-            : "Order details",
+            : "Details",
     };
   };
   const tell = ({ order, row }: (typeof listed)[number]): OrderNeed => ({
@@ -830,8 +830,8 @@ export const ordersPlace = (fields: URLSearchParams): string =>
  */
 export const CLOSURE_NOTES = {
   unconfirmed:
-    "Your closure could not be confirmed. If this order is still open, closing it again is safe.",
-  ended: "Nothing was closed: this order ended before your closure arrived.",
+    "We could not confirm that this order was closed. Close it again: a second closure changes nothing.",
+  ended: "Nothing was closed: this order had already ended.",
 } as const;
 
 /**
@@ -892,7 +892,7 @@ const paidAfterClosureIn = (open: OrderList) => {
 };
 
 const PAID_AFTER_CLOSURE =
-  "The payment completed after you closed fulfillment, so the buyer paid and nothing was delivered. Close it again, with an explanation to the buyer.";
+  "The buyer's payment arrived after you closed this order, so they paid and got nothing. Close it again with a note that says what you did.";
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
@@ -915,10 +915,10 @@ const testOrders = (
 
 /** Missing cause means unknown cause, rather than a guessed missed deadline. */
 const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
-  refused: "Paid, then your integration refused the order, so nothing was delivered.",
-  deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
+  refused: "Paid, but your integration refused the order, so nothing was delivered.",
+  deadline_passed: "Paid, but not delivered before the delivery deadline.",
   charge_confirmed_late:
-    "Paid, but the payment was confirmed only after Agentify had stopped waiting for it, so the order was never sent to your integration and nothing was delivered.",
+    "Paid, but the payment was confirmed after Agentify had stopped waiting for it, so the order never reached your integration.",
 };
 
 const whatHappened = (
@@ -926,13 +926,24 @@ const whatHappened = (
   cause: UnfulfilledCause | undefined,
 ): string =>
   order.status === "unfulfilled"
-    ? `${cause === undefined ? "Paid, and the product was not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it late, or close fulfillment with an explanation to the buyer.`
-    : "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.";
+    ? `${cause === undefined ? "Paid, but not delivered." : UNFULFILLED_BECAUSE[cause]} You can still deliver it, or close fulfillment.`
+    : "The buyer's payment failed after you delivered, so Agentify holds the goods until the buyer pays again for this order. You can wait, or take back what you delivered.";
 
-const sharesIn = (
+/**
+ * The merchant's share of a payment into their payout split, after
+ * Agentify's part. It is said as about so much: the split divides what has
+ * gathered in it when it is paid out, rounding each share down, so no single
+ * payment has an exact share.
+ */
+const shareIn = (
   price: { readonly amount: string; readonly currency: string },
   terms: SplitTerms | undefined,
-): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
+): string | null => {
+  if (terms === undefined) return null;
+  const { merchant } = sharesOf(price, terms);
+  const fee = percentOf(terms.commissionAllocation, terms.totalAllocation);
+  return `${merchant.replace(/^≈ /, "about ")}, after Agentify's ${fee}`;
+};
 
 /**
  * Merchant closure is linked once over unfulfilled orders. Held goods owe
@@ -979,7 +990,7 @@ interface ReceiptRow {
   readonly amount: string;
   readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
-  readonly shares: Shares | null;
+  readonly share: string | null;
   readonly outcome: Word;
   readonly paid: MomentView;
   readonly priceSet: MomentView;
@@ -990,14 +1001,16 @@ interface ReceiptRow {
 }
 
 export interface ReceiptsView {
-  /** Null when no receipt is a test purchase. */
+  /** Null when no receipt is a test purchase, or where the band over the page says so. */
   readonly testWarning: string | null;
-  readonly count: number;
-  readonly sums: string;
-  readonly delivered: number;
-  readonly ofCount: string;
-  readonly rows: readonly ReceiptRow[];
+  /** The receipts the address asks for, the latest payment first, a page at a time. */
+  readonly listing: Listing<ReceiptRow>;
 }
+
+/** The receipts are one list with no search, so they are read a page at a time and no more. */
+const ALL_RECEIPTS: readonly SegmentRule<ReceiptRow>[] = [
+  { key: "all", label: "All", holds: () => true, none: "" },
+];
 
 export const receiptsView = (
   viewer: Viewer,
@@ -1005,51 +1018,48 @@ export const receiptsView = (
   receipts: ReceiptList,
   transactionPage: string | null = null,
   paidInto: PaidIntoSplits = {},
+  query: URLSearchParams = new URLSearchParams(),
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
-  return {
-    testWarning: testWarning(receipts, viewer.mode),
-    count: receipts.receipts.length,
-    sums: sumsOf(receipts),
-    // A shipped parcel is a sale as much as goods handed over: the money is the
-    // merchant's and the receipt is written. The tile says both words, because
-    // a parcel with a carrier has not been delivered.
-    delivered: receipts.receipts.filter(
-      (receipt) => receipt.outcome === "delivered" || receipt.outcome === "shipped",
-    ).length,
-    ofCount: `of ${countOf(receipts.receipts.length, "receipt")}`,
-    // The latest payment first, whatever order the gateway lists them in.
-    rows: [...receipts.receipts]
-      .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
-      .map((receipt) => ({
+  // The latest payment first, whatever order the gateway lists them in.
+  const rows = [...receipts.receipts]
+    .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
+    .map(
+      (receipt): ReceiptRow => ({
         id: receipt.id,
         orderId: receipt.order_id,
         needsYou: needsYou(receipt.outcome),
         product: titles.get(receipt.item_id) ?? receipt.item_id,
         amount: money(receipt.price),
         test: receipt.test,
-        shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
+        share: shareIn(receipt.price, paidInto[receipt.order_id]),
         outcome: ORDER_WORDS[receipt.outcome],
         paid: momentView(receipt.paid_at),
         priceSet: momentView(receipt.price.at),
         priceAsOf: momentView(receipt.price.as_of),
         day: dayOf(receipt.paid_at),
         transfer: transferOf(receipt.transaction, transactionPage),
-      })),
+      }),
+    );
+  return {
+    testWarning: testWarning(receipts, viewer.mode),
+    listing: listingOf({
+      rows,
+      asked: {
+        ...askedIn(
+          query,
+          ALL_RECEIPTS.map((one) => one.key),
+        ),
+        q: "",
+        cut: false,
+      },
+      path: "/receipts",
+      segments: ALL_RECEIPTS,
+      matches: () => true,
+      noMatch: () => "",
+      showAll: "Show all receipts",
+    }),
   };
-};
-
-/**
- * Amounts are never added up: they are exact decimal strings so nothing turns
- * them into a float, and a total computed here would be the one number on the
- * screen that had been through one. The currencies present are named instead.
- */
-const sumsOf = (receipts: ReceiptList): string => {
-  const currencies = [...new Set(receipts.receipts.map((receipt) => receipt.price.currency))];
-  if (currencies.length === 0) {
-    return "nothing sold yet";
-  }
-  return `priced in ${currencies.sort().join(", ")}`;
 };
 
 /**

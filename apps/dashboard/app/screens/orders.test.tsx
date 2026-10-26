@@ -606,7 +606,7 @@ describe("merchant fulfillment closure", () => {
 
     expect(text).toContain("Closed by you");
     expect(text).toContain("Payment Paid");
-    expect(text).toContain("Your explanation");
+    expect(text).toContain("Your note to the buyer");
     expect(text).toContain("A refund was agreed <outside Agentify>.");
     expect(html).toContain("&lt;outside Agentify&gt;");
     expect(html).not.toContain("<outside Agentify>");
@@ -623,7 +623,7 @@ describe("merchant fulfillment closure", () => {
     expect(text).toContain("Payment outcome unknown");
     expect(text).toContain("Closed by you 2026-10-19 09:30:00 UTC");
     expect(text).toContain("Payment Outcome unknown");
-    expect(text).not.toContain("Your explanation");
+    expect(text).not.toContain("Your note to the buyer");
   });
 
   it("does not invent an actor for a historical closure without metadata", () => {
@@ -657,7 +657,7 @@ describe("merchant fulfillment closure", () => {
       );
 
     expect(needs(reopened)).toContain("Needs you 1");
-    expect(needs(reopened)).toContain("payment completed after you closed fulfillment");
+    expect(needs(reopened)).toMatch(/payment arrived after you closed this order/i);
     expect(reopened).toContain(`name="order_id" value="${id}"`);
     expect(readable(reopened)).toContain("Close again");
     expect(needs(settled)).toBe("");
@@ -750,19 +750,22 @@ describe("an order's details", () => {
   const detailsOf = (html: string, id: string) =>
     new RegExp(`<details[^>]*id="details-${id}"[^>]*>`).exec(html)?.[0] ?? "";
 
-  it("are drawn under a wide row only where they hold something its columns do not", () => {
+  it("open from every row on every width, each named by the product it is of", () => {
+    // The order's ID, its payment and the merchant's share are in no column,
+    // so every row opens to them, whatever its state.
     const orders = ordersOf([
       { id: FIRST, status: "unfulfilled" },
-      { id: SAME_HEAD, status: "delivered" },
+      { id: SAME_HEAD, status: "delivered", item: "number-sms" },
     ]);
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
-    expect(detailsOf(html, FIRST)).toContain("wide");
-    expect(detailsOf(html, SAME_HEAD)).not.toBe("");
-    expect(detailsOf(html, SAME_HEAD)).not.toContain("wide");
+    expect(detailsOf(html, FIRST)).toContain("row-more");
+    expect(detailsOf(html, SAME_HEAD)).toContain("row-more");
+    expect(html).toContain('aria-label="Details of VPN, one month"');
+    expect(html).toContain('aria-label="Details of A virtual number"');
   });
 
-  it("are drawn under a wide row where a press made on the order is said", () => {
+  it("are drawn open where a press made on the order is said", () => {
     // An order that ended before its closure arrived has nothing else to
     // read there, and the merchant must still see what became of the press.
     const orders = ordersOf([{ id: SAME_HEAD, status: "delivered" }]);
@@ -770,7 +773,13 @@ describe("an order's details", () => {
     const pressed = { id: SAME_HEAD, note: CLOSURE_NOTES.ended, refusal: null, typed: "" };
     const html = served(() => <OrdersScreen view={{ ...view, pressed }} />);
 
-    expect(detailsOf(html, SAME_HEAD)).toContain("wide");
+    expect(detailsOf(html, SAME_HEAD)).toMatch(/\bopen\b/);
+    expect(
+      detailsOf(
+        served(() => <OrdersScreen view={view} />),
+        SAME_HEAD,
+      ),
+    ).not.toMatch(/\bopen\b/);
   });
 
   it("are reached from Needs you without searching for an order already on the page", () => {
@@ -875,7 +884,7 @@ describe("the purchases that lapsed unpaid", () => {
     expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
       second.map((attempt) => attempt.id),
     );
-    expect(there.listing.cut).toStrictEqual({
+    expect(there.listing.cut).toMatchObject({
       from: 51,
       to: 100,
       of: 120,

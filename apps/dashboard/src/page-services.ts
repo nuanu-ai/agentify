@@ -306,7 +306,7 @@ export interface PageServices {
     /** As the address asks: the words searched for, the segment and the page. */
     cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
-    receipts(person: Person): Promise<Outcome<ReceiptsView>>;
+    receipts(person: Person, query: URLSearchParams): Promise<Outcome<ReceiptsView>>;
     /** The banner the frame draws over every page about the merchant's selling. */
     frame(person: Person): Promise<FrameView>;
   };
@@ -1455,7 +1455,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       orders: ordersScreen,
 
-      async receipts(person) {
+      async receipts(person, query) {
         const gateway = gatewayAs(person);
         const [cards, receipts, paidInto] = await Promise.all([
           gateway.cards(),
@@ -1473,6 +1473,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             receipts.document,
             config.transactionPage,
             paidInto.document,
+            query,
           ),
         };
       },

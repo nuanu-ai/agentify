@@ -3857,7 +3857,7 @@ describe("the orders screen", () => {
 
     const text = readable((await browser.get("/orders")).html);
 
-    expect(text).toContain("closed before they had a price are not listed");
+    expect(text).toContain("ended before they had a price are under Lapsed, not here");
     expect(text).toContain("nothing was charged for them");
   });
 
@@ -3899,9 +3899,10 @@ describe("the orders screen", () => {
 
     expect(text).toContain("Unfulfilled");
     expect(text).toContain("Needs you 1");
-    // The whole price, though the split paid the merchant only their share,
-    // and said to be a test purchase's, as every sale on this stack is.
-    expect(text).toContain("8.00 USD test");
+    // The whole price, though the split paid the merchant only their share;
+    // the band over the page says every sale on this stack is pretend.
+    expect(text).toContain("8.00 USD");
+    expect(text).toContain(SURFACE_WORDS.sandbox ?? "");
   });
 
   it("says why an order was unfulfilled without guessing that a window ran out", async () => {
@@ -3934,11 +3935,11 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toContain("the goods are held");
+    expect(text).toContain("Agentify holds the goods");
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
-    expect(text).toContain("The buyer can pay again for this same order");
+    expect(text).toContain("until the buyer pays again for this order");
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
@@ -4096,13 +4097,14 @@ describe("the receipts screen", () => {
     expect(text).toContain("Price as of");
     expect(text).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/);
     // When the money moved, the column a merchant matches wallet transfers
-    // against. Counted rather than named, because a header with no cell under
-    // it would satisfy a check for the word.
+    // against, its time on the row under its day; the price's two moments are
+    // in the row's opened part. Counted rather than named, because a header
+    // with no cell under it would satisfy a check for the word.
     expect(text).toContain("Paid");
-    const row = text.slice(text.indexOf("rcp_"));
-    expect(row.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/g)).toHaveLength(3);
-    // The summary counts what it can stand behind.
-    expect(text).toContain("Delivered or shipped 1 of 1 receipt");
+    const line = text.slice(text.indexOf("A room for the night") - 13, text.indexOf("rcp_"));
+    expect(line).toMatch(/^\d{2}:\d{2}:\d{2} UTC A room for the night/);
+    const opened = text.slice(text.indexOf("rcp_"));
+    expect(opened.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/g)).toHaveLength(2);
   });
 
   it("says on Orders and Receipts about how much of a sale is the merchant's and how much Agentify's", async () => {
@@ -4117,24 +4119,17 @@ describe("the receipts screen", () => {
 
     const receipts = (await browser.get("/receipts")).html;
     const orders = (await browser.get("/orders")).html;
-    const receipt =
-      /<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
-        receipts,
-      )?.[1] ?? "";
-    const receiptOpened =
-      /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(receipts)?.[1] ?? "";
-    // An order's wide row says the merchant's share; the row a phone opens
-    // says both.
-    const order =
-      /<div class="cell cell-amount">([\s\S]*?)<\/div><div class="cell cell-state">/.exec(
-        orders,
-      )?.[1] ?? "";
-    const opened = /<div class="more-body">([\s\S]*?)<\/div><\/details>/.exec(orders)?.[1] ?? "";
+    const amountIn = (html: string) =>
+      readable(/<div class="cell cell-amount">([\s\S]*?)<\/div>/.exec(html)?.[1] ?? "");
+    const openedIn = (html: string) =>
+      readable(/<div class="more-body">([\s\S]*?)<\/details>/.exec(html)?.[1] ?? "");
 
-    expect(readable(receipt)).toBe("80.00 USD test ≈ 79.92 USD to you");
-    expect(readable(receiptOpened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
-    expect(readable(order)).toBe("80.00 USD test ≈ 79.92 USD to you");
-    expect(readable(opened)).toContain("≈ 79.92 USD to you ≈ 0.08 USD to Agentify");
+    // The row says the price the buyer paid; its opened part says the
+    // merchant's share as about so much, and Agentify's part of it.
+    for (const html of [receipts, orders]) {
+      expect(amountIn(html)).toBe("80.00 USD");
+      expect(openedIn(html)).toMatch(/about 79\.92 USD, after Agentify's 0\.1%/);
+    }
   });
 
   it("links each receipt to its transfer on the chain the money moved on", async () => {
@@ -4171,16 +4166,14 @@ describe("the receipts screen", () => {
     const receipts = readable((await browser.get("/receipts")).html);
     const orders = readable((await browser.get("/orders")).html);
 
-    // The band over every page of the test channel says it, once.
+    // The band over every page of the test channel says it, once, and no
+    // sentence over the list or mark on a sum says it again.
     expect(receipts).toContain(SURFACE_WORDS.test);
     expect(orders).toContain(SURFACE_WORDS.test);
     expect(receipts).not.toContain("Every receipt here is a test purchase");
     expect(orders).not.toContain("Every order here is a test purchase");
-    // The mark is on each sum as well, which the band promises.
-    expect(receipts).toContain("80.00 USD test");
-    expect(orders).toContain("80.00 USD test");
-    // Never calls the summary a record of takings.
-    expect(receipts).not.toContain("paid in USD");
+    expect(receipts).not.toContain("80.00 USD test");
+    expect(orders).not.toContain("80.00 USD test");
   });
 
   it("counts nothing it cannot count, and says what is missing instead", async () => {
@@ -4197,10 +4190,10 @@ describe("the receipts screen", () => {
     expect(text).not.toContain("Refund due");
     expect(text).not.toContain("In progress");
     expect(text).not.toContain("nothing outstanding");
-    // The sentence itself, not only the explanation: the line a merchant
-    // actually reads must not say this is all the money.
-    expect(text).toContain("This page does not show all of your money");
-    expect(text).toContain("Payments for products not yet delivered");
+    // The line a merchant actually reads must not let this pass for all the
+    // money: it says which sales have a receipt and where the rest are.
+    expect(text).toMatch(/only delivered or shipped sales have a receipt/i);
+    expect(text).toMatch(/paid orders still waiting for delivery are on Orders/i);
   });
 
   it("does not claim a receipt appears when the money moves", async () => {
@@ -4220,12 +4213,12 @@ describe("the receipts screen", () => {
       },
     );
     expect(text).not.toContain("the moment a payment goes through");
-    expect(text).toContain("released");
+    expect(text).toMatch(/only delivered or shipped sales have a receipt/i);
     // The orders screen shows it, where the receipts page says to look.
     expect(readable((await browser.get("/orders?show=open")).html)).toContain("8.00 USD");
   });
 
-  it("says nothing has been sold rather than showing a summary of nothing", async () => {
+  it("says there is no receipt yet rather than drawing an empty list", async () => {
     const { browser, gateway } = await started();
     await publish(gateway, roomCard);
     await browser.signIn();
@@ -4233,7 +4226,7 @@ describe("the receipts screen", () => {
     const text = readable((await browser.get("/receipts")).html);
 
     expect(text).toContain("No receipts yet");
-    expect(text).toContain("nothing sold yet");
+    expect(text).not.toContain("Paid Product");
   });
 
   it("does not add money up", async () => {
@@ -4249,9 +4242,8 @@ describe("the receipts screen", () => {
     const text = readable((await browser.get("/receipts")).html);
 
     expect(text).not.toMatch(/total/i);
-    // The currencies present are a fact. "Priced" rather than "paid", because
-    // none of it was real money.
-    expect(text).toContain("priced in USD");
+    // Each amount carries its own currency.
+    expect(text).toContain("80.00 USD");
   });
 });
 
@@ -5638,7 +5630,7 @@ describe("a list, when it could not be read", () => {
   ] as const;
 
   it.each(LISTS)(
-    "%s says a failed read changed nothing, beside the dashboard's sections, and offers the same page again",
+    "%s says the list could not be loaded, beside the dashboard's sections, and offers the same page again",
     async (path, read) => {
       // A read changes nothing, so the merchant has nothing to check before
       // going on, and the way on is the page they asked for.
@@ -5660,7 +5652,7 @@ describe("a list, when it could not be read", () => {
       expect(failed.status).toBe(500);
       expect(failed.html).toContain('aria-label="Dashboard sections"');
       expect(waysOnIn(failed.html)).toStrictEqual([path]);
-      expect(readable(mainOf(failed.html))).toMatch(/changed nothing/i);
+      expect(readable(mainOf(failed.html))).toMatch(/could not be loaded/i);
       expect(readable(failed.html)).not.toMatch(/went through/i);
     },
   );
@@ -5675,7 +5667,7 @@ describe("a list, when it could not be read", () => {
     expect(failed.status).toBe(504);
     expect(failed.html).toContain('aria-label="Dashboard sections"');
     expect(waysOnIn(failed.html)).toStrictEqual([path]);
-    expect(readable(mainOf(failed.html))).toMatch(/changed nothing/i);
+    expect(readable(mainOf(failed.html))).toMatch(/could not be loaded/i);
     expect(readable(failed.html)).not.toMatch(/may or may not have been done/i);
   });
 });
@@ -6807,7 +6799,7 @@ describe("closing fulfillment from Orders", () => {
     error.mockRestore();
 
     expect(posted.status).toBe(503);
-    expect(readable(posted.html)).toContain("closure could not be confirmed");
+    expect(readable(posted.html)).toContain(CLOSURE_NOTES.unconfirmed);
     expect(
       formsIn(posted.html)
         .find((one) => one.fields.get("order_id") === id)
@@ -6893,7 +6885,7 @@ describe("closing fulfillment from Orders", () => {
     expect(posted.status).toBe(400);
     expect(posted.html).toContain('aria-label="Dashboard sections"');
     const main = readable(/<main\b[^>]*>([\s\S]*?)<\/main>/.exec(posted.html)?.[1] ?? "");
-    expect(main).toMatch(/changed nothing/i);
+    expect(main).toMatch(/nothing was closed/i);
     // The contract's own reason, and the words a list that could not be read
     // is said with on its own page.
     const reason = OrderCloseRequestSchema.safeParse({ message: typed }).error?.issues[0]?.message;
@@ -7191,7 +7183,7 @@ describe("closing fulfillment from Orders", () => {
     // The page itself answers, so the note sits by the order's form and what
     // was typed is still in its box; a reload does not repeat the note.
     expect(posted.status).toBe(503);
-    expect(readable(posted.html)).toContain("closure could not be confirmed");
+    expect(readable(posted.html)).toContain(CLOSURE_NOTES.unconfirmed);
     expect(readable(posted.html)).not.toContain("Closed by you");
     const form = formsIn(posted.html).find((one) => one.fields.get("order_id") === id);
     expect(form?.fields.get("message")).toBe(typed);
@@ -7219,7 +7211,7 @@ describe("closing fulfillment from Orders", () => {
 
     const back = await running.browser.get("/orders");
     expect(readable(back.html)).toContain("Needs you 1");
-    expect(readable(back.html)).toContain("payment completed after you closed fulfillment");
+    expect(readable(back.html)).toMatch(/payment arrived after you closed this order/i);
     expect(formsIn(back.html).some((form) => form.fields.get("order_id") === id)).toBe(true);
 
     const again = await running.browser.post("/orders", {
@@ -7251,7 +7243,7 @@ describe("closing fulfillment from Orders", () => {
     const read = await running.browser.post("/orders", { order_id: id, message: "Too late." });
     expect(read.status).toBe(409);
     const text = readable(read.html);
-    expect(text).toContain("Nothing was closed: this order ended before your closure arrived.");
+    expect(text).toContain(CLOSURE_NOTES.ended);
     expect(text).toContain("Delivered");
     expect(formsIn(read.html).some((form) => form.fields.get("order_id") === id)).toBe(false);
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
