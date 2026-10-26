@@ -147,6 +147,8 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "robots.txt holds valid rules, but it is served with a web page's media type in place of text/plain.",
   sitemap_compressed:
     "The sitemap is still compressed with gzip after the scanner unpacked it once, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
+  sitemap_corrupt:
+    "The sitemap is a gzip file that cannot be unpacked, so neither the scanner nor an agent can read it.",
   sitemap_doctype:
     "The sitemap declares an XML document type, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
   sitemap_empty: "A sitemap was found, but it lists no addresses.",
@@ -229,6 +231,7 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   robots_refused: "Your robots.txt is not served to crawlers",
   robots_too_large: "Your robots.txt is longer than crawlers must read",
   robots_wrong_media_type: "Your robots.txt is served as a web page",
+  sitemap_corrupt: "Your compressed sitemap cannot be unpacked",
   sitemap_empty: "Your sitemap lists no pages",
   sitemap_entries_missing: "A sitemap your site lists is missing",
   sitemap_missing: "No sitemap was found in robots.txt or the standard location",
@@ -407,6 +410,8 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Return the correct Markdown media type, Vary header, and fact-equivalent content for negotiated requests.",
   repair_robots:
     "Repair malformed robots.txt directives and validate the final crawler groups and sitemap declarations.",
+  repair_sitemap_gzip:
+    "Compress the sitemap again with gzip and check that it unpacks, or serve it uncompressed.",
   serve_mcp_card_publicly:
     "Serve the MCP server card without sign-in, and keep sign-in for the server it describes.",
   serve_robots:

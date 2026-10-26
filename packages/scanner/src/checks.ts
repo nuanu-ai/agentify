@@ -1,7 +1,12 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
 import { authSchemes, mediaType, varyNames } from "./http-fields.js";
 import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
-import { type FetchArtifact, type ScanArtifacts, SITEMAP_FILE_LIMIT } from "./model.js";
+import {
+  type FetchArtifact,
+  GZIP_UNPACKING_FAILED,
+  type ScanArtifacts,
+  SITEMAP_FILE_LIMIT,
+} from "./model.js";
 import {
   comparableTexts,
   htmlSignals,
@@ -28,6 +33,7 @@ import {
   parseRobots,
   type RobotsParseResult,
 } from "./robots.js";
+import { canonicalizeTarget } from "./url.js";
 
 export const CHECK_WEIGHTS: readonly number[] = CHECK_DEFINITIONS.map(
   (definition) => definition.nominalWeight,
@@ -378,7 +384,7 @@ type SitemapOutcome = Readonly<
     | { kind: "unread"; reading: Unread }
     | { kind: "cut"; readLimit: string }
     | { kind: "compressed" | "doctype" | "empty" | "not_sitemap" }
-    | { kind: "missing" | "refused"; status: number }
+    | { kind: "missing" | "refused" | "corrupt"; status: number }
   )
 >;
 
@@ -390,6 +396,9 @@ const isGzip = (artifact: FetchArtifact): boolean =>
   artifact.body.charCodeAt(0) === 0x1f && [0x8b, 0xfffd].includes(artifact.body.charCodeAt(1));
 
 const sitemapOutcome = (artifact: FetchArtifact): SitemapOutcome => {
+  // A gzip file the fetch could not unpack is the site's broken file.
+  if (artifact.errorCode === GZIP_UNPACKING_FAILED)
+    return { artifact, kind: "corrupt", status: artifact.status };
   const reading = readingOf(artifact, "sitemap_unavailable");
   if (reading.state === "absent" || reading.state === "refused")
     return {
@@ -402,8 +411,13 @@ const sitemapOutcome = (artifact: FetchArtifact): SitemapOutcome => {
   if (isWebPage(artifact.body)) return { artifact, kind: "not_sitemap" };
   const parsed = sitemapOf(artifact);
   // The scanner does not read XML that declares a document type, whose
-  // entities could expand without bound.
-  if (parsed.errorCode === "xml_entity_blocked") return { artifact, kind: "doctype" };
+  // entities could expand without bound; a body without a sitemap's root is
+  // no sitemap whatever it declares.
+  if (parsed.errorCode === "xml_entity_blocked")
+    return {
+      artifact,
+      kind: /<\s*(?:urlset|sitemapindex)[\s>]/i.test(artifact.body) ? "doctype" : "not_sitemap",
+    };
   if (parsed.valid)
     return {
       artifact,
@@ -416,7 +430,18 @@ const sitemapOutcome = (artifact: FetchArtifact): SitemapOutcome => {
 };
 
 const UNKNOWN_SITEMAP = new Set(["unread", "cut", "compressed", "doctype"]);
-const BROKEN_SITEMAP = new Set(["missing", "refused", "empty", "not_sitemap"]);
+const BROKEN_SITEMAP = new Set(["missing", "refused", "corrupt", "empty", "not_sitemap"]);
+
+// The address a sitemap is listed or fetched at, as the scan asks for it, so
+// that one listed at a host that redirected elsewhere is still found.
+const sitemapKey = (url: string): string | undefined => {
+  try {
+    const canonical = canonicalizeTarget(url);
+    return `${canonical.hostname.replace(/\.$/, "")}${canonical.pathname}${canonical.search}`;
+  } catch {
+    return undefined;
+  }
+};
 
 const SITEMAP_FIXES: Readonly<Record<string, string>> = {
   sitemap_entries_missing: "fix_listed_sitemaps",
@@ -476,50 +501,74 @@ const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
     if (outcomes.some(({ kind }) => kind === "not_sitemap"))
       return fail("sitemap_not_sitemap", "serve_sitemap");
     for (const outcome of outcomes)
+      if (outcome.kind === "corrupt")
+        return result({
+          id: 4,
+          status: "fail",
+          earnedWeight: 0,
+          summaryCode: "sitemap_corrupt",
+          evidence: { status: outcome.status },
+          userImpactCode: "sitemap_discovery_gap",
+          fixCode: "repair_sitemap_gzip",
+          durationMs,
+        });
+    for (const outcome of outcomes)
       if (outcome.kind === "refused")
         return refusedDocument(4, outcome.status, "fail", "sitemap_discovery_gap");
     return fail("sitemap_missing", "publish_sitemap");
   }
   // A sitemap is named by where it was listed, since its address cannot be
   // shown in the evidence.
-  const indexes = sitemaps.filter(({ parsed }) => parsed.isIndex).map(({ parsed }) => parsed.urls);
-  const declared = readRobots(artifacts.robots).parsed.sitemaps;
+  const indexes = sitemaps
+    .filter(({ parsed }) => parsed.isIndex)
+    .map(({ parsed }) => parsed.urls.map(sitemapKey));
+  const declared = readRobots(artifacts.robots).parsed.sitemaps.map(sitemapKey);
+  const keysOf = (artifact: FetchArtifact): (string | undefined)[] => [
+    sitemapKey(artifact.url),
+    ...(artifact.requestedUrl ? [sitemapKey(artifact.requestedUrl)] : []),
+  ];
+  const fetched = new Set(artifacts.sitemap.flatMap(keysOf));
   const named = (outcome: SitemapOutcome): string => {
-    const listed = indexes.map((urls) => urls.indexOf(outcome.artifact.url)).find((at) => at >= 0);
+    const keys = keysOf(outcome.artifact).filter(Boolean);
+    const at = (listed: readonly (string | undefined)[]) =>
+      listed.findIndex((key) => key !== undefined && keys.includes(key));
+    const listed = indexes.map(at).find((index) => index >= 0);
     const place =
       listed !== undefined
         ? `entry ${listed + 1} of the sitemap index`
-        : declared.includes(outcome.artifact.url)
-          ? `declared sitemap ${declared.indexOf(outcome.artifact.url) + 1}`
+        : at(declared) >= 0
+          ? `declared sitemap ${at(declared) + 1}`
           : "the sitemap address";
     const reason =
       outcome.kind === "missing" || outcome.kind === "refused"
         ? `HTTP ${outcome.status}`
-        : outcome.kind === "unread"
-          ? outcome.reading.status
-            ? `HTTP ${outcome.reading.status}`
-            : outcome.reading.errorCode
-          : outcome.kind === "cut"
-            ? `larger than ${outcome.readLimit}`
-            : outcome.kind === "compressed"
-              ? "still compressed with gzip"
-              : outcome.kind === "doctype"
-                ? "declares a document type"
-                : outcome.kind === "empty"
-                  ? "no entries"
-                  : "not a sitemap";
+        : outcome.kind === "corrupt"
+          ? "a gzip file that cannot be unpacked"
+          : outcome.kind === "unread"
+            ? outcome.reading.status
+              ? `HTTP ${outcome.reading.status}`
+              : outcome.reading.errorCode
+            : outcome.kind === "cut"
+              ? `larger than ${outcome.readLimit}`
+              : outcome.kind === "compressed"
+                ? "still compressed with gzip"
+                : outcome.kind === "doctype"
+                  ? "declares a document type"
+                  : outcome.kind === "empty"
+                    ? "no entries"
+                    : "not a sitemap";
     return `${place}: ${reason}`;
   };
   const missing = outcomes.filter(({ kind }) => BROKEN_SITEMAP.has(kind)).map(named);
-  // An index's sitemap on another host that the scan did not fetch while it
-  // had room to is on another site, which the scan does not read.
-  const fetched = new Set(artifacts.sitemap.map(({ url }) => url));
-  const targetHost = new URL(artifacts.canonicalTargetUrl).hostname;
+  // An index's sitemap on another host that the scan neither asked for nor
+  // was led to while it had room to read more is on another site, which the
+  // scan does not read.
+  const targetHost = sitemapKey(artifacts.canonicalTargetUrl)?.split("/", 1)[0];
   const offSite =
     artifacts.sitemap.length < SITEMAP_FILE_LIMIT
-      ? indexes.flatMap((urls) =>
-          urls.flatMap((url, at) =>
-            !fetched.has(url) && URL.canParse(url) && new URL(url).hostname !== targetHost
+      ? indexes.flatMap((keys) =>
+          keys.flatMap((key, at) =>
+            key && !fetched.has(key) && key.split("/", 1)[0] !== targetHost
               ? [`entry ${at + 1} of the sitemap index: listed on another site, not read`]
               : [],
           ),

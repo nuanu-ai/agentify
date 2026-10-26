@@ -1,13 +1,13 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import http, { type IncomingHttpHeaders, type RequestOptions } from "node:http";
 import https from "node:https";
-import type { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { pipeline, type Readable, Transform } from "node:stream";
 import { constants, createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import {
   assertPublicAddresses,
   canonicalizeTarget,
   type FetchArtifact,
+  GZIP_UNPACKING_FAILED,
   type SafeHeaderName,
   UrlPolicyError,
   validateRedirect,
@@ -109,14 +109,40 @@ export const transportErrorCode = (error: unknown, protocol: string): string => 
   return "network_error";
 };
 
+const ignore = (): undefined => undefined;
+
+// A pipeline, unlike a pipe, destroys the response when its decoder fails, so
+// a body that cannot be decoded closes its connection.
 const decoderFor = (stream: Readable, encoding: string | undefined): Readable => {
   const normalized = encoding?.toLowerCase().trim();
   if (!normalized || normalized === "identity") return stream;
-  if (normalized === "gzip" || normalized === "x-gzip") return stream.pipe(createGunzip());
-  if (normalized === "deflate") return stream.pipe(createInflate());
-  if (normalized === "br") return stream.pipe(createBrotliDecompress());
+  if (normalized === "gzip" || normalized === "x-gzip")
+    return pipeline(stream, createGunzip(), ignore);
+  if (normalized === "deflate") return pipeline(stream, createInflate(), ignore);
+  if (normalized === "br") return pipeline(stream, createBrotliDecompress(), ignore);
   throw new Error("unsupported_content_encoding");
 };
+
+/** What stops a body that sends far more bytes than it decodes to. */
+class EncodedBodyTooLarge extends Error {}
+
+/**
+ * The bytes taken from the network for one body, bounded apart from what they
+ * decode to: a stream of empty compressed blocks decodes to nothing however
+ * much of it arrives, and stops here.
+ */
+const networkBound = (limit: number): Transform => {
+  let bytes = 0;
+  return new Transform({
+    transform(chunk: Buffer, _encoding, done) {
+      bytes += chunk.length;
+      done(bytes > limit ? new EncodedBodyTooLarge() : null, chunk);
+    },
+  });
+};
+
+/** What stops a gzip file from unpacking, apart from what stopped its body. */
+class GzipUnpackingError extends Error {}
 
 // The body as it arrives, unpacked first when it opens with gzip's two magic
 // bytes. Unpacking is lazy, so a file that expands without bound stops where
@@ -133,10 +159,16 @@ async function* unpackedGzip(source: AsyncIterable<Buffer | Uint8Array>): AsyncG
     }
     head = Buffer.concat([head, Buffer.from(next.value)]);
   }
+  let failedBody: unknown;
   async function* body(): AsyncGenerator<Buffer> {
     yield head;
-    for (let next = await chunks.next(); !next.done; next = await chunks.next())
-      yield Buffer.from(next.value);
+    try {
+      for (let next = await chunks.next(); !next.done; next = await chunks.next())
+        yield Buffer.from(next.value);
+    } catch (error) {
+      failedBody = error;
+      throw error;
+    }
   }
   if (head[0] !== 0x1f || head[1] !== 0x8b) {
     yield* body();
@@ -145,8 +177,12 @@ async function* unpackedGzip(source: AsyncIterable<Buffer | Uint8Array>): AsyncG
   const gunzip = createGunzip({ finishFlush: constants.Z_SYNC_FLUSH });
   // Whatever ends the unpacking early, the reader stopping or the body
   // failing, reaches the reader through the gunzip stream itself.
-  pipeline(body(), gunzip).catch(() => undefined);
-  yield* gunzip;
+  pipeline(body(), gunzip, ignore);
+  try {
+    yield* gunzip;
+  } catch (error) {
+    throw error === failedBody ? error : new GzipUnpackingError();
+  }
 }
 
 export class NodePinnedTransport implements PinnedTransport {
@@ -232,10 +268,22 @@ export class NodePinnedTransport implements PinnedTransport {
           return;
         }
         try {
-          const decoded = decoderFor(response, headerValue(response.headers["content-encoding"]));
+          // A body sends little more than it decodes to unless it is built not
+          // to decode, so twice the read limit, and a chunk's room for a small
+          // one, is plenty.
+          const fromNetwork = pipeline(
+            response,
+            networkBound(2 * input.maxDecodedBytes + 64 * 1024),
+            ignore,
+          );
+          const decoded = decoderFor(
+            fromNetwork,
+            headerValue(response.headers["content-encoding"]),
+          );
           const chunks: Buffer[] = [];
           let decodedBytes = 0;
           let truncated = false;
+          let errorCode: string | undefined;
           try {
             for await (const chunk of input.unpackGzip ? unpackedGzip(decoded) : decoded) {
               const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
@@ -252,20 +300,29 @@ export class NodePinnedTransport implements PinnedTransport {
               decodedBytes += buffer.length;
             }
           } catch (error) {
-            if (!truncated) throw error;
+            // The site answered, so its status stays with what went wrong
+            // with the body it sent.
+            if (!truncated) {
+              if (error instanceof EncodedBodyTooLarge) errorCode = "encoded_body_too_large";
+              else if (error instanceof GzipUnpackingError) errorCode = GZIP_UNPACKING_FAILED;
+              else throw error;
+            }
+            response.destroy();
           }
           finish({
             url: input.url.toString(),
             status: response.statusCode ?? 0,
             headers,
-            body: Buffer.concat(chunks).toString("utf8"),
-            decodedBytes,
+            body: errorCode ? "" : Buffer.concat(chunks).toString("utf8"),
+            decodedBytes: errorCode ? 0 : decodedBytes,
             truncated,
+            ...(errorCode ? { errorCode } : {}),
             durationMs: Math.round(performance.now() - startedAt),
             ttfbMs,
             ...(location ? { redirectLocation: location } : {}),
           });
         } catch (error) {
+          response.destroy();
           fail(error);
         }
       });
@@ -396,6 +453,10 @@ export class SafeFetcher {
     const rawInput = input.toString();
     const schemeWasMissing = typeof input === "string" && !/^[a-z][a-z\d+.-]*:/i.test(rawInput);
     let url = canonicalizeTarget(rawInput);
+    // An answer from where redirects led keeps the address that was asked for.
+    const requested = url.toString();
+    const asked = (artifact: FetchArtifact): FetchArtifact =>
+      artifact.url === requested ? artifact : { ...artifact, requestedUrl: requested };
     const method = options.method ?? "GET";
     if (method !== "GET" && method !== "HEAD") throw new UrlPolicyError("method_blocked");
     const controller = new AbortController();
@@ -414,9 +475,11 @@ export class SafeFetcher {
           if (error instanceof Error && error.name === "AbortError") throw error;
           // Node gives ENOTFOUND to a name that does not exist and its own
           // code to a resolver that could not answer, which says nothing of it.
-          return refused(
-            url,
-            (error as NodeJS.ErrnoException).code === "ENOTFOUND" ? "dns_not_found" : "dns_error",
+          return asked(
+            refused(
+              url,
+              (error as NodeJS.ErrnoException).code === "ENOTFOUND" ? "dns_not_found" : "dns_error",
+            ),
           );
         }
         let pinnedAddress: ResolvedAddress;
@@ -424,7 +487,7 @@ export class SafeFetcher {
           assertPublicAddresses(answers.map((answer) => answer.address));
           pinnedAddress = selectPinnedAddress(answers);
         } catch (error) {
-          return refused(url, error instanceof Error ? error.message : "address_blocked");
+          return asked(refused(url, error instanceof Error ? error.message : "address_blocked"));
         }
         const release = await this.budget.acquire(url.origin, controller.signal);
         let artifact: FetchArtifact;
@@ -464,17 +527,17 @@ export class SafeFetcher {
           usedHttpFallback = true;
           continue;
         }
-        if (artifact.status < 300 || artifact.status >= 400 || !location) return artifact;
-        if (redirects >= 5) return { ...artifact, errorCode: "redirect_limit_exceeded" };
+        if (artifact.status < 300 || artifact.status >= 400 || !location) return asked(artifact);
+        if (redirects >= 5) return asked({ ...artifact, errorCode: "redirect_limit_exceeded" });
         redirects += 1;
         try {
           url = validateRedirect(url, location);
         } catch (error) {
           if (!(error instanceof UrlPolicyError)) throw error;
-          return refused(url, error.code, artifact.durationMs);
+          return asked(refused(url, error.code, artifact.durationMs));
         }
         const inadmissible = await options.admit?.(url);
-        if (inadmissible) return refused(url, inadmissible, artifact.durationMs);
+        if (inadmissible) return asked(refused(url, inadmissible, artifact.durationMs));
       }
     } finally {
       options.signal?.removeEventListener("abort", relayAbort);
