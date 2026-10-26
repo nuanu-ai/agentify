@@ -112,8 +112,8 @@ export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sale
 
 /**
  * Why the account as a whole is not selling as usual: all sales are paused,
- * something publishing needs is missing, purchases charged before delivery are
- * refused while their integration is not connected, new purchases are refused
+ * something publishing needs is missing, the cards are off sale while their
+ * integration is not connected, new purchases are refused
  * while as many wait for payment as Agentify allows or while as many paid
  * orders are left unserved as it allows, or the cards their own code published
  * are off sale while a WooCommerce shop sells; or that what would say so could

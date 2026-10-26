@@ -449,7 +449,8 @@ resolved and an operator may want to understand, each as one sentence with the
 record it names: payments whose outcome has stayed unknown, with the age of
 the oldest; payment recovery not configured on the channel; a merchant whose
 worker has not connected for longer than the gateway waits while their cards
-are on sale, so that purchases charged before delivery are being refused; on
+are on sale, so that their cards are out of the catalogue and their purchases
+are refused; on
 the test channel, a WooCommerce order whose shop order may or may not exist;
 analytics or ad reports given up; sign-in links near the channel's hourly
 ceiling. Each item is a fact the database holds, not a task with a deadline;
@@ -828,6 +829,18 @@ that commission received is a figure and not a link.
 Who answers the access requests the scanner records through the route its
 privacy page names; the scanner's page counts them and nothing records an
 answer.
+
+What "on sale" means in the admin. The counts of merchants and cards on sale,
+the funnel's step "has a card on sale" and each merchant's cards on sale read
+a card as on sale from the merchant's switch, the card's pause, the
+integration and what the channel asks of the merchant. The public catalogue
+also leaves out a card while its seller's own code is silent or while the
+seller has left as many paid orders unserved as the gateway allows, and the
+admin's counts do not; the silent sellers are named on Health and Overview,
+and the unserved stop on the merchant's page. Folding those two into the
+admin's "on sale" means a fifth copy of the rule in SQL and in the memory
+reader, and makes the funnel's step move with a seller's worker, so it waits
+for the owner of the admin to say which reading the counts should give.
 
 Whether a merchant whose admission was withdrawn should stay under "Needs you".
 Today they count there again, since they have a seller name and a payout

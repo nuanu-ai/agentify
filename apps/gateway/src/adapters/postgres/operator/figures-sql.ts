@@ -45,7 +45,12 @@ export const ready = (asked: FiguresAsked, network: string): SQL => {
   return sql`(${namedAndPaid(asked, network)} and ${admitted})`;
 };
 
-/** Whether card `c` of merchant `m` is on sale now. */
+/**
+ * Whether card `c` of merchant `m` is on sale now, as the merchant's switches
+ * and readiness have it. The public catalogue also leaves a card out while its
+ * seller's code is silent or their unserved orders stop their sales; this does
+ * not, and the operator's admin note says why that waits.
+ */
 export const onSale = (asked: FiguresAsked, network: string): SQL =>
   sql`(m.selling = 'open' and not c.paused and c.integration = m.integration and ${ready(asked, network)})`;
 
