@@ -1500,8 +1500,8 @@ describe("importing the catalogue", () => {
       silent: "everything",
     });
     await running.signIn();
-    // Connected the way Connect leaves a merchant, without pressing it: a
-    // gateway that does not answer cannot switch them to the shop either.
+    // Connected the way the shop's keys leave a merchant, without a callback:
+    // a gateway that does not answer cannot switch them to the shop either.
     await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "woocommerce");
     const startedAt = new Date();
     await running.shops.beginGrant({
@@ -2414,9 +2414,9 @@ describe("merchant delivery recovery", () => {
 });
 
 describe("one integration at a time", () => {
-  // Pressing Connect moves the merchant to the shop before they are sent to
-  // it, and Disconnect moves them back to their code. Selling both ways at
-  // once would let the code's worker draw a paid order of the shop's.
+  // The shop's keys arriving move the merchant to the shop, and Disconnect
+  // moves them back to their code. Selling both ways at once would let the
+  // code's worker draw a paid order of the shop's.
   const coded = {
     merchant_item_id: "esim-7d",
     title: "A seven day eSIM",
@@ -2464,7 +2464,7 @@ describe("one integration at a time", () => {
     });
   };
 
-  it("takes the code's cards off sale and its orders away the moment Connect is pressed", async () => {
+  it("sends the merchant to WooCommerce on an allowed Connect and leaves the code's products on sale", async () => {
     const running = await started();
     await running.signIn();
     const card = await publishedByTheCode(running);
@@ -2472,14 +2472,70 @@ describe("one integration at a time", () => {
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
 
     expect(pressed.status).toBe(303);
+    expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+  });
+
+  it("moves the merchant to the shop when its keys arrive, taking the code's products off sale", async () => {
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+
+    await connectTheShop(running);
+
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe(
+      "woocommerce",
+    );
     expect(await onSale(running)).not.toContain(card);
     expect((await theCodePolls(running)).status).toBe(409);
   });
 
+  it("keeps the shop connected and the code selling when the keys arrive while an order waits on the code", async () => {
+    // The order was made after Connect was allowed. The shop's server is
+    // answered as WooCommerce expects all the same: a failed post would make
+    // the shop delete the key the merchant has just approved.
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await paidFor(running, card);
+
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody(tokenIn(pressed.to ?? "")),
+    );
+
+    expect(callback.status).toBe(200);
+    expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+    const page = await running.get("/woocommerce");
+    expect(page.html).toContain('action="/woocommerce/switch"');
+    expect(readable(page.html)).toContain("Sell through this shop");
+  });
+
+  it("changes nothing for a Connect whose approval never comes", async () => {
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const page = await running.get("/woocommerce");
+
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+    expect(readable(page.html)).toContain("Waiting for your shop's keys");
+    expect(readable(page.html)).not.toMatch(/come back paused|already off sale/);
+    expect(page.html).not.toContain('action="/woocommerce/disconnect"');
+  });
+
   it("refuses a shop writing three decimals before sending the merchant to approve keys, and keeps the code's cards on sale", async () => {
-    // Every product of such a shop would be refused at import, so switching
-    // first would take the code's cards off sale for a shop that can sell
-    // nothing, and the shop would hand over write keys for nothing.
+    // Every product of such a shop would be refused at import, so the shop
+    // would hand over write keys for nothing, and their arrival would take the
+    // code's cards off sale for a shop that can sell nothing.
     const running = await started({
       sample: async () => ({
         currency: "KWD",
@@ -2531,7 +2587,6 @@ describe("one integration at a time", () => {
 
     expect(pressed.status).toBe(303);
     expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
-    expect(await onSale(running)).not.toContain(card);
   });
 
   it("refuses Connect while an order still waits on the code, names it, and sends nobody to the shop", async () => {
@@ -2682,9 +2737,11 @@ describe("one integration at a time", () => {
   });
 
   it("offers the way back to the code to a merchant on the shop whose shop never connected", async () => {
+    // Reached by an account that started on the shop because it held an
+    // imported card before integrations were recorded.
     const running = await started();
     await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "woocommerce");
 
     const page = await running.get("/woocommerce");
     expect(page.html).toContain('action="/woocommerce/disconnect"');
