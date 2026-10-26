@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Agentify domain core — orders, receipts, the state machine; pure logic with no IO",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./published": "./src/published.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"

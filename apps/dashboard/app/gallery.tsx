@@ -1253,7 +1253,7 @@ const CARDS: GalleryState[] = [
     {
       id: "dashboard-cards-busy",
       screen: "Cards",
-      when: "A merchant opens Cards while twenty purchases of theirs are priced and unpaid.",
+      when: "A merchant opens Cards while as many purchases of theirs as Agentify allows are priced and unpaid.",
       cause:
         "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so; each place comes free when its purchase is paid or its price runs out.",
     },

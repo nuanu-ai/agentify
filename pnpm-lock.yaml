@@ -216,6 +216,9 @@ importers:
         specifier: 8.4.0
         version: 8.4.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
     devDependencies:
+      '@agentify/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@agentify/gallery':
         specifier: workspace:*
         version: link:../../packages/gallery
@@ -371,6 +374,9 @@ importers:
       '@agentify/consent':
         specifier: workspace:*
         version: link:../../packages/consent
+      '@agentify/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@agentify/observability':
         specifier: workspace:*
         version: link:../../packages/observability

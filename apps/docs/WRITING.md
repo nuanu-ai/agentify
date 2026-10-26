@@ -180,9 +180,23 @@ After writing or changing a diagram, run
 `pnpm --filter @agentify/docs diagrams`, which draws what is missing in
 Chromium and deletes what no page uses, and commit the drawings with the page.
 
-What the build knows is written in by the build: `{{sdk-version}}` is the
-release of `@nuanu-ai/agentify` in this repository, filled everywhere a page
-names it, code blocks included.
+What the build knows is written in by the build, everywhere a page names it,
+code blocks and diagrams included. `{{sdk-version}}` is the release of
+`@nuanu-ai/agentify` in this repository. Every number Agentify publishes about
+its own behaviour is read from the constants the gateway runs,
+`@agentify/core/published`, so a page names it rather than typing it:
+`{{quote-ttl}}` is how long a price holds, written "thirty seconds".
+`{{quote-ttl:short}}` writes it "30 s" for a drawing, which only a wait counted
+in seconds can be, and `{{quote-ttl:number}}` writes "thirty" where the
+sentence already names the unit. A count such as `{{unserved-at-most}}` writes
+"ten", and `{{unserved-at-most:ordinal}}` "tenth". `{{commission}}` is
+Agentify's share of a payment, written "0.1%", and `{{commission:words}}`
+writes "0.1 percent" for a description a screen reader reads aloud. A name
+written with a capital, as `{{Silent-after}}`, opens a sentence.
+`app/build-values.ts` lists the names with the constant each one reads. A
+number the build cannot say in words in its unit, such as a wait of a second
+and a half, stops the build, and so does a name it does not know or anything
+else written between double braces, with the page it is on named.
 
 What a deployment decides is not written into a page but named: `{{origin}}`
 for the site's address, `{{abuse-email}}` and `{{operator}}` for the scanner's

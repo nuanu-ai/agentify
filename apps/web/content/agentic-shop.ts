@@ -1,3 +1,7 @@
+import { COMMISSION_RATE, percentagesOf } from "@agentify/core/published";
+
+const { commission, share } = percentagesOf(COMMISSION_RATE);
+
 /** Independent market observations, not Agentify results or x402 transaction volume. */
 const AGENTIC_SHOP_RESEARCH = {
   sourceUrl: "https://business.adobe.com/blog/ai-traffic-surge-retail-sites-not-machine-readable",
@@ -114,7 +118,7 @@ export const AGENTIC_SHOP = {
   },
   payment: {
     title: ["How you get paid.", "In USDC, to your crypto wallet."],
-    text: "Buyers pay in USDC, a digital dollar, on the Base network, into a payout contract made for your crypto wallet. Nobody, Agentify included, can change whom it pays: a payout sends 99.9% to your wallet and 0.1% to Agentify, with no subscription and no monthly fee, and you can send one at any time. You need a crypto wallet on Base, such as Coinbase Wallet, which your dashboard can create with you. Turning USDC into bank money happens outside Agentify.",
+    text: `Buyers pay in USDC, a digital dollar, on the Base network, into a payout contract made for your crypto wallet. Nobody, Agentify included, can change whom it pays: a payout sends ${share} to your wallet and ${commission} to Agentify, with no subscription and no monthly fee, and you can send one at any time. You need a crypto wallet on Base, such as Coinbase Wallet, which your dashboard can create with you. Turning USDC into bank money happens outside Agentify.`,
     action: "Open your dashboard",
     more: { label: "How the money works", href: "/docs/money" },
     path: {
@@ -126,7 +130,7 @@ export const AGENTIC_SHOP = {
         ["Agentify", "Checks the payment and sets it going"],
         [
           "Your payout contract",
-          "Keeps it until it is paid out: 99.9% to your wallet, 0.1% to Agentify",
+          `Keeps it until it is paid out: ${share} to your wallet, ${commission} to Agentify`,
         ],
         ["Your crypto wallet", "The address saved in your dashboard"],
       ],

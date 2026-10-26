@@ -6,12 +6,12 @@
  * some accounts, and the change is refused.
  */
 
+import type { CommissionRate } from "@agentify/core/published";
 import type { Announcement, AnnouncementAnswer } from "@agentify/gateway/announcements";
 import { announcementMessage } from "./announcement-mail.js";
 import type { DashboardConfig } from "./config.js";
 import type { Identity } from "./identity.js";
 import type { Postman } from "./mail.js";
-import type { CommissionRate } from "./shares.js";
 
 export type Teller = (announcement: Announcement) => Promise<AnnouncementAnswer["outcome"]>;
 

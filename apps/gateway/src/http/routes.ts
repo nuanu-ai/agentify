@@ -9,6 +9,7 @@
  */
 
 import { outcomeFor } from "@agentify/core";
+import { durationInWords, SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
 import type {
   OrderListQuery,
   PurchaseRequest,
@@ -379,6 +380,12 @@ async function cardPaused(
   return { status: OK, document: card };
 }
 
+/**
+ * Why every purchase of a seller stopped for their unserved orders is refused:
+ * what is known, and that nothing says when it ends.
+ */
+const SELLER_NOT_FULFILLING = `this seller has ${UNSERVED_AT_MOST} or more paid orders they took on and left without delivery or closure, so Agentify takes no new purchase from them and nothing was charged; this lasts until the seller delivers or closes some of those orders, and nothing says when that will be, so do not try again soon`;
+
 function answeredOrder(
   response: RouteCall["response"],
   answered: { readonly ok: boolean } | null,
@@ -414,6 +421,9 @@ async function probeAnswer(
       CONFLICT,
       refusal("not_selling", "this product is not on sale at the moment"),
     );
+  }
+  if (await gateway.stoppedForUnserved(offered.stored.merchantId)) {
+    return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
   }
   response.setHeader(
     PAYMENT_REQUIRED_HEADER,
@@ -645,9 +655,12 @@ async function answerPurchase(
         CONFLICT,
         refusal(
           "seller_not_taking_orders",
-          "this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ten minutes; try again later",
+          `this seller is not taking orders right now, so nothing was charged: this purchase is paid before its goods are made, and the seller's system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}; try again later`,
         ),
       );
+
+    case "seller_not_fulfilling":
+      return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
       // A purchase waiting for payment lapses with its price, so a place comes

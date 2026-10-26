@@ -11,9 +11,10 @@ and the sitemap, the structured data, the machine-readable output — as a repor
 of named checks with the evidence behind each verdict. Through the same site
 they then sell their goods to those agents: the gateway behind it takes the
 purchase, and the agent pays in stablecoins over the x402 protocol into the
-merchant's payout split, a contract nobody owns, which pays 99.9% to the
-merchant's wallet and 0.1% to Agentify whenever somebody pays it out
-(ADR-0037).
+merchant's payout split, a contract nobody owns, which pays the merchant's
+share to the merchant's wallet and Agentify's commission to Agentify whenever
+somebody pays it out ([Money](https://agentify.ad/docs/money#what-we-take),
+ADR-0037).
 
 | You are | Start here |
 | --- | --- |

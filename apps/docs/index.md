@@ -37,7 +37,7 @@ wallet. Turning USDC into money in a bank account happens outside Agentify.
 | Agentify | publishes your cards, asks the buyer for the payment, carries the paid order to you and your goods back to the buyer, and never holds the money |
 | The facilitator | the payment service that checks the buyer's signed payment and executes it, into your payout contract |
 | Your process, or your WooCommerce shop | your code, running beside your own systems, or your shop connected in the dashboard: it takes the paid order and delivers the goods |
-| Your payout contract and your wallet | the contract receives every payment in full and pays it out, 99.9% to your wallet and 0.1% to us |
+| Your payout contract and your wallet | the contract receives every payment in full and pays it out, {{merchant-share}} to your wallet and {{commission}} to us |
 
 Agentify is in its pilot: it runs with its first merchants while the rules
 that are not settled yet get settled, and a few rules on these pages hold only
@@ -46,8 +46,8 @@ until then, each saying so. There is no end date for the pilot yet.
 ## What it costs and where the money goes
 
 The buyer pays the price on your card into your payout contract, which keeps
-the money until it is paid out and then sends 99.9% to your wallet and 0.1% to
-us. Nobody, Agentify included, can change whom it pays. Our 0.1% is inside
+the money until it is paid out and then sends {{merchant-share}} to your wallet and {{commission}} to
+us. Nobody, Agentify included, can change whom it pays. Our {{commission}} is inside
 your price, and there is no subscription and no monthly fee. Your share
 reaches your wallet when you send a payout from your dashboard, at any time,
 or when we collect our own share, which pays out your contract too; there is
@@ -127,7 +127,7 @@ order already taken and delete no account, and the
 Agentify watches your orders for you, so keep an eye on them and pause selling
 when your integration cannot deliver. The one thing that stops on its own is a
 purchase that charges before its goods: it is refused while no process of
-yours has polled for ten minutes, and taken again at the next poll ([What can
+yours has polled for {{silent-after}}, and taken again at the next poll ([What can
 go wrong](/failures)).
 
 Short answers — what this costs, what happens about refunds, who settles a

@@ -3,6 +3,10 @@
  * "AI agents" on one line where the words would otherwise part.
  */
 
+import { COMMISSION_RATE, percentagesOf } from "@agentify/core/published";
+
+const { commission, share } = percentagesOf(COMMISSION_RATE);
+
 export const SELL_LANDING = {
   head: {
     title: "Agentify — sell products and services to AI agents",
@@ -14,7 +18,7 @@ export const SELL_LANDING = {
   hero: {
     eyebrow: "A new sales channel for products and services",
     title: "AI agents find and buy your products",
-    lede: "Connect your catalog of digital products, services and physical products once. Agentify shows them to AI agents and takes the order. The buyer pays in USDC, a digital dollar, into your own payout contract, made for your crypto wallet; the contract sends 99.9% to your wallet and 0.1% to Agentify when it is paid out. You keep your site and your store as they are.",
+    lede: `Connect your catalog of digital products, services and physical products once. Agentify shows them to AI agents and takes the order. The buyer pays in USDC, a digital dollar, into your own payout contract, made for your crypto wallet; the contract sends ${share} to your wallet and ${commission} to Agentify when it is paid out. You keep your site and your store as they are.`,
     action: "Connect your catalog",
     howItWorks: "How it works",
     facts: ["You connect your catalog", "An agent buys", "You get paid"],
@@ -34,7 +38,7 @@ export const SELL_LANDING = {
     paid: {
       kind: "YOUR PAYOUT CONTRACT",
       amount: "+ 12.00 USDC",
-      note: "99.9% to your wallet, 0.1% to Agentify",
+      note: `${share} to your wallet, ${commission} to Agentify`,
     },
     path: ["AI agent", "Agentify", "Your store"],
     end: "Payout to you",
@@ -58,7 +62,7 @@ export const SELL_LANDING = {
       },
       {
         title: "You get paid",
-        text: "The payment goes into your payout contract, which sends 99.9% to your wallet and 0.1% to Agentify whenever it is paid out, and you can pay it out at any time. The order and its payment confirmation are saved in your dashboard.",
+        text: `The payment goes into your payout contract, which sends ${share} to your wallet and ${commission} to Agentify whenever it is paid out, and you can pay it out at any time. The order and its payment confirmation are saved in your dashboard.`,
       },
     ],
   },
@@ -130,22 +134,21 @@ export const SELL_LANDING = {
   money: {
     eyebrow: "Your own payout contract",
     title: "Agentify never holds your money",
-    lede: "For now, payments are accepted in USDC only. You can set the price in USD or USDC, and the AI agent pays the same amount in USDC, with no currency conversion, into your own payout contract. Nobody owns that contract, so neither Agentify nor anyone else can redirect the money: it keeps it until it is paid out, then sends 99.9% to your wallet and 0.1% to Agentify.",
+    lede: `For now, payments are accepted in USDC only. You can set the price in USD or USDC, and the AI agent pays the same amount in USDC, with no currency conversion, into your own payout contract. Nobody owns that contract, so neither Agentify nor anyone else can redirect the money: it keeps it until it is paid out, then sends ${share} to your wallet and ${commission} to Agentify.`,
     notes: [
-      "0.1% commission, inside the price",
+      `${commission} commission, inside the price`,
       "Get paid out at any time",
       "Your wallet keys stay with you",
       "Orders and receipts in your dashboard",
     ],
     map: {
-      label:
-        "An AI agent pays 5 USDC into the seller's payout contract, and Agentify checks the payment; a payout sends 99.9% to the seller's wallet and 0.1% to Agentify",
+      label: `An AI agent pays 5 USDC into the seller's payout contract, and Agentify checks the payment; a payout sends ${share} to the seller's wallet and ${commission} to Agentify`,
       top: "ORDER PAYMENT",
       status: "CONFIRMED",
       buyer: { kind: "BUYER'S WALLET", name: "AI agent", amount: "− 5.00 USDC" },
       flow: { amount: "5.00 USDC", note: "Agentify checked the payment" },
       seller: { kind: "YOUR PAYOUT CONTRACT", name: "Seller", amount: "+ 5.00 USDC" },
-      foot: "When it is paid out: 99.9% to your wallet, 0.1% to Agentify",
+      foot: `When it is paid out: ${share} to your wallet, ${commission} to Agentify`,
     },
   },
   pricing: {
@@ -157,7 +160,7 @@ export const SELL_LANDING = {
       {
         id: "commission",
         name: "Pay per order",
-        price: "0.1%",
+        price: commission,
         per: "of every paid order",
         gist: "You pay only when agents buy.",
         terms: [
@@ -225,7 +228,7 @@ export const SELL_LANDING = {
       ],
       [
         "Where is my money held?",
-        "In your own payout contract, until it is paid out. Nobody owns that contract, so neither Agentify nor anyone else can redirect the money: a payout sends 99.9% to your wallet and 0.1% to Agentify, and you can send one at any time.",
+        `In your own payout contract, until it is paid out. Nobody owns that contract, so neither Agentify nor anyone else can redirect the money: a payout sends ${share} to your wallet and ${commission} to Agentify, and you can send one at any time.`,
       ],
       [
         "Do I need a password for the dashboard?",

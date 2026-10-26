@@ -11,8 +11,9 @@
 
 import type { MerchantSelling } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -37,6 +38,15 @@ import { type StoredOrder, WAITING_FOR_PAYMENT } from "../../ports/store.js";
 export const WAITING_STATES = sql.raw(
   `(${WAITING_FOR_PAYMENT.map((state) => `'${state}'`).join(", ")})`,
 );
+
+/**
+ * An unfulfilled order its merchant answers for (`StoredOrder#answerable`),
+ * the one kind the stop on a merchant's sales counts. Written once for the
+ * partial index and the counts, because the planner uses the index only for a
+ * predicate it can see is the index's own.
+ */
+export const answeredFor = (state: AnyPgColumn, record: AnyPgColumn): SQL =>
+  sql`${state} = 'unfulfilled' and (${record} ->> 'answerable') = 'true'`;
 
 /**
  * One row per merchant, with whether they are taking new orders: the merchant
@@ -245,6 +255,9 @@ export const orders = pgTable(
     index("orders_waiting_idx")
       .on(table.merchantId)
       .where(sql`${table.state} in ${WAITING_STATES}`),
+    // A merchant's unfulfilled orders they answer for, counted at the birth
+    // and the payment of every purchase of theirs and for the catalogue.
+    index("orders_unserved_idx").on(table.merchantId).where(answeredFor(table.state, table.record)),
     // The order a buyer's key opens, and never two orders under one key.
     uniqueIndex("orders_buyer_key_unique").on(sql`(${table.record} ->> 'buyerKey')`),
   ],

@@ -31,9 +31,9 @@ channel ([What the dashboard asks for](/#what-the-dashboard-asks-for)).
 
 ### What does it cost?
 
-We take 0.1% of every payment, and it is inside your price: the buyer pays the
-price on your card, and your payout contract sends 99.9% of it to your wallet
-and 0.1% to us. There is no subscription and no monthly fee ([What we
+We take {{commission}} of every payment, and it is inside your price: the buyer pays the
+price on your card, and your payout contract sends {{merchant-share}} of it to your wallet
+and {{commission}} to us. There is no subscription and no monthly fee ([What we
 take](/money#what-we-take)).
 
 ### Do you write the product cards, or do I?

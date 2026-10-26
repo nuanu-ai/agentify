@@ -1,0 +1,1 @@
+CREATE INDEX "orders_unserved_idx" ON "orders" USING btree ("merchant_id") WHERE "orders"."state" = 'unfulfilled' and ("orders"."record" ->> 'answerable') = 'true';

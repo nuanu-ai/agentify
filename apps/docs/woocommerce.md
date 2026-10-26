@@ -252,7 +252,7 @@ cart's total, divided by your rate and rounded up to the next cent, so, for
 example, a product priced Rp 240.000 at 18000 rupiah to the dollar sells for
 13.34 USD.
 The buyer is told the dollar price and nothing about your rate. Agentify takes
-no currency margin, and its 0.1% commission is of the USDC paid. What that USDC
+no currency margin, and its {{commission}} commission is of the USDC paid. What that USDC
 is worth in your currency when you sell it depends on your exchange and its
 spread, which your rate should allow for.
 
