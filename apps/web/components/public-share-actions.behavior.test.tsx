@@ -114,4 +114,51 @@ describe("publishing and revoking a scan's public link", () => {
     const told = await screen.findByText(/The public link was not found\./);
     expect(told.textContent).toMatch(/reload/i);
   });
+
+  it("says after Publish image what the page can see, and offers the image again by a link", async () => {
+    siteWith({
+      existing: false,
+      pressed: async () =>
+        json(201, { slug, public_url: `${window.location.origin}/s/${slug}`, status: "published" }),
+    });
+    const publish = await screen.findByRole("button", { name: "Publish image" });
+    await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+
+    await userEvent.click(publish);
+
+    const again = await screen.findByRole("link", { name: "Download image again" });
+    expect(again.getAttribute("href")).toBe(`/api/v1/shares/${slug}/image`);
+    expect(again.hasAttribute("download")).toBe(true);
+    const told = screen.getByText(/browser was asked/i);
+    expect(told.textContent).not.toMatch(/started/i);
+    expect(told.textContent).toMatch(/link is live/i);
+  });
+
+  it("says the public link was already live when Publish image is pressed again, and makes no new one", async () => {
+    const press = vi.fn(async () =>
+      json(201, { slug, public_url: `${window.location.origin}/s/${slug}`, status: "published" }),
+    );
+    siteWith({ existing: true, pressed: press });
+    const publish = await screen.findByRole("button", { name: "Publish image" });
+    await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+
+    await userEvent.click(publish);
+
+    expect(await screen.findByText(/already live/i)).toBeTruthy();
+    expect(press).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Download image again" })).toBeTruthy();
+  });
+
+  it("offers no image again once the link is revoked", async () => {
+    siteWith({ existing: true, pressed: async () => new Response(null, { status: 204 }) });
+    const publish = await screen.findByRole("button", { name: "Publish image" });
+    await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(publish);
+    await screen.findByRole("link", { name: "Download image again" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+
+    await screen.findByText("Public link revoked.");
+    expect(screen.queryByRole("link", { name: "Download image again" })).toBeNull();
+  });
 });

@@ -18,8 +18,10 @@ describe("ReportActionPanel", () => {
     const markup = renderToStaticMarkup(
       <ReportActionPanel {...baseProps} initialIntent="download-md" />,
     );
-    expect(markup).toContain("download started");
-    expect(markup).toContain("Download again");
+    // The page cannot see whether a download arrived, so it says only that it asked.
+    expect(markup).not.toMatch(/download started/i);
+    expect(markup).toMatch(/browser was asked/i);
+    expect(markup).toMatch(/<a[^>]*download[^>]*>Download \.md again<\/a>/);
   });
 
   it("points a copy intent at the prompt button instead of a separate card", () => {
