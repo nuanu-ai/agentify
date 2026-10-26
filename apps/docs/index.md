@@ -133,10 +133,10 @@ keys end no order already taken and delete no account, and the
 ### What nobody watches for you
 
 Nobody at Agentify watches your orders for you, so keep an eye on them and
-pause selling when your integration cannot deliver. The one thing that stops
-on its own is a purchase that charges before its goods: it is refused while no
-process of yours has polled for {{silent-after}}, and taken again at the next poll
-([What can go wrong](/failures)).
+pause selling when your integration cannot deliver. Selling does stop on its
+own while your code is silent: while no process of yours has polled for
+{{silent-after}}, your products leave the catalogue and every purchase is
+refused, and both come back at the next poll ([What can go wrong](/failures)).
 
 Short answers — what this costs, what happens about refunds, who settles a
 dispute — are in the [common questions](/faq).

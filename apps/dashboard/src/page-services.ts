@@ -1118,6 +1118,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           .filter(([, record]) => record.counts)
           .map(([id]) => id),
       ),
+      config.transactionPage,
     );
     return { kind: "view", view };
   };

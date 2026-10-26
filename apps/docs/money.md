@@ -137,8 +137,10 @@ of your dashboard lists them, and what each field means is on
 A receipt follows the goods, so an order paid for and never delivered has
 none, and neither has a payment nobody knows the outcome of. Receipts
 therefore do not account for all the money you received. A paid order without a
-receipt still names the transaction that paid it to its buyer: the buyer's
-status carries `transaction` once the payment has gone through. When the answer to a
+receipt still names the transaction that paid it once the payment has gone
+through: Order details on your dashboard shows it, the order your integration
+reads back carries it as `transaction`, and the buyer's status carries the same
+one. When the answer to a
 purchase is lost on the way and the agent repeats it, it receives what was
 already delivered, with no second charge and no second delivery asked of you.
 
@@ -160,16 +162,16 @@ network, or be replaced by another agreement. Agentify does not send a refund,
 check one or judge whether you and the buyer have settled. You hold the
 buyer's details only where the product needs them: a parcel's address, with
 the name and phone number it carries, and whatever a purchase parameter your
-product asks for holds, such as an email. A sale that has a receipt also names
-its payment's transaction, when one was recorded. The transaction is on a
+product asks for holds, such as an email. A paid order also names its payment's
+transaction, when one was recorded, in Order details whether or not the goods
+were delivered, and on its receipt once there is one. The transaction is on a
 public chain, but a block explorer shows as its sender the payment service
 that submitted it, not the buyer: the wallet that paid is the address the USDC
 transfer inside the transaction came from. USDC sent back on Base to that
 address reaches the wallet that paid. The same address on another network may
 belong to nobody, because some wallets exist on Base alone, so a refund in
-another currency or on another network needs the buyer to say where. An order
-paid for and never delivered has no receipt, and nothing Agentify shows you
-names its transaction. A wallet's address says where a payment came from, not
+another currency or on another network needs the buyer to say where. A
+wallet's address says where a payment came from, not
 who the person is or how to write to them, so anything beyond sending USDC
 back to that wallet waits until the buyer reaches you.
 
@@ -259,8 +261,8 @@ On the test channel every change applies at once and nothing is sent.
 
 - How a buyer reaches your support to arrange a remedy outside Agentify.
   Until something does, you hold the buyer's details only where the product
-  needs them, and, on a sale with a receipt, a payment's transaction, which
-  leads on the chain to the wallet that paid.
+  needs them, and, on a paid order, its payment's transaction, which leads on
+  the chain to the wallet that paid.
 - How long finding a payment whose answer was lost can take. No time is
   promised, and on the live channel it depends on a free public service.
 - Who pays the network fee on a buyer's payment and how it sits against the

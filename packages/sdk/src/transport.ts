@@ -137,6 +137,11 @@ export interface TransportFailure {
     readonly code: string;
     readonly message: string;
     readonly retryable: boolean;
+    /**
+     * Whether it came under a 5xx: Agentify failed while handling the call,
+     * which may be after the call took effect.
+     */
+    readonly failedInside: boolean;
   };
 }
 
@@ -208,7 +213,11 @@ export const whatIsKnown = (failure: TransportFailure): string => {
   // A refusal comes first: the gateway said what it would not do, and "what
   // came back could not be read" in front of its reason would contradict it.
   if (failure.refusal !== undefined) {
-    return "it reached us and the answer says the call did not go through";
+    // A failure inside Agentify may come after the call took effect, and the
+    // gateway's own words say what is known of it.
+    return failure.refusal.failedInside
+      ? "it reached us and Agentify failed while handling it"
+      : "it reached us and the answer says the call did not go through";
   }
 
   switch (failure.reach) {
@@ -302,8 +311,9 @@ export const callRoute = async <N extends RouteName>(
   // then the caller gets what the gateway said. Refusals that live inside a
   // route's own document cannot be mistaken for it, because the envelope's
   // outer object is strict and those documents carry `ok`; a test in
-  // `api.test.ts` holds that for every route. The HTTP status is not
-  // consulted: which refusal arrives under which status is the gateway's.
+  // `api.test.ts` holds that for every route. The HTTP status does not
+  // decide whether the body is a refusal, which refusal arrives under which
+  // status being the gateway's; it only marks a 5xx as a failure inside.
   const refused = ErrorEnvelopeSchema.safeParse(body);
 
   if (refused.success) {
@@ -314,7 +324,7 @@ export const callRoute = async <N extends RouteName>(
       `${name} at ${url.href} was refused ${response.status}: ${code} — ${message}`,
       REACH.ANSWERED,
       body,
-      { code, message, retryable },
+      { code, message, retryable, failedInside: response.status >= 500 },
     );
   }
 

@@ -633,8 +633,10 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
         title: `${silent.name}'s worker stopped polling`,
         href: `/admin/merchants/${silent.merchantId}`,
         aside:
-          silent.since === null ? "never connected" : `for ${durationWritten(at - silent.since)}`,
-        why: "Its products are paid before delivery, so the gateway refuses their purchases until the worker polls again. Nothing was charged.",
+          silent.since === null
+            ? "never connected"
+            : `since ${durationWritten(at - silent.since)} ago`,
+        why: "The gateway leaves its products out of the catalogue and refuses their purchases until the worker polls again; nothing was charged for them.",
         links: [{ label: "See the merchant", href: `/admin/merchants/${silent.merchantId}` }],
         meta: [],
       });
@@ -1277,7 +1279,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
             part: "Merchants' workers",
             badge: { tone: "fail", word: `${workers.silentOf} out of touch` },
             fact: [
-              `${plural(workers.silentOf, "merchant")} with products on sale paid before delivery ${workers.silentOf === 1 ? "has" : "have"} not polled within the last ${minutes} minutes, so their purchases are refused: `,
+              `${plural(workers.silentOf, "merchant")} with products on sale ${workers.silentOf === 1 ? "has" : "have"} not polled within the last ${minutes} minutes, so their products are out of the catalogue and their purchases are refused: `,
               ...workers.silent.flatMap((silent, index) => [
                 ...(index === 0 ? [] : [", "]),
                 { text: silent.name, href: `/admin/merchants/${silent.merchantId}` },

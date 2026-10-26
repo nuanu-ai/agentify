@@ -19,8 +19,7 @@
  * whose outcome is unknown are counted apart and never added to sales or to failures.
  */
 
-import { modeOf, readinessOf, type SurfaceMode } from "@agentify/core";
-import type { Card } from "@nuanu-ai/agentify-contracts";
+import { readinessOf, type SurfaceMode } from "@agentify/core";
 import type { Integration } from "../store.js";
 import type { Dollars, Tally } from "./money.js";
 
@@ -98,9 +97,10 @@ export interface Workers extends Read {
   /** How many merchants' processes ever polled. */
   readonly everConnected: number;
   /**
-   * The merchants selling through their own code, with a card on sale that
-   * charges before its goods, whose process has not polled for longer than the
-   * guard waits, so their purchases are being refused; the longest silent first.
+   * The merchants selling through their own code, with a card on sale, whose
+   * process has not polled for longer than the guard waits, so their purchases
+   * are being refused and their cards left out of the catalogue; the longest
+   * silent first.
    */
   readonly silent: readonly SilentMerchant[];
   readonly silentOf: number;
@@ -262,21 +262,6 @@ export const endOfDayOf = (at: number): number => (dayNumberOf(at) + 1) * DAY_MS
  */
 export const inCodeOrder = (one: string, other: string): number =>
   one < other ? -1 : one > other ? 1 : 0;
-
-/** Every way a card can be fulfilled, so a new one does not compile until it is placed here. */
-const FULFILLMENT: Readonly<Record<NonNullable<Card["fulfillment"]>, true>> = {
-  sync: true,
-  async: true,
-  ship: true,
-};
-
-/**
- * The fulfillment modes whose payment is taken before the goods: a card of
- * one of them on sale is what the purchase guard refuses for a silent process.
- */
-export const PREPAID_FULFILLMENT: readonly string[] = Object.keys(FULFILLMENT).filter(
-  (mode) => modeOf(mode as keyof typeof FULFILLMENT).settle === "on_purchase",
-);
 
 /**
  * Whether a channel asks for a payout wallet, and for the operator's

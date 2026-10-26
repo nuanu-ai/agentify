@@ -140,11 +140,13 @@ it was: `fulfillment_complete` where the goods were delivered or the parcel's
 shipment is recorded, and `nothing_to_close` where the order ended with
 nothing charged.
 
-An order read back carries `payment_status` for its original payment and
-`merchant_closure` for your closure. Closing does not cancel a charge Agentify
-had already sent to the facilitator. If that charge completes after you
-closed, you receive `order.unfulfilled` with the reason `paid_after_closure`,
-and the order stays on `orders.list({ open: true })` until you close it again;
+An order read back carries `payment_status` for its original payment,
+`transaction` for the transaction that paid it once that payment went through,
+whether or not you delivered, and `merchant_closure` for your closure. Closing
+does not cancel a charge Agentify had already sent to the facilitator. If that
+charge completes after you closed, you receive `order.unfulfilled` with the
+reason `paid_after_closure`, and the order stays on
+`orders.list({ open: true })` until you close it again;
 that second closure records its own time and message. The whole rule is on
 [Orders](https://agentify.ad/docs/orders#closing-fulfillment).
 
@@ -188,9 +190,10 @@ it does not know is skipped with an `unread` problem, and an order's
 status or payment word, an event's reason, a call's result word or a price
 question's purpose it does not know reads `unknown`
 ([details](https://agentify.ad/docs/orders#when-agentify-is-newer-than-your-package)).
-What an order delivers is read exactly: an order carrying an unknown field or
-address shape never reaches your handler narrowed, and is set aside with an
-`unread` problem naming the fields while the rest of the subscription goes on.
+What an order delivers is read exactly, and so is every field at the top of an
+order read back: an order carrying an unknown field or address shape never
+reaches your handler narrowed, and is set aside with an `unread` problem naming
+the fields while the rest of the subscription goes on.
 `orders.list` returns every order it can read, and its `unread` problem names
 the orders it left out and counts those whose status word this release does not
 know. No failure or problem the package reports repeats the contents of an
@@ -198,8 +201,8 @@ answer it could not read, whatever that answer's status or content type: it
 names the call, the status, the content type and the length, and where JSON did
 not fit, the fields and what was expected there, so the buyer's details and the
 prices stay out of your logs. A rename, a
-removal, a changed meaning or anything added to what an order delivers moves
-the contract version, and a
+removal, a changed meaning, or anything added to what an order delivers or to
+the top of an order read back moves the contract version, and a
 process whose version Agentify does not share stops at the first poll answer,
 before it takes an order.
 Every call names the package's release in its `user-agent`. What changed in each

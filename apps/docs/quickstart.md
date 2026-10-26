@@ -195,13 +195,19 @@ spellings used here, and which mode a product takes.
 
 This step worked if `published.ok` is true and `published.id` holds the card's
 catalogue identifier, which the test purchase on step 6 buys by. If `ok` is
-false, `error.problems` lists everything standing between the card and the
-catalogue in one answer, each finding with a code, words a person can act on
-and the path to the field where there is one. Four findings are about your
-merchant rather than the card: `no_seller_name`, `no_payout_wallet`,
-`no_seller_site` on a parcel's card, and `no_operator_approval` on the live
-channel ([who checks a card](/cards#who-checks-a-card-before-it-is-published)).
+false, `error.problems` lists everything that stops the card being published
+in one answer, each finding with a code, words a person can act on and the
+path to the field where there is one. Four findings are about your merchant
+rather than the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site`
+on a parcel's card, and `no_operator_approval` on the live channel ([who
+checks a card](/cards#who-checks-a-card-before-it-is-published)).
 Fixing what they name, not sending the card again, changes the answer.
+
+A published card is in the catalogue only while a process of yours is
+polling, which step 4 starts. Until its first poll, and whenever none has
+polled for {{silent-after}}, the catalogue leaves your cards out and every
+purchase of them is refused; they come back at the next poll ([What can go
+wrong](/failures)).
 
 A call that fails for another reason — a key we do not accept, an address that
 does not answer — throws an `AgentifyError` with a `code`, such as
@@ -373,7 +379,9 @@ holds against a repeat is proved by the purchase on the next step.
 ## 6. Make your first test purchase
 
 You make the first purchase yourself, buying your own card on the test channel
-with an ordinary x402 client, the payment protocol agents pay with. The buyer
+with an ordinary x402 client, the payment protocol agents pay with. Keep the
+process from step 4 running while you buy: without it the card is not in the
+catalogue, and a purchase is refused with `seller_not_taking_orders`. The buyer
 needs a wallet of its own: a fresh private key you keep for test purchases and
 nothing else, holding test USDC on Base Sepolia. It needs no ETH, because the
 payment is an authorisation the buyer signs and the facilitator executes.
@@ -492,5 +500,6 @@ to Agentify](/#how-to-start).
 - A check that sends one order twice and watches for a second delivery, so
   that holding against repeats could be proved without a purchase.
 - Whether an external discovery catalogue lists a product whose sale settled
-  on a test chain. Publication puts the card in Agentify's own catalogue, and
-  no other listing follows from it or from a completed purchase.
+  on a test chain. Publication puts the card in Agentify's own catalogue while
+  a process of yours polls, and no other listing follows from it or from a
+  completed purchase.

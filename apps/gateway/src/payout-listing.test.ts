@@ -92,7 +92,10 @@ const aGatewayOver = (
   return running;
 };
 
-/** A merchant paid at `wallet`, with its split recorded under the table, as a wallet write records it. */
+/**
+ * A merchant paid at `wallet`, with its split recorded under the table, as a
+ * wallet write records it, and a worker that has just polled.
+ */
 const aMerchantPaidAt = async (
   database: ReturnType<typeof aDatabase>,
   id: string,
@@ -100,6 +103,7 @@ const aMerchantPaidAt = async (
 ): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
+  await database.store.noteContact(id, NOW);
   await database.store.setPayoutWallet(
     id,
     { address: null, pending: null },

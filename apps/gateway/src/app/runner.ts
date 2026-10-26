@@ -1467,7 +1467,7 @@ export function agentOrderStatusOf(
     status_url: statusUrlOf(config, record.buyerKey),
     status,
     payment_status: paymentStatusOf(record.order),
-    ...transactionOf(record),
+    ...transactionFieldOf(record),
     ...merchantClosureOf(record.order),
     // Null where nobody named a price, never the card's figure: an order that
     // closed before it was priced was never sold at anything.
@@ -1525,8 +1525,11 @@ export function paidTransactionOf(record: StoredOrder): string | undefined {
   return transaction === undefined || transaction.trim() === "" ? undefined : transaction;
 }
 
-/** The transaction field of a document about this order, where it has one. */
-function transactionOf(record: StoredOrder): { readonly transaction?: string } {
+/**
+ * The transaction field of the documents the buyer's agent and the merchant
+ * read about this order, where it has one.
+ */
+export function transactionFieldOf(record: StoredOrder): { readonly transaction?: string } {
   const transaction = paidTransactionOf(record);
   return transaction === undefined ? {} : { transaction };
 }

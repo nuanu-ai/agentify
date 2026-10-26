@@ -46,8 +46,13 @@ HTTP client and fetch read 16 KiB of response headers in all
 margin for the response's other headers and for intermediaries.
 
 Every card is declared, with no opt-in, and only while it is for sale: a card
-off sale for any reason answers no challenge, so the catalog never carries a
-product nobody can buy. The declaration describes the purchase, a POST with a
+off sale answers no challenge, so the catalog never carries a product nobody
+can buy. The exception is a card whose seller's own process has gone quiet
+([ADR-0043](0043-the-purchase-door-refuses-before-any-charge.md)), a pause
+that ends by itself: it keeps answering with its challenge, while Agentify's
+own catalog leaves it out and a purchase is refused. Whether the catalog drops
+a listing whose look is refused, and takes it back only after a new paid
+purchase, is not known, and the card's return must not depend on that. The declaration describes the purchase, a POST with a
 JSON body, whichever method asked for the challenge. An unpaid call with no
 document, a GET or a POST with nothing or an empty one, gets the challenge,
 which is how the catalog's validator asks and what it accepts

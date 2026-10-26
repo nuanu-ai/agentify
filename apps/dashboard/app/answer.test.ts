@@ -97,10 +97,10 @@ describe("a request the page's script sent that failed on its way", () => {
 
   it("is a change nobody could confirm when it was a press, and leads back to the page it was pressed on, with its place in the list", async () => {
     vi.stubGlobal("window", {
-      location: new URL("http://dashboard.test/dashboard/cards?q=room&page=2"),
+      location: new URL("http://dashboard.test/dashboard/products?q=room&page=2"),
     });
     const results = await around(
-      asked("POST", "http://dashboard.test/dashboard/cards?pause=itm_1"),
+      asked("POST", "http://dashboard.test/dashboard/products?pause=itm_1"),
       {
         "routes/cards": { type: "error", result: new TypeError("Failed to fetch") },
       },
@@ -108,7 +108,7 @@ describe("a request the page's script sent that failed on its way", () => {
 
     expect(carried(results["routes/cards"])).toStrictEqual({
       kind: "unanswered",
-      reopen: "/dashboard/cards?q=room&page=2",
+      reopen: "/dashboard/products?q=room&page=2",
     });
   });
 

@@ -234,3 +234,22 @@ export function makeBuyer(options: BuyerOptions): Buyer {
     },
   };
 }
+
+/**
+ * The catalogue's listing of the product titled `title`, read again every
+ * quarter second for up to `withinMs`, or undefined where it never appeared.
+ * A product is listed only once its seller's worker has polled, which a worker
+ * started a moment ago may not have done yet.
+ */
+export async function listedWithin(
+  buyer: Buyer,
+  title: string,
+  withinMs = 10_000,
+): Promise<PublicCard | undefined> {
+  const deadline = Date.now() + withinMs;
+  for (;;) {
+    const listing = (await buyer.catalog()).find((card) => card.title === title);
+    if (listing !== undefined || Date.now() >= deadline) return listing;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}

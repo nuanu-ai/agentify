@@ -113,10 +113,14 @@ const aGatewayOver = (
   return { gateway, facilitator, config, announcer };
 };
 
-/** A merchant with a name, ready to sell but for where they are paid. */
+/**
+ * A merchant with a name and a worker that has just polled, ready to sell but
+ * for where they are paid.
+ */
 const aMerchant = async (database: ReturnType<typeof aDatabase>, id: string): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
+  await database.store.noteContact(id, NOW);
   return id;
 };
 

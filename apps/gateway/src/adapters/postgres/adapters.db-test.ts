@@ -317,6 +317,7 @@ if (databaseUrl === null) {
 
       it("sets no clock, so a seller's fifty-first purchase waiting for payment writes nothing", async () => {
         const card = await store.publishCard(A, syncCard, now);
+        await gateway.poll(A, 0);
         for (let one = 0; one < 50; one += 1) {
           expect((await gateway.beginPurchase(card.id, {})).step).toBe("pay");
         }

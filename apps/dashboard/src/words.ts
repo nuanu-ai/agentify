@@ -106,12 +106,12 @@ export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import a
 /**
  * Why the account as a whole is not as usual: a change of the payout wallet
  * waits to apply, all sales are paused, something publishing needs is
- * missing, purchases charged before delivery are refused while their
- * integration is not connected, or new purchases are refused while as many
- * wait for payment as Agentify allows or while as many paid orders are left
- * unserved as it allows; or that what would say so could not be read. Selling
- * through a WooCommerce shop is not among them: it holds nothing, and the
- * products it leaves off sale say so on their own rows.
+ * missing, the products are off sale while their integration is not
+ * connected, or new purchases are refused while as many wait for payment as
+ * Agentify allows or while as many paid orders are left unserved as it
+ * allows; or that what would say so could not be read. Selling through a
+ * WooCommerce shop is not among them: it holds nothing, and the products it
+ * leaves off sale say so on their own rows.
  */
 export type AccountReason =
   | "wallet_change"
@@ -175,8 +175,8 @@ export const ACCOUNT_WORDS: Readonly<
     fix: { to: "/settings", words: "Set one in Settings" },
   },
   out_of_touch: {
-    title: "Agents cannot buy products delivered later",
-    says: "Your integration has never connected. These sales start by themselves once it does.",
+    title: "Your products are off sale",
+    says: "Your integration has not connected yet, so agents don't see your products and new purchases are refused until it does.",
     fix: null,
   },
   busy: {
@@ -202,14 +202,14 @@ const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
   "no_seller_name",
   "no_payout_wallet",
   "not_approved",
+  "out_of_touch",
 ]);
 
 /**
  * The banner's heading. One reason is headed by its own title; several by
  * what they come to together where one of them keeps every product off sale,
  * otherwise by the refused purchases where they hold, since those refuse every
- * product where a lost connection silences only those delivered later, and
- * otherwise by the first.
+ * product, and otherwise by the first.
  * Here rather than beside the reasons, so the page's script that draws the
  * banner does not carry the rules that find them.
  */
@@ -244,7 +244,7 @@ export const liveSalesStoppedSince = (when: string, note: string | null): string
 
 /** The out-of-touch reason's line where the integration did connect once, at `when`. */
 export const notConnectedSince = (when: string): string =>
-  `Your integration has not connected since ${when}. These sales resume by themselves once it does.`;
+  `Your integration has not connected since ${when}, so agents don't see your products and new purchases are refused until it connects again.`;
 
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on

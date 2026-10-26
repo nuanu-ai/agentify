@@ -43,7 +43,7 @@ describe("the account banner", () => {
     expect(notes[0]?.says).toMatch(/\.$/);
   });
 
-  it("says since when a merchant's integration has not connected while purchases paid before delivery are refused for it", () => {
+  it("says when a merchant's integration last connected while their products are off sale for it", () => {
     const [since] = accountOf(READY, {
       selling: "open",
       outOfTouch: { since: "2026-10-21T14:02:07.000Z" },

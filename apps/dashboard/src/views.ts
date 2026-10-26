@@ -337,6 +337,29 @@ const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] =
 
 // --- orders ------------------------------------------------------------------
 
+/**
+ * The transfer that paid an order, on its receipt or on the order itself,
+ * reported by the facilitator or verified from chain evidence: a link to the
+ * chain's page where this deployment has one and the name is a transaction
+ * hash, the name as written otherwise. The view holds it whole, for the copy
+ * button and the link: a shortened hash is a different string to whoever
+ * pastes it. An absent transaction means none was recorded on that document;
+ * it does not establish that no transfer occurred.
+ */
+export type TransferView =
+  | Readonly<{ kind: "none" }>
+  | Readonly<{ kind: "link"; href: string; text: string }>
+  | Readonly<{ kind: "text"; text: string }>;
+
+const transferOf = (transaction: string | undefined, page: string | null): TransferView => {
+  if (transaction === undefined) {
+    return { kind: "none" };
+  }
+  return page !== null && /^0x[0-9a-fA-F]{64}$/.test(transaction)
+    ? { kind: "link", href: `${page}${transaction}`, text: transaction }
+    : { kind: "text", text: transaction };
+};
+
 interface OrderRow {
   readonly id: string;
   /** The card's title where the merchant still has the card, its code otherwise. */
@@ -368,6 +391,13 @@ interface OrderRow {
   readonly rest: Rest | null;
   readonly payment: string;
   readonly paymentUnresolved: boolean;
+  /** The transfer that paid the order, which a receipt names only once the goods are out. */
+  readonly transfer: TransferView;
+  /**
+   * Where the documentation says how money goes back to the buyer, on a paid
+   * order that ended without its goods; null otherwise.
+   */
+  readonly refund: Rest | null;
   readonly opened: boolean;
   /** The merchant's closure, with their explanation where they wrote one; its moment is among the facts. */
   readonly closure: Readonly<{ message?: string }> | null;
@@ -690,6 +720,7 @@ export const ordersView = (
   shopTotals: Readonly<Record<string, ShopTotal>> = {},
   connector: Readonly<Record<string, ConnectorSale>> = {},
   stopping: ReadonlySet<string> = new Set(),
+  transactionPage: string | null = null,
 ): OrdersView => {
   const titles = new Map(
     cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
@@ -707,6 +738,12 @@ export const ordersView = (
     paymentUnresolved: order.payment_status === "unresolved",
     opened: query.get("details") === order.id,
     payment: PAYMENT_WORDS[order.payment_status],
+    transfer: transferOf(order.transaction, transactionPage),
+    refund:
+      order.payment_status === "paid" &&
+      (order.status === "unfulfilled" || order.status === "fulfillment_closed")
+        ? REFUND
+        : null,
     closure:
       order.merchant_closure === undefined
         ? null
@@ -795,6 +832,8 @@ export const ordersView = (
           rest: null,
           payment: "Not paid",
           paymentUnresolved: false,
+          transfer: { kind: "none" },
+          refund: null,
           opened: query.get("details") === attempt.id,
           closure: null,
           closing: null,
@@ -951,6 +990,11 @@ const paidAfterClosureIn = (open: OrderList) => {
     listed.has(order.id);
 };
 
+const REFUND: Rest = {
+  href: "/docs/money#if-the-buyer-did-not-get-the-goods",
+  words: "If the buyer did not get the goods",
+};
+
 const PAID_AFTER_CLOSURE =
   "The buyer's payment arrived after you closed this order, so they paid and nothing was delivered through Agentify. Close it again with a note that says what you did.";
 
@@ -1073,28 +1117,6 @@ const shareIn = (
 };
 
 // --- receipts ----------------------------------------------------------------
-
-/**
- * The transfer behind a receipt, reported by the facilitator or verified from
- * chain evidence: a link to the chain's page where this deployment has one and
- * the name is a transaction hash, the name as written otherwise. The view holds
- * it whole, for the copy button and the link: a shortened hash is a different
- * string to whoever pastes it. An absent transaction means none was recorded on this
- * receipt; it does not establish that no transfer occurred.
- */
-export type TransferView =
-  | Readonly<{ kind: "none" }>
-  | Readonly<{ kind: "link"; href: string; text: string }>
-  | Readonly<{ kind: "text"; text: string }>;
-
-const transferOf = (transaction: string | undefined, page: string | null): TransferView => {
-  if (transaction === undefined) {
-    return { kind: "none" };
-  }
-  return page !== null && /^0x[0-9a-fA-F]{64}$/.test(transaction)
-    ? { kind: "link", href: `${page}${transaction}`, text: transaction }
-    : { kind: "text", text: transaction };
-};
 
 interface ReceiptRow {
   readonly id: string;

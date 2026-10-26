@@ -21,6 +21,7 @@ import { Moment } from "../components/moment.js";
 import { NotLoaded } from "../components/not-loaded.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
+import { Transfer } from "../components/transfer.js";
 import { Word } from "../components/word.js";
 import styles from "./orders.module.css";
 
@@ -191,6 +192,11 @@ const OrderFacts = ({ row, marked }: Readonly<{ row: Order; marked: boolean }>) 
       {row.payment}
       <TestMark test={marked && row.test} />
     </Fact>
+    {row.transfer.kind === "none" ? null : (
+      <Fact label="Transfer">
+        <Transfer transfer={row.transfer} />
+      </Fact>
+    )}
     {row.facts.map((fact) => (
       <Fact key={fact.label} label={fact.label}>
         <Moment at={fact.at} />
@@ -240,6 +246,12 @@ const OrderDetails = ({
         <p className={styles.help}>
           {row.why}
           {row.rest === null ? null : <Rest rest={row.rest} />}
+        </p>
+      )}
+      {row.refund === null ? null : (
+        <p className={styles.help}>
+          Any refund is yours to send.
+          <Rest rest={row.refund} />
         </p>
       )}
       {row.paymentUnresolved ? (

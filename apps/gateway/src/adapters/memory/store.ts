@@ -683,6 +683,7 @@ export class MemoryStore implements Store {
       sellerSite: this.#merchants.get(card.merchantId)?.sellerSite ?? null,
       liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
       integration: this.#merchants.get(card.merchantId)?.integration ?? "api",
+      lastContact: this.#contact.get(card.merchantId) ?? null,
     }));
   }
 
