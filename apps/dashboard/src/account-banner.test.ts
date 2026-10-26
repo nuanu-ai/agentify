@@ -168,4 +168,12 @@ describe("the account banner", () => {
       ["not_approved", "https://test.agentify.ad/dashboard/sign-in"],
     ]);
   });
+
+  it("gives a merchant not yet approved for live sales the address to ask for approval at", () => {
+    const notYet = accountOf({ ...READY, liveApproval: false }).find(
+      (note) => note.reason === "not_approved",
+    );
+
+    expect(notYet?.says).toContain("admin@agentify.ad");
+  });
 });
