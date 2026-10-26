@@ -852,11 +852,25 @@ describe("what the payout would bring", () => {
     expect(readable(pageWith("live", 999n))).toMatch(/would bring 0\.000999 USDC/);
   });
 
-  it("is said as of the moment the page was drawn, with what can change it before the payout is sent", () => {
-    const text = readable(pageWith("live", 12_340_000n));
+  it("is shown only beside the transaction it was read for, never where no transaction is drawn", () => {
+    const shown = pageWith("live", 12_340_000n);
+    const tooMany = settingsPage({
+      mode: "live",
+      wallet: W,
+      splits: splitsFor("live", W, { tooMany: 21 }),
+    });
+    const unbuilt = settingsPage({
+      mode: "live",
+      wallet: W,
+      splits: { ...splitsFor("live", W), payout: "unbuilt" },
+    });
 
-    expect(text).toMatch(/when this page was drawn/);
-    expect(text).toMatch(/Agentify's own payout/);
+    expect(shown).toContain("<textarea");
+    expect(readable(shown)).toMatch(AN_AMOUNT);
+    for (const html of [tooMany, unbuilt]) {
+      expect(html).not.toContain("<textarea");
+      expect(readable(html)).not.toMatch(AN_AMOUNT);
+    }
   });
 
   it("leaves no payout to send where it is nothing, and says so", () => {
