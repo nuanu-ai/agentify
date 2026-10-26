@@ -1821,6 +1821,91 @@ describe("stopping", () => {
     expect(about(question.price_id)[0]).toMatch(/silent price check/);
   });
 
+  it("does not hand an event to its handler once the stop has said it was not called", async () => {
+    // The event waits behind its order's answer; when the stop gives up, the
+    // answer is cut off and the order's work ends, and that must not be the
+    // moment the event reaches a process that has already stopped.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const handled: string[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order, envelopes.event)),
+        answer_order: () => new Promise<never>(() => {}),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => ({ delivered: { access_url: "https://a.example" } }),
+        event: (arrived) => {
+          handled.push(arrived.type);
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+    await stopGivingUp(worker, clock);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(problems.map((problem) => problem.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+    ]);
+    expect(handled).toStrictEqual([]);
+  });
+
+  it("does not hand a repeat of an order to its handler once the stop has given up on it", async () => {
+    // The repeat waits behind a slow event for the same order. Run after the
+    // stop, it would issue goods that nothing sends and nothing reports.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const eventMayFinish = Promise.withResolvers<void>();
+    let inTheEventHandler = false;
+    const ordersHandled: string[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.event, envelopes.order)),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: (given) => {
+          ordersHandled.push(given.id);
+          return { delivered: { access_url: "https://a.example" } };
+        },
+        event: async () => {
+          inTheEventHandler = true;
+          await eventMayFinish.promise;
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await waitUntil(() => inTheEventHandler, "the event handler");
+    await stopGivingUp(worker, clock);
+    eventMayFinish.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(ordersHandled).toStrictEqual([]);
+    expect(gateway.callsTo("answer_order")).toStrictEqual([]);
+    expect(problems).toHaveLength(2);
+    expect(problems.find((problem) => !problem.message.includes(event.type))?.message).toMatch(
+      /not called/,
+    );
+  });
+
   it("says how much of a batch it left unread", async () => {
     // Orders and price questions come back on their own, an event does not;
     // the merchant is told what went unread.
