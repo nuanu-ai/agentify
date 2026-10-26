@@ -330,6 +330,7 @@ interface HowTheySell {
 /** What `offSaleNow` asks of one card of a merchant read as `theirs`. */
 const saleFactsOf = (stored: StoredCard, theirs: HowTheySell): SaleFacts => ({
   selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
+  price: stored.card.price,
   unserved: theirs.unserved,
   through: theirs.integration,
   lastContact: theirs.lastContact,
@@ -370,6 +371,8 @@ export type OffSale =
 export interface SaleFacts {
   /** The card's word from `sellingFor`. */
   readonly selling: MerchantSelling;
+  /** The card's price as stored, held to the price rule as it stands now. */
+  readonly price: Card["price"];
   /** Whether its seller has as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
   /** The integration its seller sells through. */
@@ -384,7 +387,9 @@ export interface SaleFacts {
  * the cards this answers null for, and the purchase door refuses with its
  * answer, so an agent is never shown a product it cannot buy.
  *
- * A seller silent beyond `SILENT_AFTER_MS` is refused whatever the card's
+ * A card whose stored price the price rule refuses is not on sale: it was
+ * published before the rule was as strict, and is sold again once its
+ * merchant publishes it at a price the rule takes. A seller silent beyond `SILENT_AFTER_MS` is refused whatever the card's
  * mode: a synchronous purchase would charge nothing, but nobody would draw
  * its order, so it could only lapse after the buyer had signed and waited. A
  * shop sold through the connector is never silent, since the connector runs
@@ -393,7 +398,9 @@ export interface SaleFacts {
  * without paying, so it must not empty a seller's listing.
  */
 export const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
-  if (facts.selling !== "open") return { code: "not_selling", transient: false };
+  if (facts.selling !== "open" || priceProblemsOf(facts.price).length > 0) {
+    return { code: "not_selling", transient: false };
+  }
   if (facts.unserved) return { code: "seller_not_fulfilling", transient: false };
   if (facts.through === "api" && silentAt(facts.lastContact, at)) {
     return { code: "seller_not_taking_orders", transient: true };
@@ -876,6 +883,7 @@ export class Gateway {
             offSaleNow(
               {
                 selling: entry.selling,
+                price: entry.card.card.price,
                 unserved: stopped.has(entry.card.merchantId),
                 through: entry.integration,
                 lastContact: entry.lastContact,
