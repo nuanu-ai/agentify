@@ -17,7 +17,7 @@ import { lazyPart, useHere } from "./lazy-part";
 import layout from "./result-layout.module.css";
 import styles from "./scan-experience.module.css";
 import { ScanFailed } from "./scan-failed";
-import { SiteFooter, SiteTop } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
@@ -176,7 +176,7 @@ export function ScanExperience({
 
   return (
     <div className={layout.page}>
-      <SiteTop />
+      <SiteHeader current="scanner" />
       <main className={scored && !holding ? layout.body : "message-page"} id="main">
         {scored && !holding ? (
           <Suspense

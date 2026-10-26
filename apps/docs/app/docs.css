@@ -441,12 +441,11 @@ input {
   display: none;
 }
 
-/* The pages in the header's menu, where the page has no column for them. */
+/* The pages in the header's menu, where the page has no column for them;
+   the menu draws the rule under them. */
 .docs-menu .docs-contents {
   gap: 14px;
-  margin-bottom: 10px;
-  border-bottom: var(--hairline) solid var(--line);
-  padding: 4px 0 14px;
+  padding: 4px 0 6px;
 }
 
 .docs-menu .docs-group {

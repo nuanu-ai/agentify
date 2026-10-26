@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReportLocked } from "../../components/report-locked";
 import { ReportPage } from "../../components/report-page";
+import { barIn } from "../../testing/bar";
 import { visitTo } from "../../testing/loader-args";
 import { onSite } from "../../testing/on-site";
 
@@ -92,6 +93,24 @@ afterEach(() => {
 });
 
 describe("a report's page", () => {
+  it.each([
+    ["the report", undefined],
+    ["a stranger's page", { kind: "stranger" }],
+    ["the page for somebody else", { kind: "not_yours", email: "someone-else@shop.example" }],
+    ["the page for a visitor nobody could tell", { kind: "unknown", scanId: SCAN }],
+  ] as const)(
+    "draws the site's one bar over %s, the scanner marked as where the page is",
+    async (_, locked) => {
+      if (locked !== undefined) world.page = locked;
+
+      const bar = barIn(await drawn());
+
+      expect(bar.count).toBe(1);
+      expect(bar.whole).toBe(true);
+      expect(bar.marked).toStrictEqual(["Scanner"]);
+    },
+  );
+
   it("names the address a signed-in person is, where the report is filed under another, and offers to sign in with another", async () => {
     world.page = { kind: "not_yours", email: "someone-else@shop.example" };
 

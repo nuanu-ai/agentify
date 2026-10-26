@@ -737,13 +737,7 @@ describe("the passwordless dashboard door", () => {
     const page = (await browser.get("/dashboard/sign-in")).html;
     const bar = /<header class="site-header">([\s\S]*?)<\/header>/.exec(page)?.[1] ?? "";
 
-    for (const href of [
-      "/",
-      "/docs/scanner",
-      "/docs/scanner/methodology",
-      "/docs/",
-      "/dashboard",
-    ]) {
+    for (const href of ["/", "/agentic-shop", "/docs/", "/dashboard"]) {
       expect(bar, href).toContain(`href="${href}"`);
     }
     expect(bar).not.toContain("site-who");
@@ -4743,17 +4737,20 @@ const waysIn = (html: string): (readonly [string, string])[] =>
     ([, href = "", words = ""]) => [readable(words), href] as const,
   );
 
-/** The public site's sections and the door to the dashboard, as they lead from under its prefix. */
-const PUBLIC_WAYS = [
+/** What the site offers, at the start of a public page's bar. */
+const OFFERS = [
+  ["Scanner", "/"],
   ["Sell to agents", "/agentic-shop"],
-  ["Scanner", "/docs/scanner"],
-  ["Methodology", "/docs/scanner/methodology"],
-  ["Privacy", "/privacy"],
-  ["Dashboard", "/dashboard"],
 ] as const;
 
+/** The account's menu in a bar: the address its button shows, and the markup it opens. */
+const accountIn = (bar: string) => {
+  const menu = /<details class="site-account"[^>]*>([\s\S]*?)<\/details>/.exec(bar)?.[1] ?? "";
+  return { who: readable(/<summary[^>]*>([\s\S]*?)<\/summary>/.exec(menu)?.[1] ?? ""), menu };
+};
+
 describe("what every screen says about the address", () => {
-  it("carries the documentation, the signed-in address and a sign-out in the working header of every page in the frame, and none of the public site's sections or a door to the dashboard", async () => {
+  it("names the signed-in address on the account's menu, with the settings and a sign-out, in the bar of every page in the frame, the dashboard marked and none of the site's offers", async () => {
     // Somebody working in the dashboard is already inside it, and the public
     // site's pages are the front page's lockup away.
     const { browser } = await started({ base: "/dashboard", wooShops: memoryWooShops() });
@@ -4765,20 +4762,21 @@ describe("what every screen says about the address", () => {
       expect(answered.headers.get("cache-control"), path).toBe("private, no-store");
       const bar = barOf(answered.html);
       const ways = waysIn(bar);
+      const account = accountIn(bar);
 
       expect(
-        ways.filter(([words, href]) =>
-          PUBLIC_WAYS.some(([name, to]) => words === name || href === to),
-        ),
+        ways.filter(([words]) => OFFERS.some(([name]) => words === name)),
         path,
       ).toStrictEqual([]);
       expect(ways, path).toContainEqual(["Docs", "/docs/"]);
-      expect(ways, path).toContainEqual([PERSON, "/dashboard/settings"]);
-      expect(formTo(bar, "post", "/dashboard/sign-out"), path).toBeDefined();
+      expect(bar, path).toMatch(/<a aria-current="true" href="\/dashboard"[^>]*>Dashboard<\/a>/);
+      expect(account.who, path).toBe(PERSON);
+      expect(waysIn(account.menu), path).toContainEqual(["Settings", "/dashboard/settings"]);
+      expect(formTo(account.menu, "post", "/dashboard/sign-out"), path).toBeDefined();
     }
   });
 
-  it("keeps the site header, its sections and its door to the dashboard, over a page outside the frame for somebody signed in", async () => {
+  it("offers what the site offers, and the account, over a page outside the frame for somebody signed in", async () => {
     const running = await started({ base: "/dashboard" });
     await running.browser.signIn();
     running.forgetMerchant(PERSON);
@@ -4788,9 +4786,12 @@ describe("what every screen says about the address", () => {
 
     expect(answered.status).toBe(200);
     expect(waysIn(bar)).toEqual(
-      expect.arrayContaining(PUBLIC_WAYS.map(([name, to]) => [name, to])),
+      expect.arrayContaining([
+        ...OFFERS.map(([name, to]) => [name, to]),
+        ["Dashboard", "/dashboard"],
+      ]),
     );
-    expect(readable(bar)).toContain(PERSON);
+    expect(accountIn(bar).who).toBe(PERSON);
     expect(formTo(bar, "post", "/dashboard/sign-out")).toBeDefined();
   });
 
@@ -4912,16 +4913,15 @@ describe("what every screen says about the address", () => {
     },
   );
 
-  it("links the signed-in address to settings without a confirmation control", async () => {
+  it("opens the settings from the signed-in address without a confirmation control", async () => {
     const { browser } = await started();
     await browser.signIn();
 
     for (const path of ["/cards", "/orders", "/receipts", "/keys", "/settings"]) {
       const answered = await browser.get(path);
-      const link = /<a class="site-who" [^>]*href="\/settings"[^>]*>([^<]*)<\/a>/.exec(
-        answered.html,
-      );
-      expect(link?.[1], path).toBe(PERSON);
+      const account = accountIn(barOf(answered.html));
+      expect(account.who, path).toBe(PERSON);
+      expect(waysIn(account.menu), path).toContainEqual(["Settings", "/settings"]);
       expect(answered.html, path).not.toContain('action="/confirm"');
     }
   });

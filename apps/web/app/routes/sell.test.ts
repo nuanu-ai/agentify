@@ -53,7 +53,7 @@ describe("the merchant landing", () => {
     expect(head).toContain('<meta property="og:type" content="website"/>');
   });
 
-  it("leads to the dashboard, the documentation and its own sections, and answers no form", async () => {
+  it("leads to the dashboard, the documentation and how it works, and answers no form", async () => {
     const html = await (await ask("/sell")).text();
     const links = linksIn(html);
 
@@ -61,10 +61,8 @@ describe("the merchant landing", () => {
     for (const href of ["/dashboard/sign-in", "/docs/", "/docs/quickstart", "/docs/cards"]) {
       expect(links).toContain(href);
     }
-    for (const section of ["#how", "#connect", "#money", "#pricing"]) {
-      expect(links).toContain(section);
-      expect(html).toContain(`id="${section.slice(1)}"`);
-    }
+    expect(links).toContain("#how");
+    expect(html).toContain('id="how"');
     expect(html).not.toMatch(/<form\b/);
   });
 
@@ -105,11 +103,10 @@ describe("the pricing the landing shows", () => {
     }
   });
 
-  it("leaves no pricing and no link to it where none is shown", () => {
+  it("leaves no pricing where none is shown", () => {
     const html = drawn({ options: [] });
 
     expect(html).not.toContain('id="pricing"');
-    expect(linksIn(html)).not.toContain("#pricing");
-    expect(linksIn(html)).toContain("#money");
+    expect(html).toContain('id="money"');
   });
 });

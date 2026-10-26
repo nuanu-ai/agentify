@@ -1,4 +1,4 @@
-import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
+import { Badge, type BadgeTone, SurfaceNote } from "@agentify/ui";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { ChannelView } from "@agentify/ui/workspace-view";
@@ -575,7 +575,7 @@ export function drawOperatorPage({
       <WorkspaceFrame
         surface="scanner"
         link={Anchor}
-        visitor={<SignedIn who={who} account="/dashboard/settings" signOut="/dashboard/sign-out" />}
+        who={who}
         channel={channel}
         section="scanner"
         heading="Scanner"

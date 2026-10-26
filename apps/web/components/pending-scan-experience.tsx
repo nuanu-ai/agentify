@@ -5,7 +5,7 @@ import { captureLandingAttribution } from "../lib/attribution-client";
 import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
 import { press } from "../lib/press";
 import styles from "./pending-scan-experience.module.css";
-import { SiteFooter, SiteTop } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { TURNSTILE_TOKEN_EVENT, TurnstileChallenge } from "./turnstile-challenge";
 
@@ -165,7 +165,7 @@ export function PendingScanExperience({
   const starting = state === "starting";
   return (
     <>
-      <SiteTop />
+      <SiteHeader current="scanner" />
       <main className="message-page" id="main">
         <section className="message-panel">
           <div className="message-meta">

@@ -2,7 +2,7 @@ import type { MetaArgs } from "react-router";
 
 import { AccountActions } from "../../components/account-actions";
 import { usePublicConfig } from "../../components/public-config";
-import { SiteFooter, SiteHeader } from "../../components/site-chrome";
+import { SiteFooter, SiteHeader, Trail } from "../../components/site-chrome";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 
 export const meta = ({ matches }: MetaArgs) =>
@@ -25,6 +25,7 @@ export default function DataRequestPage() {
       <SiteHeader />
       <main className="message-page" id="main">
         <section className="message-panel">
+          <Trail parent={["Privacy", "/privacy"]} page="Data request" />
           <h1>Request access or deletion</h1>
           <p>
             Ask for a copy of the data held for your address, or have it deleted.{" "}

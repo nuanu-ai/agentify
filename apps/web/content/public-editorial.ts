@@ -16,7 +16,6 @@ export type EditorialBlock =
 
 export type PublicEditorialPageModel = Readonly<{
   path: PublicEditorialPath;
-  eyebrow: string;
   title: string;
   intro: string;
   sections: readonly Readonly<{
@@ -35,7 +34,6 @@ const link = (value: string, href: string): InlineNode => ({
 
 const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   path: "/privacy",
-  eyebrow: "Privacy · deployment policy",
   title: "Privacy and data controls",
   intro:
     "We minimize personal data, keep scan capabilities private by default, and separate essential processing from optional analytics, dataset reuse, and marketing.",
@@ -155,7 +153,6 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
 
 const termsPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   path: "/terms",
-  eyebrow: "Terms · diagnostic service",
   title: "Terms of use",
   intro: `Use ${config.displayBrand} only for lawful inspection of public websites. A diagnostic result is evidence from a bounded HTTP scan, not a certification or outcome guarantee.`,
   sections: [
