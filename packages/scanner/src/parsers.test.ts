@@ -404,6 +404,16 @@ document.write('<script src="/js/legacy.js"></script>');
     expect(htmlSignals(page).hasTitle).toBe(false);
   });
 
+  it("reads a declarative shadow root as the page, and a plain template as nothing", () => {
+    // A web component rendered on the server writes its content into a
+    // template that the browser attaches as the element's shadow root.
+    const card = `<product-card><template shadowrootmode="open"><!--lit-part AbCdEf--><h1>Wool Runner</h1><span class="price">$98.00</span><!--/lit-part--></template></product-card>`;
+    expect(htmlSignals(card)).toMatchObject({ hasH1: true, hasPrice: true });
+    expect(visibleText(card)).toBe("Wool Runner $98.00");
+    const older = `<product-card><template shadowroot="open"><p>Wool Runner</p><template><p>{{ price }}</p></template></template></product-card>`;
+    expect(visibleText(older)).toBe("Wool Runner");
+  });
+
   it("reads the page after an SVG icon a theme left open, as a browser does", () => {
     const page = `<a class="header__icon" href="/cart"><svg class="icon icon-cart" viewBox="0 0 40 40"><path d="M15.75 11.8h-3.16l-.77 11.6"/></a>
 <div class="product"><h1>Wool Runner</h1><p>Soft merino wool.</p></div>`;
