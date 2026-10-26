@@ -159,6 +159,7 @@ type PageReading = {
   microdata: MarkedPrice;
   meta: MarkedPrice;
   productFeed: boolean;
+  ownProductFeed: boolean;
   product: boolean;
   availability: boolean;
 };
@@ -180,24 +181,19 @@ const FEED_TYPES = [
   "text/tab-separated-values",
 ];
 const FEED_FILE = /\.(?:xml|rss|atom|csv|tsv)$/;
-// The feed is the shop's products' when a word of its title or address
-// names them (product, Produk, produits, Produkte, prodotti, catalog,
-// Katalog, catálogo, merchant), or when its address is in the shop's base,
-// in the languages WooCommerce shops write it. A title is the site's name
-// too, which may say "shop", so a title counts by the first kind of word
-// alone.
-const PRODUCT_WORD = /^(?:produ|prodott|cat[aá]log|katalog|merchant)/;
-const SHOP_BASES = new Set([
-  "shop",
-  "store",
-  "toko",
-  "boutique",
-  "tienda",
-  "negozio",
-  "loja",
-  "laden",
-  "collections",
-]);
+// A products feed is known by its own words and by the forms of its
+// address, never by words that belong to the site or the page around it: a
+// site's name or a product's name may say produce, Produk or catalog. The
+// words, whole, are those for products in the languages WooCommerce shops
+// title their feeds in, and for a catalog or a merchant feed.
+const PRODUCT_WORD =
+  /^(?:products?|produk|produits?|produkte?n?|productos?|produtos?|prodott[oi]|catalog(?:ue)?s?|katalog|cat[aá]logos?|merchant)$/;
+// The words of a product category's or tag's base, which WooCommerce writes
+// as product-category or kategori-produk.
+const ARCHIVE_WORD =
+  /^(?:category|categorie|categoria|kategori|kategorie|tag|etiquette|etiqueta|schlagwort)$/;
+// The parts WordPress puts between a site's name and a feed's own title.
+const TITLE_SEPARATOR = / (?:»|\||·|–|—) /;
 // An address as written, where its escapes are well formed.
 const decoded = (address: string): string => {
   try {
@@ -226,39 +222,74 @@ const PRODUCT_PROPERTIES = [
 ];
 const PRODUCT_TYPE = /^https?:\/\/schema\.org\/product$/;
 
-// Whether a `<link>` declares a feed of the shop's products. A page's own
-// address plus `feed/` is where WordPress puts the feed of that page's
-// comments, a product's reviews among them, so it counts only when its
-// title names products, as a shop page's own products feed does. The host
-// is left out, since it may name the shop rather than the feed.
-const declaresProductFeed = (attributes: ReadonlyMap<string, string>, page?: URL): boolean => {
-  if (!tokens(asciiLower(attributes.get("rel") ?? "")).includes("alternate")) return false;
-  if (attributes.has("hreflang")) return false;
+// The words of a feed's own title: what follows the last separator after a
+// site's name, or the whole title when there is none.
+const feedTitleWords = (title: string): string[] =>
+  words(title.split(TITLE_SEPARATOR).at(-1) ?? "");
+
+// Whether an address has the form of a products feed: WooCommerce's feed of
+// the product post type or of a product category, Shopify's feed of a
+// collection, a product category's or tag's archive feed, a feed whose
+// path segment right before `feed` names products, or a feed file whose
+// name does.
+const productFeedAddress = (address: URL): boolean => {
+  const query = address.searchParams;
+  if (query.get("post_type") === "product" || query.has("product_cat") || query.has("product_tag"))
+    return true;
+  const segments = address.pathname
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decoded(segment).toLowerCase());
+  const last = segments.at(-1) ?? "";
+  if (segments.at(-2) === "collections" && /\.(?:atom|rss)$/.test(last)) return true;
+  const feed = segments.lastIndexOf("feed");
+  if (feed > 0) {
+    if (words(segments[feed - 1] ?? "").some((word) => PRODUCT_WORD.test(word))) return true;
+    const base = words(segments[feed - 2] ?? "");
+    return (
+      base.some((word) => PRODUCT_WORD.test(word)) && base.some((word) => ARCHIVE_WORD.test(word))
+    );
+  }
+  return (
+    FEED_FILE.test(last) &&
+    words(last.replace(FEED_FILE, "")).some((word) => PRODUCT_WORD.test(word))
+  );
+};
+
+type FeedLink = "products" | "own" | undefined;
+
+// Whether a `<link>` declares a feed of the shop's products, and whether it
+// is at the page's own address plus `feed/`, where WordPress puts the feed
+// of the page's comments. The page decides what that one is: a product
+// page's is its reviews feed, whatever its title says. Addresses are
+// compared by path, since an install may write its host or scheme otherwise.
+const productFeedLink = (attributes: ReadonlyMap<string, string>, page?: URL): FeedLink => {
+  if (!tokens(asciiLower(attributes.get("rel") ?? "")).includes("alternate")) return undefined;
+  if (attributes.has("hreflang")) return undefined;
   let address: URL;
   try {
     address = new URL(attributes.get("href") ?? "", page ?? "https://page.invalid/");
   } catch {
-    return false;
+    return undefined;
   }
   const path = address.pathname.toLowerCase();
+  if (
+    decoded(path + address.search)
+      .toLowerCase()
+      .includes("sitemap")
+  )
+    return undefined;
   const type =
     asciiLower(attributes.get("type") ?? "")
       .split(";")[0]
       ?.trim() ?? "";
-  if (!FEED_TYPES.includes(type) && !FEED_FILE.test(path)) return false;
-  const title = attributes.get("title") ?? "";
-  if (COMMENTS.test(title.toLowerCase())) return false;
-  const titled = words(title).some((word) => PRODUCT_WORD.test(word));
-  if (page && address.origin === page.origin) {
-    const own = page.pathname.toLowerCase();
-    if (path === `${own.endsWith("/") ? own : `${own}/`}feed/`) return titled;
-  }
-  return (
-    titled ||
-    words(decoded(path + address.search)).some(
-      (word) => PRODUCT_WORD.test(word) || SHOP_BASES.has(word),
-    )
-  );
+  if (!FEED_TYPES.includes(type) && !FEED_FILE.test(path)) return undefined;
+  const title = feedTitleWords(attributes.get("title") ?? "");
+  if (COMMENTS.test(title.join(" "))) return undefined;
+  if (!title.some((word) => PRODUCT_WORD.test(word)) && !productFeedAddress(address))
+    return undefined;
+  const own = page?.pathname.toLowerCase() ?? "";
+  return page && path === `${own.endsWith("/") ? own : `${own}/`}feed/` ? "own" : "products";
 };
 const DIGIT = /\p{Nd}/u;
 
@@ -289,6 +320,7 @@ const walkPage = (html: string, url?: string): PageReading => {
     microdata: {},
     meta: {},
     productFeed: false,
+    ownProductFeed: false,
     product: false,
     availability: false,
   };
@@ -346,7 +378,9 @@ const walkPage = (html: string, url?: string): PageReading => {
       ) {
         const hreflang = attributes.get("hreflang");
         if (hreflang) reading.hreflangs.push(hreflang);
-        if (declaresProductFeed(attributes, page)) reading.productFeed = true;
+        const feed = productFeedLink(attributes, page);
+        if (feed === "products") reading.productFeed = true;
+        if (feed === "own") reading.ownProductFeed = true;
       }
       if (tag.name === "meta") {
         const property = asciiLower(attributes.get("property") ?? attributes.get("name") ?? "");
@@ -468,6 +502,7 @@ const jsonLdFacts = (values: readonly unknown[]) => {
 
 const signalsOf = (reading: PageReading, jsonLd: readonly unknown[]) => {
   const stated = jsonLdFacts(jsonLd);
+  const describesProduct = reading.product || stated.product;
   const price =
     stated.price ??
     markedPrice("microdata", reading.microdata) ??
@@ -482,9 +517,9 @@ const signalsOf = (reading: PageReading, jsonLd: readonly unknown[]) => {
     productLinkCount: reading.productLinkCount,
     hreflangs: reading.hreflangs,
     /** A link to a feed of the shop's products. */
-    productFeed: reading.productFeed,
+    productFeed: reading.productFeed || (reading.ownProductFeed && !describesProduct),
     /** A product declared in Open Graph, microdata or JSON-LD. */
-    describesProduct: reading.product || stated.product,
+    describesProduct,
     /** A price or an availability stated in structured data. */
     statesOffer:
       (price !== undefined && price.source !== "text") ||
