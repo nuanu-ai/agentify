@@ -623,7 +623,9 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
             permissions: connection.permissions,
           } satisfies ShopFacts,
           uncertain: async (orderIds: readonly string[]) =>
-            await shops.recoverableOrders(account.id, orderIds),
+            Object.entries(await shops.heldSales(account.id, orderIds)).flatMap(([id, held]) =>
+              held === "recoverable" ? [id] : [],
+            ),
         };
       }
       return { shop: null, uncertain: async () => [] };

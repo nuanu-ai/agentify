@@ -8,6 +8,7 @@
  */
 
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
+import { encodeAbiParameters, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
 import {
   COMMISSION,
@@ -24,10 +25,12 @@ import {
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./networks.js";
 import { type PayoutSplit, payoutSplitFor, splitParametersOf } from "./parameters.js";
 import {
+  broughtBy,
   createSplitCall,
   distributeCall,
   merchantPayout,
   operatorPayouts,
+  payoutDryRun,
   withdrawCall,
 } from "./payout.js";
 
@@ -520,6 +523,107 @@ describe("the operator's payout over more splits than one transaction carries", 
       expect(distributed).toStrictEqual(splits.map(({ address }) => address.toLowerCase()));
     },
   );
+});
+
+describe("a dry run of a merchant's payout", () => {
+  /** `balanceOf(address)`, USDC's read of what an address holds. */
+  const BALANCE_OF = "70a08231";
+
+  /** How Multicall3 answers `aggregate3`: each call's success and what it returned. */
+  const answerOf = (results: readonly (readonly [boolean, Hex])[]): Hex =>
+    encodeAbiParameters(
+      [
+        {
+          type: "tuple[]",
+          components: [
+            { name: "success", type: "bool" },
+            { name: "returnData", type: "bytes" },
+          ],
+        },
+      ],
+      [results.map(([success, returnData]) => ({ success, returnData }))],
+    );
+
+  const balance = (units: bigint): readonly [boolean, Hex] => [
+    true,
+    `0x${units.toString(16).padStart(WORD, "0")}`,
+  ];
+
+  /** What the payout itself answers inside the dry run; its words are not read. */
+  const RAN: readonly [boolean, Hex] = [true, answerOf([])];
+
+  const twoWallets = merchantPayout(
+    WITH_THE_EXPERIMENTS_COMMISSION,
+    handEncoded.payouts.merchantOverTwoWallets.merchantWallets.map((wallet) =>
+      payoutSplitFor(
+        WITH_THE_EXPERIMENTS_COMMISSION,
+        handEncoded.payouts.merchantOverTwoWallets.merchantId,
+        wallet,
+      ),
+    ),
+    NETWORKS,
+  );
+
+  it("runs the very payout on the screen through Multicall3, between two reads of each wallet it pays", () => {
+    // The payout's own calls run as Multicall3 inside it, as they do when it
+    // is sent, so what the chain answers is what sending it now would do.
+    const payout = merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT], NETWORKS);
+    const run = payoutDryRun(TEST_NETWORK, payout);
+    const readOf = (wallet: string) =>
+      call(TEST_NETWORK.usdc, false, `0x${BALANCE_OF}${word(wallet)}`);
+
+    expect(run.to).toBe(MULTICALL3);
+    expect(callsOf(run.data)).toStrictEqual([
+      readOf(MERCHANT),
+      call(MULTICALL3, false, payout.data),
+      readOf(MERCHANT),
+    ]);
+  });
+
+  it("reads each wallet a payout over two wallets pays, in the order it pays them", () => {
+    const [first, second] = handEncoded.payouts.merchantOverTwoWallets.merchantWallets;
+    const reads = callsOf(payoutDryRun(TEST_NETWORK, twoWallets).data)
+      .filter(({ target }) => target === TEST_NETWORK.usdc.toLowerCase())
+      .map(({ data }) => addressIn(argumentOf(data, 0)));
+
+    expect(reads).toStrictEqual([first, second, first, second].map((w) => w.toLowerCase()));
+  });
+
+  it("counts what the payout adds to its wallets together, and not what they held before it", () => {
+    const run = payoutDryRun(TEST_NETWORK, twoWallets);
+
+    const brought = broughtBy(
+      run,
+      answerOf([balance(5n), balance(70n), RAN, balance(1_005n), balance(70n)]),
+    );
+
+    expect(brought).toBe(1_000n);
+  });
+
+  it("counts nothing where the payout adds nothing", () => {
+    const run = payoutDryRun(TEST_NETWORK, merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS));
+
+    expect(broughtBy(run, answerOf([balance(42n), RAN, balance(42n)]))).toBe(0n);
+  });
+
+  it.each([
+    ["a result missing", [balance(5n), RAN]],
+    ["a read that failed", [balance(5n), RAN, [false, "0x"] as const]],
+    ["a payout that failed", [balance(5n), [false, "0x"] as const, balance(5n)]],
+    ["a wallet holding less after the payout", [balance(5n), RAN, balance(4n)]],
+  ])("is no answer where the chain's reply has %s", (_, results) => {
+    const run = payoutDryRun(TEST_NETWORK, merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS));
+
+    expect(refusal(() => broughtBy(run, answerOf(results)))).not.toBe("");
+  });
+
+  it("is refused for a payout sent anywhere but this network's Multicall3", () => {
+    const payout = merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS);
+
+    expect(
+      refusal(() => payoutDryRun(TEST_NETWORK, { ...payout, to: TEST_NETWORK.warehouse })),
+    ).toMatch(/Multicall3/);
+  });
 });
 
 /** Why building a payout threw, or a failure of the test where it built one. */

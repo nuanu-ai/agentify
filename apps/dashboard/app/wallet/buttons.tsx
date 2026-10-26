@@ -22,6 +22,12 @@ const coinbase = () => import("./coinbase.js");
 
 const LIMIT = `${WALLET_ANSWERS_WITHIN_MS / 60_000} minutes`;
 
+/**
+ * What the buttons say. Coinbase's window closes the same way whether the
+ * merchant closed it or it stopped on an error of its own, such as a network
+ * it refuses, so the words for a closed window name neither and point to what
+ * the same screen offers without it.
+ */
 export const WALLET_WORDS = {
   connect: "Create or connect a Coinbase Wallet",
   connectLead:
@@ -30,31 +36,39 @@ export const WALLET_WORDS = {
     "The wallet is yours alone: nothing leaves it without your approval in Coinbase's window. Coinbase keeps no copy of your passkey or recovery key and cannot recover them, so keeping a way back into it is up to you.",
   manageAt: "https://wallet.coinbase.com",
   recoveryAt: "https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery",
-  waiting: "Waiting for Coinbase Wallet…",
+  waitingAddress:
+    "Waiting for Coinbase's window. If it has closed without an answer, it is safe to press again.",
+  waitingPayout:
+    "Waiting for Coinbase's window. If it has closed without an answer, it is safe to press again: a second payout pays out only what the first left.",
   addressInTheBox:
     "Your Coinbase Wallet's address is in the box. Check it against the wallet, then save it; nothing has changed yet.",
-  connectClosed: "Coinbase Wallet was closed. The box is as you left it.",
+  connectClosed:
+    "Coinbase's window closed without giving an address, and the box is as you left it. Press again, or enter an address by hand.",
   connectLost:
-    "Coinbase Wallet's answer was lost, as happens when another of its buttons is pressed while its window is open. Press again.",
-  connectUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page stopped waiting. The box is as you left it; press again.`,
+    "Coinbase Wallet's answer was lost, as happens when another of its buttons is pressed while its window is open. Press again, or enter an address by hand.",
+  connectUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page stopped waiting. The box is as you left it; press again, or enter an address by hand.`,
   connectFailed: "Coinbase Wallet gave no address. You can still enter one by hand.",
   connectNotOpened:
     "This page could not open Coinbase Wallet. Press again, or enter an address by hand.",
   payOut: "Pay out with Coinbase Wallet",
   payoutLead:
     "With a Coinbase Wallet you send it in one step: Coinbase's window asks you to approve it, and nothing is sent until you do.",
-  payoutSent:
-    "Coinbase Wallet sent the payout. Your payout contract's page shows once the network has carried it out.",
-  payoutClosed: "Coinbase Wallet was closed before the payout was asked for. Nothing was sent.",
+  /** `brings` is the amount the page showed, with its currency, or null where it did not know it. */
+  payoutSent: (brings: string | null): string =>
+    `You asked Coinbase Wallet to send the payout${
+      brings === null ? "" : `, which would bring you ${brings} as this page showed it`
+    }, and it accepted. The money reaches your wallet once the network carries the payout out, and until then this page goes on counting it as waiting, so give it a few minutes and reload before you send another.`,
+  payoutClosed:
+    "Coinbase's window closed before the payout was asked for, so nothing was sent. Press again, or send the payout from another wallet with the values below.",
   payoutUnconfirmed:
-    "Coinbase Wallet's window closed without confirming the payout. If you approved it there, it may still go out, so check what your payout contract holds before sending another.",
-  payoutUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page does not know whether the payout went out. Check what your payout contract holds before sending another.`,
+    "Coinbase's window closed without confirming the payout. If you approved it there, it may still go out, and this page counts it as waiting until the network carries it out, so give it a few minutes and reload before you send another, from Coinbase Wallet or from another wallet with the values below.",
+  payoutUnanswered: `Coinbase Wallet gave no answer within ${LIMIT}, so this page does not know whether the payout went out. Give it a few minutes and reload before you send another, from Coinbase Wallet or from another wallet with the values below.`,
   payoutEarlierStands:
-    "Coinbase Wallet sent nothing this time. It did send a payout from this page earlier.",
+    "Coinbase Wallet sent nothing this time. It accepted a payout from this page earlier, which this page counts as waiting until the network carries it out.",
   payoutUnknown:
-    "Coinbase Wallet did not tell this page whether a payout it was asked for went out. Check what your payout contract holds before sending another.",
+    "Coinbase Wallet did not tell this page whether a payout it was asked for went out. Give it a few minutes and reload before you send another, from Coinbase Wallet or from another wallet with the values below.",
   payoutNotSent:
-    "Coinbase Wallet stopped before the payout was asked for, so nothing was sent. Press again, or send the payout below from another wallet.",
+    "Coinbase Wallet stopped before the payout was asked for, so nothing was sent. Press again, or send the payout from another wallet with the values below.",
 } as const;
 
 /** What a press on a button answers when Coinbase Wallet's code could not be fetched or started. */
@@ -73,16 +87,15 @@ function useScriptRuns(): boolean {
  * as when a phone closes its tab, and a held button would then stay held; a
  * second press is taken instead.
  */
-function usePresses(): [
-  string,
-  () => Readonly<{ latest: () => boolean; say: (said: string) => void }>,
-] {
+function usePresses(
+  waiting: string,
+): [string, () => Readonly<{ latest: () => boolean; say: (said: string) => void }>] {
   const [said, setSaid] = useState("");
   const counted = useRef(0);
   const press = () => {
     counted.current += 1;
     const mine = counted.current;
-    setSaid(WALLET_WORDS.waiting);
+    setSaid(waiting);
     return { latest: () => mine === counted.current, say: setSaid };
   };
   return [said, press];
@@ -94,7 +107,7 @@ const UNCOUNTED = () => true;
 /** Fills the box whose id is `box` with the wallet's address and leaves saving to the merchant. */
 export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; box: string }>) {
   const runs = useScriptRuns();
-  const [said, press] = usePresses();
+  const [said, press] = usePresses(WALLET_WORDS.waitingAddress);
   if (!runs) return null;
   const ask = async () => {
     const pressed = press();
@@ -172,13 +185,22 @@ export function CoinbaseAddress({ chainId, box }: Readonly<{ chainId: number; bo
   );
 }
 
-/** Sends `payout`, the transaction the screen shows, from the merchant's Coinbase Wallet on `chainId`. */
+/**
+ * Sends `payout`, the transaction the screen shows, from the merchant's
+ * Coinbase Wallet on `chainId`. `brings` is what the screen said it would
+ * bring, with its currency, or null where it did not know.
+ */
 export function CoinbasePayout({
   chainId,
   payout,
-}: Readonly<{ chainId: number; payout: Readonly<{ to: string; data: string }> }>) {
+  brings,
+}: Readonly<{
+  chainId: number;
+  payout: Readonly<{ to: string; data: string }>;
+  brings: string | null;
+}>) {
   const runs = useScriptRuns();
-  const [said, press] = usePresses();
+  const [said, press] = usePresses(WALLET_WORDS.waitingPayout);
   if (!runs) return null;
   const send = async () => {
     const pressed = press();
@@ -205,7 +227,7 @@ export function CoinbasePayout({
     // whose payout can still go out.
     if (sent.kind === "sent") {
       if (page !== null) page.payoutSent = true;
-      pressed.say(WALLET_WORDS.payoutSent);
+      pressed.say(WALLET_WORDS.payoutSent(brings));
       return;
     }
     if (sent.kind === "unanswered") {
@@ -214,7 +236,7 @@ export function CoinbasePayout({
       void sent.late.then((acknowledged) => {
         if (!acknowledged) return;
         if (page !== null) page.payoutSent = true;
-        pressed.say(WALLET_WORDS.payoutSent);
+        pressed.say(WALLET_WORDS.payoutSent(brings));
       });
       return;
     }

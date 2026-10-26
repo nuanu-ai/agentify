@@ -256,7 +256,7 @@ const A_CARD = {
   merchant_item_id: "chain-tip",
   title: "The height of the latest block",
   description: "The current tip of the chain, answered in the purchase itself.",
-  price: "0.001 USD",
+  price: "0.01 USD",
   result: { height: { type: "integer", title: "The block number at the tip" } },
   fulfillment: "sync",
 };

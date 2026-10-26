@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { ROBOTS_REASONS, SCAN_STOP_REASONS } from "./browser.js";
+import { PHONE_INPUT_PATTERN, ROBOTS_REASONS, SCAN_STOP_REASONS } from "./browser.js";
 import { checkIdSchema } from "./checks.js";
 import {
   checkStatusSchema,
@@ -126,10 +126,8 @@ export type ScanStatusResponse = z.infer<typeof scanStatusResponseSchema>;
 const phoneE164Schema = z
   .string()
   .trim()
-  .min(8)
-  .max(40)
-  .transform((value) => value.replace(/[\s().-]/g, ""))
-  .pipe(z.string().regex(/^\+[1-9]\d{7,14}$/));
+  .regex(new RegExp(`^(?:${PHONE_INPUT_PATTERN})$`, "v"))
+  .transform((value) => value.replace(/[^+\d]/g, ""));
 
 /**
  * A request for the full report of one scan, naming the address it is for: the

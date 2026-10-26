@@ -280,7 +280,7 @@ const OBSERVATION: BrowserObservationStatusResponse = {
 };
 
 interface ScanSeen {
-  readonly status?: SiteAnswerOf<ScanStatusResponse>;
+  readonly status?: SiteAnswerOf<ScanStatusResponse | ReturnType<typeof refusal>>;
   readonly observation?: BrowserObservationStatusResponse;
   readonly signedIn?: boolean;
   readonly token?: boolean;
@@ -309,8 +309,10 @@ const sharePreview = (score: number | null, level: string) =>
         },
       };
 
-const sharePreviewOf = (status: ScanStatusResponse | undefined) =>
-  status?.teaser === undefined ? {} : sharePreview(status.teaser.score, status.teaser.level);
+const sharePreviewOf = (answer: ScanStatusResponse | ReturnType<typeof refusal> | undefined) =>
+  answer === undefined || "error" in answer || answer.teaser === undefined
+    ? {}
+    : sharePreview(answer.teaser.score, answer.teaser.level);
 
 /**
  * A private scan's page as the browser holding its link draws it: the token
@@ -997,7 +999,7 @@ const SCANNING: GalleryState[] = [
       screen: "Scan",
       when: "A scan has finished while its browser observation cannot be read.",
       cause:
-        "The site answered the page's ask for the observation with an error; the eighteen checks stand without it.",
+        "The site answered the page's ask for the observation with an error; the page asks again, waiting longer each time, and the eighteen checks stand without it.",
     },
     {
       status: ended("teaser"),
@@ -1089,7 +1091,29 @@ const SCANNING: GalleryState[] = [
       when: "Somebody opens a scan's private link after it stopped working.",
       cause: "The API refuses the token the link carried.",
     },
-    { status: { status: 401 }, shows: "This scan link is no longer valid" },
+    {
+      status: {
+        status: 401,
+        body: refusal("unauthorized", "A private scan token is required.", false),
+      },
+      shows: "This scan link is no longer valid",
+    },
+  ),
+  scan(
+    {
+      id: "scanner-scan-gone",
+      screen: "Scan",
+      when: "Somebody opens the private link of a scan that has since been deleted.",
+      cause:
+        "The API answers that there is no such scan and that asking again cannot help, so the page stops asking and does not say why.",
+    },
+    {
+      status: {
+        status: 404,
+        body: refusal("scan_not_found", "The scan was not found.", false),
+      },
+      shows: "This scan link is no longer valid",
+    },
   ),
   scan(
     {
@@ -1097,9 +1121,9 @@ const SCANNING: GalleryState[] = [
       screen: "Scan",
       when: "A scan's progress cannot be read for a moment.",
       cause:
-        "The API answered the page's poll with no status it could read; the page keeps asking.",
+        "The API answered the page's poll with no status it could read; the page asks again, waiting longer each time.",
     },
-    { status: { status: 503 }, shows: "Live status is temporarily unreachable" },
+    { status: { status: 503 }, shows: "Live status cannot be read right now" },
   ),
 ];
 

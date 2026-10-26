@@ -1579,7 +1579,7 @@ describe("importing the catalogue", () => {
     const imported = await running.post("/woocommerce/import", { [DRAWN_FOR]: PERSON });
 
     expect(imported.status).toBe(504);
-    expect(readable(imported.html)).toContain("did not answer");
+    expect(readable(imported.html)).toContain("We don't know if this was done");
     expect(running.read).toEqual([]);
   });
 
@@ -2268,10 +2268,10 @@ describe("a press that fails inside the dashboard", () => {
     const said = readable(pressed.html);
 
     expect(pressed.status).toBe(500);
-    expect(said).toContain(
-      "Something in the dashboard is broken. Check the page you were on before deciding whether it went through.",
+    expect(said).toContain("We don't know if this was done");
+    expect(pressed.html).toMatch(
+      /<a class="button button-primary" href="\/woocommerce\/import">Open [^<]+<\/a>/,
     );
-    expect(said).toContain("Back to Cards");
     expect(pressed.html).not.toContain("the shops table is not answering");
   });
 });
@@ -2376,6 +2376,13 @@ describe("merchant delivery recovery", () => {
     const own = await sale(running, running.accountId, true);
     const orders = await running.get("/orders");
     expect(orders.html).toContain(`href="${own.path}"`);
+    // The order's details, where Close fulfillment leads, offer the same way on.
+    const opened = (await running.get(`/orders?details=${own.orderId}`)).html;
+    const details =
+      new RegExp(`<details[^>]*id="details-${own.orderId}"[\\s\\S]*?</details>`).exec(
+        opened,
+      )?.[0] ?? "";
+    expect(details).toContain(`href="${own.path}"`);
     const page = await running.get(own.path);
     expect(page.status).toBe(200);
     expect(formTo(page.html, "post", own.path)?.fields.has("woo_order_id")).toBe(false);

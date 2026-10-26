@@ -339,6 +339,12 @@ is the moment of the answer itself, so name the moment your cache was filled
 when you answer from one. An answer of none starts no purchase. What a silent
 price handler costs in each mode is on [What can go wrong](/failures).
 
+The test buyer on step 6 pays no more than the price on the card, so it
+refuses a price your handler names above that before it signs anything. Raise
+its cap, the `maxAmountPerPayment` it sets, to try such a price.
+It buys no parcel, whose price includes its shipping, since it sends no
+address.
+
 This step worked if the process starts, its first log line names the test
 channel and says the money there is not real, and your problem handler stays
 quiet. The first order reaches it on step 6.
@@ -374,7 +380,7 @@ payment is an authorisation the buyer signs and the facilitator executes.
 Install the x402 client and the library that signs with the key:
 
 ```sh
-npm install @x402/core @x402/evm @x402/fetch viem
+npm install @x402/core@2.23.0 @x402/evm@2.23.0 viem@2.47.0
 ```
 
 Make the buyer's wallet key with that library, in the same directory. The command
@@ -394,72 +400,65 @@ Then open [Circle's faucet](https://faucet.circle.com), choose USDC and Base
 Sepolia, and paste the address: the faucet sends test USDC to it, and that is
 all the buyer needs.
 
-Now buy the card by the catalogue identifier step 3 returned, with the
-purchase parameters the card asks for, and read the order until it has
-finished. The program below is TypeScript whose types Node 24 can simply
-erase, so save it as `buyer.mts` and run it with
-`node --env-file=.env buyer.mts`, with two more lines in `.env`, the first of
-them the one the command above printed:
+Now buy the card by the catalogue identifier step 3 returned. The program
+below is TypeScript whose types Node 24 can simply erase, so save it as
+`buyer.mts` beside the `.env` from step 2, whose `AGENTIFY_URL` it buys from,
+and run it with `node --env-file=.env buyer.mts`. It needs two more lines in
+`.env`, the first of them the one the command above printed:
 
 ```sh
 BUYER_PRIVATE_KEY=0x...
 ITEM_ID=item_...
 ```
 
+<<< @/programs/buyer.mts
 
-```ts
-import { x402Client } from '@x402/core/client'
-import { registerExactEvmScheme } from '@x402/evm/exact/client'
-import { wrapFetchWithPayment } from '@x402/fetch'
-import { privateKeyToAccount } from 'viem/accounts'
+The program finds the card in the catalogue and posts the purchase parameters
+to the purchase address the catalogue gives for the card. The parameters
+written in it are the email the card from step 3 asks for; change them to
+what your card asks, or to `{}` for a card that asks for none. It buys no
+parcel, since it sends no address. The first answer is a 402 whose payment
+request names the price and your payout contract, and nothing is charged by
+it. The program signs that request once, only on Base Sepolia, the test
+channel's chain, and only up to the price on the card, then sends the same
+purchase again with the payment. A payment request for another chain or for
+more is refused before anything is signed, and so is a card whose price check
+at purchase answers more than the card says; to try such a price, raise the
+`maxAmountPerPayment` the program sets.
 
-// The buyer's wallet, holding test USDC and nothing else.
-const buyer = privateKeyToAccount(process.env.BUYER_PRIVATE_KEY as `0x${string}`)
-const client = new x402Client()
-registerExactEvmScheme(client, { signer: buyer })
-client.setSpendControls({ maxAmountPerPayment: '$10' })
-const payingFetch = wrapFetchWithPayment(fetch, client)
+The answer to the payment is the order whatever its HTTP status, and a 409
+says the purchase stands without the goods. In the order, `status` says where
+it stands, `delivered` holds the goods once they are the buyer's, and
+`status_url` is where it is read again. That address carries the buyer's key,
+the only thing that opens the order and its goods, so the program never
+prints it: it adds a line to `orders.txt` beside itself, a file only you can
+read, with the order's `order_id` and its address. Keep that file out of git
+and delete it once you are done. `order_id` is the order's ordinary reference,
+the one your handler saw as `order.id`, and the program prints it.
 
-// What this program reads of the catalogue and of an order.
-type Catalogue = { items: { id: string; purchase_url: string }[] }
-type Order = { status: string; status_url: string; delivered: unknown }
+While the order reads `in_progress`, the goods have not come yet, and the
+program reads it again at its address every five seconds for five minutes. A
+read that fails is printed, and reading goes on. Then it prints everything the
+order says except its address, and it exits with `0` when the order reads
+`delivered`, with the goods in `delivered`.
 
-// Your card in the test channel's catalogue, by the id step 3 returned.
-const listed = await fetch('https://test.agentify.ad/x402/catalog')
-const catalogue = (await listed.json()) as Catalogue
-const card = catalogue.items.find((item) => item.id === process.env.ITEM_ID)
-if (card === undefined) throw new Error('the card is not in the test catalogue')
-
-const bought = await payingFetch(card.purchase_url, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ params: { email: 'you@example.com' } }),
-})
-// A refusal carries no order: print it rather than read it as one.
-const answer = (await bought.json()) as Partial<Order>
-if (typeof answer.status_url !== 'string') {
-  throw new Error(`${bought.status}: ${JSON.stringify(answer)}`)
-}
-let order = answer as Order
-
-// Goods that come later are collected at the order's own address.
-for (let tries = 0; order.status === 'in_progress' && tries < 60; tries += 1) {
-  await new Promise((resolve) => setTimeout(resolve, 5_000))
-  order = (await (await fetch(order.status_url)).json()) as Order
-}
-
-console.log(order.status, order.delivered)
-```
-
-The purchase is a POST of the card's purchase parameters, `{"params":{}}` for
-a card that asks for none, to the purchase address the catalogue gives for
-the card. The client meets the 402 that names the price and your payout
-contract, signs the payment and sends the same call again, and the answer is
-the order: `status` says where it stands, `delivered` holds the goods once
-they are the buyer's, and `status_url` is where it is read again. That address
-carries the buyer's key, the only thing that opens the order and its goods, so
-a real agent keeps it to itself; `order_id` in the same answer is the order's
-ordinary reference, the one your handler saw as `order.id`.
+Anything else stops the program with a non-zero exit code and a line that says
+what happened. A purchase refused before the payment, or a payment request the
+program would not sign, charges nothing, and a refused payment says in its own
+words that it charged nothing. When an order came back and ended without the
+goods, its payment is not settled, or five minutes of reads passed without an
+end, its address is in `orders.txt` and the order is on your dashboard's
+Orders screen, which shows what became of it; an order that ended names its
+refusal or its reason in what the program printed. When no order comes back,
+because the payment was refused or its answer never arrived, the program has
+no address to keep, and the Orders screen shows whether an order was made.
+The program never signs a second time, and running it again is a new
+purchase, charged again once paid. A buyer that recovers a lost answer keeps
+the payment request and signs it again, as [Telling a repeat
+apart](/orders#telling-a-repeat-apart) describes. The reason a
+`delivered_unpaid` order prints asks for that kept request; this program
+keeps none, so releasing the goods held for that order takes a buyer of the
+recovering kind.
 
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the

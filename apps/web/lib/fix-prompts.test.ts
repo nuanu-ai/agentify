@@ -183,6 +183,15 @@ describe("what the copied prompt tells a reader who has it alone", () => {
     },
   );
 
+  it.each(["aiPrompt", "devBrief"] as const)(
+    "the %s does not round a coverage under the provisional line up to it",
+    (which) => {
+      const prompt = buildFixPrompts({ ...partial, coverage: 0.698 })[which];
+      expect(prompt).toContain("Coverage: 69%");
+      expect(prompt).not.toContain("70%");
+    },
+  );
+
   it("a single check's prompt says when the site was inspected and the coverage", () => {
     const prompt = buildCanonicalFixPrompt(
       partial,

@@ -284,8 +284,9 @@ export const cardsFromTheShop = (
       continue;
     }
     // The contract's own price rule, so a product it would refuse is named here
-    // as left in the shop. Only zero can reach it; currency and decimals are
-    // settled above.
+    // as left in the shop. Only zero can reach it: currency and decimals are
+    // settled above, and every amount is whole cents, rounded up when converted,
+    // so none is above zero and under the smallest price sold.
     const unsellable = priceProblemsOf({ amount: dollars, currency });
     if (unsellable.length > 0) {
       refused(unsellable.map((problem) => sentenceOf(problem.message)).join(" "));

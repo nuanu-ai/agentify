@@ -29,6 +29,21 @@ and what the moment of charging means for the owner of the business is on
 A parcel's order is the asynchronous one with an address in it and a shipment
 at its end; what its card asks of you is on [Cards](/cards).
 
+The agent sends the address under `ship_to`, beside the purchase parameters.
+Here is the purchase of a parcel's card that asks for no parameters, with the
+example address the contract's own schema publishes:
+
+```json
+{{parcel-purchase}}
+```
+
+`name`, `line_one`, `city`, `country` and `phone_number` are required, and
+`line_two`, `state` and `postal_code` are given where the address has them.
+`country` is two capital letters, ISO 3166-1 alpha-2, and `state` is the
+subdivision code without the country in front. A parcel's purchase without
+the address is refused, and so is an address sent for a card that is not a
+parcel.
+
 Your price handler is asked the price for the place the parcel goes: its
 `ship_to` holds the country and the city, the state and the postal code where
 the buyer gave them, and nothing about who receives it. Once the order is
@@ -653,9 +668,16 @@ request from the same wallet, and once Agentify has checked that signature,
 without asking the facilitator and whatever the wallet holds now, the agent
 receives the original purchase without a second charge. Asking the purchase
 address again without that kept payment request starts a new purchase, which
-is charged again once paid, so recovery always signs the kept request again. The payment
-reference is public and opens nothing by itself: a payment already used, or one whose
-window has passed, sent again reveals neither the order nor where to read it.
+is charged again once paid, so recovery always signs the kept request again.
+An agent therefore keeps the payment request and the payment it signed from
+before it sends the payment until it has the answer: the request to sign
+again, and the payment to tell it which wallet signs.
+
+The payment request names the order only by its `order_id`, which opens
+nothing. The payment that already paid an order, sent again, is refused,
+because it can be read from the chain; a fresh payment from another wallet is
+refused as `not_this_purchase`. Neither answer reveals the order's goods, its
+address or where to read it.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is
@@ -694,8 +716,19 @@ Within one instance, an order event waits for earlier handlers for the same
 order. A repeat of an order already running there shares that attempt; once
 it finishes, or in another instance, the order can call your handler again.
 Your fulfillment still needs idempotency by the order's identifier. `stop()`
-waits for handlers already taken on, including events waiting on that order;
-it does not fetch more work.
+fetches no more work. It waits for the handlers already taken on, including
+events waiting on their order, and sends the answers they return, since the
+goods may already be issued. It waits eight seconds at most, which ends inside
+the ten seconds Docker allows a container to stop by default, and each message
+still unfinished then gets a `batch_abandoned` problem of its own, with the
+order or price question it is about as its `subject`. An order still waiting
+or still in your handler had nothing sent for it and comes again while it has
+attempts left and its deadline allows; whatever your handler returns after that
+is not sent. An answer that was already on its way may have arrived, and
+nothing on your side knows whether it did, so the order may be closed by it or
+may come again. A process manager that kills your process sooner cuts the wait
+short and nothing is reported: an order whose answer was not sent comes again,
+and one whose answer was on its way may or may not be closed by it.
 
 ## Test orders
 
@@ -807,15 +840,14 @@ release may read the message, because nothing on your side can tell a broken
 message from one written in a shape added later. Only where the contract
 promises that Agentify adds something without a new version, an event of a new
 kind or a word such as a price question's purpose, does the problem say that a
-newer release reads it. Neither problem, nor any failure your package
-reports about an answer it could not read, repeats what that answer carried:
-the buyer's parameters and the prices stay out of your logs, and only the
-names of the fields and what was expected there are given. A name that could
-itself be data, such as a key among the buyer's parameters, is not written, a
-long one is cut and says so, and an order or a price question is named by its
-identifier only where that identifier is not itself what failed. An answer that is
-not JSON at all, such as a proxy's error page, is quoted, cut short where it is
-long.
+newer release reads it. No failure or problem the package reports repeats the
+contents of an answer it could not read, whatever that answer's status or
+content type: it names the call, the status, the content type and the length,
+and where JSON did not fit, the fields and what was expected there, so the
+buyer's details and the prices stay out of your logs. A name that could itself
+be data, such as a key among the buyer's parameters, is not written, a long one
+is cut and says so, and an order or a price question is named by its identifier
+only where that identifier is not itself what failed.
 
 Agentify therefore speaks a new contract version for a change your package
 cannot read past: a field or a word renamed or removed, a field that comes to
@@ -824,13 +856,14 @@ new card mode, selling state or kind of message on the subscription, each of
 which is work or configuration an older package cannot do. The version is read
 before anything else in a poll answer, so your subscription stops at the first
 one Agentify sends in another version, whatever the messages inside it carry,
-with a `contract_version_mismatch` problem naming both versions, once the
-orders already in your handlers have sent their answers, or after fifty seconds
-with a `batch_abandoned` problem naming those that did not. Only an answer
-shaped as a poll answer, a version beside a list of messages, stops it. Anything
-else that comes back, such as a proxy's error page that happens to name a
-version, is reported as `poll_failed`, mentioning the version it named, and the
-subscription keeps asking. Once stopped, your process stays up and sells
+with a `contract_version_mismatch` problem naming both versions. It stops the
+way `stop()` does, once the work already in your handlers has finished and
+sent its answers, or after eight seconds with a `batch_abandoned` problem for
+each message still unfinished. Only an answer shaped as a poll answer, a
+version beside a list of messages, stops it. Anything else that comes back,
+such as a proxy's error page that happens to name a version, is reported as
+`poll_failed`, which says another version was named without repeating it, and
+the subscription keeps asking. Once stopped, your process stays up and sells
 nothing until you upgrade.
 
 Every call the package makes names its release to Agentify in its `user-agent`

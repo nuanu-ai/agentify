@@ -92,6 +92,10 @@ export default {
         // Drawn into the screens gallery by `packages/gallery`.
         "app/gallery.tsx",
       ],
+      // A reader's program, which a page shows and a test in `packages/slice`
+      // runs with that package's dependencies, as the reader runs it with
+      // theirs: nothing in this application imports it.
+      ignore: ["programs/**"],
     },
     "packages/core": {
       // The types of `preflight.mjs`, which a deploy script runs as it is;
@@ -103,6 +107,9 @@ export default {
         // Read as text by `src/wallet-faults-command.ts` and served to the
         // browser it opens as the stand-in for Coinbase Wallet's window.
         "src/wallet-window.js",
+        // Loaded with `--import` into the process `src/quickstart-buyer.test.ts`
+        // runs the quickstart's buyer program in.
+        "src/buyer-program-faults.ts",
       ],
     },
     "packages/gallery": {

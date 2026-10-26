@@ -13,6 +13,7 @@ import { getServerConfig } from "./config";
 import { hmacHex, normalizeEmail } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
+import { isScanId } from "./scan-id";
 import { finishWaitingRequest } from "./scanner-registration";
 
 const logger = createLogger({
@@ -93,6 +94,7 @@ export async function ownedLead(visitor: Visitor, scanId?: string): Promise<stri
 
 /** Whether this lead is linked to this scan, which is what owning its report means. */
 export async function owns(leadId: string, scanId: string): Promise<boolean> {
+  if (!isScanId(scanId)) return false;
   const linked = (
     await getDatabase()
       .db.select({ leadId: leadScans.leadId })

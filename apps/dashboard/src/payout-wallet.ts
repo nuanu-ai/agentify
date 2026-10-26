@@ -14,6 +14,7 @@
 
 import type { NotAPayoutWallet } from "@agentify/gateway";
 import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
+import { WALLET_CHANGE_MS } from "./deadlines.js";
 
 /**
  * The rule is the contract's schema, applied by asking it. The sentence also
@@ -29,15 +30,6 @@ export const WALLET_RULE =
 export const LIVE_CHANGE_WAITS =
   "A different address takes effect forty-eight hours after every account of your merchant" +
   " is sent a message about it. Until then buyers pay into the payout contract of the address above.";
-
-/**
- * How long a change of the address is waited for: longer than a screen's ten
- * seconds, because on live the gateway answers only after every message about
- * it is handed to the mail provider, which may take twenty seconds
- * (`ANNOUNCEMENT_ANSWER_MS` in the gateway). Stopping sooner would tell a
- * person the gateway did not answer while their change was being recorded.
- */
-export const WALLET_CHANGE_MS = 30_000;
 
 /** Said while a change is on its way on live, so that wait does not read as a frozen page. */
 export const CHANGE_ON_ITS_WAY =

@@ -7,7 +7,6 @@
  * pre-broadcast refusal proves nonpayment; other failures stay unknown.
  */
 
-import type { PaymentVerificationFailure } from "@agentify/core";
 import { PAYABLE_CURRENCIES } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { FacilitatorClient } from "@x402/core/server";
@@ -38,6 +37,7 @@ import type {
   VerifyOutcome,
 } from "../../ports/facilitator.js";
 import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
+import { readRefusal } from "./refusal-codes.js";
 
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
@@ -126,8 +126,7 @@ export class X402Facilitator implements Facilitator {
     } catch (thrown) {
       // A verdict sent with a refusing status is still a verdict.
       if (thrown instanceof VerifyError && refused(thrown.statusCode)) {
-        const said = thrown.invalidMessage ?? thrown.invalidReason ?? "no reason was given";
-        return { verified: false, reason: shapeOf(thrown.invalidReason), message: said };
+        return refusal(thrown);
       }
       const status =
         thrown instanceof VerifyError ? thrown.statusCode : statusOfFailedCheck(thrown);
@@ -156,8 +155,7 @@ export class X402Facilitator implements Facilitator {
         recovery,
       };
     }
-    const said = answered.invalidMessage ?? answered.invalidReason ?? "no reason was given";
-    return { verified: false, reason: shapeOf(answered.invalidReason), message: said };
+    return refusal(answered);
   }
 
   async settle(charge: Charge): Promise<SettleOutcome> {
@@ -328,20 +326,47 @@ const sameAddress = (theirs: string | undefined, ours: string): boolean =>
   theirs !== undefined && theirs.toLowerCase() === ours.toLowerCase();
 
 /**
- * The closest of the machine's three reasons to what the facilitator said. The
- * facilitator's set of reasons is open; an unrecognised one is recorded as
- * `signature`.
+ * A facilitator's refusal, by what its code means. The buyer reads the code of
+ * a verdict with the facilitator's words. The operator's log gets the code's
+ * leading machine word and never the words, which can quote the payment
+ * presented. A code or words that are not text are read as absent.
  */
-function shapeOf(reason: string | undefined): PaymentVerificationFailure {
-  const said = (reason ?? "").toLowerCase();
-  if (said.includes("funds") || said.includes("balance") || said.includes("revert")) {
-    return "insufficient_funds";
+function refusal(answer: { invalidReason?: unknown; invalidMessage?: unknown }): VerifyOutcome {
+  const code = textOf(answer.invalidReason);
+  const words = textOf(answer.invalidMessage);
+  const reading = readRefusal(code);
+  const word = machineWord(code);
+  if ("noVerdict" in reading) {
+    return {
+      verified: "unknown",
+      cause: reading.noVerdict,
+      failure: `the facilitator answered a refusal that is no verdict on the payment: ${word}`,
+    };
   }
-  if (said.includes("authorization_value") || said.includes("amount") || said.includes("expired")) {
-    return "price_stale";
-  }
-  return "signature";
+  const message =
+    code === undefined
+      ? (words ?? "no reason was given")
+      : words === undefined
+        ? code
+        : `${code}: ${words}`;
+  return {
+    verified: false,
+    reason: reading.refused,
+    message,
+    ...(word === undefined ? {} : { code: word }),
+  };
 }
+
+const textOf = (value: unknown): string | undefined =>
+  typeof value === "string" && value !== "" ? value : undefined;
+
+/**
+ * The code's leading run of lower-case letters, digits and underscores, at
+ * most 80 characters. A facilitator may append its own text after the code,
+ * and that text can quote the payment.
+ */
+const machineWord = (code: string | undefined): string | undefined =>
+  code === undefined ? undefined : /^[a-z0-9_]{1,80}/.exec(code)?.[0];
 
 /**
  * Whether a verification status carries the facilitator's own decision. Only

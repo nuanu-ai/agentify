@@ -13,6 +13,7 @@ import { connect, PostgresStore } from "./adapters/postgres/store.js";
 import { facilitatorClientFor, refuseUnlessCoinbaseTakesTheKey } from "./adapters/x402/client.js";
 import { X402Facilitator } from "./adapters/x402/facilitator.js";
 import { paymentChainOn } from "./adapters/x402/payment-chain.js";
+import { payoutCheckOn } from "./adapters/x402/payout-check.js";
 import { recoveryOn } from "./adapters/x402/recovery.js";
 import { Gateway } from "./app/gateway.js";
 import { seedSandboxKey } from "./app/merchants.js";
@@ -239,6 +240,7 @@ export async function startGateway(
     announcer,
     widestChallenge: widestChallengeOn(config),
     chain: paymentChainOn(config.payment.network, config.payment.rpcUrl),
+    payoutCheck: payoutCheckOn(config.payoutSplit, config.payment.rpcUrl),
   };
 
   const gateway = new Gateway(runtime);

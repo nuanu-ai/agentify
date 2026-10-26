@@ -65,17 +65,22 @@ const UNSELLABLE_PRICES: readonly [price: unknown, field: string, found: string]
   ["5 USD", "amount", "5"],
   [{ amount: "0.0000001", currency: "USD" }, "amount", "0.0000001"],
   ["19.9999999 USDC", "amount", "19.9999999"],
+  [{ amount: "0.009", currency: "USD" }, "amount", "0.009"],
+  [{ amount: "0.001", currency: "USD" }, "amount", "0.001"],
+  [{ amount: "0.000001", currency: "USD" }, "amount", "0.000001"],
+  ["0.0099 USDC", "amount", "0.0099"],
   [{ amount: "5.00", currency: "EUR" }, "currency", "EUR"],
 ];
 
 /** Prices the same door takes, written each way a merchant writes them. */
 const SELLABLE_PRICES: readonly unknown[] = [
   { amount: "0.01", currency: "USD" },
+  { amount: "0.010", currency: "USD" },
+  { amount: "0.010001", currency: "USD" },
   { amount: "5.00", currency: "USD" },
-  { amount: "0.001", currency: "USD" },
   { amount: "19.999", currency: "USD" },
-  { amount: "0.000001", currency: "USD" },
   { amount: "5.00", currency: "USDC" },
+  "0.01 USDC",
   "5.00 USD",
 ];
 
@@ -130,8 +135,9 @@ describe("the catalog", () => {
     // A payment of nothing is not a sale, a currency other than the dollar has
     // no rate to be charged at, and an amount written without its cents is how
     // "500" meant as five dollars becomes a five-hundred-dollar card. An amount
-    // finer than the token a buyer pays in has no exact charge. The short
-    // spelling meets the same rule in the same words.
+    // finer than the token a buyer pays in has no exact charge, and one under a
+    // cent may be one the payment network will not carry. The short spelling
+    // meets the same rule in the same words.
     const harnessed = await started();
 
     for (const [price, field, found] of UNSELLABLE_PRICES) {
@@ -153,10 +159,50 @@ describe("the catalog", () => {
     expect((await harnessed.gateway.catalog()).items).toHaveLength(0);
   });
 
+  it("refuses a price under a cent and tells the merchant the smallest price it sells at", async () => {
+    // A merchant who priced a call at a fraction of a cent learns what to
+    // change it to from the refusal itself.
+    const harnessed = await started();
+
+    for (const amount of ["0.009", "0.000001"]) {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        price: { amount, currency: "USD" },
+      });
+
+      if (result.ok) throw new Error(`${amount} was published`);
+      const [finding] = result.error.problems;
+      expect(finding?.path).toStrictEqual(["price", "amount"]);
+      expect(finding?.message).toContain(JSON.stringify(amount));
+      expect(finding?.message).toContain("0.01");
+    }
+  });
+
+  it("tells a merchant about the smallest price before the places, so one correction is enough", async () => {
+    // An amount under a cent written past six places is refused once, for its
+    // size: fixing only its places would leave it refused again. An amount
+    // above the smallest price written past six places is refused for its
+    // places alone.
+    const harnessed = await started();
+    const findingFor = async (amount: string) => {
+      const result = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+        ...syncCard,
+        price: { amount, currency: "USD" },
+      });
+      if (result.ok) throw new Error(`${amount} was published`);
+      expect(result.error.problems, amount).toHaveLength(1);
+      return result.error.problems[0]?.message ?? "";
+    };
+
+    expect(await findingFor("0.0000001")).toContain("0.01");
+    expect(await findingFor("0.00999999999")).toContain("0.01");
+    expect(await findingFor("5.0000001")).not.toContain("0.01");
+  });
+
   it("publishes every price a payment can be taken at", async () => {
-    // So the rule cannot grow past its purpose: a price below a cent is
-    // ordinary for a call priced per use, and a card priced in USDC is charged
-    // in USDC as it stands.
+    // So the rule cannot grow past its purpose: one cent is the smallest
+    // price sold, an amount may carry places past the cent, and a card priced
+    // in USDC is charged in USDC as it stands.
     const harnessed = await started();
 
     for (const [index, price] of SELLABLE_PRICES.entries()) {
@@ -1294,6 +1340,14 @@ describe("a payment the payment layer would not vouch for", () => {
     ["price_stale", "the payment was made out to a different address", "start a new purchase"],
     ["insufficient_funds", "the wallet is empty", "fund the paying wallet"],
     ["signature", "the signature does not check out", "sign a new payment"],
+    ["amount_not_payable", "amount_too_low", "will not carry a payment of this amount"],
+    [
+      "wallet_refused",
+      "self_send_not_allowed",
+      "refused this payment from the wallet that signed it",
+    ],
+    ["unexplained", "no reason was given", "names no fault Agentify can act on"],
+    ["unrecognised", "a_code_nobody_has_seen", "a reason this system does not recognise"],
   ] as const;
 
   for (const [reason, said, next] of cases) {
@@ -1312,6 +1366,43 @@ describe("a payment the payment layer would not vouch for", () => {
       expect(bought.why).toContain(next);
     });
   }
+});
+
+describe("a payment the payment network will not carry at this price", () => {
+  it("does not send the agent to a new purchase that would meet the same refusal", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    harnessed.facilitator.willRefuseVerification("amount_not_payable", "amount_too_low");
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+
+    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+
+    if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
+    expect(bought.why).not.toContain("start a new purchase");
+    expect(bought.why).not.toContain("sign a new payment");
+    expect(bought.retryable).toBe(false);
+  });
+});
+
+describe("a payment the payment network refused from the wallet that signed it", () => {
+  it("does not advise paying from another wallet", async () => {
+    // A wallet turned away by the payment network's risk screening is not to
+    // be told how to get past it.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    harnessed.facilitator.willRefuseVerification(
+      "wallet_refused",
+      "invalid_exact_evm_payload_authorization_from_address_kyt",
+    );
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+
+    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+
+    if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
+    expect(bought.why).not.toMatch(/another wallet|other wallet/);
+  });
 });
 
 describe("a refused payment's words, when the payment layer says a great deal", () => {

@@ -19,6 +19,11 @@
  * kind it does not know; the rest of the batch is handled. An event is not sent again,
  * so a handler that throws on one has lost what it carried. The only retry
  * here is of a poll that failed, with the backoff in `backoff.ts`.
+ *
+ * A stop takes no more work and lets what was taken finish, answers included,
+ * for `STOP_WAIT_MS` at most. Each message it then gives up on is reported
+ * by where it stood, because only that says whether its answer may have
+ * arrived.
  */
 
 import {
@@ -46,6 +51,23 @@ import { describeProblems, onlyWhatIsNew, problemsOf, whereItFailed } from "./sc
 import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } from "./transport.js";
 
 /**
+ * A thrown value as text, for a problem's sentence. Code can throw anything,
+ * including a value that turning into text throws again, and the report about
+ * it must not be what fails.
+ */
+const describeThrown = (cause: unknown): string => {
+  try {
+    return String(cause);
+  } catch {
+    return "a value that cannot be turned into text";
+  }
+};
+
+/** What follows for an order nothing was answered for. */
+const COMES_AGAIN =
+  "it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered";
+
+/**
  * What follows from a failed answer for the order it was about. Only an
  * answer that never left is certain to leave the order unanswered, so only
  * then is a redelivery promised; one that reached the gateway or vanished may
@@ -53,7 +75,7 @@ import { callRoute, type Gateway, REACH, type TransportFailure, whatIsKnown } fr
  */
 const andSoTheOrder = (failure: TransportFailure): string =>
   failure.reach === REACH.NOT_RECEIVED
-    ? ", so the order counts as undelivered: it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered"
+    ? `, so the order counts as undelivered: ${COMES_AGAIN}`
     : ", so whether the order is delivered again is not something this side can say";
 
 /**
@@ -121,8 +143,11 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   /** A price answer arrived too late to price the purchase it was asked for. */
   QUOTE_ANSWER_UNUSED: "quote_answer_unused",
   /**
-   * The worker stopped with work unfinished: part of a batch unread, or a
-   * handler that had not answered when the stop could wait no longer.
+   * The worker stopped with work unfinished: part of a batch it never took,
+   * reported once for the batch, or a message it gave up waiting for,
+   * reported on its own with the order or price question it is about as the
+   * subject, saying where the message stood and so whether anything was sent
+   * for it.
    */
   BATCH_ABANDONED: "batch_abandoned",
   /** The loop itself failed in a way nothing here anticipated. A defect in this SDK. */
@@ -362,16 +387,17 @@ export const QUIET_POLL_FLOOR_MS = 1_000;
 const HANDLERS_AT_ONCE = 4;
 
 /**
- * The contract version named inside a body that is not a poll answer. It goes
- * into the merchant's sentence and no further: the body was held to no schema,
- * so a proxy's error page with a field of that name must not stop a worker.
+ * Whether a body that is not a poll answer names a contract version other
+ * than this SDK's. It earns a remark and no more: the body was held to no
+ * schema, so a proxy's error page with a field of that name must not stop a
+ * worker, and what it names is not repeated, as nothing of an unread answer is.
  */
-const versionSpokenIn = (body: unknown): string | undefined => {
-  if (typeof body !== "object" || body === null) return undefined;
+const namesAnotherVersion = (body: unknown): boolean => {
+  if (typeof body !== "object" || body === null) return false;
 
   const named = (body as { contract_version?: unknown }).contract_version;
 
-  return typeof named === "string" && named !== "" ? named : undefined;
+  return typeof named === "string" && named !== "" && !speaksContract(named);
 };
 
 /** A newer release's name, for the sentences about what it reads that this one cannot. */
@@ -405,7 +431,7 @@ const unreadWarning = (envelope: UnreadEnvelope): WorkerProblem => {
         kind: WORKER_PROBLEM_KINDS.UNREAD,
         fatal: false,
         ...(about === undefined ? {} : { subject: about }),
-        message: `${about === undefined ? "an order" : `order ${about}`} ${unreadable}, so it was not handed to your handler and nothing was answered: it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
+        message: `${about === undefined ? "an order" : `order ${about}`} ${unreadable}, so it was not handed to your handler and nothing was answered: ${COMES_AGAIN}`,
       };
     case "quote_request":
       return {
@@ -461,12 +487,108 @@ export const POLL_WAIT_SECONDS = 25;
  */
 export const POLL_DEADLINE_MS = POLL_WAIT_SECONDS * 2 * 1_000;
 
+/**
+ * How long a stop waits for the work it already took before giving up on it.
+ * It ends inside the ten seconds Docker allows a container between asking it
+ * to stop and killing it, so the report of what the stop cut short reaches
+ * the merchant's log on a default deployment. A longer wait buys little: the
+ * gateway stops waiting for a handler's answer well before this and sends
+ * the order out again.
+ */
+export const STOP_WAIT_MS = 8_000;
+
+/**
+ * Where a message the worker took stands. Before `sending`, nothing of its
+ * answer has left this process; during it, the answer is on its way and may
+ * have arrived. That is all that decides what can be said about a message
+ * the stop gives up on.
+ */
+type Phase = "waiting" | "in_handler" | "sending";
+
+/** One message the worker took and has not finished. */
+interface Taken {
+  readonly envelope: Read<WorkerEnvelope>;
+  phase: Phase;
+  /** Set once the stop has given up on it and said so; it sends and reports nothing more. */
+  abandoned: boolean;
+}
+
+/**
+ * What is said about a message the stop gave up on, chosen by its phase. An
+ * order that had not reached sending comes again; one whose answer was on
+ * its way may be closed by it, and nobody here knows which.
+ */
+const gaveUpOn = ({ envelope, phase }: Taken): WorkerProblem => {
+  const stopped = `the worker stopped after waiting ${STOP_WAIT_MS} ms`;
+  const unconfirmed =
+    "which was on its way and was not confirmed, so whether it arrived is not known here";
+  const problem = (subject: string | undefined, message: string): WorkerProblem => ({
+    kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+    fatal: false,
+    ...(subject === undefined ? {} : { subject }),
+    message,
+  });
+
+  switch (envelope.kind) {
+    case "order": {
+      const { id } = envelope.payload;
+
+      if (phase === "sending") {
+        return problem(
+          id,
+          `${stopped} for the answer to order ${id}, ${unconfirmed}: the order may be closed by it or may be sent again`,
+        );
+      }
+
+      const where =
+        phase === "waiting"
+          ? "still waiting for earlier work on it, so your handler was not called and nothing was sent"
+          : "still in your handler, so nothing was sent for it, and nothing will be if the handler returns later";
+
+      return problem(id, `${stopped} with order ${id} ${where}: ${COMES_AGAIN}`);
+    }
+    case "quote_request": {
+      const id = envelope.payload.price_id;
+
+      return phase === "sending"
+        ? problem(
+            id,
+            `${stopped} for the price for question ${id}, ${unconfirmed}; stock set aside under that identifier can be released once the question expires`,
+          )
+        : problem(
+            id,
+            `${stopped} before your price handler answered question ${id}, so no price was sent, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused`,
+          );
+    }
+    case "order_event": {
+      const event = envelope.payload;
+      const named =
+        event.type === UNKNOWN_WORD ? "an event" : `${event.type} for order ${event.order_id}`;
+      const where =
+        phase === "waiting"
+          ? `with ${named} still waiting for earlier work on that order, so your event handler was not called`
+          : `with your event handler still running on ${named}`;
+
+      return problem(
+        event.order_id,
+        `${stopped} ${where}; an event is not sent again, and orders.list({ open: true }) still finds every paid order waiting on you`,
+      );
+    }
+    case UNKNOWN_WORD:
+      return problem(
+        envelope.subject,
+        `${stopped} with a message this release could not read still unhandled; nothing was sent for it`,
+      );
+  }
+};
+
 /** What `startWorker` hands its caller, which is the client and never a merchant. */
 export interface RunningWorker {
   /**
-   * Stops the loop and waits for it to finish. Safe to call twice. A parked
-   * poll is dropped, and so is an answer already on its way, which the
-   * merchant is told about by order; the queue is not drained.
+   * Stops the loop and waits for it to finish. Safe to call twice. It takes
+   * no more work and drops a parked poll; what it took finishes, and the
+   * answers its handlers return are sent. It waits `STOP_WAIT_MS` at most,
+   * and reports each message still unfinished then.
    */
   stop(): Promise<void>;
   /** Whether the loop is still going. False once it has stopped for any reason. */
@@ -477,22 +599,43 @@ export const startWorker = (
   gateway: Gateway,
   handlers: HandlerRegistry,
   clock: WorkerClock = systemClock,
-  /** A parameter so a test can see the deadline work without waiting it out. */
+  /** A parameter so a test can see a poll's deadline work without waiting it out. */
   deadlineMs: number = POLL_DEADLINE_MS,
 ): RunningWorker => {
-  const controller = new AbortController();
+  /** Ends the parked poll and the waits between polls, at the start of a stop. */
+  const polling = new AbortController();
+  /** Ends answers on their way, once the stop has given up on them. */
+  const answering = new AbortController();
   let stopping = false;
   let ended = false;
-  const active = new Set<Promise<void>>();
-  const orders = new Set<string>();
+  const taken = new Map<Taken, Promise<void>>();
   const tails = new Map<string, Promise<void>>();
   let wakeRoom: (() => void) | undefined;
-  controller.signal.addEventListener("abort", () => wakeRoom?.(), { once: true });
+  polling.signal.addEventListener("abort", () => wakeRoom?.(), { once: true });
 
   const report = (problem: WorkerProblem): void => reportSafely(handlers.problem, problem);
 
+  /** Reports about one message, unless the stop gave up on it and has said what follows. */
+  const tell = (one: Taken, problem: WorkerProblem): void => {
+    if (!one.abandoned) report(problem);
+  };
+
+  /**
+   * Sends one message's answer, or nothing once the stop has given up on it,
+   * since what follows for that message has already been reported.
+   */
+  const send = async <N extends "answer_order" | "answer_quote">(
+    one: Taken,
+    route: N,
+    options: { readonly path: Readonly<Record<string, string>>; readonly body: unknown },
+  ) => {
+    if (one.abandoned) return undefined;
+    one.phase = "sending";
+    return callRoute(gateway, route, { ...options, signal: answering.signal });
+  };
+
   const rest = async (ms: number): Promise<void> => {
-    if (ms > 0) await clock.sleep(ms, controller.signal);
+    if (ms > 0) await clock.sleep(ms, polling.signal);
   };
 
   const reportTheMismatch = (spoken: string): void => {
@@ -505,17 +648,15 @@ export const startWorker = (
     });
   };
 
-  const answerOrder = async (order: Order, answer: HandlerAnswer): Promise<void> => {
-    const sent = await callRoute(gateway, "answer_order", {
-      path: { order_id: order.id },
-      body: answer,
-      signal: controller.signal,
-    });
+  const answerOrder = async (one: Taken, order: Order, answer: HandlerAnswer): Promise<void> => {
+    const sent = await send(one, "answer_order", { path: { order_id: order.id }, body: answer });
+
+    if (sent === undefined) return;
 
     if (!sent.ok) {
-      // Reported even while stopping: the handler has run, goods may have been
-      // issued, and the merchant needs to know this answer went nowhere.
-      report({
+      // The handler has run and goods may have been issued, so the merchant
+      // needs to know this answer went nowhere.
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.ANSWER_FAILED,
         fatal: false,
         subject: order.id,
@@ -525,7 +666,7 @@ export const startWorker = (
     }
 
     if (!sent.document.ok) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.ANSWER_REFUSED,
         fatal: false,
         subject: order.id,
@@ -535,39 +676,41 @@ export const startWorker = (
   };
 
   /** See `droppedFieldWarning`. */
-  const warnAboutTheDroppedKey = (order: Order, answer: HandlerAnswer): void => {
+  const warnAboutTheDroppedKey = (one: Taken, order: Order, answer: HandlerAnswer): void => {
     const dropped = droppedFieldWarning(
       order.id,
       "delivered" in answer ? answer.delivered : undefined,
     );
 
-    if (dropped !== null) report(dropped);
+    if (dropped !== null) tell(one, dropped);
   };
 
-  const handleOrder = async (order: Order): Promise<void> => {
+  const handleOrder = async (one: Taken, order: Order): Promise<void> => {
     const handler = handlers.order;
 
     if (handler === undefined) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.NO_HANDLER,
         fatal: false,
         subject: order.id,
-        message: `order ${order.id} arrived and no handler was registered with on('${REGISTERED_AS.order}'), so it was left unanswered: it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
+        message: `order ${order.id} arrived and no handler was registered with on('${REGISTERED_AS.order}'), so it was left unanswered: ${COMES_AGAIN}`,
       });
       return;
     }
+
+    one.phase = "in_handler";
 
     let answer: HandlerAnswer;
 
     try {
       answer = await handler(order);
     } catch (cause) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.HANDLER_FAILED,
         fatal: false,
         cause,
         subject: order.id,
-        message: `the handler threw on order ${order.id}, so nothing was answered and the order counts as undelivered — it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered: ${String(cause)}`,
+        message: `the handler threw on order ${order.id}, so nothing was answered and the order counts as undelivered — ${COMES_AGAIN}: ${describeThrown(cause)}`,
       });
       return;
     }
@@ -575,25 +718,25 @@ export const startWorker = (
     const checked = HandlerAnswerSchema.safeParse(answer);
 
     if (!checked.success) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.HANDLER_ANSWER_REFUSED,
         fatal: false,
         subject: order.id,
-        message: `the handler's answer for order ${order.id} is not one the contract carries, so nothing was sent and the order counts as undelivered — it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered:\n${describeProblems(problemsOf(checked.error.issues))}`,
+        message: `the handler's answer for order ${order.id} is not one the contract carries, so nothing was sent and the order counts as undelivered — ${COMES_AGAIN}:\n${describeProblems(problemsOf(checked.error.issues))}`,
       });
       return;
     }
 
-    warnAboutTheDroppedKey(order, answer);
+    warnAboutTheDroppedKey(one, order, answer);
 
-    await answerOrder(order, checked.data);
+    await answerOrder(one, order, checked.data);
   };
 
-  const handleQuote = async (question: QuoteRequest): Promise<void> => {
+  const handleQuote = async (one: Taken, question: QuoteRequest): Promise<void> => {
     const handler = handlers.quote;
 
     if (handler === undefined) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.NO_HANDLER,
         fatal: false,
         subject: question.price_id,
@@ -602,17 +745,19 @@ export const startWorker = (
       return;
     }
 
+    one.phase = "in_handler";
+
     let answer: QuoteResponse;
 
     try {
       answer = await handler(question);
     } catch (cause) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.HANDLER_FAILED,
         fatal: false,
         cause,
         subject: question.price_id,
-        message: `the price handler threw on question ${question.price_id}, so no price was sent and the sale goes on the card's own price or does not go on at all: ${String(cause)}`,
+        message: `the price handler threw on question ${question.price_id}, so no price was sent and the sale goes on the card's own price or does not go on at all: ${describeThrown(cause)}`,
       });
       return;
     }
@@ -630,7 +775,7 @@ export const startWorker = (
       : problemsOf(checked.error.issues);
 
     if (!checked.success || problems.length > 0) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.HANDLER_ANSWER_REFUSED,
         fatal: false,
         subject: question.price_id,
@@ -639,14 +784,15 @@ export const startWorker = (
       return;
     }
 
-    const sent = await callRoute(gateway, "answer_quote", {
+    const sent = await send(one, "answer_quote", {
       path: { price_id: question.price_id },
       body: checked.data,
-      signal: controller.signal,
     });
 
+    if (sent === undefined) return;
+
     if (!sent.ok) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.ANSWER_FAILED,
         fatal: false,
         subject: question.price_id,
@@ -659,7 +805,7 @@ export const startWorker = (
     }
 
     if (!sent.document.used) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.QUOTE_ANSWER_UNUSED,
         fatal: false,
         subject: question.price_id,
@@ -669,11 +815,12 @@ export const startWorker = (
   };
 
   const handleEvent = async (
+    one: Taken,
     event: OrderEvent | UnreadEvent,
     delivered: Delivered,
   ): Promise<void> => {
     if (event.type === UNKNOWN_WORD) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.UNREAD,
         fatal: false,
         ...(event.order_id === undefined ? {} : { subject: event.order_id }),
@@ -688,7 +835,7 @@ export const startWorker = (
     const handler = handlers.event;
 
     if (handler === undefined) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.NO_HANDLER,
         fatal: false,
         subject: event.order_id,
@@ -697,10 +844,12 @@ export const startWorker = (
       return;
     }
 
+    one.phase = "in_handler";
+
     try {
       await handler(event, delivered);
     } catch (cause) {
-      report({
+      tell(one, {
         kind: WORKER_PROBLEM_KINDS.HANDLER_FAILED,
         fatal: false,
         cause,
@@ -708,21 +857,27 @@ export const startWorker = (
         // An event is sent at most once and carries no acknowledgement, so
         // nothing here can ask for it again: what the handler failed on is
         // lost, and the open-orders list is where an unfulfilled order shows up.
-        message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${String(cause)}`,
+        message: `the event handler threw on ${event.type} for order ${event.order_id}; nothing here can ask for that event again, and whether it is sent again is not something this SDK knows: ${describeThrown(cause)}`,
       });
     }
   };
 
-  const dispatch = async (envelope: Read<WorkerEnvelope>): Promise<void> => {
+  const dispatch = async (one: Taken): Promise<void> => {
+    // Its turn can come after the stop gave up on it, once the work ahead of
+    // it ends, and by then the merchant has been told no handler was called.
+    if (one.abandoned) return;
+
+    const { envelope } = one;
+
     switch (envelope.kind) {
       case "order":
-        await handleOrder(envelope.payload);
+        await handleOrder(one, envelope.payload);
         return;
       case "quote_request":
         if (askedForAKnownPurpose(envelope.payload)) {
-          await handleQuote(envelope.payload);
+          await handleQuote(one, envelope.payload);
         } else {
-          report({
+          tell(one, {
             kind: WORKER_PROBLEM_KINDS.UNREAD,
             fatal: false,
             subject: envelope.payload.price_id,
@@ -731,10 +886,10 @@ export const startWorker = (
         }
         return;
       case "order_event":
-        await handleEvent(envelope.payload, { id: envelope.id, sent_at: envelope.sent_at });
+        await handleEvent(one, envelope.payload, { id: envelope.id, sent_at: envelope.sent_at });
         return;
       case UNKNOWN_WORD:
-        report(unreadWarning(envelope));
+        tell(one, unreadWarning(envelope));
         return;
       default:
         // Unreachable while the contract carries three kinds; a fourth stops
@@ -746,23 +901,29 @@ export const startWorker = (
   const fail = (cause: unknown): void => {
     if (stopping) return;
     stopping = true;
-    controller.abort();
+    polling.abort();
     report({
       kind: WORKER_PROBLEM_KINDS.WORKER_FAILED,
       fatal: true,
       cause,
-      message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${String(cause)}`,
+      message: `the worker stopped on an error it did not expect, which is a defect in the Agentify SDK rather than something the gateway did: ${describeThrown(cause)}`,
     });
   };
 
   const room = async (): Promise<void> => {
-    while (!stopping && active.size >= HANDLERS_AT_ONCE) {
+    while (!stopping && taken.size >= HANDLERS_AT_ONCE) {
       await new Promise<void>((resolve) => {
         wakeRoom = resolve;
       });
       wakeRoom = undefined;
     }
   };
+
+  /** Whether this order is already in hand here, so a repeat shares that attempt. */
+  const inHand = (orderId: string): boolean =>
+    [...taken.keys()].some(
+      ({ envelope }) => envelope.kind === "order" && envelope.payload.id === orderId,
+    );
 
   const schedule = (envelope: Read<WorkerEnvelope>): void => {
     const orderId =
@@ -771,48 +932,43 @@ export const startWorker = (
         : envelope.kind === "order_event" && envelope.payload.type !== UNKNOWN_WORD
           ? envelope.payload.order_id
           : undefined;
-    if (envelope.kind === "order" && orders.has(envelope.payload.id)) return;
-    if (envelope.kind === "order") orders.add(envelope.payload.id);
+    if (envelope.kind === "order" && inHand(envelope.payload.id)) return;
+    const one: Taken = { envelope, phase: "waiting", abandoned: false };
     const predecessor = orderId === undefined ? undefined : tails.get(orderId);
     // Same-order events follow fulfillment; unrelated work need not wait for it.
     const work = Promise.resolve(predecessor)
-      .then(() => dispatch(envelope))
+      .then(() => dispatch(one))
       .catch(fail)
       .finally(() => {
-        active.delete(work);
+        taken.delete(one);
         wakeRoom?.();
-        if (envelope.kind === "order") orders.delete(envelope.payload.id);
         if (orderId !== undefined && tails.get(orderId) === work) tails.delete(orderId);
       });
-    active.add(work);
+    taken.set(one, work);
     if (orderId !== undefined) tails.set(orderId, work);
   };
 
-  /** Whether the stop still waits for what is in the handlers. */
-  let waitsForHandlers = true;
-
   /**
-   * What is already in a handler may have issued goods, so its answer goes out
-   * before the stop, which would otherwise abort it; but a handler that never
-   * returns must not hold the stop for ever, so the wait is as long as a poll
-   * may take and no longer.
+   * What was taken may have issued goods, so its answers go out before the
+   * loop ends; but a handler that never returns must not hold the stop for
+   * ever, so the wait ends after `STOP_WAIT_MS`.
    */
-  const drainOrAbandon = async (): Promise<void> => {
+  const finishOrGiveUp = async (): Promise<void> => {
+    if (taken.size === 0) return;
+
     const waited = new AbortController();
-    const drained = await Promise.race([
-      Promise.all(active).then(() => true),
-      clock.sleep(deadlineMs, waited.signal).then(() => false),
+    const finished = await Promise.race([
+      Promise.all(taken.values()).then(() => true),
+      clock.sleep(STOP_WAIT_MS, waited.signal).then(() => false),
     ]);
     waited.abort();
-    if (drained) return;
+    if (finished) return;
 
-    waitsForHandlers = false;
-    const unanswered = [...orders];
-    report({
-      kind: WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
-      fatal: false,
-      message: `the worker stopped with ${active.size} messages still in a handler after ${deadlineMs} ms${unanswered.length === 0 ? "" : `, among them orders ${unanswered.join(", ")}`}; nothing was sent for them, so each order is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered`,
-    });
+    for (const one of taken.keys()) {
+      report(gaveUpOn(one));
+      one.abandoned = true;
+    }
+    answering.abort();
   };
 
   const run = async (): Promise<void> => {
@@ -830,21 +986,21 @@ export const startWorker = (
         body: { wait_seconds: POLL_WAIT_SECONDS },
         // Ends early when the worker is stopped or the answer takes longer
         // than any answer should.
-        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(deadlineMs)]),
+        signal: AbortSignal.any([polling.signal, AbortSignal.timeout(deadlineMs)]),
       });
 
-      if (stopping) break;
-
       if (!answer.ok) {
-        // The version a failed body names is passed on as a remark, never as a
+        // A poll cut off by the stop is no failure to report. One that was
+        // read in full goes on below, where its messages are said to be unread.
+        if (stopping) break;
+
+        // That another version was named is passed on as a remark, never as a
         // verdict: that body was held to no schema, and only an answer of the
         // poll's outer shape decides a mismatch. That shape is read whatever
         // the messages inside it are, so the version decides before they do.
-        const spoken = versionSpokenIn(answer.failure.body);
-        const remark =
-          spoken !== undefined && !speaksContract(spoken)
-            ? ` — what answered names contract version ${spoken} while this SDK speaks ${contractVersion}, which may mean the gateway is of another version`
-            : "";
+        const remark = namesAnotherVersion(answer.failure.body)
+          ? `; what answered names a contract version other than ${contractVersion}, which this SDK speaks, so the gateway may be of another version`
+          : "";
 
         // A refusal that says waiting will not help, such as a revoked key, is
         // still not taken as the end, since one such answer may come from a
@@ -867,7 +1023,6 @@ export const startWorker = (
       if (!speaksContract(answer.document.contract_version)) {
         reportTheMismatch(answer.document.contract_version);
         stopping = true;
-        await drainOrAbandon();
         return;
       }
 
@@ -905,8 +1060,8 @@ export const startWorker = (
     .catch(fail)
     .finally(async () => {
       stopping = true;
-      controller.abort();
-      if (waitsForHandlers) await Promise.all(active);
+      polling.abort();
+      await finishOrGiveUp();
       ended = true;
     });
 
@@ -914,7 +1069,7 @@ export const startWorker = (
     running: () => !ended,
     stop: async () => {
       stopping = true;
-      controller.abort();
+      polling.abort();
       await finished;
     },
   };

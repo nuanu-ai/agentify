@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { Segment } from "@agentify/scanner-contracts";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,9 +9,9 @@ import { type PendingScanRequest, readPendingScan, savePendingScan } from "../li
 import { onSite } from "../testing/on-site";
 import { PendingScanExperience } from "./pending-scan-experience";
 
-const pending = (variant: string): PendingScanRequest => ({
+const pending = (variant: string, segment: Segment = "owner"): PendingScanRequest => ({
   url: "example.com",
-  segment: "owner",
+  segment,
   variant,
   idempotencyKey: `018f3f56-2ec8-7b16-8f66-${variant.padEnd(12, "0").slice(0, 12)}`,
   landingPath: "/owner",
@@ -118,7 +119,7 @@ describe("pending scan acceptance", () => {
   it("offers another address and no retry when the refusal says retrying cannot help", async () => {
     // An address the scanner refuses is refused again on every retry: the
     // only way on is a different address.
-    savePendingScan(window.sessionStorage, pending("refused"));
+    savePendingScan(window.sessionStorage, pending("refused", "store"));
     installNetwork(response(errorEnvelope("invalid_url", false), 400));
 
     render(onSite(<PendingScanExperience turnstileSiteKey={null} />));
@@ -126,7 +127,22 @@ describe("pending scan acceptance", () => {
     await screen.findByText("public-invalid_url");
     expect(screen.queryByRole("button", { name: "Retry scan" })).toBeNull();
     expect(screen.getByRole("link", { name: "Enter another website" }).getAttribute("href")).toBe(
-      "/",
+      "/store",
+    );
+  });
+
+  it.each([
+    ["the address names the local form", "/scan/pending?segment=local", "/local"],
+    ["the address names no form", "/scan/pending", "/"],
+    ["the address names a form the site does not have", "/scan/pending?segment=elsewhere", "/"],
+  ])("without a request in the tab, offers the form %s", async (_when, at, form) => {
+    installNetwork(response(errorEnvelope("unused", false), 500));
+
+    render(onSite(<PendingScanExperience turnstileSiteKey={null} />, { at }));
+
+    await screen.findByRole("heading", { name: "No scan request in this tab" });
+    expect(screen.getByRole("link", { name: "Enter another website" }).getAttribute("href")).toBe(
+      form,
     );
   });
 

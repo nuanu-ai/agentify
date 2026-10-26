@@ -5,6 +5,7 @@
 
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { answer } from "../answer.js";
+import { readFailedIn } from "../components/not-loaded.js";
 import { WooPage } from "../screens/woocommerce.js";
 import { signedIn } from "../services.js";
 import { WOOCOMMERCE, wooPagesIn } from "../woocommerce.js";
@@ -19,3 +20,9 @@ export async function loader(asked: LoaderFunctionArgs) {
 export default function WooCommerce() {
   return <WooPage view={useLoaderData<typeof loader>()} />;
 }
+
+export const ErrorBoundary = readFailedIn({
+  tab: "integrations",
+  title: "WooCommerce",
+  what: "WooCommerce settings",
+});

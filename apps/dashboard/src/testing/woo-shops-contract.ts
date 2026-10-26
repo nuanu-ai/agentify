@@ -248,7 +248,7 @@ export const wooShopsContract = (
   });
 
   describe(`${name}: merchant recovery links`, () => {
-    it("only lists this account's requested download recoveries without exposing sale or credential data", async () => {
+    it("says which of this account's requested sales the connector holds, and whether each is a parcel its shop placed or a download it can still deliver, without exposing sale or credential data", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_unknown", FACTS, NOW);
         await shops.claimOrder(accounts.one, "ord_placed", FACTS, NOW);
@@ -257,22 +257,50 @@ export const wooShopsContract = (
           { id: "13", number: "WOO-13", permission: PERMISSION, total: "25.00" },
           NOW,
         );
+        // A download whose shop order was placed without its file: nothing to deliver it with.
+        await shops.claimOrder(accounts.one, "ord_bare", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_bare",
+          { id: "14", number: "WOO-14", permission: null, total: "25.00" },
+          NOW,
+        );
         await shops.claimOrder(accounts.one, "ord_hidden", FACTS, NOW);
         await shops.claimOrder(accounts.other, "ord_foreign", FACTS, NOW);
         await shops.claimOrder(accounts.one, "ord_parcel", { ...FACTS, kind: "parcel" }, NOW);
+        // A parcel whose shop order was placed, which marking it Completed still ships.
+        await shops.claimOrder(
+          accounts.one,
+          "ord_parcel_placed",
+          { ...FACTS, kind: "parcel" },
+          NOW,
+        );
+        await shops.recordOrder(
+          "ord_parcel_placed",
+          { id: "15", number: "WOO-15", permission: null, total: "25.00" },
+          NOW,
+        );
         await shops.recordPrecreateRefusal(accounts.one, "ord_refused", FACTS, NOW);
 
         expect(
-          await shops.recoverableOrders(accounts.one, [
+          await shops.heldSales(accounts.one, [
             "ord_unknown",
             "ord_placed",
+            "ord_bare",
             "ord_foreign",
             "ord_parcel",
+            "ord_parcel_placed",
             "ord_refused",
             "ord_missing",
           ]),
-        ).toEqual(["ord_placed", "ord_unknown"]);
-        expect(await shops.recoverableOrders(accounts.one, [])).toEqual([]);
+        ).toStrictEqual({
+          ord_placed: "recoverable",
+          ord_unknown: "recoverable",
+          ord_bare: "unrecoverable",
+          ord_parcel: "unplaced_parcel",
+          ord_parcel_placed: "parcel",
+          ord_refused: "unrecoverable",
+        });
+        expect(await shops.heldSales(accounts.one, [])).toStrictEqual({});
       });
     });
   });

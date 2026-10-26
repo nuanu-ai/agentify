@@ -18,6 +18,7 @@ import {
   paramSpecToValidator,
 } from "./param-spec.js";
 import { notPlainTextIn, type TextLines } from "./plain-text.js";
+import { SMALLEST_PRICE } from "./price-rule.js";
 import type { Money } from "./primitives.js";
 import { IdentifierSchema, MoneySchema, OpenWordSchema, TimestampSchema } from "./primitives.js";
 import { SellerSiteSchema } from "./seller-site.js";
@@ -350,8 +351,7 @@ const CardFieldsSchema = z
      * schema so that a stored card stays readable.
      */
     price: CardPriceSchema.meta({
-      description:
-        'Publishing refuses a price that is zero, not in USD or USDC, or written with fewer than two or more than six digits after the dot ("5.00", "0.001"), so that a price the catalog shows is one a payment can be taken at. On a "ship" card it is the goods without shipping or a tax that depends on the buyer\'s place: the price a purchase goes through at is the merchant\'s price handler\'s answer, which includes shipping to the buyer\'s place and that tax.',
+      description: `Publishing refuses a price below ${SMALLEST_PRICE}, zero included, a price not in USD or USDC, and one written with fewer than two or more than six digits after the dot ("5.00", "0.015"), so that a price the catalog shows is one a payment can be taken at. On a "ship" card it is the goods without shipping or a tax that depends on the buyer's place: the price a purchase goes through at is the merchant's price handler's answer, which includes shipping to the buyer's place and that tax.`,
     }),
 
     /** What the agent has to supply to buy. Absent when the purchase needs no input. */
@@ -933,21 +933,10 @@ const purchaseBodySchemaOf = (card: Card): Record<string, unknown> => {
   return body as Record<string, unknown>;
 };
 
-/**
- * Where a parcel goes in a listing's example purchase: Agentify's own office,
- * with the phone number blanked out, so that the example is a real place and
- * nobody's home.
- */
-const LISTED_SHIP_TO: ShipTo = {
-  name: "Agentify",
-  line_one: "Jl. Raya Kediri, Beraban",
-  line_two: "Nuanu Creative City",
-  city: "Tabanan",
-  state: "BA",
-  postal_code: "82121",
-  country: "ID",
-  phone_number: "+62 000 0000 0000",
-};
+/** Where a parcel goes in a listing's example purchase: the address schema's own example. */
+const LISTED_SHIP_TO: ShipTo = ShipToSchema.parse(
+  (ShipToSchema.meta()?.examples as readonly unknown[] | undefined)?.[0],
+);
 
 /**
  * The instant a listing's examples stand on: the start of the clock, rather

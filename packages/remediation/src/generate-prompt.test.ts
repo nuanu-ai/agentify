@@ -44,6 +44,38 @@ describe("generateRemediationPrompt", () => {
     expect(first.content).not.toContain("provider-run-123");
   });
 
+  it("names a sitemap's place in the evidence, and drops a list left empty by the filter", () => {
+    const output = generateRemediationPrompt({
+      scope: "full",
+      host: "example.com",
+      assessment: inspected,
+      findings: [
+        {
+          id: "4",
+          source: "canonical-http",
+          status: "partial",
+          labelCode: "sitemap",
+          evidence: {
+            sitemaps_missing: ["declared sitemap 1: HTTP 404"],
+            mirrors: ["https://private.example/a"],
+          },
+        },
+      ],
+    });
+    expect(output.content).toContain("declared sitemap 1: HTTP 404");
+    expect(output.content).not.toContain("Mirrors");
+  });
+
+  it("does not round a coverage under the provisional line up to it", () => {
+    const output = generateRemediationPrompt({
+      scope: "full",
+      host: "example.com",
+      assessment: { ...inspected, coverage: 0.698 },
+      findings: [],
+    });
+    expect(output.content).toContain("Coverage: 69% of the applicable checks");
+  });
+
   it("includes only fail and partial findings", () => {
     const output = generateRemediationPrompt({
       scope: "teaser",
@@ -81,7 +113,7 @@ describe("generateRemediationPrompt", () => {
     it("says when the site was inspected and how much of it could be assessed", () => {
       expect(partial.content).toContain("2026-10-20");
       expect(partial.content).toContain("10:52 UTC");
-      expect(partial.content).toContain("78%");
+      expect(partial.content).toContain("77%");
     });
 
     it("names each check that could not be assessed, and invents no finding for it", () => {

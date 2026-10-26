@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-
+import { PHONE_INPUT_PATTERN } from "./browser.js";
 import {
   BROWSER_OBSERVATION_IDS,
   BROWSER_OBSERVATION_VERSION,
@@ -191,6 +191,37 @@ describe("canonical contracts", () => {
     );
     expect(registrationRequestSchema.parse(base).phone).toBeUndefined();
   });
+
+  it.each([
+    ["+1 (415) 555-0123", true],
+    [" +1 415-555-0100 ", true],
+    ["+14155550123", true],
+    ["+1-415-555-0123", true],
+    ["+1.415.555.0123", true],
+    ["+44 20 7946 0958", true],
+    ["+1 415 555 0123 4567", true],
+    ["+1 415 555 0123 45678", false],
+    ["+1 415 555 0123 4567 89", false],
+    ["4155550123", false],
+    ["+0 415 555 0123", false],
+    ["+1 415 555", false],
+    ["+1 415 555 0123 ext 7", false],
+  ])(
+    "takes the registration phone %s exactly when the form's phone field does: %s",
+    (phone, taken) => {
+      const field = new RegExp(`^(?:${PHONE_INPUT_PATTERN})$`, "v");
+      const base = {
+        email: "owner@example.com",
+        role: "business_owner",
+        site_is_mine: false,
+        marketing_email_opt_in: false,
+        dataset_reuse_acknowledged: true,
+      };
+
+      expect(field.test(phone)).toBe(taken);
+      expect(registrationRequestSchema.safeParse({ ...base, phone }).success).toBe(taken);
+    },
+  );
 
   it("limits browser-owned events to the three client trigger contracts", () => {
     const base = {

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { sharePreviewIn } from "../lib/api-answers";
+import { useCopyByHand } from "../lib/copy-by-hand";
+import { askBrowserToDownload } from "../lib/download";
 import { press } from "../lib/press";
 import type { PublicResultPreview } from "../lib/share-copy";
 import styles from "./public-share-actions.module.css";
@@ -12,7 +14,9 @@ type ScopedPublishedShare = Readonly<{
   value: PublishedShare;
 }>;
 type ActionState = "idle" | "publishing" | "published" | "revoking";
-type Publishing = Readonly<{ share: PublishedShare }> | Readonly<{ failure: string }>;
+type Publishing =
+  | Readonly<{ share: PublishedShare; made: boolean }>
+  | Readonly<{ failure: string }>;
 
 // A press whose answer was lost may still have been carried out, and the
 // preview this page loads names a link that is live, so a reload tells.
@@ -43,18 +47,16 @@ export function PublicShareActions({
   const [message, setMessage] = useState("");
   const [manualCopy, setManualCopy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [imageAsked, setImageAsked] = useState(false);
   const [resolvedPreview, setResolvedPreview] = useState<
     Readonly<{ scanId: string; value: PublicResultPreview }> | undefined
   >();
   const exactPreview = resolvedPreview?.scanId === scanId ? resolvedPreview.value : undefined;
   const currentPublished = published?.scanId === scanId ? published.value : undefined;
-  const copyRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    if (!manualCopy) return;
-    copyRef.current?.focus();
-    copyRef.current?.select();
-  }, [manualCopy]);
+  const [manualCopyPresses, setManualCopyPresses] = useState(0);
+  const { box, events, selected } = useCopyByHand(
+    manualCopy && currentPublished !== undefined ? manualCopyPresses : undefined,
+  );
 
   useEffect(() => {
     if (!enabled || preview.score === null || exactPreview) return;
@@ -102,7 +104,7 @@ export function PublicShareActions({
   const token = () => (tokenStorageKey ? sessionStorage.getItem(tokenStorageKey) : null);
 
   async function ensurePublished(): Promise<Publishing> {
-    if (currentPublished) return { share: currentPublished };
+    if (currentPublished) return { share: currentPublished, made: false };
     if (!exactPreview) return { failure: "The public link could not be prepared. Try again." };
     setActionState("publishing");
     setManualCopy(false);
@@ -120,7 +122,7 @@ export function PublicShareActions({
     if (outcome.kind === "done") {
       setPublished({ scanId, value: outcome.answer });
       setActionState("published");
-      return { share: outcome.answer };
+      return { share: outcome.answer, made: true };
     }
     setActionState("idle");
     return {
@@ -146,7 +148,8 @@ export function PublicShareActions({
     } catch {
       setCopied(false);
       setManualCopy(true);
-      setMessage("Clipboard access is unavailable. Copy the selected link below.");
+      setManualCopyPresses((presses) => presses + 1);
+      setMessage("");
       return false;
     }
   }
@@ -168,14 +171,12 @@ export function PublicShareActions({
       setMessage(published.failure);
       return;
     }
-    const anchor = document.createElement("a");
-    anchor.href = `/api/v1/shares/${encodeURIComponent(published.share.slug)}/image`;
-    anchor.download = "";
-    anchor.hidden = true;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    setMessage("Image download started. The public link is live and noindex.");
+    setManualCopy(false);
+    askBrowserToDownload(imageUrl(published.share));
+    setImageAsked(true);
+    setMessage(
+      `${published.made ? "The public link is live and noindex." : "The public link was already live, so no new one was made."} Your browser was asked to download the image.`,
+    );
   }
 
   async function revoke() {
@@ -194,6 +195,7 @@ export function PublicShareActions({
     if (outcome.kind === "done") {
       setPublished(undefined);
       setManualCopy(false);
+      setImageAsked(false);
       setCopied(false);
       setActionState("idle");
       setMessage("Public link revoked.");
@@ -246,16 +248,25 @@ export function PublicShareActions({
         ) : null}
       </div>
       <span aria-live="polite" className={styles.status}>
-        {message}
+        {manualCopy && currentPublished
+          ? selected
+            ? "Clipboard access is unavailable. The link is selected below, ready to copy."
+            : "Clipboard access is unavailable. Copy the link from the box below."
+          : message}
       </span>
+      {imageAsked && currentPublished ? (
+        <a className={styles.again} download href={imageUrl(currentPublished)}>
+          Download image again
+        </a>
+      ) : null}
       {manualCopy && currentPublished ? (
         <div className={styles.manualCopy}>
           <label htmlFor={`share-link-${scanId}`}>Public link</label>
           <textarea
             id={`share-link-${scanId}`}
-            onFocus={(event) => event.currentTarget.select()}
+            {...events}
             readOnly
-            ref={copyRef}
+            ref={box}
             rows={3}
             value={currentPublished.url}
           />
@@ -264,6 +275,9 @@ export function PublicShareActions({
     </div>
   );
 }
+
+const imageUrl = (share: PublishedShare) =>
+  `/api/v1/shares/${encodeURIComponent(share.slug)}/image`;
 
 export function shareRequestHeaders(token: string | null, includeContentType: boolean) {
   return {

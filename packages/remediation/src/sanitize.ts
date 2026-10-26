@@ -30,7 +30,7 @@ export function sanitizeEvidence(value: unknown): SafeEvidence {
     } else if (typeof item === "boolean") {
       output[key] = item;
     } else if (Array.isArray(item)) {
-      output[key] = item
+      const entries = item
         .filter(
           (entry): entry is string =>
             typeof entry === "string" &&
@@ -39,6 +39,8 @@ export function sanitizeEvidence(value: unknown): SafeEvidence {
         )
         .slice(0, 20)
         .map((entry) => entry.slice(0, 200));
+      // A list the filter emptied would be printed as a label with nothing after it.
+      if (entries.length) output[key] = entries;
     }
   }
   return output;

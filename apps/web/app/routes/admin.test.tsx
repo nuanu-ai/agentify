@@ -240,6 +240,14 @@ const workerVerdict = (data: Numbers) =>
 describe("the operator's dashboard, drawn", () => {
   const drawn = draw(NUMBERS);
 
+  it("shows a scan's coverage as the whole percent it has reached, as every page does", () => {
+    const [scan] = NUMBERS.recentScans;
+    if (!scan) throw new Error("the fixture lists a scan");
+    expect(text(draw({ ...NUMBERS, recentScans: [{ ...scan, coverage: 0.698 }] }))).toContain(
+      "69%",
+    );
+  });
+
   it("shows the figures it was given", () => {
     expect(tile(drawn, "Visitors")).toContain("1,234");
     expect(tile(drawn, "Scans")).toContain("640");

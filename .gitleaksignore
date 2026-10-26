@@ -86,3 +86,9 @@ a616bb5d0f5e6a355e21b174688116023bb721fc:apps/gateway/src/adapters/x402/payment-
 e5c172f5c228bda25e768181da7f2e4a54328a0e:apps/dashboard/src/woo-worker.test.ts:generic-api-key:2902
 352300c0c15b2a190b3186245d6ba1ea7ab02925:apps/dashboard/app/admin-gallery/merchants.ts:generic-api-key:624
 0312008dde1dd6556ca605e8b98bfec6d474612e:apps/dashboard/app/admin-gallery/merchants.ts:generic-api-key:613
+# Two public, valueless local-devnet keys in the quickstart buyer's test, since
+# replaced by keys made at run time; the commits stay in the branch's history.
+f1035b074385c50ad91a0c082cbc0078185f8658:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:37
+03185bc9af1c9c4b31d543bd0d4df36b243b480f:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:78
+ad8954313dbeafa7c088550fdc6e26eac66c2382:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:45
+ad8954313dbeafa7c088550fdc6e26eac66c2382:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:78

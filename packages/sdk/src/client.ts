@@ -324,15 +324,23 @@ export interface AgentifyClient {
    * Stops the subscription and waits for it to finish. Safe to call twice,
    * and on a client that was never started. Handlers stay registered.
    *
-   * A poll parked at the gateway is dropped; anything taken in the instant
-   * before is an order, which comes again, or an event, which is sent once.
-   * An answer already on its way is dropped too, and nobody on this side knows
-   * whether it arrived: the order may be closed by it or may come back. The
-   * merchant's problem reporter is told which orders that happened to.
+   * It takes no more work, since draining the queue would pull work into a
+   * process that is going away. A poll parked at the gateway is dropped;
+   * anything taken in the instant before is an order, which comes again, or
+   * an event, which is sent once. A poll answer already read when the stop
+   * begins is reported as a `batch_abandoned` problem naming what it left
+   * unread. Work already started finishes, including
+   * events waiting for earlier work on their order, and the answers its
+   * handlers return are sent, because goods may already have been issued.
    *
-   * Waits for all started handlers, including events waiting for earlier work
-   * on their order. Stopping does not drain the queue, which would pull more
-   * work into a process that is going away.
+   * It waits eight seconds at most. Each message still unfinished then is
+   * reported as a `batch_abandoned` problem with the order or price question
+   * it is about as its `subject`: an order still waiting or in its handler
+   * had nothing sent for it and comes again, and for an answer already on
+   * its way nobody on this side knows whether it arrived. A process manager
+   * that kills the process sooner cuts the wait short and nothing is
+   * reported: an order whose answer was not sent comes again, and one whose
+   * answer was on its way may or may not be closed by it.
    */
   stop(): Promise<void>;
 }

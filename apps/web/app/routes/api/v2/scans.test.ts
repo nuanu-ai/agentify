@@ -65,4 +65,46 @@ describe("asking for a scan's report", () => {
     expect((await ask(REGISTRATIONS)).status).toBe(405);
     expect(await allowedAt(REGISTRATIONS)).toBe("OPTIONS, POST");
   });
+
+  it.each([
+    ["phone", { phone: "415 555 0123" }, "invalid_phone", /phone.*country code/i],
+    ["email", { email: "person-at-example.com" }, "invalid_email", /email/i],
+    [
+      "data notice",
+      { dataset_reuse_acknowledged: false },
+      "data_notice_unacknowledged",
+      /scanner data notice/i,
+    ],
+  ])(
+    "names the %s when that is what it refuses, before the scan is looked up",
+    async (_field, changed, code, words) => {
+      vi.stubEnv("REGISTRATION_ENABLED", "true");
+
+      const answered = await fromSite(
+        REGISTRATIONS,
+        "POST",
+        { ...asked, ...changed },
+        { authorization: "Bearer a-scan-token" },
+      );
+
+      expect(answered.status).toBe(400);
+      const refusal = await refusalOf(answered);
+      expect(refusal.code).toBe(code);
+      expect(refusal.message).toMatch(words);
+    },
+  );
+
+  it("refuses an ask the form could not have sent without naming a field of it", async () => {
+    vi.stubEnv("REGISTRATION_ENABLED", "true");
+
+    const answered = await fromSite(
+      REGISTRATIONS,
+      "POST",
+      { ...asked, unexpected: true },
+      { authorization: "Bearer a-scan-token" },
+    );
+
+    expect(answered.status).toBe(400);
+    expect((await refusalOf(answered)).code).toBe("invalid_registration");
+  });
 });

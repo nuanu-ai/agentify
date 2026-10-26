@@ -26,21 +26,48 @@ export const PAYABLE_CURRENCIES: readonly string[] = Object.freeze(["USD", "USDC
 
 /**
  * How many places after the dot a price may carry: the places of USDC, which is
- * what a buyer pays in. Its smallest unit is a millionth of a dollar, so
- * "0.000001" is the finest price there is an exact charge for.
+ * what a buyer pays in. Its smallest unit is a millionth of a dollar, so an
+ * amount with more places has no exact charge.
  */
 export const PAYABLE_DECIMALS = 6;
+
+/**
+ * The smallest price Agentify sells at, in the price's own currency: one cent
+ * of USD, or of USDC, which is paid one for one. It is Agentify's own floor:
+ * the payment network refuses payments below a minimum it does not publish, so
+ * a smaller price could be listed and then refused when a buyer pays.
+ */
+export const SMALLEST_PRICE = "0.01";
+
+/** An amount as a count of units of its leading `places` after the dot, the rest cut off. */
+const unitsTo = (amount: string, places: number): bigint => {
+  const [whole = "0", fraction = ""] = amount.split(".");
+  return BigInt(`${whole}${fraction.slice(0, places).padEnd(places, "0")}`);
+};
+
+/**
+ * Read on the places `SMALLEST_PRICE` is written with, so an amount with any
+ * number of places is compared; cutting off the places past them cannot lift
+ * an amount to or over a price written in no more places than that.
+ */
+const isUnderTheSmallestPrice = (amount: string): boolean => {
+  const places = SMALLEST_PRICE.split(".")[1]?.length ?? 0;
+  return unitsTo(amount, places) < unitsTo(SMALLEST_PRICE, places);
+};
 
 /**
  * What stands between this price and a sale, as findings under the path
  * `price` of the card or price answer that carried it; empty when nothing does.
  *
  * A price of zero is refused, since a free item is given away from the
- * merchant's own site, not sold. An amount needs at least two digits after the
- * dot, so that "500" meant as cents is never charged as five hundred dollars,
- * and at most `PAYABLE_DECIMALS`, past which there is no exact amount to
- * charge. A currency outside `PAYABLE_CURRENCIES` is refused. An amount gets at
- * most one finding. The amount is expected to have passed `AmountSchema`.
+ * merchant's own site, not sold. An amount above zero and below
+ * `SMALLEST_PRICE` is refused, since the payment network may not carry it. An
+ * amount needs at least two digits after the dot, so that "500" meant as cents
+ * is never charged as five hundred dollars, and at most `PAYABLE_DECIMALS`,
+ * past which there is no exact amount to charge. A currency outside
+ * `PAYABLE_CURRENCIES` is refused. An amount gets at most one finding, the
+ * first of these, so that correcting it does not meet a second refusal for the
+ * size of the price. The amount is expected to have passed `AmountSchema`.
  */
 export function priceProblemsOf(price: Money): Problem[] {
   const problems: Problem[] = [];
@@ -52,6 +79,12 @@ export function priceProblemsOf(price: Money): Problem[] {
       path: ["price", "amount"],
       code: "custom",
       message: `the price is ${written}, and nothing is sold through Agentify at a price of zero: a free item is offered from your own site, without a payment`,
+    });
+  } else if (isUnderTheSmallestPrice(price.amount)) {
+    problems.push({
+      path: ["price", "amount"],
+      code: "custom",
+      message: `the price is ${written}, and the smallest price Agentify sells at is ${SMALLEST_PRICE}: the payment network refuses payments below a minimum it does not publish, so a smaller price might never be paid`,
     });
   } else if (places < 2) {
     problems.push({

@@ -160,6 +160,9 @@ const PROVIDERS: ReadonlyArray<readonly [string, string[]]> = [
   ["google", ["google-extended"]],
 ];
 
+/** The AI crawler groups robots.txt is expected to state a policy for. */
+export const AI_PROVIDERS: readonly string[] = PROVIDERS.map(([provider]) => provider);
+
 export const explicitAiPolicies = (parsed: RobotsParseResult): Record<string, string[]> => {
   const output: Record<string, string[]> = {};
   const tokens = new Set(parsed.groups.flatMap((group) => group.agents));

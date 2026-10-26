@@ -61,7 +61,9 @@ merchant's share, for at most twenty splits. A merchant's covers the split of
 their wallet in force and every split an order of theirs was paid to; the
 operator's covers every split recorded on the network, in parts of twenty,
 since any of them may hold money, at the price of gas for those that hold
-nothing. Agentify holds no key, writes to no chain and reads no node.
+nothing. Agentify holds no key and writes to no chain; before a merchant's
+payout is offered, it reads a dry run of it on the chain
+(`docs/research/48-merchant-wallet-onboarding.md`).
 
 ## Consequences
 

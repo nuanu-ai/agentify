@@ -11,7 +11,7 @@
  * itself, so nothing in the sending wallet can be touched.
  */
 
-import { encodeFunctionData, type Hex } from "viem";
+import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
 import {
   checkedAddress,
   checkedSplit,
@@ -78,6 +78,13 @@ const ABI = [
       { name: "_token", type: "address" },
     ],
     outputs: [],
+  },
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
@@ -276,20 +283,23 @@ function transactionOf(
   return {
     to: checkedAddress(network.multicall3, "Multicall3"),
     value: 0n,
-    data: encodeFunctionData({
-      abi: ABI,
-      functionName: "aggregate3",
-      args: [
-        calls.map((call) => ({
-          target: checkedAddress(call.target, "a call's target"),
-          allowFailure: call.allowFailure,
-          callData: call.callData,
-        })),
-      ],
-    }),
+    data: aggregate3Of(calls),
     splits,
   };
 }
+
+const aggregate3Of = (calls: readonly Call[]): Hex =>
+  encodeFunctionData({
+    abi: ABI,
+    functionName: "aggregate3",
+    args: [
+      calls.map((call) => ({
+        target: checkedAddress(call.target, "a call's target"),
+        allowFailure: call.allowFailure,
+        callData: call.callData,
+      })),
+    ],
+  });
 
 /**
  * The one transaction that pays a merchant out of their splits on this
@@ -353,4 +363,84 @@ export function operatorPayouts(
     );
   }
   return parts;
+}
+
+/** A call for `eth_call` that tells what a merchant's payout would pay if it were sent now. */
+interface PayoutDryRun {
+  /** Multicall3. */
+  readonly to: string;
+  readonly data: Hex;
+  /** Each wallet the payout withdraws to, once, in the order the call reads them. */
+  readonly wallets: readonly string[];
+}
+
+/**
+ * The read that asks the chain what a merchant's `payout` would pay if it were
+ * sent now. It is one `aggregate3` to Multicall3 that reads the USDC of each
+ * wallet the payout withdraws to, runs the payout's own data through
+ * Multicall3 again, where every call in it runs as it does when sent, and
+ * reads each wallet once more. It is for `eth_call` alone: sent, it would be a
+ * payout like any other. The payout may not fail inside it, so a payout the
+ * chain would revert, or one the node ran out of gas for, gives no answer
+ * rather than an answer of nothing.
+ */
+export function payoutDryRun(network: PayoutSplitNetwork, payout: PayoutTransaction): PayoutDryRun {
+  const multicall3 = checkedAddress(network.multicall3, "Multicall3");
+  if (checkedAddress(payout.to, "the payout's address") !== multicall3) {
+    throw new Error(
+      `the payout is sent to ${payout.to}, not to ${network.network}'s Multicall3, so it is not one a dry run can read`,
+    );
+  }
+  const wallets = eachOnce(payout.splits.map((split) => split.merchantWallet));
+  const read = (wallet: string): Call => ({
+    target: network.usdc,
+    allowFailure: false,
+    callData: encodeFunctionData({
+      abi: ABI,
+      functionName: "balanceOf",
+      args: [checkedAddress(wallet, "a wallet")],
+    }),
+  });
+  return {
+    to: multicall3,
+    data: aggregate3Of([
+      ...wallets.map(read),
+      { target: multicall3, allowFailure: false, callData: payout.data },
+      ...wallets.map(read),
+    ]),
+    wallets,
+  };
+}
+
+/**
+ * The USDC, in millionths, that the chain's answer to `run` says the payout
+ * would add to its wallets together. Throws on an answer that cannot be the
+ * dry run's: another number of results, a call that failed, or a wallet that
+ * would hold less after the payout than before, which no payout does.
+ */
+export function broughtBy(run: PayoutDryRun, answer: Hex): bigint {
+  const results = decodeFunctionResult({ abi: ABI, functionName: "aggregate3", data: answer });
+  const count = run.wallets.length;
+  if (results.length !== count * 2 + 1 || results.some((result) => !result.success)) {
+    throw new Error(
+      `the chain answered the dry run of a payout to ${count} wallet${count === 1 ? "" : "s"} with ${results.length} results, or with a call that failed`,
+    );
+  }
+  const held = (at: number): bigint =>
+    decodeFunctionResult({
+      abi: ABI,
+      functionName: "balanceOf",
+      data: results[at]?.returnData ?? "0x",
+    });
+  let brought = 0n;
+  for (let at = 0; at < count; at += 1) {
+    const gained = held(count + 1 + at) - held(at);
+    if (gained < 0n) {
+      throw new Error(
+        `the chain answered that ${run.wallets[at]} would hold less after the payout than before`,
+      );
+    }
+    brought += gained;
+  }
+  return brought;
 }

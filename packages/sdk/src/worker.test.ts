@@ -17,6 +17,8 @@ import {
   POLL_DEADLINE_MS,
   POLL_WAIT_SECONDS,
   QUIET_POLL_FLOOR_MS,
+  type RunningWorker,
+  STOP_WAIT_MS,
   startWorker,
   systemClock,
   WORKER_PROBLEM_KINDS,
@@ -72,6 +74,51 @@ const recordingClock = (): WorkerClock & { readonly waits: number[]; elapse(ms: 
       waits.push(ms);
     },
   };
+};
+
+/**
+ * A clock whose waits end when the test says so. The stop's wait for
+ * unfinished work runs out at the moment a test chooses, and no poll times
+ * out because the machine running the tests was slow.
+ */
+const handClock = (): WorkerClock & {
+  readonly asked: number[];
+  waitsAskedFor(): number;
+  runOut(): void;
+} => {
+  const waiting: (() => void)[] = [];
+  const asked: number[] = [];
+
+  return {
+    asked,
+    waitsAskedFor: () => asked.length,
+    runOut: () => {
+      for (const end of waiting.splice(0)) end();
+    },
+    now: () => performance.now(),
+    random: () => 1,
+    sleep: (ms, signal) =>
+      new Promise<void>((resolve) => {
+        asked.push(ms);
+        if (signal.aborted) {
+          resolve();
+          return;
+        }
+        waiting.push(resolve);
+        signal.addEventListener("abort", () => resolve(), { once: true });
+      }),
+  };
+};
+
+/** Stops a worker and lets the wait for its unfinished work run out. */
+const stopGivingUp = async (
+  worker: { stop(): Promise<void> },
+  clock: ReturnType<typeof handClock>,
+): Promise<void> => {
+  const stopping = worker.stop();
+  await waitUntil(() => clock.waitsAskedFor() > 0, "the stop to begin its wait");
+  clock.runOut();
+  await stopping;
 };
 
 let gateway: FakeGateway | undefined;
@@ -218,6 +265,45 @@ describe("an order off the worker stream", () => {
     expect(problems[0]?.message).toMatch(/the supplier timed out/);
     expect(problems[0]?.fatal).toBe(false);
   });
+
+  it.each([
+    ["an order", "order", envelopes.order, order.id],
+    ["a price question", "quote", envelopes.quote, question.price_id],
+    ["an event", "event", envelopes.event, event.order_id],
+  ] as const)(
+    "reports a handler for %s that throws something with no text form, and goes on",
+    async (_what, kind, envelope, subject) => {
+      // JavaScript can throw anything, including a value that turning into text
+      // throws again. The report about the handler must not be what fails: that
+      // would stop the worker for good and blame this SDK.
+      const problems: WorkerProblem[] = [];
+      const thrown: unknown = Object.create(null);
+      const throwing = () => {
+        throw thrown;
+      };
+
+      gateway = await startFakeGateway({
+        apiKey: API_KEY,
+        routes: { poll_worker: polling(batch(envelope), batch()) },
+      });
+
+      const worker = startWorker(
+        { apiKey: API_KEY, baseUrl: gateway.url },
+        { [kind]: throwing, problem: (problem: WorkerProblem) => problems.push(problem) },
+        recordingClock(),
+      );
+      running = worker;
+
+      await waitUntil(() => problems.length > 0, "the problem to be reported");
+      await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "further polls");
+
+      expect(problems.map((problem) => [problem.kind, problem.subject])).toStrictEqual([
+        [WORKER_PROBLEM_KINDS.HANDLER_FAILED, subject],
+      ]);
+      expect(problems[0]?.cause).toBe(thrown);
+      expect(worker.running()).toBe(true);
+    },
+  );
 
   it("sends nothing when the handler answers with something the contract refuses", async () => {
     // "Not right now" is not one of the three answers. Held back, the order
@@ -868,6 +954,7 @@ describe("a gateway speaking another dialect", () => {
     // Waiting for a stuck handler would hold the stop for ever; past the
     // longest an answer should take, the worker gives up on it and says so.
     const problems: WorkerProblem[] = [];
+    const clock = handClock();
     let inHand = false;
 
     gateway = await startFakeGateway({
@@ -889,20 +976,74 @@ describe("a gateway speaking another dialect", () => {
         },
         problem: (problem) => problems.push(problem),
       },
-      systemClock,
-      100,
+      clock,
     );
     running = worker;
 
     await waitUntil(() => inHand, "the order to reach the handler");
+    await waitUntil(() => clock.waitsAskedFor() > 0, "the wait for the handler to begin");
+    clock.runOut();
     await waitUntil(() => !worker.running(), "the worker to stop");
 
     expect(problems.map((one) => [one.kind, one.fatal])).toStrictEqual([
       [WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH, true],
       [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, false],
     ]);
+    expect(problems[1]?.subject).toBe(order.id);
     expect(problems[1]?.message).toContain(order.id);
+    expect(problems[1]?.message).toMatch(/nothing was sent/);
     expect(gateway.callsTo("answer_order")).toStrictEqual([]);
+  });
+
+  it("does not count an answer that had already left as one for which nothing was sent", async () => {
+    // The answer was on its way when the wait for it ran out: the gateway may
+    // have it and closed the order on it, so promising a redelivery would be
+    // a claim nobody here has, and saying it twice would contradict itself.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const answerArrived = Promise.withResolvers<void>();
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        // The other version comes once the answer is at the gateway, so the
+        // wait that follows certainly starts with the answer on its way.
+        poll_worker: async (_call, index) => {
+          if (index === 0) return batch(envelopes.order);
+          await answerArrived.promise;
+          return { body: { contract_version: "99", envelopes: [] } };
+        },
+        answer_order: () => {
+          answerArrived.resolve();
+          return new Promise<never>(() => {});
+        },
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => ({ delivered: { access_url: "https://example.com/a" } }),
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+    running = worker;
+
+    await waitUntil(() => clock.waitsAskedFor() > 0, "the wait for the answer to begin");
+    clock.runOut();
+    await waitUntil(() => !worker.running(), "the worker to stop");
+    // A turn for anything the abandoned answer would still report.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(gateway.callsTo("answer_order")).toHaveLength(1);
+    expect(problems.map((one) => one.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.CONTRACT_VERSION_MISMATCH,
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+    ]);
+    expect(problems[1]?.subject).toBe(order.id);
+    expect(problems[1]?.message).toMatch(/not known/);
+    expect(problems[1]?.message).not.toMatch(/nothing was sent|is sent again/);
   });
 
   it("stops on another version even when the answer carries an order this release cannot read", async () => {
@@ -945,10 +1086,11 @@ describe("a gateway speaking another dialect", () => {
     expect(seen).toStrictEqual([]);
   });
 
-  it("passes on the version it saw in an answer it could not read, and keeps going", async () => {
-    // The version a body this SDK refuses names is worth telling the merchant,
-    // but that body was held to no schema: acted on, a proxy's error page
-    // could stop a worker for good. So it is a remark in a retryable problem.
+  it("says an answer it could not read named another version, without repeating what it named, and keeps going", async () => {
+    // Another version named is worth telling the merchant, but that body was
+    // held to no schema: acted on, a proxy's error page could stop a worker
+    // for good, and repeated, it puts whatever the body carried in a log. So
+    // it is a remark in a retryable problem, and the remark carries no value.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -956,7 +1098,7 @@ describe("a gateway speaking another dialect", () => {
       routes: {
         poll_worker: () => ({
           status: 503,
-          text: JSON.stringify({ contract_version: "99", error: "no worker here" }),
+          text: JSON.stringify({ contract_version: "9.9-preview", error: "no worker here" }),
         }),
       },
     });
@@ -971,11 +1113,41 @@ describe("a gateway speaking another dialect", () => {
 
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
     expect(problems[0]?.fatal).toBe(false);
-    expect(problems[0]?.message).toContain("99");
-    expect(problems[0]?.message).toContain("may mean");
+    expect(problems[0]?.message).toContain("another version");
+    expect(problems[0]?.message).toContain(contractVersion);
+    expect(problems[0]?.message).not.toContain("9.9-preview");
+    expect(problems[0]?.message).not.toContain("no worker here");
 
     // And it went on asking.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 3, "further polls");
+  });
+
+  it("does not say another version answered when what failed names this SDK's own", async () => {
+    // A broken answer at the version this SDK speaks says nothing about the
+    // gateway being of another one; the remark would send a merchant to
+    // upgrade for nothing.
+    const problems: WorkerProblem[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: () => ({
+          status: 503,
+          text: JSON.stringify({ contract_version: contractVersion, error: "no worker here" }),
+        }),
+      },
+    });
+
+    running = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      { problem: (problem) => problems.push(problem) },
+      recordingClock(),
+    );
+
+    await waitUntil(() => problems.length > 0, "the problem to be reported");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
+    expect(problems[0]?.message).not.toContain("another version");
   });
 
   it.each([
@@ -1003,6 +1175,35 @@ describe("a gateway speaking another dialect", () => {
 
     expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
     expect(problems[0]?.fatal).toBe(false);
+  });
+
+  it("repeats nothing of a poll answer cut short in the problem it reports", async () => {
+    // A poll answer cut mid-order carries the buyer's parameters, and the
+    // problem goes to the merchant's log.
+    const problems: WorkerProblem[] = [];
+    const cut = JSON.stringify({ contract_version: contractVersion, envelopes: [envelopes.order] });
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: () => ({
+          type: "application/json",
+          text: cut.slice(0, cut.indexOf("buyer@example.com") + 20),
+        }),
+      },
+    });
+
+    running = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      { problem: (problem) => problems.push(problem) },
+      recordingClock(),
+    );
+
+    await waitUntil(() => problems.length > 0, "the problem to be reported");
+
+    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.POLL_FAILED);
+    expect(problems[0]?.message).toContain("application/json");
+    expect(problems[0]?.message).not.toContain("buyer@example.com");
   });
 
   it("keeps the merchant's handlers and reporter when a loop is started again", async () => {
@@ -1111,6 +1312,14 @@ describe("a poll that goes quiet", () => {
     // seconds before calling the quiet a recovery; this side's two terms must
     // stay under it.
     expect(POLL_DEADLINE_MS + RETRY_CEILING_MS).toBeLessThan(90_000);
+  });
+});
+
+describe("how long a stop waits", () => {
+  it("ends before a container's default grace runs out, so what it cut short reaches the log", () => {
+    // Docker kills a container ten seconds after asking it to stop; a stop
+    // that waited longer would be killed before reporting anything.
+    expect(STOP_WAIT_MS).toBeLessThan(10_000);
   });
 });
 
@@ -1479,23 +1688,104 @@ describe("the loop failing in a way nothing in it anticipated", () => {
 });
 
 describe("stopping", () => {
-  it("says so when an answer the handler produced did not get through", async () => {
-    // The handler has run and goods may have been issued, so a merchant
-    // reconciling a shutdown is told this answer went nowhere.
+  it("sends the answer a handler returns while the worker is stopping", async () => {
+    // The handler has run and goods may have been issued: stop() lets it
+    // finish and sends what it returned, so the order is answered rather than
+    // left to come again.
     const problems: WorkerProblem[] = [];
-    let answering: (() => void) | undefined;
-    const held = new Promise<void>((resolve) => {
-      answering = resolve;
-    });
+    const inTheHandler = Promise.withResolvers<void>();
+    const handlerMayFinish = Promise.withResolvers<void>();
 
     gateway = await startFakeGateway({
       apiKey: API_KEY,
       routes: {
         poll_worker: polling(batch(envelopes.order)),
-        answer_order: () => {
-          answering?.();
-          return new Promise<never>(() => {});
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const agentify = createClient({ apiKey: API_KEY, baseUrl: gateway.url });
+
+    agentify.on("order", async (arrived) => {
+      inTheHandler.resolve();
+      await handlerMayFinish.promise;
+      return arrived.delivered({ access_url: "https://a.example" });
+    });
+    agentify.on("problem", (problem) => problems.push(problem));
+    await agentify.start();
+
+    await inTheHandler.promise;
+    const stopping = agentify.stop();
+    handlerMayFinish.resolve();
+    await stopping;
+
+    expect(gateway.callsTo("answer_order")).toHaveLength(1);
+    expect(gateway.callsTo("answer_order")[0]?.params).toStrictEqual({ order_id: order.id });
+    expect(problems).toStrictEqual([]);
+  });
+
+  it("gives up on a handler still running when the wait runs out, says nothing was sent, and sends nothing if it returns later", async () => {
+    // A handler that never returns must not hold the stop for ever. Its order
+    // comes again, so an answer it returns after the stop would be a second
+    // answer nobody is waiting for, and a second report about one order.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const inTheHandler = Promise.withResolvers<void>();
+    const handlerMayFinish = Promise.withResolvers<void>();
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order)),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: async () => {
+          inTheHandler.resolve();
+          await handlerMayFinish.promise;
+          return { delivered: { access_url: "https://a.example" } };
         },
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await inTheHandler.promise;
+    await stopGivingUp(worker, clock);
+
+    // One wait, of the stop's own length, and no other.
+    expect(clock.asked).toStrictEqual([STOP_WAIT_MS]);
+    expect(problems.map((problem) => [problem.kind, problem.subject])).toStrictEqual([
+      [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, order.id],
+    ]);
+    expect(problems[0]?.message).toMatch(/nothing was sent/);
+    expect(problems[0]?.message).toMatch(/sent again/);
+    expect(problems[0]?.message).not.toMatch(/not known|not called/);
+
+    handlerMayFinish.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(gateway.callsTo("answer_order")).toStrictEqual([]);
+    expect(problems).toHaveLength(1);
+  });
+
+  it("says an answer on its way when the wait ran out may have arrived, says it once, and lets go of it", async () => {
+    // An abort carries no code to say whether the request was fully written,
+    // so neither "it was sent" nor "nothing was sent" is a fact anybody has.
+    // The request is let go of, or its connection would keep the merchant's
+    // process alive for minutes after the stop returned.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order)),
+        answer_order: () => new Promise<never>(() => {}),
       },
     });
 
@@ -1505,26 +1795,189 @@ describe("stopping", () => {
         order: () => ({ delivered: { access_url: "https://a.example" } }),
         problem: (problem) => problems.push(problem),
       },
+      clock,
     );
 
-    await held;
-    await worker.stop();
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+    await stopGivingUp(worker, clock);
+    await waitUntil(
+      () => (gateway?.leftUnanswered("answer_order").length ?? 0) === 1,
+      "the answer's request to be let go of",
+    );
 
-    expect(problems.map((problem) => problem.kind)).toContain(WORKER_PROBLEM_KINDS.ANSWER_FAILED);
-    expect(problems[0]?.subject).toBe(order.id);
-    // Abandoned when the worker stopped, so whether the gateway has it is not
-    // known, and no redelivery is promised.
-    expect(problems[0]?.message).toMatch(/not known here/);
-    expect(problems[0]?.message).not.toMatch(/will be delivered again/);
-    // An abort carries no code to say whether the request was fully written,
-    // so "it was sent" would be a fact nobody has.
-    expect(problems[0]?.message).not.toMatch(/it was sent/);
+    expect(problems.map((problem) => [problem.kind, problem.subject])).toStrictEqual([
+      [WORKER_PROBLEM_KINDS.BATCH_ABANDONED, order.id],
+    ]);
+    expect(problems[0]?.message).toMatch(/not known/);
+    expect(problems[0]?.message).not.toMatch(
+      /nothing was sent|is sent again|it was sent|left this process/,
+    );
+  });
+
+  it("says for each message the wait gave up on what follows for it, by where it stood", async () => {
+    // An order still in its handler comes again; an event waiting behind it
+    // never reached its handler, and one whose handler was running did, and
+    // neither is sent again; a price question still being answered counts as
+    // a silent price check.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const inTheHandlers = { order: false, quote: false, event: false };
+    const eventOfAnotherOrder = {
+      ...envelopes.event,
+      id: "env-4",
+      payload: { ...event, order_id: "order-2" },
+    };
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(
+          batch(envelopes.order, envelopes.event, envelopes.quote, eventOfAnotherOrder),
+        ),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => {
+          inTheHandlers.order = true;
+          return new Promise<HandlerAnswer>(() => {});
+        },
+        quote: () => {
+          inTheHandlers.quote = true;
+          return new Promise<never>(() => {});
+        },
+        event: () => {
+          inTheHandlers.event = true;
+          return new Promise<never>(() => {});
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await waitUntil(
+      () => inTheHandlers.order && inTheHandlers.quote && inTheHandlers.event,
+      "three handlers",
+    );
+    await stopGivingUp(worker, clock);
+
+    const about = (subject: string) =>
+      problems
+        .filter((problem) => problem.kind === WORKER_PROBLEM_KINDS.BATCH_ABANDONED)
+        .filter((problem) => problem.subject === subject)
+        .map((problem) => problem.message);
+    const forTheOrder = about(order.id);
+    const eventSaid = forTheOrder.find((message) => message.includes(event.type));
+    const orderSaid = forTheOrder.find((message) => !message.includes(event.type));
+
+    expect(problems).toHaveLength(4);
+    expect(forTheOrder).toHaveLength(2);
+    expect(orderSaid).toMatch(/nothing was sent/);
+    expect(orderSaid).toMatch(/sent again/);
+    expect(orderSaid).not.toMatch(/not called/);
+    expect(eventSaid).toMatch(/order\.unfulfilled/);
+    expect(eventSaid).toMatch(/not called/);
+    expect(eventSaid).toMatch(/not sent again/);
+    expect(about("order-2")).toHaveLength(1);
+    expect(about("order-2")[0]).toMatch(/not sent again/);
+    expect(about("order-2")[0]).not.toMatch(/not called/);
+    expect(about(question.price_id)).toHaveLength(1);
+    expect(about(question.price_id)[0]).toMatch(/no price was sent/);
+    expect(about(question.price_id)[0]).toMatch(/silent price check/);
+  });
+
+  it("does not hand an event to its handler once the stop has said it was not called", async () => {
+    // The event waits behind its order's answer; when the stop gives up, the
+    // answer is cut off and the order's work ends, and that must not be the
+    // moment the event reaches a process that has already stopped.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const handled: string[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.order, envelopes.event)),
+        answer_order: () => new Promise<never>(() => {}),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: () => ({ delivered: { access_url: "https://a.example" } }),
+        event: (arrived) => {
+          handled.push(arrived.type);
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await waitUntil(() => (gateway?.callsTo("answer_order").length ?? 0) === 1, "the answer");
+    await stopGivingUp(worker, clock);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(problems.map((problem) => problem.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+    ]);
+    expect(handled).toStrictEqual([]);
+  });
+
+  it("does not hand a repeat of an order to its handler once the stop has given up on it", async () => {
+    // The repeat waits behind a slow event for the same order. Run after the
+    // stop, it would issue goods that nothing sends and nothing reports.
+    const problems: WorkerProblem[] = [];
+    const clock = handClock();
+    const eventMayFinish = Promise.withResolvers<void>();
+    let inTheEventHandler = false;
+    const ordersHandled: string[] = [];
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: {
+        poll_worker: polling(batch(envelopes.event, envelopes.order)),
+        answer_order: () => ({ body: { ok: true, result: "delivered" } }),
+      },
+    });
+
+    const worker = startWorker(
+      { apiKey: API_KEY, baseUrl: gateway.url },
+      {
+        order: (given) => {
+          ordersHandled.push(given.id);
+          return { delivered: { access_url: "https://a.example" } };
+        },
+        event: async () => {
+          inTheEventHandler = true;
+          await eventMayFinish.promise;
+        },
+        problem: (problem) => problems.push(problem),
+      },
+      clock,
+    );
+
+    await waitUntil(() => inTheEventHandler, "the event handler");
+    await stopGivingUp(worker, clock);
+    eventMayFinish.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(ordersHandled).toStrictEqual([]);
+    expect(gateway.callsTo("answer_order")).toStrictEqual([]);
+    expect(problems).toHaveLength(2);
+    expect(problems.find((problem) => !problem.message.includes(event.type))?.message).toMatch(
+      /not called/,
+    );
   });
 
   it("says how much of a batch it left unread", async () => {
     // Orders and price questions come back on their own, an event does not;
     // the merchant is told what went unread.
     const problems: WorkerProblem[] = [];
+    const clock = handClock();
     let handling: (() => void) | undefined;
     const inTheHandler = new Promise<void>((resolve) => {
       handling = resolve;
@@ -1559,17 +2012,70 @@ describe("stopping", () => {
         order: () => ({ delivered: { access_url: "https://a.example" } }),
         problem: (problem) => problems.push(problem),
       },
+      clock,
     );
 
     await inTheHandler;
-    await worker.stop();
+    await stopGivingUp(worker, clock);
 
     const abandoned = problems.find(
-      (problem) => problem.kind === WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+      (problem) =>
+        problem.kind === WORKER_PROBLEM_KINDS.BATCH_ABANDONED &&
+        problem.message.includes("of this batch's"),
     );
 
     expect(abandoned?.message).toMatch(/2 of this batch's 6/);
     expect(abandoned?.message).toMatch(/quote_request, order_event/);
+  });
+
+  it("reports a poll answer that arrived as the stop began, rather than dropping it", async () => {
+    // An answer read in full in the moment the stop begins is taken by
+    // nobody, and an event in it is never sent again, so the merchant is told.
+    const problems: WorkerProblem[] = [];
+    const handled: string[] = [];
+    let worker: RunningWorker | undefined;
+
+    gateway = await startFakeGateway({
+      apiKey: API_KEY,
+      routes: { poll_worker: polling(batch(envelopes.event)) },
+    });
+
+    // Only a wrapper around fetch reaches the moment between the answer being
+    // read and the loop looking at it, which is where the stop is placed.
+    const sending = globalThis.fetch;
+    const placed = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const response = await sending(input, init);
+
+      if (!String(input).endsWith("/worker/poll")) return response;
+
+      const text = await response.text();
+      void worker?.stop();
+      return new Response(text, { status: response.status, headers: response.headers });
+    });
+
+    try {
+      worker = startWorker(
+        { apiKey: API_KEY, baseUrl: gateway.url },
+        {
+          event: (arrived) => {
+            handled.push(arrived.type);
+          },
+          problem: (problem) => problems.push(problem),
+        },
+        recordingClock(),
+      );
+      const stopped = worker;
+      await waitUntil(() => !stopped.running(), "the worker to stop");
+    } finally {
+      placed.mockRestore();
+    }
+
+    expect(handled).toStrictEqual([]);
+    expect(problems.map((problem) => problem.kind)).toStrictEqual([
+      WORKER_PROBLEM_KINDS.BATCH_ABANDONED,
+    ]);
+    expect(problems[0]?.message).toMatch(/1 of this batch's 1/);
+    expect(problems[0]?.message).toMatch(/order_event/);
   });
 
   it("abandons the parked poll and asks for nothing more", async () => {
@@ -1596,6 +2102,7 @@ describe("shutting down a subscription the merchant built", () => {
     const held = new Promise<void>((resolve) => {
       answering = resolve;
     });
+    const stopCalled = Promise.withResolvers<void>();
 
     gateway = await startFakeGateway({
       apiKey: API_KEY,
@@ -1610,9 +2117,12 @@ describe("shutting down a subscription the merchant built", () => {
             envelopes.quote,
           ),
         ),
-        answer_order: () => {
+        // Every place is held until the stop, so the price question is still
+        // unread when it comes; then each answer meets a proxy's page.
+        answer_order: async () => {
           answering?.();
-          return new Promise<never>(() => {});
+          await stopCalled.promise;
+          return { status: 502, type: "text/html", text: "<html>bad gateway</html>" };
         },
       },
     });
@@ -1624,7 +2134,9 @@ describe("shutting down a subscription the merchant built", () => {
     await agentify.start();
 
     await held;
-    await agentify.stop();
+    const stopping = agentify.stop();
+    stopCalled.resolve();
+    await stopping;
 
     const kinds = problems.map((problem) => problem.kind);
 

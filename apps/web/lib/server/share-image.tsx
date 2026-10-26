@@ -1,9 +1,17 @@
+import { createHash, randomUUID } from "node:crypto";
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
 
 import { BrandMark } from "@agentify/ui";
 import { getPublicAppConfig } from "../app-config";
-import { type ShareTone, shareCopy } from "../share-copy";
-import { drawPng, HUMAN_FONT, MONO_FONT } from "./drawing";
+import { cleanHost, type ShareCopy, type ShareTone, shareCopy } from "../share-copy";
+import {
+  drawPng,
+  HUMAN_FONT,
+  laidOutSize,
+  MONO_FONT,
+  PICTURE_CACHE_CONTROL,
+  pictureAnswer,
+} from "./drawing";
 
 /**
  * The site's colours the picture draws with, named as the tokens in
@@ -32,6 +40,41 @@ const TONE: Record<ShareTone, { color: string; soft: string }> = {
 
 const SHARE_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 
+// Every block of the card but the statement has a fixed size, so the room
+// left for the statement is known before anything is drawn.
+const GROUND = 36;
+const CARD_BORDER = 1;
+const CARD_PADDING = { x: 56, y: 44 } as const;
+const HEADER_HEIGHT = 40;
+const BAND_GAP = 24;
+const FOOT_HEIGHT = 114;
+const RING_SIZE = 256;
+const RING_STROKE = 20;
+const RING_GAP = 48;
+
+const STATEMENT_WIDTH =
+  SHARE_IMAGE_SIZE.width - 2 * (GROUND + CARD_BORDER + CARD_PADDING.x) - RING_SIZE - RING_GAP;
+const STATEMENT_HEIGHT =
+  SHARE_IMAGE_SIZE.height -
+  2 * (GROUND + CARD_BORDER + CARD_PADDING.y) -
+  HEADER_HEIGHT -
+  2 * BAND_GAP -
+  FOOT_HEIGHT;
+
+/** Headline sizes, largest first; a host the smallest cannot hold is shortened. */
+const SMALLEST_HEADLINE = 30;
+const HEADLINE_SIZES = [52, 46, 40, 35, SMALLEST_HEADLINE];
+const ELLIPSIS = "…";
+
+/** Score sizes, largest first; the smallest holds 100 inside the ring. */
+const SCORE_SIZES = [98, 90, 82, 74, 66];
+/**
+ * How wide the score may be: the clear space inside the stroke, less a margin
+ * on each side, since figures as wide as that space would touch the stroke
+ * with their corners.
+ */
+const SCORE_WIDTH = RING_SIZE - 3 * RING_STROKE - 2 * 14;
+
 const ZONES = [
   { key: "invisible", name: "Invisible", range: "0–24" },
   { key: "readable", name: "Readable", range: "25–49" },
@@ -39,14 +82,136 @@ const ZONES = [
   { key: "ahead_of_market", name: "Ahead", range: "70–100" },
 ];
 
-/** The card a published share unfurls into, and the picture a visitor downloads of it. */
-export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Array<ArrayBuffer>> {
-  const { displayBrand } = getPublicAppConfig();
+type Tone = (typeof TONE)[ShareTone];
+
+function Statement({ copy, tone, size }: { copy: ShareCopy; tone: Tone; size: number }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        width: STATEMENT_WIDTH,
+        gap: 20,
+      }}
+    >
+      <div style={{ display: "flex" }}>
+        <span
+          style={{
+            display: "flex",
+            padding: "9px 20px",
+            borderRadius: 999,
+            background: tone.soft,
+            border: `1px solid ${tone.color}`,
+            color: tone.color,
+            fontFamily: MONO_FONT,
+            fontSize: 22,
+            fontWeight: 500,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+          }}
+        >
+          {copy.kicker}
+        </span>
+      </div>
+      {/* A host is one word to the layout, and one label may be wider than
+          the column, so a word breaks wherever it has to. */}
+      <strong
+        style={{ fontSize: size, fontWeight: 600, lineHeight: 1.12, wordBreak: "break-word" }}
+      >
+        {copy.headline}
+      </strong>
+      <span style={{ fontSize: 25, color: INK.muted, lineHeight: 1.4 }}>{copy.subline}</span>
+    </div>
+  );
+}
+
+const fits = async (copy: ShareCopy, tone: Tone, size: number): Promise<boolean> =>
+  (await laidOutSize(<Statement copy={copy} tone={tone} size={size} />, STATEMENT_WIDTH)).height <=
+  STATEMENT_HEIGHT;
+
+/**
+ * `host` cut to about `kept` characters with an ellipsis in its middle. The
+ * end it keeps starts at a label, because a label shown from its middle would
+ * read as another site's name. A label the cut falls in is kept whole when it
+ * fits in `kept`, and the start gives way to it; a label too long for that is
+ * left out, and only a cut inside the last label stays where it falls. The
+ * dot before the end is left out with the middle, so the ellipsis is never
+ * read as one more dot.
+ */
+const shortened = (host: string, kept: number): string => {
+  const cut = host.length - Math.floor(kept / 2);
+  const labelStart = host.lastIndexOf(".", cut - 1) + 1;
+  const nextDot = host.indexOf(".", cut);
+  const endStart =
+    labelStart > 0 && host.length - labelStart <= kept
+      ? labelStart
+      : nextDot >= 0
+        ? nextDot + 1
+        : cut;
+  const end = host.slice(endStart);
+  const start = host.slice(0, Math.max(0, kept - end.length));
+  return `${start}${ELLIPSIS}${end}`;
+};
+
+function Score({ score, tone, size }: { score: number; tone: Tone; size: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline" }}>
+      <strong style={{ fontSize: size, fontWeight: 600, lineHeight: 1, color: tone.color }}>
+        {score}
+      </strong>
+      <span style={{ fontSize: Math.round((size * 2) / 7), color: INK.faint }}>/100</span>
+    </div>
+  );
+}
+
+/** The largest score size whose figures fit inside the ring. */
+async function scoreSize(score: number, tone: Tone): Promise<number> {
+  for (const size of SCORE_SIZES)
+    if (
+      (await laidOutSize(<Score score={score} tone={tone} size={size} />, RING_SIZE)).width <=
+      SCORE_WIDTH
+    )
+      return size;
+  return SCORE_SIZES[SCORE_SIZES.length - 1] ?? 0;
+}
+
+/**
+ * The statement at the largest headline size that holds it. A host the
+ * smallest size cannot hold loses characters from its middle, so the picture
+ * still shows where the name starts and the site's own name at its end.
+ */
+async function fittedStatement(
+  snapshot: PublicShareSnapshot,
+  tone: Tone,
+): Promise<{ copy: ShareCopy; size: number }> {
   const copy = shareCopy(snapshot);
-  const tone = TONE[copy.tone];
+  for (const size of HEADLINE_SIZES) if (await fits(copy, tone, size)) return { copy, size };
+
+  const size = SMALLEST_HEADLINE;
+  const host = cleanHost(snapshot.host);
+  const copyKeeping = (kept: number) => shareCopy(snapshot, shortened(host, kept));
+  let kept = 0;
+  let tooMany = host.length;
+  while (tooMany - kept > 1) {
+    const middle = Math.floor((kept + tooMany) / 2);
+    if (await fits(copyKeeping(middle), tone, size)) kept = middle;
+    else tooMany = middle;
+  }
+  return { copy: copyKeeping(kept), size };
+}
+
+/** The card a published share unfurls into, and the picture a visitor downloads of it. */
+export async function drawShareImage(
+  snapshot: PublicShareSnapshot,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const { displayBrand } = getPublicAppConfig();
+  const tone = TONE[shareCopy(snapshot).tone];
+  const { copy, size } = await fittedStatement(snapshot, tone);
   const score = Math.max(0, Math.min(100, snapshot.score));
+  const scoreFontSize = await scoreSize(score, tone);
   const pct = score / 100;
-  const circumference = 2 * Math.PI * 120;
+  const radius = RING_SIZE / 2 - RING_STROKE;
+  const circumference = 2 * Math.PI * radius;
   const dash = circumference * pct;
   const date = new Date(snapshot.generated_at).toISOString().slice(0, 10);
 
@@ -56,7 +221,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
         width: "100%",
         height: "100%",
         display: "flex",
-        padding: 40,
+        padding: GROUND,
         background: "#EFEBE2",
         fontFamily: HUMAN_FONT,
       }}
@@ -66,12 +231,14 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
-          padding: 60,
+          gap: BAND_GAP,
+          padding: `${CARD_PADDING.y}px ${CARD_PADDING.x}px`,
           borderRadius: 28,
-          border: `1px solid ${INK.line}`,
+          border: `${CARD_BORDER}px solid ${INK.line}`,
           background: "#FFFFFF",
-          backgroundImage: `radial-gradient(680px 360px at 88% 4%, ${tone.soft}, transparent 62%)`,
+          // The renderer fades to `transparent` through black, so the tint
+          // fades to itself at no opacity.
+          backgroundImage: `radial-gradient(680px 360px at 88% 4%, ${tone.soft}, ${tone.soft}00 62%)`,
           color: INK.fg,
           boxShadow: "0 30px 70px -46px rgba(26,25,23,0.42)",
         }}
@@ -79,12 +246,14 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
         <div
           style={{
             display: "flex",
+            height: HEADER_HEIGHT,
+            flexShrink: 0,
             justifyContent: "space-between",
             alignItems: "center",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <BrandMark size={40} />
+            <BrandMark size={HEADER_HEIGHT} />
             <strong
               style={{
                 fontSize: 30,
@@ -119,49 +288,19 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
         <div
           style={{
             display: "flex",
+            height: STATEMENT_HEIGHT,
+            flexShrink: 0,
             alignItems: "center",
             justifyContent: "space-between",
-            gap: 40,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              maxWidth: 600,
-              gap: 22,
-            }}
-          >
-            <div style={{ display: "flex" }}>
-              <span
-                style={{
-                  display: "flex",
-                  padding: "9px 20px",
-                  borderRadius: 999,
-                  background: tone.soft,
-                  border: `1px solid ${tone.color}`,
-                  color: tone.color,
-                  fontFamily: MONO_FONT,
-                  fontSize: 22,
-                  fontWeight: 500,
-                  letterSpacing: 2,
-                  textTransform: "uppercase",
-                }}
-              >
-                {copy.kicker}
-              </span>
-            </div>
-            <strong style={{ fontSize: 52, fontWeight: 600, lineHeight: 1.12 }}>
-              {copy.headline}
-            </strong>
-            <span style={{ fontSize: 25, color: INK.muted, lineHeight: 1.4 }}>{copy.subline}</span>
-          </div>
+          <Statement copy={copy} tone={tone} size={size} />
 
           <div
             style={{
               position: "relative",
-              width: 280,
-              height: 280,
+              width: RING_SIZE,
+              height: RING_SIZE,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -169,41 +308,44 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
           >
             <svg
               aria-hidden="true"
-              width="280"
-              height="280"
-              viewBox="0 0 280 280"
+              width={RING_SIZE}
+              height={RING_SIZE}
+              viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
               style={{ position: "absolute" }}
             >
-              <circle cx="140" cy="140" r="120" fill="none" stroke={INK.line} strokeWidth="20" />
               <circle
-                cx="140"
-                cy="140"
-                r="120"
+                cx={RING_SIZE / 2}
+                cy={RING_SIZE / 2}
+                r={radius}
+                fill="none"
+                stroke={INK.line}
+                strokeWidth={RING_STROKE}
+              />
+              <circle
+                cx={RING_SIZE / 2}
+                cy={RING_SIZE / 2}
+                r={radius}
                 fill="none"
                 stroke={tone.color}
-                strokeWidth="20"
+                strokeWidth={RING_STROKE}
                 strokeLinecap="round"
                 strokeDasharray={`${dash} ${circumference - dash}`}
-                transform="rotate(-90 140 140)"
+                transform={`rotate(-90 ${RING_SIZE / 2} ${RING_SIZE / 2})`}
               />
             </svg>
-            <div style={{ display: "flex", alignItems: "baseline" }}>
-              <strong
-                style={{
-                  fontSize: 108,
-                  fontWeight: 600,
-                  lineHeight: 1,
-                  color: tone.color,
-                }}
-              >
-                {score}
-              </strong>
-              <span style={{ fontSize: 30, color: INK.faint }}>/100</span>
-            </div>
+            <Score score={score} tone={tone} size={scoreFontSize} />
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: FOOT_HEIGHT,
+            flexShrink: 0,
+            gap: 14,
+          }}
+        >
           <div
             style={{
               display: "flex",
@@ -236,8 +378,10 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
                     fontWeight: active ? 600 : 400,
                   }}
                 >
-                  <span style={{ fontSize: 18 }}>{zone.name}</span>
-                  <span style={{ fontSize: 15, color: INK.faint }}>{zone.range}</span>
+                  <span style={{ fontSize: 18, lineHeight: "22px" }}>{zone.name}</span>
+                  <span style={{ fontSize: 15, lineHeight: "18px", color: INK.faint }}>
+                    {zone.range}
+                  </span>
                 </div>
               );
             })}
@@ -250,6 +394,7 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
               marginTop: 8,
               fontFamily: MONO_FONT,
               fontSize: 19,
+              lineHeight: "24px",
             }}
           >
             <span style={{ color: INK.faint }}>Diagnostic, not a certification</span>
@@ -260,4 +405,77 @@ export function drawShareImage(snapshot: PublicShareSnapshot): Promise<Uint8Arra
     </div>,
     SHARE_IMAGE_SIZE,
   );
+}
+
+type Png = Uint8Array<ArrayBuffer>;
+
+/**
+ * This process's own mark in every tag, so a picture drawn by an earlier
+ * build, which may look different, is never taken for the current one.
+ */
+const DRAWN_HERE = randomUUID();
+
+/** How many pictures the process keeps, about 160 KB each. */
+const KEPT_PICTURES = 32;
+
+const tagOf = (snapshot: PublicShareSnapshot): string =>
+  `"${createHash("sha256").update(DRAWN_HERE).update(JSON.stringify(snapshot)).digest("base64url").slice(0, 32)}"`;
+
+/**
+ * The last `limit` pictures `draw` made, by tag, oldest let go first: a
+ * picture asked for while it is drawn or after it is shares that drawing, and
+ * one let go, or one whose drawing failed, is drawn again when asked for.
+ */
+export const pictureMemory = (
+  limit: number,
+  draw: (snapshot: PublicShareSnapshot) => Promise<Png>,
+): ((tag: string, snapshot: PublicShareSnapshot) => Promise<Png>) => {
+  const kept = new Map<string, Promise<Png>>();
+  return (tag, snapshot) => {
+    const known = kept.get(tag);
+    kept.delete(tag);
+    const picture =
+      known ??
+      draw(snapshot).catch((error: unknown) => {
+        kept.delete(tag);
+        throw error;
+      });
+    kept.set(tag, picture);
+    for (const oldest of kept.keys()) {
+      if (kept.size <= limit) break;
+      kept.delete(oldest);
+    }
+    return picture;
+  };
+};
+
+const keptPicture = pictureMemory(KEPT_PICTURES, drawShareImage);
+
+const holds = (ifNoneMatch: string | null, tag: string): boolean =>
+  (ifNoneMatch ?? "")
+    .split(",")
+    .map((held) => held.trim().replace(/^W\//, ""))
+    .some((held) => held === tag || held === "*");
+
+/**
+ * A published share's picture as the answer to `request`, as a file to save
+ * named after the site. A share's snapshot never changes, so the picture is
+ * tagged by it: a cache holding the tag is answered 304 with nothing to
+ * draw, and a picture drawn recently is answered from memory.
+ */
+export async function sharePictureAnswer(
+  request: Request,
+  snapshot: PublicShareSnapshot,
+): Promise<Response> {
+  const tag = tagOf(snapshot);
+  if (holds(request.headers.get("if-none-match"), tag))
+    return new Response(null, {
+      status: 304,
+      headers: { ETag: tag, "Cache-Control": PICTURE_CACHE_CONTROL },
+    });
+  const name = snapshot.host.replace(/[^a-z0-9.-]/gi, "-");
+  return pictureAnswer(await keptPicture(tag, snapshot), {
+    ETag: tag,
+    "Content-Disposition": `attachment; filename="agentify-${name}.png"`,
+  });
 }
