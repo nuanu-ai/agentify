@@ -334,7 +334,7 @@ input {
 .doc td {
   border: 0 solid var(--line);
   border-width: 0 var(--hairline) var(--hairline) 0;
-  padding: 8px 12px;
+  padding: 8px 10px;
   text-align: left;
   vertical-align: top;
 }
