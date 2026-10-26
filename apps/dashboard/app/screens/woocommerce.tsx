@@ -313,13 +313,23 @@ function SwitchPanel({
 
 /** Why Import is held, in a line under it, with the page that puts it right. */
 function HeldLine({ held, base }: Readonly<{ held: ImportHeld; base: string }>) {
-  return held.kind === "settings" ? (
-    <p className="quiet">
-      Set your {held.what} in <a href={`${base}/settings`}>Settings</a> first.
-    </p>
-  ) : (
-    <p className="quiet">Set the exchange rate for {held.currency} first.</p>
-  );
+  switch (held.kind) {
+    case "settings":
+      return (
+        <p className="quiet">
+          Set your {held.what} in <a href={`${base}/settings`}>Settings</a> first.
+        </p>
+      );
+    case "rate":
+      return <p className="quiet">Set the exchange rate for {held.currency} first.</p>;
+    case "unlisted":
+      return (
+        <p className="quiet">
+          A shop priced in {held.currency} can't sell through Agentify, because Coinbase gives no
+          rate for it.
+        </p>
+      );
+  }
 }
 
 function ImportPanel({

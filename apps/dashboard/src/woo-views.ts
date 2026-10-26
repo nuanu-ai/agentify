@@ -191,7 +191,9 @@ const SETTING_NAMES: Readonly<Record<Unset, string>> = Object.freeze({
  */
 export type ImportHeld =
   | Readonly<{ kind: "settings"; what: string }>
-  | Readonly<{ kind: "rate"; currency: string }>;
+  | Readonly<{ kind: "rate"; currency: string }>
+  /** Coinbase gives no rate for the shop's currency, so no rate can be saved and nothing sells. */
+  | Readonly<{ kind: "unlisted"; currency: string }>;
 
 /** The shop the keys came from, the one state in which anything can be sold. */
 export interface ConnectionView {
@@ -395,7 +397,11 @@ const heldImport = (read: ShopRead): ImportHeld | null => {
     return { kind: "settings", what: unset.map((one) => SETTING_NAMES[one]).join(" and ") };
   }
   if (read.rate !== undefined && read.rate.current === null) {
-    return { kind: "rate", currency: read.rate.currency.code };
+    const { reference, currency } = read.rate;
+    return {
+      kind: !reference.ok && reference.listed === false ? "unlisted" : "rate",
+      currency: currency.code,
+    };
   }
   return null;
 };

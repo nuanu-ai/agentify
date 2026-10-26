@@ -427,6 +427,23 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(readable(formOf(html, "/woocommerce/import"))).toContain("exchange rate");
   });
 
+  it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", () => {
+    const html = shopPage({
+      state: CONNECTED,
+      through: "woocommerce",
+      rate: {
+        currency: { code: "XAF", decimals: 0 },
+        current: null,
+        reference: { ok: false, listed: false },
+      },
+    });
+    const held = readable(formOf(html, "/woocommerce/import"));
+
+    expect(importButton(html)).toMatch(/\bdisabled\b/);
+    expect(held).toMatch(/can't sell/);
+    expect(held).not.toMatch(/Set the exchange rate/);
+  });
+
   it("offers Import where nothing stands in its way, and where what stands could not be read", () => {
     for (const unset of [[], null] as const) {
       const html = shopPage({ state: CONNECTED, through: "woocommerce", unset });
