@@ -26,6 +26,25 @@ const GROUND = 30;
 /** The card's top edge, above its header, where the tint of the level's colour lies. */
 const TINTED_EDGE = { left: 600, right: 1120, top: 44, bottom: 78 } as const;
 
+/** Where the tint is at its full colour. */
+const TINT_CENTRE = { x: 1028, y: 59 } as const;
+
+/** Each level's tint, by the colour of its tone. */
+const TINTS: Record<PublicShareSnapshot["level"], readonly [number, number, number]> = {
+  invisible: [0xf7, 0xe9, 0xe4],
+  readable: [0xf3, 0xec, 0xd9],
+  callable_ready: [0xe6, 0xf0, 0xef],
+  ahead_of_market: [0xe7, 0xf1, 0xea],
+  incomplete: [0xe6, 0xf0, 0xef],
+};
+
+/**
+ * The score ring's centre and the radius of the clear space inside its
+ * stroke. The score is drawn well within it, so a rim just inside the stroke
+ * holds no ink.
+ */
+const RING = { x: 979, y: 278, clearRadius: 98, rim: 8 } as const;
+
 const label = (length = 63) => "w".repeat(length);
 
 const LONGEST = `${label()}.${label()}.${label()}.${label(61)}`;
@@ -106,6 +125,11 @@ const tintedEdge: Region = (x, y) =>
 const luminance = (pixels: Uint8Array, at: number): number =>
   0.2126 * (pixels[at] ?? 0) + 0.7152 * (pixels[at + 1] ?? 0) + 0.0722 * (pixels[at + 2] ?? 0);
 
+const ringRim: Region = (x, y) => {
+  const radius = Math.hypot(x - RING.x, y - RING.y);
+  return radius >= RING.clearRadius - RING.rim && radius < RING.clearRadius - 2;
+};
+
 const differing = (a: Uint8Array, b: Uint8Array, region: Region = everywhere): number =>
   pixelsIn(
     region,
@@ -128,9 +152,13 @@ describe("a share's picture", () => {
 
     it("tints the card's top edge with the level's colour and greys none of it", async () => {
       const pixels = await picture("example.com", level, score);
+      const centre = (TINT_CENTRE.y * WIDTH + TINT_CENTRE.x) * 4;
       // Every level's tint is lighter than this; grey is darker.
       const greyed = pixelsIn(tintedEdge, (at) => luminance(pixels, at) < 230);
 
+      TINTS[level].forEach((channel, index) => {
+        expect(Math.abs((pixels[centre + index] ?? 0) - channel)).toBeLessThanOrEqual(2);
+      });
       expect(greyed).toBe(0);
     });
 
@@ -145,6 +173,17 @@ describe("a share's picture", () => {
     );
   });
 
+  it.each([0, 9, 10, 72, 99, 100])(
+    "draws a score of %i inside its ring, clear of the stroke",
+    async (score) => {
+      const pixels = await picture("example.com", "ahead_of_market", score);
+      // The rim is white or the level's light tint; the score's figures are dark.
+      const inked = pixelsIn(ringRim, (at) => luminance(pixels, at) < 200);
+
+      expect(inked).toBe(0);
+    },
+  );
+
   describe("for a host too long for the card", () => {
     const changedAt = (index: number) => `${LONGEST.slice(0, index)}v${LONGEST.slice(index + 1)}`;
 
@@ -155,6 +194,28 @@ describe("a share's picture", () => {
       expect(
         differing(longest, await picture(changedAt(LONGEST.length - 1), "readable", 41)),
       ).not.toBe(0);
+    });
+
+    it("shows a label at its end whole or not at all, never only its end", async () => {
+      const pad = `${label()}.${label()}.${label(55)}`;
+      const name = "x-customer-accounts-and-orders-help-desk-support-team-amazon";
+      const host = (changed: string) => `${pad}.${changed}.com`;
+      const drawn = await picture(host(name), "readable", 41);
+      const startShown = differing(drawn, await picture(host(`y${name.slice(1)}`), "readable", 41));
+      const endShown = differing(
+        drawn,
+        await picture(host(`${name.slice(0, -1)}m`), "readable", 41),
+      );
+
+      expect(startShown !== 0).toBe(endShown !== 0);
+    });
+
+    it("keeps a second www. that is part of the host's name", async () => {
+      const rest = `${label()}.${label()}.${label(55)}.example.com`;
+      const twice = await picture(`www.www.${rest}`, "readable", 41);
+      const once = await picture(`www.${rest}`, "readable", 41);
+
+      expect(differing(twice, once)).not.toBe(0);
     });
 
     it("leaves out the middle of the host", async () => {
