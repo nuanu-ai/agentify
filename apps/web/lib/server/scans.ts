@@ -24,6 +24,7 @@ import { getServerConfig } from "./config";
 import { deriveCapability, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, getScanQueue } from "./queue";
+import { isScanId } from "./scan-id";
 
 export const ANONYMOUS_COOKIE = "agentify_anonymous";
 
@@ -250,12 +251,9 @@ export async function createOrReplayScan(
   return result;
 }
 
-/** A scan's id has the shape of a UUID; the database refuses to compare anything else with one. */
-const SCAN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /** The scan the token reads, or nothing for an id that is no scan's, without asking the database. */
 export async function authorizeScan(scanId: string, token: string) {
-  if (!SCAN_ID.test(scanId)) return undefined;
+  if (!isScanId(scanId)) return undefined;
   const { db } = getDatabase();
   return (
     await db
