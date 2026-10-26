@@ -1,5 +1,6 @@
 import { readHtml, type StartTag } from "./html.js";
 import { asciiLower } from "./markup.js";
+import { jsonLdPrice, type MarkedPrice, markedPrice, textPrice } from "./price.js";
 
 export type SitemapResult = {
   valid: boolean;
@@ -135,10 +136,17 @@ type PageReading = {
   productLinkCount: number;
   hreflangs: string[];
   jsonLdScripts: string[];
+  microdata: MarkedPrice;
+  meta: MarkedPrice;
 };
 
 const PRODUCT_WORDS = ["product", "shop", "item"];
+const VOID = new Set("area base br col embed hr img input link meta source track wbr".split(" "));
+const MICRODATA_PRICES = ["price", "lowPrice", "highPrice"];
+const META_AMOUNTS = ["product:price:amount", "og:price:amount"];
+const META_CURRENCIES = ["product:price:currency", "og:price:currency"];
 const SEEN = /\S/;
+const DIGIT = /\p{Nd}/u;
 
 const tokens = (value: string | undefined): string[] =>
   value ? value.split(/[\t\n\f\r ]+/).filter(Boolean) : [];
@@ -158,11 +166,15 @@ const readPage = (html: string): PageReading => {
     productLinkCount: 0,
     hreflangs: [],
     jsonLdScripts: [],
+    microdata: {},
+    meta: {},
   };
-  // Template content is inert, and navigation is not the page's own content.
+  // Template content is inert, navigation is not the page's own content, and
+  // a microdata value without a content attribute is the text of its element.
   let inert = 0;
   let nav = 0;
   let h1 = 0;
+  let capture: { name: string; depth: number; key: keyof MarkedPrice; text: string } | undefined;
   const visible = (text: string) => {
     if (nav > 0) return;
     if (joined) pieces[pieces.length - 1] += text;
@@ -170,16 +182,22 @@ const readPage = (html: string): PageReading => {
     joined = true;
   };
   // The first amount that holds a digit, and the first currency written.
+  const mark = (target: MarkedPrice, key: keyof MarkedPrice, value: string | undefined) => {
+    if (value === undefined || target[key] !== undefined) return;
+    if ((key === "amount" ? DIGIT : SEEN).test(value)) target[key] = value;
+  };
   readHtml(html, {
     text: (text, foreign) => {
       if (inert > 0 || foreign) return;
       visible(text);
       if (h1 > 0 && SEEN.test(text)) reading.hasH1 = true;
+      if (capture && capture.text.length < 200) capture.text += text;
     },
     startTag: (tag) => {
       joined = false;
       if (tag.name === "template") inert += 1;
       if (inert > 0) return;
+      if (capture?.name === tag.name && !VOID.has(tag.name)) capture.depth += 1;
       const { attributes } = tag;
       if (tag.name === "a") {
         const href = asciiLower(attributes.get("href") ?? "");
@@ -195,6 +213,24 @@ const readPage = (html: string): PageReading => {
         const hreflang = attributes.get("hreflang");
         if (hreflang) reading.hreflangs.push(hreflang);
       }
+      if (tag.name === "meta") {
+        const property = asciiLower(attributes.get("property") ?? attributes.get("name") ?? "");
+        if (META_AMOUNTS.includes(property))
+          mark(reading.meta, "amount", attributes.get("content"));
+        if (META_CURRENCIES.includes(property))
+          mark(reading.meta, "currency", attributes.get("content"));
+      }
+      const itemprop = tokens(attributes.get("itemprop"));
+      const key = itemprop.some((name) => MICRODATA_PRICES.includes(name))
+        ? "amount"
+        : itemprop.includes("priceCurrency")
+          ? "currency"
+          : undefined;
+      if (!key || reading.microdata[key] !== undefined) return;
+      const value = attributes.get("content") ?? attributes.get("value");
+      if (value !== undefined) mark(reading.microdata, key, value);
+      else if (!capture && !VOID.has(tag.name))
+        capture = { name: tag.name, depth: 1, key, text: "" };
     },
     endTag: (name) => {
       joined = false;
@@ -202,6 +238,10 @@ const readPage = (html: string): PageReading => {
       if (inert > 0) return;
       if (name === "nav" && nav > 0) nav -= 1;
       if (name === "h1" && h1 > 0) h1 -= 1;
+      if (capture?.name === name && --capture.depth === 0) {
+        mark(reading.microdata, capture.key, capture.text);
+        capture = undefined;
+      }
     },
     content: (tag, text) => {
       joined = false;
@@ -255,11 +295,17 @@ export const visibleText = (html: string): string => readPage(html).text;
 // `text` is the page's visible text, for a caller that has read it already.
 export const htmlSignals = (html: string, text = visibleText(html)) => {
   const reading = readPage(html);
+  const price =
+    jsonLdPrice(jsonLdOf(reading.jsonLdScripts).nodes) ??
+    markedPrice("microdata", reading.microdata) ??
+    markedPrice("meta", reading.meta) ??
+    textPrice(text);
   return {
     textLength: text.length,
     hasH1: reading.hasH1,
     hasTitle: reading.hasTitle,
-    hasPrice: /(?:[$€£¥]\s?\d|\d(?:[.,]\d{2})?\s?(?:USD|EUR|GBP|AUD|CAD))/i.test(html),
+    hasPrice: price !== undefined,
+    price,
     productLinkCount: reading.productLinkCount,
     hreflangs: reading.hreflangs,
   };
