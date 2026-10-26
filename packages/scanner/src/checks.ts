@@ -1,4 +1,5 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
+import { authSchemes, mediaType, varyNames } from "./http-fields.js";
 import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
 import type { FetchArtifact, ScanArtifacts } from "./model.js";
 import {
@@ -182,7 +183,7 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     });
   } else {
     const partial =
-      parsed.malformedDirectives > 0 || /text\/html/i.test(fetch.headers["content-type"] ?? "");
+      parsed.malformedDirectives > 0 || mediaType(fetch.headers["content-type"]) === "text/html";
     robots = result({
       id: 1,
       status: partial ? "partial" : "pass",
@@ -531,20 +532,20 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
       errorCode: markdown?.errorCode ?? "markdown_unavailable",
     });
   const type = markdown.headers["content-type"] ?? "";
-  const vary = markdown.headers.vary ?? "";
+  const vary = varyNames(markdown.headers.vary);
   const representationDiffers = artifacts.base
     ? markdown.body.trim() !== artifacts.base.body.trim()
     : false;
   const semanticParity = artifacts.base
     ? comparableTexts(textOf(markdown), textOf(artifacts.base))
     : false;
-  const correctType = /text\/markdown/i.test(type);
+  const correctType = mediaType(type) === "text/markdown";
   const nonEmpty = textOf(markdown).length > 20;
   if (
     markdown.status >= 200 &&
     markdown.status < 300 &&
     correctType &&
-    /(?:^|,)\s*accept\s*(?:,|$)/i.test(vary) &&
+    vary.includes("accept") &&
     representationDiffers &&
     semanticParity &&
     nonEmpty
@@ -570,11 +571,11 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     return result({
       id: 7,
       status: "partial",
-      earnedWeight: /\*/.test(vary) || !nonEmpty ? 2 : 6,
+      earnedWeight: vary.includes("*") || !nonEmpty ? 2 : 6,
       summaryCode: "markdown_negotiation_partial",
       evidence: {
         content_type: type,
-        vary_accept: /accept/i.test(vary),
+        vary_accept: vary.includes("accept"),
         differentiated: representationDiffers,
         semantic_parity: semanticParity,
         non_empty: nonEmpty,
@@ -760,7 +761,9 @@ export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "uc
   return (
     documents.some((document) => /oauth|bearer|authorization/i.test(JSON.stringify(document))) ||
     [artifacts.base, ...artifacts.mcp].some((artifact) =>
-      /bearer|oauth/i.test(artifact?.headers["www-authenticate"] ?? ""),
+      authSchemes(artifact?.headers["www-authenticate"]).some(
+        (scheme) => scheme === "bearer" || scheme === "oauth",
+      ),
     )
   );
 };
@@ -1322,7 +1325,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           uncertain =
             check.summaryCode === "markdown_negotiation_partial" &&
             !(check.evidence.non_empty === false && !effective.markdown?.truncated) &&
-            /(?:^|,)\s*accept\s*(?:,|$)/i.test(effective.markdown?.headers.vary ?? "");
+            varyNames(effective.markdown?.headers.vary).includes("accept");
           break;
         case 12:
           truncated = artifacts.segment === "store" ? pagesTruncated : baseTruncated;
