@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Form, useNavigation, useRouteLoaderData } from "react-router";
+import { Form, useHref, useLocation, useNavigation, useRouteLoaderData } from "react-router";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
 
 /** The press's button in a row, the way a keyboard reaches the next one. */
@@ -65,19 +65,80 @@ const useFocusKept = (form: RefObject<HTMLFormElement | null>, pending: boolean)
 };
 
 /**
+ * A press sent as a whole page load. The browser carries it out and tells the
+ * page little about it, so the stage is "sending" from the press until the
+ * next page is drawn, and "unknown" once the press was stopped before its
+ * answer came. A desktop browser stops a loading page on Escape, and the page
+ * sees the key; a page the browser restores from its cache after the press is
+ * in the same state. The toolbar's stop button sends the page no event, so a
+ * press stopped there stays "sending" until the page is opened again.
+ */
+const useWholeLoad = () => {
+  const [stage, setStage] = useState<"idle" | "sending" | "unknown">("idle");
+  useEffect(() => {
+    const stopped = () => setStage((now) => (now === "sending" ? "unknown" : now));
+    const escaped = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) stopped();
+    };
+    const restored = (event: PageTransitionEvent) => {
+      if (event.persisted) stopped();
+    };
+    window.addEventListener("keydown", escaped);
+    window.addEventListener("pageshow", restored);
+    return () => {
+      window.removeEventListener("keydown", escaped);
+      window.removeEventListener("pageshow", restored);
+    };
+  }, []);
+  return { stage, send: () => setStage("sending") };
+};
+
+/** What a person types into or chooses; buttons show the press themselves. */
+const ENTERED = "input:not([type='hidden'], [type='submit'], [type='button']), textarea, select";
+
+/**
+ * The form's fields take no input while its press is on its way, so nothing
+ * typed meanwhile is lost when the answer is drawn from what was saved. The
+ * lock waits a task after the press, because the browser reads a whole-page
+ * form after the submit event and leaves out any field disabled by then.
+ */
+const useFieldsLocked = (form: RefObject<HTMLFormElement | null>, pending: boolean) => {
+  useEffect(() => {
+    if (!pending) return;
+    const locked: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[] = [];
+    const lock = setTimeout(() => {
+      for (const field of form.current?.querySelectorAll<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >(ENTERED) ?? []) {
+        if (field.disabled) continue;
+        field.disabled = true;
+        locked.push(field);
+      }
+    });
+    return () => {
+      clearTimeout(lock);
+      for (const field of locked) field.disabled = false;
+    };
+  }, [pending, form]);
+};
+
+/**
  * Every form behind the gate that posts: it carries the address its page was
  * drawn for, which the gate checks before anything reads the form, so a form
  * written without this component is refused rather than done for whoever is
  * signed in.
  *
  * `document` posts with a whole page load, for an action answered with a page
- * at its own address (the settings'); otherwise React Router sends it. `replace={false}` gives the answer a history
- * entry of its own even where it is drawn at the page's own address, so Back
- * returns to the page the press was made on. Either way it is an HTML form that
- * works with no script, and with script its button shows the press at once and
- * takes no second one until the page that answers it is drawn, so a page read
- * again after the press never shows the old state pressable; a page that
- * answers its own press keeps the person where they were on it.
+ * at its own address (the settings'); otherwise React Router sends it.
+ * `replace={false}` gives the answer a history entry of its own even where it
+ * is drawn at the page's own address, so Back returns to the page the press
+ * was made on. Either way it is an HTML form that works with no script. With
+ * script, its fields and button are locked from the press until the page that
+ * answers it is drawn, so a page read again after the press never shows the
+ * old state pressable; a page that answers its own press keeps the person
+ * where they were on it. A whole-page press stopped before its answer unlocks
+ * the form and says the outcome is unknown, with a read of this page as the
+ * way to see where it stands. Only the person sends a press again.
  *
  * `autoComplete="off"` because Firefox restores a hidden field's old value on
  * reload, which would put the first address back into a page redrawn for
@@ -102,11 +163,15 @@ export function PostForm({
     throw new Error("a form that posts was drawn outside the gate, where no address is known");
   }
   const navigation = useNavigation();
-  const [sent, setSent] = useState(false);
+  const whole = useWholeLoad();
+  const location = useLocation();
+  const here = useHref(`${location.pathname}${location.search}`);
   const form = useRef<HTMLFormElement>(null);
-  const pending =
-    sent || (navigation.state !== "idle" && navigation.formAction?.endsWith(action) === true);
+  const pending = document
+    ? whole.stage === "sending"
+    : navigation.state !== "idle" && navigation.formAction?.endsWith(action) === true;
   const pressing = useFocusKept(form, pending);
+  useFieldsLocked(form, pending);
   return (
     <Form
       ref={form}
@@ -118,11 +183,17 @@ export function PostForm({
       className={className}
       onSubmit={() => {
         pressing();
-        if (document) setSent(true);
+        if (document) whole.send();
       }}
     >
       <input type="hidden" name={DRAWN_FOR} value={gate.who} autoComplete="off" />
       {children(pending)}
+      {whole.stage === "unknown" ? (
+        <p role="status">
+          The outcome is unknown: no answer reached this page.{" "}
+          <a href={here}>Open this page again</a> to see where it stands.
+        </p>
+      ) : null}
     </Form>
   );
 }

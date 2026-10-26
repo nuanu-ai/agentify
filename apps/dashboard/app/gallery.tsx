@@ -3187,6 +3187,7 @@ const PROBLEMS: GalleryState[] = [
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,
+          reopen: `/cards?pause=${idOf("itm", "vpn")}`,
         }),
       },
     },
@@ -3230,16 +3231,56 @@ const PROBLEMS: GalleryState[] = [
   ),
   at(
     {
-      id: "dashboard-broken",
-      screen: "Something went wrong",
-      when: "Something inside the dashboard fails while answering a press.",
+      id: "dashboard-press-answer-lost",
+      screen: "The outcome is unknown",
+      when: "A merchant saves their seller name and the answer is lost on the way.",
       cause:
-        "An exception in the dashboard itself, not a refusal; the page does not claim the press failed.",
+        "An exception in the dashboard after the press arrived, or a connection that dropped or a proxy that answered in its own words before the answer reached the browser. The press may or may not have been done, so the way on reads the page and sends nothing again.",
     },
     {
       path: "/settings",
       mode: "live",
-      failed: { "routes/gate": thrown(500, { kind: "broken", chrome: chromeIn("live") }) },
+      failed: {
+        "routes/gate": thrown(500, { kind: "unanswered", reopen: "/settings" }),
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-page-not-reached",
+      screen: "This page could not be loaded",
+      when: "A merchant opens the open orders while the connection to the dashboard drops.",
+      cause:
+        "The browser could not fetch the page's data, or a proxy answered for the dashboard while it restarted. A read changes nothing, so the page is offered again with its filter.",
+    },
+    {
+      path: "/orders?show=open",
+      mode: "live",
+      failed: {
+        "routes/gate": thrown(500, { kind: "unread", again: "/orders?show=open" }),
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-settings-not-loaded",
+      screen: "Settings",
+      when: "A merchant opens Settings while the read of their settings fails.",
+      cause:
+        "An exception inside Agentify while reading the settings. A read changes nothing, so the page says so in the dashboard's frame and offers Settings again.",
+    },
+    {
+      path: "/settings",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+      loaded: { "routes/settings": null },
+      failed: {
+        "routes/settings": thrown(500, {
+          kind: "unread",
+          chrome: chromeIn("live"),
+          again: "/settings",
+        }),
+      },
     },
   ),
 ];

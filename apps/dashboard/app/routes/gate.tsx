@@ -15,7 +15,7 @@ import {
   type ShouldRevalidateFunction,
 } from "react-router";
 import { DRAWN_FOR } from "../../src/drawn-for.js";
-import { chromeOf, type Gated, type Trouble } from "../answer.js";
+import { chromeOf, failedAt, type Gated, type Trouble } from "../answer.js";
 import { holdsOperatorFlag, services, signedIn } from "../services.js";
 
 const cookies = (lines: readonly string[]): Headers => {
@@ -54,7 +54,7 @@ export const middleware: MiddlewareFunction<Response>[] = [
       // what it needs here; the exception is not logged, for the reason the
       // server entry gives.
       console.error("[dashboard] a request failed");
-      throw data({ kind: "broken", chrome: chromeOf(context) } satisfies Trouble, { status: 500 });
+      throw data(failedAt(request.method, url, chromeOf(context)), { status: 500 });
     }
     if (answer.kind === "signed-out") {
       // Sent as it is: React Router does not put its prefix on a redirect

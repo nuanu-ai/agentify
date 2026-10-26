@@ -8,8 +8,8 @@
 
 import type { ReactNode } from "react";
 import {
+  type DataStrategyResult,
   data,
-  isRouteErrorResponse,
   Links,
   type LoaderFunctionArgs,
   Meta,
@@ -17,12 +17,14 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useHref,
+  useLocation,
   useMatches,
   useRouteError,
   useRouteLoaderData,
 } from "react-router";
 import type { Screen } from "../src/page-services.js";
-import { type Chrome, chromeOf, type Trouble } from "./answer.js";
+import { type Chrome, chromeOf, saidAsAsked, type Trouble, troubleIn } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
 import { NoSuchPage } from "./routes/no-such-page.js";
 import { refused, services, signedInOrNobody, visit } from "./services.js";
@@ -90,6 +92,10 @@ export const middleware: MiddlewareFunction<Response>[] = [
   },
 ];
 
+export const clientMiddleware: MiddlewareFunction<Record<string, DataStrategyResult>>[] = [
+  saidAsAsked,
+];
+
 export const loader = ({ context }: LoaderFunctionArgs): Chrome => chromeOf(context);
 
 /** Which stack this is does not change while the process runs. */
@@ -126,9 +132,8 @@ export default function App() {
 
 /** The chrome comes with the trouble wherever the page's own loaders did not run. */
 export function ErrorBoundary() {
-  const error = useRouteError();
+  const trouble = troubleIn(useRouteError());
   const root = useRouteLoaderData<typeof loader>("root");
-  const trouble = isRouteErrorResponse(error) ? (error.data as Trouble | undefined) : undefined;
   const chrome = trouble?.chrome ?? root;
   if (chrome === undefined) {
     return <p>Something in the dashboard is broken.</p>;
@@ -153,25 +158,50 @@ export function ErrorBoundary() {
       </GatePage>
     );
   }
-  // A page that failed to draw is tried again at its own address, so the
-  // merchant keeps their place; a form that failed cannot be sent again from
-  // here, so its way on is the dashboard's first screen, named as that.
-  const again = trouble?.kind === "problem" ? trouble.again : undefined;
+  return <Failed chrome={chrome} trouble={trouble} />;
+}
+
+/**
+ * Every way on is a read, so it sends nothing again. A page that failed is
+ * offered again at its own address. After a press, the way on reads the
+ * address the press went to, which leads to the page it was made on.
+ */
+function Failed({ chrome, trouble }: Readonly<{ chrome: Chrome; trouble: Trouble | undefined }>) {
+  const location = useLocation();
+  const here = useHref(`${location.pathname}${location.search}`);
+  const [title, said, way] =
+    trouble?.kind === "unread"
+      ? [
+          "This page could not be loaded",
+          "Loading a page changes nothing, so trying again is safe.",
+          { again: trouble.again },
+        ]
+      : trouble?.kind === "unanswered"
+        ? [
+            "The outcome is unknown",
+            "The answer to what you pressed was lost on the way, so it may or may not have been done. Opening the page again shows where it stands without sending the press again.",
+            { reopen: trouble.reopen },
+          ]
+        : trouble?.kind === "problem"
+          ? [
+              "Something went wrong",
+              trouble.said,
+              trouble.reopen === undefined
+                ? { again: trouble.again ?? here }
+                : { reopen: trouble.reopen },
+            ]
+          : ["Something went wrong", "This page could not be shown.", { again: here }];
   return (
-    <GatePage chrome={chrome} title="Something went wrong">
+    <GatePage chrome={chrome} title={title}>
       <div className="gate-card">
-        <h1>Something went wrong</h1>
-        <p>
-          {trouble?.kind === "problem"
-            ? trouble.said
-            : "Something in the dashboard is broken. Check the page you were on before deciding whether it went through."}
-        </p>
-        {again === undefined ? (
-          <a className="button button-primary" href={`${chrome.base}/cards`}>
-            Back to Cards
+        <h1>{title}</h1>
+        <p>{said}</p>
+        {"reopen" in way ? (
+          <a className="button button-primary" href={way.reopen}>
+            Open the page again
           </a>
         ) : (
-          <a className="button button-primary" href={again}>
+          <a className="button button-primary" href={way.again}>
             Try again
           </a>
         )}
