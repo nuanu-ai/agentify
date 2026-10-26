@@ -160,6 +160,36 @@ describe("who the operator's workspace answers", () => {
     }
   });
 
+  it("answers a page whose read failed inside the workspace's frame, offering the same address again", async () => {
+    // Thrown out to the seller dashboard's own error page, an operator would
+    // lose their place and be offered a way into a merchant's screens.
+    const gone = async (): Promise<never> => {
+      throw new Error("the database does not answer");
+    };
+    const workspace = await serve({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: { ...real.merchants, list: gone, merchant: gone },
+      }),
+      identity: (real) => ({ ...real, operatorAccounts: gone }) as Identity,
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+
+    for (const path of [
+      "/admin/merchants?show=waiting",
+      `/admin/merchants/${workspace.harnessed.merchant.id}`,
+      "/admin/accounts?show=operators",
+    ]) {
+      const read = await operator.get(path);
+      expect(read.status, path).toBe(500);
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
+      expect(read.html, path).toContain('aria-label="Admin sections"');
+      expect(read.html, path).toContain(`href="${ADMIN_BASE}${path.replace("&", "&amp;")}"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/cards"`);
+    }
+  });
+
   it("answers no such page to an operator whose flag was taken away, from the next request", async () => {
     const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
