@@ -14,8 +14,7 @@ channel's commission wallet is a plain wallet the product owner named on
 2026-10-15. Every split records its network's for good. At the release the
 wallets already set moved to their splits unannounced, while the pilot
 merchant's card was on sale on the live channel, so its payments went to that
-merchant's own split from then on. Revised 2026-10-26: the merchant's payout
-is read on the chain before it is offered.
+merchant's own split from then on.
 
 ## Context
 
@@ -62,11 +61,8 @@ merchant's share, for at most twenty splits. A merchant's covers the split of
 their wallet in force and every split an order of theirs was paid to; the
 operator's covers every split recorded on the network, in parts of twenty,
 since any of them may hold money, at the price of gas for those that hold
-nothing. Agentify holds no key and writes to no chain. Before the merchant's
-screen offers their payout, the gateway asks the payment RPC to run it with
-`eth_call` between two reads of each wallet it pays, and names what the run
-would bring: a payout that would bring nothing is not offered, and a read
-that fails is said as not known, never as nothing
+nothing. Agentify holds no key and writes to no chain; before a merchant's
+payout is offered, it reads a dry run of it on the chain
 (`docs/research/48-merchant-wallet-onboarding.md`).
 
 ## Consequences

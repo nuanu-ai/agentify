@@ -208,10 +208,11 @@ was not run.
 **Who can use it, and testing.** The terms name no countries beyond the bar
 on use where the law forbids it [checked]; whether a business may hold a
 wallet the terms describe as an individual's I don't know. Base Sepolia opens
-in the window [checked], but a later run found the window refusing Base
-Sepolia to the wallets it creates now, so the test channel does not offer the
-Coinbase buttons (see "Coinbase's window on Base Sepolia" below); seeing and
-sending test USDC in Coinbase's interface I don't know. Coinbase needs nothing from Agentify for the button:
+in the window [checked], but a later run found the window refusing
+transactions on Base Sepolia from the wallets it creates now, so the test
+channel offers Coinbase Wallet for filling the address box and not for the
+payout (see "Coinbase's window on Base Sepolia" below); seeing and sending
+test USDC in Coinbase's interface I don't know. Coinbase needs nothing from Agentify for the button:
 checked, the SDK's options take no key. A paymaster or the offramp would need
 a Coinbase Developer Platform project and its keys.
 
@@ -536,19 +537,31 @@ Closing the window reaches the page as one error, code 4001, whatever made it
 close [checked, `Communicator.js`], so the page cannot tell a person's close
 from Coinbase's refusal.
 
-By the script, the flow starts on a transaction (`wallet_sendCalls`) and not on
-`eth_requestAccounts`, yet the page's words in that run belong to a close
-before the transaction was asked for. Which request the window refused there
-I don't know. Neither Coinbase button is therefore known to work on Base
-Sepolia for a wallet created today, and the dashboard offers them on Base
-alone; the test channel's Settings says why in one line on each panel and
-keeps the address box and the transaction for another wallet. On Base the
-same check passes, and a new wallet is first asked to set itself up on the
-network, sponsored or for a one-time fee [checked, the served script]; nobody
-has yet sent a payout from Coinbase Wallet on Base through Settings. The
-wallet fault browser of `packages/slice` reaches the buttons only on a stack
-whose payments settle on Base, which needs Coinbase's facilitator and its
-keys.
+By the script, the flow starts on a transaction (`wallet_sendCalls`) and not
+on `eth_requestAccounts`, and the issue reports that connecting works on Base
+Sepolia, `eth_requestAccounts`, `wallet_connect` and
+`wallet_switchEthereumChain` included, and that only transactions are refused
+[reported in the issue, and it agrees with the script]. The page's words in
+that run, though, belong to a close before the transaction was asked for;
+which request the window refused there I don't know. So the box's button stays
+on the test channel, and the payout's is offered on Base alone: on the test
+channel Settings says in one line that Coinbase Wallet's payout is not known
+to work on the test network, and keeps the transaction for another wallet.
+
+On Base the window's script lets the chain through this check, and a new
+wallet is first asked to set itself up on the network, sponsored or for a
+one-time fee [checked, the served script; nothing was sent]. That is the
+script, not a send: nobody has yet sent a payout from Coinbase Wallet on Base
+through Settings. A comment on the same issue of 2026-07-18, by someone
+outside Coinbase, reports that a new EIP-7702 wallet sending on Base without a
+paymaster saw the window's spinner stall and the request end in a silent
+cancel, with no 4001 [reported in the issue, not checked]. The page would then
+wait for its ten minutes and say it does not know whether the payout went
+out.
+
+The wallet fault browser of `packages/slice` reaches the box's button on a
+local stack on Base Sepolia, and the payout's only on a stack whose payments
+settle on Base, which needs Coinbase's facilitator and its keys.
 
 The words for a closed window now fit every way it can close: they name
 neither the person nor Coinbase and point to what the same screen offers
@@ -585,11 +598,28 @@ token's balance slot in the call, the run answered the same on both networks
 
 Settings names that amount, offers no payout where it is zero, and where the
 read fails says it does not know rather than that nothing waits, still giving
-the transaction, which pays out only what is there. The read goes through
-the payment RPC that recovery uses, gets half the page's deadline so a hanging
-endpoint costs the panel its amount and not the page, and keeps each payout's
-answer for five seconds, shared while it is under way. A deployment without
-that RPC says it does not know.
+the transaction, which pays out only what is there.
+
+The run reads the latest block, which does not hold a payout the merchant has
+just sent until the network has carried it out, and an answer is kept for
+five seconds. A reload a moment after a send can therefore show the same
+amount again. The panel says that a payout already sent is counted until the
+network has carried it out, and every outcome after a Coinbase send asks the
+merchant to give it a few minutes and reload before sending another, so the
+unchanged amount is not read as a failed payout and paid for twice.
+
+The read goes through the payment RPC that recovery uses, the channel's free
+public Base endpoint unless the operator names another: each Settings page
+that offers a payout asks it for its chain id and one `eth_call`, unless the
+same payout was read in the five seconds before. The chain gets half the
+page's deadline, counted from the start of the panel's read, so a slow
+database and a slow chain together still leave the page drawn in time. When
+a page gives up on a read, every page about that payout is told at once for
+the next five seconds that the chain did not answer, unless the read answers
+meanwhile. Each failure carries a code the operator's log names: a wrong
+chain, no answer, a revert, an empty answer, an answer that is not the run's,
+and a read given up as too slow. A deployment without that RPC says on every
+panel that it does not know.
 
 ## What is not known
 
@@ -608,7 +638,7 @@ Coinbase's interface for it warned that it lacks one; its smart account was
 not measured separately. Whether Coinbase's service still answers the
 deprecated export of a wallet's raw key from the page I don't know. Which
 request Coinbase's window refused on Base Sepolia in the run of 2026-10-26,
-whether Coinbase will let the wallets it creates now use Base Sepolia, and
+whether Coinbase will let the wallets it creates now send on Base Sepolia, and
 whether a wallet created now can send a payout on Base without a paymaster of
 Agentify's are open too.
 

@@ -15,7 +15,10 @@ bring your wallet. Agentify works this out by asking the network to run the
 payout without sending it, so the amount is what the contracts would pay at
 the moment the page was drawn, with their rounding included. A buyer who pays
 before you send adds to it. If Agentify's own payout goes out first, that one
-brings your share to you instead, and yours then brings nothing more.
+brings your share to you instead, and yours then brings nothing more. A payout
+already sent, from Settings or from any wallet, is still counted in the amount
+until the network has carried it out, so the same amount shown again a moment
+after you sent one does not mean that it failed.
 
 When a payout would bring nothing, Settings says so and offers no transaction
 to send. When Agentify could not read the network, Settings says it does not
@@ -26,9 +29,10 @@ the network's fee even when that is nothing.
 ## With a Coinbase Wallet
 
 Coinbase Wallet sends payouts from Settings on the live channel only. On the
-test channel, Coinbase's window refuses Base Sepolia for the wallets it
-creates now, so there is no Coinbase button there; send the test channel's
-payout from another wallet, as described below.
+test channel its payout is not known to work, because Coinbase's window
+refuses transactions on Base Sepolia from the wallets it creates now, so
+Settings has no Coinbase payout button there; send the test channel's payout
+from another wallet, as described below.
 
 1. Open the Settings screen of your dashboard.
 2. Press Pay out with Coinbase Wallet. Coinbase's window opens and asks you to
@@ -37,14 +41,16 @@ payout from another wallet, as described below.
 
 Once you approve it, Settings says that you asked Coinbase Wallet to send the
 payout and that it accepted, with the amount the page showed. That means the
-wallet accepted the transaction, not yet that the network has carried it out;
-reload Settings to see what is left to pay out. Otherwise Settings says it
+wallet accepted the transaction, not yet that the network has carried it out,
+and until it has, Settings goes on counting the payout as waiting; give it a
+few minutes and reload before you send another. Otherwise Settings says it
 does not know whether the payout went out: when Coinbase's window closes
 without confirming the payout, when the wallet's answer cannot be read, and
 when no answer comes within ten minutes, after which the page stops waiting.
 You may have approved the payout in Coinbase's window before it went away, so
-in each of these cases reload Settings and look at what a payout would still
-bring before you send another.
+in each of these cases give it a few minutes, reload Settings and look at
+what a payout would still bring before you send another, from Coinbase Wallet
+or from another wallet.
 
 Settings says that nothing was sent only when the wallet stopped before the
 payout was asked for. Coinbase's window closes the same way whether you closed
