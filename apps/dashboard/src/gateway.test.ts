@@ -310,7 +310,7 @@ describe("the orders a page reads", () => {
       await owner.orders(true),
       await owner.getOrder(orderId),
       await owner.receipts(),
-      await owner.unfulfilledOrders(),
+      await owner.ordersWithRecords(),
       await owner.paidIntoSplits(),
     ]);
 
@@ -566,6 +566,7 @@ describe("the orders a page reads", () => {
     });
     if (!priced.ok) throw new Error("the priced room was refused");
     harnessed.advance(1_000);
+    const askedAt = new Date(harnessed.now()).toISOString();
     const worker = workUntilStopped(harnessed, {
       onQuote: () => ({ available: false, as_of: "2026-08-26T12:00:00.000Z" }),
     });
@@ -586,6 +587,10 @@ describe("the orders a page reads", () => {
       older,
     ]);
     expect(page.ok ? page.document.attempts[0]?.price : undefined).toBeNull();
+    // Asked for, and never priced: no moment stands in for the price's.
+    expect(page.ok ? page.document.attempts[0]?.asked_at : undefined).toBe(askedAt);
+    expect(page.ok ? page.document.attempts[0]?.priced_at : undefined).toBeNull();
+    expect(page.ok ? page.document.attempts[1]?.priced_at : undefined).toEqual(expect.any(String));
     expect(await client.lapsedCount()).toStrictEqual({ ok: true, document: 3 });
   });
 });
@@ -782,5 +787,205 @@ describe("what the payout a merchant is shown would bring", () => {
     await gatewayFor(harnessed.gateway, { merchantId: none, email: OWNER }).payoutSplits();
 
     expect(chain.asked).toStrictEqual([]);
+  });
+});
+
+describe("what an order's record says beside its document", () => {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const HOUR = 3_600_000;
+
+  /** The records read beside the orders, in one read with them. */
+  const recordsOf = async (client: ReturnType<typeof asTheOwner>) => {
+    const read = await client.ordersWithRecords();
+    if (!read.ok) throw new Error(`the orders were not read: ${read.why}`);
+    return read.document.records;
+  };
+
+  /** A charge at purchase that nobody answered, so the order waits on its payment. */
+  const unanswered = async (harnessed: Harness): Promise<string> => {
+    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
+    if (!published.ok) throw new Error("the card was refused");
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    return offered.order.order.id;
+  };
+
+  const attemptOf = async (harnessed: Harness, id: string): Promise<string> => {
+    const attempt = (await harnessed.store.orderById(id))?.paymentAttempt;
+    if (attempt === undefined) throw new Error("the payment attempt is missing");
+    return attempt.id;
+  };
+
+  it("names when a paid order's money moved and when its delivery deadline falls, and whether its passing left the order unfulfilled", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const paidAt = harnessed.now();
+    const id = await aPaidOrder(harnessed, harnessed.merchant.id);
+
+    const running = await recordsOf(client);
+    harnessed.advance(HOUR);
+    await harnessed.gateway.runner.apply(id, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "async_fulfillment",
+    });
+    const passed = await recordsOf(client);
+
+    expect(running).toStrictEqual({
+      [id]: {
+        unfulfilled: null,
+        paidAt: iso(paidAt),
+        deadline: { at: iso(paidAt + HOUR), passed: false },
+        soldThrough: "api",
+      },
+    });
+    expect(passed).toStrictEqual({
+      [id]: {
+        unfulfilled: "deadline_passed",
+        paidAt: iso(paidAt),
+        deadline: { at: iso(paidAt + HOUR), passed: true },
+        soldThrough: "api",
+      },
+    });
+  });
+
+  it("are read in the same read as the orders they describe", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const id = await aPaidOrder(harnessed, harnessed.merchant.id);
+
+    const read = await client.ordersWithRecords();
+
+    expect(read.ok ? read.document.orders.orders.map((order) => order.id) : read.why).toStrictEqual(
+      [id],
+    );
+    expect(read.ok ? Object.keys(read.document.records) : []).toStrictEqual([id]);
+  });
+
+  it("names when the money moved for an order charged after its goods as its receipt does, not when its payment was checked", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const room = await harnessed.gateway.publishCard(harnessed.merchant.id, {
+      merchant_item_id: "room-101",
+      title: "A room for the night",
+      description: "One night in room 101",
+      price: { amount: "80.00", currency: "USD" },
+      result: { access_code: { type: "string" } },
+      fulfillment: "sync",
+    });
+    if (!room.ok) throw new Error("the room was refused");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => {
+        // The goods take two seconds, so the charge settles after the payment was checked.
+        harnessed.advance(2_000);
+        return { delivered: { access_code: "SESAME" } };
+      },
+    });
+    const offered = await harnessed.gateway.beginPurchase(room.id, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    const checkedAt = harnessed.now();
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await worker.stop();
+    const id = offered.order.order.id;
+    const receipts = await client.receipts();
+    const receipt = receipts.ok
+      ? receipts.document.receipts.find((one) => one.order_id === id)
+      : undefined;
+
+    const record = (await recordsOf(client))[id];
+
+    expect(receipt?.paid_at).toBe(iso(checkedAt + 2_000));
+    expect(record).toStrictEqual({
+      unfulfilled: null,
+      paidAt: receipt?.paid_at,
+      deadline: null,
+      soldThrough: "api",
+    });
+  });
+
+  it("names when the money moved for a charge confirmed after Agentify stopped waiting, as the chain recorded it", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const id = await unanswered(harnessed);
+    harnessed.advance(HOUR);
+    await harnessed.gateway.runner.apply(id, {
+      kind: "deadline_expired",
+      at: harnessed.now(),
+      deadline: "settle_response",
+    });
+    const executedAt = harnessed.now() - 30_000;
+    harnessed.advance(HOUR);
+    await harnessed.gateway.runner.completePaymentAttempt(
+      id,
+      await attemptOf(harnessed, id),
+      { settled: true, transaction: `0x${"ab".repeat(32)}`, executedAt },
+      "chain",
+    );
+
+    expect((await recordsOf(client))[id]).toStrictEqual({
+      unfulfilled: "charge_confirmed_late",
+      paidAt: iso(executedAt),
+      deadline: null,
+      soldThrough: "api",
+    });
+  });
+
+  it("names when the money moved for an order paid after its merchant closed it", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const id = await unanswered(harnessed);
+    expect((await client.closeOrder(id, { message: "Payment did not arrive." })).ok).toBe(true);
+    harnessed.advance(HOUR);
+    const completedAt = harnessed.now();
+    await harnessed.gateway.runner.completePaymentAttempt(
+      id,
+      await attemptOf(harnessed, id),
+      { settled: true, transaction: "late-transaction" },
+      "facilitator",
+    );
+
+    expect((await recordsOf(client))[id]).toStrictEqual({
+      unfulfilled: null,
+      paidAt: iso(completedAt),
+      deadline: null,
+      soldThrough: "api",
+    });
+  });
+
+  it("names the integration a sale was made through, which is the shop's for a card the connector published", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    expect((await client.sellThrough("woocommerce")).ok).toBe(true);
+    const published = await harnessed.gateway.publishCard(
+      harnessed.merchant.id,
+      AN_ESIM,
+      "woocommerce",
+    );
+    if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect((await recordsOf(client))[offered.order.order.id]?.soldThrough).toBe("woocommerce");
+  });
+
+  it("names no deadline for an order its merchant refused after payment, or one delivered", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    const refused = await aPaidOrder(harnessed, harnessed.merchant.id);
+    await workOnce(harnessed, {
+      onOrder: () => ({ refused: { code: "out_of_stock", message: "none left" } }),
+    });
+    const delivered = await aPaidOrder(harnessed, harnessed.merchant.id);
+    await workOnce(harnessed, {
+      onOrder: () => ({ delivered: { activation_code: "LPA:1$example$CODE" } }),
+    });
+
+    const read = await recordsOf(client);
+
+    expect(read[refused]).toMatchObject({ unfulfilled: "refused", deadline: null });
+    expect(read[delivered]).toMatchObject({ unfulfilled: null, deadline: null });
   });
 });

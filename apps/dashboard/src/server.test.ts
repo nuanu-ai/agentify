@@ -68,6 +68,7 @@ import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { CLOSURE_NOTES } from "./views.js";
 import { memoryWooShops, type WooShops } from "./woo-shops.js";
+import { moment } from "./words.js";
 
 /**
  * Named rather than spelled again: the gateway reads the environment off the
@@ -3904,6 +3905,44 @@ describe("the orders screen", () => {
     expect(text).toContain("8.00 USD test");
   });
 
+  it("says in an order's details when its delivery deadline passed, and that a late delivery still counts", async () => {
+    const { browser, gateway, harnessed } = await started({
+      gateway: { DEFAULT_ASYNC_FULFILLMENT_MS: "40" },
+    });
+    const itemId = await publish(gateway, {
+      ...esimCard,
+      fulfill_deadline_seconds: undefined,
+    });
+    await buyOverHttp(harnessed, gateway, itemId, { onOrder: () => ({ accepted: {} }) });
+    const id = await vi.waitFor(
+      async () => {
+        const listed = (
+          await gateway.call("GET", "/v0/orders?open=true", {
+            headers: { authorization: `Bearer ${KEY}` },
+          })
+        ).body as { orders: { id: string; status: string }[] };
+        const unfulfilled = listed.orders.find((order) => order.status === "unfulfilled");
+        expect(unfulfilled).toBeDefined();
+        return unfulfilled?.id ?? "";
+      },
+      { timeout: 2_000, interval: 5 },
+    );
+    const paidAt = (await harnessed.store.orderById(id))?.order.timestamps.paidAt ?? 0;
+
+    await browser.signIn();
+    const html = (await browser.get(`/orders?details=${id}`)).html;
+    const details = readable(
+      new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "",
+    );
+
+    expect(details).toContain(
+      `Delivery deadline passed ${moment(new Date(paidAt + 40).toISOString())}`,
+    );
+    expect(details).toContain(`Paid ${moment(new Date(paidAt).toISOString())}`);
+    expect(details).toContain("You can still deliver it late");
+    expect(details).toContain("Delivering late");
+  });
+
   it("says why an order was unfulfilled without guessing that a window ran out", async () => {
     // An order is unfulfilled too when the merchant refuses one already paid for;
     // a callout that blamed a passed delivery window whatever the cause would
@@ -4952,7 +4991,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           payoutWallet: answer,
           integration: answer,
           standing: answer,
-          unfulfilledOrders: answer,
+          ordersWithRecords: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -6790,14 +6829,21 @@ describe("closing fulfillment from Orders", () => {
         },
         getOrder: async () => lateAnswer(10),
         orders: async (open) => {
-          if (pressed) {
-            readsAfter += 1;
-            if (readsAfter > 2) throw new Error("a second read failed");
-          }
+          readAfter();
           return await real.orders(open);
+        },
+        ordersWithRecords: async () => {
+          readAfter();
+          return await real.ordersWithRecords();
         },
       }),
     });
+    function readAfter() {
+      if (pressed) {
+        readsAfter += 1;
+        if (readsAfter > 2) throw new Error("a second read failed");
+      }
+    }
     const id = await paid(running);
     await running.browser.signIn();
     const typed = "Payment returned outside Agentify.";
@@ -6837,7 +6883,7 @@ describe("closing fulfillment from Orders", () => {
           getOrder: async (id) => (down ? lateAnswer(10) : await real.getOrder(id)),
           cards: async () => (down ? await failed() : await real.cards()),
           orders: async (open) => (down ? await failed() : await real.orders(open)),
-          unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+          ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
           paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
         }),
       });
@@ -6877,7 +6923,7 @@ describe("closing fulfillment from Orders", () => {
         ...real,
         cards: async () => (down ? await failed() : await real.cards()),
         orders: async (open) => (down ? await failed() : await real.orders(open)),
-        unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+        ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
         paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
       }),
     });
@@ -6918,7 +6964,7 @@ describe("closing fulfillment from Orders", () => {
     return {
       cards: async () => (down() ? await failed() : await real.cards()),
       orders: async (open: boolean) => (down() ? await failed() : await real.orders(open)),
-      unfulfilledOrders: async () => (down() ? await failed() : await real.unfulfilledOrders()),
+      ordersWithRecords: async () => (down() ? await failed() : await real.ordersWithRecords()),
       paidIntoSplits: async () => (down() ? await failed() : await real.paidIntoSplits()),
     };
   };

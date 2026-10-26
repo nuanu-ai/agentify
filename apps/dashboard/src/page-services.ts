@@ -931,62 +931,49 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     const lapsedPage = lapsedPageIn(query);
     // The open list is read beside the whole one, never after it, since
     // which orders are open is the gateway's to say.
-    const [cards, orders, open, owed, paidInto, lapsed] = await Promise.all([
+    const [cards, read, open, paidInto, lapsed] = await Promise.all([
       gateway.cards(),
-      gateway.orders(false),
+      gateway.ordersWithRecords(),
       gateway.orders(true),
-      gateway.unfulfilledOrders(),
       gateway.paidIntoSplits(),
       lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage),
     ]);
     if (!cards.ok) return problemOf(cards);
-    if (!orders.ok) return problemOf(orders);
+    if (!read.ok) return problemOf(read);
     if (!open.ok) return problemOf(open);
-    if (!owed.ok) return problemOf(owed);
     if (!paidInto.ok) return problemOf(paidInto);
     if (!lapsed.ok) return problemOf(lapsed);
-    const shopTotals =
+    const { orders, records } = read.document;
+    // How a late delivery can still reach each unfulfilled order depends on
+    // whether the shop connector holds its sale, whatever the merchant sells
+    // through now.
+    const unfulfilled = orders.orders
+      .filter((order) => order.status === "unfulfilled")
+      .map((order) => order.id);
+    const [shopTotals, connector] =
       parts.woo === null
-        ? {}
-        : await parts.woo.shopTotals(
-            person,
-            orders.document.orders.map((order) => order.id),
-          );
+        ? [{}, {}]
+        : await Promise.all([
+            parts.woo.shopTotals(
+              person,
+              orders.orders.map((order) => order.id),
+            ),
+            unfulfilled.length === 0 ? {} : parts.woo.connectorSales(person, unfulfilled),
+          ]);
     const view = ordersView(
       viewing(person).mode,
       cards.document,
-      orders.document,
+      orders,
       open.document,
       query,
-      owed.document,
+      records,
       paidInto.document,
       typeof lapsed.document === "number"
         ? { page: null, of: lapsed.document }
         : { page: lapsed.document.attempts, of: lapsed.document.of },
       shopTotals,
+      connector,
     );
-    if (parts.woo !== null && view.needsYou.rows.length > 0) {
-      const links = await parts.woo.recoveryLinks(
-        person,
-        view.needsYou.rows.map((row) => row.id),
-      );
-      return {
-        kind: "view",
-        view: {
-          ...view,
-          needsYou: {
-            ...view.needsYou,
-            rows: view.needsYou.rows.map((row) => ({
-              ...row,
-              rest:
-                links[row.id] === undefined
-                  ? row.rest
-                  : { href: links[row.id] as string, words: "Recover WooCommerce delivery" },
-            })),
-          },
-        },
-      };
-    }
     return { kind: "view", view };
   };
 

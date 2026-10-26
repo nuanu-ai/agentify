@@ -22,6 +22,7 @@ import { type Postman, postmanFor } from "./mail.js";
 import { noted } from "./noted.js";
 import { type Outcome, problemOf } from "./page-services.js";
 import { unsetIn } from "./viewer.js";
+import type { ConnectorSale } from "./views.js";
 import { cardsFromTheShop, decimalOfMinorUnits, merchantItemIdFor } from "./woo-catalog.js";
 import {
   APP_NAME,
@@ -98,10 +99,11 @@ export interface WooPages {
     person: Person,
     orderIds: readonly string[],
   ): Promise<Readonly<Record<string, ShopTotal>>>;
-  recoveryLinks(
+  /** Which of these sales the shop connector holds, and how a late delivery can still reach each. */
+  connectorSales(
     person: Person,
     orderIds: readonly string[],
-  ): Promise<Readonly<Record<string, string>>>;
+  ): Promise<Readonly<Record<string, ConnectorSale>>>;
   /** The shop screen, with what its address carried. */
   shop(person: Person, query: URLSearchParams): Promise<Outcome<WooShopView>>;
   connect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
@@ -640,11 +642,22 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       if (person.merchant === null) return {};
       return await shops.shopTotals(person.id, orderIds);
     },
-    async recoveryLinks(person, orderIds) {
+    async connectorSales(person, orderIds) {
       if (person.merchant === null) return {};
-      const ids = await shops.recoverableOrders(person.id, orderIds);
+      const held = await shops.heldSales(person.id, orderIds);
       return Object.fromEntries(
-        ids.map((id) => [id, `${base}/integrations/woocommerce/recover/${encodeURIComponent(id)}`]),
+        Object.entries(held).map(([id, sale]): [string, ConnectorSale] => [
+          id,
+          sale === "parcel" || sale === "unplaced_parcel"
+            ? { kind: "parcel", placed: sale === "parcel" }
+            : {
+                kind: "download",
+                recover:
+                  sale === "recoverable"
+                    ? `${base}/integrations/woocommerce/recover/${encodeURIComponent(id)}`
+                    : null,
+              },
+        ]),
       );
     },
     stateOf: async (accountId) => await shopStateOf(shops, accountId),
