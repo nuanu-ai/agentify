@@ -28,8 +28,8 @@ is recorded as unfulfilled after.
 | The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a paid order unfulfilled | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
 | The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; the risk is one sale's price |
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
-| {{Waiting-for-payment-at-most}} of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses {{quote-ttl}} after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps {{waiting-for-payment-at-most}} unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
-| No process of yours has polled for {{silent-after}} | nothing changes: a purchase nobody answers ends with nothing charged | a new purchase is refused with `seller_not_taking_orders` before payment, and so is a payment for a price named before the silence; nothing is charged, and the agent tries again later | as in the asynchronous mode | keep a process running and polling: its first poll lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected |
+| {{Waiting-for-payment-at-most}} of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; your cards stay in the catalogue, nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses {{quote-ttl}} after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps {{waiting-for-payment-at-most}} unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
+| No process of yours has polled for {{silent-after}} | a new purchase is refused with `seller_not_taking_orders` before its price is asked and before any order exists; your cards leave the catalogue, nothing is charged, and the agent tries again later | as in the synchronous mode, and so is a payment for a price named before the silence | as in the asynchronous mode | keep a process running and polling: its first poll brings your cards back and lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected |
 | {{Unserved-at-most}} paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the {{unserved-at-most:ordinal}} such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than {{unserved-at-most}} remain, the next purchase goes through with nothing switched back on |
 
 Silence from a price check is any of three things: no answer within
@@ -43,12 +43,18 @@ Neither the limit of {{waiting-for-payment-at-most}} nor the rule about polling 
 has to be switched back on.
 The limit of {{waiting-for-payment-at-most}} bounds how far anybody can load your price handler or your
 shop through Agentify with purchases nobody means to pay, and it is counted for
-you alone, so one seller's {{waiting-for-payment-at-most}} hold up nobody else. The rule about polling
-covers only a purchase that charges before its goods, an asynchronous one or a
-parcel, because without a process of yours running that buyer would pay for
-goods nothing is there to make; a synchronous purchase ends uncharged on its
-own when nobody answers. It is asked when the purchase is priced and again
-when the payment arrives, so a price named just before your process went quiet
+you alone, so one seller's {{waiting-for-payment-at-most}} hold up nobody else. Your cards stay in the
+catalogue while it holds, because a place frees within a minute and because
+anybody could fill the {{waiting-for-payment-at-most}} without paying.
+
+The rule about polling covers every purchase sold through your own code,
+whatever its mode. Without a process of
+yours running, the buyer of a purchase that charges before its goods would pay
+for goods nothing is there to make, and a synchronous purchase could only lapse
+after its buyer had signed and waited. While it holds, your cards are not in
+the catalogue and a look at one of them is refused too. It is asked when a
+purchase is priced, and again when the payment arrives for a purchase that
+charges before its goods, so a price named just before your process went quiet
 is not charged after. {{Silent-after}} without a poll is when it starts refusing,
 and Agentify notices within half a minute after that. A process whose every
 handler is busy asks for no new work and so does not poll either: one held up
@@ -56,7 +62,7 @@ that long by slow handlers is counted as quiet too, which keeps buyers from
 paying for orders it has no room to take. A shop connected through
 WooCommerce is never refused for it, because its orders are filled inside
 Agentify; a shop that fails answers its price question with the failure.
-Both refusals are retryable, and neither charges anything.
+This refusal is retryable, as `seller_busy` is, and neither charges anything.
 
 The rule about orders left without delivery or closure counts only an order a
 buyer paid for, that you were given, and that has nothing delivered
