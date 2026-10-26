@@ -752,11 +752,12 @@ describe("a scan in Chromium", () => {
         json: { slug, public_url: `${origin}/s/${slug}`, status: "published" },
       });
     });
-    // The image never arrives, which the page cannot see.
+    // The share exists only in these routes, so the server has no image for it:
+    // the download fails, which the page cannot see. A download is not a request
+    // a route sees, so the browser's own downloads are counted.
     let imageAsks = 0;
-    await page.route(`**/api/v1/shares/${slug}/image`, (route) => {
-      imageAsks += 1;
-      return route.abort();
+    page.on("download", (download) => {
+      if (download.url().endsWith(`/api/v1/shares/${slug}/image`)) imageAsks += 1;
     });
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
     const publish = page.getByRole("button", { name: "Publish image" });
