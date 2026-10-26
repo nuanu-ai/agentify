@@ -58,7 +58,18 @@ recognises one by gzip's magic bytes, never by its media type alone, since a
 server can send readable XML gzip-encoded under a gzip media type, and unpacks
 it as it reads. The sitemap read limit bounds what it unpacks to, so a file
 that expands without bound stops at the limit and reads as cut. Only a body
-still gzip after that, as a file compressed twice is, is left unread.
+still gzip after that, as a file compressed twice is, is left unread. A gzip
+file that cannot be unpacked keeps the status the site answered and a code of
+its own, and the sitemap check reports it as broken, since the site's file is
+known and an agent cannot read it either.
+
+The bytes taken from the network for one body are bounded apart from what they
+decode to, at twice the read limit and 64 KiB. A body built not to decode,
+such as a stream of empty compressed blocks, would otherwise run until the
+request's time ran out; it stops at the bound with a code of its own and the
+status kept. Every decoder runs in a pipeline that closes the response when
+decoding fails, so a body that cannot be decoded does not hold its connection
+open.
 
 ## How each outcome counts
 

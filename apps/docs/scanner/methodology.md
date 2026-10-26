@@ -68,8 +68,13 @@ robots.txt and llms.txt, 1 MiB for a discovery document such as an MCP server
 card, a UCP profile, an A2A agent card or OAuth metadata, 2 MiB for a page, and
 5 MiB for a sitemap. A longer response is cut at its limit, and a result that
 depends on it names the limit. A sitemap served as a gzip file is unpacked, and
-the 5 MiB limit applies to what it unpacks to. The scan reads at most three
-sitemap files, an index and the sitemaps it lists included.
+the 5 MiB limit applies to what it unpacks to. A gzip sitemap that cannot be
+unpacked is reported as broken, since an agent cannot read it either. A
+response that sends more than twice its limit and 64 KiB without decoding to
+the limit is stopped, and the check that needed it is unavailable. The scan
+reads at most three sitemap files, an index and the sitemaps it lists
+included, and a listed sitemap whose address redirected counts as read at the
+address that was listed.
 
 What was read proves what it contains. A heading, a link or a sitemap entry
 found before the limit counts. A discovery document longer than its limit is
