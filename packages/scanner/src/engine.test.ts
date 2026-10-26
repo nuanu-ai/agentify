@@ -786,23 +786,38 @@ describe("18-check engine", () => {
     });
   });
 
-  it("does not award Markdown credit to an HTTP error representation", () => {
-    const input = makeArtifacts("owner");
-    input.markdown = artifact(
+  const markdownAnswer = (status: number): ScanArtifacts => ({
+    ...makeArtifacts("owner"),
+    markdown: artifact(
       "https://example.com/",
       "# Rate limited\n\nThis is an error response, not a usable representation.",
-      {
-        status: 429,
-        headers: { "content-type": "text/markdown", vary: "Accept" },
-      },
-    );
-
-    expect(evaluateScan(input).checks.find((check) => check.id === 7)).toMatchObject({
-      status: "fail",
-      earnedWeight: 0,
-      summaryCode: "markdown_negotiation_absent",
-    });
+      { status, headers: { "content-type": "text/markdown", vary: "Accept" } },
+    ),
   });
+
+  it.each([401, 403, 429])(
+    "gives no Markdown verdict when the site refused the request with %i, and names the status",
+    (status) => {
+      const checked = check(markdownAnswer(status), 7);
+      expect(checked).toMatchObject({
+        status: "unavailable",
+        earnedWeight: 0,
+        evidence: { status },
+      });
+      expect(checked?.fixCode).toBeUndefined();
+    },
+  );
+
+  it.each([404, 406])(
+    "does not award Markdown credit to an HTTP error representation: %i",
+    (status) => {
+      expect(check(markdownAnswer(status), 7)).toMatchObject({
+        status: "fail",
+        earnedWeight: 0,
+        summaryCode: "markdown_negotiation_absent",
+      });
+    },
+  );
 
   it("passes a distinct Markdown representation with semantic HTML parity", () => {
     const input = makeArtifacts("owner");
