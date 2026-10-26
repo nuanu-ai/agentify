@@ -1761,6 +1761,112 @@ describe("where a sign-in started", () => {
     expect(failed.status).toBe(503);
     expect(formTo(failed.html, "get", "/sign-in")?.fields.get("destination")).toBe("reports");
   });
+
+  /** The sign-in page a refusal or a sign-out leads to, its address form pressed for `email`. */
+  const signInFrom = async (running: Running, browser: Browser, page: Visit, email: string) => {
+    const form = formsIn(page.html).find(
+      ({ method, action }) => method === "post" && action === "/sign-in",
+    );
+    rewindLinkSends(running.rows);
+    await browser.post("/sign-in", { ...Object.fromEntries(form?.fields ?? []), email });
+    return await openLatest(running, browser);
+  };
+
+  it("makes no merchant for a person without one who signs in again after signing out", async () => {
+    const running = await started();
+    await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
+
+    const signedOut = await running.browser.post("/sign-out");
+    const page = await running.browser.get(signedOut.to ?? "");
+    const again = await signInFrom(running, running.browser, page, FRESH.email);
+
+    expect(signedOut.status).toBe(303);
+    expect(again.to).toBe(LATEST_REPORT);
+    expect(await merchantOf(running, FRESH.email)).toBeNull();
+  });
+
+  it("makes no merchant for a person without one who asks for a new link from a report's email link that no longer works", async () => {
+    const running = await started();
+    await running.identity.sendReportLink({
+      operation: "send",
+      email: FRESH.email,
+      destination: { report: "019b41a0-7c51-7d63-84bd-a5a20faef497" },
+      request: "019b41a0-7c51-7d63-84bd-a5a20faef498",
+    });
+    const action = actionIn(running.mails.at(-1));
+    const landingAddress = `${action.pathname}${action.search}`;
+    const late = await running.another();
+    const landed = await late.get(landingAddress);
+    const pressedLate = formTo(landed.html, "post", action.pathname);
+    await openLatest(running);
+    await running.browser.post("/sign-out");
+
+    const refusedOnLanding = await running.browser.get(landingAddress);
+    const refusedOnPress = await late
+      .from(running.url)
+      .post(action.pathname, Object.fromEntries(pressedLate?.fields ?? []));
+
+    for (const [refused, browser] of [
+      [refusedOnLanding, running.browser],
+      [refusedOnPress, late],
+    ] as const) {
+      expect(refused.status).toBe(401);
+      const newLink = formsIn(refused.html).find(({ action: to }) => to === "/sign-in");
+      const page = await browser.get(
+        `/sign-in?${new URLSearchParams(Object.fromEntries(newLink?.fields ?? []))}`,
+      );
+      expect((await signInFrom(running, browser, page, FRESH.email)).to).toBe(LATEST_REPORT);
+    }
+    expect(await merchantOf(running, FRESH.email)).toBeNull();
+  });
+
+  it("forgets that a merchant could not be made once the browser signs out or signs somebody in again", async () => {
+    const available = false;
+    const registrar: Registrar = {
+      register: async () =>
+        available
+          ? { ok: true, document: "mer_after_retry" }
+          : { ok: false, status: 0, why: "Agentify did not answer within ten seconds" },
+    };
+    const running = await started({ registrar });
+    const plain = await running.another();
+    await plain.signIn(OTHER, TO_READ_REPORTS);
+    const window = readable((await plain.get("/merchant")).html);
+
+    for (const signingOut of [true, false]) {
+      const shared = await running.another();
+      rewindLinkSends(running.rows);
+      await shared.post("/sign-in", { email: FRESH.email });
+      expect((await openLatest(running, shared)).to).toBe("/merchant");
+      if (signingOut) await shared.post("/sign-out");
+      rewindLinkSends(running.rows);
+      await shared.post("/sign-in", { ...TO_READ_REPORTS, email: OTHER });
+      await openLatest(running, shared);
+
+      expect(readable((await shared.get("/merchant")).html), String(signingOut)).toBe(window);
+    }
+    expect(available).toBe(false);
+  });
+
+  it("keeps the session and says the merchant was not made when making it at sign-in fails outright", async () => {
+    const running = await started({
+      registrar: {
+        register: async () => {
+          throw new Error("the answer was not a document this contract knows");
+        },
+      },
+    });
+
+    const opened = await running.browser.signIn(FRESH.email);
+
+    expect(opened.status).toBe(200);
+    expect(running.rows.dashboard_sessions).toHaveLength(1);
+    expect(await merchantOf(running, FRESH.email)).toBeNull();
+    expect(formTo(opened.html, "post", "/merchant")).toBeDefined();
+    const again = await running.browser.get("/merchant");
+    expect(formTo(again.html, "post", "/merchant")).toBeDefined();
+    expect(readable(again.html)).not.toBe(readable(opened.html));
+  });
 });
 
 describe("the click of a visitor an ad sent, through the Google sign-in", () => {
