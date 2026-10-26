@@ -1674,6 +1674,51 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
+    describe("a paid order left unserved", () => {
+      /** An order of `merchantId`'s in `state`, with its payment where it stands. */
+      const paidOrder = (
+        id: string,
+        state: Order["state"],
+        payment: Order["payment"],
+        merchantId = A,
+      ): StoredOrder => {
+        const base = anOrder(id, state, {
+          merchantId,
+          createdAt: Number(id.replace(/\D/g, "")) || 1,
+        });
+        return { ...base, order: { ...base.order, payment } };
+      };
+
+      it("is counted for its own seller only, and only while the buyer paid and nothing was delivered", async () => {
+        // Closed by the merchant, delivered late, charged with nobody knowing
+        // whether it went through, held unpaid after a delivery, or ended
+        // with nothing charged: none of these is a buyer who paid and got
+        // nothing, and neither is another seller's.
+        const store = await twoMerchants();
+        await store.addOrder(paidOrder("ord_1", "unfulfilled", "settled"));
+        await store.addOrder(paidOrder("ord_2", "unfulfilled", "settled"));
+        await store.addOrder(paidOrder("ord_3", "fulfillment_closed", "settled"));
+        await store.addOrder(paidOrder("ord_4", "delivered", "settled"));
+        await store.addOrder(paidOrder("ord_5", "rejected", "outcome_unknown"));
+        await store.addOrder(paidOrder("ord_6", "delivered_unpaid", "settle_failed"));
+        await store.addOrder(paidOrder("ord_7", "expired", "none"));
+        await store.addOrder(paidOrder("ord_8", "unfulfilled", "settled", B));
+
+        expect(await store.unservedOrders(A, 10)).toBe(2);
+        expect(await store.unservedOrders(B, 10)).toBe(1);
+      });
+
+      it("is counted up to the number asked and no further", async () => {
+        const store = await twoMerchants();
+        for (let one = 1; one <= 4; one += 1) {
+          await store.addOrder(paidOrder(`ord_${one}`, "unfulfilled", "settled"));
+        }
+
+        expect(await store.unservedOrders(A, 3)).toBe(3);
+        expect(await store.unservedOrders(A, 5)).toBe(4);
+      });
+    });
+
     describe("an attempt that lapsed unpaid", () => {
       const DAY = 86_400_000;
 

@@ -2935,6 +2935,7 @@ describe("a merchant's standing in one read", () => {
       // polled, nor for purchases waiting, of which there are none.
       outOfTouch: null,
       busy: false,
+      unserved: false,
       // The test channel asks for no admission, so nothing is withdrawn there.
       withdrawn: null,
     };
@@ -3004,7 +3005,7 @@ describe("a merchant's standing in one read", () => {
     });
   });
 
-  it("reads the merchant's own row, last poll and waiting purchases and none of their cards, however many they have, while their process is in touch", async () => {
+  it("reads the merchant's own row, last poll, waiting purchases and unserved orders and none of their cards, however many they have, while their process is in touch", async () => {
     const harnessed = await started();
     await published(harnessed, syncCard);
     const read: string[] = [];
@@ -3020,7 +3021,12 @@ describe("a merchant's standing in one read", () => {
 
     await harnessed.gateway.standingOf(harnessed.merchant.id);
 
-    expect(read).toStrictEqual(["merchantById", "lastContact", "waitingForPayment"]);
+    expect(read).toStrictEqual([
+      "merchantById",
+      "lastContact",
+      "waitingForPayment",
+      "unservedOrders",
+    ]);
   });
 });
 
