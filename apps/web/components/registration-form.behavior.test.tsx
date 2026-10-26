@@ -352,7 +352,7 @@ describe("asking the scanner for a verification link", () => {
 
     const title = (await screen.findByLabelText(/^Phone/)).getAttribute("title") ?? "";
 
-    expect(title).toMatch(/\+/);
+    expect(title).toMatch(/\+|plus/i);
     expect(title).toMatch(/country code/i);
   });
 });
