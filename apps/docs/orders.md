@@ -669,9 +669,7 @@ address again without that kept payment request starts a new purchase, which
 is charged again once paid, so recovery always signs the kept request again.
 An agent therefore keeps the payment request and the payment it signed from
 before it sends the payment until it has the answer: the request to sign
-again, and the payment to tell it which wallet signs. The test buyer on the
-[quickstart](/quickstart#_6-make-your-first-test-purchase) keeps both in a
-file.
+again, and the payment to tell it which wallet signs.
 
 The payment request names the order only by its `order_id`, which opens
 nothing. The payment that already paid an order, sent again, is refused,

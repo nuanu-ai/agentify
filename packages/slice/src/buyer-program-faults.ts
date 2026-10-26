@@ -16,10 +16,10 @@
  * and `challengeNetwork` with `challengeAsset`, which move a payment request
  * onto another chain and that chain's token.
  *
- * And it makes the program's waits between reads take a millisecond, by
- * handing the program, and only the program, its own `node:timers/promises`.
- * Every other timer in the process, the HTTP client's included, keeps real
- * time.
+ * And it makes the program's waits between reads take a millisecond, or the
+ * `waitMs` the faults name, by handing the program, and only the program, its
+ * own `node:timers/promises`. Every other timer in the process, the HTTP
+ * client's included, keeps real time.
  */
 
 import { registerHooks } from "node:module";
@@ -29,6 +29,7 @@ interface Faults {
   readonly losePaidAnswer?: boolean;
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
+  readonly waitMs?: number;
 }
 
 const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
@@ -36,7 +37,7 @@ const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
 const PROGRAM = /\/buyer\.mts$/;
 
 const QUICK_WAITS = `data:text/javascript,${encodeURIComponent(
-  "export const setTimeout = (_ms, value) => new Promise((done) => globalThis.setTimeout(() => done(value), 1));",
+  `export const setTimeout = (_ms, value) => new Promise((done) => globalThis.setTimeout(() => done(value), ${faults.waitMs ?? 1}));`,
 )}`;
 
 registerHooks({
