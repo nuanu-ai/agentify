@@ -713,13 +713,13 @@ describe("a request that fails or stops on its way", () => {
     "says nobody knows whether a press whose answer was lost was done, and leads back to the list it was pressed on with a read that sends nothing again, when %s",
     async (_, fail) => {
       const page = await onTheCards();
-      await page.goto(`${origin}${BASE}/cards?q=room`);
+      await page.goto(`${origin}${BASE}/products?q=room`);
       await page.waitForLoadState("networkidle");
       const posts: string[] = [];
       page.on("request", (request) => {
         if (request.method() === "POST") posts.push(request.url());
       });
-      await page.route(`${origin}${BASE}/cards.data?*`, (route) =>
+      await page.route(`${origin}${BASE}/products.data?*`, (route) =>
         route.request().method() === "POST" ? fail(route) : route.fallback(),
       );
 
@@ -730,7 +730,7 @@ describe("a request that fails or stops on its way", () => {
 
       expect(await mainText(page)).toMatch(/We don't know if this was done/);
       expect(await mainText(page)).not.toMatch(/could not be loaded/);
-      expect(href).toBe(`${BASE}/cards?q=room`);
+      expect(href).toBe(`${BASE}/products?q=room`);
       await reopen.click();
       await page.waitForURL(`${origin}${href}`);
       await page.waitForLoadState("networkidle");
@@ -748,7 +748,7 @@ describe("a request that fails or stops on its way", () => {
       if (route.request().method() === "POST") held.push(route);
       else void route.fallback();
     });
-    const site = page.getByLabel("Your shop's site");
+    const site = page.getByLabel("Shop's site");
     const form = page.locator("form[action$='/settings/site']");
 
     await site.fill("https://rooms.example.com");

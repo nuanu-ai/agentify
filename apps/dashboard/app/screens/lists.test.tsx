@@ -524,7 +524,7 @@ describe("a paid order left unfulfilled", () => {
       orders: [{ ...pricedAt("80.00", "ord_unfulfilled"), status: "unfulfilled" }],
     });
     const text = readable(ordersPage(unfulfilled));
-    expect(text).toContain("Paid, but not delivered.");
+    expect(text).toContain("Paid, and the product was not delivered.");
     expect(text).not.toContain("deadline");
   });
 });
@@ -546,16 +546,16 @@ describe("an order delivered and not paid", () => {
     expect(text).toContain("Waiting on the buyer 1");
     expect(text).toContain("Needs you 0");
     expect(html).not.toContain('aria-label="Orders that need you"');
-    expect(text).toMatch(/the buyer's payment failed after you delivered/i);
+    expect(text).toContain("the payment failed, so the goods are held");
     // Paid again for the same order, never bought again, which would deliver
     // twice.
-    expect(text).toContain("only if they pay again for this order");
+    expect(text).toContain("The buyer can pay again for this same order");
   });
 
   it("leaves to the merchant whether to revoke what they delivered or to wait", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("You can wait, or take back what you delivered.");
+    expect(text).toContain("whether to revoke what you delivered or wait is yours to decide");
     expect(text).not.toMatch(/nothing for you to do/i);
   });
 
