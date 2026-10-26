@@ -44,6 +44,22 @@ describe("the way a merchant sells through, on the integrations screen", () => {
     expect(primaryIn(code)).toStrictEqual([]);
   });
 
+  it("marks the shop as a warning, saying nothing sells, while sales go through a shop none connected", () => {
+    for (const tile of [
+      { kind: "none" },
+      { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 2 },
+      { kind: "unanswered", shopUrl: SHOP },
+    ] as const satisfies readonly ShopTile[]) {
+      const [, shop] = waysIn(drawn(tile, ON_THE_SHOP));
+
+      expect(shop, tile.kind).toMatch(/<span class="badge badge-fail">In use<\/span>/);
+      expect(readable(shop), tile.kind).toContain("Nothing sells until a shop is connected");
+    }
+    const [, connectedShop] = waysIn(drawn(connected("read_write"), ON_THE_SHOP));
+    expect(connectedShop).toMatch(/<span class="badge badge-pass">In use<\/span>/);
+    expect(readable(connectedShop)).not.toContain("Nothing sells");
+  });
+
   it("marks the code, and leads to the shop only second, while a connected shop waits", () => {
     const [code, shop] = waysIn(drawn(connected("read_write"), ON_THE_CODE));
 

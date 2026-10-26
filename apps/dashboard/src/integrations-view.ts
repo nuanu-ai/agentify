@@ -43,6 +43,8 @@ export interface IntegrationsView {
   readonly inUse: Integration | null;
   /** Which way the merchant sells through could not be read. */
   readonly throughUnread: boolean;
+  /** Sales go through the shop and none is connected, so nothing sells. */
+  readonly nothingSells: boolean;
   /** Null where this dashboard keeps no connection, which draws no block at all. */
   readonly shop: ShopTileView | null;
 }
@@ -86,14 +88,17 @@ export const integrationsView = (
       lede: "Your products reach Agentify from your own code.",
       inUse: null,
       throughUnread: false,
+      nothingSells: false,
       shop: null,
     };
   }
   const [shop, through] = read;
+  const inUse = inUseOf(shop, through);
   return {
     lede: "You sell through your own code or through a WooCommerce shop, one at a time.",
-    inUse: inUseOf(shop, through),
+    inUse,
     throughUnread: "unread" in through,
+    nothingSells: inUse === "woocommerce" && shop.kind !== "connected" && shop.kind !== "unread",
     shop: tileOf(shop),
   };
 };
