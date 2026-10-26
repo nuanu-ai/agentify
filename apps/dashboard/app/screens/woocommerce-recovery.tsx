@@ -92,7 +92,9 @@ export function WooRecoveryScreen({
                   {view.message}
                 </p>
               )}
-              {view.unavailable === null ? null : <p>{unavailableSaid(view.unavailable)}</p>}
+              {view.unavailable === null || view.unknown ? null : (
+                <p>{unavailableSaid(view.unavailable)}</p>
+              )}
               {intro === null || view.unknown ? null : <p>{intro}</p>}
             </div>
           </div>

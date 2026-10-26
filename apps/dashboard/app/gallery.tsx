@@ -3056,6 +3056,41 @@ const WOO_RECOVERY: GalleryState[] = [
   ),
   recovery(
     {
+      id: "dashboard-woo-recovery-closed-unknown-press",
+      screen: "Recover WooCommerce delivery",
+      when: "A press of Create shop order broke inside Agentify, and fulfillment was closed meanwhile.",
+      cause:
+        "What the press did is not known, so the page says only that and offers a reload, which then says what the saved sale knows of the shop order.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: RECOVERY_UNKNOWN,
+      unknown: true,
+      unavailable: unavailableOf(
+        { ...DOWNLOAD_SALE, phase: "create_unknown" },
+        "fulfillment_closed",
+      ),
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-parcel-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a parcel whose shop order got no clear answer.",
+      cause:
+        "Nobody knows whether the shop holds the order, and a parcel's order is never linked here, so the page tells the merchant not to ship it and leads to closing fulfillment.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: unavailableOf({ ...PARCEL_SALE, phase: "create_unknown" }, "unfulfilled"),
+    },
+  ),
+  recovery(
+    {
       id: "dashboard-woo-recovery-parcel-refused",
       screen: "Recover WooCommerce delivery",
       when: "A merchant opens recovery for a parcel their shop never received.",
