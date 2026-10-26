@@ -687,8 +687,15 @@ Within one instance, an order event waits for earlier handlers for the same
 order. A repeat of an order already running there shares that attempt; once
 it finishes, or in another instance, the order can call your handler again.
 Your fulfillment still needs idempotency by the order's identifier. `stop()`
-waits for handlers already taken on, including events waiting on that order;
-it does not fetch more work.
+fetches no more work. It waits for the handlers already taken on, including
+events waiting on their order, and sends the answers they return, since the
+goods may already be issued. It waits fifty seconds at most, and each message
+still unfinished then gets a `batch_abandoned` problem of its own, with the
+message's identifier as its `subject`. An order still waiting or still in your
+handler had nothing sent for it and comes again while it has attempts left and
+its deadline allows; whatever your handler returns after that is not sent. An
+answer that was already on its way may have arrived, and nothing on your side
+knows whether it did, so the order may be closed by it or may come again.
 
 ## Test orders
 
@@ -816,14 +823,15 @@ new card mode, selling state or kind of message on the subscription, each of
 which is work or configuration an older package cannot do. The version is read
 before anything else in a poll answer, so your subscription stops at the first
 one Agentify sends in another version, whatever the messages inside it carry,
-with a `contract_version_mismatch` problem naming both versions, once the
-orders already in your handlers have sent their answers, or after fifty seconds
-with a `batch_abandoned` problem naming those that did not. Only an answer
-shaped as a poll answer, a version beside a list of messages, stops it. Anything
-else that comes back, such as a proxy's error page that happens to name a
-version, is reported as `poll_failed`, which says another version was named
-without repeating it, and the subscription keeps asking. Once stopped, your
-process stays up and sells nothing until you upgrade.
+with a `contract_version_mismatch` problem naming both versions. It stops the
+way `stop()` does, once the work already in your handlers has finished and
+sent its answers, or after fifty seconds with a `batch_abandoned` problem for
+each message still unfinished. Only an answer shaped as a poll answer, a
+version beside a list of messages, stops it. Anything else that comes back,
+such as a proxy's error page that happens to name a version, is reported as
+`poll_failed`, which says another version was named without repeating it, and
+the subscription keeps asking. Once stopped, your process stays up and sells
+nothing until you upgrade.
 
 Every call the package makes names its release to Agentify in its `user-agent`
 header, as `agentify-sdk/` and the version, and Agentify notes it beside the
