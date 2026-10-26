@@ -2,7 +2,10 @@
 
 Status: approved by the product owner on 2026-10-21 as proposed: a limit on
 purchases waiting for payment, ten minutes of silence, thirty days. On
-2026-10-26 the product owner set the limit at fifty for now.
+2026-10-26 the product owner set the limit at fifty for now, and said the
+catalogue does not show a seller's cards while that seller is not taking
+orders; refusing a synchronous purchase for that silence follows from it and
+waits for the product owner's confirmation.
 
 ## Context
 
@@ -29,18 +32,24 @@ of them in time, and it lets a hold put more load on a shop; it does not answer
 that objection, which stays open in [the research on unpaid price
 questions](../research/87-unpaid-price-questions.md).
 
-A purchase that charges before its goods is refused with
-`seller_not_taking_orders` while no process of the merchant's own code has
-polled for ten minutes, at the unpaid request and again before a payment is
-verified. It is not a pause: nothing is stored to resume, the first poll lets
+Every purchase of a merchant is refused with `seller_not_taking_orders` while
+no process of the merchant's own code has polled for ten minutes, at the
+unpaid request, and one that charges before its goods again before a payment
+is verified. A synchronous purchase would charge nothing, but nobody would
+draw its order, so it could only lapse after the buyer had signed and waited.
+It is not a pause: nothing is stored to resume, the first poll lets
 the next purchase through, and cards the merchant paused stay paused. Contact
 is a poll of the merchant's own code, recorded per merchant at most every
 thirty seconds per process and kept in the database so that a restart refuses
 nobody; the rule allows for that half minute, so no merchant is refused before
 ten minutes without a poll. A process whose handlers are all busy does not
 poll and counts as quiet. A merchant selling through the WooCommerce connector
-is never refused for this, because the connector runs inside Agentify, and a
-synchronous purchase is not, because it ends uncharged when nobody answers.
+is never refused for this, because the connector runs inside Agentify.
+
+The public catalogue lists a card only where the door would price it, by one
+rule both read, so a silent merchant's cards leave it and come back by
+themselves. A merchant at the limit of fifty stays listed: a place frees within
+a minute, and anybody could fill the fifty without paying.
 
 `seller_busy` and `seller_not_taking_orders` are retryable. The second strains
 the rule that a retry must not depend on somebody else acting, since it is the
@@ -63,4 +72,6 @@ it would have to be resumed by hand, and a merchant whose process restarts in
 a minute would find their sales stopped. Recording contact on every call with
 the merchant's key: a publishing script would count as a running worker.
 Keeping lapsed attempts and only hiding them: the table and every read of it
-grow without bound.
+grow without bound. A field on each catalogue card saying whether it can be
+bought now: it grows the public surface, when leaving the card out says the
+same.
