@@ -1,5 +1,15 @@
 # Contracts release history
 
+## 0.15.1
+
+### Patch Changes
+
+- 97c2a6b: The description of the route that sets the name a merchant is listed under no
+  longer compares it with "the name a person reads in a list of merchants at a
+  terminal", since no such list is printed at a terminal any more: it says the
+  other name is the merchant's internal name, which only Agentify's own records
+  hold. Nothing a call sends or answers changes.
+
 ## 0.15.0
 
 ### Minor Changes
