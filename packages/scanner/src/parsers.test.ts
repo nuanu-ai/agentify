@@ -420,6 +420,20 @@ document.write('<script src="/js/legacy.js"></script>');
     );
   });
 
+  it("reads a sitemap's addresses written in CDATA sections, and none inside a comment", () => {
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<!-- <url><loc>https://example.com/products/retired-scarf</loc><lastmod>2025-01-02</lastmod></url> -->
+<url><loc><![CDATA[https://example.com/products/kain-tenun-ikat?warna=merah&ukuran=m]]></loc><lastmod><![CDATA[2026-07-12]]></lastmod></url>
+</urlset>`;
+    expect(parseSitemap(sitemap)).toEqual({
+      valid: true,
+      isIndex: false,
+      urls: ["https://example.com/products/kain-tenun-ikat?warna=merah&ukuran=m"],
+      lastmods: ["2026-07-12"],
+    });
+  });
+
   it("reads at most 5,000 addresses from a sitemap, and only its loc elements", () => {
     const entries = Array.from(
       { length: 5_001 },
@@ -769,6 +783,18 @@ describe("a page or a sitemap as large as the fetch admits", () => {
       lastmods: ["2026-07-12"],
     });
     expect(parsed.ms).toBeLessThan(budgetMs);
+  });
+
+  it("reads the entry after comments that fill the sitemap, and none after one that never closes", () => {
+    const entry = `<url><loc>https://example.com/products/wool-runner</loc></url>`;
+    const after = timed(() =>
+      parseSitemap(`<urlset>${fill("<!-- old -->", sitemapCap)}${entry}</urlset>`),
+    );
+    expect(after.value.urls).toEqual(["https://example.com/products/wool-runner"]);
+    expect(after.ms).toBeLessThan(budgetMs);
+    const unclosed = timed(() => parseSitemap(`<urlset>${entry}<!--${fill(entry, sitemapCap)}`));
+    expect(unclosed.value.urls).toEqual(["https://example.com/products/wool-runner"]);
+    expect(unclosed.ms).toBeLessThan(budgetMs);
   });
 
   it("reads the entry after modification dates that never close", () => {
