@@ -17,19 +17,16 @@
 .hero h1 {
   max-width: 15ch;
   margin: 0;
-  font-size: clamp(2.75rem, 5vw, 3.375rem);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.02;
-  text-wrap: balance;
+  font-size: var(--text-display);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
 }
 
 .heroCopy > p {
   max-width: 48ch;
   margin: 0;
   color: var(--fg-2);
-  font-size: 1.125rem;
-  line-height: 1.55;
+  font-size: var(--text-lead);
 }
 
 .assurances {
@@ -37,7 +34,7 @@
   gap: 10px 20px;
   flex-wrap: wrap;
   color: var(--muted);
-  font: 0.75rem / 1.4 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 .assurances span::before {
@@ -51,8 +48,6 @@
   padding-top: 18px;
   border-top: 1px solid var(--line);
   color: var(--fg-2);
-  font-size: 0.9375rem;
-  line-height: 1.5;
 }
 
 .secondDoor a {
@@ -91,7 +86,7 @@
   gap: 16px;
   border-bottom: 1px solid var(--line-soft);
   padding: 22px 24px;
-  font: 0.875rem / 1.4 var(--font-mono);
+  font: var(--text-small) / var(--leading-ui) var(--font-mono);
 }
 
 .surfaceRows {
@@ -130,9 +125,7 @@
 .reportHeading h2,
 .finalCta h2 {
   margin: 0;
-  font-size: clamp(1.875rem, 3vw, 2.125rem);
-  font-weight: 600;
-  letter-spacing: -0.025em;
+  font-size: var(--text-headline);
 }
 
 .steps {
@@ -146,19 +139,17 @@
 
 .steps > li > span {
   color: var(--accent);
-  font: 0.8125rem / 1.4 var(--font-mono);
+  font: var(--text-label) / var(--leading-ui) var(--font-mono);
 }
 
 .steps h3 {
-  margin: 14px 0 8px;
-  font-size: 1.25rem;
+  margin: var(--space-control) 0 var(--gap-heading);
+  font-size: var(--text-heading);
 }
 
 .steps p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.9375rem;
-  line-height: 1.6;
 }
 
 .report {
@@ -173,7 +164,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px 20px;
-  margin-bottom: 30px;
+  margin-bottom: var(--space-section);
 }
 
 .reportHeading > span {
@@ -181,7 +172,7 @@
   padding: 6px 12px;
   background: var(--raised);
   color: var(--muted);
-  font: 0.6875rem / 1.4 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
   white-space: nowrap;
 }
 
@@ -195,10 +186,8 @@
 }
 
 .reportIntro h3 {
-  margin: 0 0 14px;
-  font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: -0.03em;
+  margin: 0 0 var(--gap-heading);
+  font-size: var(--text-section);
 }
 
 .exampleChecks {
@@ -216,7 +205,7 @@
   gap: 16px;
   border-top: 1px solid var(--line-soft);
   padding: 12px 18px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .exampleCheck:first-child {
@@ -227,7 +216,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: var(--gap-actions);
   padding-block: 72px;
   text-align: center;
 }
@@ -260,12 +249,8 @@
     gap: 16px;
   }
 
-  .hero h1 {
-    font-size: clamp(2.25rem, 11.5vw, 3rem);
-  }
-
   .heroCopy > p {
-    font-size: 1rem;
+    font-size: var(--text-body);
   }
 
   .surfaceHeader,
