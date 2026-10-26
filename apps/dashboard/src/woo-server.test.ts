@@ -2703,7 +2703,7 @@ describe("one integration at a time", () => {
     expect(refused.status).toBe(409);
     // Not priced yet, it is not on the open list, so nothing is claimed of it:
     // neither its ID, nor a count, nor that it is in progress.
-    expect(refused.html).not.toContain(order.id);
+    expect(refused.html).not.toContain(order.order.id);
     expect(readable(refused.html)).not.toMatch(/\b\d+ orders?\b/);
     expect(readable(refused.html)).not.toMatch(/in progress/i);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
