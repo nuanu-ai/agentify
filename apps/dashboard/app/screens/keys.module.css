@@ -1,0 +1,72 @@
+/* A rarely used action in a row, or the way out of a question: quieter than a
+   button, with a target a thumb still finds. */
+.quietAction {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: var(--text-small);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+.quietAction:hover,
+.quietAction:focus-visible {
+  color: var(--fg);
+}
+
+/* When a revoked key stopped, beside the word that says it did. */
+.when {
+  color: var(--muted);
+}
+
+/* The created moment, which a wide row shows in its own column, on a narrow
+   row's line of its own. */
+.created {
+  display: none;
+}
+
+/* The question a revoke asks, on a line of its own under the row's columns,
+   across the whole row. */
+.confirm {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-tight) var(--space-control);
+  padding-top: var(--space-control);
+  border-top: var(--hairline) solid var(--line-soft);
+}
+
+.confirm > p {
+  flex: 1 1 18rem;
+  margin: 0;
+  color: var(--fg-2);
+}
+
+/* The one press that cannot be undone, in the colour of what is lost. */
+.revokeForm > :global(.button) {
+  border-color: color-mix(in srgb, var(--fail) 55%, var(--line-strong));
+  color: var(--fail);
+}
+
+@container (max-width: 860px) {
+  .created {
+    display: block;
+    order: 9;
+    flex-basis: 100%;
+    margin-top: 6px;
+    text-align: left;
+  }
+
+  .confirm {
+    order: 10;
+    flex-basis: 100%;
+    margin-top: var(--space-control);
+  }
+}
+
+.newKey {
+  margin-top: var(--space-section);
+}

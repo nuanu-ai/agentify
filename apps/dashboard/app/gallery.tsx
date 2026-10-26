@@ -2831,6 +2831,39 @@ const WOO_RECOVERY: GalleryState[] = [
 const keys = (told: Told, list: readonly MerchantKey[], options = {}, path = "/keys") =>
   at(told, { path, mode: "live", loaded: { "routes/keys": keysView(list, options) } });
 
+/** Six keys of one merchant, two of them revoked, one older than the record of calls. */
+const MANY_KEYS = [
+  WORKER,
+  keyOf("Price checks for the virtual numbers", "2026-09-10T11:30:00Z", "2026-10-12T16:39:58Z"),
+  keyOf("Nightly catalogue sync", "2026-09-11T02:00:00Z", "2026-10-12T02:00:07Z"),
+  keyOf("Staging", "2026-09-15T13:45:00Z", null),
+  OLD_WORKER,
+  keyOf(
+    "A laptop that was lost",
+    "2026-08-21T10:00:00Z",
+    "2026-08-30T18:22:10Z",
+    "2026-08-31T07:03:00Z",
+  ),
+];
+
+/** Clipboard access as a browser grants it to a page on https. */
+const clipboardGranted = (page: Document) => {
+  Object.defineProperty(page.defaultView?.navigator ?? navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async () => undefined },
+  });
+};
+
+/** Presses the button that says `words`, once `before` has set the browser up for it. */
+const pressIn = (page: Document, words: string, before: (page: Document) => void = () => {}) => {
+  before(page);
+  const button = [...page.querySelectorAll("button")].find(
+    (one) => one.textContent?.trim() === words,
+  );
+  if (button === undefined) throw new Error(`the page has no button that says ${words}`);
+  button.click();
+};
+
 const KEYS: GalleryState[] = [
   keys(
     {
@@ -2846,7 +2879,8 @@ const KEYS: GalleryState[] = [
       id: "dashboard-keys-one-never-used",
       screen: "API keys",
       when: "A merchant has created a key their code has not used yet.",
-      cause: "One key, with no call recorded against it.",
+      cause:
+        "One key made since every call is recorded, with none recorded against it, so it was never used.",
     },
     [keyOf("The order worker on our server", "2026-10-12T15:02:00Z", null)],
   ),
@@ -2864,20 +2898,42 @@ const KEYS: GalleryState[] = [
       id: "dashboard-keys-many",
       screen: "API keys",
       when: "A merchant with several services, each with its own key, opens API keys.",
-      cause: "The gateway lists six keys, two of them revoked.",
+      cause:
+        "The gateway lists six keys, two of them revoked, and one made before every call was recorded, which no call is recorded against.",
+    },
+    MANY_KEYS,
+  ),
+  keys(
+    {
+      id: "dashboard-keys-revoke-asked",
+      screen: "API keys",
+      when: "A merchant presses Revoke beside a key.",
+      cause:
+        "The address asks to revoke that key, so the row says what revoking does and offers the press that does it, or a way to keep the key.",
+    },
+    MANY_KEYS,
+    { confirming: idOf("key", "Nightly catalogue sync") },
+    `/keys?revoke=${idOf("key", "Nightly catalogue sync")}`,
+  ),
+  keys(
+    {
+      id: "dashboard-keys-long-names",
+      screen: "API keys",
+      when: "A merchant who names keys after where they run opens API keys.",
+      cause: "Key names run to the hundred characters a name may have, and wrap in their column.",
     },
     [
-      WORKER,
-      keyOf("Price checks for the virtual numbers", "2026-09-10T11:30:00Z", "2026-10-12T16:39:58Z"),
-      keyOf("Nightly catalogue sync", "2026-09-11T02:00:00Z", "2026-10-12T02:00:07Z"),
-      keyOf("Staging", "2026-09-15T13:45:00Z", null),
-      OLD_WORKER,
       keyOf(
-        "A laptop that was lost",
-        "2026-08-21T10:00:00Z",
-        "2026-08-30T18:22:10Z",
-        "2026-08-31T07:03:00Z",
+        "WooCommerce order sync on the production VPS in Frankfurt (eu-central-1), replaced 2026-10",
+        "2026-10-01T09:12:00Z",
+        "2026-10-12T16:40:02Z",
       ),
+      keyOf(
+        "Price checks for the virtual numbers, staging server behind the office VPN",
+        "2026-10-03T14:00:00Z",
+        null,
+      ),
+      WORKER,
     ],
   ),
   keys(
@@ -2895,7 +2951,7 @@ const KEYS: GalleryState[] = [
     {
       id: "dashboard-keys-name-refused",
       screen: "API keys",
-      when: "A merchant presses Issue a key with the name box empty.",
+      when: "A merchant presses Create key with the name box empty.",
       cause:
         "A key with no name is refused, because it could not be told from the others when revoking.",
     },
@@ -2912,7 +2968,7 @@ const KEYS: GalleryState[] = [
     {
       id: "dashboard-keys-issued",
       screen: "The new key",
-      when: "A merchant presses Issue a key.",
+      when: "A merchant presses Create key.",
       cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
     },
     {
@@ -2922,6 +2978,27 @@ const KEYS: GalleryState[] = [
       pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
     },
   ),
+  {
+    ...at(
+      {
+        id: "dashboard-keys-issued-copied",
+        screen: "The new key",
+        when: "A merchant presses Copy key on the new key's page.",
+        cause:
+          "The page's script puts the key on the clipboard, which the browser allows, and says so beside the button.",
+      },
+      {
+        path: "/keys",
+        mode: "live",
+        loaded: { "routes/keys": null },
+        pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+      },
+    ),
+    scene: {
+      steps: [{ shows: "Copy key", does: (page) => pressIn(page, "Copy key", clipboardGranted) }],
+      shows: "Copied.",
+    },
+  },
 ];
 
 const settings = (

@@ -140,7 +140,17 @@ form.inline {
 /* The new key's copy button, as far from the note under it as from the box
    over it. */
 .copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-tight) var(--space-control);
   margin: 0 0 var(--gap-actions);
+}
+
+/* What the press did, beside it, in the voice of a note. */
+.copy-row > [role="status"] {
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 
 .note {
@@ -497,99 +507,32 @@ h2 {
   font-size: var(--text-heading);
 }
 
-/* One box and one button side by side, the row every form in the dashboard
-   uses. The button is the full-height one so it stands level with the 48px box;
-   the compact button belongs to a list's rows. */
+/* A box and its button: the label, the box across the form's width, the line
+   under the box, then the button under it, at every width, so a value as long
+   as a wallet's address is seen whole before it is sent. A form without a box
+   is its button alone. The full-height button, since it is the form's own;
+   the compact one belongs to a list's rows. */
 .issue {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-control);
-  flex-wrap: wrap;
+  display: grid;
+  justify-items: start;
+  gap: var(--space-block);
+  max-width: 40rem;
   padding-block: var(--gap-actions);
 }
 
-.issue label {
-  display: block;
-  margin: 0 0 8px;
-}
-
-/* Under about 240px of box the two stack, low enough for a half-width settings
-   panel to keep them on one line and high enough that a phone stacks them. */
-.issue > div {
-  flex: 1 1 240px;
-  min-width: 0;
-}
-
-/* A key's name is a few words, so its box is sized for a few words. */
-.key-name > div {
-  flex: 0 1 420px;
-}
-
-/* A refusal is a line of its own under the box and button, never in the box's
-   cell: the row aligns items at the bottom, so a sentence there would carry the
-   button down beside the last line of red. */
-.issue > p {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-/* A row whose box is a `Field`: the field's own label, box and line are laid
-   out in the row, so the button stands beside the box rather than beside the
-   line under it, and the label and the line span the row. On a phone the
-   button goes under the box. */
-.issue:has(> .field) {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0 12px;
-  align-items: end;
-}
 .issue > .field {
-  display: contents;
+  justify-self: stretch;
 }
-.issue > .field > .field-label {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  margin: 0 0 var(--space-tight);
-}
-.issue > .field > .field-input {
-  grid-column: 1;
-  grid-row: 2;
-}
-.issue:has(> .field) > button {
-  grid-column: 2;
-  grid-row: 2;
-}
-.issue > .field > .field-hint,
-.issue > .field > .field-error {
-  grid-column: 1 / -1;
-  grid-row: 3;
-  margin-top: var(--space-block);
-}
-.issue:has(> .field) > p {
-  grid-column: 1 / -1;
-  margin-top: var(--space-control);
-}
-@media (max-width: 560px) {
-  .issue:has(> .field) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .issue:has(> .field) > button {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-    margin-top: var(--space-control);
-  }
-  .issue > .field > .field-hint,
-  .issue > .field > .field-error {
-    grid-row: 4;
-  }
+
+/* What a press is doing or did, a caption's distance under its button. */
+.issue > p {
+  margin: calc(var(--gap-caption) - var(--space-block)) 0 0;
 }
 
 /* On its own line in the monospaced family, so it selects in one gesture and
    reads back character by character; it is copied by hand at least once. */
 .secret {
   padding: 28px 24px;
-  text-align: center;
   font-family: var(--font-mono);
   font-size: var(--text-code);
   overflow-wrap: anywhere;

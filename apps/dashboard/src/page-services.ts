@@ -428,6 +428,8 @@ const SIGNED_OUT_EVERYWHERE = "You signed out on every device, this one included
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
 
+const textOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
+
 /**
  * The click an address or a form names once, in the tracker's form; null for
  * anything else, which leaves the page as it is without one.
@@ -608,7 +610,7 @@ const shownIn = (form: FormData): Shown | null => {
  */
 export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (label === "") {
-    return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
+    return "Enter a name for the key.";
   }
   const unfit = NewKeyLabelSchema.safeParse(label);
   if (unfit.success) return null;
@@ -1725,7 +1727,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (!keys.ok) return problemOf(keys);
         return {
           kind: "view",
-          view: keysView(keys.document, { startNew: once(query.getAll("new")) === "key" }),
+          view: keysView(keys.document, {
+            startNew: once(query.getAll("new")) === "key",
+            confirming: textOf(once(query.getAll("revoke"))),
+          }),
         };
       },
 
@@ -1739,7 +1744,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           // looking at.
           const keys = await gateway.keys();
           if (!keys.ok) return problemOf(keys);
-          return { kind: "view", status: 400, view: keysView(keys.document, { problem }) };
+          return {
+            kind: "view",
+            status: 400,
+            view: keysView(keys.document, { problem, typed: label }),
+          };
         }
         const issued = await gateway.issueKey(label);
         if (!issued.ok) return problemOf(issued);
