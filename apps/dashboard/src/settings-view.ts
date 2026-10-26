@@ -167,8 +167,8 @@ const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
  */
 export const PAYOUT_NOTES = Object.freeze({
   toYourWallet: (contracts: number): string =>
-    `This transaction pays out your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
-  toEachWallet: "This transaction pays out each payout contract to the wallet written into it.",
+    `One transaction pays out your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
+  toEachWallet: "One transaction pays out each payout contract to the wallet written into it.",
   orAgentify: "If nobody sends it, Agentify's next payout does. It has no fixed date.",
   fromTheSender: "It moves no money out of the wallet that sends it.",
   tooMany: (count: number): string =>
