@@ -59,6 +59,17 @@ async function waitFor(
   throw new Error(`waited ${timeoutMs}ms and the condition never held`);
 }
 
+/**
+ * Waits for both of the mock merchant's cards to be listed: a seller's cards
+ * are, once their worker has polled, which the one just started may not have
+ * done yet.
+ */
+const bothListed = (buyer: ReturnType<typeof makeBuyer>): Promise<void> =>
+  waitFor(async () => {
+    const titles = (await buyer.catalog()).map((card) => card.title);
+    return [RENTED_NUMBER, EUROPE_ESIM].every((card) => titles.includes(card.title));
+  });
+
 describe("the stage-one gate: a sandbox purchase, green from catalog to receipt", () => {
   let booted: Booted;
   let facilitator: ScriptedFacilitator;
@@ -72,6 +83,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     await merchant.start();
     await merchant.publishCatalog();
     buyer = makeBuyer({ baseUrl: booted.baseUrl, privateKey: TEST_BUYER_KEY, maxUsd: 50 });
+    await bothListed(buyer);
   });
 
   afterEach(async () => {
@@ -538,6 +550,7 @@ describe("the same slice when the merchant's own code cannot fill the order", ()
     await merchant.start();
     await merchant.publishCatalog();
     buyer = makeBuyer({ baseUrl: booted.baseUrl, privateKey: TEST_BUYER_KEY, maxUsd: 50 });
+    await bothListed(buyer);
   });
 
   afterEach(async () => {

@@ -39,7 +39,7 @@ import {
 import type { CardInput } from "@nuanu-ai/agentify-contracts";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { getDefaultAsset } from "@x402/evm";
-import { type Bought, makeBuyer } from "./buyer.js";
+import { type Bought, listedWithin, makeBuyer } from "./buyer.js";
 import { EUROPE_ESIM } from "./cards.js";
 import { bootGateway, sliceEnv } from "./gateway-harness.js";
 import { startMerchant } from "./merchant.js";
@@ -301,8 +301,7 @@ async function main(): Promise<void> {
       );
     }
 
-    const catalog = await buyer.catalog();
-    const listing = catalog.find((card) => card.title === smokeCard.title);
+    const listing = await listedWithin(buyer, smokeCard.title);
     if (listing === undefined) {
       die("the smoke card did not appear in the catalog it was just published to");
       return;
