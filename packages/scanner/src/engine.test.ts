@@ -237,6 +237,10 @@ describe("what the checks read from the markup real sites write", () => {
       `<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />
 <link rel="alternate" type="application/rss+xml" title="Example &raquo; Comments Feed" href="https://example.com/comments/feed/" />`,
       '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
+      // A site named for its shop still links its posts' feed.
+      '<link rel="alternate" type="application/rss+xml" title="Example Shop &raquo; Feed" href="https://example.com/feed/" />',
+      // A language alternate of the catalogue is a page, not a feed.
+      '<link rel="alternate" hreflang="de" href="https://example.com/de/collections/all">',
       '<link rel="stylesheet" href="/assets/feedback.css">',
       '<!-- <link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/"> -->',
       `<script>document.head.insertAdjacentHTML("beforeend", '<link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/">');</script>`,
@@ -285,6 +289,15 @@ describe("what the checks read from the markup real sites write", () => {
     expect(check(withBase(page), 15)).toMatchObject({ status: "fail", earnedWeight: 0 });
   });
 
+  it("takes a price shown only in the text for no structured offer", () => {
+    const page = `<meta property="og:type" content="product"><h1>Wool Runner</h1><p class="price">$98.00</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 1,
+      evidence: { product_identifiers: true, price_availability: false },
+    });
+  });
+
   it("reads a product's identifiers, price and availability from microdata", () => {
     const page = `<div itemscope itemtype="https://schema.org/Product"><h1 itemprop="name">Wool Runner</h1><span itemprop="sku">WR-01</span>
 <div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><link itemprop="availability" href="https://schema.org/InStock"><span itemprop="price" content="98.00">$98.00</span></div></div>`;
@@ -292,6 +305,30 @@ describe("what the checks read from the markup real sites write", () => {
       status: "partial",
       earnedWeight: 3,
       evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  it("reads a product's identifiers from microdata on its offer alone", () => {
+    const page = `<div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><meta itemprop="sku" content="KT-01"><meta itemprop="gtin13" content="8992761002013"></div><p>Kain Tenun Ikat</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 1,
+      evidence: { product_identifiers: true, price_availability: false },
+    });
+  });
+
+  it("reads a sold-out product's availability from JSON-LD when it states no price", () => {
+    const product = {
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: "Kain Tenun Ikat",
+      offers: { "@type": "Offer", availability: "https://schema.org/OutOfStock" },
+    };
+    const page = `<script type="application/ld+json">${JSON.stringify(product)}</script><h1>Kain Tenun Ikat</h1><p>Sold out</p>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { product_identifiers: true, price_availability: true },
     });
   });
 
