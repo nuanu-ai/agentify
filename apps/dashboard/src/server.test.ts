@@ -6115,6 +6115,8 @@ describe("a wallet change waiting on the live deployment", () => {
     ["another site", "https://elsewhere.example/cards"],
     ["another site without a scheme", "//elsewhere.example/cards"],
     ["another site behind a backslash", "/\\elsewhere.example/cards"],
+    ["another site behind a dot", "/.//elsewhere.example/cards"],
+    ["another site behind a step up", "/cards/..//elsewhere.example"],
     ["no page at all", "cards"],
   ])("sends a cancel that names %s as its way back to Settings instead", async (_what, back) => {
     const running = await live();
@@ -6129,6 +6131,28 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(pressed.status).toBe(303);
     expect(pressed.to).toBe("/settings");
     expect(await waitingNow(running)).toBeNull();
+  });
+
+  it("leaves a change back waiting when a cancel of the change before it is sent again", async () => {
+    // A cancel that arrived too late is answered at its own address, so a
+    // reload sends it again; it must not cancel the change back the person
+    // has asked for since.
+    const running = await live();
+    await running.browser.signIn();
+    await aChangeWaits(running);
+    const stale = fromTheScreen(await running.browser.get("/settings"));
+    running.harnessed.advance(48 * 60 * 60 * 1_000);
+    expect((await running.browser.post("/settings/payout-wallet/cancel", stale)).status).toBe(200);
+    const asked = await running.browser.post("/settings/payout-wallet", {
+      ...fromTheWalletForm(await running.browser.get("/settings")),
+      payout_wallet: running.harnessed.merchant.wallet,
+    });
+    expect(asked.status, asked.html).toBe(303);
+    expect(await waitingNow(running)).not.toBeNull();
+
+    await running.browser.post("/settings/payout-wallet/cancel", stale);
+
+    expect(await waitingNow(running)).not.toBeNull();
   });
 
   it("shows no cancel control where nothing is waiting", async () => {
