@@ -10,6 +10,7 @@
 import { createServer, get as httpGet, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
+import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAdditions } from "./additions-command.js";
 
@@ -76,7 +77,7 @@ const ERASED =
 
 // Spaced as a gateway would never write it, so that a proxy re-serialising the
 // document instead of splicing into it shows.
-const POLL = `{"contract_version":"3", "envelopes":[
+const POLL = `{"contract_version":"${CONTRACT_VERSION}", "envelopes":[
   {"kind":"order","id":"env_1","sent_at":"2026-10-22T09:00:01.000Z","payload":${ORDER}},
   {"kind":"quote_request","id":"env_2","sent_at":"2026-10-22T09:00:02.000Z","payload":{"merchant_item_id":"esim-eu","price_id":"prc_1","purpose":"purchase","expires_at":"2026-10-22T09:00:32.000Z"}},
   {"kind":"order_event","id":"env_3","sent_at":"2026-10-22T09:00:03.000Z","payload":{"type":"order.unfulfilled","order_id":"ord_9","at":"2026-10-22T09:00:03.000Z","price":{"amount":"8.00","currency":"USD"},"reason":"refused"}}
@@ -201,7 +202,7 @@ describe("additions that only inform", () => {
 
 describe("additions to what an order delivers", () => {
   it("add a field to each order's core and give a parcel's address a new shape, leaving an erased address and an order with none", async () => {
-    const poll = `{"contract_version":"3","envelopes":[${[ORDER, PARCEL, ERASED]
+    const poll = `{"contract_version":"${CONTRACT_VERSION}","envelopes":[${[ORDER, PARCEL, ERASED]
       .map(
         (payload, at) =>
           `{"kind":"order","id":"env_${at}","sent_at":"2026-10-22T09:00:00.000Z","payload":${payload}}`,
