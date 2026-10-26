@@ -13,4 +13,5 @@ payment. The description of `GET /v0/receipts` points to the field.
 
 The field is added at the top of an order read, which a reader keeps closed, so
 `CONTRACT_VERSION` moves from `3` to `4`, and every schema's identity moves to
-`urn:agentify:contract:4:<name>`.
+`urn:agentify:contract:4:<name>`. A reader built on version `3` refuses every
+paid order read back with the field, so upgrade it before it reads orders.
