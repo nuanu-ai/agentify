@@ -1,8 +1,8 @@
 # The purchase door refuses before any charge
 
-Status: approved by the product owner on 2026-10-21 as proposed: ten minutes of
-silence, thirty days. The limit of fifty purchases waiting for payment is the
-product owner's word of 2026-10-26.
+Status: approved by the product owner on 2026-10-21 as proposed: a limit on
+purchases waiting for payment, ten minutes of silence, thirty days. On
+2026-10-26 the product owner set the limit at fifty for now.
 
 ## Context
 
@@ -23,8 +23,10 @@ count and the write are one step on the merchant's row. Whoever keeps fifty
 unpaid purchases open stops that merchant's sales through Agentify while they
 do, but does not load their shop. The product owner does not accept that cost
 (2026-10-26): nobody should be able to stop a merchant's sales without paying.
-The limit holds only until the door protects the merchant's shop some other
-way.
+Fifty is his number for now. It gives honest buyers more room before they are
+refused and lets a hold put more load on a shop, and it does not answer that
+objection, which stays open in [the research on unpaid price
+questions](../research/87-unpaid-price-questions.md).
 
 A purchase that charges before its goods is refused with
 `seller_not_taking_orders` while no process of the merchant's own code has
