@@ -112,6 +112,35 @@ const visit = () =>
     ),
   );
 
+/** The scan page and the store's form, under one router, the scan's page first. */
+function scanThenForm() {
+  const router = createMemoryRouter(
+    [
+      {
+        path: "/scan/:id",
+        element: (
+          <ScanExperience
+            browserObservationsEnabled={false}
+            publicShareEnabled
+            registrationEnabled
+            remediationPromptEnabled
+            scanId={scanId}
+            segment="store"
+          />
+        ),
+      },
+      { path: "/store", element: <UrlScanForm cta="Scan" segment="store" variant="store-v1" /> },
+    ],
+    { initialEntries: [`/scan/${scanId}?segment=store`] },
+  );
+  render(
+    <PublicConfigProvider config={getPublicAppConfig()}>
+      <RouterProvider router={router} />
+    </PublicConfigProvider>,
+  );
+  return router;
+}
+
 /**
  * Lets `ms` of the page's time pass, landing every answer and render due by
  * then. The fake clock moves only here: one that also follows the wall clock
@@ -157,13 +186,16 @@ describe("the token that reads a scan", () => {
     visit();
 
     expect(await screen.findByText("Open the original private scan link")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe(
+      "/store",
+    );
     expect(statusAsks).toEqual([]);
   });
 
   it("is said to be no longer valid when the API refuses it, and the page stops asking", async () => {
     vi.useFakeTimers();
     sessionStorage.setItem(TOKEN_KEY, "a-revoked-token");
-    apiAnswers(() => json(401, { error: { code: "unauthorized" } }));
+    apiAnswers(() => json(401, refusal("unauthorized", false)));
 
     visit();
     await timePasses(0);
@@ -245,11 +277,11 @@ describe("a scan's states", () => {
     visit();
 
     expect(await screen.findByText("No reliable diagnostic was produced")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Try again" })).toBeTruthy();
   });
 
   it.each(["no_public_site", "forbidden_redirect", "certificate_invalid"])(
-    "says why the scanner stopped a scan it knows the reason for (%s), and offers a new scan rather than the same one again",
+    "says why the scanner stopped a scan it knows the reason for (%s), and offers a new scan from the scan's own form with its address in it",
     async (stopReason) => {
       apiAnswers(() =>
         json(
@@ -263,15 +295,20 @@ describe("a scan's states", () => {
         ),
       );
 
-      visit();
+      const router = scanThenForm();
 
       await waitFor(() =>
         expect(document.querySelector(`h1[data-stop-reason="${stopReason}"]`)).not.toBeNull(),
       );
       expect(screen.queryByText("No reliable diagnostic was produced")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
-      expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe("/");
+      expect(screen.queryByRole("link", { name: "Try again" })).toBeNull();
       expect(screen.queryByRole("meter")).toBeNull();
+
+      await userEvent.click(screen.getByRole("link", { name: "Start a new scan" }));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/store"));
+      expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Website URL" }).value).toBe(
+        "shop.example",
+      );
     },
   );
 
@@ -371,10 +408,8 @@ describe("an answer that ends the asking", () => {
 
   it.each([
     ["the scan is not found", 404, refusal("scan_not_found", false)],
-    ["the scan is gone", 410, {}],
     ["the token is refused", 401, refusal("unauthorized", false)],
     ["a refusal the API marks not worth repeating", 409, refusal("scan_closed", false)],
-    ["a refusal in no envelope the page knows", 400, "<html>Bad request</html>"],
   ])(
     "ends the page when %s: it stops asking and offers a new scan, saying nothing of why",
     async (_when, status, body) => {
@@ -384,7 +419,9 @@ describe("an answer that ends the asking", () => {
       await timePasses(0);
 
       expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
-      expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe("/");
+      expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe(
+        "/store",
+      );
       expect(screen.queryByText("Reading the scan state…")).toBeNull();
       expect(screen.queryByText(/scan_not_found|Refused/)).toBeNull();
       await timePasses(60_000);
@@ -408,6 +445,27 @@ describe("an answer that ends the asking", () => {
     expect(screen.queryByText("shop.example")).toBeNull();
     await timePasses(60_000);
     expect(statusAsks).toHaveLength(2);
+  });
+});
+
+describe("leaving the page", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sessionStorage.setItem(TOKEN_KEY, "scan-token");
+  });
+
+  it("asks nothing more once the visitor has left, even when an answer was on its way", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    apiAnswers(() => new Promise<Response>((resolve) => (answer = resolve)));
+
+    const { unmount } = visit();
+    await timePasses(0);
+    expect(statusAsks).toHaveLength(1);
+    unmount();
+    answer(json(200, scan({})));
+    await timePasses(60_000);
+
+    expect(statusAsks).toHaveLength(1);
   });
 });
 
@@ -485,55 +543,34 @@ describe("an answer worth asking again", () => {
   it.each([
     ["a rate limit", 429],
     ["a timeout", 408],
-  ])("keeps asking after %s in no envelope the page knows", async (_what, status) => {
-    apiAnswers(
-      () => new Response("<html>Wait</html>", { status }),
-      () => json(200, scan({})),
-    );
+    ["a refused token", 401],
+    ["a missing page", 404],
+    ["a gone page", 410],
+    ["a bad request", 400],
+  ])(
+    "keeps asking after %s in no envelope of the site's, and does not call the link invalid",
+    async (_what, status) => {
+      apiAnswers(
+        () => new Response("<html>Wait</html>", { status }),
+        () => json(200, scan({})),
+      );
 
-    visit();
-    await timePasses(0);
-    expect(screen.getByText(/asks again in 2 s/)).toBeTruthy();
-    await timePasses(2_000);
+      visit();
+      await timePasses(0);
+      expect(screen.getByText(/asks again in 2 s/)).toBeTruthy();
+      expect(screen.queryByText("This scan link is no longer valid")).toBeNull();
+      await timePasses(2_000);
 
-    expect(statusAsks).toHaveLength(2);
-    expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
-  });
+      expect(statusAsks).toHaveLength(2);
+      expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
+    },
+  );
 });
 
 describe("trying a failed scan again", () => {
   beforeEach(() => {
     sessionStorage.setItem(TOKEN_KEY, "scan-token");
   });
-
-  /** The scan page and the store's form, under one router, the scan's page first. */
-  function scanThenForm() {
-    const router = createMemoryRouter(
-      [
-        {
-          path: "/scan/:id",
-          element: (
-            <ScanExperience
-              browserObservationsEnabled={false}
-              publicShareEnabled
-              registrationEnabled
-              remediationPromptEnabled
-              scanId={scanId}
-              segment="store"
-            />
-          ),
-        },
-        { path: "/store", element: <UrlScanForm cta="Scan" segment="store" variant="store-v1" /> },
-      ],
-      { initialEntries: [`/scan/${scanId}?segment=store`] },
-    );
-    render(
-      <PublicConfigProvider config={getPublicAppConfig()}>
-        <RouterProvider router={router} />
-      </PublicConfigProvider>,
-    );
-    return router;
-  }
 
   it("returns to the form the scan came from with its address filled in, and starts nothing until the owner presses", async () => {
     apiAnswers(() =>
@@ -548,25 +585,27 @@ describe("trying a failed scan again", () => {
     );
     const router = scanThenForm();
 
-    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Try again" }));
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/store"));
+    expect(router.state.location.search).toBe("");
     expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Website URL" }).value).toBe(
       "shop.example",
     );
     expect(otherAsks.filter((asked) => asked.includes("/api/v1/scans"))).toEqual([]);
   });
 
-  it("asks once more for a completed scan whose result is not there yet", async () => {
-    apiAnswers(
-      () => json(200, scan({ status: "completed", progress: { completed: 18, total: 18 } })),
-      () => json(200, finishedScan),
+  it("returns to the same form from a completed scan that has no result to show", async () => {
+    apiAnswers(() =>
+      json(200, scan({ status: "completed", progress: { completed: 18, total: 18 } })),
     );
-    scanThenForm();
+    const router = scanThenForm();
 
-    await userEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await userEvent.click(await screen.findByRole("link", { name: "Try again" }));
 
-    expect(await screen.findByRole("meter")).toBeTruthy();
-    expect(statusAsks).toHaveLength(2);
+    await waitFor(() => expect(router.state.location.pathname).toBe("/store"));
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Website URL" }).value).toBe(
+      "shop.example",
+    );
   });
 });
