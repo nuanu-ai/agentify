@@ -321,7 +321,19 @@ interface HowTheySell {
   readonly selling: MerchantSelling;
   readonly sellable: boolean;
   readonly integration: Integration;
+  /** Whether they have as many paid orders left unserved as the door allows. */
+  readonly unserved: boolean;
+  /** Their own code's latest recorded poll, or null where none ever was. */
+  readonly lastContact: number | null;
 }
+
+/** What `offSaleNow` asks of one card of a merchant read as `theirs`. */
+const saleFactsOf = (stored: StoredCard, theirs: HowTheySell): SaleFacts => ({
+  selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
+  unserved: theirs.unserved,
+  through: theirs.integration,
+  lastContact: theirs.lastContact,
+});
 
 /**
  * How stale a seller's recorded poll may get in one process before a poll
@@ -902,15 +914,7 @@ export class Gateway {
       offSale:
         merchant === null
           ? { code: "not_selling", transient: false }
-          : await this.#offSale(
-              stored,
-              {
-                selling: merchant.selling,
-                sellable: sellableBy(merchant, this.runtime.config, at),
-                integration: merchant.integration,
-              },
-              at,
-            ),
+          : offSaleNow(saleFactsOf(stored, await this.#theirsOf(merchant, at)), at),
       serviceName: merchant?.serviceName ?? null,
       // A pending wallet change's split is the one paid once its moment has
       // come, and not before.
@@ -930,13 +934,14 @@ export class Gateway {
     const cards = await this.runtime.store.cards(merchantId);
     return {
       selling: theirs.selling,
-      cards: cards.map((stored) => merchantCardOf(stored, theirs)),
+      cards: cards.map((stored) => merchantCardOf(stored, theirs, this.runtime.clock())),
     };
   }
 
   /**
-   * The merchant's selling word, the integration they sell through, and
-   * whether a sale of theirs could be made at all (a payout wallet and a name).
+   * The merchant's selling word, the integration they sell through, whether a
+   * sale of theirs could be made at all (a payout wallet and a name), whether
+   * they are stopped for unserved orders and when their code last polled.
    * Every key and every card names a merchant that exists, so a missing one is
    * a defect and this throws rather than answer "open" for somebody nobody can
    * find.
@@ -946,10 +951,17 @@ export class Gateway {
     if (merchant === null) {
       throw new Error(`there is no merchant ${merchantId}, so there is no word for their selling`);
     }
+    return await this.#theirsOf(merchant, this.runtime.clock());
+  }
+
+  /** `#howTheySell` for a merchant already read. */
+  async #theirsOf(merchant: StoredMerchant, at: number): Promise<HowTheySell> {
     return {
       selling: merchant.selling,
-      sellable: sellableBy(merchant, this.runtime.config, this.runtime.clock()),
+      sellable: sellableBy(merchant, this.runtime.config, at),
       integration: merchant.integration,
+      unserved: await this.#unserved(merchant.id),
+      lastContact: await this.runtime.store.lastContact(merchant.id),
     };
   }
 
@@ -979,7 +991,7 @@ export class Gateway {
       // pause call cannot probe what somebody else sells.
       return null;
     }
-    return merchantCardOf(stored, await this.#howTheySell(merchantId));
+    return merchantCardOf(stored, await this.#howTheySell(merchantId), this.runtime.clock());
   }
 
   /**
@@ -1718,7 +1730,7 @@ export class Gateway {
     const at = this.runtime.clock();
     const theirs = await this.#howTheySell(stored.merchantId);
     // Before the order is written or the price asked, and in every mode.
-    switch ((await this.#offSale(stored, theirs, at))?.code) {
+    switch (offSaleNow(saleFactsOf(stored, theirs), at)?.code) {
       case "not_selling":
         return { step: "not_selling", message: NOT_ON_SALE };
       case "seller_not_fulfilling":
@@ -2358,23 +2370,6 @@ export class Gateway {
   async #unserved(merchantId: string): Promise<boolean> {
     return (
       (await this.runtime.store.unservedOrders(merchantId, UNSERVED_AT_MOST)) >= UNSERVED_AT_MOST
-    );
-  }
-
-  /**
-   * `offSaleNow` for one card, its seller's facts read for it. Asked by the
-   * purchase door and by a look at the product, which must not carry a
-   * challenge to a purchase that is refused.
-   */
-  async #offSale(stored: StoredCard, theirs: HowTheySell, at: number): Promise<OffSale | null> {
-    return offSaleNow(
-      {
-        selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
-        unserved: await this.#unserved(stored.merchantId),
-        through: theirs.integration,
-        lastContact: await this.runtime.store.lastContact(stored.merchantId),
-      },
-      at,
     );
   }
 
@@ -3285,17 +3280,17 @@ function sentNow(envelope: WorkerEnvelope, at: number): WorkerEnvelope {
 }
 
 /**
- * One stored card as its own merchant reads it. `selling` is what a purchase
- * would meet, the same word the order machine is given; `paused` is the card's
- * own flag, so the merchant still sees which cards they paused themselves
- * while all selling is stopped.
+ * One stored card as its own merchant reads it. `selling` is open exactly
+ * where the public catalogue lists the card (`offSaleNow`); `paused` is the
+ * card's own flag, so the merchant still sees which cards they paused
+ * themselves while the card is off sale for another reason.
  */
-function merchantCardOf(stored: StoredCard, theirs: HowTheySell): MerchantCard {
+function merchantCardOf(stored: StoredCard, theirs: HowTheySell, at: number): MerchantCard {
   return {
     id: stored.id,
     as_of: asTimestamp(stored.asOf),
     card: stored.card,
-    selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
+    selling: offSaleNow(saleFactsOf(stored, theirs), at) === null ? "open" : "paused",
     paused: stored.paused,
   };
 }

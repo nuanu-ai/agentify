@@ -13,3 +13,8 @@ purchase address with the challenge. The description of `purchase_item` says
 `seller_not_taking_orders` now refuses any purchase of a silent seller, a
 synchronous one included, and a first payment at a price named before the
 silence. Nothing a call sends or answers changes in shape.
+
+A card a merchant reads back reads `selling: "open"` exactly when the public
+catalogue lists it, so the descriptions of the merchant's own catalog and of
+`MerchantCardSchema` name the merchant's silence and their unserved orders
+among the reasons it reads paused.

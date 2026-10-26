@@ -1040,7 +1040,7 @@ export const MerchantCardSchema = z
   })
   .meta({
     description:
-      'One card as the merchant who published it reads it back: the card whole, the catalog identifier we issued for it, and where it stands. selling is what a purchase of this card meets right now and is the same word the order machine is given, so a card reading "paused" refuses new orders and lets the orders already accepted play out. paused says whether the pause is this card\'s own. The two differ when the merchant has stopped all selling: every card then reads selling "paused", and only the cards with paused true are still paused once the merchant starts selling again — so a resume on a card whose paused is already false changes nothing until all selling is resumed.',
+      'One card as the merchant who published it reads it back: the card whole, the catalog identifier we issued for it, and where it stands. selling is open exactly when the public catalog lists this card and a purchase of it would be priced, so a card reading "paused" is left out of the catalog, refuses new orders and lets the orders already accepted play out. paused says whether the pause is this card\'s own. The two differ when the merchant has stopped all selling: every card then reads selling "paused", and only the cards with paused true are still paused once the merchant starts selling again — so a resume on a card whose paused is already false changes nothing until all selling is resumed.',
   });
 
 export type MerchantCard = z.infer<typeof MerchantCardSchema>;
