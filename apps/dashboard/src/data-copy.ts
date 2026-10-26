@@ -29,7 +29,7 @@ const COPY_ROWS_MAX = 2_000;
 /** The most journal rows a copy lists of an account and of a merchant, the journal's own page. */
 export const JOURNAL_ROWS_MAX = 200;
 /** The most sessions a copy lists of an account, the newest. */
-export const SESSIONS_MAX = 200;
+const SESSIONS_MAX = 200;
 
 /**
  * What a copy deliberately does not carry, in the words the person reads in

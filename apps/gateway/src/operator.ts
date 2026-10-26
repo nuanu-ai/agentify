@@ -40,7 +40,6 @@ export type {
 } from "./ports/operator/index.js";
 export { lookupOf } from "./ports/operator/lookup.js";
 export {
-  askedOn,
   MERCHANT_SEGMENTS,
   type MerchantList,
   type MerchantRecord,

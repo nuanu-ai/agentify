@@ -473,7 +473,7 @@ const splitAt = (
  * being left, which travel beside the refusal: the shop screen words them
  * itself from the open list, and `why` is what a log says.
  */
-export const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => ({
+const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => ({
   ok: false,
   status: CONFLICT,
   code: "orders_waiting",

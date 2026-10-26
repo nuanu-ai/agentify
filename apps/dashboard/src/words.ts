@@ -93,16 +93,9 @@ export const waitsOnTheBuyer = (status: OrderStatus): boolean => status === "del
  * The gateway's own codes, less the operator's approval, which nobody sets in
  * Settings, and less the shop's site, which is asked only of a parcel's card.
  * Which of them is required on which channel is the gateway's rule
- * (`readinessOf` in the core), never a screen's. Total by its type: a code
- * added to the contract does not compile here until it has words or is
- * excluded.
+ * (`readinessOf` in the core), never a screen's.
  */
 export type Unset = Exclude<MerchantFinding, "no_operator_approval" | "no_seller_site">;
-
-export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
-  no_seller_name: "the name your products are sold under",
-  no_payout_wallet: "the wallet your share of every sale is paid out to",
-});
 
 /**
  * The gateway's own words name the call a merchant's code makes; the person
