@@ -651,11 +651,11 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
   const page = await onTheCards({ width: 390, height: 844 }, true);
   try {
     await page.goto(`${origin}${BASE}/orders?q=${encodeURIComponent(id)}`);
-    const summary = page.locator("details.cell-more > summary");
+    const summary = page.locator("details.row-more > summary");
     await summary.focus();
     await page.keyboard.press("Enter");
     const message = "  A remedy was agreed outside Agentify.\nNothing more is owed.  ";
-    await page.getByLabel("Explanation to the buyer (optional)").fill(message);
+    await page.getByLabel("Note to the buyer (optional)").fill(message);
     await page.getByRole("button", { name: "Close fulfillment", exact: true }).focus();
     await page.keyboard.press("Enter");
     await page.waitForURL(
