@@ -750,7 +750,7 @@ describe("verifying a payment", () => {
   });
 
   /** What the gateway makes of the facilitator refusing an honest payment with `invalidReason`. */
-  const refusedWith = (invalidReason: string | undefined, invalidMessage?: string) =>
+  const refusedWith = (invalidReason: unknown, invalidMessage?: string) =>
     facilitatorFor(
       new Answering({
         verify: {
@@ -770,19 +770,20 @@ describe("verifying a payment", () => {
       verified: false,
       reason: "amount_not_payable",
       message: "amount_too_low: amount is below the minimum",
+      code: "amount_too_low",
     });
     expect(await refusedWith("invalid_amount")).toMatchObject({ reason: "amount_not_payable" });
+    // The signed value is checked against the order's price before the
+    // facilitator is asked, so a value too low is the price itself.
+    expect(
+      await refusedWith("invalid_exact_evm_payload_authorization_value_too_low"),
+    ).toMatchObject({ reason: "amount_not_payable" });
   });
 
   it("reads a refusal by the facilitator's code as a whole, whatever words the code contains", async () => {
-    // The price, the asset, the chain and the payee are compared with the
-    // order before the facilitator is asked, so no code it answers means the
-    // offer moved. Each code below contains a word that once decided its
-    // meaning on its own.
+    // Each code below contains a word that once decided its meaning on its own.
     const cases: [string, string][] = [
       ["invalid_exact_evm_payload_signature", "signature"],
-      ["invalid_exact_evm_payload_authorization_value", "signature"],
-      ["invalid_exact_evm_payload_authorization_value_mismatch", "signature"],
       ["invalid_exact_evm_payload_authorization_valid_before", "signature"],
       ["invalid_exact_evm_nonce_already_used", "signature"],
       ["insufficient_funds", "insufficient_funds"],
@@ -790,6 +791,9 @@ describe("verifying a payment", () => {
       ["invalid_exact_evm_transaction_simulation_failed", "unexplained"],
       ["invalid_exact_evm_payload_authorization_from_address_kyt", "wallet_refused"],
       ["self_send_not_allowed", "wallet_refused"],
+      ["invalid_exact_evm_payload_undeployed_smart_wallet", "wallet_refused"],
+      // Screening that names neither the payer's wallet nor the seller's.
+      ["kyt_risk_detected", "unexplained"],
     ];
 
     for (const [code, expected] of cases) {
@@ -797,8 +801,43 @@ describe("verifying a payment", () => {
         verified: false,
         reason: expected,
         message: code,
+        code,
       });
     }
+  });
+
+  it("reads a refusal of terms this gateway already checked the payment against as no verdict on the payment", async () => {
+    // The signed value, the recipient, the chain, the scheme and the protocol
+    // version are compared with the offer before the facilitator is asked. A
+    // facilitator that refuses them disagrees with Agentify's own terms, and
+    // a new signature would meet the same answer.
+    for (const code of [
+      "invalid_exact_evm_payload_authorization_value",
+      "invalid_exact_evm_payload_authorization_value_mismatch",
+      "invalid_exact_evm_authorization_value",
+      "invalid_exact_evm_payload_recipient_mismatch",
+      "invalid_exact_evm_recipient_mismatch",
+      "invalid_network",
+      "invalid_exact_evm_network_mismatch",
+      "invalid_scheme",
+      "invalid_exact_evm_unsupported_scheme",
+      "invalid_x402_version",
+    ]) {
+      expect(await refusedWith(code), code).toMatchObject({
+        verified: "unknown",
+        cause: "refused_agentify",
+      });
+    }
+  });
+
+  it("keeps the facilitator's code for the operator as a machine word, never the words after it", async () => {
+    expect(
+      await refusedWith("invalid_exact_evm_transaction_failed: 0xpayer said this", "more words"),
+    ).toMatchObject({ reason: "unrecognised", code: "invalid_exact_evm_transaction_failed" });
+    expect(await refusedWith(`${"a".repeat(200)}`)).toMatchObject({ code: "a".repeat(80) });
+    const unworded = await refusedWith("Not A Code");
+    expect(unworded).toMatchObject({ reason: "unrecognised" });
+    expect(unworded).not.toHaveProperty("code");
   });
 
   it("says a refusal code it does not recognise is unrecognised, quoting the code", async () => {
@@ -807,12 +846,25 @@ describe("verifying a payment", () => {
         verified: false,
         reason: "unrecognised",
         message: `${code}: the facilitator's own words`,
+        code,
       });
     }
   });
 
-  it("says a refusal that names no code says nothing about what was wrong", async () => {
+  it("says a refusal that names no code names no fault it can act on, and passes on any words it has", async () => {
     expect(await refusedWith(undefined)).toStrictEqual({
+      verified: false,
+      reason: "unexplained",
+      message: "no reason was given",
+    });
+    expect(await refusedWith(undefined, "the wallet is frozen")).toStrictEqual({
+      verified: false,
+      reason: "unexplained",
+      message: "the wallet is frozen",
+    });
+    // A code that is not even text is no code, and is never quoted as one.
+    const shapeless = await refusedWith({ nested: true });
+    expect(shapeless).toStrictEqual({
       verified: false,
       reason: "unexplained",
       message: "no reason was given",
@@ -820,7 +872,11 @@ describe("verifying a payment", () => {
   });
 
   it("reads a refusal that reports the facilitator's own failure as no verdict that asking again may cure", async () => {
-    for (const code of ["invalid_exact_evm_failed_to_get_balance", "unknown_error"]) {
+    for (const code of [
+      "invalid_exact_evm_failed_to_get_balance",
+      "unknown_error",
+      "invalid_exact_evm_eip3009_not_supported",
+    ]) {
       const answered = await refusedWith(code, "the payer's words must not reach the log");
       if (answered.verified !== "unknown") throw new Error(`${code} became a verdict`);
       expect(answered.cause).toBe("no_answer");
@@ -925,8 +981,8 @@ describe("verifying a payment", () => {
       new Answering({
         verify: new VerifyError(400, {
           isValid: false,
-          invalidReason: "invalid_exact_evm_payload_authorization_value",
-          invalidMessage: "the authorised amount is not the amount asked for",
+          invalidReason: "invalid_exact_evm_payload_signature",
+          invalidMessage: "the signature is not the payer's",
         } as VerifyResponse),
       }),
       edge,
@@ -935,8 +991,8 @@ describe("verifying a payment", () => {
     expect(answered).toStrictEqual({
       verified: false,
       reason: "signature",
-      message:
-        "invalid_exact_evm_payload_authorization_value: the authorised amount is not the amount asked for",
+      message: "invalid_exact_evm_payload_signature: the signature is not the payer's",
+      code: "invalid_exact_evm_payload_signature",
     });
   });
 
@@ -1030,6 +1086,7 @@ describe("a facilitator that answers a check with a failure status and no verdic
         verified: false,
         reason: "amount_not_payable",
         message: "amount_too_low: payment amount is below the minimum",
+        code: "amount_too_low",
       });
     },
   );

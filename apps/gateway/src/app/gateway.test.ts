@@ -1295,8 +1295,12 @@ describe("a payment the payment layer would not vouch for", () => {
     ["insufficient_funds", "the wallet is empty", "fund the paying wallet"],
     ["signature", "the signature does not check out", "sign a new payment"],
     ["amount_not_payable", "amount_too_low", "will not carry a payment of this amount"],
-    ["wallet_refused", "kyt_risk_detected", "from another wallet"],
-    ["unexplained", "no reason was given", "did not say what was wrong"],
+    [
+      "wallet_refused",
+      "self_send_not_allowed",
+      "refused this payment from the wallet that signed it",
+    ],
+    ["unexplained", "no reason was given", "names no fault Agentify can act on"],
     ["unrecognised", "a_code_nobody_has_seen", "a reason this system does not recognise"],
   ] as const;
 
@@ -1332,6 +1336,26 @@ describe("a payment the payment network will not carry at this price", () => {
     expect(bought.why).not.toContain("start a new purchase");
     expect(bought.why).not.toContain("sign a new payment");
     expect(bought.retryable).toBe(false);
+  });
+});
+
+describe("a payment the payment network refused from the wallet that signed it", () => {
+  it("does not advise paying from another wallet", async () => {
+    // A wallet turned away by the payment network's risk screening is not to
+    // be told how to get past it.
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    harnessed.facilitator.willRefuseVerification(
+      "wallet_refused",
+      "invalid_exact_evm_payload_authorization_from_address_kyt",
+    );
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+
+    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+
+    if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
+    expect(bought.why).not.toMatch(/another wallet|other wallet/);
   });
 });
 
