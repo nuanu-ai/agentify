@@ -107,6 +107,9 @@ export default {
         // Read as text by `src/wallet-faults-command.ts` and served to the
         // browser it opens as the stand-in for Coinbase Wallet's window.
         "src/wallet-window.js",
+        // Loaded with `--import` into the process `src/quickstart-buyer.test.ts`
+        // runs the quickstart's buyer program in.
+        "src/buyer-program-faults.ts",
       ],
     },
     "packages/gallery": {
