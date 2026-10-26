@@ -696,6 +696,7 @@ describe("what an order's record says beside its document", () => {
         unfulfilled: null,
         paidAt: iso(paidAt),
         deadline: { at: iso(paidAt + HOUR), passed: false },
+        soldThrough: "api",
       },
     });
     expect(passed).toStrictEqual({
@@ -703,6 +704,7 @@ describe("what an order's record says beside its document", () => {
         unfulfilled: "deadline_passed",
         paidAt: iso(paidAt),
         deadline: { at: iso(paidAt + HOUR), passed: true },
+        soldThrough: "api",
       },
     });
   });
@@ -753,7 +755,12 @@ describe("what an order's record says beside its document", () => {
     const record = (await recordsOf(client))[id];
 
     expect(receipt?.paid_at).toBe(iso(checkedAt + 2_000));
-    expect(record).toStrictEqual({ unfulfilled: null, paidAt: receipt?.paid_at, deadline: null });
+    expect(record).toStrictEqual({
+      unfulfilled: null,
+      paidAt: receipt?.paid_at,
+      deadline: null,
+      soldThrough: "api",
+    });
   });
 
   it("names when the money moved for a charge confirmed after Agentify stopped waiting, as the chain recorded it", async () => {
@@ -779,6 +786,7 @@ describe("what an order's record says beside its document", () => {
       unfulfilled: "charge_confirmed_late",
       paidAt: iso(executedAt),
       deadline: null,
+      soldThrough: "api",
     });
   });
 
@@ -800,7 +808,25 @@ describe("what an order's record says beside its document", () => {
       unfulfilled: null,
       paidAt: iso(completedAt),
       deadline: null,
+      soldThrough: "api",
     });
+  });
+
+  it("names the integration a sale was made through, which is the shop's for a card the connector published", async () => {
+    const harnessed = await started();
+    const client = asTheOwner(harnessed);
+    expect((await client.sellThrough("woocommerce")).ok).toBe(true);
+    const published = await harnessed.gateway.publishCard(
+      harnessed.merchant.id,
+      AN_ESIM,
+      "woocommerce",
+    );
+    if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+    const offered = await harnessed.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+
+    expect((await recordsOf(client))[offered.order.order.id]?.soldThrough).toBe("woocommerce");
   });
 
   it("names no deadline for an order its merchant refused after payment, or one delivered", async () => {

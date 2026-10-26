@@ -248,7 +248,7 @@ export const wooShopsContract = (
   });
 
   describe(`${name}: merchant recovery links`, () => {
-    it("says which of this account's requested sales the connector holds, and whether each is a parcel or a download it can still deliver, without exposing sale or credential data", async () => {
+    it("says which of this account's requested sales the connector holds, and whether each is a parcel its shop placed or a download it can still deliver, without exposing sale or credential data", async () => {
       await using(async (shops, accounts) => {
         await shops.claimOrder(accounts.one, "ord_unknown", FACTS, NOW);
         await shops.claimOrder(accounts.one, "ord_placed", FACTS, NOW);
@@ -267,6 +267,18 @@ export const wooShopsContract = (
         await shops.claimOrder(accounts.one, "ord_hidden", FACTS, NOW);
         await shops.claimOrder(accounts.other, "ord_foreign", FACTS, NOW);
         await shops.claimOrder(accounts.one, "ord_parcel", { ...FACTS, kind: "parcel" }, NOW);
+        // A parcel whose shop order was placed, which marking it Completed still ships.
+        await shops.claimOrder(
+          accounts.one,
+          "ord_parcel_placed",
+          { ...FACTS, kind: "parcel" },
+          NOW,
+        );
+        await shops.recordOrder(
+          "ord_parcel_placed",
+          { id: "15", number: "WOO-15", permission: null, total: "25.00" },
+          NOW,
+        );
         await shops.recordPrecreateRefusal(accounts.one, "ord_refused", FACTS, NOW);
 
         expect(
@@ -276,6 +288,7 @@ export const wooShopsContract = (
             "ord_bare",
             "ord_foreign",
             "ord_parcel",
+            "ord_parcel_placed",
             "ord_refused",
             "ord_missing",
           ]),
@@ -283,7 +296,8 @@ export const wooShopsContract = (
           ord_placed: "recoverable",
           ord_unknown: "recoverable",
           ord_bare: "unrecoverable",
-          ord_parcel: "parcel",
+          ord_parcel: "unplaced_parcel",
+          ord_parcel_placed: "parcel",
           ord_refused: "unrecoverable",
         });
         expect(await shops.heldSales(accounts.one, [])).toStrictEqual({});

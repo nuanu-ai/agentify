@@ -1056,16 +1056,19 @@ describe("an order's facts", () => {
       unfulfilled: "deadline_passed",
       paidAt: "2026-10-12T16:40:05Z",
       deadline: { at: "2026-10-12T17:40:05Z", passed: true },
+      soldThrough: "api",
     },
     [SAME_HEAD]: {
       unfulfilled: "refused",
       paidAt: "2026-10-12T16:41:05Z",
       deadline: null,
+      soldThrough: "api",
     },
     [SAME_TAIL]: {
       unfulfilled: null,
       paidAt: "2026-10-12T16:42:05Z",
       deadline: { at: "2026-10-12T17:42:05Z", passed: false },
+      soldThrough: "api",
     },
   } as const;
   const opened = (id: string) =>
@@ -1112,7 +1115,14 @@ describe("an order's facts", () => {
           closedThenPaid,
           closedThenPaid,
           new URLSearchParams({ details: FIRST }),
-          { [FIRST]: { unfulfilled: null, paidAt: "2026-10-12T17:10:00Z", deadline: null } },
+          {
+            [FIRST]: {
+              unfulfilled: null,
+              paidAt: "2026-10-12T17:10:00Z",
+              deadline: null,
+              soldThrough: "api",
+            },
+          },
         )}
       />
     ));
@@ -1140,15 +1150,19 @@ describe("the way on for an unfulfilled order", () => {
   const PARCEL_REFUSED = idOf("5a5a", "0001");
   const LOST = idOf("5a5a", "0002");
   const SDK = idOf("5a5a", "0003");
+  const UNPLACED = idOf("5a5a", "0004");
+  const NEVER_RECEIVED = idOf("5a5a", "0005");
 
   const unfulfilled = ordersOf(
-    [FIRST, SAME_HEAD, PARCEL_REFUSED, LOST, SDK].map((id) => ({ id, status: "unfulfilled" })),
+    [FIRST, SAME_HEAD, PARCEL_REFUSED, LOST, SDK, UNPLACED, NEVER_RECEIVED].map((id) => ({
+      id,
+      status: "unfulfilled",
+    })),
   );
-  const cause = (unfulfilled: "deadline_passed" | "refused") => ({
-    unfulfilled,
-    paidAt: null,
-    deadline: null,
-  });
+  const cause = (
+    unfulfilled: "deadline_passed" | "refused" | "charge_confirmed_late",
+    soldThrough: "api" | "woocommerce" = "woocommerce",
+  ) => ({ unfulfilled, paidAt: null, deadline: null, soldThrough });
   const opened = (id: string) =>
     detailsOf(
       served(() => (
@@ -1164,15 +1178,18 @@ describe("the way on for an unfulfilled order", () => {
               [SAME_HEAD]: cause("deadline_passed"),
               [PARCEL_REFUSED]: cause("refused"),
               [LOST]: cause("refused"),
-              [SDK]: cause("deadline_passed"),
+              [SDK]: cause("deadline_passed", "api"),
+              [UNPLACED]: cause("deadline_passed"),
+              [NEVER_RECEIVED]: cause("charge_confirmed_late"),
             },
             {},
             undefined,
             {},
             {
-              [FIRST]: { kind: "parcel" },
+              [FIRST]: { kind: "parcel", placed: true },
               [SAME_HEAD]: { kind: "download", recover: RECOVER },
-              [PARCEL_REFUSED]: { kind: "parcel" },
+              [PARCEL_REFUSED]: { kind: "parcel", placed: true },
+              [UNPLACED]: { kind: "parcel", placed: false },
               [LOST]: { kind: "download", recover: null },
             },
           )}
@@ -1219,5 +1236,20 @@ describe("the way on for an unfulfilled order", () => {
     expect(readable(details)).toContain("Close fulfillment with an explanation to the buyer");
     expect(details).not.toContain(SDK_DOCS);
     expect(details).not.toContain("/integrations/woocommerce/recover/");
+  });
+
+  it("is no shipment for a parcel whose shop order was never confirmed, though its days ran out", () => {
+    const details = opened(UNPLACED);
+
+    expect(readable(details)).toContain("Do not ship it");
+    expect(readable(details)).not.toMatch(/still (deliver|ship)/);
+  });
+
+  it("offers no late delivery for a sale made through the shop that the connector never received", () => {
+    const details = opened(NEVER_RECEIVED);
+
+    expect(readable(details)).not.toContain("late");
+    expect(readable(details)).toContain("Close fulfillment with an explanation to the buyer");
+    expect(details).not.toContain(SDK_DOCS);
   });
 });
