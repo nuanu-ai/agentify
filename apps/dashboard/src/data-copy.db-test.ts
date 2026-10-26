@@ -104,7 +104,7 @@ if (databaseUrl === null) {
         merchantId: null,
         account: { id: "acc_owner", email: "owner@example.com", name: "Owner's shop" },
         google: [{ issuer: "https://accounts.google.com", subject: "google-subject" }],
-        sessions: [{ ip_address: "203.0.113.7", started_at: AT.toISOString() }],
+        sessions: { rows: [{ ip_address: "203.0.113.7", started_at: AT.toISOString() }], total: 1 },
         adReports: [{ event: "reg", state: "delivered" }],
       });
     });

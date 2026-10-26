@@ -107,7 +107,7 @@ describe("Google dashboard identity", () => {
   it("links the existing verified merchant and keeps the same person on repeat login without tokens", async () => {
     const { identity, login, rows, messages, google } = setup();
     await identity.requestLink("person@gmail.com", "default", ONE_CLIENT);
-    const token = /token=([^\s]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
+    const token = /token=([^\s&]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
     const linked = await identity.openLink(token);
     if (linked.status !== "opened") throw new Error("mail link must open");
     await identity.attachMerchant(linked.person.id, async () => "mer_google");
@@ -407,7 +407,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
     });
     // Verified by a mailed link, then linked to Google by its first Google sign-in.
     await identity.requestLink("person@gmail.com", "default", ONE_CLIENT);
-    const token = /token=([^\s]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
+    const token = /token=([^\s&]+)/.exec(messages[0]?.body ?? "")?.[1] ?? "";
     expect(await identity.openLink(token)).toMatchObject({ status: "opened" });
     expect(await login({}, CLICK)).toMatchObject({ status: "opened" });
     // Made by Google without a click, then signed in again with one.
