@@ -193,7 +193,7 @@ const pageReadingOf = (artifact: FetchArtifact): PageReading => {
   return reading;
 };
 const pageOf = (artifact: FetchArtifact) =>
-  (pageReadingOf(artifact).page ??= readPage(artifact.body));
+  (pageReadingOf(artifact).page ??= readPage(artifact.body, artifact.url));
 const textOf = (artifact: FetchArtifact): string => pageOf(artifact).text;
 const signalsOf = (artifact: FetchArtifact) => pageOf(artifact).signals;
 const jsonLdOf = (artifact: FetchArtifact): JsonLdResult => pageOf(artifact).jsonLd;
