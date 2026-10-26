@@ -303,7 +303,12 @@ export function OpenLinkScreen({ chrome, view }: Readonly<{ chrome: Chrome; view
     // says nothing about whose the link was.
     return (
       <GatePage chrome={chrome} title="That link no longer works">
-        <Form className={`message-panel ${styles.card}`} method="get" action="/sign-in" reloadDocument>
+        <Form
+          className={`message-panel ${styles.card}`}
+          method="get"
+          action="/sign-in"
+          reloadDocument
+        >
           <h1>That link no longer works</h1>
           <p>A sign-in link works once, within an hour.</p>
           <Button>Get a new link</Button>
