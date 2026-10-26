@@ -882,6 +882,28 @@
 
 /* --- the figures' pages --------------------------------------------------- */
 
+/* Four figures in a row where the page holds them, two by two where it does
+   not, so none is left alone on a row of its own. */
+.op-tiles {
+  container-type: inline-size;
+}
+
+.op-tiles > .op-figures {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@container (max-width: 52rem) {
+  .op-tiles > .op-figures {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 24rem) {
+  .op-tiles > .op-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* A part of the page whose read failed: the dashed mark, then what it is. */
 .op-unread {
   display: flex;

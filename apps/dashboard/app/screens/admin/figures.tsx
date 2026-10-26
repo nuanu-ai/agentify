@@ -79,25 +79,27 @@ const shortOf = (value: string) =>
 
 function Tiles({ tiles }: Readonly<{ tiles: readonly TileView[] }>) {
   return (
-    <div className="summary op-figures">
-      {tiles.map((tile) => (
-        <div className="tile" key={tile.label}>
-          <p className="label">{tile.label}</p>
-          {tile.figure === null ? (
-            <p className="figure">
-              <CouldNotBeRead />
-            </p>
-          ) : (
-            <p className="figure">
-              {tile.figure}
-              {tile.unit === undefined && tile.of === undefined ? null : (
-                <small>{tile.unit ?? tile.of}</small>
-              )}
-            </p>
-          )}
-          <p className="aside">{tile.aside}</p>
-        </div>
-      ))}
+    <div className="op-tiles">
+      <div className="summary op-figures">
+        {tiles.map((tile) => (
+          <div className="tile" key={tile.label}>
+            <p className="label">{tile.label}</p>
+            {tile.figure === null ? (
+              <p className="figure">
+                <CouldNotBeRead />
+              </p>
+            ) : (
+              <p className="figure">
+                {tile.figure}
+                {tile.unit === undefined && tile.of === undefined ? null : (
+                  <small>{tile.unit ?? tile.of}</small>
+                )}
+              </p>
+            )}
+            <p className="aside">{tile.aside}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
