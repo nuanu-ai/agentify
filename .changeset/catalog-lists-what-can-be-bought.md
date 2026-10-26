@@ -8,6 +8,8 @@ card or its merchant is paused, while the merchant lacks what a sale needs,
 while the merchant's own system has not polled for longer than Agentify allows,
 and while the merchant has left too many paid orders without delivery or
 closure. A merchant at the limit of purchases waiting for payment stays listed.
-The description of `purchase_item` says `seller_not_taking_orders` now refuses
-any purchase of a silent seller, a synchronous one included, and a look at the
-product as well. Nothing a call sends or answers changes in shape.
+A product left out for its merchant's silence still answers a look at its
+purchase address with the challenge. The description of `purchase_item` says
+`seller_not_taking_orders` now refuses any purchase of a silent seller, a
+synchronous one included, and a first payment at a price named before the
+silence. Nothing a call sends or answers changes in shape.
