@@ -134,24 +134,38 @@ characters is not an amount, which also keeps what the evidence quotes short.
 
 A product page's own words carry markers too, so a few rules keep them out.
 An amount followed by a percent sign is a share. Some markers are also a
-size, a model, an abbreviation or an English word: one Latin letter (R for
-the rand, Q for the quetzal, but also Galaxy S24, an E27 bulb, an M10 bolt),
-two Latin capitals (FC, KM, RM, SR), and a short list of codes and symbols
-that are words or units where shops write them. The list is ALL, TOP, TRY,
-CUP, PEN, MAD, GEL, SOS, BOB, MOP, CAD, BAM and ZAR, which are English words
-or names; PHP, a programming language; COP, a climate conference; AWG, a
-wire gauge; AMD and NAD, makers of processors and amplifiers; RON, a fuel's
-octane rating; SAR, a phone's radiation rate; CRC, a checksum; Ft for feet
-in a title-cased name, kn for knots, and Le, a French article. Such a marker
-counts only next to an amount written the way money is, with its thousands
-grouped or a decimal part of two or three digits, so `R 1 299` and
-`50 000 Ft` count while `S24`, `TOP 10`, `PHP 8.2` and `FC 25` do not. One
-letter counts only right before the amount, where the countries that use it
-write it. Every other code and symbol takes any amount, so `AED 99`,
-`kr 199` and `€ 5` count.
+size, a model or an abbreviation: one Latin letter (R for the rand, Q for
+the quetzal, but also Galaxy S24, an E27 bulb, an M10 bolt) and two Latin
+capitals (FC, RM, SR, TL). Such a marker counts next to an amount written the
+way money is, with its thousands grouped or a decimal part of two or three
+digits, or next to three digits or more with one space between, which is how
+shops in South Africa, Malaysia and Turkey write a price without cents:
+`R 1 299`, `R 299`, `RM 199` and `150 TL` count, while `S24`, `M340`,
+`R 18`, `M 38` and `FC 25` do not. One letter counts only before the amount,
+where the countries that use it write it, so a bottle's `0,75 L` is not a
+price.
 
-A marker of Latin letters next to a bare year, 19xx or 20xx, is a date or
-an edition: `Sale 2024 USD`, `WORLD CUP 2026`, `© 2025 ALL RIGHTS RESERVED`.
+Other markers are words or units where shops write them, and they count
+only next to money. The list is ALL, TOP, TRY, CUP, GEL, SOS, BOB, MOP and
+BAM, which are English words or names; COP, a climate conference; AWG, a
+wire gauge; AMD and NAD, makers of processors and amplifiers; RON, a fuel's
+octane rating; CRC, a checksum; Ft for feet and KM for kilometres, which
+title-cased and capitalised product names write (`100 Ft Extension Cord`,
+`Range: 100 KM`); kn for knots; and Le, a French article. So `50 000 Ft` and
+`50,00 KM` count while `TOP 100`, `PHP 8.2` and `100 Ft` do not. Six codes on
+that list are also the currencies of large markets, and their shops write
+them before a plain amount: SAR, MAD, PEN, PHP, CAD and ZAR. Those take three
+digits or more with one space between as well, so `ZAR 299` and `PHP 500`
+count. None of the cases kept out for them (`PHP 8.2`, `CAD 3D model`,
+`MAD 5`, `PEN 3 pack`) has three digits, which is why they were let in.
+Every other code and symbol takes any amount, so `AED 99`, `kr 199` and
+`€ 5` count.
+
+A marker of one letter or two capitals, or one on the list, next to a bare
+year, 19xx or 20xx, is a model year or an edition, as in
+`Tesla Model S 2024`. Next to any other code or symbol a year-shaped number
+is a price, since `1999 kr`, `1999 Kč` and `CHF 2000` are common price
+points; `Sale 2024 USD` is taken for a price as the cost of that.
 円, 元 and 원 count only after the amount, where Japanese, Chinese and Korean
 shops write them; before a number they end a word, as in `고객지원 1588` or
 `公元2024`. A marker in a script with letter case does not count inside a
@@ -166,18 +180,22 @@ reports what it found as `price_signal` and where as `price_signal_source`.
 
 ### What it still gets wrong
 
-The price is a presence signal, and it errs in both directions. It still takes
-a word for a price when the number beside it is written like money, such as
-`TOP 1,000 BESTSELLERS`, and it takes any amount next to a code or symbol that
-is not on the word list. It misses a price whose currency is spelled out (`199
-kronor`, `150 rubles`) or abbreviated in a way the data and the table do not
-hold (`150.000 VNĐ`, `S/. 59.90`, `Fr. 49.90`, `Dhs 50`), a code written in
-lower case, a marker parted from the amount by anything other than a single
-space, and a word-like marker's plain amount (`R150`, `RM 25`, `450 Ft`, `150
-TL`). A price that looks like a year is missed next to a marker of Latin
-letters (`1999 kr`), and so is a one-letter currency's price written after its
-amount. The evidence shows the words it matched, so a wrong signal can be seen
-in the report.
+The price is a presence signal, and it errs in both directions. It takes a
+word for a price when the number beside it is written like money, as in
+`TOP 1,000 BESTSELLERS`, `RF 433.92 MHz` or a French date such as
+`Le 15.03`; it takes any amount next to a code or symbol that is not on the
+list, a year included (`Sale 2024 USD`); and it takes three digits a space
+from a one-letter or two-capital marker for a price, whatever the letters
+stand for, as in `RF 433 MHz`. It misses a price whose currency is spelled
+out (`199 kronor`, `150 rubles`) or abbreviated in a way the data and the table do not hold
+(`150.000 VNĐ`, `S/. 59.90`, `Fr. 49.90`, `Dhs 50`), the Nordic `199:-`, a
+code written in lower case, and a marker parted from the amount by anything
+other than a single space. Next to a short marker or one on the list it
+misses two digits (`RM 25`, `SAR 99`, `CAD 25`, `PEN 59`), an amount with no
+space before it (`R299`), a Hungarian price under 10 000 forints written
+without grouping (`990 Ft`, `1990 Ft`), and a round price that looks like a
+year (`2000 TL`, `R 1999`). The evidence shows the words it matched, so a
+wrong signal can be seen in the report.
 
 ## Sitemaps
 
