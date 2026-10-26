@@ -4,12 +4,12 @@ Status: the product owner's word of 2026-10-26 is that ten paid orders the
 merchant took on and left without delivery and without closure stop all of
 their sales, synchronous ones included. They are counted in total, with no
 time window. A refused order counts until the merchant closes it, and the rule
-holds on the test channel as on the live one. Proposed and not yet his word:
-the HTTP 409 and the refusal being not retryable, letting through a payment
-for goods already made and held, leaving out the orders Agentify never handed
-over, counting for a WooCommerce seller only the parcels the shop took on, and
-taking a stopped seller's cards out of the catalogue and refusing a look at
-them.
+holds on the test channel as on the live one. Accepted by the product owner
+the same day as proposed: the HTTP 409 and the refusal being not retryable,
+letting through a payment for goods already made and held, leaving out the
+orders Agentify never handed over, counting for a WooCommerce seller only the
+parcels the shop took on, and taking a stopped seller's cards out of the
+catalogue and refusing a look at them.
 
 ## Context
 
