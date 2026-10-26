@@ -1404,3 +1404,155 @@ describe("a robots.txt result names its one cause", () => {
     });
   });
 });
+
+describe("a page check's result names its one cause and the items involved", () => {
+  const ld = (node: Record<string, unknown>) =>
+    `<script type="application/ld+json">${JSON.stringify(node)}</script>`;
+  const page = (head: string) =>
+    `<html><head><title>Cafe</title>${head}</head><body><h1>Cafe</h1></body></html>`;
+
+  it("tells a page without structured data from one whose structured data cannot be parsed", () => {
+    expect(check(withBase(page("")), 5)).toMatchObject({
+      status: "fail",
+      summaryCode: "jsonld_absent",
+      evidence: { jsonld_blocks: 0 },
+      fixCode: "publish_valid_jsonld",
+    });
+    expect(
+      check(withBase(page('<script type="application/ld+json">{"@type":</script>')), 5),
+    ).toMatchObject({
+      status: "fail",
+      summaryCode: "jsonld_unparseable",
+      evidence: { jsonld_blocks: 1, unparseable_blocks: 1 },
+      fixCode: "repair_jsonld",
+    });
+  });
+
+  it("names the recommended fields a local business lacks and how many a pass needs", () => {
+    const input: ScanArtifacts = {
+      ...makeArtifacts("local"),
+      base: artifact(
+        "https://example.com/",
+        page(
+          ld({
+            "@type": "LocalBusiness",
+            name: "Cafe",
+            address: "1 Main St",
+            telephone: "+1 555 0100",
+          }),
+        ),
+      ),
+    };
+    expect(check(input, 6)).toMatchObject({
+      status: "partial",
+      summaryCode: "vertical_jsonld_recommended_missing",
+      evidence: {
+        type: "LocalBusiness",
+        required_missing: [],
+        recommended_found: ["telephone"],
+        recommended_missing: ["openingHoursSpecification", "geo", "priceRange", "makesOffer"],
+        recommended_needed_for_pass: 3,
+      },
+      fixCode: "add_recommended_jsonld",
+    });
+  });
+
+  it("names a missing required field as its own cause", () => {
+    const input = withBase(
+      page(ld({ "@type": "Product", name: "Widget", image: "https://example.com/a.jpg" })),
+    );
+    expect(check(input, 6)).toMatchObject({
+      status: "partial",
+      summaryCode: "vertical_jsonld_required_missing",
+      evidence: { required_missing: ["url", "offers.price", "offers.priceCurrency"] },
+      fixCode: "complete_vertical_jsonld",
+    });
+  });
+
+  it("names the types it looked for when the structured data describes another kind of business", () => {
+    const input: ScanArtifacts = {
+      ...makeArtifacts("store"),
+      base: artifact("https://example.com/", page(ld({ "@type": "Organization", name: "Cafe" }))),
+    };
+    expect(check(input, 6)).toMatchObject({
+      status: "fail",
+      summaryCode: "vertical_jsonld_wrong_type",
+      evidence: { types: ["Organization"], expected_types: ["Product"] },
+    });
+  });
+
+  it("tells a page too large to read whole from a page too slow, and names the read limit", () => {
+    const large = withBase(html);
+    large.base = artifact("https://example.com/", html, {
+      truncated: true,
+      decodedBytes: 2 * 1024 * 1024,
+    });
+    expect(check(large, 14)).toMatchObject({
+      status: "fail",
+      summaryCode: "page_performance_too_large",
+      evidence: { read_limit: "2 MiB" },
+      fixCode: "reduce_page_weight",
+    });
+    const slow = withBase(html);
+    slow.base = artifact("https://example.com/", html, { durationMs: 9_000 });
+    expect(check(slow, 14)).toMatchObject({
+      status: "fail",
+      summaryCode: "page_performance_too_slow",
+      fixCode: "reduce_response_time",
+    });
+    const sluggish = withBase(html);
+    sluggish.base = artifact("https://example.com/", html, { durationMs: 5_000 });
+    expect(check(sluggish, 14)).toMatchObject({
+      status: "partial",
+      summaryCode: "page_performance_slow",
+      fixCode: "reduce_response_time",
+    });
+  });
+
+  it("names the read limit where a cut page leaves a check unjudged", () => {
+    const input = withBase(page(""));
+    input.base = artifact("https://example.com/", page(""), {
+      truncated: true,
+      decodedBytes: 2 * 1024 * 1024,
+    });
+    expect(check(input, 12)).toMatchObject({
+      status: "unavailable",
+      summaryCode: "html_truncated",
+      evidence: { truncated: true, read_limit: "2 MiB" },
+    });
+  });
+
+  it("names the AI crawler groups robots.txt leaves without a policy", () => {
+    const input = makeArtifacts("store");
+    input.robots = artifact(
+      "https://example.com/robots.txt",
+      "User-agent: GPTBot\nDisallow: /\nUser-agent: ClaudeBot\nAllow: /\n",
+      { headers: { "content-type": "text/plain" } },
+    );
+    expect(check(input, 2)).toMatchObject({
+      status: "partial",
+      evidence: {
+        providers: ["openai", "anthropic"],
+        providers_missing: ["perplexity", "google"],
+        policy_agents: ["gptbot", "claudebot"],
+      },
+    });
+  });
+
+  it("names the language codes that are not valid and those declared twice", () => {
+    const input = withBase(
+      page(
+        ["en", "en", "en_US", "de"]
+          .map(
+            (code) =>
+              `<link rel="alternate" hreflang="${code}" href="https://example.com/${code}">`,
+          )
+          .join(""),
+      ),
+    );
+    expect(check(input, 18)).toMatchObject({
+      status: "partial",
+      evidence: { invalid_locales: ["en_US"], duplicate_locales: ["en"] },
+    });
+  });
+});
