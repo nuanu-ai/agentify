@@ -63,8 +63,9 @@ buyer paid for, that you were given, and that has nothing delivered
 (`unfulfilled`), so nobody can set it off without paying. Selling through the
 SDK, an order you refused after the charge counts, whether your handler
 refused it or you refused it by a call before your process was handed it, and
-so does one your process was handed and let run past its deadline. Selling
-through a WooCommerce shop, only a parcel the shop took on counts. Either
+so does one your process was handed, or you accepted, and let run past its
+deadline. Selling through a WooCommerce shop, only a parcel the shop took on
+counts. Either
 counts for as long as it is neither delivered nor closed; closing it, with an
 explanation to the buyer if you like, takes it out. They are counted in total,
 however old, on the test channel as on the live one. An order whose
