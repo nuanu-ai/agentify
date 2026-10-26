@@ -297,22 +297,45 @@ describe("the lookup", () => {
     expect(findView("esim-shop.example", [merchant, merchant], false)).toMatchObject({
       kind: "several",
       found: [
-        { kind: "Merchant", label: "An eSIM shop", by: "the site it sells from" },
+        {
+          kind: "Merchant",
+          label: "An eSIM shop",
+          by: "the site it sells from, esim-shop.example",
+        },
         { kind: "Merchant" },
       ],
     });
   });
 
   it("says none in words that claim no more than it knows, keeping the text", () => {
-    expect(findView("ord_zz", [], false)).toStrictEqual({
+    expect(findView("ord_zz", [], false)).toMatchObject({
       kind: "none",
       q: "ord_zz",
-      said: "Nothing on this channel matches “ord_zz”.",
+      said: expect.stringContaining("Nothing on this channel matches “ord_zz”."),
       unknown: null,
+      merchants: null,
     });
     expect(findView("0xabc", [], true)).toMatchObject({
       said: "No order on this channel names the transaction “0xabc” yet.",
-      unknown: expect.stringContaining("may hold no transaction yet"),
+      unknown: expect.stringContaining("may have no transaction yet"),
+    });
+  });
+
+  it("never says nothing matches text it did not look up, and offers the merchants' search for it", () => {
+    // A shop's name read out on a call is no identifier; "nothing matches"
+    // would claim a search that never ran.
+    const view = findView("City Walking Tours", [], false, "not-read");
+
+    expect(view).toMatchObject({
+      kind: "none",
+      merchants: "/admin/merchants?q=City+Walking+Tours",
+    });
+    expect(view.kind === "none" && view.said).not.toContain("Nothing");
+  });
+
+  it("names the site a merchant was found by, so two found by one site are told apart by it", () => {
+    expect(findView("esim-shop.example", [merchant, merchant], false)).toMatchObject({
+      found: [{ by: "the site it sells from, esim-shop.example" }, {}],
     });
   });
 
