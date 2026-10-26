@@ -820,9 +820,10 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       });
 
       // A shop that could sell nothing, in a currency or at decimals out of
-      // scope, is refused before the switch below takes the code's cards off
-      // sale. Asked alongside the grant screen, so Connect waits for the slower
-      // of the two rather than both in turn.
+      // scope, is refused before the merchant approves keys whose arrival
+      // would take the code's cards off sale. Asked alongside the grant
+      // screen, so Connect waits for the slower of the two rather than both in
+      // turn.
       //
       // A shop with plain permalinks answers the grant address with its own
       // front page and a 200, so a merchant sent there would land on their
@@ -856,16 +857,14 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         return await drawTheShop(person, { problem: looked.why, typed }, 400);
       }
 
-      // The merchant moves to the shop here, before they are sent to it, and
-      // not when the keys arrive: refused at the callback, the switch could
-      // only be told to the shop's server; refused here, it is told to the
-      // merchant beside the button. One who goes and never approves sells
-      // through a shop with none connected, and the page offers the way back.
-      const switched = await gatewayAs(person).sellThrough("woocommerce");
-      if (!switched.ok) {
+      // Only asked here: the switch is made when the keys arrive, so a
+      // merchant who never approves keeps the code's cards on sale. Asking
+      // first tells them beside the button what would refuse it now.
+      const allowed = await gatewayAs(person).maySellThrough("woocommerce");
+      if (!allowed.ok) {
         return await drawTheShop(
           person,
-          { problem: await refusedMove(gatewayAs(person), "woocommerce", switched), typed },
+          { problem: await refusedMove(gatewayAs(person), "woocommerce", allowed), typed },
           409,
         );
       }
@@ -1037,8 +1036,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
 
     async switchToShop(person) {
       // For a merchant whose shop is connected while they sell through their
-      // code: what Connect does before sending them to the shop, for one whose
-      // shop is already here.
+      // code: the switch the keys' arrival makes, asked again by the merchant.
       const switched = await gatewayAs(person).sellThrough("woocommerce");
       if (!switched.ok) {
         return await drawTheShop(

@@ -471,13 +471,13 @@ describe("what the shop screen says a switch does to the code's products", () =>
     readable(blockOf(shopPage({ through: "api", codeProducts }), "/woocommerce/connect"));
 
   it("says it only where the code published some, with how many", () => {
-    expect(connectPanel(12)).toContain("the 12 products your code published off sale");
-    expect(connectPanel(1)).toContain("the product your code published off sale");
+    expect(connectPanel(12)).toContain("the 12 products your code published go off sale");
+    expect(connectPanel(1)).toContain("the product your code published goes off sale");
     expect(connectPanel(0)).not.toMatch(/off sale/);
   });
 
   it("says it without a number where the products could not be counted, never as none", () => {
-    expect(connectPanel(null)).toContain("the products your code published off sale");
+    expect(connectPanel(null)).toContain("the products your code published go off sale");
   });
 
   it("says the code's products come back paused, where there are some, on the way back", () => {

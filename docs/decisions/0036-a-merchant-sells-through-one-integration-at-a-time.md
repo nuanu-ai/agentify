@@ -2,7 +2,8 @@
 
 Date: 2026-10-11
 Status: accepted (the product owner chose one integration per merchant over
-routing on 2026-10-11, and a paused return to the SDK on 2026-10-12)
+routing on 2026-10-11, a paused return to the SDK on 2026-10-12, and the switch
+on the shop's keys on 2026-10-26)
 
 ## Context
 
@@ -32,13 +33,17 @@ the catalog, refusing a price question and an order before any payment, while
 its own pause flag stays as the merchant set it, so switching back returns
 exactly the cards that were on sale.
 
-Pressing Connect switches the merchant to the shop before they are sent to
-it, so a refusal is said beside the button rather than to a shop's server, and
-disconnecting switches them back to the SDK. A switch is refused, in words
-that name the orders, while an order still waits on the integration being
-left: to be paid at the price it was quoted, for its first answer, or for the
-goods it was taken on for, a parcel until it ships, because the connector
-follows a parcel only while its shop is connected. An order that owes only
+Pressing Connect only asks whether the switch would be made now: a refusal is
+said beside the button, and nobody is sent to the shop. The switch is made
+when the shop's keys arrive, the moment its administrator approved, because an
+approval abandoned at the shop must not take the code's cards off sale. A
+switch refused then, by an order made meanwhile, leaves the shop connected and
+the code selling, tells the shop's server nothing, and the shop screen offers
+the switch again. Disconnecting switches back to the SDK. A switch is refused,
+in words that name the orders, while an order still waits on the integration
+being left: to be paid at the price it was quoted, for its first answer, or
+for the goods it was taken on for, a parcel until it ships, because the
+connector follows a parcel only while its shop is connected. An order that owes only
 money holds nothing. The switch and the making of an order wait for each
 other on the merchant, and a poll held open across the switch returns empty.
 

@@ -2380,9 +2380,9 @@ const RECEIPTS: GalleryState[] = [
   ),
 ];
 
-/** What the gateway says of a merchant who sells through their shop, or never touched one. */
+/** What the gateway says of a merchant who sells through their shop, or through their code. */
 const THROUGH_THE_SHOP = { through: "woocommerce", offSale: [] } as const;
-const ON_THE_SHOP_NEVER = { through: "api", offSale: [] } as const;
+const THROUGH_THE_CODE = { through: "api", offSale: [] } as const;
 
 const integrations = (told: Told, view: ReturnType<typeof integrationsView>, mode: SurfaceMode) =>
   at(told, { path: "/integrations", mode, loaded: { "routes/integrations": view } });
@@ -2407,7 +2407,7 @@ const INTEGRATIONS: GalleryState[] = [
       cause:
         "No WooCommerce connection, no Connect started and no product imported, so neither way is marked as chosen.",
     },
-    integrationsView({ kind: "none" }, ON_THE_SHOP_NEVER),
+    integrationsView({ kind: "none" }, THROUGH_THE_CODE),
     "test",
   ),
   integrations(
@@ -2451,9 +2451,10 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations-shop-waiting",
       screen: "Integrations",
       when: "A merchant comes to Integrations minutes after pressing Connect.",
-      cause: "A Connect started less than fifteen minutes ago and no keys have arrived yet.",
+      cause:
+        "A Connect started less than fifteen minutes ago and no keys have arrived yet, so the merchant still sells through their code.",
     },
-    integrationsView(WAITING_FOR_KEYS, THROUGH_THE_SHOP),
+    integrationsView(WAITING_FOR_KEYS, THROUGH_THE_CODE),
     "test",
   ),
   integrations(
@@ -2461,9 +2462,10 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations-shop-no-keys",
       screen: "Integrations",
       when: "A merchant comes back to Integrations long after a Connect they never finished.",
-      cause: "Fifteen minutes passed after a Connect with no keys arriving from the shop.",
+      cause:
+        "Fifteen minutes passed after a Connect with no keys arriving from the shop, so nothing changed and the merchant sells through their code.",
     },
-    integrationsView(NO_KEYS, THROUGH_THE_SHOP),
+    integrationsView(NO_KEYS, THROUGH_THE_CODE),
     "test",
   ),
   integrations(
@@ -2532,24 +2534,26 @@ const WOOCOMMERCE: GalleryState[] = [
       id: "dashboard-woocommerce-waiting",
       screen: "WooCommerce",
       when: "A merchant comes back to the screen a few minutes after pressing Connect.",
-      cause: "A Connect started less than fifteen minutes ago and no keys have arrived yet.",
+      cause:
+        "A Connect started less than fifteen minutes ago and no keys have arrived yet, so the 12 products the merchant's code published are still on sale.",
     },
-    shopOn(shopRead(WAITING_FOR_KEYS, { codeProducts: 12 })),
+    shopOn(shopRead(WAITING_FOR_KEYS, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
       id: "dashboard-woocommerce-no-keys",
       screen: "WooCommerce",
       when: "A merchant comes back long after a Connect they did not finish.",
-      cause: "Fifteen minutes passed with no keys from the shop; why is not known.",
+      cause:
+        "Fifteen minutes passed with no keys from the shop; why is not known, and nothing changed for the merchant's code.",
     },
-    shopOn(shopRead(NO_KEYS, { codeProducts: 0 })),
+    shopOn(shopRead(NO_KEYS, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
       id: "dashboard-woocommerce-way-back",
       screen: "WooCommerce",
-      when: "A merchant pressed Connect, never approved in the shop, and comes back.",
+      when: "A merchant whose account started on the shop, from cards it had imported, has no shop connected.",
       cause:
         "The merchant sells through the shop and none is connected, so nothing sells until they connect one or switch back.",
     },
@@ -2569,9 +2573,9 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-connected-on-code",
       screen: "WooCommerce",
-      when: "A merchant whose shop is connected still sells through their own code.",
+      when: "A merchant's shop sent its keys while an order from their code was still open.",
       cause:
-        "The shop is connected but the merchant's integration is their code, so the shop's cards are off sale.",
+        "The open order refused the switch, so the shop is connected, the merchant still sells through their code, and the shop's cards are off sale.",
     },
     shopOn(shopRead(CONNECTED, { through: "api", codeProducts: 12 })),
   ),
@@ -2695,7 +2699,7 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant presses Connect while buyers are still answering prices their code gave.",
       cause:
-        "The gateway refuses the switch until those purchases are paid or lapse, which takes seconds, so the screen says to try again in a minute.",
+        "The gateway would refuse the switch until those purchases are paid or lapse, which takes seconds, so the screen says to try again in a minute and sends nobody to the shop.",
     },
     "connect",
     shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 12 }), {

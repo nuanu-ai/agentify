@@ -2581,7 +2581,6 @@ describe("one integration at a time", () => {
     // no products yet, or its Store API turned off, connects as before.
     const running = await started({ sample: async () => null });
     await running.signIn();
-    const card = await publishedByTheCode(running);
 
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
 
@@ -2751,8 +2750,9 @@ describe("one integration at a time", () => {
   });
 
   it("offers a merchant on their code with a shop connected the switch to it, and imports nothing until they take it", async () => {
-    // Reached when a Disconnect switched the merchant back and was cut off
-    // before it forgot the shop, or from two tabs. Without the switch the page
+    // Reached when the keys arrived while an order of the code's was open, or
+    // a Disconnect switched the merchant back and was cut off before it forgot
+    // the shop. Without the switch the page
     // would show a connected shop and an Import that reads the whole shop only
     // to refuse every card.
     const running = await started({

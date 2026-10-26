@@ -226,12 +226,17 @@ export interface GatewayClient {
     }>
   >;
   /**
-   * Moves this merchant to an integration: Connect moves them to the shop
-   * before they are sent to it, and Disconnect back to their code. Refused,
-   * in words that name the orders, while one still waits on the integration
-   * being left.
+   * Moves this merchant to an integration: the shop's keys arriving move them
+   * to the shop, and Disconnect back to their code. Refused, in words that
+   * name the orders, while one still waits on the integration being left.
    */
   sellThrough(to: Integration): Promise<Answer<{ readonly sellingPaused: boolean }>>;
+  /**
+   * Whether `sellThrough(to)` would be made now, refused in its words where it
+   * would not, with nothing switched. Connect asks it before sending anybody to
+   * the shop; the switch itself can still be refused when the keys arrive.
+   */
+  maySellThrough(to: Integration): Promise<Answer<null>>;
   /**
    * Only for the WooCommerce worker, which fills orders for merchants with no
    * code of their own; every page draws and does not wait.
@@ -721,6 +726,11 @@ export const gatewayFor = (
         return switched.switched
           ? done({ sellingPaused: switched.sellingPaused })
           : switchRefused(to, switched.waiting);
+      }),
+    maySellThrough: (to) =>
+      call("asking whether the integration can be switched", async () => {
+        const waiting = await application.switchHeldBy(merchantId, to);
+        return waiting.length === 0 ? done(null) : switchRefused(to, waiting);
       }),
     pollWorker: (waitSeconds) =>
       call("drawing the stream", async () => {

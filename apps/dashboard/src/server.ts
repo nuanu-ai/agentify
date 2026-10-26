@@ -25,7 +25,9 @@ import {
   type Registrar,
   registrarFor,
 } from "./gateway.js";
+import type { Identity } from "./identity.js";
 import type { Postman } from "./mail.js";
+import { noted } from "./noted.js";
 import { pageServicesFor } from "./page-services.js";
 import { type Pages, pagesHandler } from "./pages.js";
 import { printable } from "./printable.js";
@@ -37,9 +39,10 @@ export interface DashboardParts {
   readonly pages: Pages;
   /**
    * `identity.ts` over Postgres in a deployment, over the component's memory
-   * store in tests, so the suite drives the real component offline.
+   * store in tests, so the suite drives the real component offline. `byId`
+   * finds the merchant whose shop's keys just arrived, with no session to read.
    */
-  readonly identity: DashboardIdentity;
+  readonly identity: DashboardIdentity & Pick<Identity, "byId">;
   /** Called in-process as the merchant on the signed-in account's row. */
   readonly gateway: Gateway;
   /**
@@ -116,6 +119,34 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
   }
 
   /**
+   * The keys arriving are the administrator's approval, so this is where the
+   * merchant moves to the shop, and Connect only asked whether they could. A
+   * switch refused now, by an order made since, or failed, leaves the shop
+   * connected and the merchant selling through their code, which the shop
+   * screen offers to change. It never fails the callback: a failed post makes
+   * the shop delete the key just approved, which the connection now holds.
+   */
+  const sellThroughTheShop = async (accountId: string): Promise<void> => {
+    try {
+      const person = await identity.byId(accountId);
+      if (person === null || person.merchant === null) return;
+      const switched = await clientFor({
+        merchantId: person.merchant.id,
+        email: person.email,
+      }).sellThrough("woocommerce");
+      noted(
+        person,
+        switched.ok
+          ? "switched to selling through their WooCommerce shop as its keys arrived"
+          : `connected their WooCommerce shop and still sells through their code: ${switched.why}`,
+      );
+    } catch {
+      // Not logged: an exception from a driver can carry the values it was bound.
+      console.error("[dashboard] a merchant could not be switched to the shop whose keys arrived");
+    }
+  };
+
+  /**
    * In front of the gate because it must be: the shop's own server posts here
    * with no cookie or key of ours. What stands in for a session is the one-time token
    * the shop hands back as `user_id`, written when the merchant pressed
@@ -174,6 +205,7 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
           `[dashboard] a WooCommerce shop was connected for an account: ${connection.shopUrl}, ${permissions}`,
         ),
       );
+      await sellThroughTheShop(connection.accountId);
       response.json({ ok: true });
     })().catch(() => {
       // A failure, so the shop takes its key back rather than keeping one

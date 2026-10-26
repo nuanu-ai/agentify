@@ -37,6 +37,10 @@ const codeProducts = (count: number | null): string =>
       ? "the product your code published"
       : `the ${count} products your code published`;
 
+/** Said before a Connect: nothing changes for the code's products until the shop's keys arrive. */
+const offSaleOnKeys = (count: number | null): string =>
+  `${codeProducts(count)} ${count === 1 ? "goes" : "go"} off sale`;
+
 const comeBack = (count: number | null): string => {
   const said = codeProducts(count);
   return `${said.charAt(0).toUpperCase()}${said.slice(1)} ${count === 1 ? "comes" : "come"} back paused.`;
@@ -111,8 +115,8 @@ function ConnectPanel({
         </p>
         {view.connectSwitches && view.codeProducts !== 0 ? (
           <p>
-            Connecting takes {codeProducts(view.codeProducts)} off sale until you disconnect the
-            shop.
+            When your shop sends its keys, {offSaleOnKeys(view.codeProducts)} until you disconnect
+            the shop.
           </p>
         ) : null}
       </PanelHead>
@@ -259,7 +263,7 @@ function ReadOnlyPanel({
           Your shop gave read-only access, so Agentify can't create orders there and agents can't
           buy. Connect again and approve Read/Write.
           {connection.onCode
-            ? ` Connecting again also takes ${codeProducts(view.codeProducts)} off sale.`
+            ? ` When the new keys arrive, ${offSaleOnKeys(view.codeProducts)}.`
             : null}
         </p>
       </PanelHead>

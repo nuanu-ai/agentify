@@ -198,10 +198,10 @@ export interface ConnectionView {
    */
   readonly readOnly: boolean;
   /**
-   * The merchant sells through their own code while this shop is connected: a
-   * Disconnect cut off between moving them back and forgetting the shop leaves
-   * them so, and so can two tabs. Nothing imported sells, and nothing can be
-   * imported, until they switch.
+   * The merchant sells through their own code while this shop is connected: an
+   * order of the code's open when the keys arrived refused the switch, or a
+   * Disconnect was cut off between moving them back and forgetting the shop.
+   * Nothing imported sells, and nothing can be imported, until they switch.
    */
   readonly onCode: boolean;
   /** Why selling through this shop was just refused. */
@@ -262,10 +262,9 @@ export interface WooShopView {
   readonly connection: ConnectionView | null;
   /**
    * The way back to the merchant's own code, for one who sells through a shop
-   * that is not connected: they pressed Connect and never approved, or the
-   * account was put on the shop by cards it had imported. Nothing reads a shop
-   * for them, so the shop's cards cannot sell, and the code's are off sale
-   * until they press it.
+   * that is not connected, which an account put on the shop by cards it had
+   * imported can be. Nothing reads a shop for them, so the shop's cards cannot
+   * sell, and the code's are off sale until they press it.
    */
   readonly wayBack: boolean;
   readonly noKeysYet: NoKeysYet | null;
@@ -274,8 +273,8 @@ export interface WooShopView {
   /** Why the address typed was refused, said under its box. */
   readonly addressProblem: string | null;
   /**
-   * For a merchant on their own code, Connect switches them to the shop at
-   * once, before they approve, and the form says so before the press.
+   * For a merchant on their own code, the shop's keys arriving switch them to
+   * the shop, and the form says so before the press.
    */
   readonly connectSwitches: boolean;
   /**
