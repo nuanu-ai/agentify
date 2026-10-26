@@ -17,7 +17,7 @@
 
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { join } from "node:path";
 import markdownIt, {
   type MarkdownIt,
   type StateBlock,
@@ -28,7 +28,7 @@ import container from "markdown-it-container";
 import { createHighlighter, type Highlighter } from "shiki";
 import { withBuildValues } from "./build-values.js";
 import { drawingOf } from "./diagrams.server.js";
-import { includedFile, includeOf } from "./includes.js";
+import { includedFile, includeOf, languageOf } from "./includes.js";
 import { PAGES, type Page } from "./pages.js";
 import { isSiteValueName, UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
 import { APP } from "./where.server.js";
@@ -118,7 +118,7 @@ function includes(md: MarkdownIt): void {
       if (silent) return true;
       const file = includedFile(named);
       const token = state.push("fence", "code", 0);
-      token.info = extname(file).slice(1);
+      token.info = languageOf(file);
       token.content = readFileSync(file, "utf8");
       token.markup = "```";
       token.map = [start, start + 1];

@@ -8,6 +8,12 @@
  * least one page; every include resolves to a file; and no page carries a
  * payload inline, which would walk around the rest.
  *
+ * A whole program a reader saves and runs, such as the quickstart's test
+ * buyer, is one file too, `apps/docs/programs/<name>`, included the same way.
+ * Nothing here parses it: `packages/sdk/src/portal-fences.test.ts` compiles
+ * it and `packages/slice/src/quickstart-buyer.test.ts` runs it. This file
+ * holds only that every program is shown by a page.
+ *
  * TypeScript fences are calling code, not documents, and are compiled against
  * the SDK by `packages/sdk/src/portal-fences.test.ts`. A page discussing a
  * piece of a document, such as a card's `result` block, keeps it as a
@@ -25,6 +31,7 @@ import { QuoteRequestSchema, QuoteResponseSchema } from "./quote.js";
 
 const PORTAL = fileURLToPath(new URL("../../../apps/docs/", import.meta.url));
 const EXAMPLES = join(PORTAL, "examples");
+const PROGRAMS = join(PORTAL, "programs");
 
 /**
  * Which schema each directory of examples is held to. A directory missing from
@@ -47,6 +54,11 @@ const files: readonly string[] = entriesOfExamples
   .flatMap((directory) =>
     readdirSync(join(EXAMPLES, directory.name)).map((name) => `${directory.name}/${name}`),
   )
+  .sort();
+
+/** Every program, by the path a page includes it with: `programs/buyer.mts`. */
+const programs: readonly string[] = readdirSync(PROGRAMS)
+  .map((name) => `programs/${name}`)
   .sort();
 
 const pages: readonly string[] = readdirSync(PORTAL)
@@ -133,14 +145,26 @@ describe("the portal's examples are files, and every file is checked", () => {
     ).not.toStrictEqual([]);
   });
 
+  it.each(programs)("%s is shown by a page", (program) => {
+    // A program no page includes goes on running in its test long after
+    // nobody reads it.
+    expect(
+      included.get(program) ?? [],
+      `no portal page includes apps/docs/${program}; include it or delete it`,
+    ).not.toStrictEqual([]);
+  });
+
   it("includes nothing that is not there", () => {
     // A page pointing at a missing file renders an empty block.
-    const known = new Set(files.map((file) => `examples/${file}`));
+    const known = new Set([...files.map((file) => `examples/${file}`), ...programs]);
     const missing = [...included.entries()]
       .filter(([path]) => !known.has(path))
       .map(([path, where]) => `${path} (included by ${where.join(", ")})`);
 
-    expect(missing, "a page includes a file that is not in apps/docs/examples").toStrictEqual([]);
+    expect(
+      missing,
+      "a page includes a file that is in neither apps/docs/examples nor apps/docs/programs",
+    ).toStrictEqual([]);
   });
 
   it.each(pages)("%s writes no payload inline", (page) => {

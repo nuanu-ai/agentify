@@ -92,6 +92,10 @@ export default {
         // Drawn into the screens gallery by `packages/gallery`.
         "app/gallery.tsx",
       ],
+      // A reader's program, which a page shows and a test in `packages/slice`
+      // runs with that package's dependencies, as the reader runs it with
+      // theirs: nothing in this application imports it.
+      ignore: ["programs/**"],
     },
     "packages/core": {
       // The types of `preflight.mjs`, which a deploy script runs as it is;

@@ -2,7 +2,8 @@
 
 /**
  * Checks the documentation as the build wrote it to disk, after prerender:
- * every example a page includes is shown whole on that built page, every
+ * every example and every program a page includes is shown whole on that
+ * built page, every
  * built page carries the surface marker above the page, and no built page
  * carries a template escaped as `&lt;!--{{`, which Caddy cannot find. The
  * unit tests render the Markdown; only the built HTML shows what prerender
@@ -22,6 +23,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PORTAL = join(ROOT, "apps", "docs");
 const EXAMPLES = join(PORTAL, "examples");
+const PROGRAMS = join(PORTAL, "programs");
 const DIST = join(PORTAL, "dist", "client");
 
 /** The house style for writers; the site does not build it. */
@@ -41,7 +43,9 @@ const textOf = (html) =>
   html
     .replace(/<[^>]+>/g, "")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    // The highlighter writes `<` and `&` in code as numeric references.
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(Number(decimal)))
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     // Last, so that a page writing `&amp;lt;` keeps its `&lt;` instead of
@@ -57,14 +61,18 @@ const includesOf = (markdown) =>
     .filter((path) => path !== undefined)
     .map((path) => path.replace(/[#{].*$/, "").replace(/^@\//, ""));
 
-/** Every example file, by the path a page includes it with. */
-const exampleFiles = () =>
-  readdirSync(EXAMPLES, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .flatMap((directory) =>
-      readdirSync(join(EXAMPLES, directory.name)).map((name) => `${directory.name}/${name}`),
-    )
-    .sort();
+/** Every example and program file, by the path a page includes it with. */
+const includableFiles = () =>
+  [
+    ...readdirSync(EXAMPLES, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .flatMap((directory) =>
+        readdirSync(join(EXAMPLES, directory.name)).map(
+          (name) => `examples/${directory.name}/${name}`,
+        ),
+      ),
+    ...readdirSync(PROGRAMS).map((name) => `programs/${name}`),
+  ].sort();
 
 const builtPages = (directory, prefix = "") =>
   readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
@@ -102,40 +110,40 @@ if (shownBy.size === 0) {
   die(`no page under ${PORTAL} includes anything; the layout or the syntax has changed`);
 }
 
-const files = exampleFiles();
-if (files.length === 0) die(`no example files under ${EXAMPLES}`);
+const files = includableFiles();
+if (files.length === 0) die(`no example or program files under ${PORTAL}`);
 
 const complaints = [];
 
 for (const file of files) {
-  const where = shownBy.get(`examples/${file}`) ?? [];
+  const where = shownBy.get(file) ?? [];
 
   if (where.length === 0) {
-    complaints.push(`apps/docs/examples/${file} is included by no page, so no page can show it`);
+    complaints.push(`apps/docs/${file} is included by no page, so no page can show it`);
     continue;
   }
 
-  const wanted = readFileSync(join(EXAMPLES, file), "utf8").replace(/\s+/g, " ").trim();
+  const wanted = readFileSync(join(PORTAL, file), "utf8").replace(/\s+/g, " ").trim();
 
   for (const html of where) {
     if (!built.includes(html)) {
-      complaints.push(`${html} includes apps/docs/examples/${file} and was never built`);
+      complaints.push(`${html} includes apps/docs/${file} and was never built`);
       continue;
     }
 
     const shown = textOf(readFileSync(join(DIST, html), "utf8"));
 
     if (shown.includes(wanted)) {
-      console.log(`ok   ${html} shows apps/docs/examples/${file}`);
+      console.log(`ok   ${html} shows apps/docs/${file}`);
       continue;
     }
 
-    const printedAsText = /<<<\s+\S*examples\//.test(shown);
+    const printedAsText = /<<<\s+\S*(examples|programs)\//.test(shown);
 
     complaints.push(
       printedAsText
         ? `${html} printed the include line as text instead of the file: the build no longer understands "<<<", and every example on the site is gone`
-        : `${html} does not show apps/docs/examples/${file}; the page was built without it`,
+        : `${html} does not show apps/docs/${file}; the page was built without it`,
     );
   }
 }
@@ -174,4 +182,4 @@ if (escaped.length > 0) {
   die(`these built pages carry a template Caddy cannot find:\n  ${escaped.join("\n  ")}`);
 }
 
-console.log(`\n${files.length} example(s) reached the pages that include them.`);
+console.log(`\n${files.length} example(s) and program(s) reached the pages that include them.`);

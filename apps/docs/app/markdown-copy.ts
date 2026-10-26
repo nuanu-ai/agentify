@@ -9,8 +9,8 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
-import { includedFile, includeOf } from "./includes.js";
+import { dirname, join } from "node:path";
+import { includedFile, includeOf, languageOf } from "./includes.js";
 import { sourceOf } from "./markdown.server.js";
 import { markdownFileOf, PAGES } from "./pages.js";
 import { isSiteValueName, UNLESS_END, unlessTemplate, valueTemplate } from "./site-values.js";
@@ -55,7 +55,7 @@ export async function markdownCopy(source: string): Promise<string> {
     if (included !== undefined) {
       const file = includedFile(included);
       const text = (await readFile(file, "utf8")).replace(/\n$/, "");
-      for (const each of [`\`\`\`${extname(file).slice(1)}`, ...text.split("\n"), "```"]) {
+      for (const each of [`\`\`\`${languageOf(file)}`, ...text.split("\n"), "```"]) {
         out.push(quote(each));
       }
       continue;
