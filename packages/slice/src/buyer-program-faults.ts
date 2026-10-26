@@ -10,7 +10,8 @@
  * `statusReads`, the HTTP statuses the first reads of an order answer with
  * instead of reaching the gateway; `losePaidAnswer`, which lets a paid purchase
  * reach the gateway and then drops its answer as a broken connection would;
- * and `challengeNetwork`, which rewrites the chain a payment request names.
+ * and `challengeNetwork` with `challengeAsset`, which move a payment request
+ * onto another chain and that chain's token.
  *
  * And it makes the program's waits between reads take a millisecond, by
  * handing the program, and only the program, its own `node:timers/promises`.
@@ -24,6 +25,7 @@ interface Faults {
   readonly statusReads?: readonly number[];
   readonly losePaidAnswer?: boolean;
   readonly challengeNetwork?: string;
+  readonly challengeAsset?: string;
 }
 
 const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
@@ -55,12 +57,15 @@ const unavailable = (status: number): Response =>
     { status, headers: { "content-type": "application/json" } },
   );
 
-/** A payment request with every requirement moved onto another chain. */
-const onAnotherChain = (header: string, network: string): string => {
+/** A payment request with every requirement moved onto another chain and its token. */
+const onAnotherChain = (header: string, network: string, asset: string): string => {
   const challenge = JSON.parse(Buffer.from(header, "base64").toString("utf8")) as {
-    accepts: { network: string }[];
+    accepts: { network: string; asset: string }[];
   };
-  for (const requirement of challenge.accepts) requirement.network = network;
+  for (const requirement of challenge.accepts) {
+    requirement.network = network;
+    requirement.asset = asset;
+  }
   return Buffer.from(JSON.stringify(challenge)).toString("base64");
 };
 
@@ -85,8 +90,11 @@ globalThis.fetch = async (input, init) => {
   }
 
   const challenge = answer.headers.get("payment-required");
-  if (challenge === null || faults.challengeNetwork === undefined) return answer;
+  const { challengeNetwork, challengeAsset } = faults;
+  if (challenge === null || challengeNetwork === undefined || challengeAsset === undefined) {
+    return answer;
+  }
   const headers = new Headers(answer.headers);
-  headers.set("payment-required", onAnotherChain(challenge, faults.challengeNetwork));
+  headers.set("payment-required", onAnotherChain(challenge, challengeNetwork, challengeAsset));
   return new Response(await answer.text(), { status: answer.status, headers });
 };

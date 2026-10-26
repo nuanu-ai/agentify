@@ -66,6 +66,7 @@ interface Faults {
   readonly statusReads?: readonly number[];
   readonly losePaidAnswer?: boolean;
   readonly challengeNetwork?: string;
+  readonly challengeAsset?: string;
 }
 
 interface Run {
@@ -228,7 +229,12 @@ describe("the quickstart's test buyer", () => {
   });
 
   it("signs no payment request on a chain other than the channel's", async () => {
-    const refused = await run(AT_ONCE, { challengeNetwork: "eip155:8453" });
+    // Base and its USDC, a chain and a token the x402 client would otherwise
+    // sign for within the card's price.
+    const refused = await run(AT_ONCE, {
+      challengeNetwork: "eip155:8453",
+      challengeAsset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    });
 
     expect(refused.code, refused.printed).not.toBe(0);
     expect(refused.printed).toContain("eip155:8453");
