@@ -989,9 +989,11 @@ export const startWorker = (
         signal: AbortSignal.any([polling.signal, AbortSignal.timeout(deadlineMs)]),
       });
 
-      if (stopping) break;
-
       if (!answer.ok) {
+        // A poll cut off by the stop is no failure to report. One that was
+        // read in full goes on below, where its messages are said to be unread.
+        if (stopping) break;
+
         // That another version was named is passed on as a remark, never as a
         // verdict: that body was held to no schema, and only an answer of the
         // poll's outer shape decides a mismatch. That shape is read whatever

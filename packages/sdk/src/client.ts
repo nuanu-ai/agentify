@@ -325,7 +325,9 @@ export interface AgentifyClient {
    * It takes no more work, since draining the queue would pull work into a
    * process that is going away. A poll parked at the gateway is dropped;
    * anything taken in the instant before is an order, which comes again, or
-   * an event, which is sent once. Work already started finishes, including
+   * an event, which is sent once. A poll answer already read when the stop
+   * begins is reported as a `batch_abandoned` problem naming what it left
+   * unread. Work already started finishes, including
    * events waiting for earlier work on their order, and the answers its
    * handlers return are sent, because goods may already have been issued.
    *
