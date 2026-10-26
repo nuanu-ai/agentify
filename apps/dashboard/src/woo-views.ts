@@ -112,6 +112,11 @@ interface BeforeImporting {
   readonly what: string;
 }
 
+/** The answer to Import on live before the operator has approved the merchant. */
+export const NOT_APPROVED_YET =
+  "Nothing was imported: Agentify hasn't approved your business for live sales yet." +
+  " Import again once it has. To ask, write to admin@agentify.ad.";
+
 /** How many of the orders a refusal names are drawn before the rest are counted. */
 const ORDERS_DRAWN = 5;
 
