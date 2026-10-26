@@ -2,7 +2,8 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import http, { type IncomingHttpHeaders, type RequestOptions } from "node:http";
 import https from "node:https";
 import type { Readable } from "node:stream";
-import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
+import { pipeline } from "node:stream/promises";
+import { constants, createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import {
   assertPublicAddresses,
   canonicalizeTarget,
@@ -26,6 +27,11 @@ export type PinnedTransportRequest = {
   connectTimeoutMs: number;
   maxDecodedBytes: number;
   signal: AbortSignal;
+  /**
+   * Whether a body that is itself a gzip file, as a sitemap's .xml.gz is, is
+   * unpacked, with `maxDecodedBytes` bounding what it unpacks to.
+   */
+  unpackGzip?: boolean;
 };
 
 export interface PinnedTransport {
@@ -39,6 +45,8 @@ export type SafeFetchOptions = {
   bodyLimit?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
+  /** Unpack a body that is itself a gzip file, within `bodyLimit`. */
+  unpackGzip?: boolean;
   /**
    * Asked before a redirect is followed: the reason not to request the
    * address it leads to, or undefined to follow it.
@@ -109,6 +117,37 @@ const decoderFor = (stream: Readable, encoding: string | undefined): Readable =>
   if (normalized === "br") return stream.pipe(createBrotliDecompress());
   throw new Error("unsupported_content_encoding");
 };
+
+// The body as it arrives, unpacked first when it opens with gzip's two magic
+// bytes. Unpacking is lazy, so a file that expands without bound stops where
+// the reader stops: at the read limit. A file cut short still yields what it
+// holds.
+async function* unpackedGzip(source: AsyncIterable<Buffer | Uint8Array>): AsyncGenerator<Buffer> {
+  const chunks = source[Symbol.asyncIterator]();
+  let head = Buffer.alloc(0);
+  while (head.length < 2) {
+    const next = await chunks.next();
+    if (next.done) {
+      if (head.length) yield head;
+      return;
+    }
+    head = Buffer.concat([head, Buffer.from(next.value)]);
+  }
+  async function* body(): AsyncGenerator<Buffer> {
+    yield head;
+    for (let next = await chunks.next(); !next.done; next = await chunks.next())
+      yield Buffer.from(next.value);
+  }
+  if (head[0] !== 0x1f || head[1] !== 0x8b) {
+    yield* body();
+    return;
+  }
+  const gunzip = createGunzip({ finishFlush: constants.Z_SYNC_FLUSH });
+  // Whatever ends the unpacking early, the reader stopping or the body
+  // failing, reaches the reader through the gunzip stream itself.
+  pipeline(body(), gunzip).catch(() => undefined);
+  yield* gunzip;
+}
 
 export class NodePinnedTransport implements PinnedTransport {
   async request(input: PinnedTransportRequest): Promise<FetchArtifact> {
@@ -198,7 +237,7 @@ export class NodePinnedTransport implements PinnedTransport {
           let decodedBytes = 0;
           let truncated = false;
           try {
-            for await (const chunk of decoded) {
+            for await (const chunk of input.unpackGzip ? unpackedGzip(decoded) : decoded) {
               const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
               const remaining = input.maxDecodedBytes - decodedBytes;
               if (buffer.length > remaining) {
@@ -404,6 +443,7 @@ export class SafeFetcher {
             connectTimeoutMs: 3_000,
             maxDecodedBytes: options.bodyLimit ?? 2 * 1024 * 1024,
             signal: controller.signal,
+            ...(options.unpackGzip ? { unpackGzip: true } : {}),
           });
         } finally {
           release();

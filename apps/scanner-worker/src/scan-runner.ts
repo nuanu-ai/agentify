@@ -10,6 +10,7 @@ import {
   type RobotsParseResult,
   type ScanArtifacts,
   type ScanEvaluation,
+  SITEMAP_FILE_LIMIT,
 } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { getDomain } from "tldts";
@@ -280,7 +281,7 @@ export class ScanRunner {
         const pending = [...sitemapTargets];
         const seen = new Set<string>();
         const artifacts: FetchArtifact[] = [];
-        while (artifacts.length < 3) {
+        while (artifacts.length < SITEMAP_FILE_LIMIT) {
           const url = pending.shift();
           if (!url) break;
           const key = url.toString();
@@ -289,6 +290,7 @@ export class ScanRunner {
           const artifact = await fetchIfRobotsAllowed(url, {
             bodyLimit: 5 * 1024 * 1024,
             accept: "application/xml,text/xml,*/*;q=0.1",
+            unpackGzip: true,
           });
           artifacts.push(artifact);
           if (artifact.errorCode || artifact.status < 200 || artifact.status >= 300) continue;

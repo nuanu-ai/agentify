@@ -1,6 +1,7 @@
 import { CHECK_DEFINITIONS, type CheckResult, type Segment } from "@agentify/scanner-contracts";
+import { authSchemes, mediaType, varyNames } from "./http-fields.js";
 import { asciiLower, isQuote, nextTag, quotedValues, type Span } from "./markup.js";
-import type { FetchArtifact, ScanArtifacts } from "./model.js";
+import { type FetchArtifact, type ScanArtifacts, SITEMAP_FILE_LIMIT } from "./model.js";
 import {
   comparableTexts,
   htmlSignals,
@@ -8,11 +9,20 @@ import {
   type JsonLdResult,
   jsonLdTypes,
   parseJsonLd,
-  parseSafeJson,
   parseSitemap,
+  type SitemapResult,
   visibleText,
 } from "./parsers.js";
 import {
+  byteSize,
+  type DocumentReading,
+  isWebPage,
+  jsonDocumentOf,
+  type Reading,
+  readingOf,
+} from "./reading.js";
+import {
+  AI_PROVIDERS,
   explicitAiPolicies,
   isPathAllowed,
   parseRobots,
@@ -77,22 +87,75 @@ export const BASE_BLOCKED = "base_blocked";
 
 const inaccessible = (artifact?: FetchArtifact): boolean =>
   !artifact || Boolean(artifact.errorCode) || artifact.status === 0 || artifact.status >= 500;
-const missing = (artifact?: FetchArtifact): boolean =>
-  !artifact || artifact.status === 404 || artifact.status === 410;
-
 const ROBOTS_CODES = new Set(["robots_disallowed", "robots_unavailable"]);
-const robotsCode = (artifact?: FetchArtifact): string | undefined =>
-  artifact?.errorCode && ROBOTS_CODES.has(artifact.errorCode) ? artifact.errorCode : undefined;
-// Why none of several documents could be read: robots.txt first, since the
-// owner can act on it, then whatever else stopped the first one.
-const unreadReason = (artifacts: readonly FetchArtifact[], fallback: string): string => {
-  const unread = artifacts.filter((artifact) => inaccessible(artifact));
-  return (
-    unread.map(robotsCode).find(Boolean) ??
-    unread.find((artifact) => artifact.errorCode)?.errorCode ??
-    fallback
-  );
+
+type Unread = Extract<Reading, { state: "unread" }>;
+const isUnread = (reading: Reading | DocumentReading): reading is Unread =>
+  reading.state === "unread";
+// Why none of several documents can be judged: robots.txt first, since the
+// owner can act on it, then whatever else kept the first one from being read.
+const firstUnread = (readings: readonly (Reading | DocumentReading)[]): Unread | undefined => {
+  const unread = readings.filter(isUnread);
+  return unread.find((reading) => ROBOTS_CODES.has(reading.errorCode)) ?? unread[0];
 };
+
+/**
+ * The result of a check that needed a document the site did not answer about,
+ * with the status it answered when there was one. No verdict is given, so the
+ * check lowers coverage, not the score.
+ */
+const unjudged = (
+  id: number,
+  reading: Unread,
+  unread: Readonly<{ summaryCode: string; userImpactCode: string }>,
+  evidence: CheckResult["evidence"] = {},
+): CheckResult =>
+  result({
+    id,
+    status: "unavailable",
+    earnedWeight: 0,
+    summaryCode: unread.summaryCode,
+    userImpactCode: unread.userImpactCode,
+    errorCode: reading.errorCode,
+    evidence: { ...evidence, ...(reading.status ? { status: reading.status } : {}) },
+  });
+
+// An agent asking for a document the site refuses is refused too, so the
+// document is absent to it: a check that needs one fails, and an optional one
+// does not apply, each in words of its own.
+const refusedDocument = (
+  id: number,
+  status: number,
+  outcome: "fail" | "not_applicable",
+  userImpactCode: string,
+): CheckResult =>
+  result({
+    id,
+    status: outcome,
+    earnedWeight: 0,
+    summaryCode: "document_refused",
+    evidence: { status },
+    userImpactCode,
+    fixCode: outcome === "fail" ? "allow_document" : undefined,
+  });
+
+// A document cut at the read limit is larger than the limit, a size that is known.
+const tooLarge = (
+  id: number,
+  outcome: "fail" | "partial",
+  readLimit: string,
+  userImpactCode: string,
+  earnedWeight = 0,
+): CheckResult =>
+  result({
+    id,
+    status: outcome,
+    earnedWeight,
+    summaryCode: "document_too_large",
+    evidence: { truncated: true, read_limit: readLimit },
+    userImpactCode,
+    fixCode: "shrink_document",
+  });
 
 // A scan evaluates its checks several times as its requests complete, all
 // over one robots.txt artifact, which the site may have filled to the fetch
@@ -124,7 +187,7 @@ type PageReading = {
   sitemap?: ReturnType<typeof parseSitemap>;
 };
 const pageReadings = new WeakMap<FetchArtifact, PageReading>();
-const readingOf = (artifact: FetchArtifact): PageReading => {
+const pageReadingOf = (artifact: FetchArtifact): PageReading => {
   let reading = pageReadings.get(artifact);
   if (!reading) {
     reading = {};
@@ -133,32 +196,28 @@ const readingOf = (artifact: FetchArtifact): PageReading => {
   return reading;
 };
 const textOf = (artifact: FetchArtifact): string =>
-  (readingOf(artifact).text ??= visibleText(artifact.body));
+  (pageReadingOf(artifact).text ??= visibleText(artifact.body));
 const signalsOf = (artifact: FetchArtifact) =>
-  (readingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
+  (pageReadingOf(artifact).signals ??= htmlSignals(artifact.body, textOf(artifact)));
 const jsonLdOf = (artifact: FetchArtifact): JsonLdResult =>
-  (readingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
+  (pageReadingOf(artifact).jsonLd ??= parseJsonLd(artifact.body));
 const sitemapOf = (artifact: FetchArtifact) =>
-  (readingOf(artifact).sitemap ??= parseSitemap(artifact.body));
+  (pageReadingOf(artifact).sitemap ??= parseSitemap(artifact.body));
 const NO_SIGNALS = htmlSignals("");
 
 const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
   const { parsed } = readRobots(fetch);
   const common = { durationMs: fetch.durationMs };
+  const reading = readingOf(fetch, "robots_http_error");
+  const read = reading.state === "whole" || reading.state === "cut" ? reading : undefined;
   let robots: CheckResult;
-  if (fetch.errorCode || fetch.status === 0 || fetch.status >= 500) {
-    robots = result({
-      id: 1,
-      status: "unavailable",
-      earnedWeight: 0,
+  if (reading.state === "unread") {
+    robots = unjudged(1, reading, {
       summaryCode: "robots_unavailable",
-      evidence: {},
       userImpactCode: "robots_not_assessed",
-      errorCode: fetch.errorCode ?? "robots_http_error",
-      ...common,
     });
-  } else if (fetch.status === 404 || fetch.status === 410) {
+  } else if (reading.state === "absent" || (read && isWebPage(read.artifact.body))) {
     robots = result({
       id: 1,
       status: "fail",
@@ -169,7 +228,20 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       fixCode: "publish_robots",
       ...common,
     });
-  } else if (fetch.status !== 200 || parsed.fatal) {
+  } else if (fetch.status !== 200) {
+    // Without robots.txt's rules the scanner reads no other address of the
+    // site, and crawlers may take the site as having no rules at all.
+    robots = result({
+      id: 1,
+      status: "fail",
+      earnedWeight: 0,
+      summaryCode: "robots_refused",
+      evidence: { status: fetch.status },
+      userImpactCode: "robots_missing_impact",
+      fixCode: "serve_robots",
+      ...common,
+    });
+  } else if (parsed.fatal) {
     robots = result({
       id: 1,
       status: "fail",
@@ -181,22 +253,31 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       ...common,
     });
   } else {
-    const partial =
-      parsed.malformedDirectives > 0 || /text\/html/i.test(fetch.headers["content-type"] ?? "");
+    const contentType = fetch.headers["content-type"] ?? "";
+    const [summaryCode, fixCode] =
+      reading.state === "cut"
+        ? ["robots_too_large", "shorten_robots"]
+        : parsed.malformedDirectives > 0
+          ? ["robots_partially_parseable", "repair_robots"]
+          : mediaType(contentType) === "text/html"
+            ? ["robots_wrong_media_type", "serve_robots_as_text"]
+            : ["robots_parseable", undefined];
     robots = result({
       id: 1,
-      status: partial ? "partial" : "pass",
-      earnedWeight: partial ? 2 : 5,
-      summaryCode: partial ? "robots_partially_parseable" : "robots_parseable",
+      status: fixCode ? "partial" : "pass",
+      earnedWeight: fixCode ? 2 : 5,
+      summaryCode,
       evidence: {
         status: fetch.status,
         size: fetch.decodedBytes,
         sitemap_count: parsed.sitemaps.length,
         group_count: parsed.groups.length,
         malformed_directives: parsed.malformedDirectives,
+        ...(summaryCode === "robots_wrong_media_type" ? { content_type: contentType } : {}),
+        ...(reading.state === "cut" ? { truncated: true, read_limit: reading.readLimit } : {}),
       },
       userImpactCode: "robots_policy_discoverability",
-      fixCode: partial ? "repair_robots" : undefined,
+      fixCode,
       ...common,
     });
   }
@@ -213,7 +294,7 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       userImpactCode: "ai_policy_not_assessed",
       errorCode: robots.errorCode,
     });
-  else if (robots.status === "fail" && fetch.status !== 200)
+  else if (robots.summaryCode === "robots_missing" || robots.summaryCode === "robots_refused")
     ai = result({
       id: 2,
       status: "fail",
@@ -236,7 +317,8 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       evidence: {
         provider_count: providerCount,
         providers: Object.keys(policies),
-        policy_tokens: Object.values(policies).flat(),
+        providers_missing: AI_PROVIDERS.filter((provider) => !(provider in policies)),
+        policy_agents: Object.values(policies).flat(),
       },
       userImpactCode: "ai_policy_ambiguity",
       fixCode: providerCount === 4 ? undefined : "declare_ai_policy",
@@ -286,65 +368,206 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   return [robots, ai, contentSignal];
 };
 
+// What one sitemap request came to. A cut answer whose part read already
+// holds entries is judged by them; one that does not, a compressed file and
+// one that declares a document type are as unknown as an answer that never
+// came.
+type SitemapOutcome = Readonly<
+  { artifact: FetchArtifact } & (
+    | { kind: "sitemap"; parsed: SitemapResult; readLimit?: string }
+    | { kind: "unread"; reading: Unread }
+    | { kind: "cut"; readLimit: string }
+    | { kind: "compressed" | "doctype" | "empty" | "not_sitemap" }
+    | { kind: "missing" | "refused"; status: number }
+  )
+>;
+
+// The fetch unpacks a sitemap served as a gzip file, so a body that still
+// opens with gzip's magic bytes, as a file compressed twice does, was not
+// unpacked. A body is kept as text, in which the second byte, 0x8b, arrives as
+// the replacement character.
+const isGzip = (artifact: FetchArtifact): boolean =>
+  artifact.body.charCodeAt(0) === 0x1f && [0x8b, 0xfffd].includes(artifact.body.charCodeAt(1));
+
+const sitemapOutcome = (artifact: FetchArtifact): SitemapOutcome => {
+  const reading = readingOf(artifact, "sitemap_unavailable");
+  if (reading.state === "absent" || reading.state === "refused")
+    return {
+      artifact,
+      kind: reading.state === "absent" ? "missing" : "refused",
+      status: reading.status,
+    };
+  if (reading.state === "unread") return { artifact, kind: "unread", reading };
+  if (isGzip(artifact)) return { artifact, kind: "compressed" };
+  if (isWebPage(artifact.body)) return { artifact, kind: "not_sitemap" };
+  const parsed = sitemapOf(artifact);
+  // The scanner does not read XML that declares a document type, whose
+  // entities could expand without bound.
+  if (parsed.errorCode === "xml_entity_blocked") return { artifact, kind: "doctype" };
+  if (parsed.valid)
+    return {
+      artifact,
+      kind: "sitemap",
+      parsed,
+      ...(reading.state === "cut" ? { readLimit: reading.readLimit } : {}),
+    };
+  if (reading.state === "cut") return { artifact, kind: "cut", readLimit: reading.readLimit };
+  return { artifact, kind: parsed.errorCode === "sitemap_empty" ? "empty" : "not_sitemap" };
+};
+
+const UNKNOWN_SITEMAP = new Set(["unread", "cut", "compressed", "doctype"]);
+const BROKEN_SITEMAP = new Set(["missing", "refused", "empty", "not_sitemap"]);
+
+const SITEMAP_FIXES: Readonly<Record<string, string>> = {
+  sitemap_entries_missing: "fix_listed_sitemaps",
+  sitemap_no_lastmod: "add_sitemap_lastmod",
+  sitemap_stale: "refresh_sitemap_lastmod",
+};
+
 const sitemapCheck = (artifacts: ScanArtifacts): CheckResult => {
-  const available = artifacts.sitemap.filter(
-    (artifact) => !inaccessible(artifact) && !missing(artifact),
-  );
-  if (!available.length) {
-    // Absent only when every sitemap asked for answered that it is not there.
-    if (artifacts.sitemap.length && artifacts.sitemap.every((artifact) => missing(artifact)))
-      return result({
-        id: 4,
-        status: "fail",
-        earnedWeight: 0,
-        summaryCode: "sitemap_missing",
-        userImpactCode: "sitemap_discovery_gap",
-        fixCode: "publish_sitemap",
-      });
-    return result({
+  const durationMs = artifacts.sitemap.reduce((sum, artifact) => sum + artifact.durationMs, 0);
+  const outcomes = artifacts.sitemap.map(sitemapOutcome);
+  const sitemaps = outcomes.flatMap((outcome) => (outcome.kind === "sitemap" ? [outcome] : []));
+  const unavailable = (summaryCode: string, evidence: CheckResult["evidence"] = {}) =>
+    result({
       id: 4,
       status: "unavailable",
       earnedWeight: 0,
-      summaryCode: "sitemap_unavailable",
+      summaryCode,
+      evidence,
       userImpactCode: "sitemap_not_assessed",
-      errorCode: unreadReason(artifacts.sitemap, "sitemap_unavailable"),
+      errorCode: summaryCode,
+      durationMs,
     });
+  if (!sitemaps.length) {
+    // That no usable sitemap exists is said only once every sitemap asked
+    // for has been read.
+    const unread = outcomes.length
+      ? firstUnread(
+          outcomes.flatMap((outcome) => (outcome.kind === "unread" ? [outcome.reading] : [])),
+        )
+      : ({ state: "unread", errorCode: "sitemap_unavailable" } as const);
+    if (unread)
+      return unjudged(4, unread, {
+        summaryCode: "sitemap_unavailable",
+        userImpactCode: "sitemap_not_assessed",
+      });
+    for (const outcome of outcomes)
+      if (outcome.kind === "cut")
+        return unavailable("document_truncated", {
+          truncated: true,
+          read_limit: outcome.readLimit,
+        });
+    if (outcomes.some(({ kind }) => kind === "compressed"))
+      return unavailable("sitemap_compressed");
+    if (outcomes.some(({ kind }) => kind === "doctype")) return unavailable("sitemap_doctype");
+    const fail = (summaryCode: string, fixCode: string) =>
+      result({
+        id: 4,
+        status: "fail",
+        earnedWeight: 0,
+        summaryCode,
+        userImpactCode: "sitemap_discovery_gap",
+        fixCode,
+        durationMs,
+      });
+    if (outcomes.some(({ kind }) => kind === "empty"))
+      return fail("sitemap_empty", "add_sitemap_entries");
+    if (outcomes.some(({ kind }) => kind === "not_sitemap"))
+      return fail("sitemap_not_sitemap", "serve_sitemap");
+    for (const outcome of outcomes)
+      if (outcome.kind === "refused")
+        return refusedDocument(4, outcome.status, "fail", "sitemap_discovery_gap");
+    return fail("sitemap_missing", "publish_sitemap");
   }
-  const parsed = available.map(sitemapOf);
-  const valid = parsed.filter((entry) => entry.valid);
-  if (!valid.length)
-    return result({
-      id: 4,
-      status: "fail",
-      earnedWeight: 0,
-      summaryCode: "sitemap_invalid",
-      evidence: { files_checked: available.length },
-      userImpactCode: "sitemap_discovery_gap",
-      fixCode: "repair_sitemap",
-    });
-  const lastmods = valid.flatMap((entry) => entry.lastmods);
+  // A sitemap is named by where it was listed, since its address cannot be
+  // shown in the evidence.
+  const indexes = sitemaps.filter(({ parsed }) => parsed.isIndex).map(({ parsed }) => parsed.urls);
+  const declared = readRobots(artifacts.robots).parsed.sitemaps;
+  const named = (outcome: SitemapOutcome): string => {
+    const listed = indexes.map((urls) => urls.indexOf(outcome.artifact.url)).find((at) => at >= 0);
+    const place =
+      listed !== undefined
+        ? `entry ${listed + 1} of the sitemap index`
+        : declared.includes(outcome.artifact.url)
+          ? `declared sitemap ${declared.indexOf(outcome.artifact.url) + 1}`
+          : "the sitemap address";
+    const reason =
+      outcome.kind === "missing" || outcome.kind === "refused"
+        ? `HTTP ${outcome.status}`
+        : outcome.kind === "unread"
+          ? outcome.reading.status
+            ? `HTTP ${outcome.reading.status}`
+            : outcome.reading.errorCode
+          : outcome.kind === "cut"
+            ? `larger than ${outcome.readLimit}`
+            : outcome.kind === "compressed"
+              ? "still compressed with gzip"
+              : outcome.kind === "doctype"
+                ? "declares a document type"
+                : outcome.kind === "empty"
+                  ? "no entries"
+                  : "not a sitemap";
+    return `${place}: ${reason}`;
+  };
+  const missing = outcomes.filter(({ kind }) => BROKEN_SITEMAP.has(kind)).map(named);
+  // An index's sitemap on another host that the scan did not fetch while it
+  // had room to is on another site, which the scan does not read.
+  const fetched = new Set(artifacts.sitemap.map(({ url }) => url));
+  const targetHost = new URL(artifacts.canonicalTargetUrl).hostname;
+  const offSite =
+    artifacts.sitemap.length < SITEMAP_FILE_LIMIT
+      ? indexes.flatMap((urls) =>
+          urls.flatMap((url, at) =>
+            !fetched.has(url) && URL.canParse(url) && new URL(url).hostname !== targetHost
+              ? [`entry ${at + 1} of the sitemap index: listed on another site, not read`]
+              : [],
+          ),
+        )
+      : [];
+  const unread = [
+    ...outcomes.filter(({ kind }) => UNKNOWN_SITEMAP.has(kind)).map(named),
+    ...offSite,
+  ];
+  // Dates and entries are those of the pages listed; an index's own dates are
+  // its sitemaps'.
+  const pages = sitemaps.filter(({ parsed }) => !parsed.isIndex);
+  const lastmods = pages.flatMap(({ parsed }) => parsed.lastmods);
   const staleCutoff = Date.now() - 180 * 86_400_000;
   const stale = lastmods.filter(
     (value) => !Number.isFinite(Date.parse(value)) || Date.parse(value) < staleCutoff,
   ).length;
-  const childUnavailable =
-    valid.some((entry) => entry.isIndex) && artifacts.sitemap.some(inaccessible);
-  const staleRatio = lastmods.length ? stale / lastmods.length : 1;
-  const partial = childUnavailable || !lastmods.length || staleRatio > 0.8;
+  const cause = missing.length
+    ? "sitemap_entries_missing"
+    : !pages.length
+      ? undefined
+      : !lastmods.length
+        ? "sitemap_no_lastmod"
+        : stale * 5 > lastmods.length * 4
+          ? "sitemap_stale"
+          : undefined;
+  const readLimit = sitemaps.find((sitemap) => sitemap.readLimit)?.readLimit;
+  const evidence = {
+    files_checked: artifacts.sitemap.length,
+    entries_read: pages.flatMap(({ parsed }) => parsed.urls).length,
+    lastmod_count: lastmods.length,
+    stale_lastmod_count: stale,
+    ...(missing.length ? { sitemaps_missing: missing } : {}),
+    ...(unread.length ? { sitemaps_unread: unread } : {}),
+    ...(readLimit ? { truncated: true, read_limit: readLimit } : {}),
+  };
+  // A defect proven by what was read stands; a pass needs every sitemap read.
+  if (!cause && (unread.length || !pages.length))
+    return unavailable("sitemap_partly_unread", evidence);
   return result({
     id: 4,
-    status: partial ? "partial" : "pass",
-    earnedWeight: partial ? (childUnavailable ? 2 : 4) : 6,
-    summaryCode: partial ? "sitemap_partial" : "sitemap_valid",
-    evidence: {
-      files_checked: artifacts.sitemap.length,
-      url_count: valid.flatMap((entry) => entry.urls).length,
-      lastmod_count: lastmods.length,
-      stale_ratio_percent: Math.round(staleRatio * 100),
-    },
+    status: cause ? "partial" : "pass",
+    earnedWeight: cause === "sitemap_entries_missing" ? 2 : cause ? 4 : 6,
+    summaryCode: cause ?? "sitemap_valid",
+    evidence,
     userImpactCode: "sitemap_discovery",
-    fixCode: partial ? "improve_sitemap" : undefined,
-    durationMs: artifacts.sitemap.reduce((sum, artifact) => sum + artifact.durationMs, 0),
+    fixCode: cause ? SITEMAP_FIXES[cause] : undefined,
+    durationMs,
   });
 };
 
@@ -358,18 +581,40 @@ const fieldPresent = (node: Record<string, unknown>, path: string): boolean => {
   return current !== undefined && current !== null && current !== "";
 };
 
+const OWNER_TYPES = [
+  "Product",
+  "LocalBusiness",
+  "Restaurant",
+  "Hotel",
+  "Store",
+  "Article",
+  "NewsArticle",
+  "BlogPosting",
+  "Organization",
+  "WebSite",
+];
+
 const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => {
   const nodeTypes = nodes.map((node) => ({ node, types: jsonLdTypes(node) }));
   const choose = (...types: string[]) =>
     nodeTypes.find((entry) => entry.types.some((type) => types.includes(type)));
   if (segment === "store")
     return {
+      expected: ["Product"],
       selected: choose("Product"),
       required: ["name", "image", "url", "offers.price", "offers.priceCurrency"],
       recommended: ["offers.availability"],
     };
   if (segment === "local")
     return {
+      expected: [
+        "LocalBusiness",
+        "a type whose name ends in Business",
+        "Restaurant",
+        "Hotel",
+        "Dentist",
+        "Store",
+      ],
       selected: nodeTypes.find((entry) =>
         entry.types.some(
           (type) =>
@@ -384,6 +629,7 @@ const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => 
   const product = choose("Product");
   if (product)
     return {
+      expected: OWNER_TYPES,
       selected: product,
       required: ["name", "image", "url", "offers.price", "offers.priceCurrency"],
       recommended: ["offers.availability"],
@@ -391,6 +637,7 @@ const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => 
   const local = choose("LocalBusiness", "Restaurant", "Hotel", "Store");
   if (local)
     return {
+      expected: OWNER_TYPES,
       selected: local,
       required: ["name", "address"],
       recommended: ["telephone", "openingHoursSpecification", "geo", "priceRange"],
@@ -398,11 +645,13 @@ const verticalProfile = (segment: Segment, nodes: Record<string, unknown>[]) => 
   const article = choose("Article", "NewsArticle", "BlogPosting");
   if (article)
     return {
+      expected: OWNER_TYPES,
       selected: article,
       required: ["headline", "image", "datePublished"],
       recommended: ["author", "dateModified"],
     };
   return {
+    expected: OWNER_TYPES,
     selected: choose("Organization", "WebSite"),
     required: ["name", "url"],
     recommended: ["contactPoint", "sameAs", "logo"],
@@ -441,24 +690,27 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     invalidCount: parsedPages.reduce((sum, page) => sum + page.invalidCount, 0),
   };
   const presence = parsed.nodes.length ? (parsed.invalidCount ? "partial" : "pass") : "fail";
+  const [presenceCode, presenceFix] =
+    presence === "pass"
+      ? ["jsonld_present", undefined]
+      : presence === "partial"
+        ? ["jsonld_partially_parseable", "repair_jsonld"]
+        : parsed.scriptCount
+          ? ["jsonld_unparseable", "repair_jsonld"]
+          : ["jsonld_absent", "publish_valid_jsonld"];
   const check5 = result({
     id: 5,
     status: presence,
     earnedWeight: presence === "pass" ? 10 : presence === "partial" ? 4 : 0,
-    summaryCode:
-      presence === "pass"
-        ? "jsonld_present"
-        : presence === "partial"
-          ? "jsonld_partially_parseable"
-          : "jsonld_absent_or_invalid",
+    summaryCode: presenceCode,
     evidence: {
-      script_count: parsed.scriptCount,
+      jsonld_blocks: parsed.scriptCount,
       node_count: parsed.nodes.length,
-      invalid_script_count: parsed.invalidCount,
+      unparseable_blocks: parsed.invalidCount,
       pages_checked: pages.length,
     },
     userImpactCode: "structured_data_machine_readability",
-    fixCode: presence === "pass" ? undefined : "publish_valid_jsonld",
+    fixCode: presenceFix,
     durationMs: pages.reduce((sum, page) => sum + page.durationMs, 0),
   });
   if (!parsed.nodes.length)
@@ -485,6 +737,7 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
         summaryCode: "vertical_jsonld_wrong_type",
         evidence: {
           types: [...new Set(parsed.nodes.flatMap(jsonLdTypes))].slice(0, 20),
+          expected_types: profile.expected,
         },
         userImpactCode: "vertical_data_gap",
         fixCode: "publish_vertical_jsonld",
@@ -496,32 +749,45 @@ const jsonLdChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   );
   const requiredRatio = requiredFound.length / profile.required.length;
   const recommendedRatio = recommendedFound.length / profile.recommended.length;
-  const complete = requiredRatio === 1 && recommendedRatio >= 0.5;
-  const points = complete
-    ? 12
-    : Math.max(3, Math.min(9, Math.round(12 * (requiredRatio * 0.7 + recommendedRatio * 0.3))));
+  // A pass needs every required field and at least half the recommended ones.
+  const recommendedNeeded = Math.ceil(profile.recommended.length / 2);
+  const [summaryCode, fixCode] =
+    requiredRatio < 1
+      ? ["vertical_jsonld_required_missing", "complete_vertical_jsonld"]
+      : recommendedFound.length < recommendedNeeded
+        ? ["vertical_jsonld_recommended_missing", "add_recommended_jsonld"]
+        : ["vertical_jsonld_complete", undefined];
+  const points = fixCode
+    ? Math.max(3, Math.min(9, Math.round(12 * (requiredRatio * 0.7 + recommendedRatio * 0.3))))
+    : 12;
   return [
     check5,
     result({
       id: 6,
-      status: complete ? "pass" : "partial",
+      status: fixCode ? "partial" : "pass",
       earnedWeight: points,
-      summaryCode: complete ? "vertical_jsonld_complete" : "vertical_jsonld_incomplete",
+      summaryCode,
       evidence: {
         type: jsonLdTypes(selected.node)[0] ?? "unknown",
         required_found: requiredFound,
         required_missing: profile.required.filter((field) => !requiredFound.includes(field)),
         recommended_found: recommendedFound,
+        recommended_missing: profile.recommended.filter(
+          (field) => !recommendedFound.includes(field),
+        ),
+        recommended_needed_for_pass: recommendedNeeded,
       },
       userImpactCode: "vertical_data_machine_readability",
-      fixCode: complete ? undefined : "complete_vertical_jsonld",
+      fixCode,
     }),
   ];
 };
 
 const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
   const markdown = artifacts.markdown;
-  if (!markdown || inaccessible(markdown))
+  // A refusal is an answer every agent asking for Markdown meets; what leaves
+  // a document unread says nothing.
+  if (!markdown || readingOf(markdown, "markdown_unavailable").state === "unread")
     return result({
       id: 7,
       status: "unavailable",
@@ -529,22 +795,23 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
       summaryCode: "markdown_unavailable",
       userImpactCode: "markdown_not_assessed",
       errorCode: markdown?.errorCode ?? "markdown_unavailable",
+      evidence: markdown?.status ? { status: markdown.status } : {},
     });
   const type = markdown.headers["content-type"] ?? "";
-  const vary = markdown.headers.vary ?? "";
+  const vary = varyNames(markdown.headers.vary);
   const representationDiffers = artifacts.base
     ? markdown.body.trim() !== artifacts.base.body.trim()
     : false;
   const semanticParity = artifacts.base
     ? comparableTexts(textOf(markdown), textOf(artifacts.base))
     : false;
-  const correctType = /text\/markdown/i.test(type);
+  const correctType = mediaType(type) === "text/markdown";
   const nonEmpty = textOf(markdown).length > 20;
   if (
     markdown.status >= 200 &&
     markdown.status < 300 &&
     correctType &&
-    /(?:^|,)\s*accept\s*(?:,|$)/i.test(vary) &&
+    vary.includes("accept") &&
     representationDiffers &&
     semanticParity &&
     nonEmpty
@@ -570,11 +837,11 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     return result({
       id: 7,
       status: "partial",
-      earnedWeight: /\*/.test(vary) || !nonEmpty ? 2 : 6,
+      earnedWeight: vary.includes("*") || !nonEmpty ? 2 : 6,
       summaryCode: "markdown_negotiation_partial",
       evidence: {
         content_type: type,
-        vary_accept: /accept/i.test(vary),
+        vary_accept: vary.includes("accept"),
         differentiated: representationDiffers,
         semantic_parity: semanticParity,
         non_empty: nonEmpty,
@@ -587,7 +854,7 @@ const markdownCheck = (artifacts: ScanArtifacts): CheckResult => {
     status: "fail",
     earnedWeight: 0,
     summaryCode: "markdown_negotiation_absent",
-    evidence: { content_type: type },
+    evidence: { content_type: type, status: markdown.status },
     userImpactCode: "markdown_absent",
     fixCode: "add_markdown_negotiation",
   });
@@ -611,7 +878,11 @@ const linksAbsolutely = (text: string): boolean => {
 };
 
 const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
-  if (!artifact || missing(artifact))
+  const reading = readingOf(artifact, "llms_unavailable");
+  if (
+    reading.state === "absent" ||
+    ((reading.state === "whole" || reading.state === "cut") && isWebPage(reading.artifact.body))
+  )
     return result({
       id: 8,
       status: "not_applicable",
@@ -620,66 +891,126 @@ const llmsCheck = (artifact?: FetchArtifact): CheckResult => {
       userImpactCode: "llms_optional",
       applicable: false,
     });
-  if (inaccessible(artifact))
-    return result({
-      id: 8,
-      status: "unavailable",
-      earnedWeight: 0,
+  if (reading.state === "refused")
+    return refusedDocument(8, reading.status, "not_applicable", "llms_optional");
+  if (reading.state === "unread")
+    return unjudged(8, reading, {
       summaryCode: "llms_unavailable",
       userImpactCode: "llms_not_assessed",
-      errorCode: artifact.errorCode ?? "llms_unavailable",
     });
-  const h1 = /^#\s+\S+/m.test(artifact.body);
-  const links = linksAbsolutely(artifact.body);
+  const h1 = /^#\s+\S+/m.test(reading.artifact.body);
+  const links = linksAbsolutely(reading.artifact.body);
+  // The part read proves a heading and a link it holds, and a file without
+  // them before the read limit is too large for what llms.txt is for.
+  if (reading.state === "cut" && !(h1 && links))
+    return tooLarge(8, "partial", reading.readLimit, "llms_informational", 1);
   return result({
     id: 8,
     status: h1 && links ? "pass" : "partial",
     earnedWeight: h1 && links ? 2 : 1,
     summaryCode: h1 && links ? "llms_valid" : "llms_malformed",
-    evidence: { has_h1: h1, has_links: links },
+    evidence: {
+      has_h1: h1,
+      has_links: links,
+      ...(reading.state === "cut" ? { truncated: true, read_limit: reading.readLimit } : {}),
+    },
     userImpactCode: "llms_informational",
     fixCode: h1 && links ? undefined : "repair_llms",
   });
 };
 
-const validDiscovery = (
-  artifact: FetchArtifact | undefined,
-): Record<string, unknown> | undefined => {
-  if (!artifact || artifact.status < 200 || artifact.status >= 300) return undefined;
-  const parsed = parseSafeJson(artifact.body);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : undefined;
+const documentsOf = (artifacts: readonly FetchArtifact[], unreadCode: string) => {
+  const readings = artifacts.map((artifact) => jsonDocumentOf(artifact, unreadCode));
+  return {
+    readings,
+    documents: readings.flatMap((reading) => (reading.state === "document" ? [reading.value] : [])),
+    unread: readings.length
+      ? firstUnread(readings)
+      : ({ state: "unread", errorCode: unreadCode } as const),
+  };
 };
 
+// Why no location holds a usable document, once every one has answered: the
+// cause the owner can act on most directly first.
+const noDocument = (
+  id: number,
+  readings: readonly DocumentReading[],
+  unparseableCode: string,
+  userImpactCode: string,
+  absent: () => CheckResult,
+): CheckResult => {
+  if (readings.some((reading) => reading.state === "malformed"))
+    return unparseable(id, "fail", unparseableCode, userImpactCode);
+  for (const reading of readings)
+    if (reading.state === "too_large")
+      return tooLarge(id, "fail", reading.readLimit, userImpactCode);
+  for (const reading of readings)
+    if (reading.state === "refused")
+      return refusedDocument(id, reading.status, "fail", userImpactCode);
+  return absent();
+};
+
+const unparseable = (
+  id: number,
+  status: "fail" | "partial",
+  summaryCode: string,
+  userImpactCode: string,
+): CheckResult =>
+  result({
+    id,
+    status,
+    earnedWeight: 0,
+    summaryCode,
+    userImpactCode,
+    fixCode: "repair_document_json",
+  });
+
 const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
-  const documents = artifacts.mcp
-    .map(validDiscovery)
-    .filter((value): value is Record<string, unknown> => Boolean(value));
-  if (!documents.length) {
-    if (artifacts.mcp.some((artifact) => inaccessible(artifact)))
-      return result({
-        id: 9,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "mcp_unavailable",
-        userImpactCode: "mcp_not_assessed",
-        errorCode: unreadReason(artifacts.mcp, "mcp_unavailable"),
-      });
+  const { readings, documents, unread } = documentsOf(artifacts.mcp, "mcp_unavailable");
+  // The fields of the most nearly complete card found.
+  const fieldsMissing = documents
+    .map((document) => [
+      ...((document.name ?? document.server ?? document.id) ? [] : ["name"]),
+      ...((document.endpoint ?? document.url ?? document.transport) ? [] : ["endpoint"]),
+    ])
+    .reduce<string[] | undefined>(
+      (fewest, missing) => (fewest && fewest.length <= missing.length ? fewest : missing),
+      undefined,
+    );
+  const valid = fieldsMissing?.length === 0;
+  // A complete card at one location is enough; that no complete card exists
+  // is said only once every location has answered.
+  if (!valid && unread)
+    return unjudged(9, unread, {
+      summaryCode: "mcp_unavailable",
+      userImpactCode: "mcp_not_assessed",
+    });
+  // Discovery comes before sign-in, so a card that asks for one serves none.
+  const behindSignIn = artifacts.mcp.some(
+    (artifact, index) =>
+      readings[index]?.state === "refused" && artifact.status === 401 && asksForSignIn(artifact),
+  );
+  if (!fieldsMissing && behindSignIn)
     return result({
       id: 9,
       status: "fail",
       earnedWeight: 0,
-      summaryCode: "mcp_absent",
+      summaryCode: "mcp_card_behind_sign_in",
+      evidence: { status: 401 },
       userImpactCode: "mcp_callable_gap",
-      fixCode: "publish_mcp_card",
+      fixCode: "serve_mcp_card_publicly",
     });
-  }
-  const valid = documents.some(
-    (document) =>
-      Boolean(document.endpoint ?? document.url ?? document.transport) &&
-      Boolean(document.name ?? document.server ?? document.id),
-  );
+  if (!fieldsMissing)
+    return noDocument(9, readings, "mcp_card_unparseable", "mcp_callable_gap", () =>
+      result({
+        id: 9,
+        status: "fail",
+        earnedWeight: 0,
+        summaryCode: "mcp_absent",
+        userImpactCode: "mcp_callable_gap",
+        fixCode: "publish_mcp_card",
+      }),
+    );
   return result({
     id: 9,
     status: valid ? "pass" : "partial",
@@ -687,12 +1018,7 @@ const mcpCheck = (artifacts: ScanArtifacts): CheckResult => {
     summaryCode: valid ? "mcp_card_valid" : "mcp_card_incomplete",
     evidence: {
       documents_found: documents.length,
-      identity_present: documents.some((document) =>
-        Boolean(document.name ?? document.server ?? document.id),
-      ),
-      endpoint_present: documents.some((document) =>
-        Boolean(document.endpoint ?? document.url ?? document.transport),
-      ),
+      ...(valid ? {} : { fields_missing: fieldsMissing }),
     },
     userImpactCode: "mcp_callable_readiness",
     fixCode: valid ? undefined : "complete_mcp_card",
@@ -709,26 +1035,24 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "ucp_store_only",
       applicable: false,
     });
-  const document = validDiscovery(artifacts.ucp);
-  if (!document) {
-    if (artifacts.ucp && inaccessible(artifacts.ucp))
-      return result({
-        id: 10,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "ucp_unavailable",
-        userImpactCode: "ucp_not_assessed",
-        errorCode: artifacts.ucp.errorCode ?? "ucp_unavailable",
-      });
-    return result({
-      id: 10,
-      status: "fail",
-      earnedWeight: 0,
-      summaryCode: "ucp_absent",
-      userImpactCode: "ucp_commerce_gap",
-      fixCode: "publish_ucp_profile",
+  const reading = jsonDocumentOf(artifacts.ucp, "ucp_unavailable");
+  if (reading.state === "unread")
+    return unjudged(10, reading, {
+      summaryCode: "ucp_unavailable",
+      userImpactCode: "ucp_not_assessed",
     });
-  }
+  if (reading.state !== "document")
+    return noDocument(10, [reading], "ucp_profile_unparseable", "ucp_commerce_gap", () =>
+      result({
+        id: 10,
+        status: "fail",
+        earnedWeight: 0,
+        summaryCode: "ucp_absent",
+        userImpactCode: "ucp_commerce_gap",
+        fixCode: "publish_ucp_profile",
+      }),
+    );
+  const document = reading.value;
   const fields = ["version", "services", "capabilities"].filter((field) =>
     fieldPresent(document, field),
   );
@@ -737,6 +1061,10 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
     fieldPresent(document, "transport") ||
     fieldPresent(document, "services.shopping.endpoint");
   const complete = fields.length === 3 && endpoint;
+  const fieldsMissing = [
+    ...["version", "services", "capabilities"].filter((field) => !fields.includes(field)),
+    ...(endpoint ? [] : ["endpoint"]),
+  ];
   return result({
     id: 10,
     status: complete ? "pass" : "partial",
@@ -744,7 +1072,7 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
     summaryCode: complete ? "ucp_valid" : "ucp_incomplete",
     evidence: {
       fields_present: fields,
-      endpoint_present: endpoint,
+      ...(complete ? {} : { fields_missing: fieldsMissing }),
       signing_keys_present: fieldPresent(document, "signing_keys"),
     },
     userImpactCode: "ucp_commerce_readiness",
@@ -752,21 +1080,44 @@ const ucpCheck = (artifacts: ScanArtifacts): CheckResult => {
   });
 };
 
-/** Whether a discovery document or an HTTP challenge declares authorization. */
-export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean => {
-  const documents = [...artifacts.mcp, ...(artifacts.ucp ? [artifacts.ucp] : [])]
-    .map(validDiscovery)
-    .filter(Boolean);
-  return (
-    documents.some((document) => /oauth|bearer|authorization/i.test(JSON.stringify(document))) ||
-    [artifacts.base, ...artifacts.mcp].some((artifact) =>
-      /bearer|oauth/i.test(artifact?.headers["www-authenticate"] ?? ""),
-    )
+const DECLARES_AUTH = /oauth|bearer|authorization/i;
+
+/** Whether an answer challenges for a Bearer or OAuth sign-in. */
+const asksForSignIn = (artifact?: FetchArtifact): boolean =>
+  authSchemes(artifact?.headers["www-authenticate"]).some(
+    (scheme) => scheme === "bearer" || scheme === "oauth",
   );
-};
+const authCards = (artifacts: Pick<ScanArtifacts, "mcp" | "ucp">): FetchArtifact[] => [
+  ...artifacts.mcp,
+  ...(artifacts.ucp ? [artifacts.ucp] : []),
+];
+
+/** Whether a discovery document or an HTTP challenge declares authorization. */
+export const declaresAuth = (artifacts: Pick<ScanArtifacts, "base" | "mcp" | "ucp">): boolean =>
+  documentsOf(authCards(artifacts), "card_unavailable").documents.some((document) =>
+    DECLARES_AUTH.test(JSON.stringify(document)),
+  ) || [artifacts.base, ...artifacts.mcp].some(asksForSignIn);
+
+const OAUTH_DOCUMENTS = ["authorization server metadata", "protected resource metadata"];
+const oauthDocumentName = (artifact: FetchArtifact): string =>
+  OAUTH_DOCUMENTS[artifact.url.includes("oauth-protected-resource") ? 1 : 0] ?? "";
 
 const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
-  if (!declaresAuth(artifacts))
+  if (!declaresAuth(artifacts)) {
+    // A card the scanner could not read whole may declare a sign-in it cannot
+    // see. The card's own status or read limit is not shown as the metadata's.
+    const unseen = documentsOf(authCards(artifacts), "card_unavailable").readings.find(
+      (reading) => reading.state === "unread" || reading.state === "too_large",
+    );
+    if (unseen)
+      return result({
+        id: 11,
+        status: "unavailable",
+        earnedWeight: 0,
+        summaryCode: "oauth_declaration_unknown",
+        userImpactCode: "oauth_not_assessed",
+        errorCode: unseen.state === "unread" ? unseen.errorCode : "document_too_large",
+      });
     return result({
       id: 11,
       status: "not_applicable",
@@ -775,10 +1126,9 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "oauth_conditional",
       applicable: false,
     });
-  const documents = artifacts.oauth
-    .map(validDiscovery)
-    .filter((value): value is Record<string, unknown> => Boolean(value));
-  if (artifacts.oauth.length < 2 || artifacts.oauth.some((artifact) => inaccessible(artifact)))
+  }
+  const { readings, documents, unread } = documentsOf(artifacts.oauth, "oauth_fetch_incomplete");
+  if (artifacts.oauth.length < 2)
     return result({
       id: 11,
       status: "unavailable",
@@ -786,35 +1136,78 @@ const oauthCheck = (artifacts: ScanArtifacts): CheckResult => {
       summaryCode: "oauth_unavailable",
       evidence: { documents_found: documents.length },
       userImpactCode: "oauth_not_assessed",
-      errorCode: unreadReason(artifacts.oauth, "oauth_fetch_incomplete"),
+      errorCode: "oauth_fetch_incomplete",
     });
-  if (!documents.length) {
-    return result({
-      id: 11,
-      status: "fail",
-      earnedWeight: 0,
-      summaryCode: "oauth_metadata_absent",
-      userImpactCode: "oauth_discovery_gap",
-      fixCode: "publish_oauth_metadata",
+  const named = (reasonOf: (reading: DocumentReading) => string | undefined): string[] =>
+    readings.flatMap((reading, index) => {
+      const reason = reasonOf(reading);
+      const artifact = artifacts.oauth[index];
+      return reason && artifact ? [`${oauthDocumentName(artifact)}: ${reason}`] : [];
     });
-  }
-  const httpsFields = documents
-    .flatMap((document) => [
-      document.issuer,
-      document.resource,
-      document.authorization_endpoint,
-      document.token_endpoint,
-    ])
-    .filter((value): value is string => typeof value === "string");
-  const consistent =
-    httpsFields.length > 0 && httpsFields.every((value) => value.startsWith("https://"));
+  const documentsMissing = named((reading) =>
+    reading.state === "absent"
+      ? "not found"
+      : reading.state === "refused"
+        ? `HTTP ${reading.status}`
+        : reading.state === "malformed"
+          ? "not valid JSON"
+          : reading.state === "too_large"
+            ? `larger than ${reading.readLimit}`
+            : undefined,
+  );
+  const documentsUnread = named((reading) =>
+    reading.state === "unread"
+      ? reading.status
+        ? `HTTP ${reading.status}`
+        : reading.errorCode
+      : undefined,
+  );
+  const httpsFields = documents.flatMap((document) =>
+    ["issuer", "resource", "authorization_endpoint", "token_endpoint"].flatMap((field) =>
+      typeof document[field] === "string" ? [[field, document[field] as string] as const] : [],
+    ),
+  );
+  const notHttps = httpsFields
+    .filter(([, value]) => !value.startsWith("https://"))
+    .map(([field]) => field);
+  // A defect proven by what was read stands. A pass, or a verdict that
+  // nothing is published, needs both documents read.
+  if (unread && !documentsMissing.length && !notHttps.length)
+    return unjudged(
+      11,
+      unread,
+      { summaryCode: "oauth_unavailable", userImpactCode: "oauth_not_assessed" },
+      { documents_found: documents.length },
+    );
+  if (!documents.length && !unread)
+    return noDocument(11, readings, "oauth_metadata_unparseable", "oauth_discovery_gap", () =>
+      result({
+        id: 11,
+        status: "fail",
+        earnedWeight: 0,
+        summaryCode: "oauth_metadata_absent",
+        userImpactCode: "oauth_discovery_gap",
+        fixCode: "publish_oauth_metadata",
+      }),
+    );
+  const consistent = httpsFields.length > 0 && notHttps.length === 0;
   const complete = documents.length >= 2 && consistent;
   return result({
     id: 11,
     status: complete ? "pass" : "partial",
-    earnedWeight: complete ? 4 : documents.length >= 2 ? 3 : 1,
-    summaryCode: complete ? "oauth_metadata_valid" : "oauth_metadata_partial",
-    evidence: { documents_found: documents.length, https_fields: consistent },
+    earnedWeight: complete ? 4 : documents.length >= 2 ? 3 : documents.length ? 1 : 0,
+    summaryCode: complete
+      ? "oauth_metadata_valid"
+      : documents.length
+        ? "oauth_metadata_partial"
+        : "oauth_metadata_missing",
+    evidence: {
+      documents_found: documents.length,
+      ...(documents.length ? { https_fields: consistent } : {}),
+      ...(documentsMissing.length ? { documents_missing: documentsMissing } : {}),
+      ...(documentsUnread.length ? { documents_unread: documentsUnread } : {}),
+      ...(notHttps.length ? { fields_not_https: notHttps } : {}),
+    },
     userImpactCode: "oauth_discovery",
     fixCode: complete ? undefined : "complete_oauth_metadata",
   });
@@ -952,33 +1345,38 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "page_performance_not_assessed",
       errorCode: base?.errorCode ?? "base_unavailable",
     });
+  // A page the read limit cut is larger than the limit: that much is known.
   if (base.truncated || base.durationMs >= 8_000)
     return result({
       id: 14,
       status: "fail",
       earnedWeight: 0,
-      summaryCode: "page_performance_limit_exceeded",
+      summaryCode: base.truncated ? "page_performance_too_large" : "page_performance_too_slow",
       evidence: {
         decoded_bytes: base.decodedBytes,
         ttfb_ms: base.ttfbMs,
         total_ms: base.durationMs,
         truncated: base.truncated,
+        ...(base.truncated ? { read_limit: byteSize(base.decodedBytes) } : {}),
       },
       userImpactCode: "page_performance_agent_cost",
-      fixCode: "reduce_page_weight_latency",
+      fixCode: base.truncated ? "reduce_page_weight" : "reduce_response_time",
     });
   const weight = base.decodedBytes < 2 * 1024 * 1024;
   const timing = base.ttfbMs < 1_500 && base.durationMs < 4_000;
+  const [summaryCode, fixCode] =
+    weight && timing
+      ? ["page_performance_within_budget", undefined]
+      : weight
+        ? ["page_performance_slow", "reduce_response_time"]
+        : timing
+          ? ["page_performance_heavy", "reduce_page_weight"]
+          : ["page_performance_slow_heavy", "reduce_page_weight_latency"];
   return result({
     id: 14,
     status: weight && timing ? "pass" : weight || timing ? "partial" : "fail",
     earnedWeight: weight && timing ? 4 : weight || timing ? 2 : 0,
-    summaryCode:
-      weight && timing
-        ? "page_performance_within_budget"
-        : weight || timing
-          ? "page_performance_partial"
-          : "page_performance_slow_heavy",
+    summaryCode,
     evidence: {
       decoded_bytes: base.decodedBytes,
       ttfb_ms: base.ttfbMs,
@@ -986,7 +1384,7 @@ const performanceCheck = (artifacts: ScanArtifacts): CheckResult => {
       single_region_measurement: true,
     },
     userImpactCode: "page_performance_agent_cost",
-    fixCode: weight && timing ? undefined : "reduce_page_weight_latency",
+    fixCode,
   });
 };
 
@@ -1111,26 +1509,19 @@ const fingerprintCheck = (): CheckResult =>
   });
 
 const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
-  const document = validDiscovery(artifacts.a2a);
-  if (!document) {
-    if (artifacts.a2a && inaccessible(artifacts.a2a))
-      return result({
-        id: 17,
-        status: "unavailable",
-        earnedWeight: 0,
-        summaryCode: "a2a_unavailable",
-        userImpactCode: "a2a_not_assessed",
-        errorCode: artifacts.a2a.errorCode ?? "a2a_unavailable",
-      });
-    if (artifacts.noncanonicalA2aHint || (artifacts.a2a && !missing(artifacts.a2a)))
-      return result({
-        id: 17,
-        status: "partial",
-        earnedWeight: 0,
-        summaryCode: "a2a_noncanonical_or_malformed",
-        userImpactCode: "a2a_informational",
-        fixCode: "repair_a2a_card",
-      });
+  const reading = jsonDocumentOf(artifacts.a2a, "a2a_unavailable");
+  if (reading.state === "unread")
+    return unjudged(17, reading, {
+      summaryCode: "a2a_unavailable",
+      userImpactCode: "a2a_not_assessed",
+    });
+  if (reading.state === "refused")
+    return refusedDocument(17, reading.status, "not_applicable", "a2a_optional");
+  if (reading.state === "too_large")
+    return tooLarge(17, "partial", reading.readLimit, "a2a_informational");
+  if (reading.state === "malformed")
+    return unparseable(17, "partial", "a2a_card_unparseable", "a2a_informational");
+  if (reading.state === "absent")
     return result({
       id: 17,
       status: "not_applicable",
@@ -1139,26 +1530,29 @@ const a2aCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "a2a_optional",
       applicable: false,
     });
-  }
-  const valid =
-    ["name", "version", "skills"].every((field) => fieldPresent(document, field)) &&
-    (fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces"));
+  const document = reading.value;
+  const fieldsMissing = [
+    ...["name", "version", "skills"].filter((field) => !fieldPresent(document, field)),
+    ...(fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces")
+      ? []
+      : ["url or supportedInterfaces"]),
+  ];
+  const valid = fieldsMissing.length === 0;
   return result({
     id: 17,
     status: valid ? "pass" : "partial",
     earnedWeight: valid ? 1 : 0,
-    summaryCode: valid ? "a2a_valid" : "a2a_malformed",
-    evidence: {
-      name_present: fieldPresent(document, "name"),
-      version_present: fieldPresent(document, "version"),
-      interface_present:
-        fieldPresent(document, "url") || fieldPresent(document, "supportedInterfaces"),
-      skills_present: fieldPresent(document, "skills"),
-    },
+    summaryCode: valid ? "a2a_valid" : "a2a_card_incomplete",
+    evidence: valid ? {} : { fields_missing: fieldsMissing },
     userImpactCode: "a2a_informational",
     fixCode: valid ? undefined : "repair_a2a_card",
   });
 };
+
+// What the page wrote as language codes is shown, but no longer than a
+// language tag can sensibly be, and no more of them than the report lists.
+const shownCodes = (codes: readonly string[]): string[] =>
+  [...new Set(codes.map((code) => code.slice(0, 35)))].slice(0, 20);
 
 const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
   const base = artifacts.base;
@@ -1181,8 +1575,10 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       userImpactCode: "hreflang_conditional",
       applicable: false,
     });
-  const valid = tags.filter((tag) => tag === "x-default" || /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(tag));
-  const duplicate = new Set(tags).size !== tags.length;
+  const isValid = (tag: string) => tag === "x-default" || /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(tag);
+  const valid = tags.filter(isValid);
+  const duplicates = [...new Set(tags.filter((tag, at) => tags.indexOf(tag) !== at))];
+  const duplicate = duplicates.length > 0;
   const complete = valid.length === tags.length && !duplicate;
   return result({
     id: 18,
@@ -1193,6 +1589,12 @@ const hreflangCheck = (artifacts: ScanArtifacts): CheckResult => {
       locale_count: tags.length,
       valid_locale_count: valid.length,
       duplicate,
+      ...(complete
+        ? {}
+        : {
+            invalid_locales: shownCodes(tags.filter((tag) => !isValid(tag))),
+            duplicate_locales: shownCodes(duplicates),
+          }),
     },
     userImpactCode: "locale_discovery",
     fixCode: complete ? undefined : "repair_hreflang",
@@ -1281,6 +1683,15 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
     hreflangCheck(effective),
   ];
   const baseTruncated = Boolean(effective.base?.truncated && !inaccessible(effective.base));
+  // Every page request is cut at the same limit, so any cut one names it.
+  const cutPage = [
+    effective.base,
+    effective.representative,
+    effective.markdown,
+    effective.agentProbes.chatgpt,
+    effective.agentProbes.claude,
+  ].find((page) => page?.truncated);
+  const pageReadLimit = byteSize(cutPage?.decodedBytes ?? 0);
   const pagesTruncated =
     baseTruncated ||
     Boolean(effective.representative?.truncated && !inaccessible(effective.representative));
@@ -1311,7 +1722,8 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       switch (check.id) {
         case 5:
           truncated = pagesTruncated;
-          uncertain = check.summaryCode === "jsonld_absent_or_invalid";
+          uncertain =
+            check.summaryCode === "jsonld_absent" || check.summaryCode === "jsonld_unparseable";
           break;
         case 6:
           truncated = pagesTruncated;
@@ -1322,7 +1734,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           uncertain =
             check.summaryCode === "markdown_negotiation_partial" &&
             !(check.evidence.non_empty === false && !effective.markdown?.truncated) &&
-            /(?:^|,)\s*accept\s*(?:,|$)/i.test(effective.markdown?.headers.vary ?? "");
+            varyNames(effective.markdown?.headers.vary).includes("accept");
           break;
         case 12:
           truncated = artifacts.segment === "store" ? pagesTruncated : baseTruncated;
@@ -1368,7 +1780,7 @@ export const evaluateChecks = (artifacts: ScanArtifacts): CheckResult[] => {
           break;
       }
       if (!truncated) return check;
-      const evidence = { ...check.evidence, truncated: true };
+      const evidence = { ...check.evidence, truncated: true, read_limit: pageReadLimit };
       // A prefix proves what it contains, not what the rest of the page lacks.
       return uncertain
         ? result({
@@ -1391,8 +1803,7 @@ const PRODUCT_PAGE_ABSENCES: Record<
   { absent: (check: CheckResult) => boolean; summaryCode: string; userImpactCode: string }
 > = {
   5: {
-    absent: (check) =>
-      check.summaryCode === "jsonld_absent_or_invalid" && check.evidence.script_count === 0,
+    absent: (check) => check.summaryCode === "jsonld_absent",
     summaryCode: "jsonld_unavailable",
     userImpactCode: "structured_data_not_assessed",
   },

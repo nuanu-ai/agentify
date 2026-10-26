@@ -590,3 +590,86 @@ describe("safe fetch policy", () => {
     });
   });
 });
+
+describe("a sitemap a site serves as a gzip file", () => {
+  const limit = 64 * 1024;
+  const urlset = `<?xml version="1.0"?><urlset><url><loc>https://example.com/a</loc><lastmod>${new Date().toISOString()}</lastmod></url></urlset>`;
+  const answers: Record<string, { headers: Record<string, string>; body: Buffer }> = {
+    "/sitemap.xml.gz": {
+      headers: { "content-type": "application/x-gzip" },
+      body: gzipSync(Buffer.from(urlset)),
+    },
+    "/bomb.xml.gz": {
+      headers: { "content-type": "application/x-gzip" },
+      body: gzipSync(Buffer.alloc(16 * 1024 * 1024, "<")),
+    },
+    "/encoded.xml.gz": {
+      headers: { "content-type": "application/x-gzip", "content-encoding": "gzip" },
+      body: gzipSync(Buffer.from(urlset)),
+    },
+  };
+  const read = async (path: string, unpackGzip = true) => {
+    const server = createServer((request, response) => {
+      const answer = answers[request.url ?? ""];
+      if (!answer) response.writeHead(404).end();
+      else response.writeHead(200, answer.headers).end(answer.body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      return await new NodePinnedTransport().request({
+        url: new URL(
+          `http://unresolvable.invalid:${(server.address() as AddressInfo).port}${path}`,
+        ),
+        address: { address: "127.0.0.1", family: 4 },
+        method: "GET",
+        headers: { connection: "close", "accept-encoding": "gzip" },
+        timeoutMs: 5_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: limit,
+        signal: new AbortController().signal,
+        unpackGzip,
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  };
+  const sitemapCheck = (sitemap: FetchArtifact) =>
+    evaluateChecks({
+      segment: "owner",
+      canonicalTargetUrl: "https://example.com/",
+      robots: { ...sitemap, status: 404, body: "", decodedBytes: 0, truncated: false },
+      agentProbes: {},
+      sitemap: [sitemap],
+      mcp: [],
+      oauth: [],
+    }).find(({ id }) => id === 4);
+
+  it("reads a .xml.gz sitemap and judges what it unpacks to", async () => {
+    const sitemap = await read("/sitemap.xml.gz");
+    expect(sitemap).toMatchObject({ status: 200, body: urlset, truncated: false });
+    expect(sitemapCheck(sitemap)).toMatchObject({ status: "pass", summaryCode: "sitemap_valid" });
+  });
+
+  it("stops unpacking a file that expands without bound at the read limit, as a cut answer", async () => {
+    const bomb = await read("/bomb.xml.gz");
+    expect({
+      truncated: bomb.truncated,
+      decodedBytes: bomb.decodedBytes,
+      bodyBytes: Buffer.byteLength(bomb.body),
+    }).toEqual({ truncated: true, decodedBytes: limit, bodyBytes: limit });
+  });
+
+  it("judges a readable sitemap sent gzip-encoded under a gzip media type", async () => {
+    const sitemap = await read("/encoded.xml.gz");
+    expect(sitemap.body).toBe(urlset);
+    expect(sitemapCheck(sitemap)?.status).toBe("pass");
+  });
+
+  it("leaves a gzip body as it came for a request that does not ask to unpack it", async () => {
+    const raw = await read("/sitemap.xml.gz", false);
+    expect(raw.body).not.toBe(urlset);
+    expect(raw.decodedBytes).toBe(answers["/sitemap.xml.gz"]?.body.length);
+  });
+});

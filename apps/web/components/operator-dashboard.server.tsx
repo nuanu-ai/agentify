@@ -1,3 +1,4 @@
+import { percentReached } from "@agentify/remediation";
 import { Badge, type BadgeTone, SignedIn, SurfaceNote } from "@agentify/ui";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
@@ -418,7 +419,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
                       selfScan.level?.replaceAll("_", " ") ?? selfScan.status,
                       ...(selfScan.coverage === null
                         ? []
-                        : [`coverage ${percent.format(selfScan.coverage)}`]),
+                        : [`coverage ${percentReached(selfScan.coverage)}`]),
                     ].join(" · ")}
                   </span>
                 </div>
@@ -520,7 +521,7 @@ export function OperatorDashboard({ data }: Readonly<{ data: OperatorDashboardDa
                 <div className="cell cell-action num">
                   <span>
                     <span className="said-on-narrow">Coverage </span>
-                    {scan.coverage === null ? "—" : percent.format(scan.coverage)}
+                    {scan.coverage === null ? "—" : percentReached(scan.coverage)}
                   </span>
                 </div>
                 <div className="cell cell-fact">

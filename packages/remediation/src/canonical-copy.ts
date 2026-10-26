@@ -22,9 +22,10 @@ const CHECK_LABELS: Readonly<Record<string, string>> = {
 const SUMMARY_COPY: Readonly<Record<string, string>> = {
   a2a_absent:
     "No A2A agent card was found. This optional signal does not reduce the core readiness score.",
-  a2a_malformed: "An A2A agent card was found, but it is not valid enough to use reliably.",
-  a2a_noncanonical_or_malformed:
-    "An A2A declaration was found outside the canonical location or could not be parsed reliably.",
+  a2a_card_incomplete:
+    "An A2A agent card was found, but it lacks fields an agent needs to use it. The evidence lists them.",
+  a2a_card_unparseable:
+    "A document is served at the A2A agent-card location, but it is not a JSON object that can be parsed.",
   a2a_unavailable: "The A2A agent-card surface could not be assessed during this scan.",
   a2a_valid: "A valid A2A agent card was found at the canonical public location.",
   agent_ua_blocked:
@@ -43,7 +44,7 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   ai_policy_absent: "robots.txt does not state a clear policy for the supported AI crawler groups.",
   ai_policy_explicit: "robots.txt states an explicit policy for every supported AI crawler group.",
   ai_policy_partial:
-    "robots.txt states a policy for some, but not all, supported AI crawler groups.",
+    "robots.txt states a policy for some, but not all, supported AI crawler groups. The evidence lists the groups without one.",
   ai_policy_unavailable:
     "The AI crawler policy could not be assessed because robots.txt was unavailable.",
   content_signal_absent: "No parseable Content-Signal policy was found in robots.txt.",
@@ -52,6 +53,12 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
     "A Content-Signal declaration was found, but it is incomplete or inconsistent.",
   content_signal_unavailable:
     "The Content-Signal policy could not be assessed because robots.txt was unavailable.",
+  document_refused:
+    "This address answered with the status in the evidence, so an agent asking for the document is refused too and finds none. Allow it to be read, or answer 404 if there is no such document.",
+  document_too_large:
+    "The document is larger than the read limit in the evidence, more than an agent can be expected to fetch and parse to discover the site.",
+  document_truncated:
+    "The document this check reads is larger than the scanner's read limit, which the evidence names, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
   feed_discoverable: "A public product-feed declaration was found and could be read.",
   feed_machine_signals_only:
     "Product-like machine-readable signals exist, but no public feed declaration was found.",
@@ -62,19 +69,21 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   fingerprint_observed:
     "The detected platform hint is informational and does not affect the score.",
   hreflang_partial:
-    "Language-alternative declarations were found, but they are incomplete or inconsistent.",
+    "Language-alternative declarations were found, but some codes are not valid or are declared twice. The evidence lists them.",
   hreflang_single_locale:
     "No language alternatives were detected, so hreflang is not required for this scan.",
   hreflang_unavailable: "Language-alternative declarations could not be assessed.",
   hreflang_valid: "Language-alternative declarations are present and internally consistent.",
   html_truncated:
-    "Only part of an HTML response was read because it exceeded the scan's size limit. This check could not be completed; missing data is not inferred from the unread part.",
-  jsonld_absent_or_invalid: "No valid JSON-LD structured data was found in the initial HTML.",
+    "Only the first part of the page was read, up to the scanner's read limit, which the evidence names. What was read does not settle this check, and nothing is inferred from the rest.",
+  jsonld_absent: "No JSON-LD structured data was found in the initial HTML.",
   jsonld_partially_parseable:
     "JSON-LD is present, but at least one block could not be parsed reliably.",
   jsonld_present: "Valid JSON-LD structured data was found in the initial HTML.",
   jsonld_unavailable:
     "Structured data could not be assessed because the page response was unavailable.",
+  jsonld_unparseable:
+    "JSON-LD blocks were found in the initial HTML, but none of them could be parsed.",
   llms_absent: "No llms.txt file was found. This optional signal has limited ecosystem adoption.",
   llms_malformed:
     "llms.txt exists, but it does not contain the minimal expected heading and links.",
@@ -89,24 +98,38 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   markdown_unavailable: "Markdown content negotiation could not be assessed.",
   mcp_absent:
     "No public MCP server-card declaration was found at the experimental discovery location.",
+  mcp_card_behind_sign_in:
+    "The MCP server card's address asks for sign-in, so an agent cannot read the card to discover the server before signing in.",
   mcp_card_incomplete:
-    "An MCP server card was found, but required discovery fields are missing or invalid.",
+    "An MCP server card was found, but required discovery fields are missing. The evidence lists them.",
+  mcp_card_unparseable:
+    "A document is served at the MCP server-card location, but it is not a JSON object that can be parsed.",
   mcp_card_valid:
     "A usable MCP server card was found at the experimental public discovery location.",
   mcp_unavailable: "The MCP server-card surface could not be assessed.",
+  oauth_declaration_unknown:
+    "Whether the site declares a sign-in for agents could not be told, because a discovery card that could declare one was not read whole. The card's own result says why.",
   oauth_metadata_absent:
     "The site declares an authenticated agent surface, but no OAuth authorization-server metadata was found.",
-  oauth_metadata_partial: "OAuth discovery metadata was found, but required fields are incomplete.",
+  oauth_metadata_missing:
+    "The site declares an authenticated agent surface, but an OAuth discovery document it needs is missing and the other could not be read. The evidence names each.",
+  oauth_metadata_partial:
+    "OAuth discovery metadata was found, but a document is missing or an address in it does not use HTTPS. The evidence names which.",
+  oauth_metadata_unparseable:
+    "A document is served at an OAuth discovery location, but it is not a JSON object that can be parsed.",
   oauth_metadata_valid:
     "OAuth discovery metadata is present and contains the required public fields.",
   oauth_not_declared:
     "No authenticated agent surface was declared, so OAuth discovery is not applicable.",
   oauth_unavailable: "OAuth discovery metadata could not be assessed.",
-  page_performance_limit_exceeded:
-    "The public page exceeded the scanner's safe response-size or timing limit.",
-  page_performance_partial:
-    "The public page is readable, but either transfer size or response time is above the preferred budget.",
+  page_performance_heavy:
+    "The public page is readable, but it is 2 MiB or larger, which is over the size budget.",
+  page_performance_slow:
+    "The public page is readable, but it answered slower than the budget of a first byte within 1.5 seconds and the whole page within 4 seconds.",
   page_performance_slow_heavy: "The public page is both heavy and slow for an automated reader.",
+  page_performance_too_large:
+    "The public page is larger than the scanner's read limit, which the evidence names.",
+  page_performance_too_slow: "The public page took 8 seconds or more to load in full.",
   page_performance_unavailable: "Page weight and response time could not be assessed.",
   page_performance_within_budget:
     "The public page stayed within the documented response-size and timing budgets.",
@@ -115,12 +138,29 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   robots_parseable: "robots.txt is present and parseable.",
   robots_partially_parseable:
     "robots.txt is present, but some directives are malformed or ambiguous.",
+  robots_refused:
+    "robots.txt was not served: its address answered with the status in the evidence. Without its rules the scanner read no other address of the site, and crawlers may take the site as having no rules at all.",
+  robots_too_large:
+    "robots.txt is longer than the scanner's read limit, which the evidence names. Crawlers are only required to read its first 500 KiB, so rules after that may be ignored.",
   robots_unavailable: "robots.txt could not be assessed during this scan.",
-  sitemap_invalid:
-    "A sitemap was found, but its format or entries could not be validated reliably.",
+  robots_wrong_media_type:
+    "robots.txt holds valid rules, but it is served with a web page's media type in place of text/plain.",
+  sitemap_compressed:
+    "The sitemap is still compressed with gzip after the scanner unpacked it once, so the scanner did not judge it. This lowers coverage and is not counted as a defect.",
+  sitemap_doctype:
+    "The sitemap declares an XML document type, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
+  sitemap_empty: "A sitemap was found, but it lists no addresses.",
+  sitemap_entries_missing:
+    "A sitemap was found, but a sitemap that robots.txt or a sitemap index lists is missing, refused, empty or not a sitemap. The evidence names which.",
   sitemap_missing:
     "No public sitemap could be discovered from robots.txt or the standard location.",
-  sitemap_partial: "A sitemap was found, but part of the sitemap set is incomplete or invalid.",
+  sitemap_no_lastmod: "A sitemap was found, but none of its entries carries a lastmod date.",
+  sitemap_not_sitemap:
+    "The sitemap address answers with something that is not a sitemap, such as a web page.",
+  sitemap_partly_unread:
+    "A sitemap was found, but not every sitemap of pages it lists was read, so the set was not judged as a whole. The evidence names any that did not answer and counts what was read.",
+  sitemap_stale:
+    "A sitemap was found, but more than four in five of its lastmod dates are older than 180 days or are not dates. The evidence gives the counts.",
   sitemap_unavailable: "Sitemap discovery could not be assessed.",
   sitemap_valid: "A valid public sitemap was discovered.",
   ssr_content_substantive:
@@ -131,57 +171,78 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   ssr_unavailable: "The initial HTML response could not be assessed.",
   ucp_absent: "No public UCP commerce profile was found for this store scan.",
   ucp_incomplete:
-    "A UCP commerce profile was found, but required fields are incomplete or invalid.",
+    "A UCP commerce profile was found, but required fields are missing. The evidence lists them.",
   ucp_not_store: "UCP commerce discovery does not apply to this scan segment.",
+  ucp_profile_unparseable:
+    "A document is served at the UCP profile location, but it is not a JSON object that can be parsed.",
   ucp_unavailable: "The UCP commerce profile could not be assessed.",
   ucp_valid: "A usable public UCP commerce profile was found.",
   vertical_jsonld_complete:
-    "The structured data contains the key public fields expected for this business segment.",
-  vertical_jsonld_incomplete:
-    "Business-specific structured data is present, but important public fields are missing.",
+    "The structured data has every required field and at least half of the recommended ones for this business segment.",
   vertical_jsonld_missing:
     "No business-specific structured-data type was found for this scan segment.",
+  vertical_jsonld_recommended_missing:
+    "Business-specific structured data has every required field, but fewer than half of the recommended ones. The evidence lists the missing fields and how many a pass needs.",
+  vertical_jsonld_required_missing:
+    "Business-specific structured data is present, but it lacks required fields. The evidence lists them.",
   vertical_jsonld_unavailable: "Business-specific structured data could not be assessed.",
   vertical_jsonld_wrong_type:
-    "Structured data exists, but it does not describe the business type expected for this scan segment.",
+    "Structured data exists, but it does not describe the business type expected for this scan segment. The evidence lists the types found and the types expected.",
 };
 
 const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
-  a2a_malformed: "Your declared A2A card cannot be used reliably",
-  a2a_noncanonical_or_malformed: "Your A2A declaration is misplaced or unreadable",
+  a2a_card_incomplete: "Your A2A card lacks fields an agent needs",
+  a2a_card_unparseable: "Your A2A card is not valid JSON",
   agent_ua_blocked: "Your site turns away requests that carry AI agents' tokens",
   agent_ua_partial: "Your site answers one AI agent's token differently",
   ai_policy_absent: "Supported AI crawler groups have no clear robots.txt policy",
   ai_policy_partial: "Some supported AI crawler groups have no clear policy",
   content_signal_absent: "No Content-Signal policy is declared",
   content_signal_partial: "The Content-Signal declaration is incomplete or inconsistent",
+  document_refused: "Agents are refused at a discovery address",
+  document_too_large: "A discovery document is too large to read",
   feed_machine_signals_only: "Product signals exist, but no public feed declaration was found",
   feed_signals_absent: "No feed declaration or equivalent catalog signal was found",
   hreflang_partial: "Your language alternatives point inconsistently",
-  jsonld_absent_or_invalid: "No readable JSON-LD structured data was found",
+  jsonld_absent: "No JSON-LD structured data was found",
   jsonld_partially_parseable: "Part of your structured data cannot be read reliably",
+  jsonld_unparseable: "Your structured data cannot be parsed",
   llms_malformed: "Your llms.txt file cannot guide automated readers reliably",
   markdown_negotiation_absent: "No alternate machine-readable Markdown view was found",
   markdown_negotiation_partial: "Your machine-readable text view is incomplete",
   mcp_absent: "No MCP declaration was found at the assessed locations",
-  mcp_card_incomplete: "Your MCP discovery card cannot be used reliably",
+  mcp_card_behind_sign_in: "Your MCP discovery card asks for sign-in before discovery",
+  mcp_card_incomplete: "Your MCP discovery card lacks fields an agent needs",
+  mcp_card_unparseable: "Your MCP discovery card is not valid JSON",
   oauth_metadata_absent: "Your declared agent surface has no discoverable authorization setup",
+  oauth_metadata_missing: "Your authorization discovery metadata is missing a document",
   oauth_metadata_partial: "Your authorization discovery metadata is incomplete",
-  page_performance_limit_exceeded: "The page exceeds the scanner's safe response budget",
-  page_performance_partial: "Page weight or response time raises agent cost",
+  oauth_metadata_unparseable: "Your authorization discovery metadata is not valid JSON",
+  page_performance_heavy: "A heavy page raises agent cost",
+  page_performance_slow: "Slow responses raise agent cost",
   page_performance_slow_heavy: "A slow, heavy page increases automated-reader timeout risk",
+  page_performance_too_large: "The page is larger than the scanner reads",
+  page_performance_too_slow: "The page takes 8 seconds or more to load",
   robots_invalid: "Your crawler rules cannot be interpreted reliably",
   robots_missing: "Crawler access rules are missing at the standard location",
   robots_partially_parseable: "Part of your crawler policy is malformed or ambiguous",
-  sitemap_invalid: "Your sitemap cannot be used reliably",
+  robots_refused: "Your robots.txt is not served to crawlers",
+  robots_too_large: "Your robots.txt is longer than crawlers must read",
+  robots_wrong_media_type: "Your robots.txt is served as a web page",
+  sitemap_empty: "Your sitemap lists no pages",
+  sitemap_entries_missing: "A sitemap your site lists is missing",
   sitemap_missing: "No sitemap was found in robots.txt or the standard location",
-  sitemap_partial: "Your sitemap can lead crawlers to incomplete entries",
+  sitemap_no_lastmod: "Your sitemap does not say when pages changed",
+  sitemap_not_sitemap: "Your sitemap address does not serve a sitemap",
+  sitemap_stale: "Most of your sitemap's dates are old",
   ssr_content_thin: "Your initial HTML gives automated readers too little to work with",
   ssr_shell_only: "Your core content is unavailable until JavaScript runs",
   ucp_absent: "No public UCP commerce profile is declared",
   ucp_incomplete: "Your UCP commerce profile is incomplete",
-  vertical_jsonld_incomplete: "Business-specific structured data is missing key public facts",
+  ucp_profile_unparseable: "Your UCP commerce profile is not valid JSON",
   vertical_jsonld_missing: "No segment-specific structured-data type was found",
+  vertical_jsonld_recommended_missing: "Your structured data lacks recommended business fields",
+  vertical_jsonld_required_missing: "Your structured data lacks required business fields",
   vertical_jsonld_wrong_type: "Your structured data describes the wrong kind of business",
 };
 
@@ -283,8 +344,15 @@ const IMPACT_COPY: Readonly<Record<string, string>> = {
 const FIX_COPY: Readonly<Record<string, string>> = {
   add_markdown_negotiation:
     "Add standards-based HTTP content negotiation for a fact-equivalent Markdown representation.",
+  add_recommended_jsonld:
+    "Add the recommended fields the evidence lists, using facts already visible and maintained on the site.",
+  add_sitemap_entries: "List the site's canonical public pages in the sitemap.",
+  add_sitemap_lastmod:
+    "Give each sitemap entry a lastmod date taken from when the page last changed.",
   allow_agent_user_agents:
     "If AI agents are meant to read this site, look for a rule that treats their tokens differently; a common one is a CDN's or firewall's setting that blocks AI bots. The scanner's requests come from its own addresses, so a rule that lets the real agents through by address can still turn it away. If the difference is intended, nothing needs to change.",
+  allow_document:
+    "If the document exists, let anyone read it at this address. If there is none, answer the address with 404.",
   complete_mcp_card:
     "Complete the MCP server card with valid discovery fields, and label the convention experimental.",
   complete_oauth_metadata:
@@ -292,10 +360,11 @@ const FIX_COPY: Readonly<Record<string, string>> = {
   complete_ucp_profile:
     "Complete the UCP profile with the required public commerce fields and validate it against the current specification.",
   complete_vertical_jsonld:
-    "Add the missing business-specific JSON-LD fields using facts already visible and maintained on the site.",
+    "Add the required fields the evidence lists, using facts already visible and maintained on the site.",
   declare_ai_policy:
     "Declare an explicit allow or disallow policy for each supported AI crawler group in robots.txt.",
-  improve_sitemap: "Repair incomplete sitemap entries and keep only canonical, public URLs.",
+  fix_listed_sitemaps:
+    "Make every sitemap that robots.txt or a sitemap index lists answer with a sitemap, or remove the entries that lead nowhere.",
   publish_content_signal:
     "Publish a valid Content-Signal declaration in robots.txt that reflects the site's actual policy.",
   publish_mcp_card:
@@ -312,24 +381,42 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Add valid JSON-LD that describes the same public entities and facts shown on the page.",
   publish_vertical_jsonld:
     "Add the appropriate business-specific JSON-LD type and its key public fields.",
+  reduce_page_weight:
+    "Reduce the size of the public HTML without hiding critical facts behind client-only rendering.",
   reduce_page_weight_latency:
     "Reduce public response time and transfer size without hiding critical facts behind client-only rendering.",
+  reduce_response_time:
+    "Reduce the public page's response time without hiding critical facts behind client-only rendering.",
+  refresh_sitemap_lastmod:
+    "Keep each lastmod date equal to when its page last changed, in W3C date format. If most pages have not changed in 180 days, nothing needs to change.",
   render_substantive_html:
     "Render the core public facts in the initial HTML and preserve progressive enhancement.",
   repair_a2a_card:
     "Repair the A2A agent card only if the site exposes a real A2A-compatible agent endpoint.",
   repair_content_signal:
     "Make the Content-Signal declaration parseable, complete, and consistent with the site's policy.",
+  repair_document_json:
+    "Serve the document as one valid JSON object and check it with a JSON parser before publishing it. If no such document is meant to exist, answer its address with 404.",
   repair_hreflang:
     "Repair locale codes and reciprocal hreflang links across equivalent language or market pages.",
+  repair_jsonld:
+    "Make every JSON-LD block valid JSON that describes the same public entities and facts shown on the page.",
   repair_llms:
     "Give llms.txt a minimal valid heading and links, while keeping the same public facts as the website.",
   repair_markdown_negotiation:
     "Return the correct Markdown media type, Vary header, and fact-equivalent content for negotiated requests.",
   repair_robots:
     "Repair malformed robots.txt directives and validate the final crawler groups and sitemap declarations.",
-  repair_sitemap:
-    "Repair the sitemap format and remove invalid, private, redirected, or non-canonical entries.",
+  serve_mcp_card_publicly:
+    "Serve the MCP server card without sign-in, and keep sign-in for the server it describes.",
+  serve_robots:
+    "Serve robots.txt to every visitor with status 200 and the media type text/plain, or answer with 404 if the site has no rules.",
+  serve_robots_as_text: "Serve robots.txt with the media type text/plain.",
+  serve_sitemap:
+    "Serve a sitemap at this address, or declare the address of the real sitemap in robots.txt.",
+  shorten_robots: "Shorten robots.txt to under 500 KiB, the size every crawler must read.",
+  shrink_document:
+    "Bring the document under the read limit in the evidence by keeping only what agents read from it.",
 };
 
 const FALLBACK_ACRONYMS: Readonly<Record<string, string>> = {
