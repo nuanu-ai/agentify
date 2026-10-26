@@ -77,9 +77,9 @@
 }
 
 /* The bar over the page: the title, and at its end the one box that finds
-   anything by what an operator has in hand. */
-/* A long title, such as an email address, wraps rather than pushing the box.
-   The box's flex item is the search element around its form. */
+   anything by what an operator has in hand. A long title, such as an email
+   address, wraps rather than pushing the box, whose flex item is the search
+   element around its form. */
 .top-inner:has(.op-lookup) > .top-title {
   flex: 1 1 16rem;
   min-width: 0;
