@@ -178,8 +178,10 @@ describe("the internal route between the scanner and the dashboard", () => {
     expect(sendDataCopyRequestSchema.safeParse({ ...copy, request: "a-request" }).success).toBe(
       false,
     );
-    for (const status of ["accepted", "unavailable"])
+    // Taken, refused, or not known: an answer that may have gone is never a refusal.
+    for (const status of ["accepted", "refused", "unknown"])
       expect(sendDataCopyResponseSchema.safeParse({ status }).success).toBe(true);
-    expect(sendDataCopyResponseSchema.safeParse({ status: "sent" }).success).toBe(false);
+    for (const status of ["sent", "unavailable"])
+      expect(sendDataCopyResponseSchema.safeParse({ status }).success).toBe(false);
   });
 });

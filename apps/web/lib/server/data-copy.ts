@@ -67,6 +67,9 @@ const SCANNER_COPY_ROWS_MAX = {
 type Request = typeof dataCopyRequests.$inferSelect;
 type Ended = "sent" | "refused" | "no_answer" | "too_large";
 
+/** How a try ends by what the dashboard said: only a clear refusal is one. */
+const ENDED_BY = { accepted: "sent", refused: "refused", unknown: "no_answer" } as const;
+
 /** What a press is told, from the request as it stands once the press is done. */
 export type CopyAnswer =
   | Readonly<{ status: "sent"; sentAt: Date; fresh: boolean }>
@@ -91,15 +94,22 @@ const iso = (value: Date | null): string | null => (value === null ? null : valu
 const addressHash = (email: string): string =>
   hmacHex(getServerConfig().hmacSecret, "email", normalizeEmail(email));
 
-/** When the last try of a request still pending will have ended, each try allowed its slack. */
-function lastTryBy(request: Request): Date {
-  const next = request.nextAttemptAt?.getTime() ?? Date.now();
-  const delays = COPY_RETRY_DELAYS_MS.slice(request.attempts).reduce(
-    (sum, delay) => sum + delay,
-    0,
-  );
-  const tries = COPY_TRIES - request.attempts;
-  return new Date(next + delays + tries * TRY_SLACK_MS);
+/**
+ * When the last try of a request still pending will have ended, each try left
+ * allowed its slack. A try under way is the first of those left, ending by its
+ * lease; otherwise the next one is due at its moment, or now if that passed.
+ */
+export function triesEndBy(
+  request: Pick<Request, "attempts" | "nextAttemptAt" | "leaseExpiresAt">,
+  now: Date,
+): Date {
+  const leased = request.leaseExpiresAt !== null && request.leaseExpiresAt > now;
+  const made = leased ? request.attempts - 1 : request.attempts;
+  const from = leased
+    ? (request.leaseExpiresAt as Date).getTime()
+    : Math.max(request.nextAttemptAt?.getTime() ?? now.getTime(), now.getTime());
+  const delays = COPY_RETRY_DELAYS_MS.slice(made).reduce((sum, delay) => sum + delay, 0);
+  return new Date(from + delays + (COPY_TRIES - made) * TRY_SLACK_MS);
 }
 
 function answerOf(request: Request, pressedAt: Date): CopyAnswer {
@@ -118,7 +128,7 @@ function answerOf(request: Request, pressedAt: Date): CopyAnswer {
       leased || request.lastOutcome === null
         ? "in_progress"
         : (request.lastOutcome as "refused" | "no_answer"),
-    lastTryBy: lastTryBy(request),
+    lastTryBy: triesEndBy(request, new Date()),
   };
 }
 
@@ -272,7 +282,7 @@ export async function runDataCopy(input: { id?: string } = {}): Promise<Ended | 
       email,
       scanner: await scannerCopyOf(email),
     });
-    ended = answered.status === "accepted" ? "sent" : "refused";
+    ended = ENDED_BY[answered.status];
   } catch (thrown) {
     // Without an answer the dashboard may have mailed the copy. A later try
     // carries the same request, which the mail provider takes as a repeat.
@@ -282,16 +292,29 @@ export async function runDataCopy(input: { id?: string } = {}): Promise<Ended | 
   return ended;
 }
 
-/** Asks for a copy for the address signed in as `email`, and makes its first try now. */
-export async function requestDataCopy(email: string): Promise<CopyAnswer> {
+/**
+ * Records a request for a copy for the address signed in as `email`, or finds
+ * the one standing for it. Once this returns, the request is kept and its
+ * tries go on whatever happens to the press.
+ */
+export async function recordDataCopyRequest(
+  email: string,
+): Promise<Readonly<{ request: Request; pressedAt: Date }>> {
   const pressedAt = new Date();
-  const request = await requestFor(email, pressedAt);
+  return { request: await requestFor(email, pressedAt), pressedAt };
+}
+
+/** Makes the first try of a recorded request now, and says how it stands. */
+export async function answerDataCopyRequest(
+  recorded: Readonly<{ request: Request; pressedAt: Date }>,
+): Promise<CopyAnswer> {
+  const { request, pressedAt } = recorded;
   if (request.state === "pending") await runDataCopy({ id: request.id });
   const [now] = await getDatabase()
     .db.select()
     .from(dataCopyRequests)
     .where(eq(dataCopyRequests.id, request.id));
-  // Deleting the address removes its requests with everything else.
+  // Deleting the address's reports removes its requests with everything else.
   if (now === undefined) return { status: "deleted" };
   return answerOf(now, pressedAt);
 }
@@ -361,6 +384,7 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
     .select({
       requestedAt: dataCopyRequests.requestedAt,
       state: dataCopyRequests.state,
+      lastOutcome: dataCopyRequests.lastOutcome,
       settledAt: dataCopyRequests.settledAt,
     })
     .from(dataCopyRequests)
@@ -393,7 +417,12 @@ async function scannerCopyOf(email: string): Promise<Record<string, unknown>> {
       total: await counted(dataCopyRequests),
       rows: asked.map((one) => ({
         requested_at: iso(one.requestedAt),
-        state: one.state,
+        state:
+          one.state !== "failed"
+            ? one.state
+            : one.lastOutcome === "too_large"
+              ? "too_large"
+              : "unconfirmed",
         settled_at: iso(one.settledAt),
       })),
     },

@@ -400,9 +400,9 @@ function copyMessage(to: string, filename: string, document: string, privacyUrl:
 
 /**
  * Answers the scanner's request for a copy: builds it and hands it to the mail
- * provider, addressed to the address it is about. `unavailable` is a provider
- * that did not take it; anything thrown is a failure whose outcome the scanner
- * cannot know, and it tries again.
+ * provider, addressed to the address it is about, and answers with what the
+ * provider said: taken, refused, or not known. Anything thrown reaches the
+ * scanner as no answer, which it also treats as not known.
  */
 export const copierFor =
   (sources: CopySources, postman: Postman, privacyUrl: string) =>
@@ -426,5 +426,5 @@ export const copierFor =
       ...copyMessage(request.email, filename, document, privacyUrl),
       idempotencyKey: `data-copy/${request.request}`,
     });
-    return { status: handed === "accepted" ? "accepted" : "unavailable" };
+    return { status: handed };
   };

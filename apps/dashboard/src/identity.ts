@@ -62,7 +62,7 @@ import {
   type UnattachedPerson,
 } from "./dashboard-entry.js";
 import { boundedGoogleExchange } from "./google-exchange.js";
-import { type Message, type Postman, postmanFor } from "./mail.js";
+import { type Handover, type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { suppressWaitingAbout } from "./nuanu-analytics.js";
 import {
@@ -247,7 +247,7 @@ type OpeningTransaction = Readonly<{
 
 type LinkSend = {
   readonly claim: LinkClaim;
-  handed: "accepted" | "refused";
+  handed: Handover;
 };
 
 type ReportIdentitySecretRow = {

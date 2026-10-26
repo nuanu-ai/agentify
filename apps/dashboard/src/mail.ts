@@ -1,9 +1,9 @@
 /**
  * `MAIL_URL` picks the sender: `sandbox:log` writes every message, link
  * included, to the log, and anything else is a provider (Resend). Nothing waits
- * for delivery: a caller learns only whether the provider took the message, and
- * a refusal is returned so the identity transaction can remove the unusable
- * token and answer with a retryable 503.
+ * for delivery: a caller learns whether the provider took the message, refused
+ * it, or left that unknown, and anything but taken lets the identity
+ * transaction remove the unusable token and answer with a retryable 503.
  */
 
 /**
@@ -37,11 +37,14 @@ export interface Message {
 const bytesOf = (attachment: Attachment): number => Buffer.byteLength(attachment.content, "utf8");
 
 /**
- * `"accepted"` is the provider taking the message and nothing more; everything
- * else, including a message never handed over, is `"refused"`. The only
- * decision made on this is whether somebody may be told a link went out.
+ * What became of a message handed to the provider. `"accepted"` is the
+ * provider taking it and nothing more; `"refused"` is a clear answer that it
+ * did not; `"unknown"` is no answer, a failure on the provider's side, or a
+ * repeat of a key whose first message may have gone. A caller that may only
+ * say a message went out when it did treats both of the others alike; one that
+ * tells somebody what happened keeps them apart.
  */
-export type Handover = "accepted" | "refused";
+export type Handover = "accepted" | "refused" | "unknown";
 
 export type Postman = (message: Message) => Promise<Handover>;
 
@@ -80,8 +83,9 @@ const toTheLog: Postman = async (message) => {
 };
 
 /**
- * A failure is caught here rather than thrown, so the caller gets one stable
- * refusal and can roll back the token without exposing provider details.
+ * A failure is caught here rather than thrown, so the caller gets a refusal
+ * or an unknown outcome, never an exception, and can roll back the token
+ * without exposing provider details.
  */
 function throughResend(config: MailConfig): Postman {
   return async (message) => {
@@ -116,8 +120,13 @@ function throughResend(config: MailConfig): Postman {
       if (!answered.ok) {
         // The status and nothing else: the body can carry the recipient's
         // address, and a log goes places the database does not.
-        console.error(`[dashboard] mail provider refused a message (${answered.status})`);
-        return "refused";
+        const told = answered.status === 409 || answered.status >= 500;
+        console.error(
+          told
+            ? `[dashboard] mail provider answered a message with ${answered.status}; whether it went is not known`
+            : `[dashboard] mail provider refused a message (${answered.status})`,
+        );
+        return told ? "unknown" : "refused";
       }
       // Every caller carries on regardless, so this log is the only account of
       // what became of a message. "Accepted", not "sent": what the provider
@@ -128,7 +137,7 @@ function throughResend(config: MailConfig): Postman {
       // Not printed: a fetch implementation may attach the request body,
       // including the recipient and the link.
       console.error("[dashboard] mail provider could not be reached");
-      return "refused";
+      return "unknown";
     }
   };
 }

@@ -72,7 +72,7 @@ let sellerDashboardDeleteRequests = 0;
  */
 type AskedCopy = { email: string; request: string; scanner: Record<string, unknown> };
 const copiesAsked: AskedCopy[] = [];
-let copyAnswer: "accepted" | "unavailable" | "no_answer" | "too_large" = "accepted";
+let copyAnswer: "accepted" | "refused" | "unknown" | "no_answer" | "too_large" = "accepted";
 let copyDelayMs = 0;
 
 /**
@@ -516,7 +516,7 @@ describe("the operator page", () => {
     const { email } = await createLeadFixture("operator-counted-copy");
     const before = await unconfirmed();
 
-    copyAnswer = "unavailable";
+    copyAnswer = "refused";
     await askForACopy(signedInAs(email), email);
     const [asked] = await copyRequestsOf(email);
     if (asked === undefined) throw new Error("no copy request was recorded");
@@ -535,6 +535,10 @@ describe("the operator page", () => {
     copyAnswer = "accepted";
     await askForACopy(signedInAs(email), email);
     expect(await unconfirmed()).toBe(before);
+    // The person's own copy names the earlier request as not confirmed, never as failed.
+    expect(copiesAsked.at(-1)?.scanner).toMatchObject({
+      data_requests: { total: 2, rows: [{ state: "pending" }, { state: "unconfirmed" }] },
+    });
   });
 });
 
@@ -680,7 +684,7 @@ describe("a request for a copy of an address's data", () => {
 
   it("tries again a copy the mail service did not take, and sends it on a later try", async () => {
     const fixture = await createLeadFixture("copy-retried");
-    copyAnswer = "unavailable";
+    copyAnswer = "refused";
 
     const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
 
@@ -707,6 +711,45 @@ describe("a request for a copy of an address's data", () => {
     expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({ state: "sent", attempts: 2 });
   });
 
+  it("says it cannot tell whether a copy went when the dashboard cannot tell either, and tries again", async () => {
+    const fixture = await createLeadFixture("copy-dashboard-unknown");
+    copyAnswer = "unknown";
+
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    expect(answered.body).toMatchObject({ status: "pending", outcome: "no_answer" });
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({ lastOutcome: "no_answer" });
+    copyAnswer = "accepted";
+  });
+
+  it("promises minutes that cover every try left when the press comes during the fourth", async () => {
+    const fixture = await createLeadFixture("copy-fourth-try");
+    copyAnswer = "refused";
+    await askForACopy(signedInAs(fixture.email), fixture.email);
+    const [asked] = await copyRequestsOf(fixture.email);
+    if (asked === undefined) throw new Error("no copy request was recorded");
+    // As the fourth try leaves it while it runs, for two more minutes.
+    await getDatabase()
+      .db.update(dataCopyRequests)
+      .set({
+        attempts: 4,
+        leaseToken: createUuidV7(),
+        leaseExpiresAt: new Date(Date.now() + 2 * 60_000),
+      })
+      .where(eq(dataCopyRequests.id, asked.id));
+
+    const answered = await askForACopy(signedInAs(fixture.email), fixture.email);
+
+    // The fourth try's lease, the half hour before the fifth, and both
+    // allowed a minute and a half past their moment.
+    expect(answered.body).toMatchObject({
+      status: "pending",
+      outcome: "in_progress",
+      within_minutes: 35,
+    });
+    copyAnswer = "accepted";
+  });
+
   it("says it cannot tell whether a copy went when no answer came back, and tries again", async () => {
     const fixture = await createLeadFixture("copy-unanswered");
     copyAnswer = "no_answer";
@@ -723,7 +766,7 @@ describe("a request for a copy of an address's data", () => {
 
   it("goes with the address when the address is deleted", async () => {
     const fixture = await createLeadFixture("copy-then-deleted");
-    copyAnswer = "unavailable";
+    copyAnswer = "refused";
     await askForACopy(signedInAs(fixture.email), fixture.email);
     expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
     copyAnswer = "accepted";
@@ -812,7 +855,7 @@ describe("a request for a copy of an address's data", () => {
 
   it("counts a try as it starts, so a request whose tries all died gives up unconfirmed", async () => {
     const fixture = await createLeadFixture("copy-died");
-    copyAnswer = "unavailable";
+    copyAnswer = "refused";
     await askForACopy(signedInAs(fixture.email), fixture.email);
     const [asked] = await copyRequestsOf(fixture.email);
     if (asked === undefined) throw new Error("no copy request was recorded");
