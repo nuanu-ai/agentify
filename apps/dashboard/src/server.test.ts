@@ -60,6 +60,7 @@ import type { Handover, Message, Postman } from "./mail.js";
 import { NOT_AN_ADDRESS } from "./page-services.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
+import { PAYOUT_NOTES } from "./settings-view.js";
 import { googleExchange } from "./testing/google.js";
 import { formsIn, formTo, readable, shownMarkIn, waitingButton } from "./testing/html.js";
 import { PAGES_IN_FRONT_OF_THE_GATE } from "./testing/in-front-of-the-gate.js";
@@ -2651,37 +2652,6 @@ describe("the gate", () => {
   });
 });
 
-describe("Products' former address", () => {
-  it.each([
-    ["at the root of its origin", ""],
-    ["under its prefix", "/dashboard"],
-  ])(
-    "sends a link to it on to Products for good, %s, with the search it asked for",
-    async (_where, base) => {
-      const running = await started({ base });
-      await running.browser.signIn();
-
-      const old = await running.browser.get(`${base}/cards?q=room&show=off-sale`);
-      const bare = await running.browser.get(`${base}/cards`);
-
-      expect(old.status).toBe(308);
-      expect(old.to).toBe(`${base}/products?q=room&show=off-sale`);
-      expect(bare.to).toBe(`${base}/products`);
-      expect((await running.browser.get(old.to ?? "")).status).toBe(200);
-    },
-  );
-
-  it("sends a press posted to it on to Products as it was posted", async () => {
-    const running = await started();
-    await running.browser.signIn();
-
-    const pressed = await running.browser.post("/cards?selling=pause");
-
-    expect(pressed.status).toBe(308);
-    expect(pressed.to).toBe("/products?selling=pause");
-  });
-});
-
 describe("the address a press posts to, opened as a page", () => {
   it("leads to the page the press's form lives on, never to one that is not there", async () => {
     // Opened again from history or the address bar, the address would
@@ -3415,10 +3385,7 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(screen.html).not.toContain("<textarea");
     const text = readable(screen.html);
     expect(text).toMatch(/getting paid/i);
-    expect(text).toMatch(/couldn't prepare your payout/i);
-    // The page has not read what the contracts hold, and a fresh or just-paid
-    // merchant's hold nothing, so it must not say money is waiting there.
-    expect(text).not.toMatch(/your money (is|stays)/i);
+    expect(text).toContain(PAYOUT_NOTES.unbuilt);
     expect(text).toContain(SIGN_OUT_EVERYWHERE);
     expect(screen.html).toContain('name="payout_wallet"');
   });
@@ -5378,6 +5345,8 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const bar = barOf(answered.html);
     expect(readable(bar)).toContain(PERSON);
     expect(formTo(bar, "post", "/sign-out")).toBeDefined();
+    // Products' old address is answered the same way.
+    expect((await browser.get("/cards")).status).toBe(404);
   });
 
   it("treats a cookie it cannot read as nobody being signed in", async () => {
@@ -5865,10 +5834,8 @@ describe("a page left open while another address signs in", () => {
     await running.browser.signIn(OTHER);
 
     // These answer without a session: the sign-out signs this browser out
-    // whichever page it was pressed on, and Products' former address sends a
-    // press on to Products, which refuses it there.
+    // whichever page it was pressed on.
     const above = new Set([
-      "/cards",
       "/sign-in",
       "/sign-in/open",
       "/sign-in/google",

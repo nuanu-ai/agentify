@@ -107,11 +107,11 @@ export const SELL_LANDING = {
     woo: {
       tag: "No new storefront",
       title: "A WooCommerce store",
-      text: "Connect your store, import supported products, and manage their cards from the dashboard. Agentify never gets your store password. The connector works on the test channel only for now and supports a limited set of WooCommerce product configurations.",
+      text: "Connect your store, import supported products, and manage them on Products in your dashboard. Agentify never gets your store password. The connector works on the test channel only for now and supports a limited set of WooCommerce product configurations.",
       points: [
-        "Product cards imported from your store",
+        "Your products, imported from your store",
         "Orders created in your store",
-        "Importing again updates your cards",
+        "Importing again updates your products",
       ],
       action: "Create an account",
     },
@@ -166,7 +166,7 @@ export const SELL_LANDING = {
         ],
         includes: [
           "Catalog connection through WooCommerce or the SDK",
-          "Product cards in the Agentify catalog",
+          "Your products in the Agentify catalog",
           "Orders and receipts in your dashboard",
           "Payouts to your wallet at any time",
         ],
@@ -176,7 +176,7 @@ export const SELL_LANDING = {
   dashboard: {
     eyebrow: "Seller dashboard",
     title: "All your sales to AI agents in one dashboard",
-    lede: "Agentify ties together your catalog, purchases, and payments. The dashboard shows what happens to each product, from publishing its card to fulfilling the order.",
+    lede: "Agentify ties together your catalog, purchases, and payments. The dashboard shows what happens to each product, from publishing it to fulfilling the order.",
     parts: [
       ["Products", "Title, price, and availability. You can pause any product."],
       ["Orders", "What the agent bought, whether the order is paid, and how it was fulfilled."],

@@ -53,6 +53,8 @@ export type PayoutView =
       /** On which one chain, from what, the raw transaction is sent. */
       sentOn: string;
       to: string;
+      /** What `to` is, said beside it. */
+      toIs: string;
       data: string;
       /** Each split it pays out, beside the wallet written into it. */
       pays: readonly Readonly<{ split: string; wallet: string }>[];
@@ -150,31 +152,34 @@ const PAID_IN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
 const OPTIONAL = "Nothing is settled or paid out here, so this address is optional.";
 
 /**
- * The one chain a payout is sent on, and what its sender pays the fee with.
- * Multicall3 is at the same address on most chains, and sent on another one
- * the transaction can succeed and pay out nothing.
- */
-const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
-  test: "Send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
-  live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
-};
-
-/**
  * Every note Getting paid says, by the state it is in, so each is written once
  * and one test reads them all. The page reads which payout contracts there
  * are and never what they hold, so no note says there is money in one: a
  * merchant with no sale yet reads the same words.
  */
 export const PAYOUT_NOTES = Object.freeze({
+  /**
+   * The one chain a payout is sent on, and what its sender pays the fee with.
+   * Multicall3 is at the same address on most chains, and sent on another one
+   * the transaction can succeed and pay out nothing.
+   */
+  sentOn: {
+    test: "Send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
+    live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
+  } satisfies Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>>,
+  multicall3: "Multicall3, a public contract, not Agentify's.",
   toYourWallet: (contracts: number): string =>
-    `One transaction pays out your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
-  toEachWallet: "One transaction pays out each payout contract to the wallet written into it.",
-  orAgentify: "If nobody sends it, Agentify's next payout does. It has no fixed date.",
-  fromTheSender: "It moves no money out of the wallet that sends it.",
+    `This transaction moves what is in your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
+  toEachWallet:
+    "This transaction moves what is in each payout contract to the wallet written into it.",
+  orAgentify: "If nobody sends it, Agentify's next payout does the same, on no fixed date.",
+  fromTheSender: "Sending this transaction costs only the network fee.",
   tooMany: (count: number): string =>
-    `You have ${count} payout contracts, more than one transaction can pay out. Agentify's next payout covers them all. It has no fixed date.`,
+    `You have ${count} payout contracts, more than one transaction can carry. Agentify's next payout covers them all, on no fixed date.`,
+  // Agentify's own payout refuses every contract the merchant's refuses, and
+  // refuses as a whole, so it does not cover this one in the meantime.
   unbuilt:
-    "We couldn't prepare your payout transaction. The fault is on our side. If you see this again, write to admin@agentify.ad.",
+    "Agentify could not build your payout transaction because of a fault on its side. Until the fault is fixed, Agentify's next payout cannot move what is in your payout contracts either, so write to admin@agentify.ad.",
 });
 
 const sameAddress = (one: string, other: string): boolean =>
@@ -223,8 +228,9 @@ const payoutView = (
   return {
     kind: "send",
     said: `${goes} ${PAYOUT_NOTES.orAgentify}`,
-    sentOn: SENT_ON[mode],
+    sentOn: PAYOUT_NOTES.sentOn[mode],
     to: payout.to,
+    toIs: PAYOUT_NOTES.multicall3,
     data: payout.data,
     pays,
     after: PAYOUT_NOTES.fromTheSender,

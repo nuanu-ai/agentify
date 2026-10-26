@@ -341,7 +341,7 @@ describe("money", () => {
 });
 
 describe("health", () => {
-  it("says the test channel is not backed up, by decision, and the live channel's backup is not measured", async () => {
+  it("marks the test channel as not backed up, and the live channel's backup as not measured", async () => {
     const test = await served({ channel: "test" });
     const live = await served({ channel: "live" });
 
@@ -350,7 +350,7 @@ describe("health", () => {
         (row) => row.part === "Last backup",
       );
 
-    expect((await backupOf(test))?.fact.join("")).toMatch(/backed up, by decision/);
+    expect((await backupOf(test))?.badge).toStrictEqual({ tone: "quiet", word: "Not backed up" });
     expect((await backupOf(live))?.badge).toStrictEqual({ tone: "unknown", word: "Not measured" });
   });
 

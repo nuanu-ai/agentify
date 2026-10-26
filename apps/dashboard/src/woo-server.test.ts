@@ -2815,6 +2815,22 @@ describe("one integration at a time", () => {
     expect(await onSale(running)).toStrictEqual([card]);
   });
 
+  it("says on Products that sales are paused, and not that the merchant who switched back paused them", async () => {
+    // Selling stops by the merchant's button, by their code's call and by this
+    // switch, and the banner cannot tell which.
+    const running = await started();
+    await running.signIn();
+    await publishedByTheCode(running);
+    await connectTheShop(running);
+
+    const left = await disconnectAsDrawn(running);
+    const html = (await running.get(left.to ?? "")).html;
+    const banner = /<section class="account-banner"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+
+    expect(banner).toContain('data-reason="paused"');
+    expect(readable(banner)).not.toMatch(/\byou\b|press/i);
+  });
+
   it("forgets no shop that was connected after the page Disconnect was pressed on was drawn", async () => {
     // A tab left open on the way back, while the keys arrived in another.
     const running = await started();

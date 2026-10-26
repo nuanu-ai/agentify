@@ -637,7 +637,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
     screen: "Health",
     when: "An operator reads the test channel's health while a merchant's worker is out of touch.",
     cause:
-      "The test channel is not backed up by decision, offers the connector, and one worker stopped polling.",
+      "The test channel is not backed up on purpose, offers the connector, and one worker stopped polling.",
     path: "/admin/health",
     mode: "test",
     // A worker out of touch, the outbox's given-up events and the links near their ceiling.

@@ -416,7 +416,7 @@ export function OrderScreen({ view }: Readonly<{ view: OrderPageView }>) {
       ) : view.kind === "none" ? (
         <ListEmpty>
           <p>
-            There is no order <Whole value={view.id} /> on this channel.
+            There is no order <Whole value={view.id} /> here.
           </p>
         </ListEmpty>
       ) : (

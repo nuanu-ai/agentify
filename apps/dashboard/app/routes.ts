@@ -31,7 +31,6 @@ export default [
   route("sign-in/google/callback", "routes/sign-in-google-callback.tsx"),
   route("sign-out", "routes/sign-out.ts"),
   route("woocommerce/return", "routes/woocommerce-return.tsx"),
-  route("cards", "routes/cards.ts"),
   layout("routes/gate.tsx", [
     index("routes/start.ts"),
     route("merchant", "routes/merchant.tsx"),

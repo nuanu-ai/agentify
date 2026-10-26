@@ -14,7 +14,6 @@
  */
 
 import type { Fulfillment, MerchantFinding, OrderStatus } from "@nuanu-ai/agentify-contracts";
-import { STOP_ALL_SELLING } from "./control-labels.js";
 
 /**
  * `waiting` is a state held until somebody acts, the merchant or the buyer, and
@@ -158,9 +157,11 @@ export const ACCOUNT_WORDS: Readonly<
     says: "If nobody at your business asked for this, cancel it. Cancelling also signs out every other session on your account.",
     fix: null,
   },
+  // Selling stops by the button, by the code's call and by a switch back to
+  // code alike, and nothing read here says which, so the line names no cause.
   paused: {
     title: "Sales are paused",
-    says: `You pressed ${STOP_ALL_SELLING}.`,
+    says: "New orders are refused.",
     fix: { to: "/products", words: "Resume on Products" },
   },
   not_approved: {

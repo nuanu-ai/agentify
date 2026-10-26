@@ -5,7 +5,7 @@
  * administrative action, or a stale session could act.
  */
 
-import { CHANNEL_NAMES } from "@agentify/ui/workspace-view";
+import { CHANNEL_NAMES, inChannel } from "@agentify/ui/workspace-view";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { afterEach, describe, expect, it } from "vitest";
 import routes from "../../app/routes.js";
@@ -273,6 +273,8 @@ describe("signing in again before an action", () => {
     expect(mail?.to).toBe(OPERATOR);
     expect(mail?.subject).toBe("Confirm an administrative action on Agentify");
     expect(mail?.body).toContain("If you did not ask for this");
+    // A mail has no band, so it names its environment in words.
+    expect(mail?.body).toContain(inChannel(workspace.config.surfaceMode));
     const link = new URL(/(https?:\/\/\S+)/.exec(mail?.body ?? "")?.[1] ?? "");
     const opened = await operator.post("/sign-in/open", {
       token: link.searchParams.get("token") ?? "",

@@ -1313,7 +1313,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
     rows.push({
       part: "WooCommerce",
       badge: { tone: "quiet", word: "Not offered" },
-      fact: ["The connector is not offered here, so no shop can be connected."],
+      fact: ["No shop can be connected here."],
     });
   } else {
     const shops = foundIn(reads.shops);
@@ -1433,7 +1433,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
           badge: { tone: "quiet", word: "Not backed up" },
           fact: [
             channel.surface === "test"
-              ? "Nothing here is backed up, by decision."
+              ? "Backups are off here on purpose."
               : "A sandbox runs on one machine and is not backed up.",
           ],
         },
