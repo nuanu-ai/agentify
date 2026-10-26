@@ -21,9 +21,8 @@ import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
  * their own check is the only one there is.
  */
 export const WALLET_RULE =
-  "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the spelling from your" +
-  " wallet or all lowercase. We check the format and checksum, not the network or the owner, so" +
-  " copy the address from your wallet instead of typing it.";
+  "Paste an EVM address: 0x followed by 40 hexadecimal characters, copied from your wallet rather" +
+  " than typed. We check its format and checksum, not its network or owner.";
 
 /** So a change that does not apply at once is not read as one that failed. */
 export const LIVE_CHANGE_WAITS =
