@@ -1,6 +1,7 @@
 import { useVisitor } from "@agentify/ui";
 import { useState } from "react";
 import { press } from "../lib/press";
+import { READING_SIGN_IN } from "../lib/reading-sign-in";
 
 type Action = "unsubscribe" | "access" | "deletion";
 type Done = "requested" | "completed" | "unsubscribed";
@@ -47,7 +48,7 @@ export function AccountActions({ mode }: { mode: "unsubscribe" | "data" }) {
     return (
       <>
         <p>Sign in with the address your reports were sent to, then come back to this page.</p>
-        <a className="button button-primary" href="/dashboard/sign-in">
+        <a className="button button-primary" href={READING_SIGN_IN}>
           Sign in
         </a>
       </>

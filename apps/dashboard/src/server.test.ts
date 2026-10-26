@@ -1067,10 +1067,8 @@ describe("the passwordless dashboard door", () => {
     expect(rows.dashboard_link_sends).toStrictEqual([]);
   });
 
-  it("never makes a merchant by opening a link: a person without one starts at their latest report", async () => {
-    // Under Lax a link from another site arrives signed in, so opening a link
-    // must not make anything. A person with reports and no merchant starts at
-    // the latest one.
+  it("makes no merchant by opening a link asked for from a scanner's door: a person without one starts at their latest report", async () => {
+    // A person with reports and no merchant starts at the latest one.
     const registered: string[] = [];
     const registrar: Registrar = {
       register: async () => {
@@ -1080,7 +1078,7 @@ describe("the passwordless dashboard door", () => {
     };
     const running = await started({ registrar });
 
-    const opened = await running.browser.signIn(FRESH.email);
+    const opened = await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
 
     expect(opened.status).toBe(303);
     expect(opened.to).toBe(LATEST_REPORT);
@@ -1102,7 +1100,7 @@ describe("the passwordless dashboard door", () => {
     // The press calls the gateway in-process, so no invitation is configured or
     // asked for.
     const running = await started();
-    await running.browser.signIn(FRESH.email);
+    await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
 
     const forged = await running.browser.from("https://evil.example").post("/merchant");
     expect(forged.status).toBe(403);
@@ -1116,7 +1114,7 @@ describe("the passwordless dashboard door", () => {
     expect(await running.harnessed.store.merchantById(merchant?.id ?? "")).not.toBeNull();
   });
 
-  it("keeps the P1 session when registration fails and retries without another link", async () => {
+  it("keeps the session when the press cannot make a merchant, and makes it on a press again without another link", async () => {
     let available = false;
     const registrar: Registrar = {
       register: async () =>
@@ -1125,7 +1123,7 @@ describe("the passwordless dashboard door", () => {
           : { ok: false, status: 0, why: "Agentify did not answer within ten seconds" },
     };
     const running = await started({ registrar });
-    await running.browser.post("/sign-in", { email: FRESH.email });
+    await running.browser.post("/sign-in", { ...TO_READ_REPORTS, email: FRESH.email });
     const action = actionIn(running.mails.at(-1));
     const token = action.searchParams.get("token") ?? "";
     const opened = await running.browser.from(running.url).post("/sign-in/open", { token });
@@ -1156,7 +1154,7 @@ describe("the passwordless dashboard door", () => {
         attachMerchant: async () => ({ status: "person-missing" as const }),
       }),
     });
-    await running.browser.signIn(FRESH.email);
+    await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
     await running.browser.get("/merchant");
     const aDayAndAnHourAgo = Date.now() - 25 * 60 * 60 * 1_000;
     for (const session of sessionRows()) {
@@ -1660,6 +1658,16 @@ describe("where a sign-in started", () => {
     expect(await merchantOf(running, FRESH.email)).not.toBeNull();
   });
 
+  it("makes no merchant for a sign-in asked for a page of the operator's workspace", async () => {
+    const running = await started();
+
+    await running.browser.post("/sign-in", { email: FRESH.email, destination: "admin" });
+    const opened = await openLatest(running);
+
+    expect(opened.to).toBe("/admin");
+    expect(await merchantOf(running, FRESH.email)).toBeNull();
+  });
+
   it("reads where the sign-in started from what was kept when it was asked for, never from what its end carries", async () => {
     const google = exchangingWithGoogle();
     const running = await started({ dashboard: GOOGLE });
@@ -1791,7 +1799,7 @@ describe("the click of a visitor an ad sent, through the Google sign-in", () => 
     for (const flow of [carried, unreadable]) {
       expect(flow.sent.status).toBe(303);
       expect(flow.returned.status).toBe(303);
-      expect(flow.returned.to).toBe("/merchant");
+      expect(flow.returned.to).toBe("/choose-name");
       expect(flow.seen).not.toContain(CLICK);
     }
     const person = await running.identity.byEmail("carried@gmail.com");
@@ -3763,10 +3771,9 @@ describe("a card held off sale by what its merchant lacks", () => {
           },
           dashboard: CHANNELS[channel],
         });
-        await running.browser.signIn(FRESH.email);
-        expect((await running.browser.makeMerchant()).status).toBe(200);
+        expect((await running.browser.signIn(FRESH.email)).status).toBe(200);
         const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
-        if (merchant == null) throw new Error("the press made no merchant");
+        if (merchant == null) throw new Error("the sign-in made no merchant");
         // For the calls the merchant's code makes.
         const key = await running.harnessed.addKey(merchant.id);
         const asTheMerchant = { authorization: `Bearer ${key}` };
@@ -3825,8 +3832,7 @@ describe("a card held off sale by what its merchant lacks", () => {
     // nobody is approved there; shown, it would tell every test merchant to
     // wait for something that never comes.
     const running = await started({ gateway: CHANNELS.test, dashboard: CHANNELS.test });
-    await running.browser.signIn(FRESH.email);
-    expect((await running.browser.makeMerchant()).status).toBe(200);
+    expect((await running.browser.signIn(FRESH.email)).status).toBe(200);
 
     const settings = readable((await running.browser.get("/settings")).html);
 
@@ -3839,8 +3845,7 @@ describe("a card held off sale by what its merchant lacks", () => {
       gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
       dashboard: CHANNELS.live,
     });
-    await running.browser.signIn(FRESH.email);
-    expect((await running.browser.makeMerchant()).status).toBe(200);
+    expect((await running.browser.signIn(FRESH.email)).status).toBe(200);
 
     const html = (await running.browser.get("/settings")).html;
     const outsideTheBanner = readable(
@@ -3856,10 +3861,9 @@ describe("a card held off sale by what its merchant lacks", () => {
       gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
       dashboard: CHANNELS.live,
     });
-    await running.browser.signIn(FRESH.email);
-    expect((await running.browser.makeMerchant()).status).toBe(200);
+    expect((await running.browser.signIn(FRESH.email)).status).toBe(200);
     const merchant = (await running.identity.byEmail(FRESH.email))?.merchant;
-    if (merchant == null) throw new Error("the press made no merchant");
+    if (merchant == null) throw new Error("the sign-in made no merchant");
     const key = await running.harnessed.addKey(merchant.id);
     const listed = await running.gateway.call("POST", "/v0/seller-name", {
       body: { seller_name: "Their own shop" },
@@ -4840,7 +4844,6 @@ describe("the keys screen", () => {
     // every new merchant. Against the real gateway, whose answer it is.
     const { browser } = await started();
     await browser.signIn(FRESH.email);
-    await browser.makeMerchant();
 
     const seen = await browser.get("/keys");
     const text = readable(seen.html);
@@ -5722,7 +5725,7 @@ describe("a page left open while another address signs in", () => {
     await unname(running);
     drawn.push(...postingFormsIn((await running.browser.get("/choose-name")).html));
     const fresh = await running.another();
-    await fresh.signIn(FRESH.email);
+    await fresh.signIn(FRESH.email, TO_READ_REPORTS);
     const offered = postingFormsIn((await fresh.get("/merchant")).html);
 
     const actions = new Set([...drawn, ...offered].map(({ action }) => action));
@@ -5902,7 +5905,7 @@ describe("a press that fails in a way nobody planned for", () => {
     });
 
     const written = await said(async () => {
-      await browser.signIn(FRESH.email);
+      await browser.signIn(FRESH.email, TO_READ_REPORTS);
       expect((await browser.makeMerchant()).status).toBe(500);
     });
 
@@ -5951,7 +5954,7 @@ describe("a press that fails in a way nobody planned for", () => {
         },
       },
     });
-    await browser.signIn(FRESH.email);
+    await browser.signIn(FRESH.email, TO_READ_REPORTS);
 
     const answered = await said(async () => {
       const failed = await browser.makeMerchant();
@@ -7791,7 +7794,7 @@ describe("what the pages record for product analytics", () => {
     const running = await started({
       registrar: { register: async () => ({ ok: true, document: "mer_pressed" }) },
     });
-    await running.browser.signIn(FRESH.email);
+    await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
     const person = await running.identity.byEmail(FRESH.email);
     await running.browser.get("/merchant");
     await fromNow(running);
@@ -7915,7 +7918,7 @@ describe("what the pages record for product analytics", () => {
             : { ok: false, status: 503, why: "the registry is unavailable" },
       },
     });
-    await running.browser.signIn(FRESH.email);
+    await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
     const person = await running.identity.byEmail(FRESH.email);
     await running.browser.get("/merchant");
     await fromNow(running);

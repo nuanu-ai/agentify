@@ -140,25 +140,25 @@ afterAll(async () => {
 
 describe("Google sign-in in the built dashboard", () => {
   for (const javaScriptEnabled of [true, false]) {
-    it(`returns from a full browser navigation with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
+    it(`returns from a full browser navigation into a new seller's dashboard with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
+      const email = `person-${javaScriptEnabled ? "script" : "plain"}@gmail.com`;
       const context = await browser.newContext({ javaScriptEnabled });
       try {
-        await consentFor(context);
+        await consentFor(context, { sub: email, email });
         const page = await context.newPage();
         await page.goto(`${origin}/dashboard/sign-in?destination=settings`, {
           waitUntil: "domcontentloaded",
         });
         await page.getByRole("button", { name: "Sign in with Google", exact: true }).click();
         await page.getByRole("link", { name: "Continue to Agentify" }).click();
-        await page.waitForURL(`${origin}/dashboard/merchant`);
-        expect(await page.locator("body").innerText()).toContain("person@gmail.com");
+        await page.waitForURL(`${origin}/dashboard/choose-name`);
         const cookie = (await context.cookies())
           .map(({ name, value }) => `${name}=${value}`)
           .join("; ");
         expect((await identity.whoIs(cookie))?.person).toMatchObject({
-          email: "person@gmail.com",
+          email,
           confirmed: true,
-          merchant: null,
+          merchant: { id: expect.any(String) },
         });
         expect((await context.cookies()).some(({ name }) => name === "agentify.state")).toBe(false);
       } finally {
@@ -221,7 +221,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
         await page.getByRole("link", { name: "Continue to Agentify" }).waitFor();
         const cookiesAtGoogle = JSON.stringify(await context.cookies());
         await page.getByRole("link", { name: "Continue to Agentify" }).click();
-        await page.waitForURL(`${origin}/dashboard/merchant`);
+        await page.waitForURL(`${origin}/dashboard/choose-name`);
 
         expect(await registrationOf(email)).toMatchObject([{ clickId: CLICK, state: "pending" }]);
         expect(sentToGoogle.at(-1)).toMatch(/^https:\/\/accounts\.google\.com\//);

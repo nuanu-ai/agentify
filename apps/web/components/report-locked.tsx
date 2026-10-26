@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { READING_SIGN_IN } from "../lib/reading-sign-in";
 import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 
@@ -64,7 +65,7 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
             It opens for the address it was sent to. The link in that email signs you in and opens
             it.
           </p>
-          <a className="button button-primary" href="/dashboard/sign-in">
+          <a className="button button-primary" href={READING_SIGN_IN}>
             Sign in
           </a>
         </>
