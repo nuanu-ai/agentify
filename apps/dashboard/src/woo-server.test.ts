@@ -2701,6 +2701,8 @@ describe("one integration at a time", () => {
     // is told to try again shortly rather than handed its ID to chase.
     if (order === undefined) throw new Error("the purchase made no order");
     expect(refused.status).toBe(409);
+    expect(refused.html).toMatch(/<p class="problem">[^<]+<\/p>/);
+    expect(formTo(refused.html, "post", "/woocommerce/disconnect")?.presses).toHaveLength(1);
     // Not priced yet, it is not on the open list, so nothing is claimed of it:
     // neither its ID, nor a count, nor that it is in progress.
     expect(refused.html).not.toContain(order.order.id);

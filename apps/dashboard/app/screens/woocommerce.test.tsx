@@ -374,14 +374,14 @@ describe("where the shop screen says why a press was refused", () => {
   });
 
   it("asks to try again in a moment, claiming no order in progress, where no order it named is listed open", () => {
-    const block = blockOf(
-      shopPage(
-        {},
-        { problem: { held: heldBy("woocommerce", ["ord_quote0f3c9a1b2d4e6f8a7b9c"], []) } },
-      ),
-      "/woocommerce/connect",
+    const html = shopPage(
+      {},
+      { problem: { held: heldBy("woocommerce", ["ord_quote0f3c9a1b2d4e6f8a7b9c"], []) } },
     );
+    const block = blockOf(html, "/woocommerce/connect");
 
+    expect(block).toMatch(/<p class="problem">[^<]+<\/p>/);
+    expect(formTo(html, "post", "/woocommerce/connect")?.presses).toHaveLength(1);
     expect(block).not.toContain("ord_quote0f3c9a1b2d4e6f8a7b9c");
     expect(block).not.toMatch(/aria-label="Copy the whole order ID/);
     expect(readable(block)).not.toMatch(/\b\d+ orders?\b/);
