@@ -43,11 +43,16 @@ on a block explorer shows its two recipients and their shares.
 ## Getting paid out
 
 You can get paid out at any time, from the Settings screen of your dashboard,
-which shows your payout contract and the one transaction that pays it out. A
-Coinbase Wallet sends it from Settings once you approve it; any other wallet
-that holds a little ETH for the network's fee and lets you paste data into a
-transaction can send it too. Either way your share reaches your wallet in that
-same transaction, which carries no money of its own and costs only the fee.
+which shows your payout contract, what a payout sent now would bring your
+wallet, and the one transaction that pays it out; when a payout would bring
+nothing, Settings says so and offers no transaction. On the live channel a
+Coinbase Wallet sends the payout from Settings once you approve it. On the
+test channel Coinbase's window refuses the test network for the wallets it
+creates now, so Settings has no Coinbase button there. On either channel, any
+other wallet that holds a little ETH for the network's fee and lets you paste
+data into a transaction can send it. Either way your share reaches your wallet
+in that same transaction, which carries no money of its own and costs only the
+fee.
 [Sending a payout](/payout) is the step-by-step for whoever holds the wallet.
 
 If you never send one, your share arrives when Agentify collects its own,
@@ -196,11 +201,11 @@ For the same reason there is no exact commission to read off a single order.
 ### If you have no wallet yet
 
 Your wallet is an address on Base, the network these payments run on: `0x`
-followed by forty letters and digits. If your business has none, the
-dashboard's Settings make one with you: Create or connect a Coinbase Wallet
-opens Coinbase's window over the page, where you create a Coinbase Wallet or
-connect one you already have, and its address comes into the box, to be saved
-when you press the button beside it. You manage that wallet at
+followed by forty letters and digits. If your business has none, on the live
+channel the dashboard's Settings make one with you: Create or connect a
+Coinbase Wallet opens Coinbase's window over the page, where you create a
+Coinbase Wallet or connect one you already have, and its address comes into
+the box, to be saved when you press the button beside it. You manage that wallet at
 [wallet.coinbase.com](https://wallet.coinbase.com).
 
 The wallet is yours, and so is the way into it. Nothing leaves it without your
@@ -211,8 +216,10 @@ way back while you still can get in ([how Coinbase's recovery works](https://hel
 Any other wallet app that supports the Base network, such as MetaMask, works as
 well. It shows the address, which is what you enter in Settings, and a recovery
 phrase, which stays with you and is never entered anywhere at Agentify:
-whoever holds the phrase holds the money. On the test channel your wallet only
-ever receives test USDC, so it needs no money of its own.
+whoever holds the phrase holds the money. On the test channel, where
+Coinbase's window refuses the test network, a wallet of this kind is the one
+to use. There your wallet only ever receives test USDC, so it needs no money
+of its own.
 
 ### Replacing your wallet
 
@@ -257,9 +264,9 @@ On the test channel every change applies at once and nothing is sent.
   so an order paid for and not delivered has none, and matching the payouts
   into your wallet against the orders is still yours to do by hand.
 - Whether Coinbase Wallet lets you pay a payout's fee in USDC, as Coinbase
-  says it does, what it shows on a first payout from a wallet that holds
-  nothing yet, and whether wallet.coinbase.com shows the test channel's test
-  USDC. None of these has been tried on the test channel.
+  says it does, and what it shows on a first payout from a wallet that holds
+  nothing yet. Settings offers Coinbase Wallet on the live channel only, so
+  both can be tried only there, and neither has been tried yet.
 - The written terms of the commission. Until they are published, saving your
   wallet on the screen that names the commission is the whole of how you
   accept it.
