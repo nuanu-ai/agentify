@@ -75,7 +75,10 @@ export function CopyRemediationPrompt({
   const [resolvedPrompt, setResolvedPrompt] = useState(prompt ?? "");
   const [gateIntent, setGateIntent] = useState<GateIntent>("copy-prompt");
   const textareaId = useId();
-  const { box, selected } = useCopyByHand(state === "fallback");
+  const [fallbackPresses, setFallbackPresses] = useState(0);
+  const { box, events, selected } = useCopyByHand(
+    state === "fallback" ? fallbackPresses : undefined,
+  );
   const Subject = subject.charAt(0).toUpperCase() + subject.slice(1);
 
   async function copy() {
@@ -98,6 +101,7 @@ export function CopyRemediationPrompt({
       );
     } catch {
       setState("fallback");
+      setFallbackPresses((presses) => presses + 1);
     }
   }
 
@@ -210,7 +214,7 @@ export function CopyRemediationPrompt({
           <label htmlFor={textareaId}>{Subject}</label>
           <textarea
             id={textareaId}
-            onFocus={(event) => event.currentTarget.select()}
+            {...events}
             readOnly
             ref={box}
             rows={8}

@@ -53,7 +53,10 @@ export function PublicShareActions({
   >();
   const exactPreview = resolvedPreview?.scanId === scanId ? resolvedPreview.value : undefined;
   const currentPublished = published?.scanId === scanId ? published.value : undefined;
-  const { box, selected } = useCopyByHand(manualCopy && currentPublished !== undefined);
+  const [manualCopyPresses, setManualCopyPresses] = useState(0);
+  const { box, events, selected } = useCopyByHand(
+    manualCopy && currentPublished !== undefined ? manualCopyPresses : undefined,
+  );
 
   useEffect(() => {
     if (!enabled || preview.score === null || exactPreview) return;
@@ -145,6 +148,7 @@ export function PublicShareActions({
     } catch {
       setCopied(false);
       setManualCopy(true);
+      setManualCopyPresses((presses) => presses + 1);
       setMessage("");
       return false;
     }
@@ -260,7 +264,7 @@ export function PublicShareActions({
           <label htmlFor={`share-link-${scanId}`}>Public link</label>
           <textarea
             id={`share-link-${scanId}`}
-            onFocus={(event) => event.currentTarget.select()}
+            {...events}
             readOnly
             ref={box}
             rows={3}

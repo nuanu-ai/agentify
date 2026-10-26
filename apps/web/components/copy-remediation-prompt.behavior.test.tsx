@@ -75,7 +75,10 @@ describe("copying where the clipboard is refused", () => {
 
     await userEvent.click(copy);
     await screen.findByText(/selected/i);
-    expect(document.activeElement).toBe(box);
-    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe("Add Product JSON-LD.");
+    const again = screen.getByRole("textbox", { name: "Fix prompt" }) as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(again);
+    expect(again.value.slice(again.selectionStart, again.selectionEnd)).toBe(
+      "Add Product JSON-LD.",
+    );
   });
 });
