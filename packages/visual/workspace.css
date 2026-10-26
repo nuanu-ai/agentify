@@ -36,8 +36,8 @@
   align-items: center;
 }
 
-/* Which channel this is, at the head of the sidebar on every page, live
-   included: an operator approves on one channel at a time. */
+/* The live channel's name at the head of the sidebar: an operator approves
+   on one channel at a time, and any other channel has its band instead. */
 .op-channel {
   display: grid;
   gap: 2px;
@@ -55,10 +55,6 @@
 
 .op-channel .badge::before {
   color: var(--fg);
-}
-
-.op-channel.test .badge::before {
-  color: var(--notice-ink);
 }
 
 /* A group of sections under a quiet caption. */
@@ -82,10 +78,25 @@
 
 /* The bar over the page: the title, and at its end the one box that finds
    anything by what an operator has in hand. */
-.op-lookup {
-  position: relative;
+/* A long title, such as an email address, wraps rather than pushing the box.
+   The box's flex item is the search element around its form. */
+.top-inner:has(.op-lookup) > .top-title {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-workspace .top-inner:has(.op-lookup) {
+  padding-block: 14px;
+}
+
+.top-inner > search:has(> .op-lookup) {
   flex: 0 1 420px;
   min-width: 0;
+}
+
+.op-lookup {
+  position: relative;
 }
 
 .op-lookup > svg {

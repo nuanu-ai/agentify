@@ -483,9 +483,10 @@ describe("the operator's page, in the workspace's frame", () => {
     expect(live).not.toContain('class="surface-words"');
   });
 
-  it("names the channel at the head of the content only on the live channel, where no band names it", () => {
-    const content = (drawn: string) => part(drawn, /<main\b/, "main");
-    expect(text(content(page))).not.toContain(CHANNEL_NAMES.test);
+  it("names a test channel once, by its band, and the live channel, which has none, in the sidebar and the page", () => {
+    const named = (drawn: string, name: string) => text(drawn).split(name).length - 1;
+    expect(named(page, CHANNEL_NAMES.test)).toBe(1);
+    expect(text(part(page, /<p\b[^>]*class="surface-words"/, "p"))).toContain(CHANNEL_NAMES.test);
 
     const live = drawOperatorPage({
       data: NUMBERS,
@@ -493,16 +494,16 @@ describe("the operator's page, in the workspace's frame", () => {
       channel: { mode: "live", name: CHANNEL_NAMES.live },
       zone: null,
     });
-    expect(text(content(live))).toContain(CHANNEL_NAMES.live);
+    expect(text(part(live, /<aside\b/, "aside"))).toContain(CHANNEL_NAMES.live);
+    expect(text(part(live, /<main\b/, "main"))).toContain(CHANNEL_NAMES.live);
   });
 
   it("draws no section's count, which it cannot read, rather than a zero", () => {
     expect(page).not.toMatch(/class="count/);
   });
 
-  it("finds a record through the workspace's lookup, and names the channel and the operator with the way out", () => {
+  it("finds a record through the workspace's lookup, and names the operator with the way out", () => {
     expect(page).toMatch(/<form[^>]*action="\/dashboard\/admin\/find"/);
-    expect(text(sidebar)).toContain(CHANNEL_NAMES.test);
     expect(page).toContain("operator@example.com");
     expect(page).toMatch(/<form[^>]*action="\/dashboard\/sign-out"/);
   });

@@ -1031,18 +1031,13 @@
   margin-top: var(--gap-caption);
 }
 
-/* The lookup's own page: its box, what it reads clear under it, and the
-   bar's box, which would be a second one, put away. */
+/* The lookup's own page: its box, and what it reads clear under it. */
 .op-find .search {
   max-width: 30rem;
 }
 
 .op-find + .op-find-note {
   margin-top: var(--space-block);
-}
-
-.app-frame:has(.op-find) .op-lookup {
-  display: none;
 }
 
 .list-empty > p + p {

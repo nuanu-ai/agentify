@@ -135,6 +135,15 @@ describe("who the operator's workspace answers", () => {
     );
   });
 
+  it("gives the lookup's own page one search box, and every other page the bar's", async () => {
+    const { signedIn } = await serve({ channel: "live" });
+    const operator = await signedIn(OPERATOR, { operator: true });
+    const boxes = (html: string) => html.match(/<input[^>]*type="search"/g)?.length ?? 0;
+
+    expect(boxes((await operator.get("/admin/find?q=ord_1")).html)).toBe(1);
+    expect(boxes((await operator.get("/admin/health")).html)).toBe(1);
+  });
+
   it("answers an operator on every page, in the workspace's frame, naming the channel", async () => {
     const { signedIn, harnessed } = await serve({ channel: "live" });
     const operator = await signedIn(OPERATOR, { operator: true });
