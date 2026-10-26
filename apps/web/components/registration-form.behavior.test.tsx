@@ -314,7 +314,7 @@ describe("asking the scanner for a verification link", () => {
     expect(document.querySelectorAll("[aria-invalid='true']")).toHaveLength(0);
   });
 
-  it("clears the mark from a field once the visitor asks again", async () => {
+  it("clears the mark from a field once a later ask is refused for something else", async () => {
     const fetched = answerWith(400, {
       error: {
         code: "invalid_phone",
@@ -330,11 +330,18 @@ describe("asking the scanner for a verification link", () => {
     fetched.mockImplementation(async (input) =>
       String(input).endsWith("/api/v2/session")
         ? json(200, { status: "signed_out" })
-        : json(202, { status: "verification_sent" }),
+        : json(400, {
+            error: {
+              code: "invalid_registration",
+              message: "This ask could not be read. Reload the page and ask again.",
+              retryable: false,
+              request_id: "019f5b6a-4b9f-7000-8000-00000000003f",
+            },
+          }),
     );
     await userEvent.click(screen.getByRole("button"));
 
-    await screen.findByText(/Check your inbox/);
+    await screen.findByText(/could not be read/);
     expect(phone.getAttribute("aria-invalid")).toBeNull();
     expect(describedAs(phone)).not.toContain("This phone was refused.");
   });

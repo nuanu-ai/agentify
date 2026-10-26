@@ -149,8 +149,22 @@ describe("publishing and revoking a scan's public link", () => {
     expect(screen.getByRole("link", { name: "Download image again" })).toBeTruthy();
   });
 
-  it("offers no image again once the link is revoked", async () => {
-    siteWith({ existing: true, pressed: async () => new Response(null, { status: 204 }) });
+  it("offers no image again once the link is revoked, nor after a new link is copied", async () => {
+    let revoked = false;
+    siteWith({
+      existing: true,
+      pressed: async () => {
+        if (!revoked) {
+          revoked = true;
+          return new Response(null, { status: 204 });
+        }
+        return json(201, {
+          slug,
+          public_url: `${window.location.origin}/s/${slug}`,
+          status: "published",
+        });
+      },
+    });
     const publish = await screen.findByRole("button", { name: "Publish image" });
     await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
     await userEvent.click(publish);
@@ -159,6 +173,10 @@ describe("publishing and revoking a scan's public link", () => {
     await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
 
     await screen.findByText("Public link revoked.");
+    expect(screen.queryByRole("link", { name: "Download image again" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /copy share link/i }));
+    await screen.findByText("Public link live");
     expect(screen.queryByRole("link", { name: "Download image again" })).toBeNull();
   });
 });
