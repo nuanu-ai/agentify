@@ -1173,7 +1173,6 @@ describe("the passwordless dashboard door", () => {
     const running = await started();
     await running.browser.post("/sign-in", { email: PERSON, destination: "settings" });
     const action = actionIn(running.mails.at(-1));
-    expect(action.searchParams.has("destination")).toBe(false);
 
     const opened = await running.browser.from(running.url).post("/sign-in/open", {
       token: action.searchParams.get("token") ?? "",

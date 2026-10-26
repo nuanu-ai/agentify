@@ -43,7 +43,6 @@ import {
   ACCOUNTS_FOUND_MAX,
   type AttachMerchantResult,
   adminDestinationIn,
-  asksForSellerDashboard,
   type DashboardDestination,
   type DashboardIdentity,
   type DashboardLinkResult,
@@ -546,19 +545,18 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             if (stored === null || stored === undefined) {
               throw new Error("dashboard_link_storage_missing");
             }
-            // The token is all the link carries that opens anything. A link
-            // that makes no merchant also says so, so the page for a link that
-            // no longer works asks for the next one without making one either;
-            // that mark can only keep a merchant from being made. A page of the
-            // operator's workspace is named itself, so the next link returns to it.
+            // The token is all the link carries that opens anything. The page
+            // it was for is named too (a report's link names the reports), so
+            // the page for a link that no longer works asks for the next one to
+            // the same place, making no merchant where this one makes none. The
+            // name can only keep a merchant from being made: a section makes
+            // one just as an address naming nothing does.
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
-            if (!asksForSellerDashboard(claim.destination)) {
-              action.searchParams.set(
-                "destination",
-                adminDestinationIn(claim.destination) ?? "reports",
-              );
-            }
+            action.searchParams.set(
+              "destination",
+              destinationNamed(claim.destination) ?? "reports",
+            );
             active.handed = await postman(
               typeof claim.destination !== "string"
                 ? reportLinkMessage(email, action.toString())
