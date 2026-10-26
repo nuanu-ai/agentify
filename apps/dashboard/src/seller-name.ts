@@ -68,7 +68,9 @@ const SITE_REFUSED =
 
 /**
  * The same address cut to what the rule takes, where cutting it gives one:
- * what a person meant who pasted a page of their shop.
+ * what a person meant who pasted a page of their shop. A domain written in
+ * another script is not offered, since the rule takes it only in the encoded
+ * form a person would not recognise as theirs.
  */
 const domainOf = (site: string): string | null => {
   let read: URL;
@@ -78,7 +80,8 @@ const domainOf = (site: string): string | null => {
     return null;
   }
   const domain = `https://${read.hostname.toLowerCase()}`;
-  return SellerSiteSchema.safeParse(domain).success ? domain : null;
+  const encoded = domain.includes("xn--") && !site.toLowerCase().includes("xn--");
+  return !encoded && SellerSiteSchema.safeParse(domain).success ? domain : null;
 };
 
 /**

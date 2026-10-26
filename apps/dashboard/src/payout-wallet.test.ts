@@ -67,7 +67,7 @@ describe("the rule an address is held to", () => {
   });
 
   it("names what makes an address the wrong shape: its start, a character, or its length", () => {
-    expect(whatIsWrongWithTheWallet(SHAPED.slice(2))).toMatch(/starts with 0x/i);
+    expect(whatIsWrongWithTheWallet(SHAPED.slice(2))).toMatch(/start with 0x/i);
     expect(whatIsWrongWithTheWallet(`${SHAPED.slice(0, 20)}z${SHAPED.slice(21)}`)).toContain(
       "“z” can't be in a wallet address.",
     );

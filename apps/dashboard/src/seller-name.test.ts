@@ -39,6 +39,10 @@ describe("a refused shop's site", () => {
     );
   });
 
+  it("offers no domain a person would not recognise, as one written in another script", () => {
+    expect(whatIsWrongWithTheSite("https://магазин.рф/")).not.toMatch(/xn--/);
+  });
+
   it("says the rule where no domain can be taken from what was typed", () => {
     const said = whatIsWrongWithTheSite("my shop") ?? "";
 

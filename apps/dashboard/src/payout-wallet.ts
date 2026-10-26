@@ -54,12 +54,12 @@ const NOTHING_WAS_SAVED = "It was not saved.";
 
 /** What in an address of the wrong shape makes it one: its start, a character, or its length. */
 const wrongInTheShape = (address: string): string => {
-  if (!address.startsWith("0x")) return "A wallet address starts with 0x.";
+  if (!address.startsWith("0x")) return "This doesn't start with 0x.";
   const strange = [...new Set(address.slice(2).match(/[^0-9a-fA-F]/gu) ?? [])];
   if (strange.length > 0) {
     return `${strange.map((one) => (one === " " ? "A space" : `“${one}”`)).join(", ")} can't be in a wallet address.`;
   }
-  return `This is ${address.length} characters long, and a wallet address has 42.`;
+  return `This is ${address.length} characters long, not 42.`;
 };
 
 /**
