@@ -26,6 +26,22 @@ const StateSchema = z
     "a state is its subdivision code without the country in front, such as CA, NSW or BA",
   );
 
+/**
+ * The example address the schema publishes: Agentify's own office, with the
+ * phone number blanked out, so that the example is a real place and nobody's
+ * home.
+ */
+const SHIP_TO_EXAMPLE = {
+  name: "Agentify",
+  line_one: "Jl. Raya Kediri, Beraban",
+  line_two: "Nuanu Creative City",
+  city: "Tabanan",
+  state: "BA",
+  postal_code: "82121",
+  country: "ID",
+  phone_number: "+62 000 0000 0000",
+} as const;
+
 export const ShipToSchema = z
   .strictObject({
     /** Who receives the parcel, as one name. */
@@ -43,6 +59,7 @@ export const ShipToSchema = z
   .meta({
     description:
       "Where a parcel goes, in the Agentic Commerce Protocol's names. A name, a first line, a city, a country and a phone are required; the country is ISO 3166-1 alpha-2 and a state, where given, is its subdivision code without the country in front. Whether a state or a postal code is needed here, and whether the merchant ships to this place, is the merchant's to answer. The price on a parcel's card is the goods alone; a purchase is priced for the address it names, with shipping to it and any tax for it included. The address passes through Agentify: the merchant's price question receives only its locality, the merchant receives the whole of it once the order is paid, and Agentify erases its copy from its database once the merchant takes the order on, or the order ends without them. Copies of the database taken before the erasure keep it: the live channel's backups, usually for about sixty days, with no upper bound set yet, and the restore point each release takes, on either channel, until five newer releases replace it.",
+    examples: [SHIP_TO_EXAMPLE],
   });
 
 /** Where a parcel goes as its price is asked: the place, not the person. */

@@ -92,6 +92,17 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["apps/docs/programs/**"],
+      "javascript": {
+        "formatter": { "quoteStyle": "single", "semicolons": "asNeeded" }
+      },
+      "linter": {
+        "rules": { "correctness": { "noUndeclaredDependencies": "off" } }
+      }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {

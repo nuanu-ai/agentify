@@ -1,7 +1,8 @@
 import { Button, Field } from "@agentify/ui";
 import { type ReactNode, useState } from "react";
-import { NAME_RULE, SITE_RULE } from "../../src/seller-name.js";
+import { WALLET_PRESS_MS } from "../../src/deadlines.js";
 import type {
+  CoinbaseView,
   PayoutView,
   SettingsView,
   SplitView,
@@ -52,7 +53,7 @@ function WhatBuyersSee({ view }: Readonly<{ view: SettingsView }>) {
               maxLength={32}
               defaultValue={name.value}
               required
-              hint={NAME_RULE}
+              hint={name.rule}
               {...(name.problem === null ? {} : { error: name.problem })}
             />
             <Button pending={pending}>Save</Button>
@@ -76,7 +77,7 @@ function WhatBuyersSee({ view }: Readonly<{ view: SettingsView }>) {
               placeholder="https://yourshop.com"
               defaultValue={site.value}
               required
-              hint={SITE_RULE}
+              hint={site.rule}
               {...(site.problem === null ? {} : { error: site.problem })}
             />
             <Button pending={pending}>Save</Button>
@@ -84,6 +85,13 @@ function WhatBuyersSee({ view }: Readonly<{ view: SettingsView }>) {
         )}
       </PostForm>
     </section>
+  );
+}
+
+/** The line that says why a panel has no Coinbase Wallet button, where it has none. */
+function NoCoinbase({ coinbase }: Readonly<{ coinbase: CoinbaseView }>) {
+  return coinbase === null || !("absent" in coinbase) ? null : (
+    <p className={styles.quiet}>{coinbase.absent}</p>
   );
 }
 
@@ -124,7 +132,12 @@ function Waiting({
         If nobody at your business asked for this, cancel it. Cancelling also signs out every other
         session on your account.
       </p>
-      <PostForm document action="/settings/payout-wallet/cancel" className={styles.noticeAction}>
+      <PostForm
+        document
+        action="/settings/payout-wallet/cancel"
+        answeredWithinMs={WALLET_PRESS_MS}
+        className={styles.noticeAction}
+      >
         {(pressed) => (
           <>
             <Shown pending={pending} saved={saved} />
@@ -240,10 +253,21 @@ export function PayoutWalletPanel({ wallet }: Readonly<{ wallet: WalletView }>) 
           {wallet.split === null ? null : <PaidInto split={wallet.split} />}
         </div>
       )}
-      {wallet.chain === null ? null : (
-        <CoinbaseAddress chainId={wallet.chain} box="payout_wallet" className={styles.coinbase} />
+      {wallet.coinbase !== null && "chain" in wallet.coinbase ? (
+        <CoinbaseAddress
+          chainId={wallet.coinbase.chain}
+          box="payout_wallet"
+          className={styles.coinbase}
+        />
+      ) : (
+        <NoCoinbase coinbase={wallet.coinbase} />
       )}
-      <PostForm document action="/settings/payout-wallet" className={`issue ${styles.wallet}`}>
+      <PostForm
+        document
+        action="/settings/payout-wallet"
+        answeredWithinMs={WALLET_PRESS_MS}
+        className={`issue ${styles.wallet}`}
+      >
         {(pressed) => (
           <>
             {pending === null ? null : <Shown pending={pending} saved={saved} />}
@@ -382,12 +406,15 @@ function GettingPaid({ payout }: Readonly<{ payout: PayoutView }>) {
       </Head>
       {payout.kind !== "send" ? null : (
         <>
-          {payout.chain === null ? null : (
+          {payout.coinbase !== null && "chain" in payout.coinbase ? (
             <CoinbasePayout
-              chainId={payout.chain}
+              chainId={payout.coinbase.chain}
               payout={{ to: payout.to, data: payout.data }}
+              brings={payout.brings}
               className={styles.coinbase}
             />
+          ) : (
+            <NoCoinbase coinbase={payout.coinbase} />
           )}
           <AnotherWallet payout={payout} />
         </>

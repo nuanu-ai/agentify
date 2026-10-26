@@ -1,8 +1,15 @@
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { gzipSync } from "node:zlib";
 import { type FetchArtifact, scanStopReason } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
-import type { PinnedTransport, PinnedTransportRequest } from "./safe-fetch.js";
+import {
+  NodePinnedTransport,
+  type PinnedTransport,
+  type PinnedTransportRequest,
+} from "./safe-fetch.js";
 import { isSameSite, ScanRunner } from "./scan-runner.js";
 
 const product = JSON.stringify({
@@ -318,13 +325,14 @@ describe("bounded scan graph", () => {
         appBaseUrl: "https://agentify.ad",
       }).run(job);
       // Checks 1 to 3 read robots.txt itself; every other check needs a
-      // request robots.txt rules on.
+      // request robots.txt rules on, check 11 the cards that would say
+      // whether a sign-in is declared.
       return evaluation.checks
         .filter((check) => check.id > 3 && check.status === "unavailable")
         .map((check) => [check.id, check.errorCode]);
     };
     const everyRobotsCheck = (code: string) =>
-      [4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 17, 18].map((id) => [id, code]);
+      [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18].map((id) => [id, code]);
     expect(await reasons("User-agent: agentify-scanner\nDisallow: /\n", 200)).toEqual(
       everyRobotsCheck("robots_disallowed"),
     );
@@ -1063,6 +1071,47 @@ describe("bounded scan graph", () => {
     expect(protocols.slice(0, 2)).toEqual(["https:", "http:"]);
     expect(protocols.slice(2).every((protocol) => protocol === "http:")).toBe(true);
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
+  });
+});
+
+describe("a sitemap served as a gzip file", () => {
+  it("is unpacked and judged by the scan", async () => {
+    const urlset = `<urlset><url><loc>https://example.com/products/widget</loc><lastmod>${new Date().toISOString()}</lastmod></url></urlset>`;
+    const server = createServer((_request, response) => {
+      response
+        .writeHead(200, { "content-type": "application/x-gzip" })
+        .end(gzipSync(Buffer.from(urlset)));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const port = (server.address() as AddressInfo).port;
+    const site = transport();
+    const node = new NodePinnedTransport();
+    // The sitemap alone comes from a real server over a real connection.
+    const adapter: PinnedTransport = {
+      request: (input) =>
+        input.url.pathname === "/sitemap.xml"
+          ? node.request({
+              ...input,
+              url: new URL(`http://unresolvable.invalid:${port}/sitemap.xml`),
+              address: { address: "127.0.0.1", family: 4 },
+            })
+          : site.adapter.request(input),
+    };
+    try {
+      const evaluation = await new ScanRunner({
+        resolver: { resolve: async () => [{ address: "93.184.216.34", family: 4 }] },
+        transport: adapter,
+        appBaseUrl: "https://agentify.ad",
+      }).run(job);
+      expect(evaluation.checks.find((check) => check.id === 4)).toMatchObject({
+        status: "pass",
+        evidence: { entries_read: 1 },
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 });
 

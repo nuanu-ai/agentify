@@ -47,11 +47,19 @@ on a block explorer shows its two recipients and their shares.
 ## Getting paid out
 
 You can get paid out at any time, from the Settings screen of your dashboard,
-which shows your payout contract and the one transaction that pays it out. A
-Coinbase Wallet sends it from Settings once you approve it; any other wallet
-that holds a little ETH for the network's fee and lets you paste data into a
-transaction can send it too. Either way your share reaches your wallet in that
-same transaction, which carries no money of its own and costs only the fee.
+which shows your payout contract, what a payout sent now would bring your
+wallet, and the one transaction that pays it out. A payout already sent is
+counted in that amount until the network has carried it out, and when
+Settings cannot read the network it says it does not know the amount. When a
+payout would bring nothing, Settings says so and offers no transaction. On the
+live channel a Coinbase Wallet sends the payout from Settings once you approve
+it. On the test channel Coinbase Wallet's payout is not known to work, because
+Coinbase's window refuses transactions on the test network from the wallets it
+creates now, so Settings has no Coinbase payout button there. On either
+channel, any other wallet that holds a little ETH for the network's fee and lets you paste
+data into a transaction can send it. Either way your share reaches your wallet
+in that same transaction, which carries no money of its own and costs only the
+fee.
 [Sending a payout](/payout) is the step-by-step for whoever holds the wallet.
 
 If you never send one, your share arrives when Agentify collects its own,
@@ -152,10 +160,18 @@ network, or be replaced by another agreement. Agentify does not send a refund,
 check one or judge whether you and the buyer have settled. You hold the
 buyer's details only where the product needs them: a parcel's address, with
 the name and phone number it carries, and whatever a purchase parameter your
-product asks for holds, such as an email. Otherwise you can arrange a refund only
-with a buyer who reaches you. A payment's transaction, which you hold on the
-receipt, is on a public chain, and a block explorer shows the wallet that paid
-it.
+product asks for holds, such as an email. A sale that has a receipt also names
+its payment's transaction, when one was recorded. The transaction is on a
+public chain, but a block explorer shows as its sender the payment service
+that submitted it, not the buyer: the wallet that paid is the address the USDC
+transfer inside the transaction came from. USDC sent back on Base to that
+address reaches the wallet that paid. The same address on another network may
+belong to nobody, because some wallets exist on Base alone, so a refund in
+another currency or on another network needs the buyer to say where. An order
+paid for and never delivered has no receipt, and nothing Agentify shows you
+names its transaction. A wallet's address says where a payment came from, not
+who the person is or how to write to them, so anything beyond sending USDC
+back to that wallet waits until the buyer reaches you.
 
 You close fulfillment from **Orders → Order details → Close fulfillment** on
 your dashboard, or your engineer does it from your integration ([Closing
@@ -207,8 +223,10 @@ way back while you still can get in ([how Coinbase's recovery works](https://hel
 Any other wallet app that supports the Base network, such as MetaMask, works as
 well. It shows the address, which is what you enter in Settings, and a recovery
 phrase, which stays with you and is never entered anywhere at Agentify:
-whoever holds the phrase holds the money. On the test channel your wallet only
-ever receives test USDC, so it needs no money of its own.
+whoever holds the phrase holds the money. On the test channel your wallet
+only ever receives test USDC, so it needs no money of its own. Settings there
+has no Coinbase payout button, so the test channel's payout is sent from a
+wallet of this kind, which need not be the wallet it pays.
 
 ### Replacing your wallet
 
@@ -241,8 +259,8 @@ On the test channel every change applies at once and nothing is sent.
 
 - How a buyer reaches your support to arrange a remedy outside Agentify.
   Until something does, you hold the buyer's details only where the product
-  needs them, and a payment's transaction, which leads on the chain to the
-  wallet that paid.
+  needs them, and, on a sale with a receipt, a payment's transaction, which
+  leads on the chain to the wallet that paid.
 - How long finding a payment whose answer was lost can take. No time is
   promised, and on the live channel it depends on a free public service.
 - Who pays the network fee on a buyer's payment and how it sits against the
@@ -253,9 +271,9 @@ On the test channel every change applies at once and nothing is sent.
   so an order paid for and not delivered has none, and matching the payouts
   into your wallet against the orders is still yours to do by hand.
 - Whether Coinbase Wallet lets you pay a payout's fee in USDC, as Coinbase
-  says it does, what it shows on a first payout from a wallet that holds
-  nothing yet, and whether wallet.coinbase.com shows the test channel's test
-  USDC. None of these has been tried on the test channel.
+  says it does, and what it shows on a first payout from a wallet that holds
+  nothing yet. Settings offers Coinbase Wallet's payout on the live channel
+  only, so both can be tried only there, and neither has been tried yet.
 - The written terms of the commission. Until they are published, saving your
   wallet on the screen that names the commission is the whole of how you
   accept it.

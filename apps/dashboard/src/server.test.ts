@@ -57,6 +57,7 @@ import {
   LINK_UNKNOWN_CLIENT_LIMIT,
 } from "./identity.js";
 import type { Handover, Message, Postman } from "./mail.js";
+import { moment } from "./moments.js";
 import { NOT_AN_ADDRESS } from "./page-services.js";
 import type { Pages } from "./pages.js";
 import { buildApp } from "./server.js";
@@ -3058,7 +3059,9 @@ describe("the settings screen", () => {
     expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
   });
 
-  it("says the gateway would not answer rather than drawing a page with no name on it", async () => {
+  it("says the settings could not be loaded rather than drawing a page with no name on it", async () => {
+    // A read changes nothing, so the page says it could not load them rather
+    // than repeating the gateway's words about a press that may have been done.
     const running = await started({ answerWithinMs: 100 });
     await running.browser.signIn();
     running.silenceGateway();
@@ -3066,7 +3069,8 @@ describe("the settings screen", () => {
     const screen = await running.browser.get("/settings");
 
     expect(screen.status).toBe(504);
-    expect(readable(screen.html)).toMatch(/didn't answer/i);
+    expect(readable(screen.html)).toMatch(/your settings could not be loaded/i);
+    expect(readable(screen.html)).not.toMatch(/may or may not/i);
   });
 });
 
@@ -4211,6 +4215,44 @@ describe("the orders screen", () => {
     expect(text).toContain(SURFACE_WORDS.sandbox ?? "");
   });
 
+  it("says in an order's details when its delivery deadline passed, and that a late delivery still counts", async () => {
+    const { browser, gateway, harnessed } = await started({
+      gateway: { DEFAULT_ASYNC_FULFILLMENT_MS: "40" },
+    });
+    const itemId = await publish(gateway, {
+      ...esimCard,
+      fulfill_deadline_seconds: undefined,
+    });
+    await buyOverHttp(harnessed, gateway, itemId, { onOrder: () => ({ accepted: {} }) });
+    const id = await vi.waitFor(
+      async () => {
+        const listed = (
+          await gateway.call("GET", "/v0/orders?open=true", {
+            headers: { authorization: `Bearer ${KEY}` },
+          })
+        ).body as { orders: { id: string; status: string }[] };
+        const unfulfilled = listed.orders.find((order) => order.status === "unfulfilled");
+        expect(unfulfilled).toBeDefined();
+        return unfulfilled?.id ?? "";
+      },
+      { timeout: 2_000, interval: 5 },
+    );
+    const paidAt = (await harnessed.store.orderById(id))?.order.timestamps.paidAt ?? 0;
+
+    await browser.signIn();
+    const html = (await browser.get(`/orders?details=${id}`)).html;
+    const details = readable(
+      new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "",
+    );
+
+    expect(details).toContain(
+      `Delivery deadline passed ${moment(new Date(paidAt + 40).toISOString())}`,
+    );
+    expect(details).toContain(`Paid ${moment(new Date(paidAt).toISOString())}`);
+    expect(details).toContain("You can still deliver it late");
+    expect(details).toContain("Delivering late");
+  });
+
   it("says why an order was unfulfilled without guessing that a window ran out", async () => {
     // An order is unfulfilled too when the merchant refuses one already paid for;
     // a callout that blamed a passed delivery window whatever the cause would
@@ -4241,11 +4283,11 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toMatch(/the buyer's payment failed after you delivered/i);
+    expect(text).toContain("the goods are held");
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
-    expect(text).toContain("only if they pay again for this order");
+    expect(text).toContain("The buyer can pay again for this same order");
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
@@ -5306,7 +5348,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
           payoutWallet: answer,
           integration: answer,
           standing: answer,
-          unfulfilledOrders: answer,
+          ordersWithRecords: answer,
         }) as never,
     });
     return { browser, close: async () => undefined };
@@ -5626,7 +5668,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 describe("when the gateway will not answer", () => {
   it("says of a press it did not answer that nobody knows whether it was done, and leads to the screen it was made on", async () => {
     // A reload of the answer to a press sends the press again, so the way on
-    // is the screen to look at, never the answer.
+    // is a read of the address it was made at, which only draws the screen.
     const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
     await browser.signIn();
     silenceGateway();
@@ -5638,7 +5680,7 @@ describe("when the gateway will not answer", () => {
     expect(text).toContain("We don't know if this was done");
     expect(text).not.toMatch(/reload/i);
     expect(/<a class="button button-primary" href="([^"]*)"/.exec(pressed.html)?.[1]).toBe(
-      "/products",
+      STOP_SELLING,
     );
   });
 
@@ -5675,6 +5717,7 @@ describe("the page that says a call to the gateway failed", () => {
 
     expect(failed.status).toBe(504);
     expect(again).toMatch(/\/settings$/);
+    expect(failed.html).toContain('aria-label="Dashboard sections"');
   });
 
   it("offers the page again, not its data, when the page was opened inside the application", async () => {
@@ -6045,6 +6088,63 @@ describe("a list, when it could not be read", () => {
     },
   );
 
+  it("says a page whose session could not be checked could not be loaded, and a press it could not check changed nothing", async () => {
+    // Opening a list is a read: nothing could have been done, so the person
+    // is not told to wonder about it, and the way on is the list they asked
+    // for, filter and all. The gate runs before any press, so a press it
+    // could not check changed nothing either, and the page says so.
+    let breaking = false;
+    const { browser } = await started({
+      identity: (real) => ({
+        ...real,
+        whoIs: async (cookie) => {
+          if (breaking) throw new Error("the session store is not answering");
+          return await real.whoIs(cookie);
+        },
+      }),
+    });
+    await browser.signIn();
+    breaking = true;
+
+    const read = await quietly(async () => await browser.get("/orders?show=open"));
+    const pressed = await quietly(async () => await browser.post("/orders", {}));
+
+    expect(read.status).toBe(500);
+    expect(readable(read.html)).toContain("could not be loaded");
+    expect(readable(read.html)).not.toMatch(/may or may not|went through/);
+    expect(read.html).toMatch(/<a [^>]*href="\/orders\?show=open"[^>]*>Try again<\/a>/);
+    expect(readable(pressed.html)).toContain("Nothing was changed");
+    expect(readable(pressed.html)).not.toContain("We don't know if this was done");
+    expect(pressed.html).toMatch(
+      /<a class="button button-primary" href="\/orders">Open Orders<\/a>/,
+    );
+  });
+
+  it.each(LISTS)(
+    "%s says a refusal in the gateway's own words beside the sections, and offers no read that would only be refused again",
+    async (path, read) => {
+      let refusing = false;
+      const { browser } = await started({
+        client: (real) => ({
+          ...real,
+          [read]: async (...asked: unknown[]) =>
+            refusing
+              ? { ok: false as const, status: 403, why: "this merchant is suspended" }
+              : await (real[read] as (...given: unknown[]) => Promise<unknown>)(...asked),
+        }),
+      });
+      await browser.signIn();
+      refusing = true;
+
+      const refused = await browser.get(path);
+
+      expect(refused.status).toBe(403);
+      expect(refused.html).toContain('aria-label="Dashboard sections"');
+      expect(readable(mainOf(refused.html))).toContain("This merchant is suspended");
+      expect(waysOnIn(refused.html)).toStrictEqual([]);
+    },
+  );
+
   it.each(LISTS)("%s says the same of a read Agentify did not answer", async (path) => {
     const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
     await browser.signIn();
@@ -6061,6 +6161,11 @@ describe("a list, when it could not be read", () => {
 });
 
 describe("a press that fails in a way nobody planned for", () => {
+  /** Where the error page's one way on, "Open" and the screen's name, leads. */
+  const reopened = (html: string): string | undefined =>
+    /<a class="button button-primary" href="([^"]*)">Open [^<]+<\/a>/
+      .exec(html)?.[1]
+      ?.replaceAll("&amp;", "&");
   const said = async (during: () => Promise<void>): Promise<string> => {
     const lines: string[] = [];
     const collect = (...parts: unknown[]) => lines.push(parts.map(String).join(" "));
@@ -6097,11 +6202,7 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-session");
   });
 
-  /** The panel's one way on, and where it leads. */
-  const wayOnIn = (html: string): string | undefined =>
-    /<a class="button button-primary" href="([^"]*)"/.exec(html)?.[1]?.replaceAll("&amp;", "&");
-
-  it("says nothing was changed where the dashboard broke before anything ran, a read included", async () => {
+  it("never says nobody knows what happened where the dashboard broke before anything ran, a read included", async () => {
     // The gate reads the session before any page or press runs; a failure
     // there did nothing, and a page saying nobody knows would send a person
     // looking for a press they never made.
@@ -6117,17 +6218,16 @@ describe("a press that fails in a way nobody planned for", () => {
     const failed = await said(async () => {
       const read = await browser.get("/products");
       expect(read.status).toBe(500);
-      expect(readable(read.html)).toContain("Nothing was changed");
       expect(readable(read.html)).not.toContain("We don't know if this was done");
     });
 
     expect(failed).toMatch(/request failed/i);
   });
 
-  it("answers on the dashboard's own page, which says to look before pressing again and leads on", async () => {
+  it("answers on the dashboard's own page, which says the outcome is unknown and leads back to the page with a read", async () => {
     // A press can fail after its work was done, so the page cannot say
-    // whether it went through; a bare line would leave the person with no
-    // way on and nothing to tell them what to check.
+    // whether it was done; the way on reads the press's own address, which
+    // leads to the page it was made on and sends nothing again.
     const { browser } = await started({
       registrar: {
         register: async () => {
@@ -6141,19 +6241,19 @@ describe("a press that fails in a way nobody planned for", () => {
       const failed = await browser.makeMerchant();
       expect(failed.status).toBe(500);
       expect(readable(failed.html)).toContain("We don't know if this was done");
-      expect(readable(failed.html)).toContain("before you try again");
-      // The press made no merchant's screen yet, so the way on is the start,
-      // which leads wherever this person begins.
-      expect(wayOnIn(failed.html)).toBe("/");
+      expect(failed.html).toMatch(
+        /<a class="button button-primary" href="\/merchant">Open [^<]+<\/a>/,
+      );
     });
 
     expect(answered).toMatch(/request failed/i);
   });
 
-  it("answers every press inside the dashboard that fails on the dashboard's page saying so", async () => {
-    // Whichever press it was, the merchant learns that something broke and to
-    // look before pressing again, on a page with a way on; a bare line of text
-    // gives them neither.
+  it("answers every press inside the dashboard that fails on the dashboard's page saying the outcome is unknown, with a read of the press's own address as the way on", async () => {
+    // Whichever press it was, the merchant learns that it may or may not have
+    // been done, and the way on is a read of the address the press went to,
+    // which leads to the page it was made on: Settings for a setting, never
+    // another section.
     const broken = (): never => {
       throw new Error("the answer was not a document this contract knows");
     };
@@ -6177,7 +6277,7 @@ describe("a press that fails in a way nobody planned for", () => {
     breaking = true;
 
     await said(async () => {
-      for (const [path, form, screen] of [
+      for (const [path, form] of [
         [STOP_SELLING, {}, "/products"],
         ["/keys", { label: "the second worker" }, "/keys"],
         ["/keys/some-key/disable", {}, "/keys"],
@@ -6204,10 +6304,7 @@ describe("a press that fails in a way nobody planned for", () => {
           to: null,
         });
         expect(readable(pressed.html), path).toContain("We don't know if this was done");
-        expect(readable(pressed.html), path).toContain("before you try again");
-        // Back to the screen the press was made on, to look there; never the
-        // press's own address, whose reload would press again.
-        expect(wayOnIn(pressed.html), path).toBe(screen);
+        expect(reopened(pressed.html), path).toBe(path);
       }
     });
   });
@@ -6232,7 +6329,7 @@ describe("a press that fails in a way nobody planned for", () => {
 
         expect(pressed.status, path).toBe(500);
         expect(readable(pressed.html), path).toContain("We don't know if this was done");
-        expect(readable(pressed.html), path).toContain("before you try again");
+        expect(reopened(pressed.html), path).toBe(path);
       }
     });
 
@@ -6756,6 +6853,36 @@ describe("a wallet change waiting on the live deployment", () => {
     expect((await otherDevice.get("/settings")).status).toBe(200);
   });
 
+  it("titles a change the gateway refused as nothing changed when its words say nothing was recorded, and a fault it did not word as not known", async () => {
+    // The message about the change could not be confirmed as sent: a 503 whose
+    // words say nothing was recorded, so the page must not say the change may
+    // have been made. A 500 nobody worded promises nothing either way.
+    const running = await live({
+      client: (real) => ({
+        ...real,
+        issueKey: async () => ({
+          ok: false as const,
+          status: 500,
+          why: "something failed inside Agentify",
+        }),
+      }),
+    });
+    await running.browser.signIn();
+    running.harnessed.announcer.answer = "not_handed_over";
+
+    const refused = await running.browser.post("/settings/payout-wallet", {
+      payout_wallet: WAITING,
+    });
+    const faulted = await running.browser.post("/keys", { label: "the nightly job" });
+
+    expect(refused.status).toBe(503);
+    expect(readable(refused.html)).toContain("Nothing was changed");
+    expect(readable(refused.html)).toContain("nothing was recorded");
+    expect(readable(refused.html)).not.toContain("We don't know if this was done");
+    expect(faulted.status).toBe(500);
+    expect(readable(faulted.html)).toContain("We don't know if this was done");
+  });
+
   it("says a change that took effect before the press did take effect, signs the others and any copy of this session out, and keeps this browser in on a new one", async () => {
     // The unwanted change has just landed. It is not cancelled (nothing takes
     // it back at once) and the page must not say so; it signs every other
@@ -7275,14 +7402,21 @@ describe("closing fulfillment from Orders", () => {
         },
         getOrder: async () => lateAnswer(10),
         orders: async (open) => {
-          if (pressed) {
-            readsAfter += 1;
-            if (readsAfter > 2) throw new Error("a second read failed");
-          }
+          readAfter();
           return await real.orders(open);
+        },
+        ordersWithRecords: async () => {
+          readAfter();
+          return await real.ordersWithRecords();
         },
       }),
     });
+    function readAfter() {
+      if (pressed) {
+        readsAfter += 1;
+        if (readsAfter > 2) throw new Error("a second read failed");
+      }
+    }
     const id = await paid(running);
     await running.browser.signIn();
     const typed = "Payment returned outside Agentify.";
@@ -7322,7 +7456,7 @@ describe("closing fulfillment from Orders", () => {
           getOrder: async (id) => (down ? lateAnswer(10) : await real.getOrder(id)),
           cards: async () => (down ? await failed() : await real.cards()),
           orders: async (open) => (down ? await failed() : await real.orders(open)),
-          unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+          ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
           paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
         }),
       });
@@ -7362,7 +7496,7 @@ describe("closing fulfillment from Orders", () => {
         ...real,
         cards: async () => (down ? await failed() : await real.cards()),
         orders: async (open) => (down ? await failed() : await real.orders(open)),
-        unfulfilledOrders: async () => (down ? await failed() : await real.unfulfilledOrders()),
+        ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
         paidIntoSplits: async () => (down ? await failed() : await real.paidIntoSplits()),
       }),
     });
@@ -7403,7 +7537,7 @@ describe("closing fulfillment from Orders", () => {
     return {
       cards: async () => (down() ? await failed() : await real.cards()),
       orders: async (open: boolean) => (down() ? await failed() : await real.orders(open)),
-      unfulfilledOrders: async () => (down() ? await failed() : await real.unfulfilledOrders()),
+      ordersWithRecords: async () => (down() ? await failed() : await real.ordersWithRecords()),
       paidIntoSplits: async () => (down() ? await failed() : await real.paidIntoSplits()),
     };
   };

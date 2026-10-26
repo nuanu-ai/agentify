@@ -625,6 +625,129 @@ describe("a scan in Chromium", () => {
     await page.context().close();
   });
 
+  it.each([
+    [
+      "holds back at the field a phone with more digits than the site takes",
+      "+1 415 555 0123 4567 89",
+      0,
+    ],
+    ["sends the ask with a phone the site takes", "+1 (415) 555-0123", 1],
+  ])("%s", async (_case, phone, asks) => {
+    const { page } = await answered(FINISHED);
+    let posted = 0;
+    await page.route(`**/api/v2/scans/${SCAN_ID}/registrations`, (route) => {
+      posted += 1;
+      return route.fulfill({ status: 202, json: { status: "verification_sent" } });
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    await page.getByLabel("Email").fill("owner@shop.example");
+    const field = page.getByLabel(/^Phone/);
+    await field.fill(phone);
+    await page.getByLabel(/acknowledge the scanner data notice/i).check();
+
+    await page.getByRole("button", { name: "Email me a secure link" }).click();
+    if (asks > 0) await page.getByText("Check your inbox").waitFor();
+
+    expect(await field.evaluate((input: HTMLInputElement) => input.validity.patternMismatch)).toBe(
+      asks === 0,
+    );
+    expect(posted).toBe(asks);
+    await page.context().close();
+  });
+
+  it("selects the prompt for copying by hand where the clipboard is refused, and says it is selected only once it is", async () => {
+    const { page, complaints } = await answered(FINISHED);
+    const prompt = "Add Product JSON-LD to every product page.";
+    await page.route(`**/api/v2/scans/${SCAN_ID}/contact-access`, (route) =>
+      route.fulfill({ json: { status: "verified" } }),
+    );
+    await page.route(`**/api/v1/scans/${SCAN_ID}/remediation-prompt?scope=teaser`, (route) =>
+      route.fulfill({
+        json: {
+          version: "remediation-prompt-v1.0.0",
+          scope: "teaser",
+          content: prompt,
+          included_findings: ["vertical_jsonld_missing"],
+          generated_at: "2026-10-13T09:00:00.000Z",
+        },
+      }),
+    );
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    const session = await page.context().newCDPSession(page);
+    const { targetInfo } = await session.send("Target.getTargetInfo");
+    await session.send("Browser.setPermission", {
+      permission: { name: "clipboard-write" },
+      origin,
+      browserContextId: targetInfo.browserContextId,
+      setting: "denied",
+    });
+
+    await page.getByRole("button", { name: "Copy AI fix prompt" }).click();
+    const box = page.getByRole("textbox", { name: "AI fix prompt" });
+    await page.getByText(/is selected below/).waitFor();
+
+    expect(
+      await box.evaluate((area: HTMLTextAreaElement) => ({
+        focused: document.activeElement === area,
+        selected: area.value.slice(area.selectionStart, area.selectionEnd),
+      })),
+    ).toEqual({ focused: true, selected: prompt });
+    expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+
+  it("offers a link that downloads the image again after Publish image, and a second press asks for the image again without publishing again", async () => {
+    vi.stubEnv("PUBLIC_SHARE_ENABLED", "true");
+    const slug = "abcdefghijklmnopqrstuvwxyz_1234567890";
+    const { page } = await answered(FINISHED);
+    let published = 0;
+    await page.route(`**/api/v1/scans/${SCAN_ID}/share-preview`, (route) =>
+      route.fulfill({
+        json: {
+          host: "shop.example",
+          score: 46,
+          level: "readable",
+          rubric_version: "gtm-v1.0.0",
+          generated_at: "2026-10-13T09:00:00.000Z",
+          existing_share: null,
+        },
+      }),
+    );
+    await page.route(`**/api/v1/scans/${SCAN_ID}/share`, (route) => {
+      published += 1;
+      return route.fulfill({
+        status: 201,
+        json: { slug, public_url: `${origin}/s/${slug}`, status: "published" },
+      });
+    });
+    // The share exists only in these routes, so the server has no image for it:
+    // the download fails, which the page cannot see. A download is not a request
+    // a route sees, so the browser's own downloads are counted.
+    let imageAsks = 0;
+    page.on("download", (download) => {
+      if (download.url().endsWith(`/api/v1/shares/${slug}/image`)) imageAsks += 1;
+    });
+    await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
+    const publish = page.getByRole("button", { name: "Publish image" });
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll("button")].some(
+        (button) => button.textContent === "Publish image" && !button.disabled,
+      ),
+    );
+
+    await publish.click();
+    const again = page.getByRole("link", { name: "Download image again" });
+    await again.waitFor();
+    expect(await again.getAttribute("href")).toBe(`/api/v1/shares/${slug}/image`);
+    expect(await again.getAttribute("download")).not.toBeNull();
+
+    await publish.click();
+    await expect.poll(() => imageAsks).toBe(2);
+    expect(published).toBe(1);
+    vi.stubEnv("PUBLIC_SHARE_ENABLED", "false");
+    await page.context().close();
+  });
+
   it("asks a stranger at a report to sign in, and its own links need no reload", async () => {
     const { page, complaints } = await visit("/report/0190f4c5-0000-7000-8000-00000000f002");
     await page.evaluate(() => {

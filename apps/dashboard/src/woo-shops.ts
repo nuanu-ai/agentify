@@ -9,7 +9,7 @@
 
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
@@ -304,8 +304,11 @@ export interface WooShops {
   ): Promise<Readonly<Record<string, ShopTotal>>>;
   /** Rows without an exact recovery state are not recoverable. */
   recoveryOrder(orderId: string): Promise<WooRecoveryOrder | null>;
-  /** A bounded local lookup for links on this account's visible Orders rows. */
-  recoverableOrders(accountId: string, orderIds: readonly string[]): Promise<readonly string[]>;
+  /** A bounded local lookup, for this account's Orders rows, of the sales the connector holds. */
+  heldSales(
+    accountId: string,
+    orderIds: readonly string[],
+  ): Promise<Readonly<Record<string, HeldSale>>>;
   /** Placed and neither shipped nor ended. */
   parcelsToFollow(accountId: string): Promise<readonly ParcelToFollow[]>;
   /**
@@ -326,6 +329,35 @@ export interface WooShops {
    */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
 }
+
+/**
+ * A sale the connector holds, as a late delivery can still reach it: a parcel
+ * whose shop order is placed, which marking it Completed still ships; any
+ * other parcel, whose shop order was never confirmed or has ended; a download
+ * whose shop order is unknown or placed with its file, which recovery can
+ * still deliver; a download the shop was never asked to create, whose order
+ * the merchant may create once from the recovery page; or a download that can
+ * no longer be delivered.
+ */
+type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "refused" | "unrecoverable";
+
+/** A sale whose sold facts were never written cannot be recovered: nothing says what to deliver. */
+const heldSaleOf = (
+  facts: Readonly<Record<string, unknown>> | null,
+  phase: string,
+  withFile: boolean,
+): HeldSale =>
+  facts?.kind === "parcel"
+    ? phase === "placed"
+      ? "parcel"
+      : "unplaced_parcel"
+    : facts === null
+      ? "unrecoverable"
+      : phase === "precreate_refused"
+        ? "refused"
+        : phase === "create_unknown" || (phase === "placed" && withFile)
+          ? "recoverable"
+          : "unrecoverable";
 
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
 
@@ -819,26 +851,20 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       );
     },
 
-    async recoverableOrders(accountId, orderIds) {
-      if (orderIds.length === 0) return [];
+    async heldSales(accountId, orderIds) {
+      if (orderIds.length === 0) return {};
       const rows = await db
-        .select({ orderId: wooOrders.orderId })
+        .select({
+          orderId: wooOrders.orderId,
+          phase: wooOrders.phase,
+          facts: wooOrders.facts,
+          withFile: sql<boolean>`${wooOrders.result} is not null`,
+        })
         .from(wooOrders)
-        .where(
-          and(
-            eq(wooOrders.accountId, accountId),
-            inArray(wooOrders.orderId, [...orderIds]),
-            isNotNull(wooOrders.facts),
-            sql`${wooOrders.facts} ->> 'kind' is distinct from 'parcel'`,
-            or(
-              eq(wooOrders.phase, "precreate_refused"),
-              eq(wooOrders.phase, "create_unknown"),
-              and(eq(wooOrders.phase, "placed"), isNotNull(wooOrders.result)),
-            ),
-          ),
-        )
-        .orderBy(asc(wooOrders.orderId));
-      return rows.map((row) => row.orderId);
+        .where(and(eq(wooOrders.accountId, accountId), inArray(wooOrders.orderId, [...orderIds])));
+      return Object.fromEntries(
+        rows.map((row) => [row.orderId, heldSaleOf(row.facts, row.phase, row.withFile)]),
+      );
     },
 
     async parcelsToFollow(accountId) {
@@ -1174,20 +1200,20 @@ export const memoryWooShops = (): WooShops & {
       );
     },
 
-    async recoverableOrders(accountId, orderIds) {
+    async heldSales(accountId, orderIds) {
       const asked = new Set(orderIds);
-      return [...orders.entries()]
-        .flatMap(([orderId, found]) =>
-          asked.has(orderId) &&
-          found.accountId === accountId &&
-          found.facts.kind !== "parcel" &&
-          (found.phase === "precreate_refused" ||
-            found.phase === "create_unknown" ||
-            (found.phase === "placed" && found.placed?.permission != null))
-            ? [orderId]
+      return Object.fromEntries(
+        [...orders.entries()].flatMap(([orderId, found]) =>
+          asked.has(orderId) && found.accountId === accountId
+            ? [
+                [
+                  orderId,
+                  heldSaleOf(found.facts, found.phase, found.placed?.permission != null),
+                ] as const,
+              ]
             : [],
-        )
-        .sort();
+        ),
+      );
     },
 
     async parcelsToFollow(accountId) {

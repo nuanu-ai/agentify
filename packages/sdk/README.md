@@ -105,8 +105,14 @@ may overlap and finish out of order, so one slow order need not hold up the
 next purchase or price question. An event waits for earlier handlers for its
 order, and a repeat already running in this process shares that attempt.
 Once all four places are occupied, polling waits for one to finish; price
-questions can still expire under saturation. `stop()` waits for work already
-started, including events waiting on their order, and draws nothing more.
+questions can still expire under saturation. `stop()` draws nothing more and
+waits for work already started, including events waiting on their order, and
+sends the answers its handlers return. It waits eight seconds at most, and each
+message still unfinished then gets a `batch_abandoned` problem saying whether
+anything was sent for it. A process manager that kills the process sooner cuts
+the wait short and nothing is reported: an order whose answer was not sent
+comes again, and one whose answer was on its way may or may not be closed by
+it.
 
 A card we would not publish comes back as `ok: false`, with a code, a sentence a
 person can read, whether repeating could change the outcome, and its findings
@@ -187,9 +193,11 @@ address shape never reaches your handler narrowed, and is set aside with an
 `unread` problem naming the fields while the rest of the subscription goes on.
 `orders.list` returns every order it can read, and its `unread` problem names
 the orders it left out and counts those whose status word this release does not
-know. No failure or problem this package reports about an answer it could not
-read repeats what that answer carried: it names the fields and what was
-expected there, so the buyer's details stay out of your logs. A rename, a
+know. No failure or problem the package reports repeats the contents of an
+answer it could not read, whatever that answer's status or content type: it
+names the call, the status, the content type and the length, and where JSON did
+not fit, the fields and what was expected there, so the buyer's details and the
+prices stay out of your logs. A rename, a
 removal, a changed meaning or anything added to what an order delivers moves
 the contract version, and a
 process whose version Agentify does not share stops at the first poll answer,

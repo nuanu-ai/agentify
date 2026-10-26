@@ -191,15 +191,15 @@ const OrderFacts = ({ row, marked }: Readonly<{ row: Order; marked: boolean }>) 
       {row.payment}
       <TestMark test={marked && row.test} />
     </Fact>
+    {row.facts.map((fact) => (
+      <Fact key={fact.label} label={fact.label}>
+        <Moment at={fact.at} />
+      </Fact>
+    ))}
     {row.share === null ? null : <Fact label="Your share">{row.share}</Fact>}
     {row.inTheShop === null ? null : <Fact label="In your shop">{row.inTheShop}</Fact>}
     {row.shopTotal === null ? null : (
       <Fact label="Shop's order total">{row.shopTotal}, within a cent of what the buyer paid</Fact>
-    )}
-    {row.closure === null ? null : (
-      <Fact label="Closed by you">
-        <Moment at={row.closure.at} />
-      </Fact>
     )}
     {row.closure?.message === undefined ? null : (
       <Fact label="Your note to the buyer">
@@ -236,6 +236,12 @@ const OrderDetails = ({
   return (
     <div className={styles.details}>
       <OrderFacts row={row} marked={marked} />
+      {row.why === null ? null : (
+        <p className={styles.help}>
+          {row.why}
+          {row.rest === null ? null : <Rest rest={row.rest} />}
+        </p>
+      )}
       {row.paymentUnresolved ? (
         <p className={styles.help}>{row.closing === null ? UNKNOWN_CLOSED : UNKNOWN_OPEN}</p>
       ) : null}
@@ -292,7 +298,7 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
                 open={row.opened || view.pressed?.id === row.id || undefined}
                 cells={
                   <>
-                    <Cell at="fact">{row.time}</Cell>
+                    <Cell at="fact">{row.priced === null ? "Not priced" : row.time}</Cell>
                     <Cell at="title">{row.product}</Cell>
                     <Cell at="state">
                       <span className={styles.wraps}>

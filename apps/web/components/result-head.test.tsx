@@ -25,6 +25,16 @@ describe("the head of a result", () => {
     expect(head({ coverage: 0.7 })).toContain("Diagnostic level");
   });
 
+  it("shows the coverage as the whole percent it has reached, so a figure under 70% never reads 70%", () => {
+    const under = head({ coverage: 0.698 });
+    expect(under).toContain("Coverage 69%");
+    expect(under).toContain("Provisional diagnostic");
+    expect(head({ coverage: 0.7 })).toContain("Coverage 70%");
+    expect(head({ coverage: 0.29 })).toContain("Coverage 29%");
+    expect(head({ coverage: 0.999 })).toContain("Coverage 99%");
+    expect(head({ coverage: 1 })).toContain("Coverage 100%");
+  });
+
   it("says what callable-ready does not mean wherever that level is drawn", () => {
     expect(head({ level: "callable_ready", score: 63 })).toContain(
       "Agentify did not invoke tools or verify authenticated actions.",

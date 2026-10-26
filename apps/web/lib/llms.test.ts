@@ -1,4 +1,5 @@
 import { DOCS_PAGES } from "@agentify/ui/docs";
+import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_PAGE_PATHS } from "../content/public-page-metadata";
 import { buildLlmsText } from "./llms";
@@ -55,6 +56,16 @@ describe("llms.txt", () => {
     ]) {
       expect(selling, name).toContain(name);
     }
+  });
+
+  it("shows a parcel's purchase with its address, as the purchase contract takes it", () => {
+    // A parcel's purchase is refused without ship_to, and the text is where an
+    // agent learns the names of its fields.
+    const selling = on(LIVE, "live").split("## Selling to agents")[1] ?? "";
+    const written = [...selling.matchAll(/`(\{[^`]*"ship_to"[^`]*\})`/g)].map((found) => found[1]);
+
+    expect(written).toHaveLength(1);
+    expect(PurchaseRequestSchema.safeParse(JSON.parse(written[0] ?? "")).success).toBe(true);
   });
 
   it("on the live channel, opens with the site's name and says nothing of test money", () => {

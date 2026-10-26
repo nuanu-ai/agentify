@@ -1035,17 +1035,72 @@ describe("a refusal the gateway put into words", () => {
     expect(refused?.length ?? 0).toBeLessThan(2_000);
   });
 
-  it("still quotes an answer that is not JSON, such as a proxy's page", async () => {
-    // The negative control: a proxy's error page is not the gateway's document
-    // and often names what is broken.
+  it.each([
+    [
+      "the gateway's document cut short",
+      200,
+      "application/json",
+      '{"orders":[{"id":"order-1","params":{"email":"buyer@example.com","phone":"+6281',
+      "79 characters",
+    ],
+    [
+      "a proxy's page under an error status",
+      503,
+      "text/html",
+      "<html><body>no upstream for buyer@example.com</body></html>",
+      "59 characters",
+    ],
+    ["plain words under a success status", 200, "text/plain", "buyer@example.com", "17 characters"],
+    ["nothing at all", 502, "text/html", "", "an empty body"],
+  ])(
+    "repeats nothing of %s in what a call throws or returns, and says what came back instead",
+    async (_what, status, type, text, size) => {
+      // Nothing that fails to parse can be told apart from the gateway's own
+      // document cut short, which carries the buyer's parameters, so none of it
+      // reaches a merchant's log; the status, the declared type and the length
+      // say what came back without carrying any of it.
+      const agentify = await gatewayServing({
+        list_orders: () => ({ status, type, text }),
+        deliver_order: () => ({ status, type, text }),
+      });
+
+      const thrown = await thrownBy(agentify.orders.list());
+      const returned = await agentify.orders.forId("order-1").deliver({
+        access_url: "https://a.example",
+      });
+
+      expect(returned.ok).toBe(false);
+
+      for (const said of [thrown, returned.ok === false ? returned.error.message : null]) {
+        expect(said).toContain(`answered ${status}`);
+        expect(said).toContain(type);
+        expect(said).toContain(size);
+        expect(said).not.toContain("buyer@example.com");
+        expect(said).not.toContain("+6281");
+      }
+    },
+  );
+
+  it("names a content type only where it has the shape of one, since the header came with the answer", async () => {
+    // A proxy can put anything in a header; a media type with its parameters
+    // left off is named, and anything else is said to be there, not repeated.
     const agentify = await gatewayServing({
-      get_order: () => ({ status: 502, text: "<html>upstream is down</html>" }),
+      deliver_order: () => ({ status: 502, type: "text/html; charset=utf-8", text: "<p>down</p>" }),
+      refuse_order: () => ({ status: 502, type: "for buyer@example.com", text: "<p>down</p>" }),
     });
 
-    const refused = await thrownBy(agentify.orders.get("order-1"));
+    const typed = await agentify.orders.forId("order-1").deliver({
+      access_url: "https://a.example",
+    });
+    const untyped = await agentify.orders.forId("order-1").refuse({
+      code: "out_of_stock",
+      message: "Нет в наличии",
+    });
 
-    expect(refused).toContain("is not JSON");
-    expect(refused).toContain("upstream is down");
+    expect(typed.ok === false && typed.error.message).toContain("text/html");
+    expect(typed.ok === false && typed.error.message).not.toContain("charset");
+    expect(untyped.ok === false && untyped.error.message).toContain("content type");
+    expect(untyped.ok === false && untyped.error.message).not.toContain("buyer@example.com");
   });
 });
 

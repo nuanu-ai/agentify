@@ -38,12 +38,14 @@ interface GatewayCall {
 /**
  * What a test wants sent back. `body` is a document, held to the route's own
  * schema before it goes out; `text` is sent untouched, to play a broken
- * gateway, a proxy's error page or a truncated answer.
+ * gateway, a proxy's error page or a truncated answer, under `type` as its
+ * content type, plain text unless the test names another.
  */
 export interface GatewayAnswer {
   readonly status?: number;
   readonly body?: unknown;
   readonly text?: string;
+  readonly type?: string;
 }
 
 /** How a test answers one route, given the call and how many came before it. */
@@ -61,6 +63,8 @@ export interface FakeGateway {
   /** Every call that was matched to a route, in the order they arrived. */
   readonly calls: readonly GatewayCall[];
   callsTo(route: RouteName): GatewayCall[];
+  /** The calls whose caller went away before this gateway answered them. */
+  leftUnanswered(route: RouteName): GatewayCall[];
   close(): Promise<void>;
 }
 
@@ -148,6 +152,7 @@ const findingsOf = (issues: readonly { path: readonly PropertyKey[]; message: st
 
 export const startFakeGateway = async (options: FakeGatewayOptions): Promise<FakeGateway> => {
   const calls: GatewayCall[] = [];
+  const left: GatewayCall[] = [];
 
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     const url = new URL(request.url ?? "/", "http://gateway.invalid");
@@ -259,6 +264,7 @@ export const startFakeGateway = async (options: FakeGatewayOptions): Promise<Fak
     const answer = await Promise.race([responder(call, index), gone]);
 
     if (answer === clientLeft) {
+      left.push(call);
       response.destroy();
       return;
     }
@@ -266,7 +272,7 @@ export const startFakeGateway = async (options: FakeGatewayOptions): Promise<Fak
     const status = answer.status ?? 200;
 
     if (answer.text !== undefined) {
-      response.writeHead(status, { "content-type": "text/plain" });
+      response.writeHead(status, { "content-type": answer.type ?? "text/plain" });
       response.end(answer.text);
       return;
     }
@@ -301,6 +307,7 @@ export const startFakeGateway = async (options: FakeGatewayOptions): Promise<Fak
     url: `http://127.0.0.1:${address.port}`,
     calls,
     callsTo: (route: RouteName) => calls.filter((call) => call.route === route),
+    leftUnanswered: (route: RouteName) => left.filter((call) => call.route === route),
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.closeAllConnections();

@@ -114,4 +114,86 @@ describe("publishing and revoking a scan's public link", () => {
     const told = await screen.findByText(/The public link was not found\./);
     expect(told.textContent).toMatch(/reload/i);
   });
+
+  it("offers the image again by a link after Publish image", async () => {
+    siteWith({
+      existing: false,
+      pressed: async () =>
+        json(201, { slug, public_url: `${window.location.origin}/s/${slug}`, status: "published" }),
+    });
+    const publish = await screen.findByRole("button", { name: "Publish image" });
+    await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+
+    await userEvent.click(publish);
+
+    const again = await screen.findByRole("link", { name: "Download image again" });
+    expect(again.getAttribute("href")).toBe(`/api/v1/shares/${slug}/image`);
+    expect(again.hasAttribute("download")).toBe(true);
+  });
+
+  it("says the public link was already live when Publish image is pressed again, and makes no new one", async () => {
+    const press = vi.fn(async () =>
+      json(201, { slug, public_url: `${window.location.origin}/s/${slug}`, status: "published" }),
+    );
+    siteWith({ existing: true, pressed: press });
+    const publish = await screen.findByRole("button", { name: "Publish image" });
+    await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+
+    await userEvent.click(publish);
+
+    expect(await screen.findByText(/already live/i)).toBeTruthy();
+    expect(press).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "Download image again" })).toBeTruthy();
+  });
+
+  it("offers no image again once the link is revoked, nor after a new link is copied", async () => {
+    let revoked = false;
+    siteWith({
+      existing: true,
+      pressed: async () => {
+        if (!revoked) {
+          revoked = true;
+          return new Response(null, { status: 204 });
+        }
+        return json(201, {
+          slug,
+          public_url: `${window.location.origin}/s/${slug}`,
+          status: "published",
+        });
+      },
+    });
+    const publish = await screen.findByRole("button", { name: "Publish image" });
+    await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(publish);
+    await screen.findByRole("link", { name: "Download image again" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+
+    await screen.findByText("Public link revoked.");
+    expect(screen.queryByRole("link", { name: "Download image again" })).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /copy share link/i }));
+    await screen.findByText("Public link live");
+    expect(screen.queryByRole("link", { name: "Download image again" })).toBeNull();
+  });
+
+  it("says the link is selected only while it is, and selects it again on the next press", async () => {
+    siteWith({ existing: true, pressed: () => Promise.reject(new TypeError("unused")) });
+    const copy = await screen.findByRole("button", { name: /copy share link/i });
+    await vi.waitFor(() => expect((copy as HTMLButtonElement).disabled).toBe(false));
+    await userEvent.click(copy);
+    const box = (await screen.findByRole("textbox", {
+      name: "Public link",
+    })) as HTMLTextAreaElement;
+    await screen.findByText(/selected/i);
+
+    box.setSelectionRange(0, 0);
+    box.blur();
+    await vi.waitFor(() => expect(screen.queryByText(/selected/i)).toBeNull());
+
+    await userEvent.click(copy);
+    await screen.findByText(/selected/i);
+    expect(document.activeElement).toBe(box);
+    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe(box.value);
+  });
 });

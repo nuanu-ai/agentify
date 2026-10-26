@@ -24,6 +24,7 @@ import { getServerConfig } from "./config";
 import { deriveCapability, hmacHex, sha256 } from "./crypto";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, getScanQueue } from "./queue";
+import { isScanId } from "./scan-id";
 
 export const ANONYMOUS_COOKIE = "agentify_anonymous";
 
@@ -250,7 +251,9 @@ export async function createOrReplayScan(
   return result;
 }
 
+/** The scan the token reads, or nothing for an id that is no scan's, without asking the database. */
 export async function authorizeScan(scanId: string, token: string) {
+  if (!isScanId(scanId)) return undefined;
   const { db } = getDatabase();
   return (
     await db

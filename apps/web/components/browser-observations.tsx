@@ -4,7 +4,7 @@ import type {
 } from "@agentify/scanner-contracts";
 import { Badge, type BadgeTone } from "@agentify/ui";
 import { useEffect, useId, useState } from "react";
-
+import { ask, waitAfter } from "../lib/ask";
 import {
   browserObservationImpact,
   browserObservationLabel,
@@ -20,6 +20,9 @@ import layout from "./result-layout.module.css";
 import { StatusBadge } from "./status-badge";
 
 type ViewState = "hidden" | "ready" | "error";
+
+/** The API's answer that there is no observation for the scan: a success with no body. */
+const NOTHING_YET = Symbol("no observation");
 
 /**
  * What a real browser observed on the site, beside the report and outside its
@@ -40,12 +43,14 @@ export function BrowserObservations({
   const titleId = useId();
   const [data, setData] = useState<BrowserObservationStatusResponse | null>(initialData ?? null);
   const [viewState, setViewState] = useState<ViewState>(initialData ? "ready" : "hidden");
+  const [retryIn, setRetryIn] = useState(0);
 
   useEffect(() => {
     if (surface !== "scan" || initialData) return;
     let cancelled = false;
     let timer: number | undefined;
     let missingTokenAttempts = 0;
+    let failures = 0;
     const controller = new AbortController();
 
     async function load() {
@@ -59,46 +64,44 @@ export function BrowserObservations({
         }
         return;
       }
-      try {
-        const response = await fetch(
-          `/api/v1/scans/${encodeURIComponent(scanId)}/browser-observation`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          },
-        );
-        if (cancelled) return;
-        if (
-          response.status === 204 ||
-          response.status === 401 ||
-          response.status === 403 ||
-          response.status === 404
-        ) {
-          setViewState("hidden");
-          return;
-        }
-        if (!response.ok) {
-          setViewState("error");
-          return;
-        }
-        const [payload, { browserObservationStatusResponseSchema }] = await Promise.all([
-          response.json() as Promise<unknown>,
-          import("@agentify/scanner-contracts"),
-        ]);
-        const parsed = browserObservationStatusResponseSchema.safeParse(payload);
-        if (!parsed.success) {
-          setViewState("error");
-          return;
-        }
-        setData(parsed.data);
-        setViewState("ready");
-        if (["queued", "running"].includes(parsed.data.status)) {
-          timer = window.setTimeout(() => void load(), 2500);
-        }
-      } catch (error) {
-        if (!cancelled && !(error instanceof DOMException && error.name === "AbortError"))
-          setViewState("error");
+      const asked = await ask(
+        `/api/v1/scans/${encodeURIComponent(scanId)}/browser-observation`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        },
+        (body, status) => body ?? (status === 204 ? NOTHING_YET : null),
+      );
+      if (cancelled) return;
+      if (asked.kind === "ended" || (asked.kind === "answered" && asked.answer === NOTHING_YET)) {
+        setViewState("hidden");
+        return;
+      }
+      // The contract that reads the observation is loaded only once there is
+      // one to read, rather than with the page.
+      const read =
+        asked.kind === "answered"
+          ? await import("@agentify/scanner-contracts").then(
+              ({ browserObservationStatusResponseSchema }) =>
+                browserObservationStatusResponseSchema.safeParse(asked.answer),
+              () => null,
+            )
+          : null;
+      if (cancelled) return;
+      if (!read?.success) {
+        failures += 1;
+        const seconds = waitAfter(failures, asked.kind === "later" ? asked.waitSeconds : null);
+        setRetryIn(seconds);
+        setViewState("error");
+        timer = window.setTimeout(() => void load(), seconds * 1000);
+        return;
+      }
+      failures = 0;
+      setData(read.data);
+      setViewState("ready");
+      if (["queued", "running"].includes(read.data.status)) {
+        timer = window.setTimeout(() => void load(), 2500);
       }
     }
 
@@ -116,8 +119,8 @@ export function BrowserObservations({
       <section aria-labelledby={titleId}>
         <PanelHeader status="unavailable" titleId={titleId} />
         <p className={styles.notice}>
-          Browser observations are temporarily unavailable. The 18-check report is unaffected. This
-          is not a failure of your site.
+          Browser observations are temporarily unavailable; the page asks again in {retryIn} s. The
+          18-check report is unaffected. This is not a failure of your site.
         </p>
       </section>
     );

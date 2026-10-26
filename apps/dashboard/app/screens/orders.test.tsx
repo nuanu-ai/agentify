@@ -873,7 +873,8 @@ describe("the purchases that lapsed unpaid", () => {
       merchant_item_id: "vpn-1m",
       status: at % 2 === 0 ? ("expired" as const) : ("rejected" as const),
       price: { amount: "5.00", currency: "USD" },
-      at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
+      asked_at: new Date(Date.parse("2026-10-11T22:59:00Z") - (from + at) * 60_000).toISOString(),
+      priced_at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
       test: false,
     }));
 
@@ -934,7 +935,8 @@ describe("the purchases that lapsed unpaid", () => {
       merchant_item_id: "vpn-1m",
       status: "rejected",
       price: null,
-      at: "2026-10-11T23:00:00Z",
+      asked_at: "2026-10-11T23:00:00Z",
+      priced_at: null,
       test: false,
     };
     const view = ordersView(
@@ -1018,5 +1020,271 @@ describe("the purchases that lapsed unpaid", () => {
 
     expect(view.none).toBe(false);
     expect(readable(served(() => <OrdersScreen view={view} />))).not.toContain("No orders yet");
+  });
+});
+
+describe("an order's facts", () => {
+  /** The opened part of one order's row, read apart from the rest of the page. */
+  const detailsText = (html: string, id: string) =>
+    readable(
+      new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "",
+    );
+
+  const lapsedPage = (attempts: LapsedAttempt[]) =>
+    ordersView(
+      "live",
+      CARDS,
+      THREE,
+      THREE,
+      new URLSearchParams({ show: "lapsed", details: attempts[0]?.id ?? "" }),
+      {},
+      {},
+      { page: attempts, of: attempts.length },
+    );
+
+  const UNPRICED: LapsedAttempt = {
+    id: idOf("0aa0", "beef"),
+    merchant_item_id: "vpn-1m",
+    status: "rejected",
+    price: null,
+    asked_at: "2026-10-11T23:00:00Z",
+    priced_at: null,
+    test: false,
+  };
+
+  it("say a purchase that ended before any price was set was not priced, and when it was asked for, never a price set", () => {
+    const html = served(() => <OrdersScreen view={lapsedPage([UNPRICED])} />);
+    const details = detailsText(html, UNPRICED.id);
+
+    expect(readable(html)).toContain("Not priced");
+    expect(readable(html)).not.toMatch(/Price set \d/);
+    expect(details).toContain("Asked to buy 2026-10-11 23:00:00 UTC");
+    expect(details).not.toContain("Price set");
+  });
+
+  it("say when a lapsed purchase's price was set, apart from when it was asked for", () => {
+    const priced: LapsedAttempt = {
+      ...UNPRICED,
+      status: "expired",
+      price: { amount: "5.00", currency: "USD" },
+      asked_at: "2026-10-11T22:59:58Z",
+      priced_at: "2026-10-11T23:00:00Z",
+    };
+    const html = served(() => <OrdersScreen view={lapsedPage([priced])} />);
+    const details = detailsText(html, priced.id);
+
+    expect(readable(html)).not.toContain("Not priced");
+    expect(details).toContain("Asked to buy 2026-10-11 22:59:58 UTC");
+    expect(details).toContain("Price set 2026-10-11 23:00:00 UTC");
+  });
+
+  const UNFULFILLED = ordersOf([
+    { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
+    { id: SAME_HEAD, status: "unfulfilled", at: "2026-10-12T16:41:00Z" },
+    { id: SAME_TAIL, status: "in_progress", at: "2026-10-12T16:42:00Z" },
+  ]);
+  const RECORDS = {
+    [FIRST]: {
+      unfulfilled: "deadline_passed",
+      paidAt: "2026-10-12T16:40:05Z",
+      deadline: { at: "2026-10-12T17:40:05Z", passed: true },
+      soldThrough: "api",
+      counts: false,
+    },
+    [SAME_HEAD]: {
+      unfulfilled: "refused",
+      paidAt: "2026-10-12T16:41:05Z",
+      deadline: null,
+      soldThrough: "api",
+      counts: false,
+    },
+    [SAME_TAIL]: {
+      unfulfilled: null,
+      paidAt: "2026-10-12T16:42:05Z",
+      deadline: { at: "2026-10-12T17:42:05Z", passed: false },
+      soldThrough: "api",
+      counts: false,
+    },
+  } as const;
+  const opened = (id: string) =>
+    served(() => (
+      <OrdersScreen
+        view={ordersView(
+          "live",
+          CARDS,
+          UNFULFILLED,
+          UNFULFILLED,
+          new URLSearchParams({ details: id }),
+          RECORDS,
+        )}
+      />
+    ));
+
+  it("say, in the details of an order its delivery deadline left unfulfilled, when it was paid, when the deadline passed, and both ways on", () => {
+    const details = detailsText(opened(FIRST), FIRST);
+
+    expect(details).toContain("Paid 2026-10-12 16:40:05 UTC");
+    expect(details).toContain("Delivery deadline passed 2026-10-12 17:40:05 UTC");
+    expect(details).toContain("You can still deliver it late");
+    expect(details).toContain("Delivering late");
+    expect(details).toContain("Close fulfillment");
+    // A deadline still running is said as the deadline, not as one passed.
+    const running = detailsText(opened(SAME_TAIL), SAME_TAIL);
+    expect(running).toContain("Delivery deadline 2026-10-12 17:42:05 UTC");
+    expect(running).not.toContain("Delivery deadline passed");
+  });
+
+  it("are said in the order they happened, so a payment after the closure comes after it", () => {
+    const closedThenPaid = OrderListSchema.parse({
+      orders: ordersOf([{ id: FIRST, status: "fulfillment_closed" }]).orders.map((order) => ({
+        ...order,
+        payment_status: "paid",
+        merchant_closure: { closed_at: "2026-10-12T16:50:00Z" },
+      })),
+    });
+    const html = served(() => (
+      <OrdersScreen
+        view={ordersView(
+          "live",
+          CARDS,
+          closedThenPaid,
+          closedThenPaid,
+          new URLSearchParams({ details: FIRST }),
+          {
+            [FIRST]: {
+              unfulfilled: null,
+              paidAt: "2026-10-12T17:10:00Z",
+              deadline: null,
+              soldThrough: "api",
+              counts: false,
+            },
+          },
+        )}
+      />
+    ));
+
+    expect(detailsText(html, FIRST)).toMatch(
+      /Price set 2026-10-12 16:40:00 UTC Closed by you 2026-10-12 16:50:00 UTC Paid 2026-10-12 17:10:00 UTC/,
+    );
+  });
+
+  it("say the deadline's passing in the order's details, while its row in Needs you reads its cause", () => {
+    const html = opened(FIRST);
+
+    expect(readable(html)).toMatch(/before the delivery deadline[\s\S]*Delivering late/);
+    expect(detailsText(html, FIRST)).toContain("Delivery deadline passed 2026-10-12 17:40:05 UTC");
+  });
+});
+
+describe("the way on for an unfulfilled order", () => {
+  const detailsOf = (html: string, id: string) =>
+    new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "";
+  const SDK_DOCS = 'href="/docs/orders#confirming-a-delivery-with-a-separate-call"';
+  const PARCELS = 'href="/docs/woocommerce#parcels"';
+  const RECOVER = `/integrations/woocommerce/recover/${SAME_HEAD}`;
+  const PARCEL_REFUSED = idOf("5a5a", "0001");
+  const LOST = idOf("5a5a", "0002");
+  const SDK = idOf("5a5a", "0003");
+  const UNPLACED = idOf("5a5a", "0004");
+  const NEVER_RECEIVED = idOf("5a5a", "0005");
+
+  const unfulfilled = ordersOf(
+    [FIRST, SAME_HEAD, PARCEL_REFUSED, LOST, SDK, UNPLACED, NEVER_RECEIVED].map((id) => ({
+      id,
+      status: "unfulfilled",
+    })),
+  );
+  const cause = (
+    unfulfilled: "deadline_passed" | "refused" | "charge_confirmed_late",
+    soldThrough: "api" | "woocommerce" = "woocommerce",
+  ) => ({ unfulfilled, paidAt: null, deadline: null, soldThrough, counts: false });
+  const opened = (id: string) =>
+    detailsOf(
+      served(() => (
+        <OrdersScreen
+          view={ordersView(
+            "live",
+            CARDS,
+            unfulfilled,
+            unfulfilled,
+            new URLSearchParams({ details: id }),
+            {
+              [FIRST]: cause("deadline_passed"),
+              [SAME_HEAD]: cause("deadline_passed"),
+              [PARCEL_REFUSED]: cause("refused"),
+              [LOST]: cause("refused"),
+              [SDK]: cause("deadline_passed", "api"),
+              [UNPLACED]: cause("deadline_passed"),
+              [NEVER_RECEIVED]: cause("charge_confirmed_late"),
+            },
+            {},
+            undefined,
+            {},
+            {
+              [FIRST]: { kind: "parcel", placed: true },
+              [SAME_HEAD]: { kind: "download", recover: RECOVER },
+              [PARCEL_REFUSED]: { kind: "parcel", placed: true },
+              [UNPLACED]: { kind: "parcel", placed: false },
+              [LOST]: { kind: "download", recover: null },
+            },
+          )}
+        />
+      )),
+      id,
+    );
+
+  it("is the integration's late delivery for an order the merchant's own code holds", () => {
+    const details = opened(SDK);
+
+    expect(readable(details)).toContain("You can still deliver it late");
+    expect(details).toContain(SDK_DOCS);
+  });
+
+  it("is marking the order Completed in WooCommerce for a parcel the shop connector holds", () => {
+    const details = opened(FIRST);
+
+    expect(readable(details)).toContain("mark the order Completed in WooCommerce");
+    expect(details).toContain(PARCELS);
+    expect(details).not.toContain(SDK_DOCS);
+  });
+
+  it("is no shipment at all for a parcel the connector refused, only the closure", () => {
+    const details = opened(PARCEL_REFUSED);
+
+    expect(readable(details)).toContain("Do not ship it");
+    expect(readable(details)).not.toMatch(/still (deliver|ship)/);
+    expect(details).toContain(PARCELS);
+  });
+
+  it("is the connector's recovery for a download it can still deliver", () => {
+    const details = opened(SAME_HEAD);
+
+    expect(readable(details)).toContain("You can still deliver it late");
+    expect(details).toContain(`href="${RECOVER}"`);
+    expect(details).not.toContain(SDK_DOCS);
+  });
+
+  it("offers no late delivery for a download the connector cannot deliver", () => {
+    const details = opened(LOST);
+
+    expect(readable(details)).not.toContain("late");
+    expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
+    expect(details).not.toContain(SDK_DOCS);
+    expect(details).not.toContain("/integrations/woocommerce/recover/");
+  });
+
+  it("is no shipment for a parcel whose shop order was never confirmed, though its days ran out", () => {
+    const details = opened(UNPLACED);
+
+    expect(readable(details)).toContain("Do not ship it");
+    expect(readable(details)).not.toMatch(/still (deliver|ship)/);
+  });
+
+  it("offers no late delivery for a sale made through the shop that the connector never received", () => {
+    const details = opened(NEVER_RECEIVED);
+
+    expect(readable(details)).not.toContain("late");
+    expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
+    expect(details).not.toContain(SDK_DOCS);
   });
 });

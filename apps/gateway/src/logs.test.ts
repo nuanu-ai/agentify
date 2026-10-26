@@ -158,6 +158,25 @@ describe("a failure in the gateway's log", () => {
     expectNothingCarried(written);
   });
 
+  it("names the payment layer's code for a refusal, so a code nobody has given a meaning can be found", async () => {
+    const harnessed = await started();
+    const orderId = await quoted(harnessed);
+    harnessed.facilitator.willVerify({
+      verified: false,
+      reason: "unrecognised",
+      message: `a_code_nobody_listed: ${SECRET}${FORGED}`,
+      code: "a_code_nobody_listed",
+    });
+
+    const written = await loggedWhile(() =>
+      harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT"),
+    );
+
+    expect(written).toContain("unrecognised");
+    expect(written).toContain("a_code_nobody_listed");
+    expectNothingCarried(written);
+  });
+
   it("names the order whose charge went unanswered, and keeps the layer's words on the order alone", async () => {
     // Diagnostics name the affected order without exposing the payment layer's words.
     const harnessed = await started();

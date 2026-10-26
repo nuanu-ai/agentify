@@ -206,6 +206,185 @@ describe("consent persistence", () => {
   });
 });
 
+describe("the preferences dialog", () => {
+  beforeEach(() => {
+    Object.assign(globalThis, { React });
+    window.localStorage.clear();
+    globalThis.fetch = async () => new Response(null, { status: 201 });
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  const box = (name: RegExp) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
+
+  /** The page of a visitor who allowed both optional categories earlier, with its Privacy choices. */
+  const pageOfAVisitorWhoAllowedBoth = async () => {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder(CONSENT_POLICY_VERSION));
+    render(
+      <>
+        <main>The page</main>
+        <PrivacyChoicesButton />
+        <ConsentBanner brand="Agentify" />
+      </>,
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Privacy choices" })).toBeNull(),
+    );
+  };
+
+  it.each([
+    [
+      "Cancel",
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole("button", { name: "Cancel" })),
+    ],
+    ["Escape", (user: ReturnType<typeof userEvent.setup>) => user.keyboard("{Escape}")],
+    [
+      "a click outside the dialog",
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(document.querySelector(".consent-backdrop") as HTMLElement),
+    ],
+  ])(
+    "shows the choice in force, not a change left with %s, when it is opened again",
+    async (_closedWith, close) => {
+      const user = userEvent.setup();
+      await pageOfAVisitorWhoAllowedBoth();
+
+      await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+      await user.click(box(/product analytics/i));
+      await close(user);
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+      expect(box(/product analytics/i).checked).toBe(true);
+      expect(box(/ads measurement/i).checked).toBe(true);
+    },
+  );
+
+  it("saves only what was ticked since it was last opened, not a change that was cancelled", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+    await user.click(box(/product analytics/i));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+    await user.click(box(/ads measurement/i));
+    await user.click(screen.getByRole("button", { name: "Save choices" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(readCurrentConsent(window.localStorage)?.categories).toMatchObject({
+      product_analytics: true,
+      ads_measurement: false,
+    });
+  });
+
+  it("keeps the choice it saved in force when it is opened again", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+    await user.click(box(/ads measurement/i));
+    await user.click(screen.getByRole("button", { name: "Save choices" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    expect(box(/product analytics/i).checked).toBe(true);
+    expect(box(/ads measurement/i).checked).toBe(false);
+  });
+
+  it("leaves the choice in force untouched when saving fails, and opens again without the failed attempt's words", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+    globalThis.fetch = async () => {
+      throw new TypeError("Failed to fetch");
+    };
+
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+    await user.click(box(/product analytics/i));
+    await user.click(screen.getByRole("button", { name: "Save choices" }));
+    await screen.findByRole("status");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    expect(box(/product analytics/i).checked).toBe(true);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(readCurrentConsent(window.localStorage)?.categories.product_analytics).toBe(true);
+  });
+
+  it("shows a choice made in another tab while it is open, and Save then keeps what it shows", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    window.localStorage.setItem(
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(
+        createConsentSnapshot({
+          policyVersion: CONSENT_POLICY_VERSION,
+          decisions: { product_analytics: false, ads_measurement: false },
+          source: "banner",
+        }),
+      ),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+
+    await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
+    expect(box(/ads measurement/i).checked).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Save choices" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(readCurrentConsent(window.localStorage)?.categories).toMatchObject({
+      product_analytics: false,
+      ads_measurement: false,
+    });
+  });
+
+  it("keeps the keyboard in the dialog when another tab's choice redraws it", async () => {
+    const user = userEvent.setup();
+    await pageOfAVisitorWhoAllowedBoth();
+    await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+    window.localStorage.setItem(
+      CONSENT_STORAGE_KEY,
+      JSON.stringify(
+        createConsentSnapshot({
+          policyVersion: CONSENT_POLICY_VERSION,
+          decisions: { product_analytics: false, ads_measurement: false },
+          source: "banner",
+        }),
+      ),
+    );
+    window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+
+    await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
+    expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+  });
+
+  it.each([
+    ["cleared", () => window.localStorage.clear()],
+    [
+      "left under an earlier policy",
+      () => window.localStorage.setItem(CONSENT_STORAGE_KEY, keptUnder("consent-v0.9.0")),
+    ],
+  ])(
+    "offers nothing allowed once another tab's choice is %s while it is open",
+    async (_how, change) => {
+      const user = userEvent.setup();
+      await pageOfAVisitorWhoAllowedBoth();
+      await user.click(screen.getByRole("button", { name: "Privacy choices" }));
+
+      change();
+      window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_STORAGE_KEY }));
+
+      await waitFor(() => expect(box(/product analytics/i).checked).toBe(false));
+      expect(box(/ads measurement/i).checked).toBe(false);
+    },
+  );
+});
+
 describe("the preferences, from the keyboard", () => {
   beforeEach(() => {
     Object.assign(globalThis, { React });

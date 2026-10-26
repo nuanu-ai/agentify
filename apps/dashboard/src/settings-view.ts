@@ -12,7 +12,8 @@ import { MERCHANT_FINDINGS, type PayoutWallet } from "@nuanu-ai/agentify-contrac
 import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
-import { nameRefusedSaying } from "./seller-name.js";
+import { NAME_RULE, nameRefusedSaying, SITE_RULE } from "./seller-name.js";
+import { usdcOf } from "./shares.js";
 import { type MomentView, momentView } from "./views.js";
 
 /**
@@ -42,16 +43,28 @@ export interface SplitView {
 }
 
 /**
+ * Coinbase Wallet's button on a panel: offered on the chain it works on, or
+ * the one line that says why there is none; null where the panel says
+ * nothing of it, as in the sandbox.
+ */
+export type CoinbaseView = Readonly<{ chain: number }> | Readonly<{ absent: string }> | null;
+
+/**
  * The one transaction that pays out every split that can hold the merchant's
  * money, as a wallet asks for it, or why there is none to send.
  */
 export type PayoutView =
   | Readonly<{
       kind: "send";
-      /** What the transaction does, and who pays out if the merchant does not. */
+      /**
+       * What sending it now would bring, or that this is not known, and who
+       * pays out if the merchant does not.
+       */
       said: string;
       /** On which one chain, from what, the raw transaction is sent. */
       sentOn: string;
+      /** The amount `said` names, with its currency; null where it is not known. */
+      brings: string | null;
       to: string;
       /** What `to` is, said beside it. */
       toIs: string;
@@ -60,10 +73,10 @@ export type PayoutView =
       pays: readonly Readonly<{ split: string; wallet: string }>[];
       /** What sending it takes from the wallet that sends it. */
       after: string;
-      /** The chain a Coinbase Wallet sends it on, the one `sentOn` names; null where there is none. */
-      chain: number | null;
+      /** Coinbase Wallet's way of sending it, on the chain `sentOn` names. */
+      coinbase: CoinbaseView;
     }>
-  | Readonly<{ kind: "too_many" | "unbuilt"; said: string }>;
+  | Readonly<{ kind: "nothing" | "too_many" | "unbuilt"; said: string }>;
 
 /**
  * What a press on the wallet did that is not what it looked like: typing the
@@ -124,16 +137,17 @@ export interface WalletView {
   readonly onItsWay: string | null;
   readonly typed: string;
   readonly problem: string | null;
-  /** The chain a Coinbase Wallet is opened on to fill the box; null in the sandbox, where no wallet is paid. */
-  readonly chain: number | null;
+  /** Coinbase Wallet's way of filling the box; null in the sandbox, where no wallet is paid. */
+  readonly coinbase: CoinbaseView;
 }
 
 export interface SettingsView {
   readonly who: string;
   /** That Agentify approved the business for live sales; a missing approval is the banner's to say. */
   readonly approved: boolean;
-  readonly name: Readonly<{ value: string; problem: string | null }>;
-  readonly site: Readonly<{ value: string; problem: string | null }>;
+  /** Each box with its rule, sent from here so the page's script carries no schema. */
+  readonly name: Readonly<{ value: string; problem: string | null; rule: string }>;
+  readonly site: Readonly<{ value: string; problem: string | null; rule: string }>;
   readonly wallet: WalletView;
   /** Null in the sandbox, where nothing is ever deployed, and where no split can hold money. */
   readonly payout: PayoutView | null;
@@ -153,9 +167,9 @@ const OPTIONAL = "Nothing is settled or paid out here, so this address is option
 
 /**
  * Every note Getting paid says, by the state it is in, so each is written once
- * and one test reads them all. The page reads which payout contracts there
- * are and never what they hold, so no note says there is money in one: a
- * merchant with no sale yet reads the same words.
+ * and one test reads them all. Only the network's own count of what a payout
+ * would bring says there is money in a payout contract; no other note does,
+ * so a merchant with no sale yet reads the same words.
  */
 export const PAYOUT_NOTES = Object.freeze({
   /**
@@ -168,10 +182,15 @@ export const PAYOUT_NOTES = Object.freeze({
     live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
   } satisfies Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>>,
   multicall3: "Multicall3, a public contract, not Agentify's.",
-  toYourWallet: (contracts: number): string =>
-    `This transaction moves what is in your payout ${contracts === 1 ? "contract" : "contracts"} to your wallet.`,
-  toEachWallet:
-    "This transaction moves what is in each payout contract to the wallet written into it.",
+  brings: (amount: string, one: boolean): string =>
+    `Sent now, it would bring ${amount} ${one ? "to your wallet" : "to the wallets beside your payout contracts"}, as the network showed when this page was drawn.`,
+  unknown:
+    "Agentify could not read from the network what this payout would bring. Sending it anyway does no harm: it pays out only what is there.",
+  counted: "A payout already sent is still counted here until the network carries it out.",
+  nothing:
+    "A payout sent now would bring nothing, as the network showed when this page was drawn. Once a buyer pays into your payout contract, it shows here.",
+  noCoinbaseOnTest:
+    "Coinbase Wallet can't send this payout on the test network, Base Sepolia, so send it from another wallet.",
   orAgentify: "If nobody sends it, Agentify's next payout does the same, on no fixed date.",
   fromTheSender: "Sending this transaction costs only the network fee.",
   tooMany: (count: number): string =>
@@ -181,6 +200,35 @@ export const PAYOUT_NOTES = Object.freeze({
   unbuilt:
     "Agentify could not build your payout transaction. The fault is on Agentify's side, and until it is fixed Agentify's own payouts cannot move what is in your payout contracts either. Write to admin@agentify.ad about it.",
 });
+
+/** The token a payout brings on each channel that settles. */
+const TOKEN_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
+  test: "test USDC",
+  live: "USDC",
+};
+
+/**
+ * Where each of Coinbase Wallet's buttons is offered, by the EIP-155 chain it
+ * would work on, with the line its panel says where it is not. Connecting a
+ * Coinbase Wallet works on Base Sepolia, but Coinbase's window refuses
+ * transactions there from the wallets it creates now, so the test channel
+ * offers the box's button and not the payout's. A chain not written here
+ * offers neither, without a word.
+ */
+const COINBASE_ON: Readonly<
+  Record<number, Readonly<{ box: true | string; payout: true | string }>>
+> = {
+  8453: { box: true, payout: true },
+  84532: {
+    box: true,
+    payout: PAYOUT_NOTES.noCoinbaseOnTest,
+  },
+};
+
+const coinbaseOn = (chain: number | null, panel: "box" | "payout"): CoinbaseView => {
+  const on = chain === null ? undefined : COINBASE_ON[chain]?.[panel];
+  return chain === null || on === undefined ? null : on === true ? { chain } : { absent: on };
+};
 
 const sameAddress = (one: string, other: string): boolean =>
   one.toLowerCase() === other.toLowerCase();
@@ -205,6 +253,12 @@ const splitBeside = (
         explorer: addressPage === null ? null : `${addressPage}${split.address}`,
       };
 
+/**
+ * The payout as the chain's run of it answered when the page was drawn. A
+ * payout that would bring nothing is not offered; one whose amount is not
+ * known is, since it pays out only what is there, and the page says it does
+ * not know rather than that nothing waits.
+ */
 const payoutView = (
   mode: SurfaceMode,
   splits: PayoutSplits,
@@ -218,23 +272,31 @@ const payoutView = (
   if ("tooMany" in payout) {
     return { kind: "too_many", said: PAYOUT_NOTES.tooMany(payout.tooMany) };
   }
-  const pays = payout.splits.map((split) => ({
+  const { transaction, brings } = payout;
+  if (brings === 0n) {
+    return { kind: "nothing", said: PAYOUT_NOTES.nothing };
+  }
+  const pays = transaction.splits.map((split) => ({
     split: split.address,
     wallet: split.merchantWallet,
   }));
-  const wallets = new Set(pays.map((pair) => pair.wallet.toLowerCase()));
-  const goes =
-    wallets.size === 1 ? PAYOUT_NOTES.toYourWallet(pays.length) : PAYOUT_NOTES.toEachWallet;
+  const one = new Set(pays.map((pair) => pair.wallet.toLowerCase())).size === 1;
+  const amount = brings === UNKNOWN ? null : `${usdcOf(brings)} ${TOKEN_ON[mode]}`;
   return {
     kind: "send",
-    said: `${goes} ${PAYOUT_NOTES.orAgentify}`,
+    said: [
+      amount === null ? PAYOUT_NOTES.unknown : PAYOUT_NOTES.brings(amount, one),
+      PAYOUT_NOTES.counted,
+      PAYOUT_NOTES.orAgentify,
+    ].join(" "),
     sentOn: PAYOUT_NOTES.sentOn[mode],
-    to: payout.to,
+    brings: amount,
+    to: transaction.to,
     toIs: PAYOUT_NOTES.multicall3,
-    data: payout.data,
+    data: transaction.data,
     pays,
     after: PAYOUT_NOTES.fromTheSender,
-    chain: walletChain,
+    coinbase: coinbaseOn(walletChain, "payout"),
   };
 };
 
@@ -297,10 +359,12 @@ export const settingsView = (
             : `${nameRefusedSaying(name.typed, name.problem)}${
                 name.typed === "" || sellerName === null ? "" : ` Buyers still see “${sellerName}”.`
               }`,
+      rule: NAME_RULE,
     },
     site: {
       value: site === null || site.typed === "" ? (sellerSite ?? "") : site.typed,
       problem: site?.problem ?? null,
+      rule: SITE_RULE,
     },
     wallet: {
       // Where publishing asks for an address and none is set, the banner over
@@ -326,7 +390,7 @@ export const settingsView = (
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,
       typed: wallet?.typed ?? "",
       problem: wallet?.problem ?? null,
-      chain: walletChain,
+      coinbase: coinbaseOn(walletChain, "box"),
     },
     payout: saved === null ? null : payoutView(mode, payoutSplits, walletChain),
     account: {

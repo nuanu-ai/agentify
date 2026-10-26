@@ -60,3 +60,23 @@ export const SCAN_STOP_REASONS = [
   "forbidden_redirect",
   "certificate_invalid",
 ] as const;
+
+/**
+ * A phone number as a person types or pastes it: a plus, a country code that
+ * does not start with 0, and 8 to 15 digits in all, with up to two spaces,
+ * dots, dashes or brackets between digits and any spaces around the number. It is written for the HTML `pattern` attribute,
+ * which browsers compile with the `v` flag, and the report request's schema
+ * takes a phone exactly when it matches.
+ */
+export const PHONE_INPUT_PATTERN = "\\s*\\+[1-9](?:[\\s\\(\\)\\.\\-]{0,2}[0-9]){7,14}\\s*";
+
+/**
+ * A share from 0 to 1 as the whole percent it has reached, rounded down. A
+ * figure shown beside a verdict decided on the share then never shows a line
+ * the share has not reached: 0.698 is 69%, under the 70% below which a result
+ * is provisional, and only a whole share is 100%.
+ */
+export const percentReached = (share: number): string =>
+  // The small addition keeps 0.29, which floating point holds as
+  // 28.999999999999996 percent, at 29%.
+  `${Math.floor(share * 100 + 1e-9)}%`;

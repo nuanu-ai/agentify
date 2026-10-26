@@ -65,3 +65,9 @@ export const sharesOf = (
     commission: said((paid * BigInt(terms.commissionAllocation)) / total, places, price.currency),
   };
 };
+
+/**
+ * An exact amount of USDC's millionths, with at least two places and every
+ * place it needs beyond them, such as "12.34" or "0.000999", and no currency.
+ */
+export const usdcOf = (units: bigint): string => written(units, 2);

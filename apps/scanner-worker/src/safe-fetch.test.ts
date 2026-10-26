@@ -590,3 +590,206 @@ describe("safe fetch policy", () => {
     });
   });
 });
+
+describe("a sitemap a site serves as a gzip file", () => {
+  const limit = 64 * 1024;
+  const urlset = `<?xml version="1.0"?><urlset><url><loc>https://example.com/a</loc><lastmod>${new Date().toISOString()}</lastmod></url></urlset>`;
+  const answers: Record<string, { headers: Record<string, string>; body: Buffer }> = {
+    "/sitemap.xml.gz": {
+      headers: { "content-type": "application/x-gzip" },
+      body: gzipSync(Buffer.from(urlset)),
+    },
+    "/bomb.xml.gz": {
+      headers: { "content-type": "application/x-gzip" },
+      body: gzipSync(Buffer.alloc(16 * 1024 * 1024, "<")),
+    },
+    "/encoded.xml.gz": {
+      headers: { "content-type": "application/x-gzip", "content-encoding": "gzip" },
+      body: gzipSync(Buffer.from(urlset)),
+    },
+  };
+  const read = async (path: string, unpackGzip = true) => {
+    const server = createServer((request, response) => {
+      const answer = answers[request.url ?? ""];
+      if (!answer) response.writeHead(404).end();
+      else response.writeHead(200, answer.headers).end(answer.body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      return await new NodePinnedTransport().request({
+        url: new URL(
+          `http://unresolvable.invalid:${(server.address() as AddressInfo).port}${path}`,
+        ),
+        address: { address: "127.0.0.1", family: 4 },
+        method: "GET",
+        headers: { connection: "close", "accept-encoding": "gzip" },
+        timeoutMs: 5_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: limit,
+        signal: new AbortController().signal,
+        unpackGzip,
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  };
+  const sitemapCheck = (sitemap: FetchArtifact) =>
+    evaluateChecks({
+      segment: "owner",
+      canonicalTargetUrl: "https://example.com/",
+      robots: { ...sitemap, status: 404, body: "", decodedBytes: 0, truncated: false },
+      agentProbes: {},
+      sitemap: [sitemap],
+      mcp: [],
+      oauth: [],
+    }).find(({ id }) => id === 4);
+
+  it("reads a .xml.gz sitemap and judges what it unpacks to", async () => {
+    const sitemap = await read("/sitemap.xml.gz");
+    expect(sitemap).toMatchObject({ status: 200, body: urlset, truncated: false });
+    expect(sitemapCheck(sitemap)).toMatchObject({ status: "pass", summaryCode: "sitemap_valid" });
+  });
+
+  it("stops unpacking a file that expands without bound at the read limit, as a cut answer", async () => {
+    const bomb = await read("/bomb.xml.gz");
+    expect({
+      truncated: bomb.truncated,
+      decodedBytes: bomb.decodedBytes,
+      bodyBytes: Buffer.byteLength(bomb.body),
+    }).toEqual({ truncated: true, decodedBytes: limit, bodyBytes: limit });
+  });
+
+  it("judges a readable sitemap sent gzip-encoded under a gzip media type", async () => {
+    const sitemap = await read("/encoded.xml.gz");
+    expect(sitemap.body).toBe(urlset);
+    expect(sitemapCheck(sitemap)?.status).toBe("pass");
+  });
+
+  it("leaves a gzip body as it came for a request that does not ask to unpack it", async () => {
+    const raw = await read("/sitemap.xml.gz", false);
+    expect(raw.body).not.toBe(urlset);
+    expect(raw.decodedBytes).toBe(answers["/sitemap.xml.gz"]?.body.length);
+  });
+});
+
+describe("a body the transport cannot decode or that never decodes to anything", () => {
+  const limit = 64 * 1024;
+  const gzipHeader = Buffer.from([0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0, 0x03]);
+  // A deflate block that is not the last and holds nothing: a stream of them
+  // decodes to no bytes at all, however many arrive.
+  const emptyBlocks = Buffer.concat(
+    Array(20_000).fill(Buffer.from([0x00, 0x00, 0x00, 0xff, 0xff])),
+  );
+  const endless = (headers: Record<string, string>, first: Buffer, next: Buffer) =>
+    ((_request, response) => {
+      response.writeHead(200, headers);
+      response.write(first);
+      const timer = setInterval(() => {
+        if (response.destroyed) clearInterval(timer);
+        else response.write(next);
+      }, 5);
+      response.on("close", () => clearInterval(timer));
+    }) satisfies Parameters<typeof createServer>[1];
+  const routes: Record<string, NonNullable<Parameters<typeof createServer>[1]>> = {
+    "/corrupt.xml.gz": endless(
+      { "content-type": "application/x-gzip" },
+      Buffer.concat([Buffer.from([0x1f, 0x8b]), Buffer.alloc(64 * 1024, 7)]),
+      Buffer.alloc(64 * 1024, 7),
+    ),
+    "/corrupt-encoding": endless(
+      { "content-type": "text/html", "content-encoding": "gzip" },
+      Buffer.concat([Buffer.from([0x1f, 0x8b]), Buffer.alloc(64 * 1024, 7)]),
+      Buffer.alloc(64 * 1024, 7),
+    ),
+    "/empty-blocks.xml.gz": endless(
+      { "content-type": "application/x-gzip" },
+      gzipHeader,
+      emptyBlocks,
+    ),
+    "/empty-blocks-encoding": endless(
+      { "content-type": "text/html", "content-encoding": "gzip" },
+      gzipHeader,
+      emptyBlocks,
+    ),
+  };
+  const read = async (path: string, unpackGzip: boolean) => {
+    const closed: Promise<void>[] = [];
+    const server = createServer((request, response) => {
+      closed.push(new Promise((resolve) => request.socket.once("close", () => resolve())));
+      routes[request.url ?? ""]?.(request, response);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const artifact = await new NodePinnedTransport().request({
+        url: new URL(
+          `http://unresolvable.invalid:${(server.address() as AddressInfo).port}${path}`,
+        ),
+        address: { address: "127.0.0.1", family: 4 },
+        method: "GET",
+        headers: { connection: "close", "accept-encoding": "gzip" },
+        timeoutMs: 5_000,
+        connectTimeoutMs: 1_000,
+        maxDecodedBytes: limit,
+        signal: new AbortController().signal,
+        unpackGzip,
+      });
+      // The connection is closed, not left to the server's patience.
+      await Promise.race([
+        Promise.all(closed),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("connection left open")), 1_000),
+        ),
+      ]);
+      return artifact;
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  };
+
+  it("names a gzip sitemap that cannot be unpacked, keeps its status and closes the connection", async () => {
+    const artifact = await read("/corrupt.xml.gz", true);
+    expect(artifact).toMatchObject({ status: 200, errorCode: "gzip_unpacking_failed" });
+    expect(artifact.durationMs).toBeLessThan(5_000);
+  });
+
+  it("closes the connection when a body cannot be decoded", async () => {
+    const artifact = await read("/corrupt-encoding", false);
+    expect(artifact.durationMs).toBeLessThan(5_000);
+  });
+
+  it.each([
+    ["a gzip sitemap", "/empty-blocks.xml.gz", true],
+    ["a gzip-encoded body", "/empty-blocks-encoding", false],
+  ] as const)(
+    "stops %s that sends far more than it decodes to, with a code of its own",
+    async (_, path, unpackGzip) => {
+      const artifact = await read(path, unpackGzip);
+      expect(artifact).toMatchObject({ status: 200, errorCode: "encoded_body_too_large" });
+      expect(artifact.durationMs).toBeLessThan(5_000);
+    },
+  );
+});
+
+describe("the address a redirect led away from", () => {
+  it("is kept with the answer of the address it led to", async () => {
+    const fetcher = new SafeFetcher(
+      publicResolver,
+      {
+        request: async (input) =>
+          input.url.hostname === "www.example.com"
+            ? response(input, { status: 301, redirectLocation: "https://example.com/s1.xml" })
+            : response(input),
+      },
+      new RequestBudget(),
+      "scanner",
+    );
+    await expect(fetcher.fetch("https://www.example.com/s1.xml")).resolves.toMatchObject({
+      url: "https://example.com/s1.xml",
+      requestedUrl: "https://www.example.com/s1.xml",
+    });
+    expect((await fetcher.fetch("https://example.com/s1.xml")).requestedUrl).toBeUndefined();
+  });
+});

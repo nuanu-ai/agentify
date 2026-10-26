@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { ParamNameSchema } from "./param-spec.js";
+import { SMALLEST_PRICE } from "./price-rule.js";
 import { IdentifierSchema, MoneySchema, TimestampSchema } from "./primitives.js";
 import { ShipToLocalitySchema } from "./ship-to.js";
 
@@ -74,8 +75,7 @@ export const QuoteResponseSchema = z.discriminatedUnion("available", [
   z.strictObject({
     available: z.literal(true),
     price: MoneySchema.meta({
-      description:
-        'Held to the rule a card\'s price meets at publication: above zero, in USD or USDC, with two to six digits after the dot ("5.00", "0.001"); an answer that breaks it is refused and prices nothing.',
+      description: `Held to the rule a card's price meets at publication: at least ${SMALLEST_PRICE}, in USD or USDC, with two to six digits after the dot ("5.00", "0.015"); an answer that breaks it is refused and prices nothing.`,
     }),
     as_of: TimestampSchema,
   }),

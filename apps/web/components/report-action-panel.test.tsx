@@ -14,12 +14,11 @@ const baseProps = {
 };
 
 describe("ReportActionPanel", () => {
-  it("shows a one-line verified notice when a download intent resumes", () => {
+  it("offers a link that downloads the .md again when a download intent resumes", () => {
     const markup = renderToStaticMarkup(
       <ReportActionPanel {...baseProps} initialIntent="download-md" />,
     );
-    expect(markup).toContain("download started");
-    expect(markup).toContain("Download again");
+    expect(markup).toMatch(/<a[^>]*download[^>]*>Download \.md again<\/a>/);
   });
 
   it("points a copy intent at the prompt button instead of a separate card", () => {

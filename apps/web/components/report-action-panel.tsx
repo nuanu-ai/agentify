@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { askBrowserToDownload } from "../lib/download";
 import { type ResumeIntent, takeResumeIntent } from "../lib/resume-intent";
 import type { PublicResultPreview } from "../lib/share-copy";
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
@@ -42,13 +43,7 @@ export function ReportActionPanel({
   useEffect(() => {
     if (!promptEnabled || intent !== "download-md" || downloadStarted) return;
     setDownloadStarted(true);
-    const anchor = document.createElement("a");
-    anchor.href = downloadUrl;
-    anchor.download = "";
-    anchor.hidden = true;
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
+    askBrowserToDownload(downloadUrl);
   }, [downloadStarted, downloadUrl, intent, promptEnabled]);
 
   const shareShown = shareEnabled && preview.score !== null;
@@ -61,9 +56,9 @@ export function ReportActionPanel({
           <span aria-hidden="true" className={styles.dot} />
           {intent === "download-md" ? (
             <>
-              Verified — your .md download started.{" "}
+              Verified. Your browser was asked to download the .md file.{" "}
               <a download href={downloadUrl}>
-                Download again
+                Download .md again
               </a>
             </>
           ) : (
@@ -85,10 +80,16 @@ export function ReportActionPanel({
             label="Copy AI fix prompt"
             prompt={aiPrompt}
             secondary
+            subject="AI fix prompt"
           />
         ) : null}
         {promptEnabled ? (
-          <CopyRemediationPrompt label="Copy developer brief" prompt={devBrief} secondary />
+          <CopyRemediationPrompt
+            label="Copy developer brief"
+            prompt={devBrief}
+            secondary
+            subject="developer brief"
+          />
         ) : null}
       </div>
       {shareShown ? (

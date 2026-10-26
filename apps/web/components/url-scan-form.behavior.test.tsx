@@ -3,10 +3,10 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { RouterProvider } from "react-router";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readPendingScan } from "../lib/pending-scan";
+import { readPendingScan, scanAgainAt } from "../lib/pending-scan";
 import { siteRouter } from "../testing/on-site";
 import { UrlScanForm } from "./url-scan-form";
 
@@ -120,5 +120,44 @@ describe("landing scan handoff", () => {
     expect(visit.at()).toBe("/owner?utm_source=behavior-test");
     expect(input.disabled).toBe(false);
     expect(document.querySelector('[aria-live="polite"]')?.textContent).not.toBe("");
+  });
+
+  it("opened to scan an address again, starts with that address and keeps nothing pending until pressed", async () => {
+    const again = scanAgainAt("store", "shop.example");
+    const router = createMemoryRouter(
+      [{ path: "*", element: <UrlScanForm cta="Scan" segment="store" variant="store-v1" /> }],
+      { initialEntries: [{ pathname: again.path, state: again.state }] },
+    );
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Website URL" }).value).toBe(
+      "shop.example",
+    );
+    expect(readPendingScan(window.sessionStorage)).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /scan/i }));
+    await waitFor(() =>
+      expect(router.state.location.pathname + router.state.location.search).toBe(
+        "/scan/pending?segment=store",
+      ),
+    );
+    expect(readPendingScan(window.sessionStorage)).toMatchObject({
+      url: "shop.example",
+      segment: "store",
+    });
+  });
+
+  it.each([
+    ["no state", undefined],
+    ["a state of another kind", { address: 42 }],
+    ["an empty address", { address: "" }],
+  ])("opened with %s, starts empty", (_with, state) => {
+    const router = createMemoryRouter(
+      [{ path: "*", element: <UrlScanForm cta="Scan" segment="store" variant="store-v1" /> }],
+      { initialEntries: [{ pathname: "/store", state }] },
+    );
+    render(<RouterProvider router={router} />);
+
+    expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Website URL" }).value).toBe("");
   });
 });

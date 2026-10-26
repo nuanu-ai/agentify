@@ -1,6 +1,10 @@
 import { countedClient } from "@agentify/scanner/ip";
 import { registrationRequestSchema } from "@agentify/scanner-contracts";
 import type { Params } from "react-router";
+import {
+  REGISTRATION_FIELD_REFUSALS,
+  registrationRefusal,
+} from "../../../../lib/registration-refusals";
 import { visitorOf } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
 import { hmacHex, normalizeEmail } from "../../../../lib/server/crypto";
@@ -47,6 +51,13 @@ async function register(request: Request, params: Params): Promise<Response> {
   const token = bearerToken(request);
   if (!token)
     return errorResponse(request, 401, "unauthorized", "A private scan token is required.");
+  // The ask is read before the scan is looked up: a field the person got
+  // wrong is theirs to fix whatever the scan's state.
+  const parsed = registrationRequestSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    const refusal = registrationRefusal(parsed.error.issues);
+    return errorResponse(request, 400, refusal.code, refusal.message);
+  }
   const scan = await authorizeScan(params.id ?? "", token);
   if (!scan) return errorResponse(request, 404, "scan_not_found", "The scan was not found.");
   if (scan.status !== "completed" && scan.status !== "partial")
@@ -57,14 +68,6 @@ async function register(request: Request, params: Params): Promise<Response> {
       "A report is not available for this scan.",
       true,
       5,
-    );
-  const parsed = registrationRequestSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success)
-    return errorResponse(
-      request,
-      400,
-      "invalid_registration",
-      "Check the email, the phone if given, and the consent fields.",
     );
   // A signed-in person's ask is filed under their address at once and sends
   // nothing; a stranger's waits for the link sent to the address typed.
@@ -103,8 +106,8 @@ async function register(request: Request, params: Params): Promise<Response> {
     return errorResponse(
       request,
       400,
-      "invalid_registration",
-      "Enter the email address the report should be sent to.",
+      REGISTRATION_FIELD_REFUSALS.email.code,
+      REGISTRATION_FIELD_REFUSALS.email.message,
     );
   try {
     if (visitor.kind === "person") {

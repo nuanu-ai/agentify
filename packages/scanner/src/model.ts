@@ -22,7 +22,21 @@ export type FetchArtifact = {
   errorCode?: string;
   /** Transient redirect target; never persisted in check evidence. */
   redirectLocation?: string;
+  /**
+   * The address asked for, when redirects led to `url`; never persisted in
+   * check evidence.
+   */
+  requestedUrl?: string;
 };
+
+/**
+ * The error code of a body that is a gzip file the fetch could not unpack,
+ * which is kept with the status the site answered.
+ */
+export const GZIP_UNPACKING_FAILED = "gzip_unpacking_failed";
+
+/** How many sitemap files a scan reads at most, an index and what it lists included. */
+export const SITEMAP_FILE_LIMIT = 3;
 
 export type ScanArtifacts = {
   segment: Segment;
@@ -38,7 +52,6 @@ export type ScanArtifacts = {
   ucp?: FetchArtifact;
   oauth: FetchArtifact[];
   a2a?: FetchArtifact;
-  noncanonicalA2aHint?: boolean;
 };
 
 export type ScanScore = {

@@ -1,3 +1,4 @@
+import { percentReached } from "@agentify/scanner-contracts/browser";
 import { canonicalCheckLabel } from "./canonical-copy.js";
 
 /**
@@ -41,7 +42,7 @@ export function assessmentLines(assessment: ScanAssessment): string[] {
   const unknown = assessment.unassessed.map(canonicalCheckLabel);
   return [
     `Inspected: ${inspectedLabel(assessment.inspectedAt)}`,
-    `Coverage: ${Math.round(assessment.coverage * 100)}% of the applicable checks, by weight, could be assessed.`,
+    `Coverage: ${percentReached(assessment.coverage)} of the applicable checks, by weight, could be assessed.`,
     unknown.length
       ? `Not assessed: ${unknown.join(", ")}. Whether these pass is unknown; they are not failures, and nothing here asks for a change to them.`
       : "Not assessed: none. Every applicable check was assessed.",

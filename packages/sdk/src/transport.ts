@@ -152,18 +152,26 @@ export interface CallOptions {
 }
 
 /**
- * How much of an answer that is not JSON is quoted back in the failure. A
- * proxy's error page often names what is broken, but a whole one can be a
- * megabyte in a merchant's log; what is cut is said in the same sentence. An
- * answer that is JSON is never quoted, since it may be the gateway's document
- * with the buyer's parameters in it.
+ * What came back, said without any of what it carried: the status, the media
+ * type it declared and its length. An answer this package cannot read cannot
+ * be told apart from the gateway's own document cut short, which carries the
+ * buyer's parameters, so a failure never repeats it, whatever its status or
+ * type. A declared type is named only where it has the shape of one, since
+ * the header is the answer's too.
  */
-const QUOTED_CHARACTERS = 200;
+const whatCameBack = (response: Response, text: string): string => {
+  const header = response.headers.get("content-type");
+  const declared = header?.split(";")[0]?.trim().toLowerCase() ?? "";
+  const type =
+    header === null
+      ? "and no content type"
+      : /^[\w.+-]{1,127}\/[\w.+-]{1,127}$/.test(declared)
+        ? `typed ${declared}`
+        : "and a content type that names no media type";
+  const size = text.length === 0 ? "an empty body" : `a body of ${text.length} characters`;
 
-const quote = (text: string): string =>
-  text.length <= QUOTED_CHARACTERS
-    ? JSON.stringify(text)
-    : `${JSON.stringify(text.slice(0, QUOTED_CHARACTERS))} and ${text.length - QUOTED_CHARACTERS} more characters, not shown`;
+  return `answered ${response.status} with ${size} ${type}`;
+};
 
 /** The address of one call: the gateway's base, then the route's own path. */
 const addressOf = (baseUrl: string, name: RouteName, path: CallOptions["path"]): string =>
@@ -279,7 +287,7 @@ export const callRoute = async <N extends RouteName>(
   } catch {
     return failure(
       name,
-      `${name} at ${url.href} answered ${response.status} with something that is not JSON: ${quote(text)}`,
+      `${name} at ${url.href} ${whatCameBack(response, text)}, which does not parse as JSON where the route's document was expected; none of it is repeated here, since it may carry the buyer's details`,
       REACH.ANSWERED,
     );
   }
@@ -312,7 +320,7 @@ export const callRoute = async <N extends RouteName>(
 
   return failure(
     name,
-    `${name} at ${url.href} answered ${response.status} with JSON that is not the document it promises; where it does not fit, without the values: ${whereItFailed(findingsOf(parsed.error.issues))}`,
+    `${name} at ${url.href} ${whatCameBack(response, text)}, JSON that is not the document it promises; where it does not fit, without the values: ${whereItFailed(findingsOf(parsed.error.issues))}`,
     REACH.ANSWERED,
     body,
   );

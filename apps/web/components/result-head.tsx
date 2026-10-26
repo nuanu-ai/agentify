@@ -1,4 +1,5 @@
 import type { DiagnosticLevel } from "@agentify/scanner-contracts";
+import { percentReached } from "@agentify/scanner-contracts/browser";
 import type { ReactNode } from "react";
 
 import { LEVEL_LABELS, PROVISIONAL_BELOW } from "../lib/levels";
@@ -59,7 +60,7 @@ export function ResultHead({
           Diagnostic level, not a certification
           {caption ? <> · {caption}</> : null}
         </span>
-        {coverage === undefined ? null : <span>Coverage {Math.round(coverage * 100)}%</span>}
+        {coverage === undefined ? null : <span>Coverage {percentReached(coverage)}</span>}
       </p>
       {level === "callable_ready" ? (
         <p className={styles.note}>

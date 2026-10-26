@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 
 import { acceptedScanIn } from "../lib/api-answers";
 import { captureLandingAttribution } from "../lib/attribution-client";
-import { clearPendingScan, type PendingScanRequest, readPendingScan } from "../lib/pending-scan";
+import {
+  clearPendingScan,
+  formPathOf,
+  type PendingScanRequest,
+  readPendingScan,
+} from "../lib/pending-scan";
 import { press } from "../lib/press";
 import styles from "./pending-scan-experience.module.css";
 import { SiteFooter, SiteHeader } from "./site-chrome";
@@ -52,6 +58,7 @@ function freeAt(waitSeconds: number): string {
 export function PendingScanExperience({
   turnstileSiteKey,
 }: Readonly<{ turnstileSiteKey: string | null }>) {
+  const [query] = useSearchParams();
   const [request, setRequest] = useState<PendingScanRequest | null>(null);
   const [state, setState] = useState<StartState>("starting");
   const [message, setMessage] = useState("Starting as soon as it is accepted.");
@@ -196,7 +203,10 @@ export function PendingScanExperience({
                   Retry scan
                 </button>
               ) : null}
-              <SiteLink className="button button-secondary" to="/">
+              <SiteLink
+                className="button button-secondary"
+                to={formPathOf(request?.segment ?? query.get("segment"))}
+              >
                 Enter another website
               </SiteLink>
             </div>

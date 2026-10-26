@@ -73,6 +73,8 @@ name. Notes written in Russian stay in Russian.
 | [85-operator-admin](85-operator-admin.md) | who the operator's admin serves and why, what it does and never does, how its actions are protected, how it is built, and its screens | ADR-0010, ADR-0014, ADR-0026, ADR-0040 | English | current |
 | [86-one-bar](86-one-bar.md) | the bar at the top of every page: who it serves, what it holds on a wide and a narrow window, and how it knows who is signed in | ADR-0026 | English | current |
 | [87-unpaid-price-questions](87-unpaid-price-questions.md) | what x402, other agentic payment and commerce protocols, agent identity schemes and shops themselves do about free price questions, and how each option sits against nobody stopping a merchant's sales without paying | ADR-0043 | English | current |
+| [88-what-the-scanner-could-not-read](88-what-the-scanner-could-not-read.md) | how a scanner check tells a document it read from one it could not read, why an unsettled check lowers coverage and not the score, and how results name one cause | — | English | current |
+| [89-scanner-page-reading](89-scanner-page-reading.md) | how the scanner splits a page as the HTML standard does, recognises a price in any currency and reads the product feed check's facts, why it does not use parse5, and what the reading still gets wrong | — | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,

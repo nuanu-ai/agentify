@@ -1960,12 +1960,14 @@ export class Gateway {
           : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
       // A refusal's words go to the agent and not the log: they can quote the
       // payment presented, and a mismatch is described with what the payer's
-      // client put in it, newlines included. A silence is the other way round:
+      // client put in it, newlines included. The log keeps the payment layer's
+      // code, a machine word, so a code nobody has given a meaning can be
+      // found. A silence is the other way round:
       // what failed is the operator's to fix, and says nothing a buyer can use.
       console.warn(
         `[gateway] a payment for order ${orderId} did not verify: ${
           verified.verified === false
-            ? `refused as ${verified.reason}`
+            ? `refused as ${verified.reason}${verified.code === undefined ? "" : ` (${verified.code})`}`
             : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
         }`,
       );
@@ -3117,24 +3119,32 @@ function briefly(said: string): string {
   return cut === said.trim() ? cut : `${cut} (shortened)`;
 }
 
-/** What an agent whose payment was refused does next, by why it was refused. */
 /** What a buyer is told for a payment that got no verdict, by why. */
 const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
   no_answer:
-    "this payment charged nothing: Agentify got no answer from the payment check, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
+    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
   refused_agentify:
-    "this payment charged nothing and was not checked: the payment check turned Agentify itself away, so Agentify cannot check payments right now and no payment can be taken until it can",
+    "this payment charged nothing and was not checked: the payment check turned away Agentify itself or the terms Agentify asked it to check, so Agentify cannot check payments right now and no payment can be taken until it can",
   seller_cannot_be_paid:
     "this payment charged nothing and was not checked: the seller cannot be paid for this order right now, so no payment for it can be taken",
   payer_contradicted:
     "this payment charged nothing: the payment check vouched for it but named a different payer from the wallet that signed it, so Agentify did not accept it",
 };
 
+/** What an agent whose payment was refused does next, by why it was refused. */
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:
     "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
   insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
   signature: "sign a new payment for this order and present it while its price holds",
+  amount_not_payable:
+    "the payment network will not carry a payment of this amount, which is the order's own price, so neither a new signature nor a new purchase at this price will pass",
+  wallet_refused:
+    "the payment network refused this payment from the wallet that signed it, as that wallet stands",
+  unexplained:
+    "the payment layer's refusal names no fault Agentify can act on, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
+  unrecognised:
+    "the payment layer refused it for a reason this system does not recognise, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
 };
 
 const unresolvedPayment = (order: Order): boolean =>

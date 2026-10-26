@@ -10,6 +10,7 @@ import { rememberZone } from "@agentify/ui/remember-zone";
 import { zoneIn } from "@agentify/ui/zone";
 import { type ReactNode, useEffect } from "react";
 import {
+  type DataStrategyResult,
   data,
   isRouteErrorResponse,
   Links,
@@ -26,7 +27,7 @@ import {
 } from "react-router";
 import { inViewersZone } from "../src/moments.js";
 import type { Screen } from "../src/page-services.js";
-import { type Chrome, chromeOf, type Trouble } from "./answer.js";
+import { type Chrome, chromeOf, saidAsAsked, type Trouble, troubleIn } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
 import { NoSuchPage } from "./routes/no-such-page.js";
 import { refused, services, signedInOrNobody, visit } from "./services.js";
@@ -96,6 +97,10 @@ export const middleware: MiddlewareFunction<Response>[] = [
   },
 ];
 
+export const clientMiddleware: MiddlewareFunction<Record<string, DataStrategyResult>>[] = [
+  saidAsAsked,
+];
+
 export const loader = ({ context }: LoaderFunctionArgs): Chrome => chromeOf(context);
 
 /** Which stack this is does not change while the process runs. */
@@ -154,7 +159,7 @@ const PRESSED_ON: Readonly<Record<string, readonly [string, string]>> = {
 };
 
 const screenOf = (path: string): readonly [string, string] =>
-  PRESSED_ON[path.split("/")[1] ?? ""] ?? ["/", "the dashboard"];
+  PRESSED_ON[path.split(/[?#]/)[0]?.split("/")[1] ?? ""] ?? ["/", "the dashboard"];
 
 /** One message panel: whether anything changed, why, and the one way on. */
 function MessagePage({
@@ -188,7 +193,7 @@ export function ErrorBoundary() {
   const error = useRouteError();
   const root = useRouteLoaderData<typeof loader>("root");
   const { pathname } = useLocation();
-  const trouble = isRouteErrorResponse(error) ? (error.data as Trouble | undefined) : undefined;
+  const trouble = troubleIn(error);
   const chrome = trouble?.chrome ?? root;
   if (chrome === undefined) {
     return <p>Something in the dashboard is broken.</p>;
@@ -222,28 +227,51 @@ export function ErrorBoundary() {
   const again =
     trouble?.kind === "problem" || trouble?.kind === "unread" ? trouble.again : undefined;
   if (again !== undefined) {
+    // A refusal is offered again only where it was a fault that may pass.
+    const passing =
+      trouble?.kind === "unread" || (isRouteErrorResponse(error) && error.status >= 500);
     return (
       <MessagePage
         chrome={chrome}
         title="This page could not be loaded"
-        said={trouble?.kind === "problem" ? trouble.said : "Something broke on our side."}
-        way={[again, "Try again"]}
+        said={
+          trouble?.kind === "problem"
+            ? trouble.said
+            : trouble?.kind === "unread" && trouble.answered === true
+              ? "Your change was made, but the page could not be loaded after it."
+              : "Loading it again changes nothing."
+        }
+        way={passing ? [again, "Try again"] : open}
       />
     );
   }
-  if (trouble?.kind === "problem" && isRouteErrorResponse(error) && error.status !== 504) {
+  // A press leads back to the page it was made on, its place in a list kept.
+  const reopen =
+    trouble?.kind === "problem" || trouble?.kind === "unanswered" || trouble?.kind === "broken"
+      ? trouble.reopen
+      : undefined;
+  const back =
+    reopen === undefined
+      ? open
+      : ([reopen, `Open ${screenOf(reopen.slice(chrome.base.length))[1]}`] as const);
+  // A refused press did nothing where the server half says so, or where a
+  // refusal came before any work; a fault nobody worded may have done it.
+  if (
+    trouble?.kind === "problem" &&
+    (trouble.outcome === "refused" ||
+      (trouble.outcome === undefined && isRouteErrorResponse(error) && error.status < 500))
+  ) {
     return (
-      <MessagePage chrome={chrome} title="Nothing was changed" said={trouble.said} way={open} />
+      <MessagePage chrome={chrome} title="Nothing was changed" said={trouble.said} way={back} />
     );
   }
-  // The gate failing is before anything below it ran.
-  if (trouble?.kind === "broken" && trouble.pressed !== true) {
+  if (trouble?.kind === "broken") {
     return (
       <MessagePage
         chrome={chrome}
         title="Nothing was changed"
         said="Something broke on our side before anything was done. Try again in a moment."
-        way={open}
+        way={back}
       />
     );
   }
@@ -261,8 +289,8 @@ export function ErrorBoundary() {
     <MessagePage
       chrome={chrome}
       title="We don't know if this was done"
-      said={`${trouble.kind === "problem" ? trouble.said : "Something broke on our side."} Check ${name} before you try again.`}
-      way={open}
+      said={`${trouble.kind === "problem" ? `${trouble.said} ` : ""}Something went wrong before we could confirm it. ${back[1]} to see where it stands; this sends nothing again.`}
+      way={back}
     />
   );
 }

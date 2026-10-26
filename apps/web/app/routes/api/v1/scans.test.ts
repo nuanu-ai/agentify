@@ -156,6 +156,25 @@ describe("a scan's status and its browser observation", () => {
     expect((await refusalOf(answered)).code).toBe("unauthorized");
   });
 
+  it.each([
+    ["status", "scan_not_found"],
+    ["browser-observation", "browser_observation_not_found"],
+  ])(
+    "answers the %s of an address that is no scan's id as no such scan, in the site's own refusal",
+    async (what, code) => {
+      vi.stubEnv("APIFY_BROWSER_MODE", "report");
+
+      const answered = await ask(`/api/v1/scans/not-a-scan-id/${what}`, {
+        headers: { authorization: "Bearer a-scan-token" },
+      });
+
+      expect(answered.status).toBe(404);
+      const refused = await refusalOf(answered);
+      expect(refused.code).toBe(code);
+      expect(refused.retryable).toBe(false);
+    },
+  );
+
   it("has no browser observation to show while the observation is not in reports", async () => {
     vi.stubEnv("APIFY_BROWSER_MODE", "shadow");
 

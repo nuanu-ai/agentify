@@ -1,6 +1,7 @@
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { answer, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
+import { readFailedIn } from "../components/not-loaded.js";
 import { IntegrationsScreen } from "../screens/integrations.js";
 import { services, signedIn } from "../services.js";
 
@@ -17,3 +18,9 @@ export default function Integrations() {
     </Frame>
   );
 }
+
+export const ErrorBoundary = readFailedIn({
+  tab: "integrations",
+  title: "Integrations",
+  what: "integrations",
+});

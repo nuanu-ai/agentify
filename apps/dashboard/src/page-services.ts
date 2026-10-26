@@ -38,6 +38,7 @@ import {
   type LinkWall,
   type Person,
 } from "./dashboard-entry.js";
+import { WALLET_CHANGE_MS } from "./deadlines.js";
 import { clearingLines, type Gate, gateFor, pathAfterSignIn, startOf } from "./gate.js";
 import {
   type Acting,
@@ -49,7 +50,7 @@ import {
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
 import { noted } from "./noted.js";
-import { WALLET_CHANGE_MS, WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
+import { WALLET_NEEDED, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 import {
   NAME_CANNOT_BE_TAKEN_AWAY,
   NAME_NEEDED,
@@ -116,6 +117,11 @@ export type Outcome<View> =
 interface Problem {
   readonly status: number;
   readonly said: string;
+  /**
+   * Refused where the press is known to have done nothing; left out where
+   * nothing says, which a page words as possibly done.
+   */
+  readonly outcome?: "refused";
 }
 
 /** A screen of the cabinet, as product analytics names it. */
@@ -392,19 +398,26 @@ const saidOf = (answer: Answer<unknown> & { ok: false }): string =>
   `${answer.why.slice(0, 1).toUpperCase()}${answer.why.slice(1)}`;
 
 /**
- * On a problem page, whose heading says what is known of the press and whose
- * button the way on: the gateway's own sentence for nothing answered in time
- * advises a reload, which sends a press again.
+ * A refusal that says nothing was written, or one the route gives before it
+ * writes (a 4xx), did nothing. A call that ran out never reaches a page as a
+ * problem: `answer` words it as unknown by the request's method.
  */
-const NOT_ANSWERED = "Agentify didn't answer in time.";
+const outcomeOf = (answer: Answer<unknown> & { ok: false }): Problem["outcome"] =>
+  answer.nothingRecorded === true || (answer.status >= 400 && answer.status < 500)
+    ? "refused"
+    : undefined;
 
-export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => ({
-  kind: "problem",
-  problem:
-    answer.status === 0
-      ? { status: 504, said: NOT_ANSWERED }
-      : { status: answer.status, said: saidOf(answer) },
-});
+export const problemOf = (answer: Answer<unknown> & { ok: false }): Outcome<never> => {
+  const outcome = outcomeOf(answer);
+  return {
+    kind: "problem",
+    problem: {
+      status: answer.status === 0 ? 504 : answer.status,
+      said: saidOf(answer),
+      ...(outcome === undefined ? {} : { outcome }),
+    },
+  };
+};
 
 /**
  * Not the real grammar of an address: it catches the mistakes made in a form (a
@@ -1058,63 +1071,54 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     const lapsedPage = lapsedPageIn(query);
     // The open list is read beside the whole one, never after it, since
     // which orders are open is the gateway's to say.
-    const [cards, orders, open, owed, paidInto, lapsed] = await Promise.all([
+    const [cards, read, open, paidInto, lapsed] = await Promise.all([
       gateway.cards(),
-      gateway.orders(false),
+      gateway.ordersWithRecords(),
       gateway.orders(true),
-      gateway.unfulfilledOrders(),
       gateway.paidIntoSplits(),
       lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage),
     ]);
     if (!cards.ok) return problemOf(cards);
-    if (!orders.ok) return problemOf(orders);
+    if (!read.ok) return problemOf(read);
     if (!open.ok) return problemOf(open);
-    if (!owed.ok) return problemOf(owed);
     if (!paidInto.ok) return problemOf(paidInto);
     if (!lapsed.ok) return problemOf(lapsed);
-    const shopTotals =
+    const { orders, records } = read.document;
+    // How a late delivery can still reach each unfulfilled order depends on
+    // whether the shop connector holds its sale, whatever the merchant sells
+    // through now.
+    const unfulfilled = orders.orders
+      .filter((order) => order.status === "unfulfilled")
+      .map((order) => order.id);
+    const [shopTotals, connector] =
       parts.woo === null
-        ? {}
-        : await parts.woo.shopTotals(
-            person,
-            orders.document.orders.map((order) => order.id),
-          );
+        ? [{}, {}]
+        : await Promise.all([
+            parts.woo.shopTotals(
+              person,
+              orders.orders.map((order) => order.id),
+            ),
+            unfulfilled.length === 0 ? {} : parts.woo.connectorSales(person, unfulfilled),
+          ]);
     const view = ordersView(
       viewing(person).mode,
       cards.document,
-      orders.document,
+      orders,
       open.document,
       query,
-      owed.document.causes,
+      records,
       paidInto.document,
       typeof lapsed.document === "number"
         ? { page: null, of: lapsed.document }
         : { page: lapsed.document.attempts, of: lapsed.document.of },
       shopTotals,
-      new Set(owed.document.counting),
+      connector,
+      new Set(
+        Object.entries(records)
+          .filter(([, record]) => record.counts)
+          .map(([id]) => id),
+      ),
     );
-    if (parts.woo !== null && view.needsYou.rows.length > 0) {
-      const links = await parts.woo.recoveryLinks(
-        person,
-        view.needsYou.rows.map((row) => row.id),
-      );
-      return {
-        kind: "view",
-        view: {
-          ...view,
-          needsYou: {
-            ...view.needsYou,
-            rows: view.needsYou.rows.map((row) => ({
-              ...row,
-              rest:
-                links[row.id] === undefined
-                  ? row.rest
-                  : { href: links[row.id] as string, words: "Recover WooCommerce delivery" },
-            })),
-          },
-        },
-      };
-    }
     return { kind: "view", view };
   };
 

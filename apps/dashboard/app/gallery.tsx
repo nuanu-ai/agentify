@@ -12,7 +12,7 @@ import "./styles.css";
 import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
-import { keyPrefixFor, type SurfaceMode } from "@agentify/core";
+import { keyPrefixFor, type SurfaceMode, UNKNOWN } from "@agentify/core";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import {
   type MerchantKey,
@@ -41,8 +41,9 @@ import {
 } from "react-router";
 import config from "../react-router.config.js";
 import { type AccountNote, type AccountRead, accountOf } from "../src/account-banner.js";
+import { ANSWER_WITHIN_MS } from "../src/deadlines.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
-import { ANSWER_WITHIN_MS, type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
+import { type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
 import { inViewersZone } from "../src/moments.js";
@@ -76,6 +77,7 @@ import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
+  type LapsedAttempt,
   ordersView,
   receiptsView,
 } from "../src/views.js";
@@ -295,7 +297,19 @@ const splitOf = (mode: SurfaceMode, wallet: string): RecordedPayoutSplit => ({
 const splitsOf = (
   mode: SurfaceMode,
   wallet: string | null,
-  { pending, toPayOut }: { pending?: string; toPayOut?: readonly RecordedPayoutSplit[] } = {},
+  {
+    pending,
+    toPayOut,
+    brings = 49_450_498n,
+  }: {
+    pending?: string;
+    toPayOut?: readonly RecordedPayoutSplit[];
+    /**
+     * What the chain says the payout would bring unless a state says
+     * otherwise: what the contracts pay out of 49.50 USDC of sales.
+     */
+    brings?: bigint | typeof UNKNOWN;
+  } = {},
 ): PayoutSplits => {
   const network = networkIn(mode);
   const paidOut = toPayOut ?? (wallet === null ? [] : [splitOf(mode, wallet)]);
@@ -306,7 +320,10 @@ const splitsOf = (
     },
     inForce: wallet === null ? null : splitOf(mode, wallet),
     pending: pending === undefined ? null : splitOf(mode, pending),
-    payout: paidOut.length === 0 ? null : merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS),
+    payout:
+      paidOut.length === 0
+        ? null
+        : { transaction: merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS), brings },
   };
 };
 
@@ -1798,12 +1815,14 @@ const ordersAt = (
     open = openAmong(listed),
     owed = {},
     lapsed,
+    connector = {},
   }: Readonly<{
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
     owed?: Parameters<typeof ordersView>[5];
     lapsed?: Parameters<typeof ordersView>[7];
+    connector?: Parameters<typeof ordersView>[9];
   }> = {},
 ) =>
   ordersView(
@@ -1815,6 +1834,8 @@ const ordersAt = (
     owed,
     paidIntoSplit(mode, listed.orders),
     lapsed,
+    {},
+    connector,
   );
 
 /** The layout reads the banner from the same selling state the orders' cards carry. */
@@ -1862,11 +1883,32 @@ const OWING = ordersOf([
   ["esimWeek", "unfulfilled"],
 ]);
 
-/** The first unfulfilled order ran out of time, the second was refused by the merchant's code. */
-const OWED_BECAUSE = Object.fromEntries(
+const secondsAfter = (iso: string, seconds: number) =>
+  new Date(Date.parse(iso) + seconds * 1_000).toISOString();
+
+/**
+ * The first unfulfilled order was paid five seconds after its price was set
+ * and its hour to deliver ran out; the second was refused by the merchant's
+ * code after payment.
+ */
+const OWED_BECAUSE: Parameters<typeof ordersView>[5] = Object.fromEntries(
   OWING.orders
     .filter((order) => order.status === "unfulfilled")
-    .map((order, at) => [order.id, at === 0 ? "deadline_passed" : "refused"] as const),
+    .map((order, at) => {
+      const paidAt = secondsAfter(order.price.at, 5);
+      return [
+        order.id,
+        at === 0
+          ? {
+              unfulfilled: "deadline_passed",
+              paidAt,
+              deadline: { at: secondsAfter(paidAt, 3_600), passed: true },
+              soldThrough: "api",
+              counts: false,
+            }
+          : { unfulfilled: "refused", paidAt, deadline: null, soldThrough: "api", counts: false },
+      ] as const;
+    }),
 );
 
 /** A season of sales, one every 37 minutes back from the latest. */
@@ -1913,6 +1955,21 @@ const PAID_AFTER_CLOSURE = OrderListSchema.parse({
       : order,
   ),
 });
+
+/** Two purchases priced and never paid, and one the price check refused before any price. */
+const LAPSED: readonly LapsedAttempt[] = ordersOf([
+  ["number", "expired"],
+  ["vpn", "expired"],
+  ["esimEurope", "rejected"],
+]).orders.map((order, at) => ({
+  id: order.id,
+  merchant_item_id: order.merchant_item_id,
+  status: order.status,
+  price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
+  asked_at: secondsAfter(order.price.at, -2),
+  priced_at: at === 2 ? null : order.price.at,
+  test: order.test,
+}));
 
 const ORDERS: GalleryState[] = [
   {
@@ -2006,34 +2063,24 @@ const ORDERS: GalleryState[] = [
       cause:
         "The connector holds the sale for recovery, so the unfulfilled order leads to the recovery page in place of the general link.",
     },
-    (() => {
-      const view = ordersAt("/orders", OWING, { owed: OWED_BECAUSE });
-      const first = view.needsYou.rows[0]?.id ?? "";
-      return {
-        path: "/orders",
-        mode: "live",
-        account: bannerOf(seenBy("live")),
-        loaded: {
-          "routes/orders": {
-            ...view,
-            needsYou: {
-              ...view.needsYou,
-              rows: view.needsYou.rows.map((row) =>
-                row.id === first
-                  ? {
-                      ...row,
-                      rest: {
-                        href: `/integrations/woocommerce/recover/${first}`,
-                        words: "Recover WooCommerce delivery",
-                      },
-                    }
-                  : row,
-              ),
-            },
-          },
-        },
-      };
-    })(),
+    {
+      path: "/orders",
+      mode: "live",
+      account: bannerOf(seenBy("live")),
+      loaded: {
+        "routes/orders": ordersAt("/orders", OWING, {
+          owed: OWED_BECAUSE,
+          connector: Object.fromEntries(
+            Object.keys(OWED_BECAUSE)
+              .slice(0, 1)
+              .map((id) => [
+                id,
+                { kind: "download", recover: `/integrations/woocommerce/recover/${id}` },
+              ]),
+          ),
+        }),
+      },
+    },
   ),
   orders(
     {
@@ -2114,6 +2161,18 @@ const ORDERS: GalleryState[] = [
     },
     OWING,
     "/orders",
+    { owed: OWED_BECAUSE },
+  ),
+  orders(
+    {
+      id: "dashboard-orders-unfulfilled-details",
+      screen: "Orders",
+      when: "A merchant follows Close fulfillment from an order whose delivery deadline passed.",
+      cause:
+        "The order's details say when it was paid and when its deadline passed, that a late delivery still counts, and how to close fulfillment instead.",
+    },
+    OWING,
+    `/orders?${new URLSearchParams({ details: OWING.orders[0]?.id ?? "" })}`,
     { owed: OWED_BECAUSE },
   ),
   orders(
@@ -2260,24 +2319,22 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     "/orders?show=lapsed",
+    { lapsed: { page: LAPSED, of: LAPSED.length } },
+  ),
+  orders(
     {
-      lapsed: {
-        page: ordersOf([
-          ["number", "expired"],
-          ["vpn", "expired"],
-          ["esimEurope", "rejected"],
-        ]).orders.map((order, at) => ({
-          id: order.id,
-          merchant_item_id: order.merchant_item_id,
-          status: order.status,
-          // The last was refused by the merchant's price check before any price.
-          price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
-          at: order.price.at,
-          test: order.test,
-        })),
-        of: 3,
-      },
+      id: "dashboard-orders-lapsed-unpriced",
+      screen: "Orders",
+      when: "A merchant opens a lapsed purchase that the price check refused before naming any price.",
+      cause:
+        "The attempt was never priced, so its row says Not priced and its details say when it was asked for, with no moment for a price.",
     },
+    ordersOf([
+      ["vpn", "delivered"],
+      ["esimEurope", "in_progress"],
+    ]),
+    `/orders?${new URLSearchParams({ show: "lapsed", details: LAPSED[2]?.id ?? "" })}`,
+    { lapsed: { page: LAPSED, of: LAPSED.length } },
   ),
   orders(
     {
@@ -3500,7 +3557,7 @@ const SETTINGS: GalleryState[] = [
       screen: "Settings",
       when: "A merchant on the test site opens Settings after saving their payout wallet.",
       cause:
-        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH.",
+        "Buyers pay into the merchant's payout contract on Base Sepolia, and the payout is sent with test ETH from a wallet other than Coinbase Wallet, whose payout is not known to work on Base Sepolia.",
     },
     settingsView("test", WHO, settingsOf({}, "test")),
     { mode: "test" },
@@ -3531,6 +3588,32 @@ const SETTINGS: GalleryState[] = [
           toPayOut: [splitOf("live", PAID_INTO), splitOf("live", ASKED_FOR)],
         }),
       }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-nothing",
+      screen: "Settings",
+      when: "A merchant opens Settings before any buyer has paid into their payout contract.",
+      cause:
+        "The chain's run of the payout brings the wallet nothing, so no payout is offered and the page says so.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({ payoutSplits: splitsOf("live", PAID_INTO, { brings: 0n }) }),
+      liveApproval: true,
+    }),
+  ),
+  settings(
+    {
+      id: "dashboard-settings-payout-unknown",
+      screen: "Settings",
+      when: "A merchant opens Settings while the chain endpoint does not answer.",
+      cause:
+        "What the payout would bring could not be read, so the page says it does not know and still offers the payout, which pays out only what is there.",
+    },
+    settingsView("live", WHO, {
+      ...settingsOf({ payoutSplits: splitsOf("live", PAID_INTO, { brings: UNKNOWN }) }),
       liveApproval: true,
     }),
   ),
@@ -3807,6 +3890,7 @@ const PROBLEMS: GalleryState[] = [
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,
+          reopen: `/cards?pause=${idOf("itm", "vpn")}`,
         }),
       },
     },
@@ -3850,17 +3934,55 @@ const PROBLEMS: GalleryState[] = [
   ),
   at(
     {
-      id: "dashboard-broken",
-      screen: "A press that failed",
-      when: "Something inside the dashboard fails while answering a press.",
+      id: "dashboard-press-answer-lost",
+      screen: "The outcome is unknown",
+      when: "A merchant saves their seller name and the answer is lost on the way.",
       cause:
-        "An exception in the dashboard itself, not a refusal; the page does not claim the press failed.",
+        "An exception in the dashboard after the press arrived, or a connection that dropped or a proxy that answered in its own words before the answer reached the browser. The press may or may not have been done, so the way on reads the page and sends nothing again.",
     },
     {
       path: "/settings",
       mode: "live",
       failed: {
-        "routes/gate": thrown(500, { kind: "broken", chrome: chromeIn("live"), pressed: true }),
+        "routes/gate": thrown(500, { kind: "unanswered", reopen: "/settings" }),
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-page-not-reached",
+      screen: "This page could not be loaded",
+      when: "A merchant opens the open orders while the connection to the dashboard drops.",
+      cause:
+        "The browser could not fetch the page's data, or a proxy answered for the dashboard while it restarted. A read changes nothing, so the page is offered again with its filter.",
+    },
+    {
+      path: "/orders?show=open",
+      mode: "live",
+      failed: {
+        "routes/gate": thrown(500, { kind: "unread", again: "/orders?show=open" }),
+      },
+    },
+  ),
+  at(
+    {
+      id: "dashboard-settings-not-loaded",
+      screen: "Settings",
+      when: "A merchant opens Settings while the read of their settings fails.",
+      cause:
+        "An exception inside Agentify while reading the settings. A read changes nothing, so the page says so in the dashboard's frame and offers Settings again.",
+    },
+    {
+      path: "/settings",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
+      loaded: { "routes/settings": null },
+      failed: {
+        "routes/settings": thrown(500, {
+          kind: "unread",
+          chrome: chromeIn("live"),
+          again: "/settings",
+        }),
       },
     },
   ),

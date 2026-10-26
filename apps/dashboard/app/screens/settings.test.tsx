@@ -10,7 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { SurfaceMode } from "@agentify/core";
+import { type SurfaceMode, UNKNOWN } from "@agentify/core";
 import {
   merchantPayout,
   PAYOUT_SPLIT_NETWORKS,
@@ -197,7 +197,16 @@ const splitOf = (mode: SurfaceMode, wallet: string): RecordedPayoutSplit => ({
   recordedAt: Date.parse("2026-08-26T12:00:00Z"),
 });
 
-/** The gateway's answer for a merchant paid at `wallet`, built by its own rule and builder. */
+/** What the chain says a payout would bring unless a test says otherwise. */
+const BRINGS = 12_340_000n;
+
+/** `BRINGS` as the live channel's page writes it. */
+const SHOWN = "12.34 USDC";
+
+/**
+ * The gateway's answer for a merchant paid at `wallet`, built by its own rule
+ * and builder, with what the chain says the payout would bring.
+ */
 const splitsFor = (
   mode: SurfaceMode,
   wallet: string | null,
@@ -205,10 +214,12 @@ const splitsFor = (
     pending,
     toPayOut,
     tooMany,
+    brings = BRINGS,
   }: {
     readonly pending?: string;
     readonly toPayOut?: readonly RecordedPayoutSplit[];
     readonly tooMany?: number;
+    readonly brings?: bigint | typeof UNKNOWN;
   } = {},
 ): PayoutSplits => {
   const network = networkOf(mode);
@@ -225,7 +236,7 @@ const splitsFor = (
         ? { tooMany }
         : paidOut.length === 0
           ? null
-          : merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS),
+          : { transaction: merchantPayout(network, paidOut, PAYOUT_SPLIT_NETWORKS), brings },
   };
 };
 
@@ -584,7 +595,10 @@ describe("the commission, before a merchant saves their first wallet", () => {
           rate: AT_THREE_PERCENT,
           inForce: split,
           pending: null,
-          payout: merchantPayout(network, [split], PAYOUT_SPLIT_NETWORKS),
+          payout: {
+            transaction: merchantPayout(network, [split], PAYOUT_SPLIT_NETWORKS),
+            brings: BRINGS,
+          },
         },
       }),
     );
@@ -859,6 +873,10 @@ describe("what Getting paid says in each state", () => {
       ["one contract", { mode: "test", wallet: W }],
       ["on the live channel", { mode: "live", wallet: W }],
       [
+        "an amount the network did not give",
+        { mode: "test", wallet: W, splits: splitsFor("test", W, { brings: UNKNOWN }) },
+      ],
+      [
         "contracts paying two wallets",
         {
           mode: "live",
@@ -871,6 +889,12 @@ describe("what Getting paid says in each state", () => {
       [
         "more contracts than one transaction carries",
         { mode: "test", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) },
+      ],
+    ],
+    nothing: [
+      [
+        "a payout that would bring nothing",
+        { mode: "live", wallet: W, splits: splitsFor("live", W, { brings: 0n }) },
       ],
     ],
     unbuilt: [
@@ -887,15 +911,16 @@ describe("what Getting paid says in each state", () => {
       .split(/(?<=\.)\s+/)
       .map((one) => one.trim())
       .filter((one) => one.endsWith("."));
-  const NOTED = new Set(
-    Object.values(PAYOUT_NOTES).flatMap((note) =>
-      typeof note === "string"
-        ? sentencesOf(note)
-        : typeof note === "function"
-          ? [1, 2].flatMap((count) => sentencesOf(note(count)))
-          : Object.values(note).flatMap(sentencesOf),
+  const { brings, tooMany, sentOn, ...plain } = PAYOUT_NOTES;
+  const NOTED = new Set([
+    ...Object.values(plain).flatMap(sentencesOf),
+    ...Object.values(sentOn).flatMap(sentencesOf),
+    ...[1, 2].flatMap((count) => sentencesOf(tooMany(count))),
+    // An amount is written as digits, which `sentencesOf` reads as `#`.
+    ...["1.1 USDC", "1.1 test USDC"].flatMap((amount) =>
+      [true, false].flatMap((one) => sentencesOf(brings(amount, one))),
     ),
-  );
+  ]);
   /**
    * Every sentence the section draws, read off each element that holds text of
    * its own. Links and controls are ways on, not claims, and a label that is no
@@ -930,6 +955,85 @@ describe("what Getting paid says in each state", () => {
   });
 });
 
+describe("what the payout would bring", () => {
+  const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+  const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+
+  const pageWith = (mode: SurfaceMode, brings: bigint | typeof UNKNOWN, more: Looking = {}) =>
+    settingsPage({ mode, wallet: W, splits: splitsFor(mode, W, { brings }), ...more });
+
+  /** An amount of USDC as the page writes one, with or without the word test. */
+  const AN_AMOUNT = /\b\d+\.\d+ (test )?USDC\b/;
+
+  it("is named, in test USDC on the test channel and in USDC on live", () => {
+    expect(readable(pageWith("test", 12_340_000n))).toMatch(/would bring 12\.34 test USDC/);
+    const onLive = readable(pageWith("live", 12_340_000n));
+    expect(onLive).toMatch(/would bring 12\.34 USDC/);
+    expect(onLive).not.toMatch(/test USDC/);
+  });
+
+  it("is written whole below a cent, never rounded to nothing", () => {
+    expect(readable(pageWith("live", 999n))).toMatch(/would bring 0\.000999 USDC/);
+  });
+
+  it("is shown only beside the transaction it was read for, never where no transaction is drawn", () => {
+    const shown = pageWith("live", 12_340_000n);
+    const tooMany = settingsPage({
+      mode: "live",
+      wallet: W,
+      splits: splitsFor("live", W, { tooMany: 21 }),
+    });
+    const unbuilt = settingsPage({
+      mode: "live",
+      wallet: W,
+      splits: { ...splitsFor("live", W), payout: "unbuilt" },
+    });
+
+    expect(shown).toContain("<textarea");
+    expect(readable(shown)).toMatch(AN_AMOUNT);
+    for (const html of [tooMany, unbuilt]) {
+      expect(html).not.toContain("<textarea");
+      expect(readable(html)).not.toMatch(AN_AMOUNT);
+    }
+  });
+
+  it("leaves no payout to send where it is nothing, and says so", () => {
+    const html = pageWith("live", 0n);
+    const text = readable(html);
+
+    expect(html).not.toContain("<textarea");
+    expect(html).not.toContain(MULTICALL3);
+    expect(text).toMatch(/getting paid/i);
+    expect(text).toMatch(/would bring nothing/);
+    expect(text).not.toMatch(AN_AMOUNT);
+  });
+
+  it("is said not to be known, never as nothing, where the chain was not read, and the transaction is still given to send by hand", () => {
+    const html = pageWith("test", UNKNOWN);
+    const text = readable(html);
+
+    expect(text).toMatch(/could not read from the network what this payout would bring/);
+    expect(text).not.toMatch(/would bring nothing/);
+    expect(text).not.toMatch(AN_AMOUNT);
+    expect(/<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(html)?.[1]).toBe(
+      merchantPayout(networkOf("test"), [splitOf("test", W)], PAYOUT_SPLIT_NETWORKS).data,
+    );
+  });
+
+  it("is between them where the payout pays two wallets, each named beside its contract", () => {
+    const W1 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+    const text = readable(
+      settingsPage({
+        mode: "live",
+        wallet: W,
+        splits: splitsFor("live", W, { toPayOut: [splitOf("live", W1), splitOf("live", W)] }),
+      }),
+    );
+
+    expect(text).toMatch(/would bring 12\.34 USDC to the wallets beside your payout contracts/);
+  });
+});
+
 describe("creating or connecting a Coinbase Wallet from the settings", () => {
   const CHECKSUMMED = checksummedAddressOf(coinbase.account);
   const button = () => screen.getByRole("button", { name: WALLET_WORDS.connect });
@@ -938,21 +1042,23 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await act(async () => {
       fireEvent.click(control);
     });
-    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waitingAddress)).toBeNull());
   };
 
   it("is offered only once the page's script runs, so a page without script shows no button that does nothing", () => {
-    expect(walletPanel({ mode: "test" })).not.toContain(WALLET_WORDS.connect);
+    expect(walletPanel({ mode: "live" })).not.toContain(WALLET_WORDS.connect);
 
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
 
     expect(button()).toBeTruthy();
   });
 
-  it("is offered on the live channel as on the test channel", () => {
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
+  it("is offered on the test channel as on live, since connecting a Coinbase Wallet works on Base Sepolia", () => {
+    const { wallet } = viewOf({ mode: "test" });
+    render(routed(() => <PayoutWalletPanel wallet={wallet} />));
 
     expect(button()).toBeTruthy();
+    expect(wallet.coinbase).toStrictEqual({ chain: 84532 });
   });
 
   it("is not offered in the sandbox, where no wallet is ever paid", () => {
@@ -962,7 +1068,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   });
 
   it("puts the wallet's address into the box in a wallet's spelling, and saves nothing until the merchant presses Save", async () => {
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     let submitted = false;
     box().form?.addEventListener("submit", () => {
       submitted = true;
@@ -981,20 +1087,34 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
   });
 
-  it("leaves the box as the merchant left it when they close Coinbase's window", async () => {
+  it("leaves the button and the box usable while it waits, so a window that closed without a word strands nobody", async () => {
+    coinbase.holding = 1;
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
+
+    await act(async () => {
+      fireEvent.click(button());
+    });
+
+    expect(screen.getByText(WALLET_WORDS.waitingAddress)).toBeTruthy();
+    expect((button() as HTMLButtonElement).disabled).toBe(false);
+    expect(box().disabled || box().readOnly).toBe(false);
+  });
+
+  it("leaves the box as the merchant left it when Coinbase's window closes, however it closed, and points to entering an address by hand", async () => {
     coinbase.declines = "eth_requestAccounts";
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     fireEvent.change(box(), { target: { value: "0x1234" } });
 
     await press(button());
 
     expect(box().value).toBe("0x1234");
+    expect(box().disabled || box().readOnly).toBe(false);
     expect(screen.getByText(WALLET_WORDS.connectClosed)).toBeTruthy();
   });
 
   it("keeps the box for an address typed by hand when Coinbase Wallet cannot be opened", async () => {
     coinbase.opened = false;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     fireEvent.change(box(), { target: { value: "0x1234" } });
 
     await press(button());
@@ -1009,7 +1129,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
       new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
     ]) {
       coinbase.throws = { at: "eth_requestAccounts", thrown };
-      render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+      render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
 
       await press(button());
 
@@ -1022,7 +1142,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
 
   it("takes a second press while the first is still unanswered, as when Coinbase's window vanished without a word", async () => {
     coinbase.holding = 1;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1035,7 +1155,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
 
   it("keeps what the latest press brought when an earlier press is answered after it", async () => {
     coinbase.holding = 1;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1052,14 +1172,14 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   it("says its answer was lost, not that it failed, when a payout press meanwhile ends its session", async () => {
     coinbase.holding = 1;
     const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
     });
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy());
 
     await act(async () => {
       coinbase.held[0]?.accept();
@@ -1071,14 +1191,14 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   it("says its answer was lost, not the browser's words, when a payout press overtook it and the answer failed", async () => {
     coinbase.holding = 1;
     const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
     });
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy());
 
     await act(async () => {
       coinbase.held[0]?.fail();
@@ -1090,17 +1210,17 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   it("stops waiting once Coinbase Wallet has not answered within the limit, says to press again, and leaves no keys of its session in the page", async () => {
     vi.useFakeTimers();
     coinbase.holding = 1;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     fireEvent.change(box(), { target: { value: "0x1234" } });
     await act(async () => {
       fireEvent.click(button());
     });
     await act(() => vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS - 1));
-    expect(screen.getByText(WALLET_WORDS.waiting)).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.waitingAddress)).toBeTruthy();
 
     await act(() => vi.advanceTimersByTimeAsync(1));
 
-    expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull();
+    expect(screen.queryByText(WALLET_WORDS.waitingAddress)).toBeNull();
     expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
     expect(coinbase.keys).toBe(false);
     expect(box().value).toBe("0x1234");
@@ -1109,7 +1229,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   it("puts no address into the box that arrives after it stopped waiting", async () => {
     vi.useFakeTimers();
     coinbase.holding = 1;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
     fireEvent.change(box(), { target: { value: "0x1234" } });
     await act(async () => {
       fireEvent.click(button());
@@ -1131,7 +1251,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
         <PayoutWalletPanel
           wallet={
             viewOf({
-              mode: "test",
+              mode: "live",
               press: { kind: "wallet", problem: refused, typed: "0x1234" },
             }).wallet
           }
@@ -1153,7 +1273,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
   });
 
   it("links to where the merchant manages the wallet and to how Coinbase recovers it", () => {
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "test" }).wallet} />));
+    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
 
     const links = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
     expect(links).toContain(WALLET_WORDS.manageAt);
@@ -1168,30 +1288,30 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await act(async () => {
       fireEvent.click(button());
     });
-    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull());
   };
 
   it("is offered only once the page's script runs, beside the transaction it sends", () => {
-    expect(settingsPage({ mode: "test", wallet: W })).not.toContain(WALLET_WORDS.payOut);
+    expect(settingsPage({ mode: "live", wallet: W })).not.toContain(WALLET_WORDS.payOut);
 
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     expect(button()).toBeTruthy();
   });
 
-  it("sends the transaction the screen shows, whole and carrying no money, on Base Sepolia for the test channel", async () => {
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+  it("sends the transaction the screen shows, whole and carrying no money, on Base", async () => {
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     await press();
 
     expect(coinbase.sent).toEqual([
       expect.objectContaining({
-        chainId: "0x14a34",
+        chainId: "0x2105",
         calls: [
           {
             to: "0xcA11bde05977b3631167028862bE2a173976CA11",
             value: "0x0",
-            data: merchantPayout(networkOf("test"), [splitOf("test", W)], PAYOUT_SPLIT_NETWORKS)
+            data: merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS)
               .data,
           },
         ],
@@ -1199,25 +1319,106 @@ describe("sending the payout from a Coinbase Wallet", () => {
     ]);
   });
 
-  it("sends it on Base for the live channel", async () => {
+  it("is not offered on the test channel, which says why in one line and keeps the transaction for another wallet", () => {
+    const view = viewOf({ mode: "test", wallet: W });
+    render(routed(() => <SettingsScreen view={view} />));
+
+    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut })).toBeNull();
+    const payout = view.payout;
+    const absent =
+      payout?.kind === "send" && payout.coinbase !== null && "absent" in payout.coinbase
+        ? payout.coinbase.absent
+        : "";
+    expect(absent).toMatch(/Base Sepolia/);
+    expect(screen.getByText(absent)).toBeTruthy();
+    expect(screen.getByLabelText("Data")).toBeTruthy();
+  });
+
+  it("says what the wallet was asked to send, with the amount the page showed, and not that the money has arrived", async () => {
     render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     await press();
 
-    expect(coinbase.sent.map((batch) => batch.chainId)).toEqual(["0x2105"]);
+    const said = WALLET_WORDS.payoutSent(SHOWN);
+    expect(said).toContain(SHOWN);
+    expect(screen.getByText(said)).toBeTruthy();
   });
 
-  it("says the wallet sent it, not that the money has arrived", async () => {
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+  it("says what the wallet was asked to send without an amount where the page did not know it", async () => {
+    render(
+      routed(() => (
+        <SettingsScreen
+          view={viewOf({
+            mode: "live",
+            wallet: W,
+            splits: splitsFor("live", W, { brings: UNKNOWN }),
+          })}
+        />
+      )),
+    );
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.payoutSent(null))).toBeTruthy();
+  });
+
+  it("points to the transaction below when Coinbase's window closes before the payout was asked for, however it closed", async () => {
+    // Coinbase's window closes the same way when the merchant closes it and
+    // when it stops on an error of its own, so the words fit either.
+    coinbase.declines = "eth_requestAccounts";
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
+
+    await press();
+
+    expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
+    expect((screen.getByLabelText("Data") as HTMLTextAreaElement).value).toBe(
+      merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
+    );
+  });
+
+  it("leaves the button usable while it waits, so a window that closed without a word strands nobody", async () => {
+    coinbase.holding = 1;
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
+
+    await act(async () => {
+      fireEvent.click(button());
+    });
+
+    expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
+    expect((button() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("is offered where the page does not know what the payout would bring, since it pays out only what is there", () => {
+    render(
+      routed(() => (
+        <SettingsScreen
+          view={viewOf({
+            mode: "live",
+            wallet: W,
+            splits: splitsFor("live", W, { brings: UNKNOWN }),
+          })}
+        />
+      )),
+    );
+
+    expect(button()).toBeTruthy();
+  });
+
+  it("is not offered where the payout would bring nothing", () => {
+    render(
+      routed(() => (
+        <SettingsScreen
+          view={viewOf({ mode: "live", wallet: W, splits: splitsFor("live", W, { brings: 0n }) })}
+        />
+      )),
+    );
+
+    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut })).toBeNull();
   });
 
   it("sends nothing and says so when the merchant closes Coinbase's window before the payout is asked for", async () => {
     coinbase.declines = "eth_requestAccounts";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     await press();
 
@@ -1227,7 +1428,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("never says nothing was sent when the window closes after the payout was asked for, and says to check before sending again", async () => {
     coinbase.declines = "wallet_sendCalls";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     await press();
 
@@ -1241,7 +1442,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
       new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
     ]) {
       coinbase.throws = { at: "wallet_switchEthereumChain", thrown };
-      render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
       await press();
 
@@ -1255,7 +1456,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("says nothing was sent when Coinbase Wallet cannot be opened", async () => {
     coinbase.opened = false;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     await press();
 
@@ -1264,7 +1465,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("takes a second press while the first is still unanswered, and says what it sent", async () => {
     coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1272,12 +1473,12 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(coinbase.sent).toHaveLength(1);
-    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy();
   });
 
   it("says it does not know, rather than that nothing was sent, once an earlier press's answer can no longer be read", async () => {
     coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1295,7 +1496,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("never says nothing was sent when two presses wait in one window and neither answer can be read", async () => {
     coinbase.holding = 2;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     for (const _ of [1, 2]) {
       await act(async () => {
         fireEvent.click(button());
@@ -1315,7 +1516,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("does not say a waiting payout failed when filling the wallet box meanwhile ends its session", async () => {
     coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1333,7 +1534,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
   });
 
   it("says nothing more was sent, rather than that nothing was, when a later press is closed after a payout went out", async () => {
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await press();
     coinbase.declines = "eth_requestAccounts";
 
@@ -1346,7 +1547,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("says it does not know whether the payout went out when the wallet's answer to it can no longer be read", async () => {
     coinbase.loses = "wallet_sendCalls";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
     await press();
 
@@ -1359,7 +1560,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
       new TypeError("Cannot use 'in' operator to search for 'failure' in undefined"),
     ]) {
       coinbase.throws = { at: "wallet_sendCalls", thrown };
-      render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
       await press();
 
@@ -1372,7 +1573,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("keeps saying it does not know when a later press is closed", async () => {
     coinbase.loses = "wallet_sendCalls";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await press();
     coinbase.loses = undefined;
     coinbase.declines = "eth_requestAccounts";
@@ -1385,7 +1586,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("does not say a waiting payout failed when filling the wallet box meanwhile overtook it and its answer failed", async () => {
     coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1405,7 +1606,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
   it("says it does not know, not that nothing was sent, when the screen was drawn again while a payout waited", async () => {
     coinbase.holding = 1;
     const screenOf = () =>
-      routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />);
+      routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />);
     const { rerender } = render(screenOf());
     await act(async () => {
       fireEvent.click(button());
@@ -1425,7 +1626,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
   it("says it does not know, not that nothing was sent, while an earlier payout press still waits", async () => {
     coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1441,7 +1642,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
   const unansweredFor = async (ms: number) => {
     vi.useFakeTimers();
     coinbase.holdsPayout = true;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "test", wallet: W })} />));
+    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
     await act(async () => {
       fireEvent.click(button());
     });
@@ -1451,14 +1652,14 @@ describe("sending the payout from a Coinbase Wallet", () => {
   it("keeps waiting for a payout until the limit, long enough to approve it with a passkey", async () => {
     await unansweredFor(WALLET_ANSWERS_WITHIN_MS - 1);
 
-    expect(screen.getByText(WALLET_WORDS.waiting)).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
     expect(coinbase.keys).toBe(true);
   });
 
   it("says it does not know whether the payout went out once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
     await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
 
-    expect(screen.queryByText(WALLET_WORDS.waiting)).toBeNull();
+    expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull();
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
     expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
     expect(coinbase.keys).toBe(false);
@@ -1471,7 +1672,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
       coinbase.answerLater[0]?.acknowledge();
     });
 
-    expect(screen.getByText(WALLET_WORDS.payoutSent)).toBeTruthy();
+    expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy();
   });
 
   it("keeps saying it does not know when the wallet refuses the payout after the limit", async () => {
@@ -1502,7 +1703,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     render(
       routed(() => (
         <SettingsScreen
-          view={viewOf({ mode: "test", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) })}
+          view={viewOf({ mode: "live", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) })}
         />
       )),
     );

@@ -12,7 +12,7 @@
  * not recognise fails here rather than as a blank cell in front of a merchant.
  */
 
-import { outcomeFor } from "@agentify/core";
+import { fulfillmentDeadline, outcomeFor, UNKNOWN } from "@agentify/core";
 import type { CommissionRate } from "@agentify/core/published";
 import type {
   Caller,
@@ -20,6 +20,7 @@ import type {
   Integration,
   IssuedMerchantKey,
   MerchantKey,
+  PayoutCheck,
   PayoutTransaction,
   RecordedPayoutSplit,
   StoredOrder,
@@ -60,6 +61,7 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import { ANSWER_WITHIN_MS } from "./deadlines.js";
 import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
 import type { LapsedAttempt } from "./views.js";
@@ -85,6 +87,13 @@ export type Answer<T> =
        * each one to be copied.
        */
       readonly orders?: readonly string[];
+      /**
+       * Set where the refusal's own words say nothing was written. A refusal
+       * with a status under 500 is read as having written nothing even
+       * without it, so a call that acts and then refuses with a 4xx must not
+       * be added: it would be titled "Nothing was changed".
+       */
+      readonly nothingRecorded?: true;
     };
 
 /**
@@ -95,27 +104,55 @@ export type Answer<T> =
  */
 export type UnfulfilledCause = "refused" | "deadline_passed" | "charge_confirmed_late";
 
-/** What Needs you is told of the paid orders left unfulfilled. */
-interface UnfulfilledOrders {
-  /** Why each was left unfulfilled, where the order says. */
-  readonly causes: Readonly<Record<string, UnfulfilledCause>>;
-  /** The ones their merchant answers for, which count toward the stop on new purchases. */
-  readonly counting: readonly string[];
+/** The one transaction that pays out every split that can hold a merchant's money. */
+interface PayoutToSend {
+  readonly transaction: PayoutTransaction;
+  /**
+   * The USDC, in millionths, that sending it now would bring the merchant's
+   * wallets, as the chain ran it without sending it; `UNKNOWN` where the
+   * chain could not be asked or did not answer in time.
+   */
+  readonly brings: bigint | typeof UNKNOWN;
+}
+
+/**
+ * What an order's record keeps and its document leaves out. Each moment is
+ * the record's own, and null where the record keeps none.
+ */
+export interface OrderRecord {
+  /** Why a paid order was left unfulfilled; null for an order that is not, or whose cause is not recorded. */
+  readonly unfulfilled: UnfulfilledCause | null;
+  /** When the money moved, where the order's receipt or its charge records it. */
+  readonly paidAt: string | null;
+  /**
+   * The deadline on the goods, while it still runs or where its passing left
+   * the order unfulfilled; null for every other order.
+   */
+  readonly deadline: Readonly<{ at: string; passed: boolean }> | null;
+  /**
+   * The integration whose card the sale was made on, which is the one that
+   * can still deliver it; null where the card cannot be read.
+   */
+  readonly soldThrough: Integration | null;
+  /**
+   * Whether it counts toward the stop on the merchant's new purchases: an
+   * order left unfulfilled that its merchant answers for.
+   */
+  readonly counts: boolean;
 }
 
 /**
  * A merchant's payout splits on this network, for the payout wallet screen,
- * and the one transaction that pays out every split that can hold their
- * money. `payout` is null where no split can hold any, says how many there
- * are where one transaction cannot carry them all, and is `unbuilt` where the
- * builder refused the splits as recorded.
+ * and their payout. `payout` is null where no split can hold any money, says
+ * how many there are where one transaction cannot carry them all, and is
+ * `unbuilt` where the builder refused the splits as recorded.
  */
 export interface PayoutSplits {
   /** The terms every split recorded on this network from now is made with. */
   readonly rate: CommissionRate;
   readonly inForce: RecordedPayoutSplit | null;
   readonly pending: RecordedPayoutSplit | null;
-  readonly payout: PayoutTransaction | { readonly tooMany: number } | "unbuilt" | null;
+  readonly payout: PayoutToSend | { readonly tooMany: number } | "unbuilt" | null;
 }
 
 /**
@@ -138,6 +175,32 @@ const payoutOf = (
   }
 };
 
+/** What `transaction` would bring if sent now, or `UNKNOWN` where the chain gave no answer within `withinMs`. */
+const broughtWithin = async (
+  check: PayoutCheck | undefined,
+  transaction: PayoutTransaction,
+  withinMs: number,
+): Promise<bigint | typeof UNKNOWN> => {
+  if (check === undefined) return UNKNOWN;
+  let cut: ReturnType<typeof setTimeout> | undefined;
+  // The page keeps its own time too: Settings must be drawn in time even
+  // where a check does not keep to `withinMs`.
+  const late = new Promise<typeof UNKNOWN>((resolve) => {
+    cut = setTimeout(() => resolve(UNKNOWN), Math.max(0, withinMs));
+  });
+  const read = check.wouldBring(transaction, withinMs).catch((thrown: unknown): typeof UNKNOWN => {
+    console.error(
+      `[dashboard] what a payout would bring was not read from the chain: ${failureNamed(thrown)}`,
+    );
+    return UNKNOWN;
+  });
+  try {
+    return await Promise.race([read, late]);
+  } finally {
+    clearTimeout(cut);
+  }
+};
+
 export interface GatewayClient {
   cards(): Promise<Answer<MerchantCardList>>;
   pauseCard(itemId: string, paused: boolean): Promise<Answer<MerchantCard>>;
@@ -154,10 +217,15 @@ export interface GatewayClient {
   /** How many purchases lapsed unpaid, with none of them read. */
   lapsedCount(): Promise<Answer<number>>;
   /**
-   * Why each paid order was left unfulfilled, by order, and which of them
-   * count toward the stop on new purchases, for Needs you.
+   * Every order but the purchases that lapsed unpaid, and what each one's
+   * record keeps beside its document, from one read so the two agree.
    */
-  unfulfilledOrders(): Promise<Answer<UnfulfilledOrders>>;
+  ordersWithRecords(): Promise<
+    Answer<{
+      readonly orders: OrderList;
+      readonly records: Readonly<Record<string, OrderRecord>>;
+    }>
+  >;
   receipts(): Promise<Answer<ReceiptList>>;
   /**
    * The payout split this order's payment was checked against, as recorded,
@@ -285,17 +353,6 @@ export interface Acting {
   readonly email: string;
 }
 
-/**
- * The default deadline for one call: a guard on a page, shorter than a
- * person's patience. The work behind a call that runs out is not cancelled (a
- * late database still writes), so the page says it may have been done. A
- * caller may pass its own: a payout wallet change passes a longer one
- * (`WALLET_CHANGE_MS` in `payout-wallet.ts`), because on live the gateway
- * answers only after every announcement is handed to the mail provider, and
- * tests pass a shorter one so as not to wait ten seconds.
- */
-export const ANSWER_WITHIN_MS = 10_000;
-
 export const lateAnswer = (answerWithinMs: number): Answer<never> => {
   const seconds = Math.max(1, Math.round(answerWithinMs / 1_000));
   return {
@@ -352,24 +409,28 @@ const walletRefusedAs = (why: Exclude<WalletChangeRefusal, object>): Answer<neve
     case "nobody_to_tell":
       return {
         ok: false,
+        nothingRecorded: true,
         status: CONFLICT,
         why: "a change of the payout wallet is told to every dashboard account that names this merchant before it is recorded, and no account names this merchant, so there is nobody to tell; nothing was changed and sales are paid where they were",
       };
     case "not_announced":
       return {
         ok: false,
+        nothingRecorded: true,
         status: UNAVAILABLE,
         why: "the message about this change could not be confirmed as sent to every account that names this merchant, so nothing was recorded and sales are paid where they were; an account may still have received it, and it says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not",
       };
     case "raced":
       return {
         ok: false,
+        nothingRecorded: true,
         status: CONFLICT,
         why: "another change of this merchant's payout wallet was recorded between reading the wallet and writing this one, so this one was not recorded; read the wallet and ask again if this is still the address wanted",
       };
     case "raced_after_announcing":
       return {
         ok: false,
+        nothingRecorded: true,
         status: CONFLICT,
         why: "another change of this merchant's payout wallet was recorded while this one was being announced, so this one was not recorded; its message went out and says the change takes effect only if the Payout wallet section of the dashboard's Settings shows it, which it does not. Read the wallet and ask again if this is still the address wanted",
       };
@@ -481,11 +542,62 @@ const switchRefused = (to: Integration, waiting: readonly string[]): Answer<neve
   why: `${waiting.length === 1 ? "1 order still waits" : `${waiting.length} orders still wait`} on the ${to === "woocommerce" ? "code" : "shop"}`,
 });
 
+const UNFULFILLED_BY: Readonly<Partial<Record<string, UnfulfilledCause>>> = {
+  merchant_refused: "refused",
+  deadline_expired: "deadline_passed",
+  payment_outcome_unknown: "charge_confirmed_late",
+};
+
+/**
+ * When the money moved: what the order's receipt says, where it has one, since
+ * that is the moment already given to the buyer; otherwise the charge's own
+ * record, then the moment an order charged at purchase was paid, then the
+ * moment a payment completed after the merchant's closure. An order charged
+ * after its goods records as paid the moment its payment was checked, which
+ * is not when the money moved.
+ */
+const moneyMovedAt = (record: StoredOrder, receipted: string | null): string | null => {
+  const { order } = record;
+  if (receipted !== null) return receipted;
+  const completion = record.paymentAttempt?.completion;
+  const at =
+    (completion?.settled === true ? completion.executedAt : null) ??
+    (order.mode.settle === "on_purchase" ? order.timestamps.paidAt : null) ??
+    order.merchantClosure?.paymentCompletedAt ??
+    null;
+  return at === null ? null : new Date(at).toISOString();
+};
+
+/**
+ * A deadline is said to have passed only where its passing is why the order
+ * is unfulfilled: an order refused after payment may have been refused well
+ * inside it.
+ */
+const orderRecordOf = (
+  record: StoredOrder,
+  receipted: string | null,
+  soldThrough: Integration | null,
+): OrderRecord => {
+  const { order } = record;
+  const unfulfilled =
+    order.state === "unfulfilled" ? (UNFULFILLED_BY[order.closure?.cause ?? ""] ?? null) : null;
+  const running = order.state === "paid" || order.state === "dispatched";
+  const due =
+    running || unfulfilled === "deadline_passed" ? fulfillmentDeadline(order)[0] : undefined;
+  return {
+    unfulfilled,
+    paidAt: moneyMovedAt(record, receipted),
+    deadline: due === undefined ? null : { at: new Date(due.at).toISOString(), passed: !running },
+    soldThrough,
+    counts: order.state === "unfulfilled" && record.answerable === true,
+  };
+};
+
 /**
  * One purchase that lapsed unpaid as the dashboard lists it. It is not the
  * API's order document, which carries a sale price and so cannot describe an
- * attempt that ended before anybody named one: such an attempt has no price,
- * and its moment is when it was asked for.
+ * attempt that ended before anybody named one: such an attempt has no price
+ * and no moment it was priced, only the moment it was asked for.
  */
 const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
   const { order } = record;
@@ -495,7 +607,11 @@ const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
     status: outcomeFor(order),
     price:
       order.price === null ? null : { amount: order.price.amount, currency: order.price.currency },
-    at: new Date(order.timestamps.quotedAt ?? order.timestamps.createdAt).toISOString(),
+    asked_at: new Date(order.timestamps.createdAt).toISOString(),
+    priced_at:
+      order.price === null || order.timestamps.quotedAt === null
+        ? null
+        : new Date(order.timestamps.quotedAt).toISOString(),
     test: order.test,
   };
 };
@@ -568,29 +684,36 @@ export const gatewayFor = (
       call("counting the purchases that lapsed unpaid", async () =>
         done((await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 })).of),
       ),
-    unfulfilledOrders: () =>
-      call("reading why orders are unfulfilled", async () => {
-        const owed: Record<string, UnfulfilledCause> = {};
-        const counting: string[] = [];
-        for (const record of await application.orders(merchantId, true)) {
-          if (record.order.state === "unfulfilled" && record.answerable === true) {
-            counting.push(record.order.id);
-          }
-          const cause =
-            record.order.state === "unfulfilled" ? record.order.closure?.cause : undefined;
-          const said =
-            cause === "merchant_refused"
-              ? "refused"
-              : cause === "deadline_expired"
-                ? "deadline_passed"
-                : cause === "payment_outcome_unknown"
-                  ? "charge_confirmed_late"
-                  : undefined;
-          if (said !== undefined) {
-            owed[record.order.id] = said;
-          }
-        }
-        return done({ causes: owed, counting });
+    ordersWithRecords: () =>
+      call("reading the orders", async () => {
+        const read = await application.orders(merchantId, undefined, { leaveOutLapsed: true });
+        const paid = new Map(
+          (await application.receipts(merchantId)).receipts.map((one) => [
+            one.order_id,
+            one.paid_at,
+          ]),
+        );
+        const publishedBy = new Map(
+          (await application.runtime.store.cards(merchantId)).map((card) => [
+            card.id,
+            card.integration,
+          ]),
+        );
+        return done({
+          orders: API_ROUTES.list_orders.response.document.parse(
+            merchantOrderList(read),
+          ) as OrderList,
+          records: Object.fromEntries(
+            read.map((record) => [
+              record.order.id,
+              orderRecordOf(
+                record,
+                paid.get(record.order.id) ?? null,
+                publishedBy.get(record.itemId) ?? null,
+              ),
+            ]),
+          ),
+        });
       }),
     receipts: () =>
       call("reading the receipts", async () =>
@@ -680,11 +803,21 @@ export const gatewayFor = (
         answered(API_ROUTES.get_payout_wallet, await application.payoutWallet(merchantId)),
       ),
     // Built from the splits as recorded, on the network's contracts; the rate
-    // is the one a wallet saved now is recorded with.
+    // is the one a wallet saved now is recorded with. The chain gets half the
+    // page's deadline counted from the start of this read, so a slow database
+    // and a slow chain together still leave the rest of Settings, the control
+    // that signs every other device out among it, drawn in time.
     payoutSplits: () =>
       call("reading the payout splits", async () => {
+        const chainBy = Date.now() + answerWithinMs / 2;
         const { payoutSplit: network, payoutSplitNetworks } = application.runtime.config;
         const { inForce, pending, toPayOut } = await application.payoutSplitsOf(merchantId);
+        const built =
+          toPayOut.length === 0
+            ? null
+            : toPayOut.length > SPLITS_PER_PAYOUT
+              ? { tooMany: toPayOut.length }
+              : payoutOf(merchantId, () => merchantPayout(network, toPayOut, payoutSplitNetworks));
         return done({
           rate: {
             commissionAllocation: network.commissionAllocation,
@@ -693,13 +826,16 @@ export const gatewayFor = (
           inForce,
           pending,
           payout:
-            toPayOut.length === 0
-              ? null
-              : toPayOut.length > SPLITS_PER_PAYOUT
-                ? { tooMany: toPayOut.length }
-                : payoutOf(merchantId, () =>
-                    merchantPayout(network, toPayOut, payoutSplitNetworks),
+            built === null || built === "unbuilt" || "tooMany" in built
+              ? built
+              : {
+                  transaction: built,
+                  brings: await broughtWithin(
+                    application.runtime.payoutCheck,
+                    built,
+                    chainBy - Date.now(),
                   ),
+                },
         });
       }),
     setPayoutWallet: (address) =>

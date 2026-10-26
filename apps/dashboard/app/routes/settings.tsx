@@ -10,6 +10,7 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { answer, formOf } from "../answer.js";
 import { Frame } from "../components/frame.js";
+import { readFailedIn } from "../components/not-loaded.js";
 import { SettingsScreen } from "../screens/settings.js";
 import { services, signedIn } from "../services.js";
 import { press, pressed } from "../settings-press.js";
@@ -42,3 +43,5 @@ export default function Settings() {
     </Frame>
   );
 }
+
+export const ErrorBoundary = readFailedIn({ tab: "settings", title: "Settings", what: "settings" });

@@ -24,6 +24,7 @@
   "devDependencies": {
     "@agentify/core": "workspace:*",
     "@agentify/gallery": "workspace:*",
+    "@nuanu-ai/agentify-contracts": "workspace:*",
     "@react-router/dev": "8.4.0",
     "@types/node": "24.13.3",
     "@types/react": "19.2.17",
