@@ -123,7 +123,13 @@ const SUMMARY_COPY: Readonly<Record<string, string>> = {
   robots_parseable: "robots.txt is present and parseable.",
   robots_partially_parseable:
     "robots.txt is present, but some directives are malformed or ambiguous.",
+  robots_refused:
+    "robots.txt was not served: its address answered with the status in the evidence. Crawlers take such an answer as having no rules at all.",
+  robots_too_large:
+    "robots.txt is longer than the scanner's read limit, which the evidence names. Crawlers are only required to read its first 500 KiB, so rules after that may be ignored.",
   robots_unavailable: "robots.txt could not be assessed during this scan.",
+  robots_wrong_media_type:
+    "robots.txt holds valid rules, but it is served with a web page's media type in place of text/plain.",
   sitemap_doctype:
     "The sitemap declares an XML document type, which the scanner does not read, so the sitemap was not judged. This lowers coverage and is not counted as a defect.",
   sitemap_empty: "A sitemap was found, but it lists no addresses.",
@@ -192,6 +198,9 @@ const FINDING_HEADLINE_COPY: Readonly<Record<string, string>> = {
   robots_invalid: "Your crawler rules cannot be interpreted reliably",
   robots_missing: "Crawler access rules are missing at the standard location",
   robots_partially_parseable: "Part of your crawler policy is malformed or ambiguous",
+  robots_refused: "Your robots.txt is not served to crawlers",
+  robots_too_large: "Your robots.txt is longer than crawlers must read",
+  robots_wrong_media_type: "Your robots.txt is served as a web page",
   sitemap_empty: "Your sitemap lists no pages",
   sitemap_entries_missing: "A sitemap your site lists is missing",
   sitemap_missing: "No sitemap was found in robots.txt or the standard location",
@@ -359,8 +368,12 @@ const FIX_COPY: Readonly<Record<string, string>> = {
     "Return the correct Markdown media type, Vary header, and fact-equivalent content for negotiated requests.",
   repair_robots:
     "Repair malformed robots.txt directives and validate the final crawler groups and sitemap declarations.",
+  serve_robots:
+    "Serve robots.txt to every visitor with status 200 and the media type text/plain, or answer with 404 if the site has no rules.",
+  serve_robots_as_text: "Serve robots.txt with the media type text/plain.",
   serve_sitemap:
     "Serve a sitemap at this address, or declare the address of the real sitemap in robots.txt.",
+  shorten_robots: "Shorten robots.txt to under 500 KiB, the size every crawler must read.",
 };
 
 const FALLBACK_ACRONYMS: Readonly<Record<string, string>> = {

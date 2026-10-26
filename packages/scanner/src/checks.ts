@@ -186,19 +186,15 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
   const fetch = artifacts.robots;
   const { parsed } = readRobots(fetch);
   const common = { durationMs: fetch.durationMs };
+  const reading = readingOf(fetch, "robots_http_error");
+  const read = reading.state === "whole" || reading.state === "cut" ? reading : undefined;
   let robots: CheckResult;
-  if (fetch.errorCode || fetch.status === 0 || fetch.status >= 500) {
-    robots = result({
-      id: 1,
-      status: "unavailable",
-      earnedWeight: 0,
+  if (reading.state === "unread" && (reading.status === undefined || reading.status >= 500)) {
+    robots = unjudged(1, reading, {
       summaryCode: "robots_unavailable",
-      evidence: {},
       userImpactCode: "robots_not_assessed",
-      errorCode: fetch.errorCode ?? "robots_http_error",
-      ...common,
     });
-  } else if (fetch.status === 404 || fetch.status === 410) {
+  } else if (reading.state === "absent" || (read && isWebPage(read.artifact.body))) {
     robots = result({
       id: 1,
       status: "fail",
@@ -209,7 +205,19 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       fixCode: "publish_robots",
       ...common,
     });
-  } else if (fetch.status !== 200 || parsed.fatal) {
+  } else if (fetch.status !== 200) {
+    // Crawlers take a robots.txt answered with a refusal as no rules at all.
+    robots = result({
+      id: 1,
+      status: "fail",
+      earnedWeight: 0,
+      summaryCode: "robots_refused",
+      evidence: { status: fetch.status },
+      userImpactCode: "robots_missing_impact",
+      fixCode: "serve_robots",
+      ...common,
+    });
+  } else if (parsed.fatal) {
     robots = result({
       id: 1,
       status: "fail",
@@ -221,22 +229,31 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       ...common,
     });
   } else {
-    const partial =
-      parsed.malformedDirectives > 0 || mediaType(fetch.headers["content-type"]) === "text/html";
+    const contentType = fetch.headers["content-type"] ?? "";
+    const [summaryCode, fixCode] =
+      reading.state === "cut"
+        ? ["robots_too_large", "shorten_robots"]
+        : parsed.malformedDirectives > 0
+          ? ["robots_partially_parseable", "repair_robots"]
+          : mediaType(contentType) === "text/html"
+            ? ["robots_wrong_media_type", "serve_robots_as_text"]
+            : ["robots_parseable", undefined];
     robots = result({
       id: 1,
-      status: partial ? "partial" : "pass",
-      earnedWeight: partial ? 2 : 5,
-      summaryCode: partial ? "robots_partially_parseable" : "robots_parseable",
+      status: fixCode ? "partial" : "pass",
+      earnedWeight: fixCode ? 2 : 5,
+      summaryCode,
       evidence: {
         status: fetch.status,
         size: fetch.decodedBytes,
         sitemap_count: parsed.sitemaps.length,
         group_count: parsed.groups.length,
         malformed_directives: parsed.malformedDirectives,
+        ...(summaryCode === "robots_wrong_media_type" ? { content_type: contentType } : {}),
+        ...(reading.state === "cut" ? { truncated: true, read_limit: reading.readLimit } : {}),
       },
       userImpactCode: "robots_policy_discoverability",
-      fixCode: partial ? "repair_robots" : undefined,
+      fixCode,
       ...common,
     });
   }
@@ -253,7 +270,7 @@ const robotsChecks = (artifacts: ScanArtifacts): CheckResult[] => {
       userImpactCode: "ai_policy_not_assessed",
       errorCode: robots.errorCode,
     });
-  else if (robots.status === "fail" && fetch.status !== 200)
+  else if (robots.summaryCode === "robots_missing" || robots.summaryCode === "robots_refused")
     ai = result({
       id: 2,
       status: "fail",
