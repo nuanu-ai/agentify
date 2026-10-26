@@ -1,75 +1,109 @@
+import type { ReactNode } from "react";
 import type { IntegrationsView, ShopTileView } from "../../src/integrations-view.js";
+import type { Word as WordView } from "../../src/words.js";
 import { Moment } from "../components/moment.js";
+import { Word } from "../components/word.js";
+import styles from "./integrations.module.css";
+
+const IN_USE: WordView = { text: "In use", tone: "ok" };
+const CONNECTED: WordView = { text: "Connected", tone: "ok" };
+const READ_ONLY: WordView = { text: "Read-only access", tone: "warn" };
+
+/** A way in: its name, the mark where sales go through it, its words and its one action. */
+function Way({
+  name,
+  inUse,
+  children,
+}: Readonly<{ name: string; inUse: boolean; children: ReactNode }>) {
+  return (
+    <div className="connect-way">
+      <div className={styles.head}>
+        <h2>{name}</h2>
+        {inUse ? <Word word={IN_USE} /> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Go({
+  to,
+  primary,
+  children,
+}: Readonly<{ to: string; primary: boolean; children: string }>) {
+  return (
+    <div className="connect-actions">
+      <a className={primary ? "button button-primary" : "button button-secondary"} href={to}>
+        {children}
+      </a>
+    </div>
+  );
+}
 
 /**
  * Every action is on the shop's own screen, which this block leads to, except
  * where the connection could not be read: that screen needs the same read and
- * would fail too.
+ * would fail too, so the block offers the read again.
  */
-function ShopTile({ tile, base }: Readonly<{ tile: ShopTileView; base: string }>) {
+function ShopTile({
+  tile,
+  primary,
+  sellsElsewhere,
+  base,
+}: Readonly<{ tile: ShopTileView; primary: boolean; sellsElsewhere: boolean; base: string }>) {
   const shop = `${base}/woocommerce`;
   switch (tile.kind) {
     case "unread":
       return (
         <>
-          <h2>WooCommerce</h2>
-          <p>Whether a shop is connected to this account could not be read just now.</p>
-          <p className="quiet">
-            The fault is on our side, not in your shop, and nothing was disconnected by it. Reload
-            this page in a moment.
-          </p>
+          <p>We couldn't check your shop connection.</p>
+          <Go to={`${base}/integrations`} primary={false}>
+            Reload
+          </Go>
         </>
       );
     case "connected":
       return (
         <>
-          <h2>WooCommerce</h2>
-          <p>
-            {tile.shopUrl}, connected <Moment at={tile.connectedAt} />.
+          <p className={styles.state}>
+            <Word word={tile.readOnly ? READ_ONLY : CONNECTED} />
+            <span className={styles.shop}>{tile.shop}</span>
+            <span>
+              since <Moment at={tile.connectedAt} />
+            </span>
           </p>
-          {tile.narrower === null ? null : (
-            <p className="problem">
-              Your shop granted {tile.narrower} access rather than read and write, so a fresh
-              purchase is unavailable before payment. Connect again and approve read and write
-              access.
+          {tile.readOnly ? (
+            <p>
+              Agents can't buy: your shop gave read-only access. Connect again and approve
+              Read/Write.
             </p>
-          )}
-          <div className="connect-actions">
-            <a className="button button-secondary" href={shop}>
-              Your shop
-            </a>
-          </div>
+          ) : sellsElsewhere ? (
+            <p>Its products are off sale while you sell through your own code.</p>
+          ) : null}
+          <Go to={shop} primary={primary}>
+            {tile.readOnly ? "Connect again" : "Open WooCommerce page"}
+          </Go>
         </>
       );
     case "none":
       return (
         <>
-          <h2>WooCommerce</h2>
-          <p>
-            The connector imports two narrow WooCommerce configurations, a download and a parcel,
-            which the shop screen describes. You sell through it or through your own code, one at a
-            time.
-          </p>
-          <div className="connect-actions">
-            <a className="button button-primary" href={shop}>
-              Connect a WooCommerce shop
-            </a>
-          </div>
+          <p>Import downloads and parcels from your WooCommerce shop.</p>
+          <Go to={shop} primary={primary}>
+            Connect a shop
+          </Go>
         </>
       );
     case "not-arrived":
       return (
         <>
-          <h2>WooCommerce</h2>
           <div className="callout">
             <div className="what">{tile.what}</div>
             <p className="why">{tile.why}</p>
           </div>
-          <div className="connect-actions">
-            <a className="button button-primary" href={shop}>
-              {tile.next}
-            </a>
-          </div>
+          <Go to={shop} primary={primary}>
+            {tile.next}
+          </Go>
         </>
       );
   }
@@ -79,35 +113,56 @@ export function IntegrationsScreen({
   view,
   base,
 }: Readonly<{ view: IntegrationsView; base: string }>) {
+  const { inUse } = view;
   return (
     <>
       <div className="lede">
         <div>
           <p>{view.lede}</p>
+          {view.throughUnread ? (
+            <p>
+              Which way you sell through couldn't be read just now. Reload the page in a moment.
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="settings-grid">
-        <section className="settings-panel settings-wide settings-connect">
-          <div className="connect-ways">
-            <div className="connect-way">
-              <h2>The SDK</h2>
-              <p className="quiet">
-                Your developer installs the <code>@nuanu-ai/agentify</code> package in a Node.js
-                service, publishes cards with an API key, and handles paid orders in your own code.
+        <section
+          className={
+            view.shop === null
+              ? "settings-panel settings-connect"
+              : "settings-panel settings-wide settings-connect"
+          }
+        >
+          <div className={view.shop === null ? `connect-ways ${styles.alone}` : "connect-ways"}>
+            <Way name="Your own code" inUse={inUse === "api"}>
+              <p>
+                Publish products and handle orders from your Node.js code with the{" "}
+                <code className={styles.package}>@nuanu-ai/agentify</code> package.
               </p>
               <div className="connect-actions">
-                <a className="button button-primary" href="/docs/quickstart">
+                <a
+                  className={
+                    inUse === "woocommerce" ? "button button-secondary" : "button button-primary"
+                  }
+                  href="/docs/quickstart"
+                >
                   Open the connection guide
                 </a>
                 <a className="button button-secondary" href={`${base}/keys?new=key`}>
                   Create an API key
                 </a>
               </div>
-            </div>
+            </Way>
             {view.shop === null ? null : (
-              <div className="connect-way">
-                <ShopTile tile={view.shop} base={base} />
-              </div>
+              <Way name="WooCommerce" inUse={inUse === "woocommerce"}>
+                <ShopTile
+                  tile={view.shop}
+                  primary={inUse !== "api"}
+                  sellsElsewhere={inUse === "api"}
+                  base={base}
+                />
+              </Way>
             )}
           </div>
         </section>

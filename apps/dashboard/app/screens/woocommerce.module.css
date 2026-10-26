@@ -1,219 +1,138 @@
 /*
- * The WooCommerce screens: panels side by side where the workspace has room
- * for two readable columns and one under another where it has not, each
- * panel a heading, a sentence or a short list, and its one control. What
- * needs the merchant before anything else is a tinted panel above the rest.
+ * The WooCommerce screens, on the dashboard's own panels: a notice or the
+ * connection's state at the top, then the panels that act, the way Settings
+ * lays them out. Only what those panels do not already say is here.
  */
 
 .page {
   container-type: inline-size;
-  margin: 28px 0 40px;
+  padding-top: var(--space-section);
 }
 
-.lead {
-  max-width: 46rem;
-  margin: 0 0 20px;
-  color: var(--fg-2);
-  font-size: 1.0625rem;
-}
-
-.cols {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-
-.stack {
-  display: grid;
-  gap: 20px;
-  min-width: 0;
-}
-
-@container (min-width: 880px) {
-  .cols {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
-
-.panel {
-  min-width: 0;
-  padding: 24px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-}
-
-.panel h2 {
-  margin: 0 0 6px;
-  font-size: 1.1875rem;
-  font-weight: 600;
-}
-
-.sub {
-  margin: 0 0 16px;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-/* What needs the merchant first: the notice's tint over the whole panel. */
-.attention {
-  margin-bottom: 20px;
-  border-color: color-mix(in srgb, var(--notice-ink) 24%, var(--line));
-  background: var(--notice-bg);
-}
-
-.attention h2 {
-  color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
-}
-
-.attention .sub {
-  color: var(--notice-ink);
-}
-
-.panel > :last-child {
-  margin-bottom: 0;
-}
-
-.panel :global(.field) {
-  margin-bottom: 16px;
-}
-
-.panel :global(p.problem) {
-  margin: 12px 0 0;
-}
-
-/* A sentence about what a press does, in the notice's colours, inside its panel. */
-.note {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 0 0 18px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--notice-bg);
-  color: var(--notice-ink);
-  font-size: 0.875rem;
-}
-
-.note svg {
-  flex: none;
-  margin-top: 2px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-
-.note b {
-  display: block;
-  font-weight: 600;
-}
-
-.note :global(.button) {
-  margin-top: 10px;
-}
-
-/* The keys arrived: the pass colour's tint, said once under the status. */
-.arrived {
-  margin: 0 0 20px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--pass-soft);
-  color: var(--pass);
-  font-size: 0.875rem;
-}
-
-.ticks,
-.rules {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ticks li {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  gap: 10px;
-  padding: 7px 0;
-  color: var(--fg-2);
-  font-size: 0.9375rem;
-}
-
-.ticks svg {
-  margin-top: 4px;
-  fill: none;
-  stroke: var(--pass);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.ticks b,
-.rules b {
-  color: var(--fg);
-  font-weight: 600;
-}
-
-.rules {
-  counter-reset: rule;
-}
-
-.rules li {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 10px;
-  padding: 10px 0;
-  border-top: var(--hairline) solid var(--line-soft);
-  color: var(--fg-2);
-  font-size: 0.9375rem;
-  counter-increment: rule;
-}
-
-.rules li:first-child {
-  border-top: 0;
+/* The state or the notice over the panels stands as far above them as the
+   panels stand apart. */
+.page > :global(.settings-grid) {
   padding-top: 0;
 }
 
-.rules li::before {
-  content: counter(rule);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-pill);
-  background: var(--raised);
-  color: var(--fg-2);
-  font-size: 0.8125rem;
-  font-weight: 600;
+.notice {
+  margin: 0 0 var(--space-card);
 }
 
-.more {
+.notice > :global(.button) {
+  margin-top: var(--space-block);
+}
+
+/* An address and a button in a row, as wide as an address needs. */
+.row {
+  max-width: calc(36rem + 2 * var(--space-card));
+}
+
+/* --- a refusal naming the orders that hold a switch ---------------------- */
+
+.refusal {
+  margin-top: var(--space-block);
+}
+
+.refusal :global(p.problem) {
+  margin: 0;
+}
+
+.refusal > a {
   display: inline-block;
-  margin-top: 14px;
-  font-size: 0.9375rem;
-  font-weight: 500;
+  margin-top: var(--space-tight);
+  font-size: var(--text-small);
 }
 
-/* Connected, the shop's address, and since when, on one line where it fits. */
+.orders {
+  display: grid;
+  gap: var(--space-snug);
+  margin: var(--space-tight) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+
+/* --- the connection's state and the way out of it ---------------------- */
+
 .status {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 14px;
-  margin: 0 0 20px;
-  font-size: 0.9375rem;
+  justify-content: space-between;
+  gap: var(--space-tight) var(--space-block);
+  margin: 0 0 var(--space-card);
+}
+
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-control);
+  margin: 0;
 }
 
 .shop {
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
+  color: var(--fg);
+  font-weight: 500;
   overflow-wrap: anywhere;
 }
 
 .since {
   color: var(--muted);
+  font-size: var(--text-small);
+}
+
+/* Opened, the confirmation takes a line of its own under the state. */
+.disconnect[open] {
+  flex-basis: 100%;
+}
+
+.disconnect > summary {
+  display: block;
+  width: fit-content;
+  margin-left: auto;
+  padding: var(--space-snug) 0;
+  color: var(--fg-2);
+  font-size: var(--text-small);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.disconnect > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Opened, the same control closes it again, and says so. */
+.disconnect:not([open]) .opened,
+.disconnect[open] .closed {
+  display: none;
+}
+
+.confirm {
+  margin-top: var(--space-tight);
+  padding: var(--space-card);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+
+.confirm > p:not(:global(.problem)) {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: var(--text-small);
+}
+
+.confirm > :global(p.problem),
+.confirm > .refusal {
+  margin: 0 0 var(--gap-paragraph);
+}
+
+.confirmPress {
+  margin-top: var(--gap-actions);
 }
 
 /* A button that takes the account somewhere it cannot easily come back from. */
@@ -221,44 +140,68 @@
   color: var(--fail);
 }
 
-/* On a phone a panel's control spans the panel. */
-@container (max-width: 560px) {
-  .panel {
-    padding: 20px 16px;
-  }
+/* --- the exchange rate --------------------------------------------------- */
 
-  .panel :global(.button) {
-    width: 100%;
-  }
+.facts {
+  margin: var(--space-block) var(--space-card) 0;
 }
 
-/* --- what an import did ------------------------------------------------- */
+.far {
+  color: var(--fail);
+}
+
+/* A rate typed far from Coinbase's: the boxes one under another, the check
+   between them. */
+.again {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-block);
+  max-width: calc(36rem + 2 * var(--space-card));
+  padding: var(--gap-actions) var(--space-card) var(--space-card);
+}
+
+.again > :global(.field) {
+  justify-self: stretch;
+}
+
+.again > :global(.button) {
+  margin-top: calc(var(--gap-actions) - var(--space-block));
+}
+
+/* The check of a rate far from Coinbase's, in the notice's colours: it asks
+   for a second look, it does not refuse. */
+.check {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--notice-bg);
+  color: var(--notice-ink);
+  font-size: var(--text-small);
+}
+
+/* What a press of Save rate saved, said in the pass colour under the heading. */
+:global(.lede) p.saved {
+  margin-top: var(--space-block);
+  color: var(--pass);
+}
+
+/* What an import run by a saved rate was answered with: the pass colour's tint, once. */
+.done {
+  margin: 0 0 var(--space-card);
+  padding: var(--space-block) 20px;
+  border: var(--hairline) solid color-mix(in srgb, var(--pass) 24%, var(--line));
+  border-radius: var(--radius-card);
+  background: var(--pass-soft);
+  color: var(--pass);
+  font-size: var(--text-small);
+}
+
+/* --- what an import did -------------------------------------------------- */
 
 .read {
-  margin: 0 0 14px;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-.tally {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.tally li {
-  padding: 5px 12px;
-  border-radius: var(--radius-pill);
-  background: var(--raised);
-  color: var(--fg-2);
-  font-size: 0.875rem;
-}
-
-.tally b {
-  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 
 .quiet {
@@ -277,61 +220,40 @@
 }
 
 .findings li + li {
-  margin-top: 4px;
+  margin-top: var(--space-snug);
 }
 
 .after {
-  margin: 0;
+  margin: var(--space-control) 0 0;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
+}
+
+.fold > summary {
+  width: fit-content;
+  margin-top: var(--space-tight);
+  color: var(--fg-2);
+  font-size: var(--text-small);
+  cursor: pointer;
+}
+
+.fold[open] > summary {
+  margin-bottom: var(--space-control);
 }
 
 .ends {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 28px;
+  gap: var(--space-control);
+  margin-top: var(--space-section);
 }
 
-/* On a narrow list a row's way to put it right comes after what it says. */
+/* On a narrow list a row's way to put it right comes after what it says,
+   rather than beside the product's number in the shop. */
 @container (max-width: 860px) {
-  .fixes :global(.list-row) {
-    grid-template-areas:
-      "title title amount"
-      "state fact fact"
-      "ident ident ident"
-      "note note note"
-      "action action action"
-      "more more more";
-  }
-
   .fixes :global(.cell-action) {
-    justify-content: flex-start;
-    margin-top: 10px;
+    order: 10;
+    margin-top: var(--space-control);
+    margin-left: 0;
   }
-}
-
-@container (max-width: 560px) {
-  .ends :global(.button) {
-    flex: 1 1 100%;
-  }
-}
-
-/* A refusal naming the orders that hold a switch: each on a line of its own. */
-.refusal {
-  margin-top: 12px;
-}
-
-.refusal :global(p.problem) {
-  margin: 0;
-}
-
-.orders {
-  display: grid;
-  gap: 6px;
-  margin: 8px 0 0;
-  padding: 0;
-  list-style: none;
-  color: var(--fg-2);
-  font-size: 0.875rem;
 }
