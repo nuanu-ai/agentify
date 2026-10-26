@@ -1,4 +1,4 @@
-# 0046. A copy of a person's data goes only to the address they are signed in as
+# 0047. A copy of a person's data goes only to the address they are signed in as
 
 Date: 2026-10-26
 Status: accepted (the product owner, 2026-10-26: «Да: запрос копии данных
