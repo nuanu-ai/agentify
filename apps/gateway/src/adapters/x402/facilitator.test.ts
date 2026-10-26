@@ -91,7 +91,9 @@ function facilitatorVocabulary(): string[] {
     ),
   ].map((found) => found[1] ?? "");
   if (!hosted.includes("amount_too_low") || !reference.includes("invalid_exact_evm_signature")) {
-    throw new Error("the facilitator libraries no longer ship their codes where this test reads them");
+    throw new Error(
+      "the facilitator libraries no longer ship their codes where this test reads them",
+    );
   }
   const offeredNowhere =
     /^(invalid_exact_svm_|invalid_exact_solana_|invalid_batch_settlement_|batch_settlement_|missing_batch_settlement_|invalid_upto_|upto_|permit2_|invalid_permit2_|invalid_exact_evm_permit2_|erc20_approval_|invalid_erc20_approval_|eip2612_|invalid_eip2612_)/;
