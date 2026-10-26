@@ -201,7 +201,8 @@ export interface GatewayClient {
   /**
    * What the frame says over every page, from one read of the merchant's row
    * and none of their cards: the selling state, the integration, the seller
-   * name, the wallet paid now and the operator's approval for live sales.
+   * name, the wallet paid now with a change of it waiting, and the operator's
+   * approval for live sales.
    */
   standing(): Promise<
     Answer<{
@@ -209,6 +210,11 @@ export interface GatewayClient {
       readonly through: Integration;
       readonly sellerName: string | null;
       readonly payoutWallet: string | null;
+      /** A replacement of the wallet that waits to apply, on live alone, and when it applies. */
+      readonly pendingPayoutWallet: {
+        readonly address: string;
+        readonly takesEffectAt: number;
+      } | null;
       readonly liveApproved: boolean;
       /**
        * Present while the merchant's purchases that charge before their goods

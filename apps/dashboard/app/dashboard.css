@@ -639,6 +639,11 @@ h2 {
   margin-right: 0.5em;
 }
 
+/* An address in a sentence is followed by its punctuation, not by a gap. */
+.address .quad:last-child {
+  margin-right: 0;
+}
+
 .saved .under {
   margin-top: var(--space-tight);
   color: var(--muted);

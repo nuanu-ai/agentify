@@ -552,6 +552,27 @@ export const landedBeforePress = (shown: Shown): string =>
     : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
   SIGNED_OUT_BUT_THIS_BROWSER;
 
+/** Stands for this dashboard's own origin while a page's own path is read. */
+const HERE = "http://dashboard.invalid";
+
+/**
+ * The page a cancel pressed from the banner returns to: a path of this
+ * dashboard with its query, or null for anything else, another site included,
+ * since the form can carry anything and a redirect elsewhere would hand the
+ * person to whoever wrote it.
+ */
+const pageToReturnTo = (form: FormData): string | null => {
+  const back = once(form.getAll("back"));
+  if (typeof back !== "string" || !back.startsWith("/")) return null;
+  let read: URL;
+  try {
+    read = new URL(back, HERE);
+  } catch {
+    return null;
+  }
+  return read.origin === HERE ? `${read.pathname}${read.search}` : null;
+};
+
 /**
  * Each value is held to its shape before anything reads it: the post can carry
  * anything, and these values are shown back on the page.
@@ -764,6 +785,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
   const toSettings: Outcome<never> = { kind: "redirect", location: `${base}/settings` };
 
+  /** The page a cancel was pressed on, or Settings where it named none of the dashboard's. */
+  const backTo = (back: string | null): Outcome<never> =>
+    back === null ? toSettings : { kind: "redirect", location: `${base}${back}` };
+
   /**
    * Every session of every account at the merchant ends, the presser's own
    * included, since the change may have come from any of them, a copy of the
@@ -816,6 +841,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     applies: string,
     pending: PendingPayoutWallet,
     byTyping: boolean,
+    back: string | null = null,
   ): Promise<Outcome<SettingsView>> => {
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) return problemOf(cancelled);
@@ -825,7 +851,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         person,
         `cancelled a waiting change of the wallet their share is paid out to; ${ended} sessions of the merchant were ended and this browser was given a new one`,
       );
-      if (!byTyping) return await renewing(async () => toSettings);
+      if (!byTyping) return await renewing(async () => backTo(back));
       return await renewing(
         async () =>
           await settingsDrawn(person, {
@@ -1487,6 +1513,16 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 {
                   selling: standing.value.selling,
                   busy: standing.value.busy,
+                  ...(standing.value.pendingPayoutWallet === null
+                    ? {}
+                    : {
+                        walletChange: {
+                          wallet: standing.value.pendingPayoutWallet.address,
+                          takesEffectAt: new Date(
+                            standing.value.pendingPayoutWallet.takesEffectAt,
+                          ).toISOString(),
+                        },
+                      }),
                   ...(standing.value.withdrawn === null
                     ? {}
                     : {
@@ -1642,14 +1678,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const read = await gateway.payoutWallet();
         if (!read.ok) return problemOf(read);
         const shown = shownIn(form);
+        const back = pageToReturnTo(form);
         const { payout_wallet: applies, pending } = read.document;
         if (pending !== null && applies !== null) {
-          return await cancelWaiting(person, cookie, gateway, applies, pending, false);
+          return await cancelWaiting(person, cookie, gateway, applies, pending, false, back);
         }
+        // A change that applied before the press is answered on Settings
+        // wherever it was pressed, since what to do next is done there.
         if (shown !== null && applies === shown.waiting) {
           return await tookEffectBeforePress(person, cookie, shown, "pressed cancel");
         }
-        return toSettings;
+        return backTo(back);
       },
     },
 

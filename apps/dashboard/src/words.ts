@@ -111,14 +111,16 @@ export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import a
 export const APPROVAL_GIVEN = "Agentify has approved your merchant for live sales.";
 
 /**
- * Why the account as a whole is not selling as usual: all sales are paused,
- * something publishing needs is missing, purchases charged before delivery are
- * refused while their integration is not connected, or new purchases are
- * refused while twenty wait for payment; or that what would say so could not
- * be read. Selling through a WooCommerce shop is not among them: it holds
- * nothing, and the cards it leaves off sale say so on their own rows.
+ * Why the account as a whole is not as usual: a change of the payout wallet
+ * waits to apply, all sales are paused, something publishing needs is
+ * missing, purchases charged before delivery are refused while their
+ * integration is not connected, or new purchases are refused while twenty
+ * wait for payment; or that what would say so could not be read. Selling
+ * through a WooCommerce shop is not among them: it holds nothing, and the
+ * cards it leaves off sale say so on their own rows.
  */
 export type AccountReason =
+  | "wallet_change"
   | "paused"
   | "not_approved"
   | "no_seller_name"
@@ -148,6 +150,13 @@ export interface Way {
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
 > = Object.freeze({
+  // The banner draws the address and the moment before this line, and its
+  // cancel after it.
+  wallet_change: {
+    title: "Your payout wallet is changing",
+    says: "If nobody at your business asked for this, cancel it.",
+    fix: null,
+  },
   paused: {
     title: "Sales are paused",
     says: "You paused all sales.",

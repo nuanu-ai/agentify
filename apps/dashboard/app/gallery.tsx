@@ -265,6 +265,9 @@ const WALLET_CHAINS: Readonly<Record<SurfaceMode, number | null>> = {
 /** The example addresses from the checksum's own specification. */
 const PAID_INTO = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const ASKED_FOR = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+/** A change to `ASKED_FOR` waiting on the live site, as the merchant's layout reads it. */
+const WALLET_CHANGING = { wallet: ASKED_FOR, takesEffectAt: "2026-10-28T16:05:00Z" } as const;
+
 /** The first with its last letter's case flipped, which the checksum catches. */
 const MISTYPED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAeD";
 
@@ -1377,6 +1380,18 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
+      id: "dashboard-cards-wallet-changing",
+      screen: "Cards",
+      when: "A merchant on the live site opens Cards while a change of their payout wallet waits to apply.",
+      cause:
+        "A replacement wallet applies forty-eight hours after every account is told, and until then every screen says so and offers to cancel it from there.",
+    },
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live"), { walletChange: WALLET_CHANGING }) },
+  ),
+  cards(
+    {
       id: "dashboard-cards-many",
       screen: "Cards",
       when: "A merchant with a whole catalogue of data plans, VPN and numbers opens Cards.",
@@ -1944,6 +1959,29 @@ const ORDERS: GalleryState[] = [
     `/orders?${new URLSearchParams({ details: PAID_AFTER_CLOSURE.orders[0]?.id ?? "" })}`,
     {
       open: OrderListSchema.parse({ orders: PAID_AFTER_CLOSURE.orders.slice(0, 1) }),
+    },
+  ),
+  at(
+    {
+      id: "dashboard-orders-wallet-changing",
+      screen: "Orders",
+      when: "A merchant on the live site opens Orders while a change of their payout wallet waits to apply, and all sales are paused.",
+      cause:
+        "The waiting change is said first among the reasons in the banner, with its cancel, which brings the merchant back to Orders.",
+    },
+    {
+      path: "/orders",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: "paused", walletChange: WALLET_CHANGING }),
+      loaded: {
+        "routes/orders": ordersAt(
+          "/orders",
+          ordersOf([
+            ["vpn", "delivered"],
+            ["esimEurope", "delivered"],
+          ]),
+        ),
+      },
     },
   ),
   orders(

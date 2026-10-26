@@ -976,20 +976,25 @@ export class Gateway {
    * What the dashboard says over every page about a merchant, from one read of
    * their row, and of their cards only while their own process is silent:
    * whether they are selling and through which integration, the name they
-   * sell under, the wallet paid now, whether the operator has approved them
-   * for live sales, and, while purchases of theirs that charge before their
-   * goods are refused for that silence, when their process last polled (null
-   * where it never has), and whether as many of their purchases wait for
-   * payment as the door allows, so that the next is refused; and, on the live
-   * channel while an operator's withdrawal of their admission stands, when it
-   * was withdrawn and the note the operator wrote for them. Each answer is the
-   * one the call that reads it alone gives.
+   * sell under, the wallet paid now and a change of it waiting to apply,
+   * whether the operator has approved them for live sales, and, while
+   * purchases of theirs that charge before their goods are refused for that
+   * silence, when their process last polled (null where it never has), and
+   * whether as many of their purchases wait for payment as the door allows,
+   * so that the next is refused; and, on the live channel while an operator's
+   * withdrawal of their admission stands, when it was withdrawn and the note
+   * the operator wrote for them. Each answer is the one the call that reads it
+   * alone gives.
    */
   async standingOf(merchantId: string): Promise<{
     readonly selling: MerchantSelling;
     readonly through: Integration;
     readonly sellerName: string | null;
     readonly payoutWallet: string | null;
+    readonly pendingPayoutWallet: {
+      readonly address: string;
+      readonly takesEffectAt: number;
+    } | null;
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly busy: boolean;
@@ -1000,11 +1005,16 @@ export class Gateway {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     const at = this.runtime.clock();
+    const wallet = payoutWalletAt(merchant.payoutWallet, at);
     return {
       selling: merchant.selling,
       through: merchant.integration,
       sellerName: merchant.serviceName,
-      payoutWallet: payoutWalletAt(merchant.payoutWallet, at).address,
+      payoutWallet: wallet.address,
+      pendingPayoutWallet:
+        wallet.pending === null
+          ? null
+          : { address: wallet.pending.address, takesEffectAt: wallet.pending.takesEffectAt },
       liveApproved: merchant.liveApprovedAt !== null,
       outOfTouch: await this.#refusedForSilence(merchant, at),
       busy:
