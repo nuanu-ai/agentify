@@ -11,10 +11,10 @@ import { asciiLower } from "./markup.js";
  * a script), and SVG or MathML content. Of tree construction it keeps only
  * what changes how the text is split: an HTML element's raw content is read
  * raw, an `svg` or `math` element opens foreign content, and the start tags
- * the standard lists close foreign content again. SVG's `foreignObject`,
- * `title` and `desc` are read as SVG, where a browser reads HTML inside them.
- * It reads the page as a reader that runs no scripts does, so `noscript`
- * holds ordinary markup.
+ * the standard lists, or the end tag of an element open around it, close
+ * foreign content again. SVG's `foreignObject`, `title` and `desc` are read
+ * as SVG, where a browser reads HTML inside them. It reads the page as a
+ * reader that runs no scripts does, so `noscript` holds ordinary markup.
  *
  * What the page ends inside of yields nothing: a tag, a comment, or the raw
  * content of an element whose end tag never comes. A page is cut at the
@@ -54,6 +54,7 @@ const BREAKOUT = new Set(
   ),
 );
 const FONT_BREAKOUT = ["color", "face", "size"];
+const VOID = new Set("area base br col embed hr img input link meta source track wbr".split(" "));
 
 const isSpace = (code: number): boolean =>
   code === 9 || code === 10 || code === 12 || code === 13 || code === 32;
@@ -187,7 +188,21 @@ const breaksOut = (tag: StartTag): boolean =>
 
 export const readHtml = (html: string, visitor: HtmlVisitor): void => {
   const length = html.length;
+  // How many SVG or MathML elements are open, and how many of each name are
+  // open inside them and around them. An end tag in SVG or MathML that
+  // names no element open inside it but one open around it leaves foreign
+  // content, as a browser does. Counts stand in for the browser's stack of
+  // open elements, which a page could make deep enough to cost time on every
+  // end tag.
   let foreign = 0;
+  let inside = new Map<string, number>();
+  const around = new Map<string, number>();
+  const add = (counts: Map<string, number>, name: string, by: number) =>
+    counts.set(name, (counts.get(name) ?? 0) + by);
+  const leaveForeign = () => {
+    foreign = 0;
+    inside = new Map();
+  };
   // Where the character data not yet given to the visitor begins, and where
   // the next `<` is looked for. A `<` that opens nothing stays in the text.
   let text = 0;
@@ -220,19 +235,19 @@ export const readHtml = (html: string, visitor: HtmlVisitor): void => {
       if (!tag) return;
       at = tag.end;
       if (foreign > 0 && breaksOut(tag)) {
-        foreign = 0;
+        leaveForeign();
         tag.foreign = false;
       }
-      if (tag.name === "svg" || tag.name === "math") {
-        if (!tag.selfClosing) foreign += 1;
-      } else if (!tag.foreign && tag.name === "plaintext") {
+      if (tag.name === "svg" || tag.name === "math" || tag.foreign) {
+        if (!tag.selfClosing) {
+          add(inside, tag.name, 1);
+          if (tag.name === "svg" || tag.name === "math") foreign += 1;
+        }
+      } else if (tag.name === "plaintext") {
         visitor.startTag?.(tag);
         if (at < length) visitor.text?.(html.slice(at), false);
         return;
-      } else if (
-        !tag.foreign &&
-        (tag.name === "script" || RCDATA.has(tag.name) || RAWTEXT.has(tag.name))
-      ) {
+      } else if (tag.name === "script" || RCDATA.has(tag.name) || RAWTEXT.has(tag.name)) {
         visitor.startTag?.(tag);
         const end = tag.name === "script" ? scriptEnd(html, at) : rawEnd(html, tag.name, at);
         if (end === -1) return;
@@ -243,7 +258,7 @@ export const readHtml = (html: string, visitor: HtmlVisitor): void => {
         visitor.endTag?.(tag.name, false);
         at = text = close.end;
         continue;
-      }
+      } else if (!VOID.has(tag.name)) add(around, tag.name, 1);
       visitor.startTag?.(tag);
     } else if (next === 47) {
       const after = html.charCodeAt(open + 2);
@@ -251,8 +266,23 @@ export const readHtml = (html: string, visitor: HtmlVisitor): void => {
         const tag = readTag(html, open + 2, foreign > 0, false);
         if (!tag) return;
         at = tag.end;
-        if (foreign > 0 && (tag.name === "br" || tag.name === "p")) foreign = 0;
-        else if (foreign > 0 && (tag.name === "svg" || tag.name === "math")) foreign -= 1;
+        if (
+          foreign > 0 &&
+          (inside.get(tag.name) ?? 0) > 0 &&
+          tag.name !== "br" &&
+          tag.name !== "p"
+        ) {
+          add(inside, tag.name, -1);
+          if (tag.name === "svg" || tag.name === "math") foreign -= 1;
+          if (foreign === 0) leaveForeign();
+        } else {
+          if (
+            foreign > 0 &&
+            (tag.name === "br" || tag.name === "p" || (around.get(tag.name) ?? 0) > 0)
+          )
+            leaveForeign();
+          if (foreign === 0 && (around.get(tag.name) ?? 0) > 0) add(around, tag.name, -1);
+        }
         visitor.endTag?.(tag.name, foreign > 0);
       } else if (after === 62) at = open + 3;
       else {
