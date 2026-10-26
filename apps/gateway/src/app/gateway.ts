@@ -368,7 +368,7 @@ export type OffSale =
   | { readonly code: "seller_not_taking_orders"; readonly transient: true };
 
 /** What decides whether one card can be bought now. */
-export interface SaleFacts {
+interface SaleFacts {
   /** The card's word from `sellingFor`. */
   readonly selling: MerchantSelling;
   /** The card's price as stored, held to the price rule as it stands now. */
@@ -399,7 +399,7 @@ export interface SaleFacts {
  * not off sale: a place frees within a minute, and anybody can fill the limit
  * without paying, so it must not empty a seller's listing.
  */
-export const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
+const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
   if (facts.selling !== "open" || priceProblemsOf(facts.price).length > 0) {
     return { code: "not_selling", transient: false };
   }
