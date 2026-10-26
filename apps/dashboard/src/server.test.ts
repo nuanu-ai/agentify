@@ -4080,7 +4080,7 @@ describe("the banner about the account", () => {
     expect(readable(cards.html)).not.toContain("could not be checked");
   });
 
-  it("says over Cards and Orders when the integration last connected while purchases are refused for its silence, and no longer once it polls", async () => {
+  it("says over Cards and Orders, and on each card, when the integration last connected while purchases are refused for its silence, and no longer once it polls", async () => {
     const { browser, gateway, harnessed } = await started();
     await publish(gateway, esimCard);
     await browser.signIn();
@@ -4094,6 +4094,9 @@ describe("the banner about the account", () => {
 
     expect(reasonsIn(cards)).toStrictEqual(["out_of_touch"]);
     expect(readable(cards)).toContain(`Your integration has not connected since ${since}`);
+    // Each card says what the banner says, with the merchant's own switch kept.
+    expect(readable(rowsIn(cards)[0] ?? "")).toContain("Off sale");
+    expect(readable(rowsIn(after)[0] ?? "")).toContain("On sale");
     expect(reasonsIn(orders)).toStrictEqual(["out_of_touch"]);
     expect(reasonsIn(after)).toStrictEqual([]);
   });

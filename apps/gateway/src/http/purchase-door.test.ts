@@ -1068,7 +1068,7 @@ const STANDINGS: Readonly<Record<string, Standing>> = {
 
 describe("the catalogue and the door", () => {
   it.each(Object.entries(STANDINGS))(
-    "agree on %s: the card is listed exactly when a purchase is offered a price, and a look is refused only for what does not end by itself",
+    "agree on %s: the card is listed, and reads open to its own merchant, exactly when a purchase is offered a price, and a look is refused only for what does not end by itself",
     async (_, { card, through = "api", seller, after, refused, transient }) => {
       const { harnessed, served } = await started();
       const merchantId = seller === undefined ? harnessed.merchant.id : await seller(harnessed);
@@ -1080,11 +1080,15 @@ describe("the catalogue and the door", () => {
       const bought = await served.call("POST", `/x402/${itemId}/purchase`, {
         body: { params: {} },
       });
+      const own = (await harnessed.gateway.merchantCards(merchantId)).cards.find(
+        (entry) => entry.id === itemId,
+      )?.selling;
       const answer = (call: typeof looked) =>
         call.status === 402 ? null : (call.body as Refused).error.code;
 
-      expect({ listed, looked: answer(looked), bought: answer(bought) }).toStrictEqual({
+      expect({ listed, own, looked: answer(looked), bought: answer(bought) }).toStrictEqual({
         listed: refused === null,
+        own: refused === null ? "open" : "paused",
         looked: transient ? null : refused,
         bought: refused,
       });
