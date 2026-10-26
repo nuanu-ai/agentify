@@ -279,7 +279,7 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
             <Fragment key={row.id}>
               {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
               <DisclosedRow
-                of={`${row.product}, ${row.day}, ${row.time}`}
+                of={{ title: row.product, day: row.day, time: row.time, id: row.id }}
                 id={`details-${row.id}`}
                 open={row.opened || view.pressed?.id === row.id || undefined}
                 cells={

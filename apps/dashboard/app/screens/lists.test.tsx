@@ -199,6 +199,39 @@ describe("the receipts of sales that went out", () => {
   });
 });
 
+describe("a row that opens to its details", () => {
+  // Two purchases of one product in the same second share a title, a day and
+  // a time; read out by those alone, the two presses could not be told apart.
+  it.each([
+    [
+      "orders",
+      () =>
+        ordersPage(
+          OrderListSchema.parse({
+            orders: [order("ord_0a1b2c3d4e5f6a7b", false), order("ord_9f8e7d6c5b4a3f2e", false)],
+          }),
+        ),
+    ],
+    [
+      "receipts",
+      () =>
+        receiptsPage(
+          ReceiptListSchema.parse({
+            receipts: [
+              receipt("rcp_0a1b2c3d4e5f6a7b", false),
+              receipt("rcp_9f8e7d6c5b4a3f2e", false),
+            ],
+          }),
+        ),
+    ],
+  ])("names apart two %s of one product made in the same second", (_list, page) => {
+    const names = [...page().matchAll(/<summary aria-label="([^"]*)"/g)].map((found) => found[1]);
+
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+  });
+});
+
 describe("a list where some of the money was real and some was not", () => {
   it("counts the test purchases rather than calling the whole page a test", () => {
     const orders: OrderList = OrderListSchema.parse({
