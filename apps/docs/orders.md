@@ -29,6 +29,21 @@ and what the moment of charging means for the owner of the business is on
 A parcel's order is the asynchronous one with an address in it and a shipment
 at its end; what its card asks of you is on [Cards](/cards).
 
+The agent sends the address under `ship_to`, beside the purchase parameters.
+Here is the purchase of a parcel's card that asks for no parameters, with the
+example address the contract's own schema publishes:
+
+```json
+{{parcel-purchase}}
+```
+
+`name`, `line_one`, `city`, `country` and `phone_number` are required, and
+`line_two`, `state` and `postal_code` are given where the address has them.
+`country` is two capital letters, ISO 3166-1 alpha-2, and `state` is the
+subdivision code without the country in front. A parcel's purchase without
+the address is refused, and so is an address sent for a card that is not a
+parcel.
+
 Your price handler is asked the price for the place the parcel goes: its
 `ship_to` holds the country and the city, the state and the postal code where
 the buyer gave them, and nothing about who receives it. Once the order is
@@ -646,9 +661,18 @@ request from the same wallet, and once Agentify has checked that signature,
 without asking the facilitator and whatever the wallet holds now, the agent
 receives the original purchase without a second charge. Asking the purchase
 address again without that kept payment request starts a new purchase, which
-is charged again once paid, so recovery always signs the kept request again. The payment
-reference is public and opens nothing by itself: a payment already used, or one whose
-window has passed, sent again reveals neither the order nor where to read it.
+is charged again once paid, so recovery always signs the kept request again.
+An agent therefore keeps the payment request and the payment it signed from
+before it sends the payment until it has the answer: the request to sign
+again, and the payment to tell it which wallet signs. The test buyer on the
+[quickstart](/quickstart#_6-make-your-first-test-purchase) keeps both in a
+file.
+
+The payment request names the order only by its `order_id`, which opens
+nothing. The payment that already paid an order, sent again, is refused,
+because it can be read from the chain; a fresh payment from another wallet is
+refused as `not_this_purchase`. Neither answer reveals the order's goods, its
+address or where to read it.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is

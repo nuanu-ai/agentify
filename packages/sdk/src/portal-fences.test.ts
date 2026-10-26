@@ -14,10 +14,13 @@
  * in the harness below with the shapes the examples imply; they are the
  * harness's assumptions, not promises of the documentation. One fence on the
  * cards page is the `result` block of a card on its own and is compiled as
- * that field. The quickstart's test purchase is a buyer's program rather than
- * a merchant's, written against the x402 client a merchant installs to buy
- * their own card; it is compiled against the same release of that client the
- * repository's own test buyer uses. The count of fences per page is asserted,
+ * that field. A whole program a page includes from `apps/docs/programs`, such
+ * as the quickstart's test buyer, is compiled with them. That one is a buyer's
+ * program rather than a merchant's, written against the x402 client a
+ * merchant installs to buy their own card, and is compiled against the same
+ * release of that client the repository's own test buyer uses, which
+ * `packages/slice/src/quickstart-buyer.test.ts` runs it with. The count of
+ * fences per page is asserted,
  * so a new example cannot slip past: when it fails, decide how the new fence is
  * compiled. The compiler's own list of the files it read is held against the
  * examples too, since a pass that reads none of them is as green as one that
@@ -100,12 +103,14 @@ interface Page {
   readonly file: string;
   /** How many ```ts fences the page carries. Raised only with a decision. */
   readonly fences: number;
+  /** How many whole programs the page includes from `apps/docs/programs`. */
+  readonly programs?: number;
   /** The fences that are a piece of something rather than a program. */
   readonly pieces?: Readonly<Record<number, (body: string) => string>>;
 }
 
 const PAGES: readonly Page[] = [
-  { file: "apps/docs/quickstart.md", fences: 7 },
+  { file: "apps/docs/quickstart.md", fences: 6, programs: 1 },
   { file: "apps/docs/orders.md", fences: 6 },
   { file: "apps/docs/cards.md", fences: 2, pieces: { 0: asCardResult } },
   { file: README, fences: 4 },
@@ -151,6 +156,16 @@ const examplesOf = (page: Page): Example[] => {
     source: page.pieces?.[index]?.(body) ?? `${body}\n`,
   }));
 };
+
+/** The programs a page includes whole, `<<< @/programs/buyer.mts`, each as the file it is. */
+const programsOf = (page: Page): Example[] =>
+  readFileSync(join(repoRoot, page.file), "utf8")
+    .split("\n")
+    .flatMap((line) => /^<<<\s+@\/(programs\/\S+)\.mts$/.exec(line.trim())?.[1] ?? [])
+    .map((program) => ({
+      name: `apps-docs-${program.replaceAll("/", "-")}`,
+      source: readFileSync(join(repoRoot, "apps", "docs", `${program}.mts`), "utf8"),
+    }));
 
 interface Compilation {
   readonly ok: boolean;
@@ -241,7 +256,7 @@ describe("the portal's TypeScript examples", () => {
     // compiler pass for all pages, since starting `tsc` is most of the cost;
     // each file is named for its page and fence, so the output says which
     // example broke.
-    const examples = PAGES.flatMap(examplesOf);
+    const examples = PAGES.flatMap((page) => [...examplesOf(page), ...programsOf(page)]);
     const compiled = compile(examples);
 
     expect(compiled.ok, compiled.output).toBe(true);
@@ -254,6 +269,7 @@ describe("the portal's TypeScript examples", () => {
     // A new example has to be compiled too; raising this number is the moment
     // to decide how.
     expect(examplesOf(page)).toHaveLength(page.fences);
+    expect(programsOf(page)).toHaveLength(page.programs ?? 0);
   });
 
   it("compiles the pages' own code and not a blank stand-in for it", () => {

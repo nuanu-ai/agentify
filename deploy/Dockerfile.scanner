@@ -11,6 +11,7 @@ FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY tsconfig.base.json ./
 COPY packages/scanner-contracts/package.json packages/scanner-contracts/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/scanner-database/package.json packages/scanner-database/package.json
 COPY packages/analytics/package.json packages/analytics/package.json
 COPY packages/consent/package.json packages/consent/package.json
@@ -27,6 +28,7 @@ FROM dependencies AS builder
 ENV NODE_ENV=production
 
 COPY packages/scanner-contracts packages/scanner-contracts
+COPY packages/contracts packages/contracts
 COPY packages/scanner-database packages/scanner-database
 COPY packages/analytics packages/analytics
 COPY packages/consent packages/consent

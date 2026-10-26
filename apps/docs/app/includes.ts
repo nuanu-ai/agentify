@@ -3,6 +3,7 @@
  * `<<<`, with `@/` naming this application.
  */
 
+import { extname } from "node:path";
 import { APP } from "./where.server.js";
 
 /** The path a line includes, or undefined for a line that includes nothing. */
@@ -17,4 +18,13 @@ export const includedFile = (named: string): string => {
   if (/[#{]/.test(named))
     throw new Error(`"<<< ${named}" names a region or options; include the whole file`);
   return named.replace(/^@\//, `${APP}/`);
+};
+
+/**
+ * The language an included file is shown in. A program a reader saves as
+ * `buyer.mts` is TypeScript, which is the name the highlighter knows it by.
+ */
+export const languageOf = (file: string): string => {
+  const extension = extname(file).slice(1);
+  return extension === "mts" ? "ts" : extension;
 };
