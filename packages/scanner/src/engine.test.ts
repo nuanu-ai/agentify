@@ -438,7 +438,7 @@ describe("what the checks read from the markup real sites write", () => {
     const product = {
       "@context": "https://schema.org/",
       "@type": "Product",
-      name: "Productivity Planner",
+      name: "Katalog Rak",
       offers: {
         "@type": "Offer",
         price: "150000",
@@ -446,26 +446,31 @@ describe("what the checks read from the markup real sites write", () => {
         availability: "http://schema.org/InStock",
       },
     };
-    // A Dutch title carries the product's name, which may hold a product's
-    // word; an install may write its own host or scheme differently.
+    // A product's name may be a product's word, and its reviews feed is
+    // titled with it, here in Dutch; an install may write its own host or
+    // scheme differently.
     for (const [address, feed] of [
+      [
+        "https://example.com/produk/katalog-rak/",
+        '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Katalog Rak Reacties feed" href="https://example.com/produk/katalog-rak/feed/" />',
+      ],
+      [
+        "https://example.com/produk/katalog-rak/",
+        '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Katalog Rak Reacties feed" href="https://www.example.com/produk/katalog-rak/feed/" />',
+      ],
+      [
+        "https://example.com/produk/katalog-rak",
+        '<link rel="alternate" type="application/rss+xml" title="Toko &raquo; Katalog Rak Reacties feed" href="http://example.com/produk/katalog-rak/feed/" />',
+      ],
       [
         "https://example.com/product/productivity-planner/",
         '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Productivity Planner Reacties feed" href="https://example.com/product/productivity-planner/feed/" />',
-      ],
-      [
-        "https://example.com/product/productivity-planner/",
-        '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Reacties feed" href="https://www.example.com/product/productivity-planner/feed/" />',
-      ],
-      [
-        "https://example.com/product/productivity-planner",
-        '<link rel="alternate" type="application/rss+xml" title="Winkel &raquo; Reacties feed" href="http://example.com/product/productivity-planner/feed/" />',
       ],
     ] as const) {
       const input = withBase("<title>Winkel</title><p>Welkom.</p>");
       input.representative = artifact(
         address,
-        `<head>${feed}</head><body><h1>Productivity Planner</h1><script type="application/ld+json">${JSON.stringify(product)}</script></body>`,
+        `<head>${feed}</head><body><h1>${product.name}</h1><script type="application/ld+json">${JSON.stringify(product)}</script></body>`,
       );
       expect(check(input, 15)).toMatchObject({ status: "partial", earnedWeight: 3 });
     }
