@@ -106,6 +106,23 @@ Whether your handler holds against a repeat is yours to prove with a test
 purchase of your own ([The first test sale](/quickstart)),
 because nothing on our side sends one order twice on purpose.
 
+A call to Agentify can also fail on our side. It is answered with HTTP 500
+and the code `gateway_failed`, and the message says what is known of what the
+call did. A read that fails decided nothing, and it may be made again. A call
+that changes something, such as publishing or pausing a card, delivering, or
+closing fulfillment, may have done its work before it failed, so the answer
+says that whether it changed anything is not known: read the card or the order
+before you call again. It is marked retryable, because each of your calls made
+again either does its work once or answers with what already happened.
+
+A purchase that fails after its payment arrived may have been charged, and the
+agent is told that whether it was is not known. That answer is not retryable,
+because the payment it carried may already be spent. The agent reads the order
+at its `status_url` if an earlier answer gave one, and otherwise signs the same
+payment request again from the same wallet, which is answered with the order
+or with where its payment stands and never charges twice. Asking for a new
+price instead starts a new purchase, which is charged again once paid.
+
 ## What is not settled yet
 
 - The limit on the share of purchases that run into missing goods, which we
