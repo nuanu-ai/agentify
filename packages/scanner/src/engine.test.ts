@@ -212,24 +212,39 @@ describe("what the checks read from the markup real sites write", () => {
     expect(evaluation.score.terminalStatus).toBe("partial");
   });
 
-  it("finds a feed a page links to by its type or by its address", () => {
+  it("finds a product feed a page links to, by a feed's type or file and an address or title that names products", () => {
     for (const link of [
-      '<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />',
-      '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
-      '<link href="/blog_rss.xml" rel="alternate" title="RSS" type="application/rss+xml">',
+      // WooCommerce links its products feed from the shop's pages, with the
+      // ampersand of the query written as a character reference.
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Products Feed" href="https://example.com/shop/feed/" />',
+      '<link rel="alternate" type="application/rss+xml" title="Toko Kain" href="https://example.com/?post_type=product&#038;feed=rss2" />',
       "<LINK REL='alternate' HREF='https://example.com/merchant/products.csv'>",
       '<link rel="alternate" type="text/csv" title="Catalog" href="/catalog">',
       '<link rel="alternate" type="application/xml" title="Catalog" href="/catalog">',
-      '<link rel="alternate" href="https://example.com/feed/">',
-      '<link rel="alternate" href="https://example.com/google-merchant-center">',
       '<link rel="alternate" href="https://example.com/products.xml">',
+      '<link rel="alternate" type="application/atom+xml" href="/collections/all.atom">',
     ])
-      expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)?.evidence).toMatchObject({
-        feed_link: true,
+      expect(check(withBase(`<head>${link}</head><body>Wool</body>`), 15)).toMatchObject({
+        status: "pass",
+        earnedWeight: 4,
+        evidence: { feed_link: true },
       });
-    expect(
-      check(withBase('<link rel="stylesheet" href="/assets/base.css"><p>Wool</p>'), 15)?.status,
-    ).toBe("fail");
+  });
+
+  it("takes no blog's feed, stylesheet, or link in a comment or a script for a product feed", () => {
+    for (const head of [
+      // WordPress links the posts' and the comments' feeds from every page.
+      `<link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Example &raquo; Comments Feed" href="https://example.com/comments/feed/" />`,
+      '<link rel="alternate" type="application/atom+xml" title="Feed" href="/blogs/news.atom" />',
+      '<link rel="stylesheet" href="/assets/feedback.css">',
+      '<!-- <link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/"> -->',
+      `<script>document.head.insertAdjacentHTML("beforeend", '<link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/">');</script>`,
+    ])
+      expect(check(withBase(`<head>${head}</head><body>Wool</body>`), 15)).toMatchObject({
+        status: "fail",
+        earnedWeight: 0,
+      });
   });
 
   it("recognizes a product page by its Open Graph type when it links no feed", () => {
@@ -248,6 +263,101 @@ describe("what the checks read from the markup real sites write", () => {
     // an Open Graph type.
     const card = `<meta property="og:type" content="website"><meta name="twitter:card" content="product"><p>Wool</p>`;
     expect(check(withBase(card), 15)?.status).toBe("fail");
+  });
+
+  it("recognizes a product page by its Open Graph type in any attribute order or quoting", () => {
+    for (const meta of [
+      '<meta content="product" property="og:type">',
+      "<meta property=og:type content=product>",
+      '<meta property="og:type" content="product.item">',
+    ])
+      expect(check(withBase(`<head>${meta}</head><body>Wool</body>`), 15)).toMatchObject({
+        status: "partial",
+        earnedWeight: 1,
+        evidence: { feed_link: false, product_identifiers: true, price_availability: false },
+      });
+  });
+
+  it("takes no word in a page's markup, scripts or text for a product, a price or an availability", () => {
+    const page = `<style>.price,.availability{color:#212a2f}</style>
+<script>var sku = "KT-01"; dataLayer.push({ gtin: "8992761002013", availability: "in_stock", price: 19 });</script>
+<div class="product-price in_stock">Ask us about any SKU or GTIN, and product:price questions.</div>`;
+    expect(check(withBase(page), 15)).toMatchObject({ status: "fail", earnedWeight: 0 });
+  });
+
+  it("reads a product's identifiers, price and availability from microdata", () => {
+    const page = `<div itemscope itemtype="https://schema.org/Product"><h1 itemprop="name">Wool Runner</h1><span itemprop="sku">WR-01</span>
+<div itemprop="offers" itemscope itemtype="https://schema.org/Offer"><link itemprop="availability" href="https://schema.org/InStock"><span itemprop="price" content="98.00">$98.00</span></div></div>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  // The pages below are what the platforms serve, anonymized and cut to the
+  // parts the check reads.
+  it("scores a WooCommerce product page by its JSON-LD, not by the blog's feeds", () => {
+    const offer = {
+      "@context": "https://schema.org/",
+      "@type": "Product",
+      "@id": "https://example.com/product/kain-tenun-ikat/#product",
+      name: "Kain Tenun Ikat",
+      sku: "KT-01",
+      offers: [
+        {
+          "@type": "Offer",
+          price: "150000",
+          priceValidUntil: "2027-12-31",
+          priceSpecification: { price: "150000", priceCurrency: "IDR" },
+          priceCurrency: "IDR",
+          availability: "http://schema.org/InStock",
+          url: "https://example.com/product/kain-tenun-ikat/",
+        },
+      ],
+    };
+    const page = `<head><link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Feed" href="https://example.com/feed/" />
+<link rel="alternate" type="application/rss+xml" title="Toko Kain &raquo; Comments Feed" href="https://example.com/comments/feed/" /></head>
+<body class="product-template-default single single-product woocommerce"><h1 class="product_title entry-title">Kain Tenun Ikat</h1>
+<p class="price"><span class="woocommerce-Price-amount amount"><bdi><span class="woocommerce-Price-currencySymbol">Rp</span>150.000</bdi></span></p>
+<p class="stock in-stock">12 in stock</p><script type="application/ld+json">${JSON.stringify(offer)}</script></body>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  it("scores a Shopify product page by its Open Graph and JSON-LD facts", () => {
+    const product = {
+      "@context": "http://schema.org/",
+      "@type": "Product",
+      name: "Wool Runner",
+      url: "https://example.com/products/wool-runner",
+      sku: "WR-01",
+      offers: [
+        {
+          "@type": "Offer",
+          availability: "http://schema.org/InStock",
+          price: 98.0,
+          priceCurrency: "USD",
+        },
+      ],
+    };
+    const page = `<head><meta property="og:type" content="product"><meta property="og:price:amount" content="98.00"><meta property="og:price:currency" content="USD">
+<link rel="alternate" type="application/json+oembed" href="https://example.com/products/wool-runner.oembed"></head>
+<body><h1 class="product__title">Wool Runner</h1><script type="application/ld+json">${JSON.stringify(product)}</script></body>`;
+    expect(check(withBase(page), 15)).toMatchObject({
+      status: "partial",
+      earnedWeight: 3,
+      evidence: { feed_link: false, product_identifiers: true, price_availability: true },
+    });
+  });
+
+  it("scores a WordPress blog that links its posts' feed as having no product feed", () => {
+    const page = `<head><link rel="alternate" type="application/rss+xml" title="Example &raquo; Feed" href="https://example.com/feed/" />
+<meta property="og:type" content="article"></head><body><article><h1>Choosing a pricing table</h1><div class="price-table">Our plans</div></article></body>`;
+    expect(check(withBase(page), 15)).toMatchObject({ status: "fail", earnedWeight: 0 });
   });
 
   it("counts an llms.txt link only when it leads to an absolute address", () => {
@@ -560,7 +670,7 @@ describe("a scan of pages as large as the fetch admits", () => {
   it("finds the feed link after link tags that run on for megabytes", () => {
     const closed = scan(
       withBase(
-        `${fill("<link ", pageCap)}><link rel="alternate" type="application/rss+xml" href="/feed/">`,
+        `${fill("<link ", pageCap)}><link rel="alternate" type="application/rss+xml" title="Products Feed" href="/shop/feed/">`,
       ),
     );
     expect(checkIn(closed.evaluation, 15)?.evidence).toMatchObject({ feed_link: true });
