@@ -18,7 +18,6 @@
 import type { ReactNode } from "react";
 import { SiteFooter } from "./footer.js";
 import { type Drawn, type Place, PlaceLink, WorkHeader } from "./header.js";
-import { HeaderMenu } from "./menu.js";
 import type { AdminSection, ChannelView, SectionCount, SectionCounts } from "./workspace-view.js";
 
 interface SectionLink {
@@ -117,14 +116,15 @@ function Lookup({ find }: Readonly<{ find: string }>) {
 }
 
 /**
- * `visitor` is who is signed in with the way out, as the header's doors draw
- * it. `counts` are the sections' counts where the drawing application can read
- * them; without them no section carries one, since a count left out claims
- * nothing while a zero would claim that nothing waits. `find` is the address
+ * `who` is the operator signed in, whose way back to their seller dashboard
+ * the header holds beside the workspace's. `counts` are the sections' counts
+ * where the drawing application can read them; without them no section
+ * carries one, since a count left out claims nothing while a zero would claim
+ * that nothing waits. `find` is the address
  * the lookup reads. `note` stands at the head of the workspace, over the bar.
  */
 export function WorkspaceFrame({
-  visitor,
+  who,
   channel,
   counts = {},
   section,
@@ -135,7 +135,7 @@ export function WorkspaceFrame({
   ...drawn
 }: Drawn &
   Readonly<{
-    visitor: ReactNode;
+    who: string;
     channel: ChannelView;
     counts?: SectionCounts;
     /** Absent on a page that is none of the sections, such as the lookup's. */
@@ -149,17 +149,14 @@ export function WorkspaceFrame({
     <div className="page app-frame">
       <WorkHeader
         {...drawn}
+        current="admin"
         mark={<span className="op-mark">Operator</span>}
-        visitor={visitor}
-        menu={
-          <HeaderMenu>
+        visitor={{ status: "signed_in", email: who, operator: true }}
+        contents={
+          <>
             <p className="op-menu-channel">{channel.name}</p>
             <Sections current={section} counts={counts} {...drawn} />
-            <a className="app-menu-door" href="/docs/">
-              Open the docs →
-            </a>
-            {visitor}
-          </HeaderMenu>
+          </>
         }
       />
       <div className="app-shell">

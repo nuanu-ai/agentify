@@ -12,8 +12,11 @@
  * refused would tell them what this page is.
  */
 
+import { rememberZone } from "@agentify/ui/remember-zone";
+import { zoneIn } from "@agentify/ui/zone";
 import frameSheet from "@agentify/visual/frame.css?url";
 import workspaceSheet from "@agentify/visual/workspace.css?url";
+import { useEffect } from "react";
 import {
   type ActionFunctionArgs,
   data,
@@ -43,7 +46,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const who = await operatorOrNobody(request);
   return {
     title: "Scanner — Agentify operator",
-    html: drawOperatorPage({ data: await getOperatorDashboard(), who, channel: channelHere() }),
+    html: drawOperatorPage({
+      data: await getOperatorDashboard(),
+      who,
+      channel: channelHere(),
+      zone: zoneIn(request.headers.get("cookie")),
+    }),
   };
 }
 
@@ -62,6 +70,8 @@ export const meta = ({ matches, loaderData }: MetaArgs<typeof loader>) =>
 
 export default function AdminPage() {
   const { html } = useLoaderData<typeof loader>();
+  // Drawn in the zone the browser named before; it names its zone now for the next read.
+  useEffect(rememberZone, []);
   // React drew it on the server and escaped every value in it, the scanned
   // sites' hostnames included.
   // biome-ignore lint/security/noDangerouslySetInnerHtml: drawn by React on the server

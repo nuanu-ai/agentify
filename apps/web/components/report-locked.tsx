@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { SiteFooter, SiteTop } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 
 /**
@@ -14,10 +14,10 @@ export type ReportLockedData =
   | Readonly<{ kind: "not_yours"; email: string }>;
 
 /** A report's address that opens no report, in the site's message panel. */
-function Locked({ children, doors = true }: Readonly<{ children: ReactNode; doors?: boolean }>) {
+function Locked({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <>
-      <SiteTop end={doors ? undefined : null} />
+      <SiteHeader current="scanner" />
       <main className="message-page" id="main">
         <section className="message-panel">{children}</section>
       </main>
@@ -80,7 +80,7 @@ export function ReportLocked({ page }: Readonly<{ page: ReportLockedData }>) {
  */
 export function LatestReportUnknown() {
   return (
-    <Locked doors={false}>
+    <Locked>
       <h1>We cannot tell who is visiting right now</h1>
       <p>
         The sign-in service did not answer, so we cannot tell which report is yours. Try again in a

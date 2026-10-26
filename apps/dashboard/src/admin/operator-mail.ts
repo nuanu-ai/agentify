@@ -13,7 +13,7 @@
 
 import type { Message } from "../mail.js";
 import { transactionalEmailHtml } from "../mail-template.js";
-import { moment } from "../words.js";
+import { momentInUtc } from "../moments.js";
 
 export interface FlagChanged {
   /** The account whose flag changed. */
@@ -32,7 +32,7 @@ export function operatorFlagMessage(to: string, changed: FlagChanged): Message {
   const title = changed.granted
     ? "An operator is being added"
     : "An operator flag is being removed";
-  const when = moment(changed.at.toISOString());
+  const when = momentInUtc(changed.at.toISOString());
   const lead = changed.granted
     ? `${changed.email} is being made an operator of Agentify's ${changed.channel}, asked at ${when}. An operator reads every merchant, order and account of the channel, and can admit and stop merchants and change who else is an operator.`
     : `The operator flag of ${changed.email} on Agentify's ${changed.channel} is being removed, asked at ${when}. The operator's workspace closes to that account from its next request.`;

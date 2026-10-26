@@ -30,8 +30,10 @@ export interface Word {
 /**
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
- * the buyer and the original payment is recorded. Goods delivered and not paid wait
- * on the buyer, who can pay again.
+ * the buyer and the original payment is recorded. Goods the merchant delivered
+ * against a charge that then failed have not reached the buyer, who receives
+ * them only by paying again, which the word says, so it does not read as goods
+ * given away unpaid.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   in_progress: { text: "In progress", tone: "busy" },
@@ -42,7 +44,7 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   expired: { text: "Closed on time limit", tone: "quiet" },
   unfulfilled: { text: "Unfulfilled", tone: "warn" },
   fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
-  delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
+  delivered_unpaid: { text: "Held for payment", tone: "waiting" },
 });
 
 /**
@@ -237,48 +239,3 @@ export const notConnectedSince = (when: string): string =>
  */
 export const money = (sum: { readonly amount: string; readonly currency: string }): string =>
   `${sum.amount} ${sum.currency}`;
-
-/**
- * UTC, said beside every moment, because nothing in the request carries the
- * reader's zone and the server's zone would be off by hours with nothing to say
- * so. To the second, because receipts are reconciled against a wallet and two
- * payments a few seconds apart must not look like one line twice.
- */
-export const moment = (iso: string): string => {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) {
-    // A timestamp we cannot read is shown raw: it is what we were told, and an
-    // invented date would put a moment on a receipt that nothing stands behind.
-    return iso;
-  }
-  const date = at.toISOString();
-  return `${date.slice(0, 10)} ${date.slice(11, 19)} UTC`;
-};
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-
-/**
- * The day a moment falls on in UTC, written out, for a heading over the
- * moments of that day; each moment under it keeps its time to the second. A
- * timestamp that cannot be read is given as it came.
- */
-export const dayOf = (iso: string): string => {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) {
-    return iso;
-  }
-  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
-};

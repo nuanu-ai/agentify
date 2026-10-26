@@ -77,11 +77,6 @@ textarea {
   overflow-x: auto;
 }
 
-/* A moment breaks between its date and its time and nowhere else. */
-.when > span {
-  white-space: nowrap;
-}
-
 /* Beside the amount rather than in its own column, so it cannot scroll out of
    sight while the number it qualifies stays visible. */
 .tag {
@@ -248,6 +243,22 @@ form.inline {
   padding: 0 14px 0 40px;
   border-width: var(--hairline);
   font-size: 0.9375rem;
+}
+
+/* A filter and its button beside the search stand at the search box's height. */
+.list-tools select.field-input {
+  min-height: 44px;
+  border-width: var(--hairline);
+  font-size: 0.9375rem;
+}
+
+.list-tools > .button {
+  min-height: 44px;
+}
+
+/* A merchant's name can be long, and the closed box shows only the start of it. */
+.list-tools > .field {
+  flex: 0 1 16rem;
 }
 
 .segments {

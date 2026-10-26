@@ -20,6 +20,7 @@ import {
   type MerchantRow,
   type MerchantSegment,
   merchantLimitOf,
+  merchantOffsetOf,
   type OperatorMerchants,
   SELLING_DAYS,
   searchOf,
@@ -205,7 +206,7 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
           where ${found(query)} and ${inSegment}
           order by (j.segment = 'waiting') desc, j.last_sale desc nulls last,
             j.created_at desc, j.id collate "C"
-          limit ${merchantLimitOf(query)}`,
+          limit ${merchantLimitOf(query)} offset ${merchantOffsetOf(query)}`,
       );
       const sales = await rowsOf(
         tx,

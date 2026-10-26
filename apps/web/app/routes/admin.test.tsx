@@ -202,7 +202,8 @@ const NUMBERS: Numbers = {
   },
 };
 
-const draw = (data: Numbers) => renderToStaticMarkup(<OperatorDashboard data={data} />);
+const draw = (data: Numbers, zone: string | null = null) =>
+  renderToStaticMarkup(<OperatorDashboard data={data} zone={zone} />);
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 /** The markup from the first opening tag that matches up to its element's close. */
@@ -413,11 +414,41 @@ describe("the operator's dashboard, drawn", () => {
   });
 });
 
+describe("the moments on the operator's dashboard", () => {
+  it("are written in the zone the operator's browser named, and name it", () => {
+    const zoned = text(
+      draw(
+        { ...NUMBERS, dataAccess: { waiting: 1, oldestAt: "2026-09-30T20:15:00.000Z" } },
+        "Asia/Makassar",
+      ),
+    );
+
+    expect(zoned).toContain("read 2026-10-13 16:00:00 UTC+8");
+    expect(zoned).toContain("Accepted 2026-10-13 15:58:00 UTC+8");
+    expect(zoned).toContain("Oldest 1 October 2026");
+  });
+
+  it("are written in UTC, said as UTC, where the operator's browser named no zone", () => {
+    const plain = text(draw(NUMBERS));
+
+    expect(plain).toContain("read 2026-10-13 08:00:00 UTC");
+    expect(plain).toContain("Accepted 2026-10-13 07:58:00 UTC");
+  });
+
+  it("keep the chart's days and the ceiling per site in UTC, the days they are counted by", () => {
+    const zoned = draw(NUMBERS, "Asia/Makassar");
+
+    expect(barsOf(zoned).map((bar) => bar.title)).toContain("13 Oct, until 08:00 UTC: 90 scans");
+    expect(text(zoned)).toContain(`Hard ceiling per site ${SCAN_LIMITS.perSiteDay} per UTC day`);
+  });
+});
+
 describe("the operator's page, in the workspace's frame", () => {
   const page = drawOperatorPage({
     data: NUMBERS,
     who: "operator@example.com",
     channel: { mode: "test", name: CHANNEL_NAMES.test },
+    zone: null,
   });
   const sidebar = part(page, /<aside\b/, "aside");
   const linkTo = (words: string) =>
@@ -446,6 +477,7 @@ describe("the operator's page, in the workspace's frame", () => {
       data: NUMBERS,
       who: "operator@example.com",
       channel: { mode: "live", name: CHANNEL_NAMES.live },
+      zone: null,
     });
     expect(live).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
     expect(live).not.toContain('class="surface-words"');
@@ -459,6 +491,7 @@ describe("the operator's page, in the workspace's frame", () => {
       data: NUMBERS,
       who: "operator@example.com",
       channel: { mode: "live", name: CHANNEL_NAMES.live },
+      zone: null,
     });
     expect(text(content(live))).toContain(CHANNEL_NAMES.live);
   });

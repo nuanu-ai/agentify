@@ -239,12 +239,7 @@ export const SELL_LANDING = {
     text: "Create an account, choose a seller name, and connect your first product.",
   },
   links: {
-    howItWorks: "How it works",
-    integrations: "Integrations",
-    payments: "Payments",
-    pricing: "Pricing",
     documentation: "Documentation",
-    signIn: "Sign in",
     signUp: "Sign up",
   },
 };

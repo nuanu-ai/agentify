@@ -13,6 +13,7 @@ import { loadConfig } from "./config.js";
 import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import { identityFor } from "./identity.js";
 import type { Handover, Message } from "./mail.js";
+import { inViewersZone } from "./moments.js";
 import type { CommissionRate } from "./shares.js";
 import { tellerFor } from "./teller.js";
 
@@ -83,6 +84,15 @@ describe("a wallet change", () => {
       "owner@example.com",
       "partner@example.com",
     ]);
+  });
+
+  it("writes when the change applies in UTC, even when the press came from a viewer in another zone", async () => {
+    const { tell, sent } = await telling([["owner@example.com", MERCHANT]]);
+
+    await inViewersZone("Asia/Makassar", () => tell(aWalletChange));
+
+    expect(sent[0]?.body).toContain("2026-09-26 12:00:00 UTC");
+    expect(sent[0]?.body).not.toContain("UTC+8");
   });
 
   it("says what changes, not before when, that it was asked in the dashboard, and where it is decided, with no token", async () => {

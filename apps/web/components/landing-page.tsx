@@ -18,7 +18,7 @@ export function LandingPage({ config }: Readonly<{ config: LandingConfig }>) {
   return (
     <>
       <StructuredData schema={publicSiteSchema(site)} />
-      <SiteHeader />
+      <SiteHeader current="scanner" />
       <main
         id="main"
         {...{

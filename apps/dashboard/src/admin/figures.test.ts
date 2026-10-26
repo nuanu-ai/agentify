@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import type { Person } from "../dashboard-entry.js";
 import { identityFor } from "../identity.js";
+import { inViewersZone } from "../moments.js";
 import { TEST_AUTH_SECRET } from "../testing/secrets.js";
 import type { Operator } from "./access.js";
 import {
@@ -381,6 +382,13 @@ describe("the chart of settled sales", () => {
     expect(chart.spoken).toHaveLength(30);
     expect(chart.spoken[1]).toBe("25 Sep: nothing settled");
     expect(chart.bars.find((bar) => bar.label.startsWith("25 Sep"))?.className).toBe("bar zero");
+  });
+
+  it("names the same UTC days in its summary as under its bars, whatever the viewer's zone", () => {
+    const chart = inViewersZone("America/Sao_Paulo", () => chartOf(sales, false));
+
+    expect(chart.spoken[0]).toMatch(/^24 Sep/);
+    expect(chart.aria).toMatch(/from 24 September 2026 to 23 October 2026/);
   });
 
   it("stacks the part paid with no delivery recorded on top of the delivered part", () => {

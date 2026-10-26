@@ -288,42 +288,10 @@ describe("the merchant landing", () => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
 
-    await page.locator("header a.wordmark").click();
+    await page.locator("header a.brand").click();
     await page.waitForURL(`${origin}/`);
     await page.locator("h1").first().waitFor();
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
-    expect(complaints).toEqual([]);
-    await page.context().close();
-  });
-
-  it("folds its sections into a menu the burger opens, and closes it on a chosen link, on Escape and on growing to the desktop width", async () => {
-    const { page, complaints } = await visit("/sell");
-    await page.setViewportSize({ width: 390, height: 800 });
-    const burger = page.locator(".masthead__burger");
-    const menu = page.locator("#masthead-menu");
-    const opened = async () => {
-      await burger.click();
-      await menu.waitFor({ state: "visible" });
-      expect(await burger.getAttribute("aria-expanded")).toBe("true");
-      expect(await burger.getAttribute("aria-label")).toBe("Close menu");
-    };
-
-    expect(await menu.isVisible()).toBe(false);
-    await opened();
-    await menu.getByRole("link", { name: "Payments" }).click();
-    await menu.waitFor({ state: "hidden" });
-    expect(await burger.getAttribute("aria-label")).toBe("Open menu");
-
-    await opened();
-    await menu.getByRole("link", { name: "Documentation" }).focus();
-    await page.keyboard.press("Escape");
-    await menu.waitFor({ state: "hidden" });
-    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
-
-    await opened();
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await menu.waitFor({ state: "hidden" });
-    expect(await burger.getAttribute("aria-expanded")).toBe("false");
     expect(complaints).toEqual([]);
     await page.context().close();
   });
@@ -335,7 +303,7 @@ describe("a click on a link", () => {
     await page.evaluate(() => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
-    const link = page.locator("header .site-nav a", { hasText: "Privacy" });
+    const link = page.locator("footer").getByRole("link", { name: "Privacy", exact: true });
 
     await link.click();
     await page.waitForTimeout(80);
@@ -354,7 +322,7 @@ describe("a click on a link", () => {
   it("to a public page is answered from the fetches a hover made, its stylesheets among them", async () => {
     const { page } = await visit("/");
     const before = timesAsked("/privacy.data");
-    const link = page.locator("header .site-nav a", { hasText: "Privacy" });
+    const link = page.locator("footer").getByRole("link", { name: "Privacy", exact: true });
 
     await link.hover();
     await page.waitForTimeout(SLOW_MS + 500);
@@ -663,7 +631,7 @@ describe("a scan in Chromium", () => {
       (window as Window & { stayed?: boolean }).stayed = true;
     });
 
-    expect(await page.locator("h1").textContent()).toBe("Private report access required");
+    expect(await page.locator("h1").textContent()).toBe("Sign in to open this report");
     await page.locator("header a.brand").click();
     await page.waitForURL(`${origin}/`);
     await page.locator("h1").first().waitFor();
@@ -752,7 +720,7 @@ describe("the doors on a phone", () => {
         answer,
         "/report/0190f4c5-0000-7000-8000-00000000f002",
         "h1",
-        "Private report access required",
+        "Sign in to open this report",
       ],
     ]),
   )(
@@ -771,30 +739,44 @@ describe("the doors on a phone", () => {
   );
 });
 
-/** The site's sections, as the header lists them. */
-const SECTIONS = ["Sell to agents", "Scanner", "Methodology", "Privacy"];
+/** What the site offers, as the header lists it. */
+const OFFERS = ["Scanner", "Sell to agents"];
 
-/**
- * How many of the sections the bar keeps beside the doors and the menu's
- * button at a width, from a phone's to the widest the menu shows at, with the
- * pixel on each side of every step. The last of them leaves first.
- */
-const IN_THE_BAR = [
-  [320, 0],
-  [390, 0],
-  [439, 0],
-  [440, 1],
-  [519, 1],
-  [520, 2],
-  [767, 2],
-  [768, 3],
-  [839, 3],
-  [840, 4],
-  [910, 4],
-] as const;
+/** Widths from a phone's to the widest the menu shows at, where the row keeps the lockup, both doors and the menu's button alone. */
+const NARROW = [320, 390, 640, 768, 910] as const;
+
+describe("the account's menu on a wide window", () => {
+  it("opens from the signed-in address, closes on Escape with the focus back on the address, and closes once the focus leaves it", async () => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await context.newPage();
+    await page.route("**/api/v2/session", (route) =>
+      route.fulfill({
+        json: { status: "signed_in", email: "owner@shop.example", operator: false },
+      }),
+    );
+    await page.goto(`${origin}/terms`);
+    const account = page.locator("header .site-account");
+    const button = account.locator("summary");
+    const open = () => account.evaluate((details) => (details as HTMLDetailsElement).open);
+    await button.getByText("owner@shop.example").waitFor();
+
+    await button.click();
+    await account.getByRole("link", { name: "Settings" }).waitFor({ state: "visible" });
+    await page.keyboard.press("Escape");
+    expect(await open()).toBe(false);
+    expect(await button.evaluate((element) => element === document.activeElement)).toBe(true);
+
+    await page.keyboard.press("Enter");
+    expect(await open()).toBe(true);
+    await account.getByRole("button", { name: "Sign out" }).focus();
+    await page.keyboard.press("Tab");
+    expect(await open()).toBe(false);
+    await context.close();
+  });
+});
 
 describe("the site's menu on a phone", () => {
-  it("holds the site's sections, Sell to agents first, closes on Escape, and closes once a link in it is followed, fetched ahead as the bar's are", async () => {
+  it("holds what the site offers, closes on Escape, and closes once a link in it is followed, fetched ahead as the bar's are", async () => {
     const { page, complaints } = await visit("/terms");
     await page.setViewportSize({ width: 390, height: 800 });
     await page.evaluate(() => {
@@ -806,7 +788,7 @@ describe("the site's menu on a phone", () => {
     expect(await panel.isVisible()).toBe(false);
     await burger.click();
     await panel.waitFor({ state: "visible" });
-    expect(await panel.locator("nav a").allTextContents()).toEqual(SECTIONS);
+    expect(await panel.locator("nav a").allTextContents()).toEqual(OFFERS);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Escape");
     await panel.waitFor({ state: "hidden" });
@@ -882,11 +864,7 @@ describe("the site's menu on a phone", () => {
           `/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`,
           "7 of 18 checks reported",
         ],
-        [
-          "a report",
-          "/report/0190f4c5-0000-7000-8000-00000000f002",
-          "Private report access required",
-        ],
+        ["a report", "/report/0190f4c5-0000-7000-8000-00000000f002", "Sign in to open this report"],
       ] as const
     ).flatMap(([top, path, drawn]) =>
       [
@@ -1017,12 +995,10 @@ describe("the site's menu on a phone", () => {
   });
 
   it.each(
-    VISITORS.flatMap(([who, answer]) =>
-      IN_THE_BAR.map(([width, shown]) => [who, width, answer, shown] as const),
-    ),
+    VISITORS.flatMap(([who, answer]) => NARROW.map((width) => [who, width, answer] as const)),
   )(
-    "keeps the header to one row of the same height when %s comes back at %ipx, with the sections that fit, and holds who is visiting and every section in its menu",
-    async (_who, width, answer, shown) => {
+    "keeps the header to one row of the same height when %s comes back at %ipx, and holds what the site offers and who is visiting in its menu",
+    async (_who, width, answer) => {
       const { page, answered } = await onAPhone("/terms", answer, width);
       await page.locator("h1").first().waitFor();
       await page.evaluate(() => document.fonts.ready);
@@ -1033,27 +1009,30 @@ describe("the site's menu on a phone", () => {
       expect(await header.boundingBox()).toEqual(before);
       const bar = await theBar(header);
       expect(bar.spread).toBeLessThanOrEqual(1);
-      expect(bar.sections).toEqual(SECTIONS.slice(0, shown));
+      expect(bar.sections).toEqual([]);
+      expect(bar.doors).toEqual(["Docs", "Dashboard"]);
       expect(bar.visitor).toBe(0);
       expect(bar.button).toBe(true);
 
       await header.locator(".site-menu > summary").click();
-      expect(await header.locator(".site-menu-panel nav a").allTextContents()).toEqual(SECTIONS);
-      const visitor = header.locator(".site-menu-panel .site-visitor");
+      const operator = "operator" in answer.body && answer.body.operator;
+      expect(await header.locator(".site-menu-sections a").allTextContents()).toEqual(
+        operator ? [...OFFERS, "Admin"] : OFFERS,
+      );
+      const account = header.locator(".site-menu-account");
       if ("email" in answer.body) {
-        const address = visitor.getByRole("link", { name: answer.body.email });
-        expect(await address.getAttribute("href")).toBe("/dashboard/settings");
+        const address = account.getByText(answer.body.email);
         expect(
           await address.evaluate((element) => element.scrollWidth <= element.clientWidth),
         ).toBe(true);
-        expect(await visitor.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
-        expect(await visitor.getByRole("link", { name: "Admin" }).count()).toBe(
-          answer.body.operator ? 1 : 0,
+        expect(await account.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe(
+          "/dashboard/settings",
         );
+        expect(await account.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
       } else if (answer.status === 200) {
-        expect(await visitor.isVisible()).toBe(false);
+        expect(await account.count()).toBe(0);
       } else {
-        expect(await visitor.getByText("Sign-in unknown").isVisible()).toBe(true);
+        expect(await account.getByText("Sign-in unknown").isVisible()).toBe(true);
       }
       await page.context().close();
     },

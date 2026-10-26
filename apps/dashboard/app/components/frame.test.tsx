@@ -443,7 +443,7 @@ describe("the sidebar", () => {
     framed("cards", { account: [] });
     await screen.findByText("The screen");
 
-    expect(within(sections()).getByText("Cards").textContent).toBe("Cards");
+    expect(within(sections()).getByText("Products").textContent).toBe("Products");
     expect(orders().textContent).toBe("Orders");
   });
 
@@ -458,19 +458,18 @@ describe("the sidebar", () => {
 });
 
 describe("the menu of an operator who also sells", () => {
-  it("lists the door into the workspace among its doors, apart from who is signed in", async () => {
-    framed("cards", {}, "cards", { who: PERSON, admin: "/dashboard/admin" });
+  it("lists the door into the workspace among the places the row leaves out, apart from who is signed in", async () => {
+    framed("cards", {}, "cards", { who: PERSON, operator: true });
     await screen.findByText("The screen");
-    const menu = document.querySelector<HTMLElement>(".site-menu-panel");
-    const visitor = menu?.querySelector<HTMLElement>(".site-visitor");
-    if (menu === null || visitor === null || visitor === undefined) {
-      throw new Error("the frame drew no menu with who is signed in");
+    const places = document.querySelector<HTMLElement>(".site-menu-panel .site-menu-sections");
+    const account = document.querySelector<HTMLElement>(".site-menu-panel .site-menu-account");
+    if (places === null || account === null) {
+      throw new Error("the frame drew no menu with the places and who is signed in");
     }
 
-    const door = within(menu).getByRole("link", { name: "Open the admin →" });
-    expect(door.getAttribute("href")).toBe("/dashboard/admin");
-    expect(visitor.contains(door)).toBe(false);
-    expect(within(visitor).queryByRole("link", { name: /admin/i })).toBeNull();
+    expect(within(places).getByRole("link", { name: "Admin" })).toBeTruthy();
+    expect(within(account).getByText(PERSON)).toBeTruthy();
+    expect(within(account).queryByRole("link", { name: /admin/i })).toBeNull();
   });
 });
 

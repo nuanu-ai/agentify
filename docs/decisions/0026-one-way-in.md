@@ -56,10 +56,11 @@ Deleting an address closes its reports and removes its lead and, if it owns no
 merchant, its account. Sign-in and deletion serialize on that same address.
 
 **3. Headers and sign-out belong to the whole site.** Headers name the signed-in
-address and offer sign-out; shared caches keep no answer carrying an address.
-Sign-out ends this browser's session, and settings can end every session of
-the account, this browser's included: a session copied from this browser
-carries the same token, so keeping this one would keep the copy.
+address and offer sign-out from the account menu; shared caches keep no
+answer carrying an address. Sign-out ends this browser's session, and
+settings can end every session of the account, this browser's included: a
+session copied from this browser carries the same token, so keeping this one
+would keep the copy.
 Every dashboard form behind the gate and scanner account form names the address
 it was drawn for; another address or no address is refused without action.
 

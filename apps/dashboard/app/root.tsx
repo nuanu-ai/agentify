@@ -6,7 +6,9 @@
  * one-time token, and a page may run a script only where a control needs one.
  */
 
-import type { ReactNode } from "react";
+import { rememberZone } from "@agentify/ui/remember-zone";
+import { zoneIn } from "@agentify/ui/zone";
+import { type ReactNode, useEffect } from "react";
 import {
   data,
   isRouteErrorResponse,
@@ -22,6 +24,7 @@ import {
   useRouteError,
   useRouteLoaderData,
 } from "react-router";
+import { inViewersZone } from "../src/moments.js";
 import type { Screen } from "../src/page-services.js";
 import { type Chrome, chromeOf, type Trouble } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
@@ -63,6 +66,8 @@ const SCREENS: Readonly<Record<string, Screen>> = {
  * reads the mark a form carries.
  */
 export const middleware: MiddlewareFunction<Response>[] = [
+  // Every moment a page writes is in the zone the reader's browser named.
+  ({ request }, next) => inViewersZone(zoneIn(request.headers.get("cookie")), next),
   async ({ context, pattern, request }, next) => {
     const response = await next();
     const screen = SCREENS[pattern];
@@ -121,7 +126,13 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
   );
 }
 
+/**
+ * The page was drawn on the server in the zone the browser named before, or
+ * in UTC where it named none; the browser names its zone now for the next
+ * page, rather than this one being written again after it is shown.
+ */
 export default function App() {
+  useEffect(rememberZone, []);
   return <Outlet />;
 }
 
