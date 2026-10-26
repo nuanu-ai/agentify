@@ -1330,3 +1330,77 @@ describe("a sitemap's result names its one cause and the entries involved", () =
     });
   });
 });
+
+describe("a robots.txt result names its one cause", () => {
+  const withRobots = (body: string, overrides: Partial<FetchArtifact> = {}): ScanArtifacts => ({
+    ...makeArtifacts("store"),
+    robots: artifact("https://example.com/robots.txt", body, {
+      headers: { "content-type": "text/plain" },
+      ...overrides,
+    }),
+  });
+
+  it.each([401, 403, 418])(
+    "reports a robots.txt answered with %i as refused, with the status, not as unparseable",
+    (status) => {
+      expect(check(withRobots("Forbidden", { status }), 1)).toMatchObject({
+        status: "fail",
+        summaryCode: "robots_refused",
+        evidence: { status },
+        fixCode: "serve_robots",
+      });
+    },
+  );
+
+  it("takes a web page answered at the robots.txt address for no robots.txt", () => {
+    const input = withRobots("<!DOCTYPE html><html><body>App</body></html>", {
+      headers: { "content-type": "text/html" },
+    });
+    expect(check(input, 1)).toMatchObject({
+      status: "fail",
+      summaryCode: "robots_missing",
+      fixCode: "publish_robots",
+    });
+    expect(check(input, 2)?.summaryCode).toBe("ai_policy_absent");
+  });
+
+  it("reports valid rules served as a web page's media type as that, and only that", () => {
+    expect(
+      check(withRobots(robots, { headers: { "content-type": "text/html; charset=utf-8" } }), 1),
+    ).toMatchObject({
+      status: "partial",
+      summaryCode: "robots_wrong_media_type",
+      evidence: { content_type: "text/html; charset=utf-8" },
+      fixCode: "serve_robots_as_text",
+    });
+  });
+
+  it("names the read limit when robots.txt is longer than the scanner reads", () => {
+    expect(
+      check(withRobots(robots, { truncated: true, decodedBytes: 512 * 1024 }), 1),
+    ).toMatchObject({
+      status: "partial",
+      summaryCode: "robots_too_large",
+      evidence: { truncated: true, read_limit: "512 KiB" },
+      fixCode: "shorten_robots",
+    });
+  });
+
+  it("names the status of a server error that kept robots.txt from being read", () => {
+    const checked = check(withRobots("", { status: 503 }), 1);
+    expect(checked).toMatchObject({ status: "unavailable", evidence: { status: 503 } });
+    expect(checked?.fixCode).toBeUndefined();
+  });
+
+  it("still reports malformed directives and an unparseable file as they were", () => {
+    expect(check(withRobots(`${robots}\nDisalow /x`), 1)).toMatchObject({
+      status: "partial",
+      summaryCode: "robots_partially_parseable",
+      fixCode: "repair_robots",
+    });
+    expect(check(withRobots(`${robots}\0`), 1)).toMatchObject({
+      status: "fail",
+      summaryCode: "robots_invalid",
+    });
+  });
+});
