@@ -32,6 +32,21 @@ const SAID: Readonly<Record<StartState, { label: string; title: string }>> = {
   missing: { label: "no scan", title: "No scan request in this tab" },
 };
 
+/**
+ * The time on the visitor's own clock when a wait ends, rounded up to the
+ * minute so it never names a moment before the scanner frees up; with the
+ * day when that is not today.
+ */
+function freeAt(waitSeconds: number): string {
+  const at = new Date(Math.ceil((Date.now() + waitSeconds * 1000) / 60_000) * 60_000);
+  const today = at.toDateString() === new Date().toDateString();
+  return at.toLocaleString([], {
+    ...(today ? {} : { weekday: "short" }),
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function PendingScanExperience({
   turnstileSiteKey,
 }: Readonly<{ turnstileSiteKey: string | null }>) {
@@ -97,7 +112,12 @@ export function PendingScanExperience({
     }
     if (code === "hard_rate_limit") {
       setState("hard-limit");
-      setMessage("This network or this website has had all its scans for now. Try again later.");
+      const wait = outcome.refusal.retry_after_seconds;
+      setMessage(
+        wait === undefined
+          ? "Scans from this network or for this website are used up for now. Try again later."
+          : `Scans from this network or for this website are used up until ${freeAt(wait)}.`,
+      );
       return;
     }
     if (code === "temporarily_busy") {

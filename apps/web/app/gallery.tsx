@@ -778,7 +778,7 @@ const SCANNING: GalleryState[] = [
       status: 429,
       body: refusal("hard_rate_limit", "The scan limit has been reached.", true, 1_800),
     },
-    "This network or this website has had all its scans for now.",
+    "are used up until",
   ),
   pending(
     {
