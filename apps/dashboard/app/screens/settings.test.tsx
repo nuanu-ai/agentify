@@ -915,19 +915,12 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(button()).toBeTruthy();
   });
 
-  it("is not offered on the test channel, which says why in one line and keeps the box", () => {
-    // Coinbase's window refuses Base Sepolia to the wallets it creates now.
+  it("is offered on the test channel as on live, since connecting a Coinbase Wallet works on Base Sepolia", () => {
     const { wallet } = viewOf({ mode: "test" });
     render(routed(() => <PayoutWalletPanel wallet={wallet} />));
 
-    expect(screen.queryByRole("button", { name: WALLET_WORDS.connect })).toBeNull();
-    expect(wallet.coinbase).toStrictEqual({ absent: expect.stringMatching(/Base Sepolia/) });
-    expect(
-      screen.getByText(
-        wallet.coinbase !== null && "absent" in wallet.coinbase ? wallet.coinbase.absent : "-",
-      ),
-    ).toBeTruthy();
-    expect(box()).toBeTruthy();
+    expect(button()).toBeTruthy();
+    expect(wallet.coinbase).toStrictEqual({ chain: 84532 });
   });
 
   it("is not offered in the sandbox, where no wallet is ever paid", () => {
@@ -956,7 +949,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
   });
 
-  it("says to press again or enter an address by hand while it waits, and that pressing again is safe", async () => {
+  it("leaves the button and the box usable while it waits, so a window that closed without a word strands nobody", async () => {
     coinbase.holding = 1;
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
 
@@ -964,8 +957,9 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
       fireEvent.click(button());
     });
 
-    expect(WALLET_WORDS.waitingAddress).toMatch(/press again/);
     expect(screen.getByText(WALLET_WORDS.waitingAddress)).toBeTruthy();
+    expect((button() as HTMLButtonElement).disabled).toBe(false);
+    expect(box().disabled || box().readOnly).toBe(false);
   });
 
   it("leaves the box as the merchant left it when Coinbase's window closes, however it closed, and points to entering an address by hand", async () => {
@@ -976,7 +970,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await press(button());
 
     expect(box().value).toBe("0x1234");
-    expect(WALLET_WORDS.connectClosed).toMatch(/by hand/);
+    expect(box().disabled || box().readOnly).toBe(false);
     expect(screen.getByText(WALLET_WORDS.connectClosed)).toBeTruthy();
   });
 
@@ -1235,11 +1229,13 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(WALLET_WORDS.payoutClosed).toMatch(/another wallet/);
     expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
+    expect((screen.getByLabelText("Data") as HTMLTextAreaElement).value).toBe(
+      merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
+    );
   });
 
-  it("says while it waits that pressing again is safe", async () => {
+  it("leaves the button usable while it waits, so a window that closed without a word strands nobody", async () => {
     coinbase.holding = 1;
     render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
 
@@ -1247,8 +1243,8 @@ describe("sending the payout from a Coinbase Wallet", () => {
       fireEvent.click(button());
     });
 
-    expect(WALLET_WORDS.waitingPayout).toMatch(/press again/);
     expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
+    expect((button() as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("is offered where the page does not know what the payout would bring, since it pays out only what is there", () => {
