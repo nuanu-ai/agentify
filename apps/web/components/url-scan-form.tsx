@@ -1,9 +1,9 @@
 import type { Segment } from "@agentify/scanner-contracts";
-import { type FormEvent, useId, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
 
 import { captureLandingAttribution } from "../lib/attribution-client";
-import { savePendingScan } from "../lib/pending-scan";
+import { addressToScanAgain, savePendingScan } from "../lib/pending-scan";
 import { validateSubmittedUrl } from "../lib/url-input";
 import styles from "./url-scan-form.module.css";
 
@@ -25,12 +25,20 @@ export function UrlScanForm({
   compact?: boolean;
 }>) {
   const navigate = useNavigate();
+  const { state: opened } = useLocation();
   const inputId = useId();
   const [url, setUrl] = useState("");
   const [state, setState] = useState<FormState>("default");
   const [message, setMessage] = useState("");
   const idempotencyKey = useRef("");
   const submitting = state === "submitting";
+
+  // Filled after the first draw, which the server drew without the router's
+  // state, so a reload of a form opened this way draws the same in both.
+  useEffect(() => {
+    const address = addressToScanAgain(opened);
+    if (address) setUrl(address);
+  }, [opened]);
 
   function submitScan() {
     const validation = validateSubmittedUrl(url);
