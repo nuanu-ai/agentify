@@ -429,10 +429,14 @@ const rateViewOf = (read: NonNullable<ShopRead["rate"]>, answer: ShopAnswer): Ra
   };
 };
 
+/** What publishing lacks, in Settings' own names: "seller name and payout wallet". */
+export const settingsNamed = (unset: readonly Unset[]): string =>
+  unset.map((one) => SETTING_NAMES[one]).join(" and ");
+
 const heldImport = (read: ShopRead): ImportHeld | null => {
   const unset = read.unset ?? [];
   if (unset.length > 0) {
-    return { kind: "settings", what: unset.map((one) => SETTING_NAMES[one]).join(" and ") };
+    return { kind: "settings", what: settingsNamed(unset) };
   }
   if (read.rate !== undefined && read.rate.current === null) {
     const { reference, currency } = read.rate;

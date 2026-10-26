@@ -2774,10 +2774,12 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant presses Import before setting a payout wallet.",
       cause:
-        "The wallet was unset when the press came, so the shop was not read; the page holds Import and says where to set it.",
+        "The wallet was unset when the press came, so the shop was not read; the page says nothing was imported, holds Import and says where to set it.",
     },
     "import",
-    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
+    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] }), {
+      importing: "Nothing was imported: set your payout wallet in Settings first.",
+    }),
     { noWallet: true },
   ),
   shopPress(

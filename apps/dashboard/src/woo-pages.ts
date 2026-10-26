@@ -67,6 +67,7 @@ import {
   type Said,
   type ShopAnswer,
   type ShopState,
+  settingsNamed,
   shopNameOf,
   type WooImportView,
   type WooShopView,
@@ -532,8 +533,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           ` ${connection.shopUrl} was not read and nothing was published`,
       );
       // The screen holds Import for what is unset; a press that got here was
-      // drawn before it was.
-      return await drawTheShop(person, saved, 409);
+      // drawn before it was, so the answer says what the press did.
+      return await drawTheShop(
+        person,
+        {
+          importing: `Nothing was imported: set your ${settingsNamed(unset.document)} in Settings first.`,
+          ...saved,
+        },
+        409,
+      );
     }
 
     const origin = originOf(connection);

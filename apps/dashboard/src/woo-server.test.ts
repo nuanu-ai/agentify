@@ -1366,6 +1366,9 @@ describe("importing the catalogue", () => {
     const form = importFormOf(imported.html);
 
     expect(imported.status).toBe(409);
+    // The press came from a page drawn before the wallet was unset, so the
+    // answer says what it did, not only what the page holds.
+    expect(readable(imported.html)).toMatch(/Nothing was imported[^.]*payout wallet/);
     expect(readable(form)).toMatch(/wallet/i);
     expect(form).toContain('href="/settings"');
     expect(readable(imported.html)).not.toContain("/v0/");
