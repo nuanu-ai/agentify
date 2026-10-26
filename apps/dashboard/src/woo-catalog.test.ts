@@ -291,7 +291,32 @@ describe("turning a shop's products into cards", () => {
     for (const one of skipped) {
       expect(one.why).toMatch(/\S/);
     }
-    expect(skipped[0]?.why).toContain("variable");
+    expect(skipped[0]?.why).toMatch(/variable/i);
+  });
+
+  it("tells a product the shop can put right from a kind the connector does not sell", () => {
+    const { skipped } = cardsFromTheShop([
+      product({ id: 1, type: "variable" }),
+      product({ id: 2, virtual: false }),
+      product({ id: 3, downloadable: false }),
+      product({ id: 4, manage_stock: true }),
+      product({ id: 5, status: "draft" }),
+      product({ id: 6, description: "", short_description: "" }),
+      product({ id: 7, download_limit: 1 }),
+      product({ id: 8, qualification_problem: "The shop rounds tax per line." }),
+    ]);
+    const fixable = Object.fromEntries(skipped.map((one) => [one.id, one.fixable]));
+
+    expect(fixable).toStrictEqual({
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": true,
+      "6": true,
+      "7": true,
+      "8": true,
+    });
   });
 
   it("keeps the products it can beside the ones it cannot", () => {
@@ -377,6 +402,8 @@ describe("a physical product, which a carrier takes to the buyer", () => {
     const { cards, skipped } = cardsFromTheShop([parcel({ manage_stock: true })]);
 
     expect(cards).toHaveLength(0);
-    expect(skipped[0]?.why).toContain("stock");
+    // Stock is the merchant's to count, so the product lands under Not
+    // supported, where nothing asks them to change how their shop counts it.
+    expect(skipped).toMatchObject([{ fixable: false }]);
   });
 });

@@ -67,6 +67,7 @@ export default function SignIn() {
     return (
       <MailUnavailableScreen
         chrome={chrome}
+        destination={view.destination}
         {...(view.clickId === undefined ? {} : { clickId: view.clickId })}
       />
     );

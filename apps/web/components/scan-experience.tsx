@@ -11,7 +11,7 @@ import { lazyPart, useHere } from "./lazy-part";
 import layout from "./result-layout.module.css";
 import styles from "./scan-experience.module.css";
 import { ScanFailed } from "./scan-failed";
-import { SiteFooter, SiteTop } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
@@ -190,14 +190,16 @@ export function ScanExperience({
 
   return (
     <div className={layout.page}>
-      <SiteTop />
-      <main className={layout.body}>
+      <SiteHeader current="scanner" />
+      <main className={scored && !holding ? layout.body : "message-page"} id="main">
         {scored && !holding ? (
           <Suspense
             fallback={
-              <ScanCard accessState={accessState} data={data}>
-                <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
-              </ScanCard>
+              <div className={styles.held}>
+                <ScanCard accessState={accessState} data={data}>
+                  <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
+                </ScanCard>
+              </div>
             }
           >
             <ScanTeaser
@@ -217,13 +219,16 @@ export function ScanExperience({
             />
           </Suspense>
         ) : (
-          <ScanCard accessState={accessState} data={data}>
+          <ScanCard accessState={accessState} data={data} unread={requestError !== null}>
             {fixtureBanner}
             {accessState === "loading" ? <LoadingState /> : null}
             {accessState === "missing" || accessState === "invalid" ? (
               <AccessError form={formPathOf(segment)} invalid={accessState === "invalid"} />
             ) : null}
-            {accessState === "ready" && !data ? <LoadingState /> : null}
+            {accessState === "ready" && !data && !requestError ? <LoadingState /> : null}
+            {accessState === "ready" && !data && requestError ? (
+              <StatusUnread said={requestError} />
+            ) : null}
             {data && (!terminal || holding) ? (
               <ProgressState data={data} elapsedSeconds={elapsedSeconds} phases={phases} />
             ) : null}
@@ -242,7 +247,7 @@ export function ScanExperience({
                 checks={data.checks}
               />
             ) : null}
-            {requestError ? (
+            {requestError && data ? (
               <div aria-live="polite" className={styles.pollNotice}>
                 {requestError}
               </div>
@@ -257,29 +262,30 @@ export function ScanExperience({
   );
 }
 
-/** A scan without a result to show yet, or without one at all, in a sheet of its own. */
+/** A scan without a result to show yet, or without one at all, in the site's message panel. */
 function ScanCard({
   accessState,
   children,
   data,
+  unread = false,
 }: Readonly<{
   accessState: AccessState;
   children: ReactNode;
   data: ScanStatusResponse | null;
+  unread?: boolean;
 }>) {
+  const line = scanStatusLine(data?.status, accessState, unread);
   return (
-    <div className={`${layout.sheet} ${layout.single}`}>
-      <section>
-        <header className={styles.scanHeader}>
-          <p>
-            <b>{data?.target_host ?? "Private website diagnostic"}</b>
-            <span>{scanStatusLine(data?.status, accessState)}</span>
-          </p>
-          <ScanStateBadge accessState={accessState} status={data?.status} />
-        </header>
-        {children}
-      </section>
-    </div>
+    <section className="message-panel">
+      <header className={`message-meta ${styles.scanHeader}`}>
+        <p>
+          {data ? <b>{data.target_host}</b> : <span>Private website diagnostic</span>}
+          {line === null ? null : <span>{line}</span>}
+        </p>
+        <ScanStateBadge accessState={accessState} status={data?.status} unread={unread} />
+      </header>
+      {children}
+    </section>
   );
 }
 
@@ -354,7 +360,7 @@ function ProgressState({
   phases: readonly Phase[];
 }>) {
   return (
-    <div className={styles.progress}>
+    <div>
       <div aria-atomic="true" aria-live="polite" className="sr-only">
         Scan {data.status}. {data.progress.completed} of {data.progress.total} checks have a
         terminal result.
@@ -402,15 +408,30 @@ function ProgressState({
 
 function AccessError({ form, invalid }: Readonly<{ form: string; invalid: boolean }>) {
   return (
-    <div className={`${layout.message} ${styles.state}`}>
-      <h1>
-        {invalid ? "This scan link is no longer valid" : "Open the original private scan link"}
-      </h1>
-      <p>Scan progress is private.</p>
+    <>
+      <h1>{invalid ? "This scan link no longer works" : "Open the scan from its private link"}</h1>
+      <p>
+        {invalid
+          ? "Start a new scan to see a fresh result."
+          : "A scan's progress shows only through the link that started it."}
+      </p>
       <SiteLink className="button button-primary" to={form}>
         Start a new scan
       </SiteLink>
-    </div>
+    </>
+  );
+}
+
+/**
+ * The status could not be read and nothing about the scan is known yet. The
+ * page keeps asking, so this is a wait, not an ending: it offers no action.
+ */
+function StatusUnread({ said }: Readonly<{ said: string }>) {
+  return (
+    <>
+      <h1>Waiting for the scan's status</h1>
+      <p aria-live="polite">{said}</p>
+    </>
   );
 }
 
@@ -425,12 +446,18 @@ function LoadingState() {
 function ScanStateBadge({
   accessState,
   status,
+  unread,
 }: Readonly<{
   accessState: AccessState;
   status?: ScanStatusResponse["status"];
+  unread: boolean;
 }>) {
-  if (accessState === "missing" || accessState === "invalid")
+  if (accessState === "missing" || accessState === "invalid") {
     return <StatusBadge status="unavailable" />;
+  }
+  // Without a status read, nothing is known of the scan, so the badge says
+  // neither that it is being checked nor that it is unavailable.
+  if (unread && !status) return <StatusBadge status="unknown" />;
   // A scan that ended without a result found no fault: "Fail" is a check's
   // verdict on something it could read.
   if (status === "failed") return <Badge tone="quiet">No result</Badge>;
@@ -442,9 +469,11 @@ function ScanStateBadge({
 function scanStatusLine(
   status: ScanStatusResponse["status"] | undefined,
   accessState: AccessState,
-) {
+  unread: boolean,
+): string | null {
   if (accessState === "missing" || accessState === "invalid") return "Private access required";
-  if (!status) return "Reading scan state…";
+  // The heading under it already says the status could not be read.
+  if (!status) return unread ? null : "Reading scan state…";
   return SCAN_STATUS_LINES[status];
 }
 

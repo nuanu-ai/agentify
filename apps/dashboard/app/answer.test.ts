@@ -23,26 +23,26 @@ const RELOAD = "x-remix-reload-document";
 
 describe("a redirect a press answers with", () => {
   it("stays inside the application back to the page it was made on, whatever its query", () => {
-    const back = sendTo("/cards?q=room&page=2", new URL("http://dashboard.test/cards"), "");
+    const back = sendTo("/products?q=room&page=2", new URL("http://dashboard.test/products"), "");
 
     expect(back.status).toBe(303);
-    expect(back.headers.get("location")).toBe("/cards?q=room&page=2");
+    expect(back.headers.get("location")).toBe("/products?q=room&page=2");
     expect(back.headers.get(RELOAD)).toBeNull();
   });
 
   it("hands React Router a path under the dashboard's prefix without the prefix", () => {
     const back = sendTo(
-      "/dashboard/cards?q=room",
-      new URL("http://dashboard.test/dashboard/cards"),
+      "/dashboard/products?q=room",
+      new URL("http://dashboard.test/dashboard/products"),
       "/dashboard",
     );
 
-    expect(back.headers.get("location")).toBe("/cards?q=room");
+    expect(back.headers.get("location")).toBe("/products?q=room");
     expect(back.headers.get(RELOAD)).toBeNull();
   });
 
   it("loads another page whole, with a query or without", () => {
-    const here = new URL("http://dashboard.test/cards");
+    const here = new URL("http://dashboard.test/products");
 
     expect(sendTo("/orders?open=true", here, "").headers.get(RELOAD)).toBe("true");
     expect(sendTo("/settings", here, "").headers.get(RELOAD)).toBe("true");
@@ -97,10 +97,10 @@ describe("a request the page's script sent that failed on its way", () => {
 
   it("is a change nobody could confirm when it was a press, and leads back to the page it was pressed on, with its place in the list", async () => {
     vi.stubGlobal("window", {
-      location: new URL("http://dashboard.test/dashboard/cards?q=room&page=2"),
+      location: new URL("http://dashboard.test/dashboard/products?q=room&page=2"),
     });
     const results = await around(
-      asked("POST", "http://dashboard.test/dashboard/cards?pause=itm_1"),
+      asked("POST", "http://dashboard.test/dashboard/products?pause=itm_1"),
       {
         "routes/cards": { type: "error", result: new TypeError("Failed to fetch") },
       },
@@ -108,7 +108,7 @@ describe("a request the page's script sent that failed on its way", () => {
 
     expect(carried(results["routes/cards"])).toStrictEqual({
       kind: "unanswered",
-      reopen: "/dashboard/cards?q=room&page=2",
+      reopen: "/dashboard/products?q=room&page=2",
     });
   });
 

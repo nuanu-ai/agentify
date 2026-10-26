@@ -1,10 +1,10 @@
 /**
  * The internal route the scanner asks over. It publishes no port, is reached by
  * service name on the compose network, and sits behind a secret only the two
- * processes hold. The scanner asks three things: send a link for this address
+ * processes hold. The scanner asks four things: send a link for this address
  * with this destination; whose session is this cookie, and is its account an
- * operator; and, for a privacy deletion, remove this person if they own no
- * merchant.
+ * operator; for a privacy deletion, remove this person if they own no
+ * merchant; and for an access request, mail this address a copy of its data.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -15,7 +15,10 @@ import {
   type ReadSessionResponse,
   readSessionResponseSchema,
   reportIdentityRequestSchema,
+  type SendDataCopyRequest,
+  type SendDataCopyResponse,
   type SendReportLinkRequest,
+  sendDataCopyResponseSchema,
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -29,6 +32,12 @@ const REPORT_IDENTITY_PORT = 3002;
  * JSON around it.
  */
 const MAX_BODY_BYTES = 16 * 1024;
+/**
+ * A copy request carries what the scanner holds about one address, which the
+ * scanner bounds by the rows it lists; every other question stays within the
+ * bound above.
+ */
+const MAX_COPY_BODY_BYTES = 4 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 20_000;
 const HEADERS_TIMEOUT_MS = 5_000;
 const KEEP_ALIVE_TIMEOUT_MS = 5_000;
@@ -38,7 +47,15 @@ type ReportIdentityOperations = Pick<
   "sendReportLink" | "deleteUnattachedPerson" | "whoIs"
 >;
 
-export function buildReportIdentityApp(secret: string, identity: ReportIdentityOperations) {
+type Copier = (request: SendDataCopyRequest) => Promise<SendDataCopyResponse>;
+
+const bodyBytes = new WeakMap<Request, number>();
+
+export function buildReportIdentityApp(
+  secret: string,
+  identity: ReportIdentityOperations,
+  copy: Copier,
+) {
   const app = express();
 
   app.post(
@@ -51,8 +68,21 @@ export function buildReportIdentityApp(secret: string, identity: ReportIdentityO
       }
       next();
     },
-    express.json({ limit: MAX_BODY_BYTES, strict: true }),
+    express.json({
+      limit: MAX_COPY_BODY_BYTES,
+      strict: true,
+      verify: (request, _response, buffer) => {
+        bodyBytes.set(request as Request, buffer.length);
+      },
+    }),
     async (request, response) => {
+      if (
+        (bodyBytes.get(request) ?? 0) > MAX_BODY_BYTES &&
+        (request.body as { operation?: unknown } | null)?.operation !== "copy"
+      ) {
+        response.status(413).end();
+        return;
+      }
       const parsed = reportIdentityRequestSchema.safeParse(request.body);
       if (!parsed.success) {
         response.status(400).end();
@@ -82,6 +112,10 @@ export function buildReportIdentityApp(secret: string, identity: ReportIdentityO
         response.json(readSessionResponseSchema.parse(answer));
         return;
       }
+      if (operation.operation === "copy") {
+        response.json(sendDataCopyResponseSchema.parse(await copy(operation)));
+        return;
+      }
       response.json(
         deleteUnattachedPersonResponseSchema.parse(
           await identity.deleteUnattachedPerson(operation as DeleteUnattachedPersonRequest),
@@ -103,9 +137,10 @@ export function buildReportIdentityApp(secret: string, identity: ReportIdentityO
 export function startReportIdentityServer(
   secret: string | null,
   identity: ReportIdentityOperations,
+  copy: Copier,
 ): Server | null {
   if (secret === null) return null;
-  const server = buildReportIdentityApp(secret, identity).listen(REPORT_IDENTITY_PORT);
+  const server = buildReportIdentityApp(secret, identity, copy).listen(REPORT_IDENTITY_PORT);
   server.requestTimeout = REQUEST_TIMEOUT_MS;
   server.headersTimeout = HEADERS_TIMEOUT_MS;
   server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;

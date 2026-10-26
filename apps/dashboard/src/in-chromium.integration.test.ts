@@ -116,7 +116,7 @@ beforeAll(async () => {
       request.path === `${BASE}/receipts.data` ||
       (request.path === `${BASE}/orders.data` && request.query.show === "open") ||
       (request.method === "GET" &&
-        request.path === `${BASE}/cards.data` &&
+        request.path === `${BASE}/products.data` &&
         request.query.q === "suite")
     ) {
       setTimeout(next, SLOW_MS);
@@ -149,7 +149,7 @@ const onTheCards = async (
   const context = await browser.newContext({ viewport, isMobile: phone, hasTouch: phone });
   await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
   const page = await context.newPage();
-  await page.goto(`${origin}${BASE}/cards`);
+  await page.goto(`${origin}${BASE}/products`);
   await page.waitForLoadState("networkidle");
   return page;
 };
@@ -202,7 +202,7 @@ describe("the page data Chromium keeps", () => {
 describe("a page's first visit in Chromium", () => {
   it.each([
     ["/sign-in", "routes/sign-in", false],
-    ["/cards", "routes/cards", true],
+    ["/products", "routes/products", true],
   ])(
     "loads the scripts the speed budget counts for it, no more and no fewer: %s",
     async (path, routeId, signedIn) => {
@@ -267,7 +267,7 @@ describe("a press answered on its own page", () => {
       });
       if (!published.ok) throw new Error("the test's card was not published");
     }
-    const listing = `${origin}${BASE}/cards?q=suite&show=on-sale&page=2`;
+    const listing = `${origin}${BASE}/products?q=suite&show=on-sale&page=2`;
     const page = await onTheCards();
     await page.goto(listing);
     await page.waitForLoadState("networkidle");
@@ -276,7 +276,7 @@ describe("a press answered on its own page", () => {
     const arrived = page.waitForResponse(
       (answer) =>
         answer.request().method() === "GET" &&
-        new URL(answer.url()).pathname === `${BASE}/cards.data`,
+        new URL(answer.url()).pathname === `${BASE}/products.data`,
     );
     await page.locator(".list-row form[action*='pause='] button").first().click();
     await page.waitForTimeout(400);
@@ -288,7 +288,9 @@ describe("a press answered on its own page", () => {
     expect(meanwhile).toContain("On sale");
     expect(page.url()).toBe(listing);
     expect(await marked()).toContain("On sale");
-    expect(await page.getByRole("searchbox", { name: "Search cards" }).inputValue()).toBe("suite");
+    expect(await page.getByRole("searchbox", { name: "Search products" }).inputValue()).toBe(
+      "suite",
+    );
     expect(await page.locator(".cut").textContent()).toContain("Showing 51–54 of 54");
     await page.context().close();
   });
@@ -303,7 +305,7 @@ describe("a switch pressed from the keyboard", () => {
       await resume.click();
       await page.locator("form[action*='selling=pause']").waitFor();
     }
-    await page.goto(`${origin}${BASE}/cards?q=room${show}`);
+    await page.goto(`${origin}${BASE}/products?q=room${show}`);
     await page.waitForLoadState("networkidle");
     return page;
   };
@@ -541,7 +543,7 @@ describe("the working header over the frame", () => {
     [911, "bar"],
     [1440, "bar"],
   ] as const)(
-    "keeps one row at %ipx with the documentation, the address and the way out in its %s, the sections in the sidebar or the menu, never both, and no public section or door to the dashboard",
+    "keeps one row at %ipx with the documentation and the dashboard, the address and the way out in its %s, the sections in the sidebar or the menu, never both, and none of the site's offers",
     async (width, where) => {
       const page = await onTheCards({ width, height: 700 });
       expect(await inTheSiteFace(page)).toBe(true);
@@ -550,20 +552,24 @@ describe("the working header over the frame", () => {
       const bar = await theBar(header);
       expect(bar.spread).toBeLessThanOrEqual(1);
       expect(bar.sections).toEqual([]);
-      expect(bar.doors).toEqual(where === "bar" ? ["Docs"] : []);
-      expect(bar.visitor).toBe(where === "bar" ? 2 : 0);
+      expect(bar.doors).toEqual(["Docs", "Dashboard"]);
+      expect(bar.visitor).toBe(where === "bar" ? 1 : 0);
       expect(bar.button).toBe(where === "menu");
       expect(await page.locator(".app-sidebar nav.tabs").isVisible()).toBe(where === "bar");
 
       if (where === "menu") {
         await header.locator(".site-menu > summary").click();
         await header.locator(".site-menu-panel").waitFor({ state: "visible" });
+      } else {
+        await header.locator(".site-account > summary").click();
+        await header.locator(".site-account-panel").waitFor({ state: "visible" });
       }
       expect(await inSight(page.getByRole("link", { name: "Orders", exact: true }))).toBe(1);
       expect(await inSight(header.locator('a[href="/docs/"]'))).toBe(1);
+      expect(await inSight(header.getByRole("link", { name: "Dashboard", exact: true }))).toBe(1);
       expect(await inSight(page.getByText(PERSON))).toBe(1);
       expect(await inSight(page.getByRole("button", { name: "Sign out" }))).toBe(1);
-      for (const name of ["Dashboard", "Sell to agents", "Scanner", "Methodology", "Privacy"]) {
+      for (const name of ["Sell to agents", "Scanner"]) {
         expect(await inSight(header.getByRole("link", { name, exact: true })), name).toBe(0);
       }
       await page.context().close();
@@ -585,7 +591,7 @@ describe("the working header over the frame", () => {
         return {
           lockup: box("header .brand")?.left,
           sidebarWords: section === null ? undefined : words.getBoundingClientRect().left,
-          rowEnd: box("header .site-sign-out button")?.right,
+          rowEnd: box("header .site-account > summary")?.right,
           contentEnd: box(".app-content")?.right,
         };
       });
@@ -605,12 +611,12 @@ describe("the site header over the pages outside the frame", () => {
   it.each([
     [320, []],
     [390, []],
-    [600, ["Methodology", "Privacy"]],
-    [700, ["Scanner", "Methodology", "Privacy"]],
-    [768, ["Sell to agents", "Scanner", "Methodology", "Privacy"]],
-    [1440, ["Sell to agents", "Scanner", "Methodology", "Privacy"]],
+    [768, []],
+    [910, []],
+    [911, ["Scanner", "Sell to agents"]],
+    [1440, ["Scanner", "Sell to agents"]],
   ] as const)(
-    "keeps one row on the sign-in at %ipx with the site's sections %j and its doors, and no menu",
+    "keeps one row on the sign-in at %ipx with the site's offers %j and its doors, and the menu where the offers do not fit",
     async (width, sections) => {
       const context = await browser.newContext({ viewport: { width, height: 700 } });
       const page = await context.newPage();
@@ -622,7 +628,7 @@ describe("the site header over the pages outside the frame", () => {
       expect(bar.spread).toBeLessThanOrEqual(1);
       expect(bar.sections).toEqual(sections);
       expect(bar.doors).toEqual(["Docs", "Dashboard"]);
-      expect(bar.button).toBe(false);
+      expect(bar.button).toBe(sections.length === 0);
       await context.close();
     },
   );
@@ -646,11 +652,11 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
   const page = await onTheCards({ width: 390, height: 844 }, true);
   try {
     await page.goto(`${origin}${BASE}/orders?q=${encodeURIComponent(id)}`);
-    const summary = page.locator("details.cell-more > summary");
+    const summary = page.locator("details.row-more > summary");
     await summary.focus();
     await page.keyboard.press("Enter");
     const message = "  A remedy was agreed outside Agentify.\nNothing more is owed.  ";
-    await page.getByLabel("Explanation to the buyer (optional)").fill(message);
+    await page.getByLabel("Note to the buyer (optional)").fill(message);
     await page.getByRole("button", { name: "Close fulfillment", exact: true }).focus();
     await page.keyboard.press("Enter");
     await page.waitForURL(
@@ -707,13 +713,13 @@ describe("a request that fails or stops on its way", () => {
     "says nobody knows whether a press whose answer was lost was done, and leads back to the list it was pressed on with a read that sends nothing again, when %s",
     async (_, fail) => {
       const page = await onTheCards();
-      await page.goto(`${origin}${BASE}/cards?q=room`);
+      await page.goto(`${origin}${BASE}/products?q=room`);
       await page.waitForLoadState("networkidle");
       const posts: string[] = [];
       page.on("request", (request) => {
         if (request.method() === "POST") posts.push(request.url());
       });
-      await page.route(`${origin}${BASE}/cards.data?*`, (route) =>
+      await page.route(`${origin}${BASE}/products.data?*`, (route) =>
         route.request().method() === "POST" ? fail(route) : route.fallback(),
       );
 
@@ -724,7 +730,7 @@ describe("a request that fails or stops on its way", () => {
 
       expect(await mainText(page)).toMatch(/We don't know if this was done/);
       expect(await mainText(page)).not.toMatch(/could not be loaded/);
-      expect(href).toBe(`${BASE}/cards?q=room`);
+      expect(href).toBe(`${BASE}/products?q=room`);
       await reopen.click();
       await page.waitForURL(`${origin}${href}`);
       await page.waitForLoadState("networkidle");
@@ -742,7 +748,7 @@ describe("a request that fails or stops on its way", () => {
       if (route.request().method() === "POST") held.push(route);
       else void route.fallback();
     });
-    const site = page.getByLabel("Your shop's site");
+    const site = page.getByLabel("Shop's site");
     const form = page.locator("form[action$='/settings/site']");
 
     await site.fill("https://rooms.example.com");

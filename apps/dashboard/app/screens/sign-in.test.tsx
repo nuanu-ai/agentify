@@ -196,8 +196,10 @@ describe("what a merchant is served after asking for a link", () => {
 
     expect(sent).toContain("is on its way");
     expect(minute).toContain("No new link was sent");
-    expect(minute).not.toContain("three links an hour");
-    expect(hour).toContain("three links an hour");
+    expect(minute).not.toContain("three links");
+    expect(hour).toContain("three links");
+    // A browser that runs no script keeps the button as served, so the wait is
+    // in words for it.
     expect(hour).toContain("Try again in 47 minutes");
   });
 
@@ -211,20 +213,18 @@ describe("what a merchant is served after asking for a link", () => {
     expect(minute).not.toContain("the last one");
   });
 
-  it("does not offer another link from this page when the hour is what the next one waits for", () => {
-    const short = readable(served({ sent: true, seconds: 60 }));
-    const long = readable(served({ sent: true, seconds: 2_820 }));
+  it("does not warn of the hourly limit before a press meets it", () => {
+    const first = readable(served({ sent: true, seconds: 60 }));
+    const last = readable(served({ sent: true, seconds: 2_820 }));
 
-    expect(short).toContain("send another link from this page");
-    // A wait this long can only be the hourly limit, so inviting a press under
-    // a button greyed for forty-seven minutes would be wrong.
-    expect(long).not.toContain("send another link from this page");
-    expect(long).toContain("three links for the hour");
+    // The hour's last link reads as the first; only the button, once the
+    // script runs, carries the longer wait.
+    expect(last).toBe(first);
   });
 
   it("does not round its words differently from the number on the button", () => {
     // A sixty-one-second wait must not read "2 minutes" over a button counting
-    // "(61 s)": a page that argues with itself is believed at its worst number.
+    // "in 61 s": a page that argues with itself is believed at its worst number.
     const said = readable(served({ wall: "hourly", seconds: 61 }));
 
     expect(said).toContain("Try again in 61 seconds");
@@ -264,11 +264,11 @@ describe("the script that waits the wait out", () => {
     const page = alive({ wall: "interval", seconds: 43 });
 
     expect(page.button.disabled).toBe(true);
-    expect(page.button.textContent).toBe("Send another link (43 s)");
+    expect(page.button.textContent).toBe("Send another link in 43 s");
 
     page.pass(40_000);
     expect(page.button.disabled).toBe(true);
-    expect(page.button.textContent).toBe("Send another link (3 s)");
+    expect(page.button.textContent).toBe("Send another link in 3 s");
 
     page.pass(3_000);
     expect(page.button.disabled).toBe(false);
@@ -282,13 +282,13 @@ describe("the script that waits the wait out", () => {
 
   it("counts an hour's wait in minutes and drops to seconds near the end", () => {
     const page = alive({ wall: "hourly", seconds: 2_820 });
-    expect(page.button.textContent).toBe("Send another link (47 min)");
+    expect(page.button.textContent).toBe("Send another link in 47 min");
 
     page.pass(2_729_000);
-    expect(page.button.textContent).toBe("Send another link (2 min)");
+    expect(page.button.textContent).toBe("Send another link in 2 min");
 
     page.pass(1_000);
-    expect(page.button.textContent).toBe("Send another link (90 s)");
+    expect(page.button.textContent).toBe("Send another link in 90 s");
 
     page.pass(90_000);
     expect(page.button.disabled).toBe(false);
@@ -306,11 +306,11 @@ describe("the script that waits the wait out", () => {
     expect(page.button.textContent).toBe("Send another link");
   });
 
-  it("counts down in the unit the words above it are written in", () => {
-    const page = alive({ wall: "hourly", seconds: 61 });
+  it("counts down in the unit the words for a browser without script are written in", () => {
+    expect(readable(served({ wall: "hourly", seconds: 61 }))).toContain("Try again in 61 seconds");
 
-    expect(readable(document.body.innerHTML)).toContain("Try again in 61 seconds");
-    expect(page.button.textContent).toBe("Send another link (61 s)");
+    const page = alive({ wall: "hourly", seconds: 61 });
+    expect(page.button.textContent).toBe("Send another link in 61 s");
   });
 });
 
@@ -320,7 +320,7 @@ describe("the link's page", () => {
       routed(() => (
         <OpenLinkScreen
           chrome={chromeIn("live")}
-          view={{ screen: "open", token: "a".repeat(32), email: PERSON }}
+          view={{ screen: "open", token: "a".repeat(32), email: PERSON, destination: "default" }}
         />
       )),
     );
@@ -330,6 +330,9 @@ describe("the link's page", () => {
 
     expect(buttons.map((button) => [button.name, button.value])).toStrictEqual([["", ""]]);
     expect([...sent]).toStrictEqual([["token", "a".repeat(32)]]);
+    // The press itself names the address, so nobody signs in as somebody else
+    // without reading whose address it is.
+    expect(buttons[0]?.textContent).toContain(PERSON);
     expect(container.textContent).toContain(PERSON);
   });
 });

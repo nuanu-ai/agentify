@@ -473,7 +473,9 @@ operator's, and their commands are in [deploy/README.md](../../deploy/README.md)
 and the [lab README](../../deploy/woocommerce-lab/README.md), which keep the
 deployment facts this public plan leaves out, the shop's address among them.
 Every `./lab.sh` command below is run by the operator on the fixture host.
-Moments are written in UTC, as the lab's request log reads them. Funding the
+Moments in these steps are written in UTC, as the lab's request log reads
+them, while the dashboard shows each moment in the reader's own zone and names
+that zone, so the two are compared through it. Funding the
 buyers' wallets and admitting the participants' Google accounts (step 4) wait
 on others, so they are done in the days before the run.
 
@@ -1122,7 +1124,7 @@ their tools.
 | --- | --- | --- |
 | K-01 / P0 | Ask what needs action and where the money is. Include two equal-price payments near each other, one paid undelivered order without a receipt, one unknown payment, one delivered order recovered from verified chain evidence and one attempt that lapsed unpaid. | The reader finds all obligations, distinguishes uncertainty from failure and does not infer that receipt totals equal cash received. The recovered receipt carries the transfer and its block time; an unknown payment has no receipt. The reader finds the lapsed attempt under Lapsed, understands that nothing was charged for it, and knows that a search of the other segments leaves such attempts out, as the page says with their count. Record first interpretation, missed items and every request for help. |
 | K-02 / P0 | Recover one overdue order by delivering its already recorded goods before closure, observe automatic reconciliation of another original payment without resubmission, and attempt M-06's merchant remedy and closure. | Each remains the same purchase, with one merchant effect and truthful original payment facts. Unavailable payment evidence stays unknown; it is not supplied by an operator's assertion. Missing merchant tools for the supported task are findings. Neither closure nor original-payment recovery requires a staffed Agentify service, and no page sends the merchant to one. |
-| K-03 / P1 | Leave the dashboard open overnight, restart the merchant process repeatedly, and return through an old bookmarked filtered list. | Visible state refreshes or clearly says it is stale. Repeated startup does not multiply goods. The merchant can tell when work resumed and whether it needs attention without reading gateway logs. Where the process stays down for more than ten minutes, the dashboard's banner says since when the integration has not connected and that prepaid purchases are refused, and it is gone once a restarted process has polled. |
+| K-03 / P1 | Leave the dashboard open overnight, restart the merchant process repeatedly, and return through an old bookmarked filtered list. | Visible state refreshes or clearly says it is stale. Repeated startup does not multiply goods. The merchant can tell when work resumed and whether it needs attention without reading gateway logs. Where the process stays down for more than ten minutes, the dashboard's banner says that agents cannot buy products delivered later and since when the integration has not connected, and it is gone once a restarted process has polled. |
 
 ## I. The scanner's evidence and a person's data
 

@@ -11,6 +11,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
+import { CHANNEL_NAMES } from "@agentify/ui/workspace-view";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { drawOperatorPage, OperatorDashboard } from "../../components/operator-dashboard.server";
@@ -177,7 +178,7 @@ const NUMBERS: Numbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  dataAccess: { waiting: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
+  dataCopies: { unconfirmed: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   daily: [
     { day: "2026-10-11", landingViews: 70, scans: 21 },
     { day: "2026-10-12", landingViews: 0, scans: 0 },
@@ -201,7 +202,8 @@ const NUMBERS: Numbers = {
   },
 };
 
-const draw = (data: Numbers) => renderToStaticMarkup(<OperatorDashboard data={data} />);
+const draw = (data: Numbers, zone: string | null = null) =>
+  renderToStaticMarkup(<OperatorDashboard data={data} zone={zone} />);
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 /** The markup from the first opening tag that matches up to its element's close. */
@@ -388,16 +390,16 @@ describe("the operator's dashboard, drawn", () => {
     expect(workerVerdict(silent)).toContain("Degraded");
   });
 
-  it("counts the data access requests waiting for an answer, with the oldest", () => {
-    expect(tile(drawn, "Data access requests")).toMatch(
-      /Data access requests 2 Oldest 30 September 2026/,
+  it("counts the data copies every try failed to send, with the oldest, as needing attention", () => {
+    expect(tile(drawn, "Data copies not confirmed")).toMatch(
+      /Data copies not confirmed 2 Oldest asked for 30 September 2026/,
     );
     expect(
       tile(
-        draw({ ...NUMBERS, dataAccess: { waiting: 0, oldestAt: null } }),
-        "Data access requests",
+        draw({ ...NUMBERS, dataCopies: { unconfirmed: 0, oldestAt: null } }),
+        "Data copies not confirmed",
       ),
-    ).toContain("None waiting");
+    ).toContain("Every copy asked for was sent or is still being tried");
   });
 
   it("draws a scan's state as a badge in words", () => {
@@ -420,11 +422,41 @@ describe("the operator's dashboard, drawn", () => {
   });
 });
 
+describe("the moments on the operator's dashboard", () => {
+  it("are written in the zone the operator's browser named, and name it", () => {
+    const zoned = text(
+      draw(
+        { ...NUMBERS, dataCopies: { unconfirmed: 1, oldestAt: "2026-09-30T20:15:00.000Z" } },
+        "Asia/Makassar",
+      ),
+    );
+
+    expect(zoned).toContain("read 2026-10-13 16:00:00 UTC+8");
+    expect(zoned).toContain("Accepted 2026-10-13 15:58:00 UTC+8");
+    expect(zoned).toContain("Oldest asked for 1 October 2026");
+  });
+
+  it("are written in UTC, said as UTC, where the operator's browser named no zone", () => {
+    const plain = text(draw(NUMBERS));
+
+    expect(plain).toContain("read 2026-10-13 08:00:00 UTC");
+    expect(plain).toContain("Accepted 2026-10-13 07:58:00 UTC");
+  });
+
+  it("keep the chart's days and the ceiling per site in UTC, the days they are counted by", () => {
+    const zoned = draw(NUMBERS, "Asia/Makassar");
+
+    expect(barsOf(zoned).map((bar) => bar.title)).toContain("13 Oct, until 08:00 UTC: 90 scans");
+    expect(text(zoned)).toContain(`Hard ceiling per site ${SCAN_LIMITS.perSiteDay} per UTC day`);
+  });
+});
+
 describe("the operator's page, in the workspace's frame", () => {
   const page = drawOperatorPage({
     data: NUMBERS,
     who: "operator@example.com",
-    channel: { mode: "test", name: "Test channel", line: "test.agentify.ad" },
+    channel: { mode: "test", name: CHANNEL_NAMES.test },
+    zone: null,
   });
   const sidebar = part(page, /<aside\b/, "aside");
   const linkTo = (words: string) =>
@@ -452,19 +484,34 @@ describe("the operator's page, in the workspace's frame", () => {
     const live = drawOperatorPage({
       data: NUMBERS,
       who: "operator@example.com",
-      channel: { mode: "live", name: "Live channel", line: "agentify.ad" },
+      channel: { mode: "live", name: CHANNEL_NAMES.live },
+      zone: null,
     });
     expect(live).toContain(`${SURFACE_MARKER_ATTRIBUTE}="live"`);
     expect(live).not.toContain('class="surface-words"');
+  });
+
+  it("names a test channel once, by its band, and the live channel, which has none, in the sidebar and the page", () => {
+    const named = (drawn: string, name: string) => text(drawn).split(name).length - 1;
+    expect(named(page, CHANNEL_NAMES.test)).toBe(1);
+    expect(text(part(page, /<p\b[^>]*class="surface-words"/, "p"))).toContain(CHANNEL_NAMES.test);
+
+    const live = drawOperatorPage({
+      data: NUMBERS,
+      who: "operator@example.com",
+      channel: { mode: "live", name: CHANNEL_NAMES.live },
+      zone: null,
+    });
+    expect(text(part(live, /<aside\b/, "aside"))).toContain(CHANNEL_NAMES.live);
+    expect(text(part(live, /<main\b/, "main"))).toContain(CHANNEL_NAMES.live);
   });
 
   it("draws no section's count, which it cannot read, rather than a zero", () => {
     expect(page).not.toMatch(/class="count/);
   });
 
-  it("finds a record through the workspace's lookup, and names the channel and the operator with the way out", () => {
+  it("finds a record through the workspace's lookup, and names the operator with the way out", () => {
     expect(page).toMatch(/<form[^>]*action="\/dashboard\/admin\/find"/);
-    expect(text(sidebar)).toContain("Test channel test.agentify.ad");
     expect(page).toContain("operator@example.com");
     expect(page).toMatch(/<form[^>]*action="\/dashboard\/sign-out"/);
   });

@@ -109,13 +109,13 @@ const failedWith = async (path: string, status: number, trouble: Trouble) => {
 
 describe("the error page after a failed request", () => {
   it("names the screen a press on a filtered list came from, and leads back to the list as it was", async () => {
-    const page = await failedWith("/cards?q=room", 500, {
+    const page = await failedWith("/products?q=room", 500, {
       kind: "unanswered",
-      reopen: "/cards?q=room&page=2",
+      reopen: "/products?q=room&page=2",
     });
 
     expect(page.title).toBe("We don't know if this was done");
-    expect(page.ways).toStrictEqual([["Open Products", "/cards?q=room&page=2"]]);
+    expect(page.ways).toStrictEqual([["Open Products", "/products?q=room&page=2"]]);
   });
 
   it("says a read that failed can be tried again, without naming a cause it cannot know", async () => {

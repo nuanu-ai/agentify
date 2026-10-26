@@ -16,7 +16,6 @@ export type EditorialBlock =
 
 export type PublicEditorialPageModel = Readonly<{
   path: PublicEditorialPath;
-  eyebrow: string;
   title: string;
   intro: string;
   sections: readonly Readonly<{
@@ -35,7 +34,6 @@ const link = (value: string, href: string): InlineNode => ({
 
 const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   path: "/privacy",
-  eyebrow: "Privacy · deployment policy",
   title: "Privacy and data controls",
   intro:
     "We minimize personal data, keep scan capabilities private by default, and separate essential processing from optional analytics, dataset reuse, and marketing.",
@@ -112,7 +110,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content:
-            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation, optional Google sign-in, PostHog for the product analytics the privacy banner offers, Nuanu Analytics, an analytics service run by Nuanu, for the seller dashboard's product analytics described above, Meta Pixel/CAPI for consented ads measurement, and Cloudflare Turnstile for abuse challenges. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. When you arrive at sign-in from one of our ads, AI Samurai, the ad tracker our ads run through, is told that this click led to a registration, by the click's identifier alone. Nothing else about you leaves: not your email address, nor anything else about your account. It does not depend on your privacy choices, and it happens only once: when the sign-in you start from the ad is the first time you sign in with your address, whether by an emailed link or with Google. If the store you then set up publishes its first product within 30 days of that sign-in, AI Samurai is told that too, once, by the same identifier alone; nothing about you or the store goes with it, and it does not depend on your privacy choices either. AI Samurai passes both reports on to Meta, where our ads run, with what it recorded itself when the ad was clicked; we send it nothing but the identifier. Each copy of the identifier is then erased, as the retention section says. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
+            "The architecture supports private Postgres storage and in-process Better Auth with Resend for passwordless confirmation and for emailing you a copy of your data when you ask for one (the message carries the whole copy), optional Google sign-in, PostHog for the product analytics the privacy banner offers, Nuanu Analytics, an analytics service run by Nuanu, for the seller dashboard's product analytics described above, Meta Pixel/CAPI for consented ads measurement, and Cloudflare Turnstile for abuse challenges. Choosing Google takes your browser to Google to authenticate; we do not request access to your mailbox, Drive or other Google services. When you arrive at sign-in from one of our ads, AI Samurai, the ad tracker our ads run through, is told that this click led to a registration, by the click's identifier alone. Nothing else about you leaves: not your email address, nor anything else about your account. It does not depend on your privacy choices, and it happens only once: when the sign-in you start from the ad is the first time you sign in with your address, whether by an emailed link or with Google. If the store you then set up publishes its first product within 30 days of that sign-in, AI Samurai is told that too, once, by the same identifier alone; nothing about you or the store goes with it, and it does not depend on your privacy choices either. AI Samurai passes both reports on to Meta, where our ads run, with what it recorded itself when the ad was clicked; we send it nothing but the identifier. Each copy of the identifier is then erased, as the retention section says. Apify acts as the isolated processor for optional passive public-page rendering; the API token is worker-only, the Actor is private and build-pinned, and output storage is deleted after validated ingestion. Provider adapters and destinations are disabled until configured; local success is not evidence of production delivery.",
         },
       ],
     },
@@ -127,6 +125,7 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
             "Expired or used registration intents: the executable retention cleanup removes them 7 days after they were used or expired.",
             "Unverified email: the same idempotent cleanup irreversibly anonymizes it after 30 days by default.",
             "Ad click identifier from sign-up: kept with the sign-in link, which works for an hour, until the link is used, or, if it never is, cleared from 7 days after the link expired; kept with a Google sign-in, which may take ten minutes, until your return from Google uses it up, or, if that never happens, cleared from 7 days after those ten minutes. If that is the first time you sign in with your address, it is kept with your account until the tracker accepts or refuses the report of the registration or a day of attempts has passed, and is then erased. A second copy, for the report of your store's first product, is kept with your account for at most 30 days from that sign-in: it is erased once that report is accepted or refused or a day of attempts has passed, or once the report can no longer be made, and when the 30 days end at the latest. What stays with your account, until the account is deleted, is a record of whether each report went through and when. Otherwise nothing about the click is kept once you sign in.",
+            "A request for a copy of your data: your address, encrypted, only while the copy is being tried, which is about an hour of tries; then a keyed fingerprint of the address with the request's dates and outcome, deleted from 30 days after the copy was sent or the tries ended, or with your reports when you delete them.",
             "Raw analytics events: 13 months.",
             "Seller dashboard analytics events in our database: an event not sent within 7 days is dropped unsent, as is every event recorded where a deployment is not set to send them, and every event is deleted 30 days after it was sent, dropped or refused. How long Nuanu Analytics keeps the events it receives is not stated here.",
             "Structured scan and check dataset: 24 months, then review or anonymization.",
@@ -141,10 +140,14 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
         {
           kind: "paragraph",
           content: [
-            text("Use the "),
-            link("data-request route", "/data-request"),
+            text("Ask for a copy of your data, or for its deletion, on the "),
+            link("data request page", "/data-request"),
             text(
-              " for access, correction, unsubscribe, or verified deletion. Deletion closes report access, revokes public shares, and removes or irreversibly anonymizes lead, waitlist, analytics-delivery, and owned-scan identifiers. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
+              " while signed in with your address. A copy of what Agentify holds for that address is emailed to it as a JSON file while you wait; if no try is confirmed, it is tried again automatically for about an hour of tries, and the page says for how many minutes. The file lists what it leaves out, such as sign-in secrets and other people's data. The same page gives the address to write to for a correction, and ",
+            ),
+            link("the unsubscribe page", "/email/unsubscribe"),
+            text(
+              " ends marketing email. Deletion closes report access, revokes public shares, and removes or irreversibly anonymizes lead, waitlist, analytics-delivery, and owned-scan identifiers. The sign-in for your address is removed with them unless it holds a seller dashboard. Deidentified score, coverage, check status, and coarse technical metrics may remain under the stated scan-dataset retention, but the original URL, host, access capability, share snapshot, and session join are removed from the retained scan record.",
             ),
           ],
         },
@@ -155,7 +158,6 @@ const privacyPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
 
 const termsPage = (config: PublicAppConfig): PublicEditorialPageModel => ({
   path: "/terms",
-  eyebrow: "Terms · diagnostic service",
   title: "Terms of use",
   intro: `Use ${config.displayBrand} only for lawful inspection of public websites. A diagnostic result is evidence from a bounded HTTP scan, not a certification or outcome guarantee.`,
   sections: [

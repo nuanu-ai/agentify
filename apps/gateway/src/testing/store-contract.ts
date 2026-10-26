@@ -516,6 +516,24 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.merchantById(A))?.integration).toBe("api");
       });
 
+      it("names the orders a switch would wait on, and switches nothing in saying so", async () => {
+        // Asked before a merchant is sent to approve a shop, which may never
+        // happen, so it must leave both the integration and selling as they are.
+        const store = await twoMerchants();
+        await store.publishCard(B, card("sku-1", "A room"), 10_000);
+        await store.addOrder(anOrder("ord_paid", "paid", { merchantId: A, createdAt: 1 }));
+        await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A, createdAt: 2 }));
+        await store.switchIntegration(B, "woocommerce");
+
+        expect(await store.switchHeldBy(A, "woocommerce")).toStrictEqual(["ord_paid"]);
+        expect(await store.switchHeldBy(A, "api")).toStrictEqual([]);
+        expect(await store.switchHeldBy(B, "api")).toStrictEqual([]);
+        expect((await store.merchantById(A))?.integration).toBe("api");
+        expect((await store.merchantById(B))?.integration).toBe("woocommerce");
+        expect(await store.selling(B)).toBe("open");
+        await expect(store.switchHeldBy("mch_nobody", "api")).rejects.toThrow(/mch_nobody/);
+      });
+
       it("is not held by an order that owes nothing but money", async () => {
         const store = await twoMerchants();
         await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A }));

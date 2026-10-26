@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DELETION_RETRY_INTERVAL_MS, startDeletionRetries } from "./deletion-retries";
+import { PRIVACY_RETRY_INTERVAL_MS, startPrivacyRetries } from "./privacy-retries";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -23,18 +23,18 @@ const CONFIGURED = {
   REPORT_IDENTITY_SECRET: "a-report-identity-secret-for-the-test",
 };
 
-describe("the retry of pending identity deletions", () => {
+describe("the retry of pending privacy requests", () => {
   it("asks at once and then every thirty seconds where the dashboard's private route is configured", () => {
     vi.useFakeTimers();
     const asked = rounds(async () => 0);
 
-    const retries = startDeletionRetries(CONFIGURED, asked.retry);
+    const retries = startPrivacyRetries(CONFIGURED, asked.retry);
     expect(asked.times()).toBe(1);
-    vi.advanceTimersByTime(DELETION_RETRY_INTERVAL_MS * 2);
+    vi.advanceTimersByTime(PRIVACY_RETRY_INTERVAL_MS * 2);
     expect(asked.times()).toBe(3);
 
     retries.stop();
-    vi.advanceTimersByTime(DELETION_RETRY_INTERVAL_MS);
+    vi.advanceTimersByTime(PRIVACY_RETRY_INTERVAL_MS);
     expect(asked.times()).toBe(3);
   });
 
@@ -45,8 +45,8 @@ describe("the retry of pending identity deletions", () => {
     vi.useFakeTimers();
     const asked = rounds(async () => 0);
 
-    startDeletionRetries(environment, asked.retry);
-    vi.advanceTimersByTime(DELETION_RETRY_INTERVAL_MS * 2);
+    startPrivacyRetries(environment, asked.retry);
+    vi.advanceTimersByTime(PRIVACY_RETRY_INTERVAL_MS * 2);
 
     expect(asked.times()).toBe(0);
   });
@@ -57,8 +57,8 @@ describe("the retry of pending identity deletions", () => {
       throw new Error("the dashboard did not answer");
     });
 
-    const retries = startDeletionRetries(CONFIGURED, asked.retry);
-    await vi.advanceTimersByTimeAsync(DELETION_RETRY_INTERVAL_MS);
+    const retries = startPrivacyRetries(CONFIGURED, asked.retry);
+    await vi.advanceTimersByTimeAsync(PRIVACY_RETRY_INTERVAL_MS);
 
     expect(asked.times()).toBe(2);
     retries.stop();

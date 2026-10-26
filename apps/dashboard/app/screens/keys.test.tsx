@@ -49,25 +49,20 @@ afterEach(() => {
   Reflect.deleteProperty(navigator, "clipboard");
 });
 
-describe("the count above the key list", () => {
-  it("counts the keys that work among the rows below, in the number it names", () => {
-    expect(listed([key("key_a", false), key("key_b", false), key("key_c", true)])).toContain(
-      "2 of the 3 keys below work.",
-    );
-    expect(listed([key("key_a", false)])).toContain("1 of the 1 key below works.");
-    expect(listed([key("key_a", true), key("key_b", true)])).toContain(
-      "0 of the 2 keys below work.",
+describe("the line above the key list", () => {
+  it("claims no count of working keys, which the rows' own states say", () => {
+    expect(listed([key("key_a", false), key("key_b", false), key("key_c", true)])).not.toMatch(
+      /\d+ of the \d+/,
     );
   });
 
-  it("says what the list is for a merchant with no key, rather than counting nothing", () => {
+  it("tells a merchant with no key that there is none, once, and why their code needs one", () => {
     const empty = listed([]);
 
-    expect(empty).toContain("You haven't created any API keys yet.");
-    expect(empty).toContain("Your code uses these keys to connect to Agentify.");
-    expect(empty).not.toMatch(/\b0 of the 0\b/);
-    // The notes explain rows, and there are none.
-    expect(empty).not.toContain("A revoked key stops working");
+    expect(empty.match(/no keys/gi)).toHaveLength(1);
+    expect(empty).toMatch(/needs a key/i);
+    // The line under the list explains rows, and there are none.
+    expect(empty).not.toMatch(/last call/i);
   });
 });
 

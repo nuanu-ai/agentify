@@ -33,10 +33,12 @@ watches the checks run. The full report is unlocked with an email address and
 the one-time link sent to it, and that sign-in is the whole site's: the report
 carries one control that opens the merchant dashboard, whose own sign-in takes
 the same kind of link or, where it is configured, a Google account. There is no
-password and no invitation code (ADR-0026). The dashboard then offers one
-control, and its press creates the merchant and asks for the seller name buyers
-will see. That is the only way an account or a merchant comes into being; no
-command at a server's terminal makes either (ADR-0014).
+password and no invitation code (ADR-0026). A sign-in on the dashboard's page
+creates the merchant and asks for the seller name buyers will see. Somebody
+who signed in to read a report is offered one control instead, and its press
+does the same, so reading a report never makes anybody a merchant. That is the
+only way an account or a merchant comes into being; no command at a server's
+terminal makes either (ADR-0014).
 
 A merchant then sells in one of two ways, one at a time (ADR-0036). Either
 their engineer writes code against the SDK: the dashboard issues the key that
@@ -105,9 +107,8 @@ To sign in, open `http://localhost:8080/dashboard/sign-in`, enter an email
 address, and take the one-time link from the application's log
 (`docker compose logs app`, where the gateway and the dashboard run as one
 process); the local stack writes every message there instead of sending it.
-Pressing the link's confirmation button signs you in, and the dashboard then
-offers one button, "Open my seller dashboard", whose press creates your
-merchant and asks for the seller name. That merchant is a new one, and it is
+Pressing the link's confirmation button signs you in, creates your merchant and
+asks for the seller name. That merchant is a new one, and it is
 not `the_merchant` — the merchant this laptop's stack seeds at start-up, whose
 two cards the merchant process publishes and `pnpm buy` buys. A deployed
 channel seeds nothing. Somebody who has just signed in has no cards and no
@@ -255,7 +256,7 @@ its own.
 | --- | --- |
 | `apps/app` | The application process: the gateway and the dashboard in one, which `pnpm --filter @agentify/app dev` runs on the host and the `app` image runs on a channel. |
 | `apps/gateway` | The payment edge, the order runner and the queue. Ports in `src/ports`, their implementations in `src/adapters`. |
-| `apps/dashboard` | The merchant's screens: sign-in, cards, orders, receipts, integrations, keys, settings and the WooCommerce connector, and the identity route the scanner calls. React Router pages under `app/`, server-rendered in the application's process and built by `pnpm --filter @agentify/dashboard build`; their server half is in `src/` (`docs/research/35-one-process.md`). |
+| `apps/dashboard` | The merchant's screens: sign-in, products, orders, receipts, integrations, keys, settings and the WooCommerce connector, and the identity route the scanner calls. React Router pages under `app/`, server-rendered in the application's process and built by `pnpm --filter @agentify/dashboard build`; their server half is in `src/` (`docs/research/35-one-process.md`). |
 | `apps/web` | The scanner: the public site, the checks, the report, and the merchant landing at `/sell`. React Router pages and API routes under `app/`, on Express in `server/`; `pnpm --filter @agentify/web build` makes one process with every package it imports bundled in, which its image runs with nothing installed beside it. |
 | `apps/scanner-worker`, `apps/browser-observer-actor` | The scanner's background process and its passive browser observation. |
 | `apps/docs` | The documentation at `/docs`: the merchant pages and the scanner's, written in Markdown and drawn by React Router into static files at build time (`pnpm --filter @agentify/docs build`), which Caddy serves. Its JSON examples are test fixtures (see below); `WRITING.md` says how it is written and which Markdown it understands. |

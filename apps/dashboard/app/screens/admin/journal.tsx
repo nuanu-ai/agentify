@@ -14,6 +14,7 @@ import type { JournalLineView, JournalView } from "../../../src/admin/accounts.j
 import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
 import { shortened } from "../../components/copy.js";
 import { ListEmpty } from "../../components/list.js";
+import { Pager } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import styles from "./accounts.module.css";
 
@@ -105,7 +106,7 @@ function What({ line, onItsPage }: Readonly<{ line: JournalLineView; onItsPage: 
         <>Asked to forget {account}</>
       );
     case "first_operator":
-      return <>Gave {account} the flag as the channel's first operator</>;
+      return <>Gave {account} the flag as the first operator here</>;
   }
 }
 
@@ -153,7 +154,7 @@ export function JournalList({
         </li>
         {lines.map((line) => (
           <li className="list-row" key={line.sequence}>
-            <div className="cell cell-fact mono">
+            <div className="cell cell-fact">
               <Moment at={line.at} />
             </div>
             <div className="cell cell-ident">
@@ -200,25 +201,14 @@ const addressOf = (kind: JournalView["kind"], q: string, before: number | null):
 
 const UNSEARCHED: Readonly<Record<NonNullable<JournalView["unsearched"]>, string>> = {
   "no-such-account":
-    "No account on this channel has that address now. A forgotten account is searched by its identifier, which its rows keep.",
+    "No account here has that email address now. A forgotten account is searched by its ID, which its rows keep.",
   "not-searchable":
-    "The journal is searched by a merchant's identifier (mch_…), or an account's address or identifier.",
+    "The journal is searched by a merchant ID (mch_…), an account's email address or an account ID. Reasons are not searched.",
 };
 
 export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
   return (
     <>
-      <div className="lede">
-        <div>
-          <p>
-            Every administrative action on this channel, newest first, with the reason given. A row
-            commits with its action, so an action without its row does not exist, and the
-            application never changes or removes a row. A row naming the terminal comes from the one
-            statement that gives the flag back to a channel left with no operator, run on its host,
-            which does not know who typed it.
-          </p>
-        </div>
-      </div>
       <div className={`list-tools ${styles.tools}`}>
         <Form method="get" action="/admin/journal" role="search" className="search">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -229,7 +219,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
             type="search"
             name="q"
             aria-label="Search the journal"
-            placeholder="Search by merchant ID, account address or ID"
+            placeholder="Merchant ID, account email or ID"
             defaultValue={view.query}
           />
           {view.kind === "all" ? null : <input type="hidden" name="kind" value={view.kind} />}
@@ -239,8 +229,12 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
             const words = (
               <>
                 {KIND_LABELS[one.kind]}{" "}
-                {view.unsearched !== null ? null : (
-                  <b>{one.count === null ? COULD_NOT_BE_READ : one.count}</b>
+                {view.unsearched !== null ? null : one.count === null ? (
+                  <span className="badge badge-unknown" title={COULD_NOT_BE_READ}>
+                    <span className="sr-only">{COULD_NOT_BE_READ}</span>
+                  </span>
+                ) : (
+                  <b>{one.count}</b>
                 )}
               </>
             );
@@ -255,48 +249,50 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
             );
           })}
         </nav>
-        {view.unsearched === null ? null : (
-          <p className="search-cut">
-            {UNSEARCHED[view.unsearched]}{" "}
-            <Link to={addressOf(view.kind, "", null)}>Clear the search</Link>
-          </p>
-        )}
       </div>
-      {view.lines.length === 0 ? (
+      {view.unsearched !== null ? (
+        <ListEmpty>
+          {UNSEARCHED[view.unsearched]}{" "}
+          <Link to={addressOf(view.kind, "", null)}>Clear the search</Link>
+        </ListEmpty>
+      ) : view.lines.length === 0 ? (
         <ListEmpty>
           {view.before !== null
             ? "No older rows."
             : view.query !== "" || view.kind !== "all"
               ? view.query === ""
-                ? "No action of this kind on this channel."
+                ? "No action of this kind here."
                 : view.searchedAs === "merchant"
                   ? `No row is about the merchant ${view.query}.`
                   : view.searchedAs === "address"
                     ? `No row is about the account at ${view.query}.`
-                    : `No row is about an account with the identifier “${view.query}”; a reason is not searched.`
-              : "No administrative action on this channel yet."}
+                    : `No row is about an account with the ID “${view.query}”.`
+              : "No administrative action here yet."}
         </ListEmpty>
       ) : (
         <JournalList lines={view.lines} label="Administrative actions" />
       )}
-      <nav className="cut" aria-label="Pages">
-        <span>
-          {`${view.lines.length} of ${view.total} shown, newest first${
-            view.before === null ? "" : ", older than the page before"
-          } · read `}
-          <Moment at={view.readAt} />
-        </span>
-        {view.before === null ? null : (
-          <Link to={addressOf(view.kind, view.query, null)}>Newest</Link>
-        )}
-        {view.next === null ? null : (
-          <Link to={addressOf(view.kind, view.query, view.next)}>Older</Link>
-        )}
-      </nav>
-      <p className="note">
-        Reading is not journaled, and nothing that changes an order, a payment or a merchant's own
-        settings appears here, because the workspace does none of those things.
-      </p>
+      {view.unsearched !== null ? null : (
+        <Pager
+          range={
+            <>
+              {`${view.lines.length} of ${view.total} shown, newest first${
+                view.before === null ? "" : ", older than the page before"
+              } · read `}
+              <Moment at={view.readAt} />
+            </>
+          }
+          previous={{
+            to: view.before === null ? null : addressOf(view.kind, view.query, null),
+            words: "Newest",
+            beside: false,
+          }}
+          next={{
+            to: view.next === null ? null : addressOf(view.kind, view.query, view.next),
+            words: "Older",
+          }}
+        />
+      )}
     </>
   );
 }

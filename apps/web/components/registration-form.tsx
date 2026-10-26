@@ -1,11 +1,10 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { PHONE_INPUT_PATTERN } from "@agentify/scanner-contracts/browser";
+import { useVisitor } from "@agentify/ui";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
-
 import { waitLabel } from "../lib/link-answer";
 import { press } from "../lib/press";
 import { type RegistrationField, refusedField } from "../lib/registration-refusals";
-import { useVisitor } from "../lib/visitor";
 import styles from "./registration-form.module.css";
 
 type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error" | "stale";

@@ -19,7 +19,7 @@ import type { Announcement, AskedInTheDashboard } from "@agentify/gateway/announ
 import { SIGN_OUT_EVERYWHERE, STOP_ALL_SELLING } from "./control-labels.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
-import { moment } from "./words.js";
+import { momentInUtc } from "./moments.js";
 
 export interface Screens {
   readonly wallet: string;
@@ -48,7 +48,7 @@ const IF_NOT_YOU =
  * announced.
  */
 const PAUSE_THEN_SET = (settings: string): string =>
-  `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on the Cards screen, which stops new sales at once. Then press ${SIGN_OUT_EVERYWHERE} in Settings, which ends every session of your account, the one you press it from included: ${settings}. Then sign in again with a new link and set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
+  `Somebody else may be signed in to your dashboard. First press ${STOP_ALL_SELLING} on Products, which stops new sales at once. Then press ${SIGN_OUT_EVERYWHERE} in Settings, which ends every session of your account, the one you press it from included: ${settings}. Then sign in again with a new link and set your own address there; that waits forty-eight hours and is announced, so keep selling stopped until it applies.`;
 
 /**
  * The split a wallet is paid through is checked by no eye, so the message is
@@ -67,7 +67,7 @@ export function announcementMessage(
 ): Message {
   switch (announcement.kind) {
     case "wallet_change": {
-      const notBefore = moment(announcement.not_before);
+      const notBefore = momentInUtc(announcement.not_before);
       const lead =
         `A change of the wallet your share of every sale is paid out to was asked for ${askedIn(announcement.asked_with)}.` +
         ` From ${announcement.from} to ${announcement.to}.`;

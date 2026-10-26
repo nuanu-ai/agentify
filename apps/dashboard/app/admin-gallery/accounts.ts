@@ -15,9 +15,11 @@ import {
   type AccountsListView,
   type JournalLineView,
   type JournalView,
+  pressRefusalSaid,
   refusalSaid,
 } from "../../src/admin/accounts.js";
 import type { ActionAnswer } from "../../src/admin/action.js";
+import { NO_REASON } from "../../src/admin/words.js";
 import { askedIn, listingOf } from "../../src/listing.js";
 import { momentView } from "../../src/views.js";
 import type { Trouble } from "../answer.js";
@@ -72,13 +74,8 @@ const ROWS: readonly AccountRowView[] = [
   }),
 ];
 
-const listOf = (
-  rows: readonly AccountRowView[],
-  query: string,
-  forgetting: boolean,
-): AccountsListView => ({
+const listOf = (rows: readonly AccountRowView[], query: string): AccountsListView => ({
   readAt: READ_AT,
-  forgetting,
   listing: listingOf({
     rows,
     asked: askedIn(
@@ -170,9 +167,9 @@ const LINES: readonly JournalLineView[] = [
 const journalOf = (fields: Partial<JournalView>): JournalView => ({
   readAt: READ_AT,
   kind: "all",
+  // The test channel's kinds: it forgets accounts and admits nobody.
   kinds: [
     { kind: "all", count: LINES.length },
-    { kind: "admission", count: 0 },
     { kind: "keys", count: 2 },
     { kind: "sessions", count: 1 },
     { kind: "flag", count: 3 },
@@ -196,6 +193,7 @@ const SELLER_PAGE: Extract<AccountPageView, { kind: "found" }> = {
   forget: { kind: "live-channel" },
   history: { lines: LINES.filter((one) => one.subject.id === SELLER), total: 1 },
   pressed: null,
+  stepUp: null,
 };
 
 const MY_PAGE: Extract<AccountPageView, { kind: "found" }> = {
@@ -226,6 +224,7 @@ const STEP_UP: ActionAnswer = {
     googleEnabled: true,
     link: null,
   },
+  typed: "Their co-founder joins the support rota and asked to see the workspace.",
 };
 
 const chromeIn = (mode: SurfaceMode) => ({
@@ -260,7 +259,7 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       "The accounts that made a merchant or hold the flag are listed, newest session first; the ones that only signed in are counted.",
     path: "/admin/accounts",
     mode: "live",
-    loaded: { "routes/admin/accounts": listOf(ROWS, "", false) },
+    loaded: { "routes/admin/accounts": listOf(ROWS, "") },
   },
   {
     id: "dashboard-admin-accounts-test",
@@ -269,7 +268,7 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
     cause: "The segment is a link, so the filtered list has an address of its own.",
     path: "/admin/accounts?show=operators",
     mode: "test",
-    loaded: { "routes/admin/accounts": listOf(ROWS, "show=operators", true) },
+    loaded: { "routes/admin/accounts": listOf(ROWS, "show=operators") },
   },
   {
     id: "dashboard-admin-accounts-no-match",
@@ -278,7 +277,7 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
     cause: "Nothing listed matches; an account that only signed in is found by its whole address.",
     path: "/admin/accounts?q=nobody",
     mode: "live",
-    loaded: { "routes/admin/accounts": listOf(ROWS, "q=nobody", false) },
+    loaded: { "routes/admin/accounts": listOf(ROWS, "q=nobody") },
   },
   {
     id: "dashboard-admin-accounts-names-unread",
@@ -296,7 +295,6 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
             : { ...one, merchant: { id: one.merchant.id, name: "could-not-be-read" as const } },
         ),
         "",
-        false,
       ),
     },
   },
@@ -307,8 +305,9 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
     cause: "The read of the accounts failed, so the page says so and offers itself again.",
     path: "/admin/accounts",
     mode: "live",
+    loaded: { "routes/admin/accounts": null },
     failed: {
-      "routes/gate": new ErrorResponseImpl(500, "", {
+      "routes/admin/accounts": new ErrorResponseImpl(500, "", {
         kind: "unread",
         chrome: chromeIn("live"),
         again: "/admin/accounts",
@@ -445,7 +444,9 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       ...SELLER_PAGE,
       pressed: pressedAs("grant_operator", {
         kind: "refused",
-        said: "Write the reason; it is kept in the journal. Nothing was changed.",
+        said: NO_REASON,
+        typed: "",
+        field: "reason",
       }),
     },
     { press: "grant-operator" },
@@ -460,7 +461,8 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       ...COLLEAGUE_PAGE,
       pressed: pressedAs("remove_operator", {
         kind: "refused",
-        said: `${refusalSaid("mail_not_handed").slice(0, 1).toUpperCase()}${refusalSaid("mail_not_handed").slice(1)}.`,
+        said: pressRefusalSaid("mail_not_handed"),
+        typed: "They left the support rota at the end of October.",
       }),
     },
     { press: "remove-operator" },
@@ -522,7 +524,10 @@ export const ACCOUNTS_STATES: readonly AdminGalleryState[] = [
       "routes/admin/journal": journalOf({
         query: "lost laptop",
         unsearched: "not-searchable",
-        kinds: journalOf({}).kinds.map((one) => ({ ...one, count: null })),
+        kinds: (["all", "admission", "keys", "sessions", "flag"] as const).map((kind) => ({
+          kind,
+          count: null,
+        })),
         lines: [],
         total: 0,
       }),

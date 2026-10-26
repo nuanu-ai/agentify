@@ -19,26 +19,25 @@ import { WALLET_CHANGE_MS } from "./deadlines.js";
 /**
  * The rule is the contract's schema, applied by asking it. The sentence also
  * says that nothing here looks the address up on a chain, so a merchant knows
- * their own check is the only one there is.
+ * their own check is the only one there is. It never offers lower case, the
+ * one spelling in which a mistyped address passes.
  */
 export const WALLET_RULE =
-  "Paste an EVM address: 0x followed by 40 hexadecimal characters. Use the spelling from your" +
-  " wallet or all lowercase. We check the format and checksum, not the network or the owner, so" +
-  " copy the address from your wallet instead of typing it.";
+  "0x followed by forty letters and digits. We can't tell whose it is or which network it's on, so copy it from your wallet.";
 
-/** So a change that does not apply at once is not read as one that failed. */
+/**
+ * So a change that does not apply at once is not read as one that failed, and
+ * so nobody expects the money already in the current contract to follow it:
+ * that contract pays the wallet written into it, for good.
+ */
 export const LIVE_CHANGE_WAITS =
-  "A different address takes effect forty-eight hours after every account of your merchant" +
-  " is sent a message about it. Until then buyers pay into the payout contract of the address above.";
+  "A new wallet starts forty-eight hours after we email everyone on your account." +
+  " Money already in your payout contract is still paid to your current wallet.";
 
 /** Said while a change is on its way on live, so that wait does not read as a frozen page. */
-export const CHANGE_ON_ITS_WAY =
-  "Asking for the change. Every account of your merchant is sent a message about a different" +
-  ` address before it is recorded, which can take up to ${WALLET_CHANGE_MS / 1_000} seconds.`;
+export const CHANGE_ON_ITS_WAY = `Emailing everyone on your account first. This can take up to ${WALLET_CHANGE_MS / 1_000} seconds.`;
 
-export const WALLET_NEEDED =
-  "An address is needed here. Copy it out of the wallet you want to be paid in rather than" +
-  " typing it, and paste the whole of it.";
+export const WALLET_NEEDED = "Paste your wallet's address.";
 
 /**
  * On this field, not knowing whether it was saved is the difference between
@@ -46,21 +45,31 @@ export const WALLET_NEEDED =
  */
 const NOTHING_WAS_SAVED = "It was not saved.";
 
+/** What in an address of the wrong shape makes it one: its start, a character, or its length. */
+const wrongInTheShape = (address: string): string => {
+  if (!address.startsWith("0x")) return "This doesn't start with 0x.";
+  const strange = [...new Set(address.slice(2).match(/[^0-9a-fA-F]/gu) ?? [])];
+  if (strange.length > 0) {
+    return `${strange.map((one) => (one === " " ? "A space" : `“${one}”`)).join(", ")} can't be in a wallet address.`;
+  }
+  return `This is ${address.length} characters long, not 42.`;
+};
+
 /**
  * Two rules fail differently: forty characters that are not an address at all,
  * and forty of the right shape whose capitals disagree, which means a character
  * is wrong. "That is not an address" would be untrue of the second and leave a
- * merchant re-reading a spelling that looks fine.
+ * merchant re-reading a spelling that looks fine. A mistyped address is never
+ * told to drop its capitals, which are the only warning of the typo.
  */
 export const whatIsWrongWithTheWallet = (address: string): string | null => {
   const read = EvmAddressSchema.safeParse(address);
   if (read.success) {
     return null;
   }
-  const said = read.error.issues[0]?.message;
-  return said === undefined
-    ? NOTHING_WAS_SAVED
-    : `${said.slice(0, 1).toUpperCase()}${said.slice(1)}. ${NOTHING_WAS_SAVED}`;
+  return read.error.issues.every((issue) => issue.code === "custom")
+    ? `This address has a typo: wallets mark every address with a check in its capital letters, and these don't match. Copy it again from your wallet and paste it whole. ${NOTHING_WAS_SAVED}`
+    : `${wrongInTheShape(address)} A wallet address is 0x followed by forty letters and digits. ${NOTHING_WAS_SAVED}`;
 };
 
 /**
@@ -88,7 +97,7 @@ export const NOT_A_PAYOUT_WALLET: Readonly<Record<NotAWallet, string>> = {
   multicall3: `This is Multicall3, the public contract a payout is sent to, not a wallet: anybody could take a share paid to it. ${NOTHING_WAS_SAVED}`,
   usdc: `This is the USDC token contract, not a wallet, so your share could never come back from it. ${NOTHING_WAS_SAVED}`,
   own_payout_split: `This is one of your own payout contracts, not a wallet: a share paid to it would be split again, with Agentify's commission taken a second time, on its way to the wallet that contract pays. ${NOTHING_WAS_SAVED}`,
-  another_merchants_payout_split: `This is another merchant's payout contract, not a wallet: a share paid to it would go to that merchant. ${NOTHING_WAS_SAVED}`,
+  another_merchants_payout_split: `This is another business's payout contract, not a wallet: a share paid to it would go to that business. ${NOTHING_WAS_SAVED}`,
 };
 
 /** The address a screen read from the gateway; null where none is set. */

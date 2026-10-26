@@ -25,7 +25,7 @@
   border-radius: var(--radius-pill);
   background: var(--fg);
   color: var(--bg);
-  font: 500 var(--text-caption) / 1.4 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   vertical-align: 3px;
@@ -36,8 +36,8 @@
   align-items: center;
 }
 
-/* Which channel this is, at the head of the sidebar on every page, live
-   included: an operator approves on one channel at a time. */
+/* The live channel's name at the head of the sidebar: an operator approves
+   on one channel at a time, and any other channel has its band instead. */
 .op-channel {
   display: grid;
   gap: 2px;
@@ -57,20 +57,11 @@
   color: var(--fg);
 }
 
-.op-channel.test .badge::before {
-  color: var(--notice-ink);
-}
-
-.op-channel-sub {
-  color: var(--muted);
-  font: var(--text-caption) / 1.5 var(--font-mono);
-}
-
 /* A group of sections under a quiet caption. */
 .op-group {
   margin: 14px 26px 2px;
   color: var(--faint);
-  font: 500 var(--text-caption) / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -86,11 +77,26 @@
 }
 
 /* The bar over the page: the title, and at its end the one box that finds
-   anything by what an operator has in hand. */
-.op-lookup {
-  position: relative;
+   anything by what an operator has in hand. A long title, such as an email
+   address, wraps rather than pushing the box, whose flex item is the search
+   element around its form. */
+.top-inner:has(.op-lookup) > .top-title {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-workspace .top-inner:has(.op-lookup) {
+  padding-block: 14px;
+}
+
+.top-inner > search:has(> .op-lookup) {
   flex: 0 1 420px;
   min-width: 0;
+}
+
+.op-lookup {
+  position: relative;
 }
 
 .op-lookup > svg {
@@ -112,14 +118,20 @@
   font-size: 0.9375rem;
 }
 
-/* As of when a screen's figures were read, under its title's line. */
+/* As of when a screen's figures were read: the first line under the bar,
+   standing clear of the bar's rule as a screen's first block does, in the
+   page's own face, since a moment is no identifier. */
 .op-asof {
+  margin-top: var(--space-card);
   color: var(--muted);
-  font: var(--text-caption) / 1.5 var(--font-mono);
+  font-size: var(--text-small);
+  line-height: var(--leading-ui);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Where the sidebar gives way to the menu, the channel moves to the head of
-   the content, so it stays on every page at every width. */
+/* Where the sidebar gives way to the menu, the live channel moves to the
+   head of the content, so it stays on every page at every width; any other
+   channel has its band there already. */
 .op-channel-line {
   display: none;
 }
@@ -132,7 +144,7 @@
     gap: 4px 10px;
     margin-top: 18px;
     color: var(--muted);
-    font: var(--text-caption) / 1.5 var(--font-mono);
+    font: var(--text-caption) / var(--leading-ui) var(--font-mono);
   }
 
   .op-channel-line .badge {
@@ -153,17 +165,44 @@
 .site-menu-panel .op-menu-channel {
   margin: 4px 12px 8px;
   color: var(--muted);
-  font: var(--text-caption) / 1.5 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 .op-figures {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
+/* Each tile takes three rows of the grid, shared with the tiles beside it,
+   so a label that wraps moves every figure in the row down together and the
+   figures stand on one line. The label is a caption in the page's face and
+   the figure a number in figures of one width: neither is an identifier. */
+.op-figures > .tile {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: var(--space-tight);
+}
+
+.op-figures > .tile > * {
+  margin: 0;
+}
+
+.op-figures .tile .label {
+  font: 500 var(--text-small) / var(--leading-ui) var(--font-sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.op-figures .tile .figure {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .tile .figure small {
   margin-left: 4px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   letter-spacing: 0;
 }
 
@@ -174,11 +213,10 @@
 /* --- panels -------------------------------------------------------------- */
 
 .op-panel {
-  margin-top: 28px;
+  margin-top: var(--space-section);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-panel);
   background: var(--surface);
-  box-shadow: var(--shadow-soft);
 }
 
 .op-panel-head {
@@ -186,13 +224,13 @@
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px 16px;
-  padding: 22px 24px 0;
+  gap: var(--space-snug) var(--space-block);
+  padding: var(--space-card) var(--space-card) 0;
 }
 
 .op-panel-head h2 {
   margin: 0;
-  font-size: 1.1875rem;
+  font-size: var(--text-heading);
 }
 
 .op-panel-head p {
@@ -201,11 +239,11 @@
 }
 
 .op-panel-body {
-  padding: 18px 24px 24px;
+  padding: var(--space-block) var(--space-card) var(--space-card);
 }
 
 .op-panel-foot {
-  padding: 0 24px 22px;
+  padding: 0 var(--space-card) var(--space-card);
   color: var(--muted);
   font-size: var(--text-small);
 }
@@ -213,12 +251,12 @@
 .op-two {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 18px;
+  gap: var(--space-card);
   align-items: start;
 }
 
 .op-two > .op-panel {
-  margin-top: 28px;
+  margin-top: var(--space-section);
 }
 
 @media (max-width: 1100px) {
@@ -272,6 +310,14 @@
 .op-chart .end {
   fill: var(--fg);
   font-weight: 600;
+}
+
+/* Drawn narrower than its own width, the chart's words are set larger in its
+   units, so they stay about as large as a caption at every width. */
+@media (min-width: 561px) and (max-width: 1100px) {
+  .op-chart text {
+    font-size: 16px;
+  }
 }
 
 /* On a phone the chart is drawn at under half its size, so its words are
@@ -369,8 +415,7 @@
 }
 
 .list-row .num {
-  font-family: var(--font-mono);
-  font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
@@ -393,4 +438,34 @@
   color: var(--muted);
   font-size: var(--text-label);
   font-weight: 400;
+}
+
+/* In the narrow window's menu the groups list their sections one under
+   another, as the sidebar does, lined up with the menu's other links. */
+.site-menu-panel .tabs.op-tabs {
+  display: grid;
+  gap: var(--space-snug);
+}
+
+.site-menu-panel .op-tabs > a,
+.site-menu-panel .op-tabs > span {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 44px;
+  padding: 0 var(--space-control);
+  border-radius: var(--radius-control);
+  color: var(--fg-2);
+  font-size: 0.9375rem;
+  font-weight: 550;
+  box-shadow: none;
+}
+
+.site-menu-panel .op-tabs > [aria-current="page"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.site-menu-panel .op-group {
+  margin: var(--space-control) var(--space-control) var(--space-snug);
 }

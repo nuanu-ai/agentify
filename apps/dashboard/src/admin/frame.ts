@@ -6,7 +6,12 @@
  * a pill that says nothing is not a claim that nothing waits.
  */
 
-import { CHANNEL_NAMES, type ChannelView, type SectionCounts } from "@agentify/ui/workspace-view";
+import {
+  CHANNEL_NAMES,
+  type ChannelView,
+  inChannel,
+  type SectionCounts,
+} from "@agentify/ui/workspace-view";
 import type { DashboardConfig } from "../config.js";
 import type { Operator } from "./access.js";
 
@@ -17,15 +22,22 @@ export interface AdminFrameView {
 
 const CHAINS: Readonly<Record<number, string>> = { 8453: "Base", 84532: "Base Sepolia" };
 
-export const channelOf = (config: DashboardConfig): ChannelView => ({
+const channelOf = (config: DashboardConfig): ChannelView => ({
   mode: config.surfaceMode,
   name: CHANNEL_NAMES[config.surfaceMode],
-  line: `${new URL(config.publicBaseUrl).host} · ${
+});
+
+/**
+ * The channel as a message names it, such as "in production at agentify.ad
+ * (Base)": a letter has no band and no address bar, so it says the site's host
+ * beside the channel's name, and the chain.
+ */
+export const channelWrittenOf = (config: DashboardConfig): string =>
+  `${inChannel(config.surfaceMode)} at ${new URL(config.publicBaseUrl).host} (${
     config.walletChain === null
       ? "no chain"
       : (CHAINS[config.walletChain] ?? `chain ${config.walletChain}`)
-  }`,
-});
+  })`;
 
 /** How long the frame waits for an area's counts: a page is answered whole. */
 const COUNTS_WITHIN_MS = 2_000;

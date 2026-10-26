@@ -923,11 +923,11 @@ describe("the scanner's addresses for its pages in the documentation", () => {
     await context.close();
   });
 
-  it("are where the scanner's header leads", async () => {
+  it("are where the scanner's front page leads", async () => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await context.newPage();
-    await page.goto(`${edge.origin}/privacy`);
-    await page.locator("header .site-nav a", { hasText: "Methodology" }).click();
+    await page.goto(`${edge.origin}/`);
+    await page.locator('main a[href="/docs/scanner/methodology"]').first().click();
     await page.waitForURL(`${edge.origin}/docs/scanner/methodology`);
 
     expect(await page.locator(".doc h1").textContent()).toContain(

@@ -2,9 +2,9 @@
 
 You run a WooCommerce shop and want buyers — programs buying on a person's
 behalf — to buy from it without anybody writing code. The WooCommerce page of
-your dashboard connects the shop, imports its products as cards, and from then
-on the shop takes the paid orders. This page is what each of those steps does
-to your shop, your cards and your money.
+your dashboard connects the shop, imports its products, and from then on the
+shop takes the paid orders. This page is what each of those steps does to your
+shop, your products on Agentify and your money.
 
 The connector runs on the test channel, where the money is not real, and on
 the live channel, where buyers pay in real USDC on Base. Each channel has its
@@ -27,7 +27,7 @@ rate you set, as [A shop priced in another currency](#a-shop-priced-in-another-c
 describes. The shop's own settings have to allow it too, as
 [Settings of your whole shop](#settings-of-your-whole-shop) describes.
 
-Such a product becomes one of two kinds of card:
+Such a product is imported as one of two kinds:
 
 | The product in your shop | What the buyer gets | What your shop gets |
 | --- | --- | --- |
@@ -145,7 +145,7 @@ Settings → Tax → Prices entered with tax):
 
 A buyer of a download gives no address, so its order is created without one,
 and WooCommerce then taxes it at your shop's own address. Where your prices
-hold their tax, the buyer pays the price on your card wherever they are, and
+hold their tax, the buyer pays the price Agentify shows wherever they are, and
 the order shows the tax of your own address inside that price. Where your
 prices are entered before tax, the tax would be added for your own city on
 every buyer's price, whoever and wherever the buyer is, so such a download is
@@ -245,7 +245,7 @@ eighteen thousand rupiah, with a dot only before a fraction and nothing between
 thousands. The currency is your shop's own setting, read from the shop; you do
 not choose it, and a shop priced in US dollars is asked for no rate. Nothing
 from such a shop is published until you set one, and saving a rate imports
-your products again, so your cards carry their prices at it.
+your products again, so they are listed at prices in dollars at it.
 
 A buyer pays in US dollars, as USDC: your shop's price, or for a parcel your
 cart's total, divided by your rate and rounded up to the next cent, so, for
@@ -295,34 +295,44 @@ sale, for example "240000 IDR in your shop, paid as 13.34 USDC at your rate of
 ## Your shop or your code, one at a time
 
 You sell through the shop or through your own code with the Agentify SDK, never
-both. Pressing Connect switches you to the shop at once, before you approve:
-the cards your code published go off sale and your code receives no orders
-until you disconnect the shop.
+both. You move to the shop when it sends Agentify its keys, which it does the
+moment you approve access: from then the products your code published are off
+sale and your code receives no orders until you disconnect the shop. The
+WooCommerce page says how many products that takes off sale before you press
+Connect. Until the keys arrive nothing changes, so if you decline or close the
+approval screen, your code goes on selling as before. Keys that grant less than
+Read/Write switch nothing either, because every purchase through them would be
+refused; the page asks you to connect again and approve Read/Write.
 
-The switch is refused while your code is still working on an order. Each such
-order has to end first: delivered or refused by your code, paid or left unpaid
-by its buyer, or closed when its time runs out. The dashboard names those
-orders, pausing all sales on Cards keeps new ones from arriving meanwhile, and
-you press Connect again once they have ended. Selling then stays paused after
-the switch, the shop's cards included, until you resume it on Cards.
+Connect and Sell through this shop are refused while an order from your code
+is still open, and each such order has to end first. A purchase its buyer has
+not paid yet ends within a minute, paid or lapsed, so the page asks you to try
+again then. An order your code took on ends when your code delivers or refuses
+it, or when its time runs out; the page names those orders and links to them on
+Orders. If you paused all sales on Products to keep new orders from arriving
+meanwhile, selling stays paused after the switch until you resume it there.
 
-If you pressed Connect and never approved, you sell through a shop that is not
-connected, and nothing sells. The WooCommerce page offers the way back to your
-own code; its cards come back with selling stopped until you resume it on
-Cards.
+An order from your code can also open while you are approving. The shop is then
+connected when its keys arrive, but you keep selling through your code, and the
+WooCommerce page offers Sell through this shop to press once that order has
+ended.
+
+If you sell through the shop while none is connected, nothing sells. The
+WooCommerce page offers the way back to your own code; its products come back
+with selling stopped until you resume it on Products.
 
 ## Importing
 
 An import reads up to 2,000 products and publishes the ones the connector
 supports. A shop with more than 2,000 products is refused whole rather than cut
-short. Running the import again updates the same cards and does not double
-them, and a card you paused stays paused through it.
+short. Running the import again updates the products it published before and
+does not double them, and a product you paused stays paused through it.
 
 The page answers once every product has been read and published, so a large
 shop takes a while: the import asks your shop for a hundred products at a time,
 a few requests at once, and how long that takes depends on how quickly your
-shop answers. If you leave the page, the import carries on and the cards it
-publishes appear on Cards, but its list of what was published and what was
+shop answers. If you leave the page, the import carries on and the products it
+publishes appear on Products, but its list of what was published and what was
 not shows only on the page that started it. One import of a shop runs at a
 time; pressing Import again while one runs reads nothing and says so. A shop
 that reports more than 2,000 products is refused on the first page it
@@ -330,23 +340,26 @@ answers.
 
 Nothing is read until the name your products are sold under is set in
 Settings, and the wallet your share is paid out to on a channel where payments
-settle: without them every card would be refused.
+settle: without them every product would be refused, so Import stays unavailable
+and says which of them to set. A shop priced in another currency imports
+nothing until its rate is set, which the page asks for first.
 
-The result lists every product it read under one of these headings:
+The result lists every product it read under one of these headings, in this
+order:
 
 | Heading | What happened | What you do |
 | --- | --- | --- |
-| Published | the product is one of your cards | nothing; whether it sells is on Cards |
-| To fix | Agentify's publishing rules refused it, in the sentences shown | change what they name and import again; a length is counted with the markup removed, so your shop's editor shows a larger number |
-| No verdict | Agentify did not answer about it, so whether it was published is not known | import again later |
-| Not attempted | the import stopped at the first product with no verdict | import again later |
-| Not imported | the connector could not make a card of it | the reason says what, if anything, can be changed in the shop |
+| To fix | Agentify's publishing rules refused it, in the sentences shown, or the connector left it for something the shop can change, such as a product not published or a download limit | change what they name and import again; a length is counted with the formatting removed, so your shop's editor shows a larger number |
+| No verdict | Agentify did not answer about it, so whether it was published is not known | import again; it does not double products |
+| Not attempted | the import stopped at the first product with no verdict | import again |
+| Not supported | the connector does not sell its kind, such as a variable or grouped product, a product with stock tracking, or a download that also ships | nothing in Agentify; the connector does not take the product as it is |
+| Published | the product is on Products, folded under the other headings | nothing; whether it sells is on Products |
 
 ## When a product changes in the shop
 
-A product deleted from the shop, sold out, or no longer supported keeps its
-card, but the price check refuses its purchase before payment. Pause the cards
-you no longer want buyers to see. A change that lands after a buyer was quoted
+A product deleted from the shop, sold out, or no longer supported stays on
+Products, but the price check refuses its purchase before payment. Pause the
+products you no longer want buyers to see. A change that lands after a buyer was quoted
 and before the order is placed, such as a new price, or for a parcel a
 different shipping rate, leaves that paid sale unfulfilled on your Orders
 screen, because the connector checks the product and the rate again before it
@@ -374,7 +387,7 @@ and what you do for the buyer if it does not, are yours and your shop's.
    your shop holds a paid order for it, do not ship that order: Agentify could
    not confirm it with your shop. Close fulfillment of it on Orders with an
    explanation for the buyer, and settle the shop order by your own policy.
-6. A parcel's card is published only once your shop's site is set in
+6. A parcel is published only once your shop's site is set in
    Settings, because the site is where a buyer asks about a parcel that did not
    arrive.
 
@@ -389,34 +402,50 @@ one, is shown to the buyer as your words.
 If a paid download was not delivered and the connector has a saved sale it can
 check, your Orders screen offers **Recover WooCommerce delivery** on that
 order. The recovery page shows the Agentify order ID, the product, the amount
-and the shop the sale came from, and a test purchase keeps its test mark.
+and the shop the sale came from.
+
+When the connector refused a download before it sent anything to your shop,
+your shop holds no order for it. This happens, for example, when the shop did
+not answer the product check at the time of the sale, or when the product had
+changed since its price was given. Connect the same shop again on the WooCommerce page, put
+the product back the way it was sold if it changed, and press **Create shop
+order** on the recovery page. Agentify then makes the order in your shop once,
+at the price the buyer paid, and delivers the download when the shop places
+it. If the shop refuses before anything is sent, the page says why, and you can
+press again once that is fixed. If the shop's answer to the create does not
+arrive, nobody knows whether the order exists, so the page never offers the
+create again: find the order in your shop and link it, as described next.
 
 When the shop's answer to creating the order never arrived, find the order in
 that same shop whose Transaction ID is this Agentify order ID, and enter its
-**WooCommerce order ID**: the internal number in the order's address, which can
-differ from the order number customers see. **Link order and deliver download**
-checks that exact order and product against the saved sale, then delivers the
-download; it does not search for another order or create one. If your shop
+**Shop order ID**: the internal number in the order's address in WooCommerce,
+after `id=` or `post=`, which can differ from the order number customers see.
+**Link and deliver** checks that exact order and product against the saved
+sale, then delivers the download; it does not search for another order or
+create one. If your shop
 holds no order with that Transaction ID, nothing can be delivered from this
 page: close fulfillment on Orders with an explanation for the buyer.
 
 When the shop order and its download are already saved, **Retry delivery**
 sends that same download to Agentify, even after you disconnect the shop or
-switch to your own code. If an answer was lost, reload the page: it shows the
-saved order and says whether Agentify confirms the delivery. A check that could
+switch to your own code. If an answer was lost, the page offers a reload in
+place of the button: it shows the saved order and says whether Agentify
+confirms the delivery. A check that could
 not be made leaves the result unknown, which is not proof that nothing was
 recorded, and a saved order cannot be replaced by a different one.
 
-Recovery delivers the download and does nothing else. To stop delivery
-instead, close fulfillment on Orders; a closed order has no recovery action,
-and neither has a parcel or a download refused before a shop order was created.
+Recovery makes or links the download's one shop order and delivers the
+download, and does nothing else. To stop delivery instead, close fulfillment on
+Orders; a closed order has no recovery action, and neither has a parcel. A
+parcel refused before its shop order was made cannot be made later, because
+Agentify does not keep its delivery address.
 
 ## Disconnecting
 
 Disconnecting removes the keys your shop gave Agentify and switches you back
-to your own code. The shop's cards stay in your catalogue, off sale, and the
-cards your code published come back with selling stopped until you resume it
-on Cards.
+to your own code. The shop's products stay on Products, off sale, and the
+products your code published come back with selling stopped until you resume
+it there.
 
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked

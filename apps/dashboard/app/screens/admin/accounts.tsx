@@ -2,9 +2,8 @@
  * Accounts and one account. Accounts lists who made a merchant or holds the
  * operator flag, with their open sessions; the accounts that only signed in
  * are counted under the list and never listed. One account opens to its
- * actions, each a form that asks for a reason and a ticked consequence and
- * draws the fresh sign-in in its place where the sign-in is older than
- * fifteen minutes, and to its history from the journal.
+ * actions, each closed until it is wanted and opened in place, the one that
+ * cannot be undone last and apart, and to its history from the journal.
  */
 
 import type { ReactNode } from "react";
@@ -12,14 +11,14 @@ import { Link } from "react-router";
 import type {
   AccountAct,
   AccountPageView,
-  AccountPressed,
   AccountRowView,
   AccountsListView,
   MerchantNamed,
 } from "../../../src/admin/accounts.js";
-import { LOST_ANSWER } from "../../../src/admin/words.js";
-import { ActionForm } from "../../components/admin/action-form.js";
-import { StepUp } from "../../components/admin/step-up.js";
+import type { ActionAnswer } from "../../../src/admin/action.js";
+import { IN_THE_JOURNAL } from "../../../src/admin/words.js";
+import { ActionForm, InPlace, opensOn } from "../../components/admin/action-form.js";
+import { PressAnswer } from "../../components/admin/press-answer.js";
 import { CouldNotBeRead } from "../../components/admin/unknown.js";
 import { ListEmpty } from "../../components/list.js";
 import { CutNote, ListTools, NothingHere } from "../../components/listing.js";
@@ -27,17 +26,19 @@ import { Moment } from "../../components/moment.js";
 import styles from "./accounts.module.css";
 import { JournalList, Whole } from "./journal.js";
 
+/** A merchant an account names, by its seller name, or what it is known by without one. */
+const merchantWords = (merchant: MerchantNamed): ReactNode =>
+  merchant.name === "could-not-be-read" ? (
+    <Whole value={merchant.id} />
+  ) : (
+    (merchant.name.chosen ?? "No seller name")
+  );
+
 function Merchant({ merchant }: Readonly<{ merchant: MerchantNamed | null }>) {
-  if (merchant === null) return <span className="soft">None</span>;
+  if (merchant === null) return <span className="soft">No merchant</span>;
   return (
     <>
-      <Link to={`/admin/merchants/${merchant.id}`}>
-        {merchant.name === "could-not-be-read" ? (
-          <Whole value={merchant.id} />
-        ) : (
-          (merchant.name.chosen ?? "Seller name not set")
-        )}
-      </Link>
+      <Link to={`/admin/merchants/${merchant.id}`}>{merchantWords(merchant)}</Link>
       {merchant.name === "could-not-be-read" ? (
         <span className="op-sub">
           Seller name: <CouldNotBeRead />
@@ -47,25 +48,20 @@ function Merchant({ merchant }: Readonly<{ merchant: MerchantNamed | null }>) {
   );
 }
 
-const Flag = ({ operator }: Readonly<{ operator: boolean }>) =>
-  operator ? (
-    <span className="badge badge-pass">Operator</span>
-  ) : (
-    <span className="badge badge-quiet">No</span>
-  );
-
 function Row({ row }: Readonly<{ row: AccountRowView }>) {
   return (
     <li className="list-row">
       <div className="cell cell-title">
         <Link to={`/admin/accounts/${row.id}`}>{row.email}</Link>
-        {row.you ? <span className="op-sub">You</span> : null}
+        {row.operator || row.you ? (
+          <span className="op-sub">
+            {row.operator ? <span className="badge badge-pass">Operator</span> : null}
+            {row.you ? <span>You</span> : null}
+          </span>
+        ) : null}
       </div>
       <div className="cell cell-ident">
         <Merchant merchant={row.merchant} />
-      </div>
-      <div className="cell cell-state">
-        <Flag operator={row.operator} />
       </div>
       <div className="cell cell-fact num">
         {row.openSessions}
@@ -83,11 +79,6 @@ function Row({ row }: Readonly<{ row: AccountRowView }>) {
           </>
         )}
       </div>
-      <div className="cell cell-action">
-        <Link className="button button-secondary button-compact" to={`/admin/accounts/${row.id}`}>
-          Actions
-        </Link>
-      </div>
     </li>
   );
 }
@@ -102,12 +93,7 @@ export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
     <>
       <div className="lede">
         <div>
-          <p>
-            The accounts on this channel that made a merchant or hold the operator flag. Every
-            action on an account asks for a fresh sign-in and a reason and is written to the
-            journal; granting or removing the operator flag also mails every operator. The flag
-            opens this workspace and gives no merchant's account, keys or money.
-          </p>
+          <p>Accounts that made a merchant or hold the operator flag.</p>
         </div>
       </div>
       <div className={styles.tools}>
@@ -115,26 +101,24 @@ export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
           listing={listing}
           path="/admin/accounts"
           label="Search accounts"
-          placeholder="Search by address or merchant"
+          placeholder="Email or merchant"
           searched={(q) =>
-            `Only listed accounts whose address or merchant matches “${q}” are counted and shown, and an account that only signed in when “${q}” is its whole address.`
+            `Listed accounts matching “${q}”. An account that only signed in is found by its whole email address.`
           }
         />
       </div>
       {none ? (
-        <ListEmpty>No account on this channel made a merchant or holds the flag.</ListEmpty>
+        <ListEmpty>No account here made a merchant or holds the flag.</ListEmpty>
       ) : listing.rows.length === 0 ? (
         <NothingHere listing={listing} />
       ) : (
         <div className="list-box op-cols-accounts">
-          <ul className="list" aria-label="Accounts on this channel">
+          <ul className="list" aria-label="Accounts">
             <li className="list-head" aria-hidden="true">
               <span>Account</span>
               <span>Merchant</span>
-              <span>Operator</span>
               <span className="num">Open sessions</span>
               <span>Newest session</span>
-              <span />
             </li>
             {listing.rows.map((row) => (
               <Row key={row.id} row={row} />
@@ -146,93 +130,43 @@ export function AccountsScreen({ view }: Readonly<{ view: AccountsListView }>) {
       <p className="cut">
         <span>
           {view.unlisted === 0
-            ? "No account only signed in; every account is one of these. "
-            : `${plural(view.unlisted, "more account", "more accounts")} only signed in, most of them to open a scanner's report; they are counted, not listed. `}
+            ? "Every account here made a merchant or holds the flag."
+            : `${plural(view.unlisted, "more account", "more accounts")} only signed in. Search by the whole email address to find one.`}
+        </span>
+        <span>
           Read <Moment at={view.readAt} />
         </span>
       </p>
-      <section className="op-panel" aria-labelledby="first-title">
-        <div className="op-panel-head">
-          <h2 id="first-title">The first operator</h2>
-        </div>
-        <div className="op-panel-body">
-          <p className="op-sub">
-            A channel's first operator comes from its configuration, once: the configured address
-            receives the flag at its next sign-in while nobody holds it, the journal says so, and
-            the configuration is never read again. The last operator's flag cannot be removed nor
-            their account forgotten.
-            {view.forgetting
-              ? " On this channel each account also offers Forget this account, refused while its merchant has orders or receipts."
-              : null}
-          </p>
-        </div>
-      </section>
     </>
   );
 }
 
-/** What a press that went through says, over the history that now holds its row. */
-const DONE: Readonly<Record<AccountAct, (email: string) => string>> = {
-  end_sessions: (email) => `Ended every session of ${email}.`,
-  grant_operator: (email) => `Made ${email} an operator; every operator was mailed.`,
-  remove_operator: (email) => `Removed the operator flag of ${email}; every operator was mailed.`,
-  forget_account: (email) => `Forgot ${email}.`,
-};
-
-const UNCHANGED: Readonly<Record<AccountAct, (email: string) => string>> = {
-  end_sessions: (email) => `${email} had no session open, so none was ended.`,
-  grant_operator: (email) => `${email} is an operator already; nothing changed.`,
-  remove_operator: (email) => `${email} is not an operator; nothing changed.`,
-  forget_account: (email) => `${email} was forgotten already.`,
-};
-
-function Settled({ pressed, email }: Readonly<{ pressed: AccountPressed | null; email: string }>) {
-  if (pressed === null) return null;
-  const { answer, act } = pressed;
-  if (answer.kind !== "done" && answer.kind !== "unchanged") return null;
-  return (
-    <p className="op-bound" role="status">
-      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 12.5l4.5 4.5L19 7.5" />
-      </svg>
-      <span>{(answer.kind === "done" ? DONE : UNCHANGED)[act](email)} Written to the journal.</span>
-    </p>
-  );
-}
-
-const answerFor = (pressed: AccountPressed | null, act: AccountAct) =>
-  pressed?.act === act ? pressed.answer : null;
+const answerFor = (
+  pressed: Extract<AccountPageView, { kind: "found" }>["pressed"],
+  ...acts: readonly AccountAct[]
+): ActionAnswer | null => (pressed !== null && acts.includes(pressed.act) ? pressed.answer : null);
 
 /**
- * A press whose form this page no longer draws, such as removing the flag of
- * an account that holds none, or any press on an account that is gone: its
- * step-up, refusal or lost answer is drawn here instead.
+ * The answer to an action's press beside its place on the page: always where
+ * the form is not drawn, and where it is, only once it went through, since
+ * the open form says the rest under its own button.
  */
-function PressedElsewhere({ pressed }: Readonly<{ pressed: AccountPressed | null }>) {
-  const answer = pressed?.answer;
-  if (answer === undefined) return null;
-  if (answer.kind === "step-up") {
-    return (
-      <div className="op-decide">
-        <StepUp view={answer.stepUp} />
-      </div>
-    );
-  }
-  if (answer.kind === "refused") {
-    return (
-      <p className="problem" role="alert">
-        {answer.said}
-      </p>
-    );
-  }
-  if (answer.kind === "unknown") {
-    return (
-      <p className="problem" role="alert">
-        {LOST_ANSWER}
-      </p>
-    );
-  }
-  return null;
+function Settled({
+  answer,
+  formDrawn,
+  done,
+  unchanged,
+  page,
+}: Readonly<{
+  answer: ActionAnswer | null;
+  formDrawn: boolean;
+  done: string;
+  unchanged: string;
+  page: string;
+}>) {
+  if (answer === null) return null;
+  if (formDrawn && answer.kind !== "done" && answer.kind !== "unchanged") return null;
+  return <PressAnswer answer={answer} done={done} unchanged={unchanged} page={page} />;
 }
 
 function Fact({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
@@ -244,42 +178,85 @@ function Fact({ label, children }: Readonly<{ label: string; children: ReactNode
   );
 }
 
-export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
-  if (view.kind === "absent") {
-    const forgotten = view.pressed?.act === "forget_account" && view.pressed.answer.kind === "done";
+const Tick = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M5 12.5l4.5 4.5L19 7.5" />
+  </svg>
+);
+
+/** The page of an account that is not there: forgotten by the press just made, or never here. */
+function Absent({ view }: Readonly<{ view: Extract<AccountPageView, { kind: "absent" }> }>) {
+  const forgotten = view.pressed?.act === "forget_account" && view.pressed.answer.kind === "done";
+  if (forgotten) {
     return (
-      <>
-        {forgotten ? (
-          <p className="op-bound" role="status">
-            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M5 12.5l4.5 4.5L19 7.5" />
-            </svg>
-            <span>
-              The account was forgotten, with its merchant where it had one; the address signs in
-              again as a newcomer. Written to the journal, which names it as a deleted account.
-            </span>
-          </p>
-        ) : (
-          <PressedElsewhere pressed={view.pressed} />
-        )}
-        <ListEmpty>
-          No account on this channel has the identifier <Whole value={view.id} />. The journal names
-          a forgotten or erased account as a deleted account.
-        </ListEmpty>
-        <p className="op-sub">
-          <Link to="/admin/accounts">All accounts</Link>
+      <div className="message-panel" role="status">
+        <p className="op-answer op-answer-done">
+          <Tick />
+          <span>
+            Deleted, with its merchant where it had one. The address can sign in again as a
+            newcomer. {IN_THE_JOURNAL}
+          </span>
         </p>
-      </>
+        <Link className="button button-secondary" to="/admin/accounts">
+          All accounts
+        </Link>
+      </div>
     );
   }
-  const { account, pressed } = view;
+  const path = `/admin/accounts/${view.id}`;
+  return (
+    <div className="message-panel">
+      {view.pressed === null ? null : (
+        <PressAnswer answer={view.pressed.answer} done="Done." page={path} />
+      )}
+      <p>
+        No account here has the ID <Whole value={view.id} />. It may have been deleted.
+      </p>
+      <Link className="button button-secondary" to="/admin/accounts">
+        All accounts
+      </Link>
+    </div>
+  );
+}
+
+/** What a press on an account did, said where the account cannot be named. */
+const PRESS_DONE: Readonly<Record<AccountAct, string>> = {
+  end_sessions: "Every session ended.",
+  grant_operator: "Made an operator; every operator was mailed.",
+  remove_operator: "Operator flag removed; every operator was mailed.",
+  forget_account: "Account forgotten.",
+};
+
+/** A press answered without its page, which could not be read again after it. */
+function PressedUnread({
+  view,
+}: Readonly<{ view: Extract<AccountPageView, { kind: "pressed-unread" }> }>) {
+  const path = `/admin/accounts/${view.id}`;
+  return (
+    <div className="message-panel" role="status">
+      <PressAnswer answer={view.pressed.answer} done={PRESS_DONE[view.pressed.act]} page={path} />
+      <p>The account's page could not be read again after the press.</p>
+      <Link className="button button-primary" to={path}>
+        Open the account's page
+      </Link>
+    </div>
+  );
+}
+
+export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
+  if (view.kind === "absent") return <Absent view={view} />;
+  if (view.kind === "pressed-unread") return <PressedUnread view={view} />;
+  const { account, pressed, stepUp } = view;
   const path = `/admin/accounts/${account.id}`;
-  const drawn: readonly AccountAct[] = [
-    "end_sessions",
-    account.operator ? (view.lastOperator ? null : "remove_operator") : "grant_operator",
-    view.forget.kind === "allowed" ? "forget_account" : null,
-  ].filter((act): act is AccountAct => act !== null);
-  const yours = account.you ? " That includes the session you are using." : "";
+  const sessions = answerFor(pressed, "end_sessions");
+  const flag = answerFor(pressed, "grant_operator", "remove_operator");
+  const yours = account.you ? " This includes your own session." : "";
+  const merchantNamed =
+    account.merchant === null
+      ? null
+      : account.merchant.name !== "could-not-be-read" && account.merchant.name.chosen !== null
+        ? account.merchant.name.chosen
+        : "its merchant";
   return (
     <>
       <p className="op-facts-line">
@@ -293,10 +270,6 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
           Read <Moment at={view.readAt} />
         </span>
       </p>
-      <Settled pressed={pressed} email={account.email} />
-      {pressed === null || drawn.includes(pressed.act) ? null : (
-        <PressedElsewhere pressed={pressed} />
-      )}
       <div className="op-two">
         <section className="op-panel" aria-labelledby="facts-title">
           <div className="op-panel-head">
@@ -304,8 +277,10 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
           </div>
           <div className="op-panel-body">
             <dl className="op-kv">
-              <Fact label="Account">
-                <Whole value={account.id} />
+              <Fact label="Account ID">
+                <span className="ident">
+                  <Whole value={account.id} />
+                </span>
               </Fact>
               <Fact label="Made">
                 <Moment at={account.createdAt} />
@@ -327,54 +302,90 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
         <section className="op-panel" aria-labelledby="acts-title">
           <div className="op-panel-head">
             <h2 id="acts-title">Actions</h2>
-            <p>Each asks for a fresh sign-in and a reason, and is written to the journal.</p>
           </div>
-          <div className="op-panel-body">
-            <ActionForm
-              action={`${path}/end-sessions`}
-              title="End every session"
-              button="End every session"
-              consequence={`Sign ${account.email} out everywhere now. The account stays; they sign in again with a new link.${yours}`}
-              reason
-              answer={answerFor(pressed, "end_sessions")}
-              secondary
-            />
-            {account.operator ? (
-              view.lastOperator ? (
-                <p className="op-sub">
-                  The last operator's flag cannot be removed, so the channel cannot lock its
-                  operators out.
-                </p>
+          <div className="op-panel-body op-acts">
+            <div className="op-act-slot">
+              {account.openSessions === 0 ? (
+                <p className="op-sub">No open sessions to end.</p>
               ) : (
-                <ActionForm
-                  action={`${path}/remove-operator`}
-                  title="Remove the operator flag"
-                  button="Remove the flag"
-                  consequence={`Close this workspace to ${account.email} at their next request. Every operator of the channel and ${account.email} are mailed about it first.`}
-                  reason
-                  answer={answerFor(pressed, "remove_operator")}
-                  secondary
-                />
-              )
-            ) : (
-              <ActionForm
-                action={`${path}/grant-operator`}
-                title="Make an operator"
-                button="Make an operator"
-                consequence={`Give ${account.email} this workspace: every merchant, order and account of the channel, and its actions. Every operator of the channel and ${account.email} are mailed about it first.`}
-                reason
-                answer={answerFor(pressed, "grant_operator")}
-                secondary
+                <InPlace summary="End every session…" open={opensOn(sessions)}>
+                  <ActionForm
+                    action={`${path}/end-sessions`}
+                    page={path}
+                    button="End every session"
+                    consequence={`Sign ${account.email} out everywhere now. They sign in again with a new link.${yours}`}
+                    reason
+                    answer={sessions}
+                    stepUp={stepUp}
+                  />
+                </InPlace>
+              )}
+              <Settled
+                answer={sessions}
+                formDrawn={account.openSessions > 0}
+                done={`Ended every session of ${account.email}.`}
+                unchanged={`${account.email} had no session open, so none was ended.`}
+                page={path}
               />
-            )}
-            <Forget view={view} path={path} />
+            </div>
+            <div className="op-act-slot">
+              {account.operator ? (
+                view.lastOperator ? (
+                  <p className="op-sub">You are the last operator, so the flag stays.</p>
+                ) : (
+                  <InPlace summary="Remove the operator flag…" open={opensOn(flag)}>
+                    <ActionForm
+                      action={`${path}/remove-operator`}
+                      page={path}
+                      button="Remove the flag"
+                      consequence={`Close this workspace to ${account.email}. Every operator and ${account.email} get an email about it first.`}
+                      reason
+                      answer={pressed?.act === "remove_operator" ? flag : null}
+                      stepUp={stepUp}
+                    />
+                  </InPlace>
+                )
+              ) : (
+                <InPlace summary="Make an operator…" open={opensOn(flag)}>
+                  <ActionForm
+                    action={`${path}/grant-operator`}
+                    page={path}
+                    button="Make an operator"
+                    consequence={`Give ${account.email} this workspace: every merchant, order and account here, and its actions. Every operator and ${account.email} get an email about it first.`}
+                    reason
+                    answer={pressed?.act === "grant_operator" ? flag : null}
+                    stepUp={stepUp}
+                  />
+                </InPlace>
+              )}
+              <Settled
+                answer={flag}
+                formDrawn={
+                  (account.operator
+                    ? !view.lastOperator && pressed?.act === "remove_operator"
+                    : pressed?.act === "grant_operator") === true
+                }
+                done={
+                  pressed?.act === "grant_operator"
+                    ? `Made ${account.email} an operator; every operator was mailed.`
+                    : `Removed the operator flag of ${account.email}; every operator was mailed.`
+                }
+                unchanged={
+                  pressed?.act === "grant_operator"
+                    ? `${account.email} is an operator already; nothing changed.`
+                    : `${account.email} is not an operator; nothing changed.`
+                }
+                page={path}
+              />
+            </div>
+            <Forget view={view} path={path} merchantNamed={merchantNamed} />
           </div>
         </section>
       </div>
       <section className="op-panel" aria-labelledby="history-title">
         <div className="op-panel-head">
           <h2 id="history-title">History</h2>
-          <p>What the journal holds about this account, newest first.</p>
+          <p>From the journal</p>
         </div>
         <div className="op-panel-body">
           {view.history === "could-not-be-read" ? (
@@ -388,9 +399,9 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
               <JournalList lines={view.history.lines} label="This account's history" />
               {view.history.total > view.history.lines.length ? (
                 <p className="cut">
-                  <span>{`${view.history.lines.length} of ${view.history.total} shown. `}</span>
+                  <span>{`The newest ${view.history.lines.length} of ${view.history.total} rows.`}</span>
                   <Link to={`/admin/journal?q=${encodeURIComponent(account.id)}`}>
-                    All of them in the journal
+                    All {view.history.total} in the journal
                   </Link>
                 </p>
               ) : null}
@@ -405,39 +416,52 @@ export function AccountScreen({ view }: Readonly<{ view: AccountPageView }>) {
 function Forget({
   view,
   path,
-}: Readonly<{ view: Extract<AccountPageView, { kind: "found" }>; path: string }>) {
+  merchantNamed,
+}: Readonly<{
+  view: Extract<AccountPageView, { kind: "found" }>;
+  path: string;
+  merchantNamed: string | null;
+}>) {
   const { forget, account } = view;
+  const answer = answerFor(view.pressed, "forget_account");
+  const standing = (said: ReactNode) => (
+    <div className="op-act-slot op-act-apart">
+      <p className="op-sub">{said}</p>
+      <PressAnswer answer={answer} done="Done." page={path} />
+    </div>
+  );
   switch (forget.kind) {
     case "live-channel":
       return null;
     case "operator":
-      return (
-        <p className="op-sub">An operator's account cannot be forgotten: remove the flag first.</p>
-      );
+      return standing("An operator's account cannot be forgotten: remove the flag first.");
     case "money-history":
-      return (
-        <p className="op-sub">
-          {`This account's merchant has ${plural(forget.history.orders, "order", "orders")} and ${plural(forget.history.receipts, "receipt", "receipts")}, which are never deleted, so the account cannot be forgotten.`}
-        </p>
+      return standing(
+        `This account's merchant has ${plural(forget.history.orders, "order", "orders")} and ${plural(forget.history.receipts, "receipt", "receipts")}, which are never deleted, so the account cannot be forgotten.`,
       );
     case "could-not-be-read":
-      return (
-        <p className="op-sub">
+      return standing(
+        <>
           Whether its merchant has orders or receipts: <CouldNotBeRead />. It cannot be forgotten
           until that is read.
-        </p>
+        </>,
       );
     case "allowed":
       return (
-        <ActionForm
-          action={`${path}/forget`}
-          title="Forget this account"
-          button="Forget this account"
-          consequence={`Remove ${account.email}${account.merchant === null ? "" : " and its merchant, with the merchant's keys and cards,"} from this channel, so the address signs in again as a newcomer. The journal keeps its rows.`}
-          reason
-          answer={answerFor(view.pressed, "forget_account")}
-          secondary
-        />
+        <div className="op-act-slot op-act-apart">
+          <InPlace summary="Forget this account…" tone="destructive" open={opensOn(answer)}>
+            <ActionForm
+              action={`${path}/forget`}
+              page={path}
+              button="Forget this account"
+              consequence={`Delete ${account.email}${merchantNamed === null ? "" : ` and ${merchantNamed}, with its keys and products`}. This cannot be undone. The journal keeps its rows.`}
+              reason
+              answer={answer}
+              tone="destructive"
+              stepUp={view.stepUp}
+            />
+          </InPlace>
+        </div>
       );
   }
 }

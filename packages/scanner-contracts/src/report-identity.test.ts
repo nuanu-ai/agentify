@@ -6,6 +6,8 @@ import {
   readSessionRequestSchema,
   readSessionResponseSchema,
   reportIdentityRequestSchema,
+  sendDataCopyRequestSchema,
+  sendDataCopyResponseSchema,
   sendReportLinkRequestSchema,
   sendReportLinkResponseSchema,
 } from "./report-identity.js";
@@ -41,10 +43,20 @@ const requests = [
       email: "owner@example.com",
     },
   },
+  {
+    schema: sendDataCopyRequestSchema,
+    value: {
+      operation: "copy",
+      request: requestId,
+      requested_at: timestamp,
+      email: "owner@example.com",
+      scanner: { lead: { email: "owner@example.com" } },
+    },
+  },
 ] as const;
 
 describe("the internal route between the scanner and the dashboard", () => {
-  it("accepts the three questions the scanner asks through the one route", () => {
+  it("accepts the four questions the scanner asks through the one route", () => {
     for (const { schema, value } of requests) {
       expect(schema.safeParse(value).success).toBe(true);
       expect(reportIdentityRequestSchema.safeParse(value).success).toBe(true);
@@ -156,5 +168,20 @@ describe("the internal route between the scanner and the dashboard", () => {
         operation_id: "550e8400-e29b-41d4-a716-446655440000",
       }).success,
     ).toBe(false);
+  });
+
+  it("carries a copy of an address's data only for a normalized address, and answers whether the mail was taken", () => {
+    const copy = requests[3].value;
+    for (const email of [" OWNER@example.com", "OWNER@example.com"])
+      expect(sendDataCopyRequestSchema.safeParse({ ...copy, email }).success, email).toBe(false);
+    expect(sendDataCopyRequestSchema.safeParse({ ...copy, scanner: "a copy" }).success).toBe(false);
+    expect(sendDataCopyRequestSchema.safeParse({ ...copy, request: "a-request" }).success).toBe(
+      false,
+    );
+    // Taken, refused, or not known: an answer that may have gone is never a refusal.
+    for (const status of ["accepted", "refused", "unknown"])
+      expect(sendDataCopyResponseSchema.safeParse({ status }).success).toBe(true);
+    for (const status of ["sent", "unavailable"])
+      expect(sendDataCopyResponseSchema.safeParse({ status }).success).toBe(false);
   });
 });

@@ -50,6 +50,12 @@ interface Segment {
   readonly here: boolean;
 }
 
+/**
+ * A page of a list cut short, by its number and its address; the page shown
+ * has none. A gap stands where pages between two are left out.
+ */
+export type PageLink = Readonly<{ page: number; to: string | null }> | Readonly<{ gap: true }>;
+
 /** Said under a list cut short: which rows are drawn of how many, and the ways to the rest. */
 export interface CutView {
   readonly from: number;
@@ -57,7 +63,67 @@ export interface CutView {
   readonly of: number;
   readonly previous: string | null;
   readonly next: string | null;
+  readonly pages: readonly PageLink[];
 }
+
+/** The most pages named one by one; past it, the ones far from the page shown give way to a gap. */
+const PAGES_NAMED = 7;
+
+/**
+ * Every page where there are few; where there are many, the first and the
+ * last, and the page shown with its neighbours, so the reader always sees where
+ * they are and how far the list goes.
+ */
+const pagesOf = (page: number, pages: number, at: (page: number) => string): PageLink[] => {
+  const named =
+    pages <= PAGES_NAMED
+      ? Array.from({ length: pages }, (_, index) => index + 1)
+      : [
+          ...new Set(
+            [
+              1,
+              ...(page <= 4 ? [2, 3, 4, 5] : []),
+              page - 1,
+              page,
+              page + 1,
+              ...(page >= pages - 3 ? [pages - 4, pages - 3, pages - 2, pages - 1] : []),
+              pages,
+            ].filter((one) => one >= 1 && one <= pages),
+          ),
+        ].sort((one, other) => one - other);
+  return named.flatMap((one, index): PageLink[] => {
+    const link = { page: one, to: one === page ? null : at(one) };
+    const before = named[index - 1];
+    return before !== undefined && one - before > 1 ? [{ gap: true }, link] : [link];
+  });
+};
+
+/**
+ * The cut under a list another reader reads a page at a time: page `page` of
+ * `of` rows, `at` giving each page's address; null where one page holds every
+ * row.
+ */
+export const cutOfPage = (
+  page: number,
+  of: number,
+  at: (page: number) => string,
+): CutView | null => {
+  const pages = Math.max(1, Math.ceil(of / PAGE_ROWS));
+  return of <= PAGE_ROWS ? null : cutOf(Math.min(page, pages), pages, of, at);
+};
+
+/** The cut under page `page` of `pages`, holding `of` rows a page of `PAGE_ROWS` at a time. */
+const cutOf = (page: number, pages: number, of: number, at: (page: number) => string): CutView => {
+  const start = (page - 1) * PAGE_ROWS;
+  return {
+    from: start + 1,
+    to: Math.min(start + PAGE_ROWS, of),
+    of,
+    previous: page === 1 ? null : at(page - 1),
+    next: page === pages ? null : at(page + 1),
+    pages: pagesOf(page, pages, at),
+  };
+};
 
 /** Why a list that has rows draws none here, and the way to some. */
 interface Nothing {
@@ -160,7 +226,7 @@ export const listingOf = <Row>({
   matches: (row: Row, words: string) => boolean;
   /** The sentence for a search with no match, given the segment's label. */
   noMatch: (q: string, within: string | null) => string;
-  /** The words of the way from an empty segment to the first, "Show all cards". */
+  /** The words of the way from an empty segment to the first, "Show all products". */
   showAll: string;
 }>): Listing<Row> => {
   const first = segments[0]?.key ?? "";
@@ -204,13 +270,7 @@ export const listingOf = <Row>({
     cut:
       shown.length <= PAGE_ROWS
         ? null
-        : {
-            from: start + 1,
-            to: Math.min(start + PAGE_ROWS, shown.length),
-            of: shown.length,
-            previous: page === 1 ? null : at({ page: page - 1 }),
-            next: page === pages ? null : at({ page: page + 1 }),
-          },
+        : cutOf(page, pages, shown.length, (one) => at({ page: one })),
     nothing: nothing(),
     place: Object.fromEntries(fieldsOf({ ...asked, page }, first)),
   };
@@ -245,23 +305,13 @@ export const pagedListingOf = <Row>({
 }>): Listing<Row> => {
   const pages = Math.max(1, Math.ceil(of / PAGE_ROWS));
   const page = Math.min(asked.page, pages);
-  const start = (page - 1) * PAGE_ROWS;
   const here = { ...asked, q: "", cut: false, page };
   const at = (moved: Partial<Asked>) => addressOf(path, { ...here, ...moved }, first);
   return {
     rows,
     search: { q: "", show: asked.show === first ? null : asked.show, cutAt: null },
     segments: listing.segments,
-    cut:
-      of <= PAGE_ROWS
-        ? null
-        : {
-            from: start + 1,
-            to: Math.min(start + PAGE_ROWS, of),
-            of,
-            previous: page === 1 ? null : at({ page: page - 1 }),
-            next: page === pages ? null : at({ page: page + 1 }),
-          },
+    cut: of <= PAGE_ROWS ? null : cutOf(page, pages, of, (one) => at({ page: one })),
     nothing:
       of > 0 ? null : { says: none, way: { to: at({ show: first, page: 1 }), words: showAll } },
     place: Object.fromEntries(fieldsOf(here, first)),

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { SURFACE_WORDS } from "./surface.js";
+import { CHANNEL_NAMES } from "./workspace-view.js";
 
 describe("SURFACE_WORDS", () => {
   it("claims on a test page only what the chain vouches for, not that anything settles", () => {
@@ -12,5 +13,11 @@ describe("SURFACE_WORDS", () => {
     // that settles nothing; that the money is not real is all the chain says.
     expect(SURFACE_WORDS.test).toMatch(/test funds/);
     expect(SURFACE_WORDS.test).not.toMatch(/settle/i);
+  });
+
+  it("names each stack by the name the operator's workspace gives it", () => {
+    for (const mode of ["sandbox", "test"] as const) {
+      expect(SURFACE_WORDS[mode]).toContain(CHANNEL_NAMES[mode]);
+    }
   });
 });

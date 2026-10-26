@@ -9,7 +9,7 @@
 
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
@@ -178,10 +178,12 @@ type OrderClaim =
   | { readonly kind: "placed_parcel"; readonly id: string; readonly number: string }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
-// The ledger only moves forward: absent may become precreate_refused, which
-// stays, or create_unknown; only validated binding moves create_unknown to
-// placed; a placed download never changes, and a placed parcel moves once
-// more, to shipped or closed. The store methods below are the only transitions.
+// The ledger only moves forward: absent may become precreate_refused or
+// create_unknown; only its merchant's create moves precreate_refused to
+// create_unknown, before the request is sent; only validated binding moves
+// create_unknown to placed; a placed download never changes, and a placed
+// parcel moves once more, to shipped or closed. The store methods below are
+// the only transitions.
 
 export interface WooShops {
   /**
@@ -320,6 +322,12 @@ export interface WooShops {
    * workspace alone.
    */
   uncertainOrders(): Promise<number>;
+  /**
+   * Reopens a definite pre-create refusal as `create_unknown`, and only under a
+   * different grant: a connection revision other than the one that refused.
+   * The compare-and-set is what keeps two presses to one request to the shop.
+   */
+  beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
 }
 
 /**
@@ -327,10 +335,11 @@ export interface WooShops {
  * whose shop order is placed, which marking it Completed still ships; any
  * other parcel, whose shop order was never confirmed or has ended; a download
  * whose shop order is unknown or placed with its file, which recovery can
- * still deliver; or a download that can no longer be delivered, such as one
- * the shop was never asked to create.
+ * still deliver; a download the shop was never asked to create, whose order
+ * the merchant may create once from the recovery page; or a download that can
+ * no longer be delivered.
  */
-type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "unrecoverable";
+type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "refused" | "unrecoverable";
 
 /** A sale whose sold facts were never written cannot be recovered: nothing says what to deliver. */
 const heldSaleOf = (
@@ -342,9 +351,13 @@ const heldSaleOf = (
     ? phase === "placed"
       ? "parcel"
       : "unplaced_parcel"
-    : facts !== null && (phase === "create_unknown" || (phase === "placed" && withFile))
-      ? "recoverable"
-      : "unrecoverable";
+    : facts === null
+      ? "unrecoverable"
+      : phase === "precreate_refused"
+        ? "refused"
+        : phase === "create_unknown" || (phase === "placed" && withFile)
+          ? "recoverable"
+          : "unrecoverable";
 
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
 
@@ -910,6 +923,25 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         .where(eq(wooOrders.phase, "create_unknown"));
       return row?.count ?? 0;
     },
+
+    async beginPrecreateRecovery(orderId, revision, now) {
+      const reopened = await db
+        .update(wooOrders)
+        .set({
+          phase: "create_unknown",
+          attemptedAt: now,
+          facts: sql`${wooOrders.facts} || jsonb_build_object('connectionRevision', cast(${revision} as text))`,
+        })
+        .where(
+          and(
+            eq(wooOrders.orderId, orderId),
+            eq(wooOrders.phase, "precreate_refused"),
+            ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
+          ),
+        )
+        .returning({ orderId: wooOrders.orderId });
+      return reopened.length === 1;
+    },
   };
 };
 
@@ -1212,6 +1244,23 @@ export const memoryWooShops = (): WooShops & {
 
     async uncertainOrders() {
       return [...orders.values()].filter((order) => order.phase === "create_unknown").length;
+    },
+    async beginPrecreateRecovery(orderId, revision, now) {
+      const found = orders.get(orderId);
+      if (
+        found === undefined ||
+        found.phase !== "precreate_refused" ||
+        found.facts.connectionRevision === revision
+      ) {
+        return false;
+      }
+      orders.set(orderId, {
+        ...found,
+        phase: "create_unknown",
+        attemptedAt: now,
+        facts: { ...found.facts, connectionRevision: revision },
+      });
+      return true;
     },
   };
 };

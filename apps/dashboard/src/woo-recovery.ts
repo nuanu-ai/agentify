@@ -11,7 +11,10 @@ import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
 import { amountOfMinor, minorOf, withinOneUnit } from "./woo-money.js";
 import {
+  createTheOrderInTheShop,
   inspectProductInTheShop,
+  type OrderMade,
+  type PaidIntoSplit,
   type ProductInspection,
   readTheOrderInTheShop,
   type ShopKeys,
@@ -20,6 +23,7 @@ import {
   type WooOrderRead,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
+import { PARCEL_NOT_CREATED, RECONNECT_FIRST } from "./woo-words.js";
 import { deliveryFromWooPermission } from "./woo-worker.js";
 
 export interface WooRecoveryRequest {
@@ -37,20 +41,19 @@ export type WooRecoveryOutcome =
       typed?: true;
     }>;
 
-export type RecoveryGateway = Pick<GatewayClient, "getOrder" | "deliverOrder">;
+export type RecoveryGateway = Pick<GatewayClient, "getOrder" | "deliverOrder" | "paidInto">;
 
 export interface WooRecoveryParts {
   readonly shops: WooShops;
   readonly gatewayFor: (acting: Acting) => RecoveryGateway;
   readonly inspectProduct?: (keys: ShopKeys, itemId: string) => Promise<ProductInspection>;
   readonly readOrder?: (keys: ShopKeys, wooOrderId: string) => Promise<WooOrderLookup>;
+  /** The shop's own creation where a deployment passes nothing. */
+  readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
   readonly now: () => Date;
 }
 
 /** Ownership is established before disclosing sale details or acting as its merchant. */
-const CANNOT_CREATE =
-  "This recovery links an existing shop order or retries a saved delivery. It cannot create a shop order.";
-
 export const ownWooRecoveryOrder = async (person: Person, orderId: string, shops: WooShops) => {
   const record = await shops.recoveryOrder(orderId);
   return person.merchant !== null && record?.accountId === person.id ? record : null;
@@ -63,14 +66,12 @@ export const recoverWooOrderAs = async (
 ): Promise<WooRecoveryOutcome> => {
   const record = await ownWooRecoveryOrder(person, request.orderId, parts.shops);
   if (record === null) return refused("No recoverable WooCommerce order has that id.");
-  if (record.phase === "precreate_refused") return refused(CANNOT_CREATE);
   if (request.wooOrderId !== undefined && !/^[1-9][0-9]*$/.test(request.wooOrderId)) {
     return typedWrong("Enter the exact numeric WooCommerce order ID.");
   }
   return recover(record, person, request, parts);
 };
 
-/** A sale its shop was never asked to create is turned away before this. */
 const recover = async (
   record: NonNullable<Awaited<ReturnType<WooShops["recoveryOrder"]>>>,
   person: Person,
@@ -78,9 +79,11 @@ const recover = async (
   parts: WooRecoveryParts,
 ): Promise<WooRecoveryOutcome> => {
   if (record.facts.kind === "parcel") {
-    // Recovery binds a download's order. A placed parcel is a sale already
-    // taken on and followed in its shop; one whose order may exist is settled
-    // with the merchant in their shop.
+    // Recovery makes or binds a download's order. A placed parcel is a sale
+    // already taken on and followed in its shop; one refused before its order
+    // was made has no address left to make one with; one whose order may exist
+    // is settled with the merchant in their shop.
+    if (record.phase === "precreate_refused") return refused(PARCEL_NOT_CREATED);
     return refused(
       record.phase === "placed"
         ? "This recovers downloads only. This parcel's WooCommerce order is placed, and" +
@@ -139,6 +142,16 @@ const recover = async (
   if (connection === null || originOf(connection.shopUrl) !== record.facts.shopOrigin) {
     return refused("Reconnect the same WooCommerce shop before recovery.");
   }
+  if (record.phase === "precreate_refused") {
+    // The grant that refused is the one a create would be sent under, so the
+    // shop is connected again first, with the access to take an order.
+    if (connection.revision === record.facts.connectionRevision) return refused(RECONNECT_FIRST);
+    if (connection.permissions !== "read_write") {
+      return refused(
+        "Your shop gave Agentify read access only, so it can't take an order. Connect it again with Read/Write access, then create the order here.",
+      );
+    }
+  }
 
   const inspected = await (parts.inspectProduct ?? inspectProductInTheShop)(
     keysOf(connection),
@@ -163,7 +176,73 @@ const recover = async (
     inspected.product.kind !== "download" ||
     !sameProduct(inspected.product, record.facts)
   ) {
-    return refused("The product no longer matches the accepted WooCommerce sale.");
+    return refused(
+      `The product no longer matches the accepted WooCommerce sale.${inspected.ok ? "" : ` ${inspected.why}`}`,
+    );
+  }
+
+  if (record.phase === "precreate_refused") {
+    // Read before the ledger moves, so a press that cannot say where the
+    // payment went can be made again.
+    const paid = await gateway.paidInto(request.orderId);
+    if (!paid.ok) {
+      return unresolved(
+        "We couldn't read where the payment went. Nothing was sent to your shop, so you can try again.",
+      );
+    }
+    // The shop's checks can take long enough for the merchant to close
+    // fulfillment meanwhile, and a closed order is not created for.
+    const still = await gateway.getOrder(request.orderId);
+    if (!still.ok) {
+      return unresolved(
+        "We couldn't read the order again before creating it. Nothing was sent to your shop, so you can try again.",
+      );
+    }
+    if (still.document.status !== "unfulfilled") {
+      return refused(
+        "This order is no longer waiting for delivery, so nothing was sent to your shop.",
+      );
+    }
+    // Once the ledger moves, no press creates again: what the shop then does
+    // with the request is unknown until an order is linked.
+    const claimed = await parts.shops.beginPrecreateRecovery(
+      request.orderId,
+      connection.revision,
+      parts.now(),
+    );
+    if (!claimed) {
+      return unresolved(
+        "Another press is creating this order in your shop, or already has. Reload to see where it stands.",
+      );
+    }
+    const made = await (parts.placeOrder ?? createTheOrderInTheShop)(
+      keysOf(connection),
+      soldItem(
+        { id: request.orderId, test: still.document.test },
+        person.email,
+        record.facts,
+        inspected.product,
+        paid.document,
+      ),
+    );
+    if (!made.ok) return unresolved(CREATE_UNKNOWN);
+    return bindAndDeliver(
+      request.orderId,
+      {
+        shopOrigin: record.facts.shopOrigin,
+        productId: record.facts.productId,
+        orderKey: made.orderKey,
+        downloadId: made.downloadId,
+        fileName: inspected.product.fileName,
+        emailUid: emailUid(person.email),
+        orderNumber: made.number,
+      },
+      made.id,
+      made.number,
+      made.total,
+      parts,
+      gateway,
+    );
   }
 
   if (request.wooOrderId === undefined) {
@@ -337,11 +416,49 @@ const differencesOf = (
   ].filter((clause): clause is string => clause !== null);
 };
 
+/**
+ * The order a create asks the shop for: what the buyer paid, in the shop's
+ * currency at the rate bound to the sale, never the shop's price of today.
+ */
+const soldItem = (
+  order: { readonly id: string; readonly test: boolean },
+  email: string,
+  facts: WooOrderFacts,
+  product: { downloadId: string; fileName: string; tax: SoldItem["tax"] },
+  paidInto: PaidIntoSplit | null,
+): SoldItem => ({
+  orderId: order.id,
+  test: order.test,
+  productId: facts.productId,
+  email,
+  price: inTheShopOf(facts),
+  download: { id: product.downloadId, name: product.fileName },
+  paidInto,
+  tax: product.tax,
+  ...(facts.converted === undefined
+    ? {}
+    : {
+        converted: {
+          paid: { amount: facts.amount, currency: facts.currency },
+          rate: {
+            version: facts.converted.rate.version,
+            currency: facts.converted.inTheShop.currency,
+            rate: facts.converted.rate.rate,
+            setAt: new Date(facts.converted.rate.setAt),
+          },
+        },
+      }),
+});
+
 const keysOf = (connection: WooConnection): ShopKeys => ({
   shopUrl: connection.shopUrl,
   consumerKey: connection.consumerKey,
   consumerSecret: connection.consumerSecret,
 });
+
+/** Said once a create was sent and its answer is not one the shop can be held to. */
+export const CREATE_UNKNOWN =
+  "We sent the order to your shop but got no clear answer, so we don't know if your shop created it. Don't create it again: look for it in your shop.";
 
 const originOf = (url: string): string => new URL(url).origin;
 const emailUid = (email: string): string => createHash("sha256").update(email).digest("hex");

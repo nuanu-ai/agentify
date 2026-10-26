@@ -11,8 +11,9 @@
 import type { Receipt } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Identity } from "../identity.js";
-import { type AdminServed, adminServed } from "../testing/admin.js";
+import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
 import { readable } from "../testing/html.js";
+import { LOST_ANSWER } from "./words.js";
 
 const OPERATOR = "operator@example.com";
 const SECOND = "second@example.com";
@@ -115,6 +116,35 @@ describe("ending every session of an account", () => {
     expect((await rowsOf(workspace))[0]?.outcome).toBe("unchanged");
   });
 
+  it("says what a press came to where the account's page cannot be read again after it", async () => {
+    // The sessions ended with their row; a page drawn as a read that failed
+    // would leave the operator to guess, and press again.
+    let pressedOnce = false;
+    const workspace = await serve({
+      identity: (real: Identity): Identity => ({
+        ...real,
+        endSessionsIn: async (...args: Parameters<Identity["endSessionsIn"]>) => {
+          pressedOnce = true;
+          return await real.endSessionsIn(...args);
+        },
+        operatorAccount: async (...args: Parameters<Identity["operatorAccount"]>) => {
+          if (pressedOnce) throw new Error("the identity is gone");
+          return await real.operatorAccount(...args);
+        },
+      }),
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    await workspace.signedIn(MERCHANT);
+    const account = await idOf(workspace, MERCHANT);
+
+    const pressed = await operator.post(`/admin/accounts/${account}/end-sessions`, asOperator);
+
+    expect(pressed.status).toBe(200);
+    expect(readable(pressed.html)).toContain("Every session ended.");
+    expect(pressed.html).toContain(`href="${ADMIN_BASE}/admin/accounts/${account}"`);
+    expect(sessionsOf(workspace, account)).toBe(0);
+  });
+
   it("refuses a press without a reason or without the box ticked, changing nothing", async () => {
     const workspace = await serve();
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
@@ -162,8 +192,7 @@ describe("ending every session of an account", () => {
 
     const pressed = await operator.post(`/admin/accounts/${account}/end-sessions`, asOperator);
 
-    expect(readable(pressed.html)).toContain("The outcome is unknown");
-    expect(readable(pressed.html)).toContain("pressing again is safe");
+    expect(readable(pressed.html)).toContain(LOST_ANSWER);
   });
 });
 
@@ -204,7 +233,7 @@ describe("the operator flag", () => {
 
     const pressed = await operator.post(`/admin/accounts/${account}/grant-operator`, asOperator);
 
-    expect(readable(pressed.html)).toContain("was not handed to the provider");
+    expect(readable(pressed.html)).toContain("the notice to operators could not be sent");
     expect((await workspace.identity.operatorAccount(account, new Date()))?.operator).toBe(false);
     expect((await rowsOf(workspace))[0]?.outcome).toBe("mail_not_handed");
   });
@@ -220,13 +249,13 @@ describe("the operator flag", () => {
     expect(readable(removed.html)).toContain(`Removed the operator flag of ${SECOND}`);
 
     const own = readable((await operator.get(`/admin/accounts/${mine}`)).html);
-    expect(own).toContain("The last operator's flag cannot be removed");
+    expect(own).toContain("You are the last operator, so the flag stays");
     expect(own).not.toContain("Remove the flag");
     const pressedAnyway = await operator.post(
       `/admin/accounts/${mine}/remove-operator`,
       asOperator,
     );
-    expect(readable(pressedAnyway.html)).toContain("It is the channel's last operator");
+    expect(readable(pressedAnyway.html)).toContain("You are the last operator, so the flag stays");
     expect((await workspace.identity.operatorAccount(mine, new Date()))?.operator).toBe(true);
     expect((await rowsOf(workspace)).map((row) => row.outcome)).toStrictEqual([
       "last_operator",
@@ -261,7 +290,7 @@ describe("forgetting an account", () => {
 
     const pressed = await operator.post(`/admin/accounts/${account}/forget`, asOperator);
 
-    expect(readable(pressed.html)).toContain("signs in again as a newcomer");
+    expect(readable(pressed.html)).toContain("sign in again as a newcomer");
     expect(await workspace.identity.byEmail(MERCHANT)).toBeNull();
     expect((await rowsOf(workspace))[0]).toMatchObject({
       action: "forget_account",
@@ -273,7 +302,7 @@ describe("forgetting an account", () => {
     const byId = readable((await operator.get(`/admin/journal?q=${account}`)).html);
     expect(byId).toContain("Forgot the account");
     const byAddress = readable((await operator.get(`/admin/journal?q=${MERCHANT}`)).html);
-    expect(byAddress).toContain("A forgotten account is searched by its identifier");
+    expect(byAddress).toContain("A forgotten account is searched by its ID");
   });
 
   it("is neither offered nor done on the live channel", async () => {
@@ -287,7 +316,7 @@ describe("forgetting an account", () => {
 
     const pressed = await operator.post(`/admin/accounts/${account}/forget`, asOperator);
 
-    expect(readable(pressed.html)).toContain("only on the test channel");
+    expect(readable(pressed.html)).toContain("only in the test environment");
     expect(await workspace.identity.byEmail(MERCHANT)).not.toBeNull();
   });
 
@@ -356,9 +385,9 @@ describe("the Journal", () => {
     expect(searched).not.toContain(`Ended every session of ${MERCHANT}`);
 
     const unsearchable = readable((await operator.get("/admin/journal?q=lost laptop")).html);
-    expect(unsearchable).toContain("The journal is searched by a merchant's identifier");
+    expect(unsearchable).toContain("The journal is searched by a merchant ID");
     // One word is read as an account's identifier, and said to be.
     const oneWord = readable((await operator.get("/admin/journal?q=laptop")).html);
-    expect(oneWord).toContain("No row is about an account with the identifier “laptop”");
+    expect(oneWord).toContain("No row is about an account with the ID “laptop”");
   });
 });

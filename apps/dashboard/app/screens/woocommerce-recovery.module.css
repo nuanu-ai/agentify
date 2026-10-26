@@ -1,5 +1,6 @@
 /* Layout only. The facts stack, as the lists' details do, once the panel is
-   narrow; the form row is as wide as a short number needs. */
+   narrow; the form row is as wide as a short number needs. What the last
+   press came to stands under the heading, the one action under the facts. */
 .panel {
   container-type: inline-size;
 }
@@ -10,4 +11,25 @@
 
 .panel > :global(.issue) {
   max-width: 34rem;
+}
+
+.result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-control);
+}
+
+.next {
+  padding: var(--gap-actions) var(--space-card) var(--space-card);
+}
+
+.panel > p.instead {
+  margin: 0;
+  padding: 0 var(--space-card) var(--space-card);
+}
+
+/* A panel that ends in its facts ends as far from its edge as one that ends in a form. */
+.panel > :global(.more-facts):last-child {
+  margin-bottom: var(--space-card);
 }

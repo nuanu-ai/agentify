@@ -21,6 +21,7 @@ import { startAdReports } from "./ad-reports.js";
 import { postgresJournal } from "./admin/journal.js";
 import { closedWithin } from "./closing.js";
 import type { DashboardConfig } from "./config.js";
+import { copierFor, postgresPersonRecords } from "./data-copy.js";
 import { connect } from "./database.js";
 import { gatewayFor } from "./gateway.js";
 import { identityFor } from "./identity.js";
@@ -103,7 +104,15 @@ function started(
   }>,
   pages: Pages,
 ): RunningDashboard {
-  const reportIdentityServer = startReportIdentityServer(config.reportIdentitySecret, identity);
+  const reportIdentityServer = startReportIdentityServer(
+    config.reportIdentitySecret,
+    identity,
+    copierFor(
+      { people: postgresPersonRecords(pool), store: application.runtime.store, wooShops },
+      postmanFor(config),
+      `${config.publicBaseUrl}/privacy#rights`,
+    ),
+  );
 
   const app = buildApp(config, {
     gateway: application,

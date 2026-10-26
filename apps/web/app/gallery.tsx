@@ -473,7 +473,9 @@ const reportOf = (score: number): ReportResponse => ({
             ? "partial"
             : check.id === 9
               ? "unavailable"
-              : "pass",
+              : score >= 70 && check.id === 11
+                ? "not_applicable"
+                : "pass",
     summary_code: check.id === 6 ? "vertical_jsonld_missing" : null,
     user_impact_code: null,
     fix_code: check.id === 6 ? "publish_vertical_jsonld" : null,
@@ -538,7 +540,7 @@ const NUMBERS: OperatorNumbers = {
     challengePasses1h: 4,
     browserUsageUsdToday: 1.2345,
   },
-  dataAccess: { waiting: 0, oldestAt: null },
+  dataCopies: { unconfirmed: 0, oldestAt: null },
   daily: DAYS,
   recentScans: [
     {
@@ -603,15 +605,15 @@ const NUMBERS: OperatorNumbers = {
 /**
  * The same page on a bad morning: the worker has gone quiet with a scan
  * waiting, the challenge is off, nothing has checked the site yet, and two
- * people wait for a copy of their data.
+ * copies of people's data could not be sent.
  */
 /** The live channel the operator's examples open /admin on. */
-const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live, line: "agentify.ad" };
+const LIVE: ChannelView = { mode: "live", name: CHANNEL_NAMES.live };
 
 const TROUBLED: OperatorNumbers = {
   ...NUMBERS,
   turnstileEnforced: false,
-  dataAccess: { waiting: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
+  dataCopies: { unconfirmed: 2, oldestAt: "2026-09-30T10:15:00.000Z" },
   selfScan: null,
   worker: {
     heartbeat: {
@@ -780,7 +782,7 @@ const SCANNING: GalleryState[] = [
       status: 429,
       body: refusal("hard_rate_limit", "The scan limit has been reached.", true, 1_800),
     },
-    "This network or target reached the hard scan limit.",
+    "Try again after",
   ),
   pending(
     {
@@ -821,7 +823,7 @@ const SCANNING: GalleryState[] = [
       cause: "The tab holds no scan request to send.",
     },
     null,
-    "This scan request is missing or expired.",
+    "This tab holds no scan request",
   ),
   scan(
     {
@@ -1082,7 +1084,7 @@ const SCANNING: GalleryState[] = [
       when: "Somebody opens a scan's address without the private link that started it.",
       cause: "The tab holds no token for the scan, so its progress is not shown.",
     },
-    { token: false, shows: "Open the original private scan link" },
+    { token: false, shows: "Open the scan from its private link" },
   ),
   scan(
     {
@@ -1096,7 +1098,7 @@ const SCANNING: GalleryState[] = [
         status: 401,
         body: refusal("unauthorized", "A private scan token is required.", false),
       },
-      shows: "This scan link is no longer valid",
+      shows: "This scan link no longer works",
     },
   ),
   scan(
@@ -1112,7 +1114,7 @@ const SCANNING: GalleryState[] = [
         status: 404,
         body: refusal("scan_not_found", "The scan was not found.", false),
       },
-      shows: "This scan link is no longer valid",
+      shows: "This scan link no longer works",
     },
   ),
   scan(
@@ -1288,17 +1290,57 @@ const ACCOUNT: GalleryState[] = [
   ),
   account(
     {
-      id: "scanner-data-request-recorded",
+      id: "scanner-data-request-copy-sent",
       screen: "Data request",
-      when: "A signed-in person presses Request data access.",
-      cause: "The request was recorded for the signed-in address.",
+      when: "A signed-in person presses Request data access, and the mail service takes the copy.",
+      cause: "The copy was emailed to the signed-in address while the person waited.",
     },
     "/data-request",
     "routes/data-request",
     {
-      answers: { ...visitor(true), [DATA_REQUEST]: { status: 200, body: { status: "requested" } } },
+      answers: {
+        ...visitor(true),
+        [DATA_REQUEST]: {
+          status: 200,
+          body: {
+            status: "sent",
+            type: "access",
+            sent_to: WHO,
+            fresh: true,
+            minutes_ago: 0,
+          },
+        },
+      },
       steps: [{ shows: "Request data access", does: (page) => press(page, "Request data access") }],
-      shows: "Request recorded.",
+      shows: "A copy of your data was emailed",
+    },
+  ),
+  account(
+    {
+      id: "scanner-data-request-copy-retrying",
+      screen: "Data request",
+      when: "A signed-in person presses Request data access, and the mail service does not take the copy.",
+      cause:
+        "The first try failed; the page says for how long the copy is tried again and where to write after.",
+    },
+    "/data-request",
+    "routes/data-request",
+    {
+      answers: {
+        ...visitor(true),
+        [DATA_REQUEST]: {
+          status: 200,
+          body: {
+            status: "pending",
+            type: "access",
+            sent_to: WHO,
+            outcome: "refused",
+            within_minutes: 57,
+          },
+        },
+      },
+      steps: [{ shows: "Request data access", does: (page) => press(page, "Request data access") }],
+      shows: "did not take the copy",
     },
   ),
   account(
@@ -1432,7 +1474,7 @@ const ACCOUNT: GalleryState[] = [
           does: (page) => press(page, "Unsubscribe from marketing"),
         },
       ],
-      shows: "Request recorded.",
+      shows: "Unsubscribed from marketing email.",
     },
   ),
   account(
@@ -1463,21 +1505,31 @@ const ACCOUNT: GalleryState[] = [
         "An operator opens /admin; everybody else, a stranger included, gets the page not found.",
         NUMBERS,
         LIVE,
+        null,
+      ],
+      [
+        "scanner-admin-in-operator-zone",
+        "An operator whose browser named its time zone, here Bali's, opens /admin: each moment is in that zone with its offset after it, and the chart keeps the UTC days it is counted by.",
+        NUMBERS,
+        LIVE,
+        "Asia/Makassar",
       ],
       [
         "scanner-admin-test-channel",
         "An operator opens /admin on the test channel, which says what its money is under the header, as every page of the workspace there does.",
         NUMBERS,
-        { mode: "test", name: CHANNEL_NAMES.test, line: "test.agentify.ad" },
+        { mode: "test", name: CHANNEL_NAMES.test },
+        null,
       ],
       [
         "scanner-admin-troubled",
         "An operator opens /admin while the worker has gone quiet, the challenge is not enforced, no self-scan has completed and data access requests wait.",
         TROUBLED,
         LIVE,
+        null,
       ],
     ] as const
-  ).map(([id, when, numbers, channel]) =>
+  ).map(([id, when, numbers, channel, zone]) =>
     at(
       {
         id,
@@ -1495,6 +1547,7 @@ const ACCOUNT: GalleryState[] = [
               data: numbers,
               who: "operator@example.com",
               channel,
+              zone,
             }),
           },
         },

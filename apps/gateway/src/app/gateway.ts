@@ -1063,6 +1063,10 @@ export class Gateway {
     readonly through: Integration;
     readonly sellerName: string | null;
     readonly payoutWallet: string | null;
+    readonly pendingPayoutWallet: {
+      readonly address: string;
+      readonly takesEffectAt: number;
+    } | null;
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly busy: boolean;
@@ -1074,11 +1078,16 @@ export class Gateway {
       throw new Error(`this call was made as ${merchantId}, and there is no such merchant`);
     }
     const at = this.runtime.clock();
+    const wallet = payoutWalletAt(merchant.payoutWallet, at);
     return {
       selling: merchant.selling,
       through: merchant.integration,
       sellerName: merchant.serviceName,
-      payoutWallet: payoutWalletAt(merchant.payoutWallet, at).address,
+      payoutWallet: wallet.address,
+      pendingPayoutWallet:
+        wallet.pending === null
+          ? null
+          : { address: wallet.pending.address, takesEffectAt: wallet.pending.takesEffectAt },
       liveApproved: merchant.liveApprovedAt !== null,
       outOfTouch: await this.#refusedForSilence(merchant, at),
       busy:
@@ -1165,6 +1174,15 @@ export class Gateway {
       this.#letGo(merchantId, () => true);
     }
     return switched;
+  }
+
+  /**
+   * The orders that would refuse this merchant's switch to `to` if it were
+   * asked now, with nothing switched; none where it would be made. Only a
+   * read: the switch itself decides, and an order made in between holds it.
+   */
+  async switchHeldBy(merchantId: string, to: Integration): Promise<readonly string[]> {
+    return await this.runtime.store.switchHeldBy(merchantId, to);
   }
 
   /**

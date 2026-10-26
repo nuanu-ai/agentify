@@ -126,7 +126,6 @@ export const leads = pgTable(
     unsubscribedAt: utcTimestamp("unsubscribed_at"),
     deletionRequestedAt: utcTimestamp("deletion_requested_at"),
     anonymizedAt: utcTimestamp("anonymized_at"),
-    dataAccessRequestedAt: utcTimestamp("data_access_requested_at"),
     firstSegment: segmentEnum("first_segment").notNull(),
     firstSessionId: uuid("first_session_id")
       .notNull()
@@ -419,6 +418,63 @@ export const scannerIdentityDeletionOperations = pgTable(
     index("scanner_identity_deletion_operations_pending_idx")
       .on(table.leaseExpiresAt, table.createdAt)
       .where(sql`${table.completedAt} is null`),
+  ],
+);
+
+/**
+ * A person's request for a copy of the data held about their address, from
+ * the press until the copy is handed to the mail provider or every try has
+ * failed. It is keyed by the address rather than by a lead, because an address
+ * with no reports can hold a dashboard account. The address itself is kept,
+ * encrypted, only while tries remain: a try mails the copy to it, and nothing
+ * else.
+ */
+export const dataCopyRequests = pgTable(
+  "data_copy_requests",
+  {
+    id: uuid("id").primaryKey(),
+    emailLookupHash: text("email_lookup_hash").notNull(),
+    emailNormalizedCiphertext: text("email_normalized_ciphertext"),
+    state: text("state").notNull().default("pending"),
+    attempts: smallint("attempts").notNull().default(0),
+    requestedAt: utcTimestamp("requested_at").notNull().defaultNow(),
+    nextAttemptAt: utcTimestamp("next_attempt_at"),
+    leaseToken: uuid("lease_token"),
+    leaseExpiresAt: utcTimestamp("lease_expires_at"),
+    /**
+     * How the last try ended: `refused` by the mail provider; `no_answer`,
+     * which may have been mailed; or `too_large` for the dashboard to take,
+     * which nothing was mailed for and no later try changes.
+     */
+    lastOutcome: text("last_outcome"),
+    settledAt: utcTimestamp("settled_at"),
+  },
+  (table) => [
+    check("data_copy_requests_state", sql`${table.state} in ('pending', 'sent', 'failed')`),
+    check(
+      "data_copy_requests_pending_scheduled",
+      sql`(${table.state} = 'pending') = (${table.nextAttemptAt} is not null)`,
+    ),
+    check(
+      "data_copy_requests_settled_dated",
+      sql`(${table.state} = 'pending') = (${table.settledAt} is null)`,
+    ),
+    check(
+      "data_copy_requests_address_while_pending",
+      sql`(${table.state} = 'pending') = (${table.emailNormalizedCiphertext} is not null)`,
+    ),
+    check(
+      "data_copy_requests_last_outcome",
+      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('refused', 'no_answer', 'too_large')`,
+    ),
+    // One request in progress per address, so a second press joins the first.
+    uniqueIndex("data_copy_requests_one_pending_uidx")
+      .on(table.emailLookupHash)
+      .where(sql`${table.state} = 'pending'`),
+    index("data_copy_requests_address_idx").on(table.emailLookupHash, table.requestedAt),
+    index("data_copy_requests_due_idx")
+      .on(table.nextAttemptAt)
+      .where(sql`${table.state} = 'pending'`),
   ],
 );
 

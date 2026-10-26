@@ -34,10 +34,13 @@ import {
   catalogueOf,
   inspectProductInTheShop,
   inspectProductsInTheShop,
+  type OrderMade,
   type ProductInspection,
+  type SoldItem,
   type WooOrderLookup,
 } from "./woo-shop.js";
 import { memoryWooShops, type ShopCurrency, type WooShops } from "./woo-shops.js";
+import { NO_SHOP } from "./woo-words.js";
 
 const PERSON = "owner@example.com";
 const IN_DOLLARS: ShopSample = {
@@ -161,6 +164,8 @@ interface Standing {
     merchantItemId: string,
   ) => Promise<ProductInspection>;
   readonly readOrder?: (orderId: string) => Promise<WooOrderLookup>;
+  /** The shop's answer to creating an order; no test reaches a shop otherwise. */
+  readonly placeOrder?: (sold: SoldItem) => Promise<OrderMade>;
   /**
    * Fails every read of the connections table, as an unreachable Postgres
    * would. Only the screens' reads break; the Connect path's writes still work,
@@ -349,6 +354,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       ...(standing.readOrder === undefined
         ? {}
         : { readOrder: (_keys, id) => standing.readOrder?.(id) as Promise<WooOrderLookup> }),
+      placeOrder: async (_keys, sold) => {
+        if (standing.placeOrder === undefined) {
+          throw new Error("this test's shop is never asked to create an order");
+        }
+        return await standing.placeOrder(sold);
+      },
     },
   });
 
@@ -464,6 +475,26 @@ const started = async (standing: Standing = {}): Promise<Running> => {
     },
   };
   return open;
+};
+
+/** The Import panel of the shop screen: its heading, what the last press came to, and its form. */
+const importFormPanelOf = (html: string): string => {
+  const form = html.indexOf('action="/woocommerce/import"');
+  const opened = html.lastIndexOf("<section", form);
+  return form === -1 || opened === -1 ? "" : html.slice(opened, html.indexOf("</section>", form));
+};
+
+/**
+ * Disconnect pressed as a browser presses it: from the shop screen as it is
+ * drawn now, with the shop its form was drawn for.
+ */
+const disconnectAsDrawn = async (running: Running) => {
+  const page = await running.get("/woocommerce");
+  const form =
+    /<form[^>]*action="\/woocommerce\/disconnect"[^>]*>[\s\S]*?<\/form>/.exec(page.html)?.[0] ?? "";
+  const shop = /name="shop" value="([^"]*)"/.exec(form)?.[1];
+  if (shop === undefined) throw new Error("the shop screen draws no Disconnect");
+  return await running.post("/woocommerce/disconnect", { shop: shop.replaceAll("&amp;", "&") });
 };
 
 const tokenIn = (authorizeUrl: string): string =>
@@ -651,7 +682,7 @@ describe("the keys arriving from the shop", () => {
     const token = tokenIn(pressed.to ?? "");
 
     expect((await running.postJson("/woocommerce/callback", grantedBody(token))).status).toBe(200);
-    await running.post("/woocommerce/disconnect");
+    await disconnectAsDrawn(running);
 
     const again = await running.postJson("/woocommerce/callback", {
       ...grantedBody(token),
@@ -684,7 +715,7 @@ describe("the keys arriving from the shop", () => {
       expiresAt: new Date(Date.now() - 25 * 60_000),
     });
 
-    const forgot = await running.post("/woocommerce/disconnect");
+    const forgot = await disconnectAsDrawn(running);
 
     expect(forgot.status).toBe(303);
     expect(forgot.to).toBe(`/woocommerce?shop_url=${encodeURIComponent(SHOP)}`);
@@ -955,7 +986,7 @@ describe("importing the catalogue", () => {
     await connected(running);
     await running.post("/woocommerce/import");
 
-    await running.post("/woocommerce/disconnect");
+    await disconnectAsDrawn(running);
 
     expect(await cardsOf(running)).toHaveLength(1);
   });
@@ -1061,16 +1092,6 @@ describe("importing the catalogue", () => {
     expect(seen.some((one) => one.startsWith("/wp-json/wc/v3/"))).toBe(false);
   });
 
-  it("names the ceiling to a merchant before they import", async () => {
-    const running = await started();
-    await connected(running);
-
-    const screen = readable((await running.get("/woocommerce")).html);
-
-    expect(screen).toContain("Reads up to 2,000 products");
-    expect(screen).toContain("more than 2,000 products is refused whole");
-  });
-
   it("walks a shop once at a time: a second press while an import runs reads nothing", async () => {
     // A large import takes a while, and a merchant who presses again, or opens
     // a second tab, would otherwise send the whole walk to the same shop twice.
@@ -1101,9 +1122,10 @@ describe("importing the catalogue", () => {
 
     expect(second.status).toBe(409);
     // The first may have been started from a page since closed, so the words
-    // send the merchant to Cards rather than to its result.
-    expect(readable(second.html)).toContain("already running");
-    expect(readable(second.html)).toContain("Cards");
+    // send the merchant to Products rather than to its result.
+    const panel = importFormPanelOf(second.html);
+    expect(readable(panel)).toContain("already running");
+    expect(panel).toContain('<a href="/products">');
     expect(storePages(seen)).toHaveLength(1);
     expect(done.status).toBe(200);
     expect(await cardsOf(running)).toHaveLength(3);
@@ -1157,13 +1179,13 @@ describe("importing the catalogue", () => {
     await connected(running);
     await running.post("/woocommerce/import");
     const tote = (await cardsOf(running)).find((one) => one.card.title === "Canvas tote bag");
-    await running.post(`/cards?${new URLSearchParams({ pause: tote?.id ?? "" })}`);
+    await running.post(`/products?${new URLSearchParams({ pause: tote?.id ?? "" })}`);
 
     const imported = await running.post("/woocommerce/import");
     const text = readable(imported.html);
 
     expect(imported.status).toBe(200);
-    expect(text).toContain("2 published");
+    expect(text).toContain("Published 2");
     expect(text).toContain("Canvas tote bag");
     expect(text).not.toMatch(/on sale/i);
     expect((await cardsOf(running)).find((one) => one.id === tote?.id)?.paused).toBe(true);
@@ -1202,12 +1224,12 @@ describe("importing the catalogue", () => {
     const text = readable(imported.html);
 
     expect(imported.status).toBe(200);
-    expect(text).toContain("1 without a verdict");
+    expect(text).toContain("No verdict 1");
     expect(text).toContain("Canvas tote bag");
-    expect(text).toContain("Agentify did not answer");
-    // Neither the refusals' heading nor their count.
+    expect(text).toMatch(/don't know if these were published/);
+    // Neither the refusals' heading nor their invitation to change the shop.
     expect(text).not.toContain("To fix");
-    expect(text).not.toContain("publishing rules");
+    expect(text).not.toMatch(/change these in your shop/i);
   });
 
   it("keeps what it did when publishing fails in our own code, and says nobody knows whether it went", async () => {
@@ -1226,9 +1248,9 @@ describe("importing the catalogue", () => {
     const text = readable(imported.html);
 
     expect(imported.status).toBe(200);
-    expect(text).toContain("1 without a verdict");
-    expect(text).toContain("1 not attempted");
-    expect(text).toContain("whether it was published is not known");
+    expect(text).toContain("No verdict 1");
+    expect(text).toContain("Not attempted 1");
+    expect(text).toMatch(/don't know if these were published/);
   });
 
   it("writes down a publish that failed in our own code without what the failure carried", async () => {
@@ -1261,8 +1283,8 @@ describe("importing the catalogue", () => {
     const imported = await running.post("/woocommerce/import");
     const text = readable(imported.html);
 
-    expect(text).toContain("1 without a verdict");
-    expect(text).toContain("1 not attempted");
+    expect(text).toContain("No verdict 1");
+    expect(text).toContain("Not attempted 1");
     expect(text).toContain("Canvas tote bag");
     expect(text).toContain("Access code");
   });
@@ -1281,7 +1303,7 @@ describe("importing the catalogue", () => {
     await connected(running);
 
     const imported = await running.post("/woocommerce/import");
-    const ways = [...imported.html.matchAll(/href="(\/cards\?[^"]+)"/g)].map(([, to = ""]) =>
+    const ways = [...imported.html.matchAll(/href="(\/products\?[^"]+)"/g)].map(([, to = ""]) =>
       to.replaceAll("&amp;", "&"),
     );
     const listed = await Promise.all(
@@ -1322,9 +1344,9 @@ describe("importing the catalogue", () => {
 
     const imported = await running.post("/woocommerce/import");
 
-    expect(imported.html).toContain("Not imported");
+    expect(imported.html).toContain("Not supported");
     expect(imported.html).toContain("A set of things");
-    expect(imported.html).toContain("grouped");
+    expect(readable(imported.html)).toMatch(/grouped/i);
   });
 
   it("says what a shop that would not answer said, and publishes nothing", async () => {
@@ -1364,6 +1386,9 @@ describe("importing the catalogue", () => {
     const form = importFormOf(imported.html);
 
     expect(imported.status).toBe(409);
+    // The press came from a page drawn before the wallet was unset, so the
+    // answer says what it did, not only what the page holds.
+    expect(readable(imported.html)).toMatch(/Nothing was imported[^.]*payout wallet/);
     expect(readable(form)).toMatch(/wallet/i);
     expect(form).toContain('href="/settings"');
     expect(readable(imported.html)).not.toContain("/v0/");
@@ -1511,33 +1536,18 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toEqual([]);
   });
 
-  it("says a wallet is needed before Import is pressed in the banner, and not again at the button", async () => {
+  it("holds Import before it is pressed while no wallet is set, and says beside it where to set one", async () => {
     const running = await started({ channel: "test", fresh: "named" });
     await connected(running);
 
     const screen = await running.get("/woocommerce");
+    const form = importFormOf(screen.html);
 
     expect(screen.status).toBe(200);
-    expect(bannerIn(screen.html)).toMatch(/no payout wallet/i);
-    expect(screen.html).toContain('href="/settings"');
-    expect(readable(importFormOf(screen.html))).not.toMatch(/wallet/i);
-  });
-
-  it("answers a refused press with an alert the screen before the press does not carry", async () => {
-    // Both pages name what is missing beside the same button; only the answer
-    // to the press carries the alert that says the press was refused.
-    const running = await started({
-      channel: "test",
-      fresh: "named",
-      catalogue: async () => ({ ok: true, products: [aProduct()] }),
-    });
-    await connected(running);
-
-    const before = await running.get("/woocommerce");
-    const pressed = await running.post("/woocommerce/import");
-
-    expect(importFormOf(before.html)).not.toContain('role="alert"');
-    expect(importFormOf(pressed.html)).toContain('role="alert"');
+    expect(screen.html).toContain('data-reason="no_payout_wallet"');
+    expect(form).toMatch(/<button[^>]*\bdisabled\b[^>]*>Import products</);
+    expect(readable(form)).toMatch(/wallet/i);
+    expect(form).toContain('href="/settings"');
   });
 
   it("says nothing about a wallet on the shop screen once one is set", async () => {
@@ -1558,8 +1568,8 @@ describe("importing the catalogue", () => {
       silent: "everything",
     });
     await running.signIn();
-    // Connected the way Connect leaves a merchant, without pressing it: a
-    // gateway that does not answer cannot switch them to the shop either.
+    // Connected the way the shop's keys leave a merchant, without a callback:
+    // a gateway that does not answer cannot switch them to the shop either.
     await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "woocommerce");
     const startedAt = new Date();
     await running.shops.beginGrant({
@@ -1623,14 +1633,20 @@ describe("importing the catalogue", () => {
       });
     };
 
-  /** Each product left in the shop by its number in the shop, with the reason given. */
+  /**
+   * Each product left in the shop by its number in the shop, with the reason
+   * given, whether the shop can put it right or the connector does not sell it.
+   */
   const leftInTheShop = (html: string): Record<string, string> =>
     Object.fromEntries(
       [
-        ...(/<ul[^>]*aria-label="Not imported"[^>]*>[\s\S]*?<\/ul>/.exec(html)?.[0] ?? "").matchAll(
-          /<li class="list-row[^"]*">([\s\S]*?)<\/li>/g,
+        ...html.matchAll(
+          /<ul[^>]*aria-label="(?:To fix|Not supported)"[^>]*>([\s\S]*?)<\/section>/g,
         ),
       ]
+        .flatMap(([, list = ""]) => [
+          ...list.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g),
+        ])
         .map((item) => readable(item[1] ?? ""))
         .flatMap((line) => {
           const found = /^(.*?) Product (\d+) in your shop (.*)$/.exec(line);
@@ -1790,9 +1806,9 @@ describe("importing the catalogue", () => {
         .filter((code) => aboutTheMerchant.has(code));
     };
 
-    /** Read the way a merchant reads it. */
+    /** Read the way a merchant reads it: the line under the held button. */
     const lineIn = (html: string): string =>
-      readable(/<p class="problem"[^>]*>[\s\S]*?<\/p>/.exec(importFormOf(html))?.[0] ?? "");
+      readable(/<p class="quiet"[^>]*>[\s\S]*?<\/p>/.exec(importFormOf(html))?.[0] ?? "");
 
     /** In the gateway's words for the same things. */
     const named = (line: string): readonly string[] => [
@@ -1828,10 +1844,11 @@ describe("importing the catalogue", () => {
           const pressed = await running.post("/woocommerce/import");
           const after = lineIn(pressed.html);
 
-          // Before a press the banner says what is missing, and the button
-          // says nothing of its own; the answer to a press says it again.
+          // Before a press the button is held and the line under it names
+          // what is missing, as the banner does; a press that came anyway is
+          // answered the same way.
           expect(named(bannerIn(screen))).toStrictEqual(door);
-          expect(lineIn(screen)).toBe("");
+          expect(named(lineIn(screen))).toStrictEqual(door);
           expect(pressed.status).toBe(door.length === 0 ? 200 : 409);
           if (door.length > 0) {
             expect(named(after)).toStrictEqual(door);
@@ -1887,7 +1904,7 @@ describe("what the integrations screen says about a shop", () => {
     expect(html.indexOf('href="/woocommerce"')).toBeGreaterThan(
       html.indexOf('href="/docs/quickstart"'),
     );
-    expect(readable(html)).toContain(SHOP);
+    expect(readable(html)).toContain(new URL(SHOP).host);
   });
 
   it("offers to connect one where nothing was ever started", async () => {
@@ -1897,7 +1914,7 @@ describe("what the integrations screen says about a shop", () => {
     const screen = await running.get("/integrations");
 
     expect(screen.status).toBe(200);
-    expect(readable(screen.html)).toContain("Connect a WooCommerce shop");
+    expect(readable(screen.html)).toContain("Connect a shop");
     expect(readable(screen.html)).not.toMatch(/acceptance path/i);
     // What a supported product is, is written on the shop screen this block
     // links to, and only there.
@@ -1912,9 +1929,9 @@ describe("what the integrations screen says about a shop", () => {
 
     const text = await settings(running);
 
-    expect(text).toContain(SHOP);
-    expect(text).toMatch(/connected 20\d\d-\d\d-\d\d/);
-    expect(text).not.toContain("Connect a WooCommerce shop");
+    expect(text).toContain(new URL(SHOP).host);
+    expect(text).toMatch(/Connected .* since 20\d\d-\d\d-\d\d/);
+    expect(text).not.toContain("Connect a shop");
   });
 
   it("says a Connect is still running, and how long it has been", async () => {
@@ -1927,8 +1944,8 @@ describe("what the integrations screen says about a shop", () => {
     const text = await settings(running);
 
     expect(text).toContain("4 minutes ago");
-    expect(text).toMatch(/no keys have reached us yet/);
-    expect(text).not.toContain("Connect a WooCommerce shop");
+    expect(text).toMatch(/Waiting for your shop's keys/);
+    expect(text).not.toContain("Connect a shop");
   });
 
   it("counts a Connect pressed moments ago without claiming a whole minute", async () => {
@@ -1950,15 +1967,15 @@ describe("what the integrations screen says about a shop", () => {
     const screen = await running.get("/integrations");
     const text = readable(screen.html);
 
-    expect(text).toContain(SHOP);
-    expect(text).toMatch(/no keys arrived .* 15 minutes/);
+    expect(text).toContain(new URL(SHOP).host);
+    expect(text).toMatch(/No keys came .* within 15 minutes, and we can't tell why/);
     expect(text).toContain("Connect again");
     expect(screen.html).toContain(`href="/woocommerce"`);
     expect(text).not.toMatch(/could not reach us/);
     expect(text).not.toMatch(/firewall/);
     // Not the sentence for a running Connect, which would have the merchant
-    // reloading a page that will never change.
-    expect(text).not.toContain("Reload this page in a moment");
+    // waiting on a page that will never change.
+    expect(text).not.toContain("arrive in a moment");
   });
 
   it("keeps the previous shop address in the retry form", async () => {
@@ -1975,7 +1992,7 @@ describe("what the integrations screen says about a shop", () => {
     const running = await started();
     await running.signIn();
 
-    const html = (await running.get("/cards")).html;
+    const html = (await running.get("/products")).html;
     const empty = html.slice(html.indexOf('class="list list-empty"'));
 
     expect(/<a class="button button-primary" href="([^"]*)"/.exec(empty)?.[1]).toBe(
@@ -1995,8 +2012,9 @@ describe("what the integrations screen says about a shop", () => {
 
     const text = await settings(running);
 
-    expect(text).toContain(SHOP);
-    expect(text).toMatch(/read and write/);
+    expect(text).toContain(new URL(SHOP).host);
+    expect(text).toContain("No Read/Write access");
+    expect(text).not.toMatch(/\bConnected\b/);
   });
 
   it("leads to the shop screen from every state", async () => {
@@ -2040,14 +2058,14 @@ describe("what the integrations screen says about a shop", () => {
 
     const settings = await running.get("/settings");
     expect(settings.status).toBe(200);
-    expect(readable(settings.html)).toContain("Payout wallet");
+    expect(settings.html).toContain('name="payout_wallet"');
 
     const screen = await running.get("/integrations");
 
     expect(screen.status).toBe(200);
-    expect(readable(screen.html)).toContain("could not be read just now");
-    expect(readable(screen.html)).toContain("Reload this page in a moment");
-    expect(readable(screen.html)).not.toContain("Connect a WooCommerce shop");
+    expect(readable(screen.html)).toContain("couldn't check your shop connection");
+    expect(screen.html).toContain('href="/integrations"');
+    expect(readable(screen.html)).not.toContain("Connect a shop");
   });
 });
 
@@ -2069,7 +2087,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     expect(stripped.to).not.toBe("/sign-in");
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("Continue to your dashboard");
+    expect(seen.html).toContain(`action="/woocommerce"`);
   });
 
   it("leads its Continue, through the sign-in, back to the shop screen", async () => {
@@ -2114,7 +2132,7 @@ describe("coming back from the shop with no session on the request", () => {
     const seen = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
 
     expect(seen.status).toBe(200);
-    expect(readable(seen.html)).toContain("Continue to your dashboard");
+    expect(seen.html).toContain(`action="/woocommerce"`);
   });
 
   it("says the same thing whether or not a shop is connected", async () => {
@@ -2148,14 +2166,12 @@ describe("coming back from the shop with no session on the request", () => {
 
     const stripped = await cameBack(running);
     const landed = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
-    expect(readable(landed.html)).toContain("Continue to your dashboard");
     expect(landed.html).toContain(`action="/woocommerce"`);
     expect(landed.html).not.toContain("Sign in");
 
     const text = readable((await running.get("/woocommerce?from=shop")).html);
 
-    expect(text).toMatch(/no keys have reached us yet/);
-    expect(text).not.toContain("Connect a WooCommerce shop");
+    expect(text).toMatch(/Waiting for your shop's keys/);
   });
 
   it("shows the merchant their real state once the cookie does travel", async () => {
@@ -2173,7 +2189,7 @@ describe("coming back from the shop with no session on the request", () => {
     const seen = await running.get(came.to ?? "");
 
     expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(seen.html)).toContain(`Connected ${SHOP} since`);
+    expect(readable(seen.html)).toContain(`Connected ${new URL(SHOP).host} since`);
   });
 
   it("does not say the shop approved merely because the browser came through the return address", async () => {
@@ -2189,8 +2205,8 @@ describe("coming back from the shop with no session on the request", () => {
     const reloaded = await running.get("/woocommerce?from=shop");
 
     expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(back.html)).toMatch(/no keys have reached us yet/);
-    expect(readable(back.html)).not.toContain("Your shop is connected");
+    expect(readable(back.html)).toMatch(/Waiting for your shop's keys/);
+    expect(readable(back.html)).not.toMatch(/\bConnected\b/);
     expect(back.html).toBe(reloaded.html);
   });
 
@@ -2216,7 +2232,7 @@ describe("coming back from the shop with no session on the request", () => {
     for (const path of [
       "/woocommerce",
       "/woocommerce/import",
-      "/cards",
+      "/products",
       "/orders",
       "/receipts",
       "/keys",
@@ -2343,7 +2359,7 @@ describe("merchant delivery recovery", () => {
       consumerSecret: "cs_recovery",
       permissions: "read_write",
       // A shop connected again since the refusal: the one condition under
-      // which the operator's command would create the order.
+      // which its merchant's recovery page creates the order.
       revision: neverAsked ? "grant_again" : "grant_recovery",
       connectedAt: now,
       currency: null,
@@ -2379,9 +2395,7 @@ describe("merchant delivery recovery", () => {
     // The order's details, where Close fulfillment leads, offer the same way on.
     const opened = (await running.get(`/orders?details=${own.orderId}`)).html;
     const details =
-      new RegExp(`<details[^>]*id="details-${own.orderId}"[\\s\\S]*?</details>`).exec(
-        opened,
-      )?.[0] ?? "";
+      new RegExp(`id="details-${own.orderId}"[\\s\\S]*?</details>`).exec(opened)?.[0] ?? "";
     expect(details).toContain(`href="${own.path}"`);
     const page = await running.get(own.path);
     expect(page.status).toBe(200);
@@ -2396,35 +2410,57 @@ describe("merchant delivery recovery", () => {
     expect((await running.get("/orders")).html).not.toContain(`href="${own.path}"`);
   });
 
-  it("turns away a press for a sale its shop was never asked to create, without asking the shop anything", async () => {
-    let inspected = 0;
+  it("creates a download refused before creation once from its recovery page, and delivers it", async () => {
+    const sold: SoldItem[] = [];
     const running = await started({
-      inspectProduct: async (_keys, merchantItemId) => {
-        inspected += 1;
+      placeOrder: async (item) => {
+        sold.push(item);
         return {
           ok: true,
-          product: {
-            kind: "download",
-            productId: merchantItemId.split("_").at(-1) ?? "",
-            downloadId: "dl_guide",
-            fileName: "Guide",
-            price: { amount: "25.00", currency: "USD" },
-            fingerprint: "accepted-download-fingerprint",
-            tax: { mode: "off" as const },
-          },
+          id: "13",
+          number: "WOO-13",
+          orderKey: "wc_order_13",
+          downloadId: "dl_guide",
+          total: "25.00",
         };
       },
     });
     await running.signIn();
     const own = await sale(running, running.accountId, false, true);
+    expect((await running.get("/orders")).html).toContain(`href="${own.path}"`);
     const page = await running.get(own.path);
-    expect(formTo(page.html, "post", own.path)).toBeUndefined();
+    expect(formTo(page.html, "post", own.path)?.fields.has("woo_order_id")).toBe(false);
 
     const pressed = await running.post(own.path);
+    const again = await running.post(own.path);
 
-    expect(pressed.status).toBe(409);
+    expect(pressed.status).toBe(200);
     expect(formTo(pressed.html, "post", own.path)).toBeUndefined();
-    expect(inspected).toBe(0);
+    expect(again.status).toBe(200);
+    expect(sold).toHaveLength(1);
+    expect(sold[0]?.price).toStrictEqual({ amount: "25.00", currency: "USD" });
+    expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("placed");
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
+  });
+
+  it("creates nothing from a create form drawn for another address", async () => {
+    let asked = 0;
+    const running = await started({
+      placeOrder: async () => {
+        asked += 1;
+        return { ok: false, why: "never called", again: true };
+      },
+    });
+    await running.signIn();
+    const own = await sale(running, running.accountId, false, true);
+    await running.get(own.path);
+
+    const elsewhere = await running.post(own.path, { [DRAWN_FOR]: "another@example.com" });
+    const drawnForNobody = await running.post(own.path, { [DRAWN_FOR]: "" });
+
+    expect(elsewhere.status).toBe(409);
+    expect(drawnForNobody.status).toBe(409);
+    expect(asked).toBe(0);
     expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("precreate_refused");
     expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("unfulfilled");
   });
@@ -2467,9 +2503,9 @@ describe("merchant delivery recovery", () => {
 });
 
 describe("one integration at a time", () => {
-  // Pressing Connect moves the merchant to the shop before they are sent to
-  // it, and Disconnect moves them back to their code. Selling both ways at
-  // once would let the code's worker draw a paid order of the shop's.
+  // The shop's keys arriving move the merchant to the shop, and Disconnect
+  // moves them back to their code. Selling both ways at once would let the
+  // code's worker draw a paid order of the shop's.
   const coded = {
     merchant_item_id: "esim-7d",
     title: "A seven day eSIM",
@@ -2517,7 +2553,7 @@ describe("one integration at a time", () => {
     });
   };
 
-  it("takes the code's cards off sale and its orders away the moment Connect is pressed", async () => {
+  it("sends the merchant to WooCommerce on an allowed Connect and leaves the code's products on sale", async () => {
     const running = await started();
     await running.signIn();
     const card = await publishedByTheCode(running);
@@ -2525,14 +2561,89 @@ describe("one integration at a time", () => {
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
 
     expect(pressed.status).toBe(303);
+    expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+  });
+
+  it("moves the merchant to the shop when its keys arrive, taking the code's products off sale", async () => {
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+
+    await connectTheShop(running);
+
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe(
+      "woocommerce",
+    );
     expect(await onSale(running)).not.toContain(card);
     expect((await theCodePolls(running)).status).toBe(409);
   });
 
+  it("keeps the shop connected and the code selling when the keys arrive while an order waits on the code", async () => {
+    // The order was made after Connect was allowed. The shop's server is
+    // answered as WooCommerce expects all the same: a failed post would make
+    // the shop delete the key the merchant has just approved.
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await paidFor(running, card);
+
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody(tokenIn(pressed.to ?? "")),
+    );
+
+    expect(callback.status).toBe(200);
+    expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+    const page = await running.get("/woocommerce");
+    expect(page.html).toContain('action="/woocommerce/switch"');
+    expect(readable(page.html)).toContain("Sell through this shop");
+  });
+
+  it("leaves the code selling when the shop's keys arrive short of Read/Write", async () => {
+    // Every purchase through such a shop is refused before payment, so a
+    // switch would take the code's products off sale for nothing.
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+
+    const callback = await running.postJson(
+      "/woocommerce/callback",
+      grantedBody(tokenIn(pressed.to ?? ""), "read"),
+    );
+
+    expect(callback.status).toBe(200);
+    expect((await running.shops.connectionOf(running.accountId))?.permissions).toBe("read");
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+  });
+
+  it("changes nothing for a Connect whose approval never comes", async () => {
+    const running = await started();
+    await running.signIn();
+    const card = await publishedByTheCode(running);
+
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const page = await running.get("/woocommerce");
+
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+    expect(await onSale(running)).toContain(card);
+    expect((await theCodePolls(running)).status).toBe(200);
+    expect(readable(page.html)).toContain("Waiting for your shop's keys");
+    expect(readable(page.html)).not.toMatch(/come back paused|already off sale/);
+    expect(page.html).not.toContain('action="/woocommerce/disconnect"');
+  });
+
   it("refuses a shop writing three decimals before sending the merchant to approve keys, and keeps the code's cards on sale", async () => {
-    // Every product of such a shop would be refused at import, so switching
-    // first would take the code's cards off sale for a shop that can sell
-    // nothing, and the shop would hand over write keys for nothing.
+    // Every product of such a shop would be refused at import, so the shop
+    // would hand over write keys for nothing, and their arrival would take the
+    // code's cards off sale for a shop that can sell nothing.
     const running = await started({
       sample: async () => ({
         currency: "KWD",
@@ -2578,13 +2689,11 @@ describe("one integration at a time", () => {
     // no products yet, or its Store API turned off, connects as before.
     const running = await started({ sample: async () => null });
     await running.signIn();
-    const card = await publishedByTheCode(running);
 
     const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
 
     expect(pressed.status).toBe(303);
     expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
-    expect(await onSale(running)).not.toContain(card);
   });
 
   it("refuses Connect while an order still waits on the code, names it, and sends nobody to the shop", async () => {
@@ -2619,10 +2728,19 @@ describe("one integration at a time", () => {
     );
     const [order] = await running.harnessed.store.orders(merchantId);
 
-    const refused = await running.post("/woocommerce/disconnect");
+    const refused = await disconnectAsDrawn(running);
 
+    // A purchase still waiting for its price ends in seconds, so the merchant
+    // is told to try again shortly rather than handed its ID to chase.
+    if (order === undefined) throw new Error("the purchase made no order");
     expect(refused.status).toBe(409);
-    expect(readable(refused.html)).toContain(order?.order.id ?? "no order");
+    expect(refused.html).toMatch(/<p class="problem">[^<]+<\/p>/);
+    expect(formTo(refused.html, "post", "/woocommerce/disconnect")?.presses).toHaveLength(1);
+    // Not priced yet, it is not on the open list, so nothing is claimed of it:
+    // neither its ID, nor a count, nor that it is in progress.
+    expect(refused.html).not.toContain(order.order.id);
+    expect(readable(refused.html)).not.toMatch(/\b\d+ orders?\b/);
+    expect(readable(refused.html)).not.toMatch(/in progress/i);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 
     const replaced = await running.post("/woocommerce/connect", {
@@ -2651,7 +2769,7 @@ describe("one integration at a time", () => {
     expect(await running.shops.connectionOf(running.accountId)).toStrictEqual(before);
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
 
-    expect((await running.post("/woocommerce/disconnect")).status).toBe(303);
+    expect((await disconnectAsDrawn(running)).status).toBe(303);
     const connected = await running.post("/woocommerce/connect", {
       shop_url: "https://other.example.com",
     });
@@ -2721,30 +2839,87 @@ describe("one integration at a time", () => {
     const card = await publishedByTheCode(running);
     await connectTheShop(running);
 
-    const left = await running.post("/woocommerce/disconnect");
+    const left = await disconnectAsDrawn(running);
 
-    expect(left.to).toBe("/cards");
+    expect(left.to).toBe("/products");
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
     expect(await onSale(running)).toStrictEqual([]);
-    await running.post("/cards?selling=resume");
+    await running.post("/products?selling=resume");
     expect(await onSale(running)).toStrictEqual([card]);
   });
 
-  it("offers the way back to the code to a merchant on the shop whose shop never connected", async () => {
+  it("says on Products that sales are paused, and not that the merchant who switched back paused them", async () => {
+    // Selling stops by the merchant's button, by their code's call and by this
+    // switch, and the banner cannot tell which.
     const running = await started();
     await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await publishedByTheCode(running);
+    await connectTheShop(running);
+
+    const left = await disconnectAsDrawn(running);
+    const html = (await running.get(left.to ?? "")).html;
+    const banner = /<section class="account-banner"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
+
+    expect(banner).toContain('data-reason="paused"');
+    expect(readable(banner)).not.toMatch(/\byou\b|press/i);
+  });
+
+  it("forgets no shop that was connected after the page Disconnect was pressed on was drawn", async () => {
+    // A tab left open on the way back, while the keys arrived in another.
+    const running = await started();
+    await running.signIn();
+    await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "woocommerce");
+    await running.get("/woocommerce");
+    await connectTheShop(running);
+
+    const stale = await running.post("/woocommerce/disconnect", { shop: NO_SHOP });
+
+    expect(stale.status).toBe(409);
+    expect(stale.to).toBeNull();
+    expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe(
+      "woocommerce",
+    );
+    // Said inside the Disconnect it refused, opened, so the next press is one
+    // made with the shop in sight.
+    const opened = /<details[^>]*\bopen\b[^>]*>[\s\S]*?<\/details>/.exec(stale.html)?.[0] ?? "";
+    expect(readable(opened)).toContain(`Nothing was disconnected: ${new URL(SHOP).host}`);
+    expect((await disconnectAsDrawn(running)).status).toBe(303);
+    expect(await running.shops.connectionOf(running.accountId)).toBeNull();
+  });
+
+  it("says a Disconnect from a page whose shop is gone changed nothing, also once the code sells", async () => {
+    // A tab left open on the shop while another disconnected it.
+    const running = await started();
+    await running.signIn();
+    await connectTheShop(running);
+    expect((await disconnectAsDrawn(running)).status).toBe(303);
+
+    const stale = await running.post("/woocommerce/disconnect", { shop: SHOP });
+
+    expect(stale.status).toBe(409);
+    expect(readable(stale.html)).toContain("Nothing was changed");
+    expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
+  });
+
+  it("offers the way back to the code to a merchant on the shop whose shop never connected", async () => {
+    // Reached by an account that started on the shop because it held an
+    // imported card before integrations were recorded.
+    const running = await started();
+    await running.signIn();
+    await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "woocommerce");
 
     const page = await running.get("/woocommerce");
     expect(page.html).toContain('action="/woocommerce/disconnect"');
-    await running.post("/woocommerce/disconnect");
+    await disconnectAsDrawn(running);
 
     expect((await theCodePolls(running)).status).toBe(200);
   });
 
   it("offers a merchant on their code with a shop connected the switch to it, and imports nothing until they take it", async () => {
-    // Reached when a Disconnect switched the merchant back and was cut off
-    // before it forgot the shop, or from two tabs. Without the switch the page
+    // Reached when the keys arrived while an order of the code's was open, or
+    // a Disconnect switched the merchant back and was cut off before it forgot
+    // the shop. Without the switch the page
     // would show a connected shop and an Import that reads the whole shop only
     // to refuse every card.
     const running = await started({
@@ -2765,28 +2940,49 @@ describe("one integration at a time", () => {
     expect(await running.harnessed.gateway.sellsThrough(merchantId)).toBe("woocommerce");
   });
 
-  it("says once over the cards why the code's cards are off sale while the shop sells", async () => {
-    // Said beside every card it would be the same sentence on every row; the
-    // row says only that the card is off sale, and offers no switch that would
-    // put it back.
+  it("says beside each card the code published why it is off sale while the shop sells, and holds nothing against the account", async () => {
+    // Selling through the shop is how the account works, not a hold on its
+    // sales, so the banner says nothing of it; the rows say which cards it
+    // leaves off sale, and offer no switch that would put them back.
     const running = await started();
     await running.signIn();
     await publishedByTheCode(running);
     await connectTheShop(running);
 
-    const html = (await running.get("/cards")).html;
+    const html = (await running.get("/products")).html;
     const rows = [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(
       ([, row = ""]) => row,
     );
 
-    expect([...html.matchAll(/data-reason="([^"]+)"/g)].map(([, reason]) => reason)).toContain(
-      "through_shop",
-    );
+    expect([...html.matchAll(/data-reason="([^"]+)"/g)]).toStrictEqual([]);
     expect(rows).not.toHaveLength(0);
     for (const row of rows) {
       expect(readable(row)).toContain("Off sale");
-      expect(readable(row)).not.toMatch(/WooCommerce/);
+      expect(readable(row)).toMatch(/WooCommerce/);
+      expect(row).toContain('href="/woocommerce"');
       expect(row).not.toMatch(/<form/);
+    }
+  });
+
+  it("leaves the code's products on sale, and claims no shop sales, after a Connect never approved", async () => {
+    // Connect only asks; the switch waits for the shop's keys, so an approval
+    // abandoned at the shop leaves the code selling and says nothing of a shop.
+    const running = await started();
+    await running.signIn();
+    await publishedByTheCode(running);
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(pressed.status).toBe(303);
+
+    const rows = [
+      ...(await running.get("/products")).html.matchAll(
+        /<li class="list-row[^"]*">([\s\S]*?)<\/li>/g,
+      ),
+    ].map(([, row = ""]) => readable(row));
+
+    expect(rows).not.toHaveLength(0);
+    for (const row of rows) {
+      expect(row).toContain("On sale");
+      expect(row).not.toMatch(/WooCommerce|\bsells\b/);
     }
   });
 });
@@ -3140,9 +3336,8 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const said = readable(screen.html);
       expect(said).toContain("Indonesian Rupiah (IDR)");
-      expect(said).toContain("Nothing is published until you set one");
-      expect(said).toContain("open rate, source: Coinbase");
-      expect(said).toContain("18035.292596");
+      expect(said).toContain("Nothing is published until you set it");
+      expect(said).toContain("Coinbase 18,035 IDR per US dollar");
       expect(said).toContain("2026-10-21 14:52:48 UTC");
       expect(screen.html).toContain('name="rate"');
     });
@@ -3220,10 +3415,12 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const text = readable((await running.get("/woocommerce")).html);
       const told =
-        /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
+        /Your rate 18,000 IDR per US dollar[\s\S]*?(?=Coinbase \d)/.exec(text)?.[0] ?? "";
 
       expect(signedIn).toBeDefined();
-      expect(told).toContain(`signed in to this account at ${signedIn}`);
+      expect(told).toContain(`session that signed in ${signedIn}`);
+      // A moment of a sign-in proves nothing about who it was, and is said so.
+      expect(told).toContain("doesn't prove who saved it");
       expect(told).not.toContain(PERSON);
       expect(told).not.toContain("@");
     });
@@ -3242,11 +3439,11 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const text = readable((await running.get("/woocommerce")).html);
       const told =
-        /Your rate, 18000 IDR per US dollar,[\s\S]*?(?=Reference:)/.exec(text)?.[0] ?? "";
+        /Your rate 18,000 IDR per US dollar[\s\S]*?(?=Coinbase \d)/.exec(text)?.[0] ?? "";
 
       expect(told).toContain("2026-10-20 08:00:00 UTC");
-      expect(told).not.toMatch(/signed in to this account at/);
-      expect(told).toMatch(/not recorded/);
+      expect(told).not.toMatch(/session that signed in \d/);
+      expect(told).toMatch(/isn't recorded/);
       expect(told).not.toContain(PERSON);
     });
 
@@ -3284,7 +3481,7 @@ describe("a shop priced in another currency than US dollars", () => {
         rate: "18000",
       });
       expect(readable(saved.html)).toContain("already running");
-      expect(readable(saved.html)).toContain("publish your products at this rate");
+      expect(readable(saved.html)).toContain("publish at this rate");
       expect(reads).toBe(1);
     });
 
@@ -3354,7 +3551,7 @@ describe("a shop priced in another currency than US dollars", () => {
       const said = readable(asked.html);
       expect(said).toContain("90.0% below");
       expect(said).toContain(
-        "none of the first 10 products in your shop's public catalogue has a price in IDR",
+        "None of the first 10 products in your shop's public catalogue has a price in IDR",
       );
       expect(said).not.toContain("did not answer");
       expect(said).toContain("Type the rate again");
@@ -3373,7 +3570,7 @@ describe("a shop priced in another currency than US dollars", () => {
       const asked = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
 
       const said = readable(asked.html);
-      expect(said).toContain("your shop's public catalogue did not answer just now");
+      expect(said).toContain("Your shop's public catalogue didn't answer");
       expect(said).not.toContain("has a price in IDR");
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
 
@@ -3426,7 +3623,7 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "1800" });
 
-      expect(readable(saved.html)).toContain("was not compared with anything");
+      expect(readable(saved.html)).toContain("wasn't compared with anything");
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
         rate: "1800",
         reference: null,
@@ -3449,7 +3646,7 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
 
-      expect(readable(saved.html)).toContain("could not be sent");
+      expect(readable(saved.html)).toContain("couldn't be sent");
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
     });
 
@@ -3525,7 +3722,7 @@ describe("a shop priced in another currency than US dollars", () => {
       const saved = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
 
       const said = readable(saved.html);
-      expect(said).toContain("Your rate of 18000 IDR per US dollar was saved");
+      expect(said).toContain("Rate saved: 18,000 IDR per US dollar");
       expect(said).toContain("your shop sells in EUR");
       expect(await pricesOnSale(running)).toEqual([]);
     });

@@ -2,7 +2,10 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createDashboardReportIdentityClient } from "./dashboard-report-identity";
+import {
+  createDashboardReportIdentityClient,
+  DashboardRequestTooLarge,
+} from "./dashboard-report-identity";
 
 const secret = "s".repeat(32);
 const scanId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
@@ -211,6 +214,31 @@ describe("dashboard report identity client", () => {
         operationId: "018f5e6f-7a5d-7c0b-8f58-a6b2fe16ca01",
         email: "owner@example.com",
       }),
+    ).rejects.toThrow("dashboard_identity_unavailable");
+  });
+
+  it("tells a copy the dashboard refused as too large apart from one it never answered", async () => {
+    // Nothing was mailed for a refused copy, and a later try would be refused
+    // too; a copy with no answer may have been mailed.
+    const running = await listen((_request, response) => {
+      response.statusCode = 413;
+      response.end();
+    });
+    servers.push(running.server);
+    const copy = {
+      request: requestId,
+      requestedAt: new Date("2026-10-26T09:00:00.000Z"),
+      email: "owner@example.com",
+      scanner: {},
+    };
+
+    await expect(
+      createDashboardReportIdentityClient({ baseUrl: running.url, secret }).sendDataCopy(copy),
+    ).rejects.toBeInstanceOf(DashboardRequestTooLarge);
+    await expect(
+      createDashboardReportIdentityClient({ baseUrl: "http://127.0.0.1:1", secret }).sendDataCopy(
+        copy,
+      ),
     ).rejects.toThrow("dashboard_identity_unavailable");
   });
 });

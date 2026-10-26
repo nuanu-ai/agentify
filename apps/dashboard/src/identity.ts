@@ -26,6 +26,7 @@ import {
   type SendReportLinkResponse,
   sessionCookieName,
 } from "@agentify/scanner-contracts/report-identity";
+import { inChannel } from "@agentify/ui/workspace-view";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { memoryAdapter } from "better-auth/adapters/memory";
@@ -35,7 +36,7 @@ import { magicLink } from "better-auth/plugins/magic-link";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, or, type SQL, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { channelOf } from "./admin/frame.js";
+import { channelWrittenOf } from "./admin/frame.js";
 import type { JournalTransaction } from "./admin/journal.js";
 import { operatorFlagMessage } from "./admin/operator-mail.js";
 import type { DashboardConfig } from "./config.js";
@@ -61,7 +62,7 @@ import {
   type UnattachedPerson,
 } from "./dashboard-entry.js";
 import { boundedGoogleExchange } from "./google-exchange.js";
-import { type Message, type Postman, postmanFor } from "./mail.js";
+import { type Handover, type Message, type Postman, postmanFor } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { suppressWaitingAbout } from "./nuanu-analytics.js";
 import {
@@ -246,7 +247,7 @@ type OpeningTransaction = Readonly<{
 
 type LinkSend = {
   readonly claim: LinkClaim;
-  handed: "accepted" | "refused";
+  handed: Handover;
 };
 
 type ReportIdentitySecretRow = {
@@ -545,14 +546,23 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
             if (stored === null || stored === undefined) {
               throw new Error("dashboard_link_storage_missing");
             }
-            // Only the token rides in the link.
+            // The token is all the link carries that opens anything. The page
+            // it was for is named too (a report's link names the reports), so
+            // the page for a link that no longer works asks for the next one to
+            // the same place, making no merchant where this one makes none. The
+            // name can only keep a merchant from being made: a section makes
+            // one just as an address naming nothing does.
             const action = new URL(`${base}/sign-in/open`);
             action.searchParams.set("token", token);
+            action.searchParams.set(
+              "destination",
+              destinationNamed(claim.destination) ?? "reports",
+            );
             active.handed = await postman(
               typeof claim.destination !== "string"
                 ? reportLinkMessage(email, action.toString())
                 : claim.stepUp === true
-                  ? stepUpLinkMessage(email, action.toString())
+                  ? stepUpLinkMessage(email, action.toString(), inChannel(config.surfaceMode))
                   : dashboardLinkMessage(email, action.toString()),
             );
           },
@@ -1618,7 +1628,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     async setOperatorIn(tx, accountId, on, asked) {
-      const channel = channelOf(config);
+      const channel = channelWrittenOf(config);
       const tell = async (
         before: readonly Readonly<{ id: string; email: string }>[],
         changed: Readonly<{ id: string; email: string }>,
@@ -1633,7 +1643,7 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
                 granted: on,
                 at: asked.at,
                 askedBy: asked.by,
-                channel: `${channel.name.toLowerCase()} (${channel.line})`,
+                channel,
                 accounts: `${base}/admin/accounts`,
               }),
             ),
@@ -2382,8 +2392,9 @@ function registerInMemory(rows: MemoryRows, reports: readonly AdReport[]): void 
  * The link an operator asks for from the workspace to confirm an action. It
  * signs in the browser it is opened in and returns there to the page it was
  * asked on, where the action is pressed again; it carries out nothing itself.
+ * `where` is the environment it was asked in, such as "in production".
  */
-function stepUpLinkMessage(to: string, link: string): Message {
+function stepUpLinkMessage(to: string, link: string, where: string): Message {
   const title = "Confirm it is you";
   const lead =
     "An administrative action in the Agentify operator's workspace asked for a fresh sign-in." +
@@ -2393,7 +2404,7 @@ function stepUpLinkMessage(to: string, link: string): Message {
     "This link opens once and expires an hour after it was sent. It changes nothing by itself.";
   const unasked =
     "If you did not ask for this, do not open the link: somebody may be using a session of" +
-    " yours. Tell the other operators of this channel, who can end every session of your account.";
+    ` yours. Tell the other operators ${where}, who can end every session of your account.`;
   return {
     to,
     subject: "Confirm an administrative action on Agentify",

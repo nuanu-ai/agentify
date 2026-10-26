@@ -46,13 +46,37 @@ describe("a list cut short", () => {
 
     expect(shown.rows).toHaveLength(50);
     expect(shown.rows[0]?.name).toBe("chair 0");
-    expect(shown.cut).toStrictEqual({
+    expect(shown.cut).toMatchObject({
       from: 1,
       to: 50,
       of: 214,
       previous: null,
       next: "/things?page=2",
     });
+  });
+
+  it("names every page of a short list, the one shown with no address", () => {
+    expect(listed(things(214), "page=2").cut?.pages).toStrictEqual([
+      { page: 1, to: "/things" },
+      { page: 2, to: null },
+      { page: 3, to: "/things?page=3" },
+      { page: 4, to: "/things?page=4" },
+      { page: 5, to: "/things?page=5" },
+    ]);
+  });
+
+  it("names the first and last pages of a long list and the ones beside the page shown, with a gap for the rest", () => {
+    const named = (address: string) =>
+      listed(things(1_000), address).cut?.pages.map((one) =>
+        "gap" in one ? "…" : one.to === null ? `[${one.page}]` : one.page,
+      );
+
+    expect(named("")).toStrictEqual(["[1]", 2, 3, 4, 5, "…", 20]);
+    expect(named("page=10")).toStrictEqual([1, "…", 9, "[10]", 11, "…", 20]);
+    expect(named("page=19")).toStrictEqual([1, "…", 16, 17, 18, "[19]", 20]);
+    // A gap never stands for one page alone: that page is named instead.
+    expect(named("page=4")).toStrictEqual([1, 2, 3, "[4]", 5, "…", 20]);
+    expect(named("page=17")).toStrictEqual([1, "…", 16, "[17]", 18, 19, 20]);
   });
 
   it("leads both ways from a page in the middle, and stops at the last", () => {

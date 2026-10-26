@@ -278,7 +278,8 @@ export interface GatewayClient {
   /**
    * What the frame says over every page, from one read of the merchant's row
    * and none of their cards: the selling state, the integration, the seller
-   * name, the wallet paid now and the operator's approval for live sales.
+   * name, the wallet paid now with a change of it waiting, and the operator's
+   * approval for live sales.
    */
   standing(): Promise<
     Answer<{
@@ -286,6 +287,11 @@ export interface GatewayClient {
       readonly through: Integration;
       readonly sellerName: string | null;
       readonly payoutWallet: string | null;
+      /** A replacement of the wallet that waits to apply, on live alone, and when it applies. */
+      readonly pendingPayoutWallet: {
+        readonly address: string;
+        readonly takesEffectAt: number;
+      } | null;
       readonly liveApproved: boolean;
       /**
        * Present while the merchant's purchases are refused, and their cards
@@ -305,12 +311,17 @@ export interface GatewayClient {
     }>
   >;
   /**
-   * Moves this merchant to an integration: Connect moves them to the shop
-   * before they are sent to it, and Disconnect back to their code. Refused,
-   * in words that name the orders, while one still waits on the integration
-   * being left.
+   * Moves this merchant to an integration: the shop's keys arriving move them
+   * to the shop, and Disconnect back to their code. Refused, in words that
+   * name the orders, while one still waits on the integration being left.
    */
   sellThrough(to: Integration): Promise<Answer<{ readonly sellingPaused: boolean }>>;
+  /**
+   * Whether `sellThrough(to)` would be made now, refused in its words where it
+   * would not, with nothing switched. Connect asks it before sending anybody to
+   * the shop; the switch itself can still be refused when the keys arrive.
+   */
+  maySellThrough(to: Integration): Promise<Answer<null>>;
   /**
    * Only for the WooCommerce worker, which fills orders for merchants with no
    * code of their own; every page draws and does not wait.
@@ -519,26 +530,17 @@ const splitAt = (
   splits.toPayOut.find((split) => split.address.toLowerCase() === address.toLowerCase()) ?? null;
 
 /**
- * Why a switch of integration was refused, in the words of the shop screen it
- * is drawn on: how many orders still wait on the integration being left, and
- * what lets them finish. The orders themselves travel beside the sentence, for
- * the screen to show each one.
+ * A switch of integration refused for the orders still waiting on the one
+ * being left, which travel beside the refusal: the shop screen words them
+ * itself from the open list, and `why` is what a log says.
  */
-export const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => {
-  const one = waiting.length === 1;
-  const counted = one ? "1 order still waits" : `${waiting.length} orders still wait`;
-  const each = one ? "it has" : "each has";
-  return {
-    ok: false,
-    status: CONFLICT,
-    code: "orders_waiting",
-    orders: waiting,
-    why:
-      to === "woocommerce"
-        ? `${counted} on your own code, and ${each} to end before your shop takes over: delivered or refused by your code, paid or left unpaid by its buyer, or closed when its time runs out. To keep new orders from arriving meanwhile, pause all sales on Cards.`
-        : `${counted} on your shop, and ${each} to end before the shop is disconnected, because nothing reads the shop after that: a parcel once it is marked Completed in WooCommerce, an unpaid purchase once its buyer pays or lets it lapse, or any of them when its time runs out.`,
-  };
-};
+const switchRefused = (to: Integration, waiting: readonly string[]): Answer<never> => ({
+  ok: false,
+  status: CONFLICT,
+  code: "orders_waiting",
+  orders: waiting,
+  why: `${waiting.length === 1 ? "1 order still waits" : `${waiting.length} orders still wait`} on the ${to === "woocommerce" ? "code" : "shop"}`,
+});
 
 const UNFULFILLED_BY: Readonly<Partial<Record<string, UnfulfilledCause>>> = {
   merchant_refused: "refused",
@@ -872,6 +874,11 @@ export const gatewayFor = (
         return switched.switched
           ? done({ sellingPaused: switched.sellingPaused })
           : switchRefused(to, switched.waiting);
+      }),
+    maySellThrough: (to) =>
+      call("asking whether the integration can be switched", async () => {
+        const waiting = await application.switchHeldBy(merchantId, to);
+        return waiting.length === 0 ? done(null) : switchRefused(to, waiting);
       }),
     pollWorker: (waitSeconds) =>
       call("drawing the stream", async () => {

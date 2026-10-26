@@ -20,6 +20,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import type { Person } from "../dashboard-entry.js";
 import { identityFor } from "../identity.js";
+import { inViewersZone } from "../moments.js";
 import { TEST_AUTH_SECRET } from "../testing/secrets.js";
 import { memoryWooShops, type WooShops } from "../woo-shops.js";
 import type { Operator } from "./access.js";
@@ -33,6 +34,7 @@ import {
   type OverviewView,
   payoutViewOf,
   periodIn,
+  startRefusedOf,
 } from "./figures.js";
 import { memoryJournal } from "./journal.js";
 
@@ -177,7 +179,7 @@ describe("the overview", () => {
     expect(view.tiles.map((tile) => tile.figure)).toStrictEqual([null, null, null, null]);
     expect(view.chart.kind).toBe("unread");
     expect(view.funnel.kind).toBe("unread");
-    expect(view.needsYou?.kind).toBe("unread");
+    expect(view.needsYou.admission?.kind).toBe("unread");
     expect(view.worth.unread.length).toBeGreaterThan(0);
   });
 
@@ -198,11 +200,11 @@ describe("the overview", () => {
 
     const admitted = viewOf<OverviewView>(
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
-    ).needsYou;
+    ).needsYou.admission;
     await harnessed.store.withdrawLiveApproval(harnessed.merchant.id);
     const waiting = viewOf<OverviewView>(
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
-    ).needsYou;
+    ).needsYou.admission;
 
     expect(admitted?.kind === "read" && admitted.value.of).toBe(0);
     expect(
@@ -229,7 +231,53 @@ describe("the overview", () => {
       await pages.overview(operatorAt(harnessed), new URLSearchParams()),
     );
 
-    expect(view.needsYou).toBeNull();
+    expect(view.needsYou.admission).toBeNull();
+  });
+
+  it("says nothing of a gateway that would start on its splits, as on a channel whose splits agree", async () => {
+    const { harnessed, pages } = await served({ channel: "live" });
+
+    const view = viewOf<OverviewView>(
+      await pages.overview(operatorAt(harnessed), new URLSearchParams()),
+    );
+
+    expect(view.needsYou.startRefused).toBeNull();
+  });
+});
+
+describe("a registry of splits the gateway would refuse to start on", () => {
+  const SPLIT = "0x91fa2e3d4c5b6a798867a5b4c3d2e1f00f1e0c3d";
+  const refusal = `1 recorded split of a wallet in force or waiting on eip155:84532, beginning with ${SPLIT}, is no longer what this code makes for that merchant and wallet, so the gateway does not start`;
+  const splits = {
+    readAt: 0,
+    of: 1,
+    empty: 0,
+    waiting: 0,
+    rows: [
+      {
+        address: SPLIT.toUpperCase().replace("0X", "0x"),
+        merchantId: "mch_tours",
+        merchantName: "City Walking Tours",
+        merchantWallet: WALLET,
+        commissionWallet: WALLET,
+        recordedAt: 0,
+        inForce: true,
+        settled: { amount: "0.00", count: 0 },
+      },
+    ],
+  };
+
+  it("names the split's merchant and the network as a wallet lists it", () => {
+    const refused = startRefusedOf(refusal, splits);
+
+    expect(refused?.split).toBe(SPLIT);
+    expect(refused?.merchant).toStrictEqual({ id: "mch_tours", name: "City Walking Tours" });
+    expect(refused?.why).toContain("on Base Sepolia,");
+    expect(refused?.why).not.toContain("eip155");
+  });
+
+  it("says the merchant could not be read where the splits could not be, rather than naming none", () => {
+    expect(startRefusedOf(refusal, "unread")).toMatchObject({ split: SPLIT, merchant: "unread" });
   });
 });
 
@@ -307,7 +355,7 @@ describe("money", () => {
 });
 
 describe("health", () => {
-  it("says the test channel is not backed up, by decision, and the live channel's backup is not measured", async () => {
+  it("marks the test channel as not backed up, and the live channel's backup as not measured", async () => {
     const test = await served({ channel: "test" });
     const live = await served({ channel: "live" });
 
@@ -316,7 +364,7 @@ describe("health", () => {
         (row) => row.part === "Last backup",
       );
 
-    expect((await backupOf(test))?.fact.join("")).toMatch(/not backed up, by decision/);
+    expect((await backupOf(test))?.badge).toStrictEqual({ tone: "quiet", word: "Not backed up" });
     expect((await backupOf(live))?.badge).toStrictEqual({ tone: "unknown", word: "Not measured" });
   });
 
@@ -404,6 +452,13 @@ describe("the chart of settled sales", () => {
     expect(chart.spoken).toHaveLength(30);
     expect(chart.spoken[1]).toBe("25 Sep: nothing settled");
     expect(chart.bars.find((bar) => bar.label.startsWith("25 Sep"))?.className).toBe("bar zero");
+  });
+
+  it("names the same UTC days in its summary as under its bars, whatever the viewer's zone", () => {
+    const chart = inViewersZone("America/Sao_Paulo", () => chartOf(sales, false));
+
+    expect(chart.spoken[0]).toMatch(/^24 Sep/);
+    expect(chart.aria).toMatch(/from 24 September 2026 to 23 October 2026/);
   });
 
   it("stacks the part paid with no delivery recorded on top of the delivered part", () => {

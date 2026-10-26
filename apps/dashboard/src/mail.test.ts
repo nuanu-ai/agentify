@@ -31,7 +31,7 @@ const logged = async (during: () => Promise<void>): Promise<string> => {
 
 interface Provider {
   readonly url: string;
-  readonly asked: { path: string; authorization: string; body: string }[];
+  readonly asked: { path: string; authorization: string; idempotency: string; body: string }[];
   close(): Promise<void>;
 }
 
@@ -49,7 +49,7 @@ afterEach(async () => {
 });
 
 const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
-  const asked: { path: string; authorization: string; body: string }[] = [];
+  const asked: { path: string; authorization: string; idempotency: string; body: string }[] = [];
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -59,6 +59,7 @@ const provider = async (status = 200, answerAfterMs = 0): Promise<Provider> => {
       asked.push({
         path: request.url ?? "",
         authorization: request.headers.authorization ?? "",
+        idempotency: String(request.headers["idempotency-key"] ?? ""),
         body,
       });
       const answer = () => {
@@ -95,6 +96,25 @@ describe("a dashboard with no mail provider", () => {
     expect(said).toMatch(/not sent|no mail provider/i);
   });
 
+  it("names an attached file and its size without writing what the file holds", async () => {
+    // An attachment is a person's copy of their own data; the log is read by
+    // whoever runs the host.
+    const postman = postmanFor({ mailUrl: SANDBOX_MAIL, mailApiKey: null, mailFrom: "x" });
+
+    const said = await logged(async () => {
+      await postman({
+        ...MESSAGE,
+        attachments: [
+          { filename: "copy.json", contentType: "application/json", content: '{"phone":"+62"}' },
+        ],
+      });
+    });
+
+    expect(said).toContain("copy.json");
+    expect(said).toContain("15 bytes");
+    expect(said).not.toContain("+62");
+  });
+
   it("is what the dashboard is in without a provider, and is told apart by name", () => {
     expect(isSandboxMail(SANDBOX_MAIL)).toBe(true);
     expect(isSandboxMail("https://api.resend.com")).toBe(false);
@@ -128,6 +148,46 @@ describe("a dashboard with a mail provider", () => {
     expect(document.subject).toBe(MESSAGE.subject);
     expect(document.text).toBe(MESSAGE.body);
     expect(document.html).toBe(MESSAGE.html);
+  });
+
+  it("sends an attached file as the provider takes one: its name and its bytes in base64", async () => {
+    const sending = await provider();
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+    const content = '{"about":"owner@example.com","name":"Café"}';
+
+    await postman({
+      ...MESSAGE,
+      attachments: [{ filename: "copy.json", contentType: "application/json", content }],
+    });
+
+    const document = JSON.parse(sending.asked[0]?.body ?? "{}") as {
+      attachments?: { filename: string; content: string; content_type?: string }[];
+    };
+    expect(document.attachments).toEqual([
+      {
+        filename: "copy.json",
+        content: Buffer.from(content, "utf8").toString("base64"),
+        content_type: "application/json",
+      },
+    ]);
+  });
+
+  it("names a message's idempotency key to the provider, so a repeat of it is sent once", async () => {
+    const sending = await provider();
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+
+    await postman({ ...MESSAGE, idempotencyKey: "data-copy/019b41a0" });
+    await postman(MESSAGE);
+
+    expect(sending.asked.map(({ idempotency }) => idempotency)).toEqual(["data-copy/019b41a0", ""]);
   });
 
   it("records provider acceptance without the recipient or action URL", async () => {
@@ -184,7 +244,8 @@ describe("a dashboard with a mail provider", () => {
     });
 
     const said = await logged(async () => {
-      await expect(postman(MESSAGE)).resolves.toBe("refused");
+      // The request may have been cut after the provider read it.
+      await expect(postman(MESSAGE)).resolves.toBe("unknown");
     });
 
     expect(said).toContain("could not be reached");
@@ -194,7 +255,7 @@ describe("a dashboard with a mail provider", () => {
     expect(said).not.toContain("token=abc");
   });
 
-  it("refuses a provider that stays silent past the fixed deadline", async () => {
+  it("cannot tell what became of a message whose provider stays silent past the fixed deadline", async () => {
     const sending = await provider(200, 250);
     const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
     const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => nativeTimeout(50));
@@ -205,9 +266,31 @@ describe("a dashboard with a mail provider", () => {
     });
 
     try {
-      await expect(postman(MESSAGE)).resolves.toBe("refused");
+      await expect(postman(MESSAGE)).resolves.toBe("unknown");
     } finally {
       deadline.mockRestore();
     }
+  });
+
+  it.each([
+    [400, "refused"],
+    [422, "refused"],
+    [429, "refused"],
+    // A repeat of a key with another message, or one still in flight: the
+    // first one under that key may have been sent.
+    [409, "unknown"],
+    [500, "unknown"],
+    [503, "unknown"],
+  ] as const)("reads an answer of %i as %s", async (status, outcome) => {
+    const sending = await provider(status);
+    const postman = postmanFor({
+      mailUrl: sending.url,
+      mailApiKey: "re_a_real_looking_key",
+      mailFrom: "Agentify <no-reply@mail.example.com>",
+    });
+
+    await logged(async () => {
+      await expect(postman(MESSAGE)).resolves.toBe(outcome);
+    });
   });
 });

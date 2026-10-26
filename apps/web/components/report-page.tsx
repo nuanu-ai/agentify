@@ -9,7 +9,7 @@ import styles from "./report-page.module.css";
 import { ResultHead } from "./result-head";
 import layout from "./result-layout.module.css";
 import { RobotsNotice } from "./robots-notice";
-import { SiteFooter, SiteTop } from "./site-chrome";
+import { SiteFooter, SiteHeader } from "./site-chrome";
 import { SiteLink } from "./site-link";
 import { StatusBadge } from "./status-badge";
 
@@ -17,8 +17,8 @@ import { StatusBadge } from "./status-badge";
 export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
   return (
     <div className={layout.page}>
-      <SiteTop />
-      <main className={layout.body} data-agentify-results-viewed-scan={view.scanId}>
+      <SiteHeader current="scanner" />
+      <main className={layout.body} id="main" data-agentify-results-viewed-scan={view.scanId}>
         <div className={layout.columns}>
           <div className={layout.sheet}>
             <section>
@@ -49,7 +49,7 @@ export function ReportPage({ view }: Readonly<{ view: ReportView }>) {
               <ul aria-label="Checks by state" className={styles.tally}>
                 {view.tally.map(({ status, count }) => (
                   <li key={status}>
-                    <StatusBadge status={status} /> <b>{count}</b>
+                    <StatusBadge count={count} status={status} />
                   </li>
                 ))}
               </ul>

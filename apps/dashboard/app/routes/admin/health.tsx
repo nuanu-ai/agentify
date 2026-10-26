@@ -12,6 +12,7 @@ import {
   useLoaderData,
 } from "react-router";
 import { acted, formOf, readOnly } from "../../answer.js";
+import { readFailedIn } from "../../components/admin/read-failed.js";
 import { AdminFrame } from "../../components/admin-frame.js";
 import { HealthScreen } from "../../screens/admin/figures.js";
 import { workspaceIn } from "../../services.js";
@@ -26,6 +27,9 @@ export async function action(asked: ActionFunctionArgs) {
   const form = await formOf(asked.request);
   return await acted(() => admin.figures.check(operator, form), asked);
 }
+
+/** A read that failed, said in the workspace's frame. */
+export const ErrorBoundary = readFailedIn({ section: "health", title: "Health" });
 
 export default function Health() {
   const loaded = useLoaderData<typeof loader>();

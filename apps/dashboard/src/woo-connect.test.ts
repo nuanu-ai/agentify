@@ -60,7 +60,51 @@ describe("the address a merchant types", () => {
   it("takes an https shop", () => {
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com")).toBeNull();
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/")).toBeNull();
-    expect(whatIsWrongWithTheShopUrl("https://shop.example.com/store")).toMatch(/root/i);
+  });
+
+  it("suggests the site's root for an address copied from one of its own shop or admin pages", () => {
+    for (const typed of [
+      "https://example.com/shop/",
+      "https://example.com/product/silk-scarf/",
+      "https://example.com/my-account",
+      "https://example.com/index.php",
+      "example.com/checkout",
+    ]) {
+      expect(whatIsWrongWithTheShopUrl(typed), typed).toMatch(/: https:\/\/example\.com$/);
+    }
+  });
+
+  it("suggests no root for any other path, which may be a WordPress of its own", () => {
+    for (const [typed, folder] of [
+      ["https://example.com/store", "/store"],
+      ["https://example.com/store/", "/store"],
+      ["example.com/store", "/store"],
+      ["http://example.com/store/wp-admin/", "/store"],
+    ] as const) {
+      const wrong = whatIsWrongWithTheShopUrl(typed);
+      expect(wrong, typed).toContain(`installed in ${folder}`);
+      expect(wrong, typed).not.toMatch(/https:\/\/example\.com\b(?!\/)/);
+    }
+  });
+
+  it("names, in a refusal, the address the merchant most likely meant", () => {
+    for (const typed of [
+      "shop.example.com",
+      "shop.example.com/wp-admin/admin.php?page=wc-settings",
+      "http://shop.example.com",
+      "https://shop.example.com/wp-admin/",
+      "https://owner:secret@shop.example.com",
+    ]) {
+      const wrong = whatIsWrongWithTheShopUrl(typed);
+      expect(wrong, typed).toMatch(/: https:\/\/shop\.example\.com$/);
+      expect(wrong, typed).not.toContain("secret");
+    }
+  });
+
+  it("offers no corrected address where what was typed names no host", () => {
+    for (const typed of ["", "shop", "https://"]) {
+      expect(whatIsWrongWithTheShopUrl(typed), typed).toContain("https://shop.example.com.");
+    }
   });
 
   it("refuses a shop on plain http, and says what that would cost them", () => {

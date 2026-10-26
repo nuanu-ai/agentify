@@ -86,14 +86,30 @@
 
   --shadow-soft: 0 30px 70px -46px rgba(26, 25, 23, 0.42);
 
-  /* Type sizes, named for what they set; body text is the base, 1rem at 1.6.
+  /* Type sizes, named for what they set; body text is the base, 1rem.
      Use one of these rather than a literal, and never a size in pixels. */
   --text-caption: 0.75rem; /* a column head or a caption: the monospaced face */
   --text-label: 0.8125rem; /* a field's label, an identifier, the signed-in address */
   --text-small: 0.875rem; /* a note, a hint under a box, a state beside its dot */
   --text-code: 0.9375rem; /* a value read character by character: a secret, an address */
+  --text-body: 1rem; /* running text */
+  --text-lead: 1.125rem; /* the paragraph under a landing page's display heading */
+  --text-heading: 1.125rem; /* the heading of a panel or of a group of rows */
   --text-section: 1.5rem; /* the heading of a section inside a page */
+  --text-headline: clamp(1.875rem, 3vw, 2.125rem); /* a section heading on a landing page */
   --text-title: clamp(2rem, 5vw, 2.5rem); /* the heading of a page that stands alone */
+  --text-display: clamp(2.75rem, 5vw, 3.375rem); /* a landing page's first heading */
+
+  /* Line heights. A heading's lines sit closer the larger it is; every
+     paragraph, whatever its size, keeps the text leading, so two paragraphs
+     side by side never read at different densities. */
+  --leading-display: 1.05; /* --text-title and larger */
+  --leading-heading: 1.2; /* every heading under --text-title */
+  --leading-text: 1.6; /* a paragraph, a list, a table cell, a note */
+  --leading-ui: 1.4; /* a one-line label: an eyebrow, a caption, a badge, a column head */
+  /* Large type set at the headings' -0.02em looks loose: --text-title and
+     larger close up to this. */
+  --tracking-display: -0.035em;
 
   /* Spacing, named for where it goes. */
   --space-snug: 4px; /* between a line and the line that qualifies it */
@@ -101,7 +117,18 @@
   --space-control: 12px; /* between two controls, and inside a table cell */
   --space-block: 16px; /* between blocks inside a card */
   --space-card: 24px; /* the inset of a card or panel, and between cards */
-  --space-section: 32px; /* between the sections of a page */
+  --space-section: 32px; /* between the sections of a working screen */
+  --space-page: 48px; /* between the sections of a page of reading */
+
+  /* The vertical rhythm of text and actions. The two in em follow the size of
+     the element they are set on: a heading's own margin under it, a
+     paragraph's own margin before the next one. A row of actions stands the
+     same distance from what is above it as from what is below it, and a line
+     that reports on the press, such as its result, sits closer under it. */
+  --gap-heading: 0.5em; /* a heading's margin to its first line of text */
+  --gap-paragraph: 1em; /* between two paragraphs */
+  --gap-actions: var(--space-card); /* above a row of actions, and below it */
+  --gap-caption: var(--space-control); /* from an action to the line under it about that action */
 
   /* Without this, a machine set to dark gives this light page dark form
      controls and scrollbars. */
@@ -132,7 +159,7 @@ body {
   color: var(--fg);
   font-family: var(--font-sans);
   font-size: 16px;
-  line-height: 1.6;
+  line-height: var(--leading-text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -170,12 +197,16 @@ body {
   outline-offset: 3px;
 }
 
+/* A heading that sets no leading of its own takes the heading's, not the
+   paragraph's: a heading that wraps at the text leading reads as two
+   headings. */
 h1,
 h2,
 h3 {
   margin: 0;
   font-weight: 600;
   letter-spacing: -0.02em;
+  line-height: var(--leading-heading);
   text-wrap: balance;
 }
 
@@ -193,7 +224,7 @@ p {
 
 .eyebrow {
   color: var(--accent);
-  font: 500 0.75rem / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -327,6 +358,20 @@ p {
   font: inherit;
 }
 
+/* A choice among options draws its own arrow, inset as far from the edge as
+   the text is from the other one, so the browser's arrow does not sit on the
+   border. The arrow is the muted ink, written out because an image cannot
+   read a token. */
+select.field-input {
+  appearance: none;
+  padding-right: 42px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b6862' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+  cursor: pointer;
+}
+
 /* A box of several lines starts its text a line's padding from the top, and
    whoever types in it may make it taller. */
 textarea.field-input {
@@ -355,6 +400,105 @@ textarea.field-input {
   color: var(--fail);
 }
 
+/*
+ * A page that says one thing (a refusal, a wait, a way in) says it in one
+ * panel at the top of its column. The top, not the window's middle: the
+ * window's height is unknown, so a centred panel would stand somewhere else
+ * on every screen. Inside, an optional line of context, the heading, a
+ * sentence, then the actions. A row of buttons, or one button, stands the
+ * same distance from the text above it as from the text below it.
+ */
+.message-page {
+  flex: 1;
+  width: min(100% - 32px, 40rem);
+  margin-inline: auto;
+  padding-block: var(--space-section) 64px;
+}
+
+.message-panel {
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: var(--space-section);
+  background: var(--surface);
+}
+
+.message-panel > * + * {
+  margin-top: var(--gap-paragraph);
+}
+
+.message-panel > h1 + * {
+  margin-top: var(--gap-heading);
+}
+
+.message-panel > :is(.message-actions, .button),
+.message-panel > :is(.message-actions, .button) + * {
+  margin-top: var(--gap-actions);
+}
+
+.message-panel > .message-meta + * {
+  margin-top: var(--gap-actions);
+}
+
+/* The line that answers a press sits closer under its buttons, and takes no
+   room while it has nothing to say: it is on the page from the start, so
+   what it says next is read out. */
+.message-panel > :is(.message-actions, .button) + .message-answer {
+  margin-top: var(--gap-caption);
+}
+
+.message-panel > .message-answer:empty {
+  margin: 0;
+}
+
+/* Whatever follows the buttons' answer, said or not yet, stands as far below
+   the buttons' group as the text above it. */
+.message-panel > .message-answer + * {
+  margin-top: var(--gap-actions);
+}
+
+.message-panel > h1 {
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
+}
+
+/* Without weight, so a page's own kinds of line (a refusal in red) keep their colour. */
+.message-panel > :where(p) {
+  max-width: 60ch;
+  color: var(--muted);
+}
+
+/* What the panel is about and its state, one quiet line above the heading. */
+.message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-snug) var(--space-block);
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
+.message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-control);
+}
+
+@media (max-width: 600px) {
+  .message-panel {
+    padding: var(--space-card);
+  }
+
+  .message-actions > * {
+    flex: 1 1 100%;
+  }
+
+  .message-panel > .button {
+    width: 100%;
+  }
+}
+
 /* A state in a few words of plain sentence case with a dot before it, the dot
    telling the state from the sentence beside it; it is hollow for a state that
    is not settled yet, so the two read apart without relying on colour. No
@@ -366,7 +510,7 @@ textarea.field-input {
   gap: 8px;
   white-space: nowrap;
   color: var(--muted);
-  font: 500 var(--text-small) / 1.4 var(--font-sans);
+  font: 500 var(--text-small) / var(--leading-ui) var(--font-sans);
 }
 
 .badge::before {
@@ -407,6 +551,27 @@ textarea.field-input {
    not draw the eye. */
 .badge-quiet::before {
   color: var(--faint);
+}
+
+/* The place of a badge in a column of rows, one badge to a row: as wide as the
+   longest state word in use, so every row's dot stands on the same vertical
+   line however long the word after it is. A longer word widens its own row
+   only. Put the badge inside it, wherever the row puts its state. */
+.badge-slot {
+  display: inline-flex;
+  min-inline-size: 8rem;
+}
+
+/* A badge that counts, in a row of counts: the word and its count in ink, so
+   the colour rides on the dots alone, and the count in figures of one width. */
+.badge-count {
+  color: var(--fg-2);
+}
+
+.badge-count b {
+  color: var(--fg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The bar that says the next page is on its way. Fixed to the window, so it
@@ -470,11 +635,14 @@ textarea.field-input {
 }
 
 /*
- * The bar of both headers: the lockup, then on the site header the public
- * site's sections and the doors to the documentation, the dashboard and the
- * session, and on the working header the doors to the documentation and the
- * session. It stays at the top of the window, translucent over what scrolls
- * under it.
+ * The bar at the top of every page: the lockup, on the public pages what the
+ * site offers, and at the end of the row the places a person comes back to
+ * and who is signed in. It stays at the top of the window, translucent over
+ * what scrolls under it. The part of the site a page belongs to is
+ * underlined in the accent at the bar's foot. Where the window is narrow the
+ * row keeps the lockup, the documentation, the dashboard and the menu's
+ * button, from 910px down to the 320px body minimum, and the menu holds the
+ * rest; nothing in the row moves when who is visiting becomes known there.
  */
 .site-header {
   position: sticky;
@@ -489,237 +657,172 @@ textarea.field-input {
   min-height: 68px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  gap: var(--space-section);
 }
 
-.site-header-links {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.site-nav {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  font-size: var(--text-small);
-}
-
-/* Written for both surfaces: one colours every link with the accent and the
-   other lets a link take the colour of the block it sits in. */
-.site-nav a {
-  color: var(--muted);
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.site-nav a:hover,
-.site-nav a:focus-visible {
-  color: var(--fg);
-  text-decoration: none;
-}
-
+.site-nav,
 .site-doors {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px 18px;
-  padding-left: 24px;
-  border-left: var(--hairline) solid var(--line);
+  align-self: stretch;
+  gap: var(--space-card);
   font-size: var(--text-small);
-  font-weight: 500;
+  line-height: var(--leading-ui);
+}
+
+.site-nav a,
+.site-doors a {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.site-nav a {
+  color: var(--muted);
 }
 
 .site-doors a {
   color: var(--fg);
-  text-decoration: none;
-  white-space: nowrap;
+  font-weight: 500;
 }
 
+.site-nav a:hover,
+.site-nav a:focus-visible,
 .site-doors a:hover,
-.site-doors a:focus-visible,
-.site-doors a[aria-current] {
+.site-doors a:focus-visible {
   color: var(--accent);
   text-decoration: none;
 }
 
-/* Who is visiting takes no room of its own in the row of doors. */
+.site-nav a[aria-current],
+.site-doors a[aria-current] {
+  color: var(--fg);
+  font-weight: 500;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.site-header-end {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  gap: var(--space-card);
+  margin-left: auto;
+}
+
+/* Who is visiting takes no room of its own in the row. */
 .site-visitor {
   display: contents;
 }
 
-/* The signed-in address: a label, not a door. A long address is cut at the
-   end with its whole self in the title, so the bar never runs off the page. */
-.site-doors .site-who {
-  max-width: 24ch;
-  overflow: hidden;
+.site-unknown {
   color: var(--muted);
-  font-weight: 400;
+  font-size: var(--text-small);
+  line-height: var(--leading-ui);
+}
+
+/* The account: one button with the address, cut at the end where it is long,
+   and under it a small panel with the account's settings and the way out. */
+.site-account {
+  position: relative;
+}
+
+.site-account > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-tight);
+  max-width: 28ch;
+  min-height: 36px;
+  padding: 0 var(--space-control);
+  border: var(--hairline) solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--fg-2);
+  font-size: var(--text-label);
+  line-height: var(--leading-ui);
+  cursor: pointer;
+  list-style: none;
+}
+
+.site-account > summary::-webkit-details-marker {
+  display: none;
+}
+
+.site-account .site-who {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.site-doors .site-who:hover {
+.site-account > summary svg {
+  flex: none;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+
+.site-account > summary:hover,
+.site-account[open] > summary {
   color: var(--fg);
 }
 
-.site-unknown {
-  color: var(--muted);
-  font-weight: 400;
+.site-account-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--space-tight));
+  right: 0;
+  min-width: 100%;
+  padding: var(--space-snug);
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
 }
 
-.site-sign-out {
-  display: inline;
+.site-account-panel form,
+.site-menu-account form {
   margin: 0;
 }
 
-.site-sign-out button {
+.site-account-panel a,
+.site-account-panel button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-control);
   border: 0;
-  padding: 0;
+  border-radius: var(--radius-control);
   background: none;
-  color: var(--fg);
-  cursor: pointer;
+  color: var(--fg-2);
   font: inherit;
+  font-size: var(--text-small);
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.site-sign-out button:hover,
-.site-sign-out button:focus-visible {
-  color: var(--accent);
-}
-
-/* The working header's doors follow the lockup with no sections to set them
-   apart from. Where the menu's button takes the end of the row, the menu
-   holds the doors too, so the row keeps the lockup and the button alone at
-   every width down to 320px, and nothing in it moves. */
-.work-header .site-doors {
-  padding-left: 0;
-  border-left: 0;
-}
-
-@media (max-width: 910px) {
-  .work-header .site-doors {
-    display: none;
-  }
+.site-account-panel a:hover,
+.site-account-panel a:focus-visible,
+.site-account-panel button:hover,
+.site-account-panel button:focus-visible {
+  background: var(--surface-sunken);
+  color: var(--fg);
+  text-decoration: none;
 }
 
 /*
- * Every bar sets its type and its gaps tighter at 640px and again at 480px.
- * A bar without a menu, the dashboard's over its pages outside the frame,
- * yields its section links before it yields a door, and its doors wrap onto a
- * second line before the bar grows, so above 900px it keeps to 68px.
- * The steps are measured against the current labels ("Sell to agents" is the
- * widest) and the longest address the doors show: the merchant link goes at
- * 910px where the doors say who is visiting, which would otherwise take a
- * third line and then run past the edge, and at 760px where they say nothing;
- * at 640px the scanner link goes too, and under 480px only the lockup and the
- * doors fit in the 320px body minimum. There the signed-in address gives way
- * and the way out stays, so the doors keep to one row and the page under them
- * does not move when the address arrives. A page clips what runs past its
- * edge, so a link that did not fit would be cut, not scrolled to.
- */
-@media (max-width: 760px) {
-  .site-header-links:not(:has(> .site-menu)) > .site-nav a:first-child {
-    display: none;
-  }
-}
-
-@media (max-width: 910px) {
-  .site-header:has(.site-who, .site-unknown)
-    .site-header-links:not(:has(> .site-menu))
-    > .site-nav
-    a:first-child {
-    display: none;
-  }
-}
-
-/* An operator's doors hold one more, the workspace's, beside the address. On a
-   bar without a menu the address gives way to it first, where the row would
-   otherwise put the way out on a second line, as it gives way on a phone. */
-@media (max-width: 1080px) {
-  .site-header-links:not(:has(> .site-menu)) .site-visitor:has(> a:not(.site-who)) > .site-who {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .site-header-inner {
-    min-height: 60px;
-  }
-
-  .site-nav {
-    gap: 14px;
-    font-size: var(--text-label);
-  }
-
-  .site-header-links:not(:has(> .site-menu)) > .site-nav a:nth-child(2) {
-    display: none;
-  }
-
-  .site-header-links {
-    gap: 14px;
-  }
-
-  .site-doors {
-    gap: 4px 12px;
-    padding-left: 14px;
-    font-size: var(--text-label);
-  }
-
-  .site-doors .site-who {
-    max-width: 16ch;
-  }
-}
-
-@media (max-width: 480px) {
-  /* The least room between the lockup and the doors, small enough for the
-     lockup, the doors and a menu's button to keep one row at 320px in a face
-     a little wider than the site's; the row spreads its spare room here. */
-  .site-header-inner {
-    gap: 6px;
-  }
-
-  .site-header-links:not(:has(> .site-menu)) > .site-nav {
-    display: none;
-  }
-
-  .site-header-links:not(:has(> .site-menu)) > .site-doors {
-    padding-left: 0;
-    border-left: 0;
-  }
-
-  .site-doors .site-who {
-    display: none;
-  }
-}
-
-/*
- * The header's menu: where the bar has no room for its links, a button ends
- * its row and opens a panel under the bar with what the bar left out. A page
- * with a top of its own rather than the header puts its doors and the menu at
- * the end of its top's row, beside the lockup. The panel is placed against
- * the nearest box with a position, the sticky header or that top.
+ * The narrow window's menu: its button ends the row and opens a panel under
+ * the whole bar, which the sticky header places.
  */
 .site-menu {
-  /* Where the panel opens, from the top of the window: under the site
-     header until the menu's script measures it. And how much of the foot of
-     the window a surface keeps under a bar of its own, which the panel stops
-     above. */
+  /* Where the panel opens, from the top of the window: under the bar until
+     the menu's script measures it. And how much of the foot of the window a
+     surface keeps under a bar of its own, which the panel stops above. */
   --site-menu-top: 69px;
   --site-menu-foot: 0px;
   display: none;
-}
-
-.site-top-end {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.site-top-end > .site-doors {
-  padding-left: 0;
-  border-left: 0;
 }
 
 .site-menu > summary {
@@ -729,9 +832,9 @@ textarea.field-input {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: var(--space-snug);
   border: var(--hairline) solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--fg);
   cursor: pointer;
@@ -765,7 +868,7 @@ textarea.field-input {
 }
 
 /* The panel reaches no lower than the foot of the window, or than a bar a
-   surface keeps there. */
+   surface keeps there. Its groups stand apart under a rule each. */
 .site-menu-panel {
   position: absolute;
   z-index: 30;
@@ -774,88 +877,79 @@ textarea.field-input {
   left: 0;
   max-height: calc(100dvh - var(--site-menu-top) - var(--site-menu-foot));
   overflow-y: auto;
-  padding: 10px 14px 16px;
+  padding: var(--space-tight) var(--space-block) var(--space-block);
   border-bottom: var(--hairline) solid var(--line);
   background: var(--surface);
   box-shadow: 0 24px 40px -32px rgb(26 25 23 / 45%);
 }
 
-.site-menu-panel nav {
+.site-menu-panel > * + * {
+  margin-top: var(--space-tight);
+  padding-top: var(--space-tight);
+  border-top: var(--hairline) solid var(--line);
+}
+
+.site-menu-panel nav,
+.site-menu-account {
   display: grid;
-  gap: 4px;
+  gap: var(--space-snug);
 }
 
 .site-menu-panel nav > a,
-.site-menu-panel nav > span {
+.site-menu-panel nav > span,
+.site-menu-account > a,
+.site-menu-account button {
   display: flex;
   align-items: center;
   gap: 11px;
+  width: 100%;
   min-height: 44px;
-  padding: 0 12px;
-  border-radius: 10px;
+  padding: 0 var(--space-control);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
   color: var(--fg-2);
+  font: inherit;
   font-size: 0.9375rem;
   font-weight: 550;
+  line-height: var(--leading-ui);
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
 }
 
-/* Who is visiting, the address whole, and the ways on, under a line of
-   their own. */
-.site-menu-panel .site-visitor {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
-  margin-top: 10px;
-  padding: 14px 12px 0;
-  border-top: var(--hairline) solid var(--line);
-  font-size: 0.875rem;
+.site-menu-panel nav > [aria-current] {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
-.site-menu-panel .site-visitor:empty {
-  display: none;
-}
-
-.site-menu-panel .site-who {
-  min-width: 0;
-  overflow-wrap: anywhere;
+/* The whole address, which the menu has the room for. */
+.site-menu-account > p {
+  margin: var(--space-tight) var(--space-control) 0;
   color: var(--muted);
   font-size: var(--text-label);
-  text-decoration: none;
+  line-height: var(--leading-ui);
+  overflow-wrap: anywhere;
 }
 
-.site-menu-panel .site-visitor > a:not(.site-who) {
-  color: var(--fg);
-  font-weight: 650;
-  text-decoration: none;
-}
-
-.site-menu-panel .site-sign-out button {
-  min-height: 44px;
-  font-weight: 650;
-}
-
-/*
- * Where the bar has no room for every section link beside the doors and who
- * is visiting, who is visiting moves into the menu. A bar whose menu holds
- * the site's sections, the public pages', keeps the lockup, the
- * documentation, the dashboard, the menu's button and as many of the section
- * links as fit. They leave the bar from the end, Privacy first and "Sell to
- * agents", the door for a merchant, last, and the menu lists every one of
- * them whatever the bar shows; so from 320px to 910px the bar is one row and
- * nothing in it moves when who is visiting is known. 910px is where a
- * signed-in address first takes a section link's place, and the widths below,
- * at each of which one more section link leaves, are measured against the
- * current labels in the site's font with at least 18px to spare.
- */
 @media (max-width: 910px) {
-  .site-menu {
-    display: block;
+  .site-header-inner {
+    gap: var(--space-control);
   }
 
-  .site-doors:has(~ .site-menu) .site-visitor {
+  .site-header-end {
+    gap: var(--space-block);
+  }
+
+  .site-nav,
+  .site-header-end > .site-visitor,
+  .site-doors .site-folds,
+  .site-header-marked .site-doors {
     display: none;
+  }
+
+  .site-menu {
+    display: block;
   }
 
   /* While the menu is open the window's scroll stands still. The lock is on
@@ -867,33 +961,46 @@ textarea.field-input {
   }
 }
 
-@media (max-width: 839px) {
-  .site-header-links:has(> .site-menu .site-menu-sections) > .site-nav a:nth-child(4) {
-    display: none;
+@media (max-width: 640px) {
+  .site-header-inner {
+    min-height: 60px;
+  }
+
+  .site-doors {
+    gap: var(--space-block);
+    font-size: var(--text-label);
   }
 }
 
-@media (max-width: 767px) {
-  .site-header-links:has(> .site-menu .site-menu-sections) > .site-nav a:nth-child(3) {
-    display: none;
+/* The narrowest phones: the row's gaps close up so the lockup, both doors and
+   the button keep one row at 320px. */
+@media (max-width: 360px) {
+  .site-header-end,
+  .site-doors {
+    gap: var(--space-control);
   }
 }
 
-@media (max-width: 519px) {
-  .site-header-links:has(> .site-menu .site-menu-sections) > .site-nav a:nth-child(2) {
-    display: none;
-  }
+/* Where a page stands under another, above its heading; in a message panel
+   it is the panel's line of context, and keeps that line's distance. */
+.trail {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-snug) var(--space-tight);
+  color: var(--muted);
+  font-size: var(--text-small);
+  line-height: var(--leading-ui);
 }
 
-@media (max-width: 439px) {
-  .site-header-links:has(> .site-menu .site-menu-sections) > .site-nav {
-    display: none;
-  }
+.trail > a {
+  color: var(--accent);
+  text-decoration: none;
+}
 
-  .site-header-links:has(> .site-menu .site-menu-sections) > .site-doors {
-    padding-left: 0;
-    border-left: 0;
-  }
+.trail > [aria-current]::before {
+  content: "/";
+  margin-right: var(--space-tight);
 }
 
 /* The ink band at the foot of a page. `margin-top: auto` holds it against the
@@ -957,14 +1064,16 @@ textarea.field-input {
 
 .foot-copy {
   color: var(--footer-faint);
-  font: var(--text-caption) / 1.5 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 /* Which stack this is, on every page but a live one: a band across the window
-   under the site header, its words lined up with the content. A band has no
-   corners for the window edge to cut, and stays short on a phone. */
+   under the site header, its words lined up with the content. It takes the
+   notice's colour, a dot and a heavier weight so it reads as a marker on the
+   page rather than as part of it. A band has no corners for the window edge
+   to cut, and stays short on a phone. */
 .stack-note {
-  border-bottom: var(--hairline) solid var(--line);
+  border-bottom: var(--hairline) solid color-mix(in srgb, var(--notice-ink) 24%, var(--line));
   background: var(--notice-bg);
   color: var(--notice-ink);
 }
@@ -972,14 +1081,24 @@ textarea.field-input {
 .surface-words {
   margin: 0;
   padding-block: 10px;
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  font: 600 var(--text-label) / 1.5 var(--font-sans);
+}
+
+.surface-words::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
 
 @media (max-width: 760px) {
   .surface-words {
     padding-block: 8px;
-    font-size: 0.75rem;
+    font-size: var(--text-caption);
   }
 }
 

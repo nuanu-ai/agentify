@@ -68,7 +68,7 @@ describe("the orders over HTTP", () => {
     expect(listed).toContain("A room for the night");
     expect(listed).toContain("80.00 USD");
     expect(listed).toContain("Delivered");
-    expect(listed).toContain("Showing 1–1 of 1, newest first.");
+    expect(listed).toContain("Showing 1–1 of 1, newest first");
 
     const one = await browser.get(`/admin/orders/${orderId}`);
     const page = readable(one.html);
@@ -111,7 +111,7 @@ describe("the orders over HTTP", () => {
 
     const none = await browser.get("/admin/find?q=ord_nothing_here");
     expect(none.status).toBe(200);
-    expect(readable(none.html)).toContain("Nothing on this channel matches “ord_nothing_here”.");
+    expect(readable(none.html)).toContain("Nothing here matches “ord_nothing_here”.");
     expect(none.html).toMatch(/name="q"[^>]*value="ord_nothing_here"/);
   });
 });

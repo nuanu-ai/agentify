@@ -10,12 +10,14 @@ import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
 import { SCAN_STOP_REASONS } from "@agentify/scanner-contracts/browser";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPublicAppConfig } from "../lib/app-config";
 import { onSite } from "../testing/on-site";
 import { PublicConfigProvider } from "./public-config";
 import { ScanExperience } from "./scan-experience";
+import { StatusBadge } from "./status-badge";
 import { UrlScanForm } from "./url-scan-form";
 
 const scanId = "019f5b6a-4b9f-7000-8000-0000000000bb";
@@ -185,14 +187,14 @@ describe("the token that reads a scan", () => {
 
     visit();
 
-    expect(await screen.findByText("Open the original private scan link")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /from its private link/ })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe(
       "/store",
     );
     expect(statusAsks).toEqual([]);
   });
 
-  it("is said to be no longer valid when the API refuses it, and the page stops asking", async () => {
+  it("is said to no longer work when the API refuses it, and the page stops asking", async () => {
     vi.useFakeTimers();
     sessionStorage.setItem(TOKEN_KEY, "a-revoked-token");
     apiAnswers(() => json(401, refusal("unauthorized", false)));
@@ -200,7 +202,7 @@ describe("the token that reads a scan", () => {
     visit();
     await timePasses(0);
 
-    expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /link no longer works/ })).toBeTruthy();
     await timePasses(5_000);
     expect(statusAsks).toHaveLength(1);
   });
@@ -233,7 +235,7 @@ describe("how often the page asks", () => {
     apiAnswers(() => json(200, blockedScan));
     visit();
     await timePasses(0);
-    expect(screen.getByText("The site blocked our reader")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /turned the scanner away/ })).toBeTruthy();
 
     await timePasses(5_000);
     expect(statusAsks).toHaveLength(1);
@@ -335,7 +337,7 @@ describe("a scan's states", () => {
       });
       told.push({
         headline: headline.textContent ?? "",
-        words: headline.parentElement?.querySelector("p")?.textContent ?? "",
+        words: headline.nextElementSibling?.textContent ?? "",
       });
       cleanup();
       vi.restoreAllMocks();
@@ -392,11 +394,18 @@ describe("a scan's states", () => {
 
     visit();
     await timePasses(0);
-    expect(screen.getByText(/Live status cannot be read right now/)).toBeTruthy();
+    const heading = screen.getByRole("heading", { name: /Waiting for the scan's status/ });
+    // Nothing is known of the scan, so its badge is neither a check being run
+    // nor a check that could not be: not knowing does not read as "no".
+    const said = (status: Parameters<typeof StatusBadge>[0]["status"]) =>
+      renderToStaticMarkup(<StatusBadge status={status} />).replace(/<[^>]+>/g, "");
+    const badge = heading.closest("section")?.querySelector("header .badge")?.textContent;
+    expect(badge).toBe(said("unknown"));
+    expect(said("unknown")).not.toBe(said("unavailable"));
     await timePasses(2_100);
 
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
-    expect(screen.queryByText(/Live status cannot be read right now/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: /Waiting for the scan's status/ })).toBeNull();
   });
 });
 
@@ -418,7 +427,7 @@ describe("an answer that ends the asking", () => {
       visit();
       await timePasses(0);
 
-      expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+      expect(screen.getByText("This scan link no longer works")).toBeTruthy();
       expect(screen.getByRole("link", { name: "Start a new scan" }).getAttribute("href")).toBe(
         "/store",
       );
@@ -440,7 +449,7 @@ describe("an answer that ends the asking", () => {
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();
     await timePasses(1_000);
 
-    expect(screen.getByText("This scan link is no longer valid")).toBeTruthy();
+    expect(screen.getByText("This scan link no longer works")).toBeTruthy();
     expect(screen.queryByText("7 of 18 checks reported")).toBeNull();
     expect(screen.queryByText("shop.example")).toBeNull();
     await timePasses(60_000);
@@ -497,7 +506,7 @@ describe("an answer worth asking again", () => {
       expect(statusAsks).toHaveLength(asks);
     }
     expect(screen.getByText(/asks again in 30 s/)).toBeTruthy();
-    expect(screen.queryByText("This scan link is no longer valid")).toBeNull();
+    expect(screen.queryByText("This scan link no longer works")).toBeNull();
   });
 
   it("waits as long as a refusal worth repeating asks, in the refusal's own words", async () => {
@@ -558,7 +567,7 @@ describe("an answer worth asking again", () => {
       visit();
       await timePasses(0);
       expect(screen.getByText(/asks again in 2 s/)).toBeTruthy();
-      expect(screen.queryByText("This scan link is no longer valid")).toBeNull();
+      expect(screen.queryByText("This scan link no longer works")).toBeNull();
       await timePasses(2_000);
 
       expect(statusAsks).toHaveLength(2);

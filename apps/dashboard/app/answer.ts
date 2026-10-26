@@ -176,10 +176,10 @@ export const saidAsAsked: MiddlewareFunction<Record<string, DataStrategyResult>>
 export interface Gated {
   readonly who: string;
   /**
-   * The operator's workspace, the header's door into it, sent only for an
-   * account that holds the operator flag: nobody else is told it exists.
+   * Sent only for an account that holds the operator flag, whose header then
+   * leads into the operator's workspace: nobody else is told it exists.
    */
-  readonly admin?: string;
+  readonly operator?: true;
 }
 
 /** What a page behind the gate is drawn with: the address signed in, and the merchant's pages' frame. */

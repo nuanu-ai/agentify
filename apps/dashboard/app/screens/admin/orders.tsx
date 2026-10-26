@@ -5,6 +5,7 @@
  * its whole value where the browser opens a `details`.
  */
 
+import { Fragment } from "react";
 import { Link } from "react-router";
 import type {
   FindView,
@@ -25,7 +26,8 @@ import {
 import { useChrome } from "../../answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
-import { Cell, List, ListEmpty } from "../../components/list.js";
+import { Cell, DayHeading, List, ListEmpty } from "../../components/list.js";
+import { Pager } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
 import styles from "./orders.module.css";
@@ -169,42 +171,45 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
             <ul className="list" aria-label="Orders">
               <li className="list-head" aria-hidden="true">
                 <span>Price set</span>
-                <span>Merchant</span>
-                <span>Product</span>
-                <span className="end">Amount</span>
+                <span>Product · Merchant</span>
                 <span>State</span>
                 <span>Payment</span>
-                <span>Order</span>
+                <span className="end">Amount</span>
               </li>
-              {result.rows.map((row) => (
-                <li key={row.id} className="list-row">
-                  <Cell at="fact">
-                    {row.priced === null ? "Not priced" : <Moment at={row.priced} />}
-                  </Cell>
-                  <Cell at="ident">{row.merchant}</Cell>
-                  <Cell at="title">
-                    <Link to={row.to}>{row.product}</Link>
-                    {row.test ? <span className="op-sub">Test purchase</span> : null}
-                  </Cell>
-                  <Cell at="amount">{row.amount ?? "No price"}</Cell>
-                  <Cell at="state">
-                    <OrderState word={row.state} />
-                  </Cell>
-                  <Cell at="state">
-                    <Badge toned={row.payment} />
-                  </Cell>
-                  <Cell at="ident">
-                    <Whole value={row.id} />
-                  </Cell>
-                </li>
+              {result.rows.map((row, at) => (
+                <Fragment key={row.id}>
+                  {row.day === result.rows[at - 1]?.day ? null : (
+                    <DayHeading level={2}>{row.day}</DayHeading>
+                  )}
+                  <li className="list-row">
+                    <Cell at="fact">
+                      {row.priced === null
+                        ? "Not priced"
+                        : "time" in row.priced
+                          ? row.priced.time
+                          : row.priced.text}
+                    </Cell>
+                    <Cell at="title">
+                      <Link to={row.to}>{row.product}</Link>
+                      <span className="op-sub">{row.merchant}</span>
+                    </Cell>
+                    <Cell at="state">
+                      <OrderState word={row.state} />
+                    </Cell>
+                    <Cell at="state">
+                      <Badge toned={row.payment} />
+                    </Cell>
+                    <Cell at="amount">{row.amount ?? "No price"}</Cell>
+                  </li>
+                </Fragment>
               ))}
             </ul>
           </div>
-          <nav className="cut" aria-label="Pages">
-            <span>{result.cut}</span>
-            {result.newest === null ? null : <Link to={result.newest}>Newest orders</Link>}
-            {result.earlier === null ? null : <Link to={result.earlier}>Earlier orders</Link>}
-          </nav>
+          <Pager
+            range={result.cut}
+            previous={{ to: result.newest, words: "Newest", beside: false }}
+            next={{ to: result.earlier, words: "Earlier" }}
+          />
         </>
       )}
       <p className="note">{ORDERS_NOTE}</p>
@@ -236,7 +241,6 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
         <Link to={view.merchant.to}>{view.merchant.name}</Link>
         <span>{view.card}</span>
         <Whole value={view.id} />
-        {view.test ? <span>Test purchase</span> : null}
         <span className="op-asof">{view.readAt}</span>
       </div>
 
@@ -267,7 +271,7 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
         <section className="op-panel" aria-labelledby="story-title">
           <div className="op-panel-head">
             <h2 id="story-title">What happened</h2>
-            <p>Oldest first · times in UTC</p>
+            <p>Oldest first</p>
           </div>
           <div className="op-panel-body">
             <ol className="op-timeline">
@@ -371,7 +375,13 @@ function OneOrder({ view }: Readonly<{ view: OrderView }>) {
                     <div key={fact.label}>
                       <dt>{fact.label}</dt>
                       <dd>
-                        <Whole value={fact.value} />
+                        {"ident" in fact ? (
+                          <Whole value={fact.ident} />
+                        ) : "at" in fact ? (
+                          <Moment at={fact.at} />
+                        ) : (
+                          fact.text
+                        )}
                       </dd>
                     </div>
                   ))}
@@ -406,7 +416,7 @@ export function OrderScreen({ view }: Readonly<{ view: OrderPageView }>) {
       ) : view.kind === "none" ? (
         <ListEmpty>
           <p>
-            There is no order <Whole value={view.id} /> on this channel.
+            There is no order <Whole value={view.id} /> here.
           </p>
         </ListEmpty>
       ) : (
@@ -429,11 +439,15 @@ export function OrderScreen({ view }: Readonly<{ view: OrderPageView }>) {
   );
 }
 
+/**
+ * The lookup's own page: its box, holding what was pasted, and what it
+ * answered: nothing asked yet, what it reads, or that it could not search.
+ */
 export function FindScreen({ view }: Readonly<{ view: FindView }>) {
   const { base } = useChrome();
   return (
     <>
-      <form className="list-tools" method="get" action={`${base}/admin/find`}>
+      <form className="list-tools op-find" method="get" action={`${base}/admin/find`}>
         <search className="search">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" />
@@ -443,7 +457,7 @@ export function FindScreen({ view }: Readonly<{ view: FindView }>) {
             type="search"
             name="q"
             aria-label="Find a record"
-            placeholder="Paste an order ID, merchant ID, transaction, address, email or site"
+            placeholder="ID, email, site, address or transaction"
             defaultValue={view.q}
           />
         </search>
@@ -452,23 +466,26 @@ export function FindScreen({ view }: Readonly<{ view: FindView }>) {
         </button>
       </form>
       {view.kind === "asked" ? (
-        <p className="note">{FIND_READS}</p>
+        <p className="note op-find-note">{FIND_READS}</p>
       ) : view.kind === "unread" ? (
         <ListEmpty>
           <p>
-            <CouldNotBeRead /> The records could not be searched.{" "}
-            <a href={`${base}/admin/find?${new URLSearchParams({ q: view.q })}`}>Search again</a>.
+            <CouldNotBeRead />{" "}
+            <a href={`${base}/admin/find?${new URLSearchParams({ q: view.q })}`}>Search again</a>
           </p>
         </ListEmpty>
       ) : view.kind === "none" ? (
         <ListEmpty>
           <p>{view.said}</p>
+          {view.merchants === null ? null : (
+            <p>
+              <Link to={view.merchants}>Search merchants for “{view.q}”</Link>
+            </p>
+          )}
           {view.unknown === null ? null : (
             <p>
               {view.unknown}{" "}
-              <Link to="/admin/orders?segment=payment-unknown">
-                Payments whose outcome is unknown
-              </Link>
+              <Link to="/admin/orders?segment=payment-unknown">See unknown payments</Link>
             </p>
           )}
         </ListEmpty>

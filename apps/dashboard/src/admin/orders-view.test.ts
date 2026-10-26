@@ -47,7 +47,7 @@ describe("the orders list", () => {
   it("tells a channel with no order from a search that matched none", () => {
     expect(ordersListView(asked(), aPage(), READ_AT).result).toMatchObject({
       kind: "none",
-      said: "No order has been made on this channel yet.",
+      said: "No order has been made here yet.",
       clear: null,
     });
     expect(ordersListView(asked("q=esim"), aPage(), READ_AT).result).toMatchObject({
@@ -74,7 +74,7 @@ describe("the orders list", () => {
     expect(view.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
       ["Payment unknown", 2, false],
       ["Unfulfilled", 1, true],
-      ["Delivered, not paid", 0, false],
+      ["Held for payment", 0, false],
       ["In progress", 0, false],
       ["Ended", 50, false],
       ["Lapsed", 6, false],
@@ -98,7 +98,7 @@ describe("the orders list", () => {
     );
     expect(first.result).toMatchObject({
       kind: "rows",
-      cut: "Showing 1–2 of 61, newest first.",
+      cut: "Showing 1–2 of 61, newest first",
       earlier: "/admin/orders?before=1787000000000.ord_b",
       newest: null,
     });
@@ -109,7 +109,7 @@ describe("the orders list", () => {
       READ_AT,
     );
     expect(later.result).toMatchObject({
-      cut: "Showing 51–51 of 61, newest first.",
+      cut: "Showing 51–51 of 61, newest first",
       earlier: null,
       newest: "/admin/orders",
     });
@@ -277,6 +277,24 @@ describe("one order", () => {
       "Transaction",
     ]);
   });
+
+  it("says when its receipt was paid as a moment, not as an identifier shown short", () => {
+    const paidAt = page(parcelOrder()).receipt.facts.find((fact) => fact.label === "Paid at");
+
+    expect(paidAt).toStrictEqual({
+      label: "Paid at",
+      at: { date: "2026-10-21", time: expect.stringMatching(/^\d{2}:\d{2}:\d{2} UTC$/) },
+    });
+  });
+
+  it("tells an order that will never have a receipt from one that has none yet", () => {
+    // A closed order's goods are never released, so it never gets a receipt;
+    // "not yet" on it would send an operator waiting for one.
+    expect(page(closedOrder()).receipt).toMatchObject({ head: "None", facts: [] });
+    expect(page(closedOrder()).receipt.said).toMatch(/no receipt will be written/);
+    expect(page(unknownOrder()).receipt).toMatchObject({ head: "Not yet", facts: [] });
+    expect(page(unknownOrder()).receipt.said).not.toMatch(/will be written/);
+  });
 });
 
 describe("the lookup", () => {
@@ -297,22 +315,46 @@ describe("the lookup", () => {
     expect(findView("esim-shop.example", [merchant, merchant], false)).toMatchObject({
       kind: "several",
       found: [
-        { kind: "Merchant", label: "An eSIM shop", by: "the site it sells from" },
+        {
+          kind: "Merchant",
+          label: "An eSIM shop",
+          by: "the site it sells from, esim-shop.example",
+        },
         { kind: "Merchant" },
       ],
     });
   });
 
   it("says none in words that claim no more than it knows, keeping the text", () => {
-    expect(findView("ord_zz", [], false)).toStrictEqual({
+    expect(findView("ord_zz", [], false)).toMatchObject({
       kind: "none",
       q: "ord_zz",
-      said: "Nothing on this channel matches “ord_zz”.",
+      said: expect.stringContaining("Nothing here matches “ord_zz”."),
       unknown: null,
+      merchants: null,
     });
     expect(findView("0xabc", [], true)).toMatchObject({
-      said: "No order on this channel names the transaction “0xabc” yet.",
-      unknown: expect.stringContaining("may hold no transaction yet"),
+      said: "No order here names the transaction “0xabc” yet.",
+      unknown: expect.stringContaining("may have no transaction yet"),
+    });
+  });
+
+  it("never says nothing matches text it did not look up, and offers the merchants' search for it", () => {
+    // A shop's name read out on a call is no identifier; "nothing matches"
+    // would claim a search that never ran.
+    const view = findView("City Walking Tours", [], false, "not-read");
+
+    expect(view).toMatchObject({
+      kind: "none",
+      merchants: "/admin/merchants?q=City+Walking+Tours",
+    });
+    const lookedUp = findView("City Walking Tours", [], false);
+    expect(view.kind === "none" && view.said).not.toBe(lookedUp.kind === "none" && lookedUp.said);
+  });
+
+  it("names the site a merchant was found by, so two found by one site are told apart by it", () => {
+    expect(findView("esim-shop.example", [merchant, merchant], false)).toMatchObject({
+      found: [{ by: "the site it sells from, esim-shop.example" }, {}],
     });
   });
 

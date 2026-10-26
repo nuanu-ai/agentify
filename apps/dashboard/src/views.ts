@@ -8,6 +8,7 @@
  */
 
 import type { SurfaceMode } from "@agentify/core";
+import { percentOf } from "@agentify/core/published";
 import type { Integration } from "@agentify/gateway";
 import { SURFACE_WORDS } from "@agentify/ui/surface";
 import {
@@ -32,14 +33,13 @@ import {
   placeOf,
   type SegmentRule,
 } from "./listing.js";
-import { type Shares, type SplitTerms, sharesOf } from "./shares.js";
+import { moment, withinDay } from "./moments.js";
+import { type SplitTerms, sharesOf } from "./shares.js";
 import type { Viewer } from "./viewer.js";
 import type { ShopTotal } from "./woo-shops.js";
 import {
   CARD_WORDS,
-  dayOf,
   FULFILLMENT_WORDS,
-  moment,
   money,
   needsYou,
   ORDER_WORDS,
@@ -48,9 +48,10 @@ import {
 } from "./words.js";
 
 /**
- * An instant as the screens print it: UTC to the second, the date and the time
- * as two halves a line may break between and nowhere else. A timestamp that
- * could not be read is shown as it came.
+ * An instant as the screens print it, to the second in the viewer's zone with
+ * the zone named after the time: the date and the time as two halves a line
+ * may break between and nowhere else. A timestamp that could not be read is
+ * shown as it came.
  */
 export type MomentView = Readonly<{ date: string; time: string }> | Readonly<{ text: string }>;
 
@@ -80,17 +81,6 @@ const countOf = (many: number, thing: string): string => `${many} ${thing}${many
 
 // --- cards -------------------------------------------------------------------
 
-/**
- * What the price beside a card means. A price asked at purchase may not be the
- * one paid, so that is said wherever the price is; a price that stands on the
- * card holds from `as_of`, the one place that moment is shown: a merchant
- * working out why a sale went through at an old price has nowhere else to look.
- */
-export type CardPrice = Readonly<{ asked: true }> | Readonly<{ since: MomentView }>;
-
-const cardPrice = (entry: MerchantCard): CardPrice =>
-  entry.card.price_check === undefined ? { since: momentView(entry.as_of) } : { asked: true };
-
 /** A span of seconds in the largest whole unit that says it exactly. */
 export const spanOf = (seconds: number): string => {
   const [count, unit] =
@@ -106,17 +96,19 @@ export const spanOf = (seconds: number): string => {
 
 /**
  * How the goods come and the window they are owed within: a promise the
- * merchant answers for; an order still without goods at its end is unfulfilled. A card whose goods come later and that names no
- * window is held to Agentify's own, which the merchant's list of cards does
- * not carry, so the words say whose window it is and the link where it is
- * written, rather than reading as no window at all. A parcel's window is the
- * time to hand it to a carrier, not the time it arrives.
+ * merchant answers for; an order still without goods at its end is
+ * unfulfilled. A card whose goods come later and that names no window is held
+ * to Agentify's default deadline, whose length the merchant's list of cards
+ * does not carry, so the words name it and link to where it is written rather
+ * than print a length the gateway may not be using, or read as no window at
+ * all. A parcel's window is the time to hand it to a carrier, not the time it
+ * arrives.
  */
 type Delivery = Readonly<{ says: string; byDefault: Rest | null }>;
 
 const DEFAULT_WINDOW: Rest = {
   href: "/docs/cards#goods-that-leave-later-than-the-answer",
-  words: "Agentify's default window",
+  words: "default deadline",
 };
 
 const deliveryOf = (card: MerchantCard["card"]): Delivery => {
@@ -131,21 +123,19 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
     return { says: `${word}, within ${spanOf(card.fulfill_deadline_seconds)}`, byDefault: null };
   }
   return card.fulfillment === "async"
-    ? { says: `${word}, within`, byDefault: DEFAULT_WINDOW }
+    ? { says: `${word}, within the`, byDefault: DEFAULT_WINDOW }
     : { says: word, byDefault: null };
 };
 
 /**
- * What stands in a card's last column: the card's own switch, or nothing where
- * pressing it now would mean nothing the merchant could act on. A card the
- * shop published while the merchant's code sells is the one with words of its
- * own: the banner names no reason for it, and only its row can say which of
- * the cards came from the shop.
+ * What stands in a card's last column: the card's own switch, or why it has
+ * none. A card published by the integration not in use is the one with words
+ * of its own: the banner names no reason for it, and only its row can say
+ * which of the cards came from which integration.
  */
 export type CardControl =
   | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
-  | Readonly<{ kind: "reason"; text: string }>
-  | Readonly<{ kind: "none" }>;
+  | Readonly<{ kind: "reason"; text: string; to: string }>;
 
 /**
  * The integration the merchant sells through, and their cards that are off
@@ -157,20 +147,26 @@ export interface CardsIntegration {
 }
 
 /**
- * Every card keeps its own switch whatever holds the whole account, because those holds lift at once, the moment the
- * approval lands or a name or a wallet is set: a card paused before then stays
- * paused, and a Resume pressed meanwhile can be taken back. A card published
- * by the integration not in use is offered none, and its word does not say
- * its own pause either: the move between integrations is made on the
- * WooCommerce page, coming back to the code puts none of its cards on sale at
- * once (all sales come back paused here if any would sell), and going to the
- * shop puts the shop's cards on sale as they stand.
+ * Every card keeps its own switch whatever holds the whole account, because
+ * those holds lift at once, the moment the approval lands or a name or a
+ * wallet is set: a card paused before then stays paused, and a Resume pressed
+ * meanwhile can be taken back. A card published by the integration not in use
+ * is offered none, and its word does not say its own pause either: the move
+ * between integrations is made on the WooCommerce page, which its words lead
+ * to. They name only the merchant's choice: the state beside them already
+ * says the card is off sale, and naming a sale would be wrong where a shop's
+ * Connect was never approved or the code never ran.
  */
 const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
   if (integration.offSale.includes(entry.id)) {
-    return integration.through === "woocommerce"
-      ? { kind: "none" }
-      : { kind: "reason", text: "Off sale while you sell through your own code" };
+    return {
+      kind: "reason",
+      text:
+        integration.through === "woocommerce"
+          ? "You sell through WooCommerce"
+          : "You sell through your code",
+      to: "/woocommerce",
+    };
   }
   return { kind: "switch", verb: entry.paused ? "resume" : "pause" };
 };
@@ -204,7 +200,8 @@ interface CardRow {
   /** Off sale for whatever reason, which the screen draws as a quieter row. */
   readonly off: boolean;
   readonly title: string;
-  readonly priced: CardPrice;
+  /** The price shown may not be the one paid, so that is said wherever the price is. */
+  readonly priceAsked: boolean;
   /** The address an agent buys the card at. */
   readonly buy: string;
   readonly itemId: string;
@@ -243,15 +240,15 @@ const ALL_THROUGH_THE_CODE: CardsIntegration = { through: "api", offSale: [] };
  */
 const CARD_SEGMENTS: readonly SegmentRule<CardRow>[] = [
   { key: "all", label: "All", holds: () => true, none: "" },
-  { key: "on-sale", label: "On sale", holds: (row) => !row.off, none: "No card is on sale." },
-  { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No card is off sale." },
+  { key: "on-sale", label: "On sale", holds: (row) => !row.off, none: "No product is on sale." },
+  { key: "off-sale", label: "Off sale", holds: (row) => row.off, none: "No product is off sale." },
 ];
 
 const CARD_SEGMENT_KEYS = CARD_SEGMENTS.map((one) => one.key);
 
 /** Where a press on the cards leads back to: the list its form's fields name. */
 export const cardsPlace = (fields: URLSearchParams): string =>
-  placeOf("/cards", fields, CARD_SEGMENT_KEYS);
+  placeOf("/products", fields, CARD_SEGMENT_KEYS);
 
 export const cardsView = (
   cards: MerchantCardList,
@@ -267,7 +264,7 @@ export const cardsView = (
       id: entry.id,
       off: state !== CARD_WORDS.onSale,
       title: entry.card.title,
-      priced: cardPrice(entry),
+      priceAsked: entry.card.price_check !== undefined,
       buy: buyingAddress(origin, entry),
       itemId: entry.card.merchant_item_id,
       price: money(entry.card.price),
@@ -292,7 +289,7 @@ export const cardsView = (
     listing: listingOf({
       rows,
       asked,
-      path: "/cards",
+      path: "/products",
       segments: CARD_SEGMENTS,
       matches: (row, words) =>
         byCode
@@ -300,18 +297,18 @@ export const cardsView = (
           : row.title.toLocaleLowerCase().includes(words) ||
             row.itemId.toLocaleLowerCase().includes(words),
       noMatch: (q, within) => {
-        const which = within === null ? "No card" : `No card ${within.toLocaleLowerCase()}`;
+        const which = within === null ? "No product" : `No product ${within.toLocaleLowerCase()}`;
         return byCode ? `${which} has the product code “${q}”.` : `${which} matches “${q}”.`;
       },
-      showAll: "Show all cards",
+      showAll: "Show all products",
     }),
     empty:
       cards.cards.length > 0
         ? null
-        : { says: "You haven't published any cards yet.", ways: { woo: wooAvailable } },
+        : { says: "You haven't published any products yet.", ways: { woo: wooAvailable } },
     note: switchesNote(cards.selling),
     byCode: byCode
-      ? `Only the ${coded === 1 ? "card" : "cards"} with the product code “${asked.q}”.`
+      ? `Only the ${coded === 1 ? "product" : "products"} with the product code “${asked.q}”.`
       : null,
   };
 };
@@ -322,21 +319,19 @@ const WHAT_A_PAUSE_DOES: Rest = {
 };
 
 /**
- * A pause leaves accepted orders to play out, which the banner says while all
- * sales are paused, so then the line says what resuming leaves alone.
+ * A pause stops new orders and leaves the accepted ones to be delivered;
+ * while all sales are paused, the line says instead what resuming leaves
+ * alone.
  */
 const switchesNote = (selling: MerchantCardList["selling"]): CardsView["note"] => {
   switch (selling) {
     case "paused":
       return {
-        says: `Cards you paused yourself stay paused when you press ${RESUME_ALL_SELLING}.`,
+        says: `Products you paused one by one stay paused when you press ${RESUME_ALL_SELLING}.`,
         rest: WHAT_A_PAUSE_DOES,
       };
     case "open":
-      return {
-        says: "A pause takes a card off sale; orders you have already accepted play out as usual.",
-        rest: WHAT_A_PAUSE_DOES,
-      };
+      return { says: "A pause stops new orders only.", rest: WHAT_A_PAUSE_DOES };
   }
 };
 
@@ -374,16 +369,21 @@ interface OrderRow {
   readonly amount: string;
   /**
    * An unmarked sum for a test purchase is a payment that never happened, so
-   * every test sum carries the mark.
+   * a page that does not otherwise say which sums are tests marks each.
    */
   readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
-  readonly shares: Shares | null;
+  readonly share: string | null;
   readonly state: Word;
   /** When the price was set; null for a purchase that ended before it had one. */
   readonly priced: MomentView | null;
-  /** The day it was priced, or asked for where it never was, for the heading over that day's orders. */
+  /**
+   * The day it was priced, or asked for where it never was, and its zone, for
+   * the heading over that day's orders.
+   */
   readonly day: string;
+  /** The time of that moment within its day, in the zone the heading names. */
+  readonly time: string;
   /** What happened to the order and when, in the order it happened. */
   readonly facts: readonly OrderFact[];
   /** What happened that the merchant or the buyer still has to act on, and what can be done; null otherwise. */
@@ -733,7 +733,7 @@ export const ordersView = (
     itemId: order.merchant_item_id,
     amount: money(order.price),
     test: order.test,
-    shares: sharesIn(order.price, paidInto[order.id]),
+    share: shareIn(order.price, paidInto[order.id]),
     state: merchantOrderWord(order, reopened(order)),
     paymentUnresolved: order.payment_status === "unresolved",
     opened: query.get("details") === order.id,
@@ -761,7 +761,7 @@ export const ordersView = (
         : money({ amount: shopTotals[order.id]?.total ?? "", currency: order.price.currency }),
     inTheShop: inTheShopOf(order.price.amount, shopTotals[order.id]),
     priced: momentView(order.price.at),
-    day: dayOf(order.price.at),
+    ...withinDay(order.price.at),
     facts: factsOf({
       priced: order.price.at,
       record: records[order.id],
@@ -821,12 +821,12 @@ export const ordersView = (
           itemId: attempt.merchant_item_id,
           amount: attempt.price === null ? "No price" : money(attempt.price),
           test: attempt.test,
-          shares: null,
+          share: null,
           state: ORDER_WORDS[attempt.status],
           shopTotal: null,
           inTheShop: null,
           priced: attempt.priced_at === null ? null : momentView(attempt.priced_at),
-          day: dayOf(attempt.priced_at ?? attempt.asked_at),
+          ...withinDay(attempt.priced_at ?? attempt.asked_at),
           facts: factsOf({ asked: attempt.asked_at, priced: attempt.priced_at }),
           why: null,
           rest: null,
@@ -864,7 +864,7 @@ export const ordersView = (
           ? "Close fulfillment"
           : row.closing === "again"
             ? "Close again"
-            : "Order details",
+            : "Details",
     };
   };
   const tell = ({ order, row }: (typeof listed)[number]): OrderNeed => ({
@@ -929,8 +929,8 @@ export const ordersPlace = (fields: URLSearchParams): string =>
  */
 export const CLOSURE_NOTES = {
   unconfirmed:
-    "Your closure could not be confirmed. If this order is still open, closing it again is safe.",
-  ended: "Nothing was closed: this order ended before your closure arrived.",
+    "Agentify could not confirm the closure. Close the order again: closing it twice does no harm.",
+  ended: "Nothing was closed: this order had already ended.",
 } as const;
 
 /**
@@ -996,7 +996,7 @@ const REFUND: Rest = {
 };
 
 const PAID_AFTER_CLOSURE =
-  "The payment completed after you closed fulfillment, so the buyer paid and nothing was delivered. Close it again, with an explanation to the buyer.";
+  "The buyer's payment arrived after you closed this order, so they paid and nothing was delivered through Agentify. Close it again with a note that says what you did.";
 
 /**
  * Orders carry the test flag too, and their sums would otherwise be taken for
@@ -1019,10 +1019,10 @@ const testOrders = (
 
 /** Missing cause means unknown cause, rather than a guessed missed deadline. */
 const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
-  refused: "Paid, then your integration refused the order, so nothing was delivered.",
-  deadline_passed: "Paid, but the delivery window ran out before the product was delivered.",
+  refused: "Paid, but your integration refused the order, so nothing was delivered.",
+  deadline_passed: "Paid, but not delivered before the delivery deadline.",
   charge_confirmed_late:
-    "Paid, but the payment was confirmed only after Agentify had stopped waiting for it, so the order was never sent to your integration and nothing was delivered.",
+    "Paid, but the payment was confirmed after Agentify had stopped waiting for it, so the order never reached your integration.",
 };
 
 /**
@@ -1035,7 +1035,7 @@ export type ConnectorSale =
   | Readonly<{ kind: "parcel"; placed: boolean }>
   | Readonly<{ kind: "download"; recover: string | null }>;
 
-const CLOSE = "close fulfillment with an explanation to the buyer";
+const CLOSE = "close fulfillment with a note to the buyer";
 
 const PARCELS: Rest = { href: "/docs/woocommerce#parcels", words: "Parcels" };
 
@@ -1081,11 +1081,11 @@ const wayOn = (
   // a charge confirmed after Agentify stopped waiting, has nothing to deliver
   // it with.
   if (sale === undefined && soldThrough === "woocommerce") {
-    return { why: `${said} Close fulfillment with an explanation to the buyer.`, rest: null };
+    return { why: `${said} Close fulfillment with a note to the buyer.`, rest: null };
   }
   if (sale?.kind === "download") {
     return sale.recover === null
-      ? { why: `${said} Close fulfillment with an explanation to the buyer.`, rest: null }
+      ? { why: `${said} Close fulfillment with a note to the buyer.`, rest: null }
       : {
           why: `${said} You can still deliver it late, or ${CLOSE}.`,
           rest: { href: sale.recover, words: "Recover WooCommerce delivery" },
@@ -1100,10 +1100,21 @@ const wayOn = (
   };
 };
 
-const sharesIn = (
+/**
+ * The merchant's share of a payment into their payout split, after
+ * Agentify's part. It is said as about so much: the split divides what has
+ * gathered in it when it is paid out, rounding each share down, so no single
+ * payment has an exact share.
+ */
+const shareIn = (
   price: { readonly amount: string; readonly currency: string },
   terms: SplitTerms | undefined,
-): Shares | null => (terms === undefined ? null : sharesOf(price, terms));
+): string | null => {
+  if (terms === undefined) return null;
+  const { merchant } = sharesOf(price, terms);
+  const fee = percentOf(terms.commissionAllocation, terms.totalAllocation);
+  return `${merchant.replace(/^≈ /, "about ")}, after Agentify's ${fee}`;
+};
 
 // --- receipts ----------------------------------------------------------------
 
@@ -1115,25 +1126,29 @@ interface ReceiptRow {
   readonly amount: string;
   readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
-  readonly shares: Shares | null;
+  readonly share: string | null;
   readonly outcome: Word;
   readonly paid: MomentView;
   readonly priceSet: MomentView;
   readonly priceAsOf: MomentView;
-  /** The day of `paid`, for the heading over that day's receipts. */
+  /** The day of `paid` and its zone, for the heading over that day's receipts. */
   readonly day: string;
+  /** The time of `paid` within that day, in the zone its heading names. */
+  readonly time: string;
   readonly transfer: TransferView;
 }
 
 export interface ReceiptsView {
-  /** Null when no receipt is a test purchase. */
+  /** Null when no receipt is a test purchase, or where the band over the page says so. */
   readonly testWarning: string | null;
-  readonly count: number;
-  readonly sums: string;
-  readonly delivered: number;
-  readonly ofCount: string;
-  readonly rows: readonly ReceiptRow[];
+  /** The receipts the address asks for, the latest payment first, a page at a time. */
+  readonly listing: Listing<ReceiptRow>;
 }
+
+/** The receipts are one list with no search, so they are read a page at a time and no more. */
+const ALL_RECEIPTS: readonly SegmentRule<ReceiptRow>[] = [
+  { key: "all", label: "All", holds: () => true, none: "" },
+];
 
 export const receiptsView = (
   viewer: Viewer,
@@ -1141,51 +1156,48 @@ export const receiptsView = (
   receipts: ReceiptList,
   transactionPage: string | null = null,
   paidInto: PaidIntoSplits = {},
+  query: URLSearchParams = new URLSearchParams(),
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
-  return {
-    testWarning: testWarning(receipts, viewer.mode),
-    count: receipts.receipts.length,
-    sums: sumsOf(receipts),
-    // A shipped parcel is a sale as much as goods handed over: the money is the
-    // merchant's and the receipt is written. The tile says both words, because
-    // a parcel with a carrier has not been delivered.
-    delivered: receipts.receipts.filter(
-      (receipt) => receipt.outcome === "delivered" || receipt.outcome === "shipped",
-    ).length,
-    ofCount: `of ${countOf(receipts.receipts.length, "receipt")}`,
-    // The latest payment first, whatever order the gateway lists them in.
-    rows: [...receipts.receipts]
-      .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
-      .map((receipt) => ({
+  // The latest payment first, whatever order the gateway lists them in.
+  const rows = [...receipts.receipts]
+    .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
+    .map(
+      (receipt): ReceiptRow => ({
         id: receipt.id,
         orderId: receipt.order_id,
         needsYou: needsYou(receipt.outcome),
         product: titles.get(receipt.item_id) ?? receipt.item_id,
         amount: money(receipt.price),
         test: receipt.test,
-        shares: sharesIn(receipt.price, paidInto[receipt.order_id]),
+        share: shareIn(receipt.price, paidInto[receipt.order_id]),
         outcome: ORDER_WORDS[receipt.outcome],
         paid: momentView(receipt.paid_at),
         priceSet: momentView(receipt.price.at),
         priceAsOf: momentView(receipt.price.as_of),
-        day: dayOf(receipt.paid_at),
+        ...withinDay(receipt.paid_at),
         transfer: transferOf(receipt.transaction, transactionPage),
-      })),
+      }),
+    );
+  return {
+    testWarning: testWarning(receipts, viewer.mode),
+    listing: listingOf({
+      rows,
+      asked: {
+        ...askedIn(
+          query,
+          ALL_RECEIPTS.map((one) => one.key),
+        ),
+        q: "",
+        cut: false,
+      },
+      path: "/receipts",
+      segments: ALL_RECEIPTS,
+      matches: () => true,
+      noMatch: () => "",
+      showAll: "Show all receipts",
+    }),
   };
-};
-
-/**
- * Amounts are never added up: they are exact decimal strings so nothing turns
- * them into a float, and a total computed here would be the one number on the
- * screen that had been through one. The currencies present are named instead.
- */
-const sumsOf = (receipts: ReceiptList): string => {
-  const currencies = [...new Set(receipts.receipts.map((receipt) => receipt.price.currency))];
-  if (currencies.length === 0) {
-    return "nothing sold yet";
-  }
-  return `priced in ${currencies.sort().join(", ")}`;
 };
 
 /**

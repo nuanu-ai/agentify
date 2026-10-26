@@ -33,16 +33,16 @@
 
 .editorial-contents > span,
 .editorial-label {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-snug);
   color: var(--muted);
-  font: 0.6875rem / 1.4 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .editorial-contents a {
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   text-decoration: none;
 }
 
@@ -58,31 +58,29 @@
 
 .editorial-article h1 {
   max-width: 17ch;
-  margin: 14px 0 16px;
-  font-size: clamp(2.5rem, 5vw, 2.75rem);
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.05;
-  text-wrap: balance;
+  margin: var(--space-control) 0 var(--gap-heading);
+  font-size: var(--text-title);
+  letter-spacing: var(--tracking-display);
+  line-height: var(--leading-display);
 }
 
 .editorial-article h2 {
   scroll-margin-top: 96px;
-  margin: 42px 0 12px;
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  margin: var(--space-page) 0 var(--gap-heading);
+  font-size: var(--text-section);
 }
 
 /* A page that keeps each section in an element of its own scrolls to the
-   section, and its first section follows the introduction closely. */
+   section. The first one stands a little closer to the introduction than the
+   rest stand to each other, and still further from it than from its own
+   text, or its heading would read as the introduction's last line. */
 .editorial-article section {
   scroll-margin-top: 96px;
-  margin-top: 42px;
+  margin-top: var(--space-page);
 }
 
 .editorial-article section:first-of-type {
-  margin-top: 0;
+  margin-top: var(--space-section);
 }
 
 .editorial-article section > h2 {
@@ -92,12 +90,10 @@
 .editorial-article p,
 .editorial-article li {
   color: var(--fg-strong);
-  font-size: 1rem;
-  line-height: 1.75;
 }
 
 .editorial-article p {
-  margin: 0 0 16px;
+  margin: 0 0 var(--gap-paragraph);
 }
 
 .editorial-article code {
@@ -111,16 +107,16 @@
 
 .editorial-list {
   display: grid;
-  gap: 8px;
-  margin: 0;
+  gap: var(--space-tight);
+  margin: 0 0 var(--gap-paragraph);
   padding-left: 22px;
 }
 
 .editorial-notice {
-  margin: 22px 0;
+  margin: var(--space-card) 0;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
-  padding: 18px 20px;
+  padding: var(--space-card);
   background: var(--surface);
 }
 
@@ -163,7 +159,7 @@
     justify-content: space-between;
     padding: 0 16px;
     cursor: pointer;
-    font: 500 0.75rem / 1.4 var(--font-mono);
+    font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
     list-style: none;
     text-transform: uppercase;
   }
@@ -189,13 +185,7 @@
   }
 
   .editorial-outline a {
-    font-size: 0.875rem;
+    font-size: var(--text-small);
     text-decoration: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .editorial-article h1 {
-    font-size: 2.25rem;
   }
 }

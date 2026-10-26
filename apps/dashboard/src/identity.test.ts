@@ -55,9 +55,10 @@ function memoryIdentity(
 }
 
 function tokenIn(message: Message): string {
-  const found = /https?:\/\/\S+\/sign-in\/open\?token=([^\s]+)/.exec(message.body)?.[1];
-  if (found === undefined) throw new Error("the dashboard link was not in the message");
-  return decodeURIComponent(found);
+  const found = /https?:\/\/\S+\/sign-in\/open\?\S+/.exec(message.body)?.[0];
+  const token = found === undefined ? null : new URL(found).searchParams.get("token");
+  if (token === null) throw new Error("the dashboard link was not in the message");
+  return token;
 }
 
 function linkIn(message: Message): string {

@@ -30,6 +30,7 @@ import type { WorkspaceDoor } from "./admin/index.js";
 import { FailedAfterSettingCookies } from "./carried-cookies.js";
 import type { DashboardConfig } from "./config.js";
 import {
+  asksForSellerDashboard,
   type DashboardDestination,
   type DashboardIdentity,
   dashboardDestinationIn,
@@ -46,7 +47,6 @@ import {
   NOT_A_PAYOUT_WALLET_CODE,
   type Registrar,
 } from "./gateway.js";
-import { SESSION_DAYS } from "./identity.js";
 import { type IntegrationsView, integrationsView } from "./integrations-view.js";
 import { type KeysView, keysView, type NewKeyView, newKeyView } from "./keys.js";
 import { noted } from "./noted.js";
@@ -60,7 +60,12 @@ import {
   whatIsWrongWithTheName,
   whatIsWrongWithTheSite,
 } from "./seller-name.js";
-import { type SettingsPress, type SettingsView, settingsView } from "./settings-view.js";
+import {
+  type SettingsPress,
+  type SettingsView,
+  settingsView,
+  type WalletNotice,
+} from "./settings-view.js";
 import type { Viewer } from "./viewer.js";
 import {
   type CardsView,
@@ -82,7 +87,6 @@ import {
 } from "./views.js";
 import type { WooPages } from "./woo-pages.js";
 import type { ShopTile } from "./woo-views.js";
-import { moment } from "./words.js";
 
 /** A view to draw, a place to send the browser, or a problem to show instead. */
 export type Outcome<View> =
@@ -215,7 +219,7 @@ export type SignInView =
       googleEnabled: boolean;
       clickId?: string;
     }>
-  | Readonly<{ screen: "unavailable"; clickId?: string }>;
+  | Readonly<{ screen: "unavailable"; destination: DashboardDestination; clickId?: string }>;
 
 /**
  * Accepted carries a key of its own rather than the absence of a limit, so a
@@ -228,12 +232,13 @@ export type LinkAnswer =
   | Readonly<{ wall: LinkWall; seconds: number }>;
 
 export type OpenLinkView =
-  | Readonly<{ screen: "open"; token: string; email: string }>
-  | Readonly<{ screen: "refused" }>;
+  | Readonly<{ screen: "open"; token: string; email: string; destination: DashboardDestination }>
+  | Readonly<{ screen: "refused"; destination: DashboardDestination }>;
 
 /**
- * The one control that makes a merchant. `unavailable` is a press that did
- * not make one, which leaves the person signed in to press again.
+ * The one control that makes a merchant. `unavailable` is a press, or a
+ * sign-in on the dashboard's own page, that did not make one, which leaves the
+ * person signed in to press again.
  */
 export interface MerchantView {
   readonly unavailable: boolean;
@@ -291,7 +296,8 @@ export interface PageServices {
    */
   readonly start: {
     where(person: Person): Outcome<never>;
-    merchant(person: Person): Outcome<MerchantView>;
+    /** `cookie` says whether a sign-in just failed to make this person's merchant. */
+    merchant(person: Person, cookie: string | undefined): Outcome<MerchantView>;
     openMerchant(person: Person): Promise<Outcome<MerchantView>>;
   };
   /** Choosing the name buyers read, the last step of a new merchant's setup. */
@@ -312,7 +318,7 @@ export interface PageServices {
     /** As the address asks: the words searched for, the segment and the page. */
     cards(person: Person, query: URLSearchParams): Promise<Outcome<CardsView>>;
     orders(person: Person, query: URLSearchParams): Promise<Outcome<OrdersView>>;
-    receipts(person: Person): Promise<Outcome<ReceiptsView>>;
+    receipts(person: Person, query: URLSearchParams): Promise<Outcome<ReceiptsView>>;
     /** The banner the frame draws over every page about the merchant's selling. */
     frame(person: Person): Promise<FrameView>;
   };
@@ -421,12 +427,9 @@ const LOOKS_LIKE_AN_ADDRESS = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
 
 /**
  * The gate cannot say why the session ended (thirty days without a visit, or
- * ended from another device), so it gives the rule; naming the lifetime makes
- * the request for an address read as an ordinary end rather than a fault.
+ * ended from another device), so it says neither.
  */
-const SESSION_ENDED =
-  `Your session ended; a session lasts ${SESSION_DAYS} days from your last visit. ` +
-  `Send yourself a new link to carry on.`;
+const SESSION_ENDED = "Your session ended. Sign in again to carry on.";
 
 /**
  * Signing out clears the cookie in every tab, so a form pressed in another one
@@ -437,15 +440,35 @@ const UNSAVED = "You are not signed in, so the change you submitted was not save
 
 const SIGNED_OUT_EVERYWHERE_REASON = "signed-out-everywhere";
 
-const SIGNED_OUT_EVERYWHERE =
-  "Every device signed in to your account was signed out, this one included. " +
-  "Send yourself a new link to sign in again.";
+/**
+ * Set by a sign-in that should have made the person's merchant and could not,
+ * so the window it leads to says why it is there; read once. A browser takes a
+ * `__Host-` cookie only from this origin, so no other site can make the window
+ * claim a fault.
+ */
+const unopenedCookie = (secure: boolean): string =>
+  `${secure ? "__Host-" : ""}agentify.merchant_unopened`;
+
+const UNOPENED_SECONDS = 60;
+
+const SIGNED_OUT_EVERYWHERE = "You signed out on every device, this one included.";
 
 /**
  * A value named once, as a form or an address names it; named twice it is
  * nobody's choice, and is read as not named at all.
  */
 const once = (values: readonly unknown[]): unknown => (values.length === 1 ? values[0] : undefined);
+
+const textOf = (value: unknown): string | null => (typeof value === "string" ? value : null);
+
+/**
+ * The page a link's address names, so the next link asked for from there goes
+ * to the same place. It can only keep a merchant from being made, as a section
+ * or nothing named makes one alike; the link's own record decides whether its
+ * press makes one.
+ */
+const readingIn = (named: URLSearchParams | FormData): DashboardDestination =>
+  dashboardDestinationIn(once(named.getAll("destination")));
 
 /**
  * The click an address or a form names once, in the tracker's form; null for
@@ -469,7 +492,7 @@ export const askViewOf = (
   const said = once(query.getAll("reason"));
   const problem =
     said === "session-ended-unsaved"
-      ? `${SESSION_ENDED} The change you submitted was not saved.`
+      ? "Your session ended, so the change you submitted was not saved."
       : said === "unsaved"
         ? UNSAVED
         : undefined;
@@ -506,7 +529,7 @@ const GOOGLE_REFUSALS = {
     "This Google account's email address has changed. Use a sign-in link to your original Agentify email address.",
   cancelled: "Google sign-in was cancelled. Try again or use a sign-in link.",
   invalid: "Google sign-in could not be completed. Start again or use a sign-in link.",
-  unavailable: "Google sign-in is unavailable right now. Use a sign-in link or try again later.",
+  unavailable: "Google sign-in is not working right now. Use an email link instead.",
 } as const;
 
 /** The email comes from the identity's refusal, never from the callback's query. */
@@ -539,7 +562,7 @@ const switchIn = (query: URLSearchParams): Readonly<{ card?: string; paused: boo
   return key === "pause" || key === "resume" ? { card: value, paused: key === "pause" } : null;
 };
 
-const NO_SUCH_SWITCH = "There is no such switch on the cards.";
+const NO_SUCH_SWITCH = "There is no such switch on Products.";
 
 /** A form's text fields as an address's query; a file a program posted is no field here. */
 const fieldsIn = (form: FormData): URLSearchParams =>
@@ -565,21 +588,44 @@ export interface Shown {
   readonly paid: string | null;
 }
 
-/** What a cancel did to the merchant's sessions, said on the page it answers with. */
-const SIGNED_OUT_BUT_THIS_BROWSER =
-  "Every session of your merchant was signed out, a copy of this browser's included; this browser stays signed in on a new one.";
-
 /** Typed while a change waited, the wallet paid out to now cancels it, and the person may not know. */
-export const cancelledByTyping = (applies: string, waiting: string): string =>
-  `${applies} is the wallet your share is paid out to now, so the waiting change to ${waiting} was cancelled. ${SIGNED_OUT_BUT_THIS_BROWSER}`;
+export const cancelledByTyping = (applies: string): WalletNotice => ({
+  kind: "cancelled",
+  paid: applies,
+});
 
 /** A press from a page drawn while a change waited, arriving after it took effect. */
-export const landedBeforePress = (shown: Shown): string =>
-  `The change to ${shown.waiting} took effect at ${shown.from === null ? "its moment" : moment(shown.from)}, before you pressed, and your share is now paid out to it. ` +
-  (shown.paid === null
-    ? "Setting another address back is a change like any other: it waits forty-eight hours and is announced. "
-    : `Setting ${shown.paid} back is a change like any other: it waits forty-eight hours and is announced. `) +
-  SIGNED_OUT_BUT_THIS_BROWSER;
+export const landedBeforePress = (shown: Shown): WalletNotice => ({
+  kind: "landed",
+  wallet: shown.waiting,
+  at: shown.from,
+  before: shown.paid,
+  askedBack: false,
+});
+
+/** Stands for this dashboard's own origin while a page's own path is read. */
+const HERE = "http://dashboard.invalid";
+
+/**
+ * The page a cancel pressed from the banner returns to: a path of this
+ * dashboard with its query, or null for anything else, another site included,
+ * since the form can carry anything and a redirect elsewhere would hand the
+ * person to whoever wrote it.
+ */
+const pageToReturnTo = (form: FormData): string | null => {
+  const back = once(form.getAll("back"));
+  if (typeof back !== "string" || !back.startsWith("/")) return null;
+  let read: URL;
+  try {
+    read = new URL(back, HERE);
+  } catch {
+    return null;
+  }
+  // Taken only as written: a path whose dots or doubled slashes resolve to
+  // something else can resolve to `//`, which a browser reads as another site.
+  const page = `${read.pathname}${read.search}`;
+  return read.origin === HERE && page === back && !page.startsWith("//") ? page : null;
+};
 
 /**
  * Each value is held to its shape before anything reads it: the post can carry
@@ -606,7 +652,7 @@ const shownIn = (form: FormData): Shown | null => {
  */
 export const whatIsWrongWithTheLabel = (label: string): string | null => {
   if (label === "") {
-    return "Give the key a name, so that you can tell it from the others when you come to revoke one.";
+    return "Enter a name for the key.";
   }
   const unfit = NewKeyLabelSchema.safeParse(label);
   if (unfit.success) return null;
@@ -793,6 +839,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
   const toSettings: Outcome<never> = { kind: "redirect", location: `${base}/settings` };
 
+  /** The page a cancel was pressed on, or Settings where it named none of the dashboard's. */
+  const backTo = (back: string | null): Outcome<never> =>
+    back === null ? toSettings : { kind: "redirect", location: `${base}${back}` };
+
   /**
    * Every session of every account at the merchant ends, the presser's own
    * included, since the change may have come from any of them, a copy of the
@@ -845,6 +895,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     applies: string,
     pending: PendingPayoutWallet,
     byTyping: boolean,
+    back: string | null = null,
   ): Promise<Outcome<SettingsView>> => {
     const cancelled = await gateway.setPayoutWallet(applies);
     if (!cancelled.ok) return problemOf(cancelled);
@@ -854,12 +905,12 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         person,
         `cancelled a waiting change of the wallet their share is paid out to; ${ended} sessions of the merchant were ended and this browser was given a new one`,
       );
-      if (!byTyping) return await renewing(async () => toSettings);
+      if (!byTyping) return await renewing(async () => backTo(back));
       return await renewing(
         async () =>
           await settingsDrawn(person, {
             kind: "wallet-notice",
-            notice: cancelledByTyping(applies, pending.payout_wallet),
+            notice: cancelledByTyping(applies),
           }),
       );
     }
@@ -871,10 +922,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async () =>
         await settingsDrawn(person, {
           kind: "wallet-notice",
-          notice:
-            `The change to ${pending.payout_wallet} took effect at ${moment(pending.takes_effect_at)}, just before your request reached it. ` +
-            `Asking for ${applies} back is a change like any other: it waits forty-eight hours and every account of your merchant was sent a message about it. ` +
-            SIGNED_OUT_BUT_THIS_BROWSER,
+          notice: {
+            kind: "landed",
+            wallet: pending.payout_wallet,
+            at: pending.takes_effect_at,
+            before: applies,
+            askedBack: true,
+          },
         }),
     );
   };
@@ -912,11 +966,45 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
   };
 
   /**
+   * Makes the merchant of a person who has none: where they go next, or null
+   * where none was made, which leaves them signed in on the window to press
+   * again rather than spending another link.
+   */
+  const merchantMadeFor = async (
+    person: Person,
+  ): Promise<Readonly<{ location: string; setCookies: readonly string[] }> | null> => {
+    const attached = await identity.attachMerchant(person.id, registerMerchant);
+    if (attached.status === "attached") return { location: `${base}/choose-name`, setCookies: [] };
+    if (attached.status === "already-attached")
+      return { location: `${base}/products`, setCookies: [] };
+    if (attached.status === "person-missing") {
+      return {
+        location: `${base}/sign-in`,
+        setCookies: clearingLines(identity, config.cookieSecure),
+      };
+    }
+    blocked(person, "merchant", "create_merchant", {
+      outcome: "failed",
+      reason_code: "dependency_unavailable",
+    });
+    return null;
+  };
+
+  const unopenedName = unopenedCookie(config.cookieSecure);
+  const unopenedLine = (set: boolean): string =>
+    `${unopenedName}=${set ? "1" : ""}; Path=/; Max-Age=${set ? UNOPENED_SECONDS : 0}; HttpOnly;${config.cookieSecure ? " Secure;" : ""} SameSite=Lax`;
+  const carriesUnopened = (cookie: string | undefined): boolean =>
+    (cookie ?? "").split(";").some((pair) => pair.trim() === `${unopenedName}=1`);
+
+  /**
    * A browser with a live session goes to its own start, so the answer depends
    * on who the browser is and never on whose the link was. Anybody else gets
    * one refusal for a spent, expired or unknown link.
    */
-  const refuseLink = async (cookie: string | undefined): Promise<Outcome<OpenLinkView>> => {
+  const refuseLink = async (
+    cookie: string | undefined,
+    destination: DashboardDestination,
+  ): Promise<Outcome<OpenLinkView>> => {
     const signedIn = await identity.whoIs(cookie);
     if (signedIn !== null) {
       return {
@@ -926,23 +1014,52 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         setCookies: signedIn.setCookies,
       };
     }
-    return { kind: "view", view: { screen: "refused" }, status: 401, headers: LINK_HEADERS };
+    return {
+      kind: "view",
+      view: { screen: "refused", destination },
+      status: 401,
+      headers: LINK_HEADERS,
+    };
   };
 
   /**
-   * Opening a link makes nothing: under Lax a link from another site arrives
-   * signed in, so a navigation that made a merchant could be started by
-   * anybody. A link the scanner asked for goes to its report, where the scanner
-   * finishes the request the session now names; a link from a dashboard screen
-   * goes to that screen, or to the control that makes a merchant for somebody
-   * with none; any other to the start.
+   * Where a sign-in that opened leads, with its new session's cookies. One
+   * asked for on the dashboard's own sign-in page is itself the request for a
+   * seller dashboard, so it makes the merchant of a person who has none; where
+   * that fails the person stays signed in, on the window that says so. Only
+   * what was recorded when the sign-in was asked for decides this, never the
+   * request that ends it, so no link from another site can make anybody a
+   * merchant. A link the scanner asked for goes to its report, where the
+   * scanner finishes the request the session now names; a sign-in from a
+   * scanner's door goes to the start; any other to its screen.
    */
-  const whereOpened = (person: Person, destination: LinkDestination): string =>
-    typeof destination !== "string"
-      ? `/report/${encodeURIComponent(destination.report)}`
-      : destination === "default"
-        ? startOf(base, person)
-        : pathAfterSignIn(base, person, destination);
+  const signedInTo = async (
+    person: Person,
+    destination: LinkDestination,
+    setCookies: readonly string[],
+  ): Promise<Readonly<{ location: string; setCookies: readonly string[] }>> => {
+    // A note left by an earlier sign-in in this browser, perhaps somebody
+    // else's, is not this one's to show.
+    const signedIn = [...setCookies, unopenedLine(false)];
+    if (typeof destination !== "string") {
+      return {
+        location: `/report/${encodeURIComponent(destination.report)}`,
+        setCookies: signedIn,
+      };
+    }
+    if (person.merchant !== null || !asksForSellerDashboard(destination)) {
+      return { location: pathAfterSignIn(base, person, destination), setCookies: signedIn };
+    }
+    // The session is already written, so a failure here must not take its
+    // cookie away: the link that made it is spent.
+    const made = await merchantMadeFor(person).catch(() => {
+      console.error("[dashboard] no merchant was made at sign-in");
+      return null;
+    });
+    return made === null
+      ? { location: `${base}/merchant`, setCookies: [...setCookies, unopenedLine(true)] }
+      : { location: made.location, setCookies: [...signedIn, ...made.setCookies] };
+  };
 
   const ordersScreen = async (
     person: Person,
@@ -1082,7 +1199,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         }
         const requested = await identity.requestLink(email, destination, { client, ...carried });
         if (requested.status === "unavailable") {
-          return { kind: "view", status: 503, view: { screen: "unavailable", ...carried } };
+          return {
+            kind: "view",
+            status: 503,
+            view: { screen: "unavailable", destination, ...carried },
+          };
         }
         // Both waits come from the reading of the same rows; this page never
         // works one out, because the only wait it could guess is the minute,
@@ -1121,11 +1242,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           // Decided here: the page drawn has no press, so nothing after it
           // records this refusal again.
           observe(LINK_REFUSED);
-          return await refuseLink(cookie);
+          return await refuseLink(cookie, readingIn(query));
         }
         return {
           kind: "view",
-          view: { screen: "open", token, email: link.email },
+          view: { screen: "open", token, email: link.email, destination: readingIn(query) },
           headers: LINK_HEADERS,
         };
       },
@@ -1138,7 +1259,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const opened =
           token === "" ? { status: "refused" as const } : await identity.openLink(token);
         if (opened.status === "refused") {
-          return await refuseLink(cookie);
+          return await refuseLink(cookie, readingIn(form));
         }
         // The new session replaces the old one rather than sitting beside it;
         // otherwise the old row would live on with nothing holding its cookie
@@ -1146,9 +1267,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         await identity.signOut(cookie);
         return {
           kind: "redirect",
-          location: whereOpened(opened.person, opened.destination),
           headers: LINK_HEADERS,
-          setCookies: opened.setCookies,
+          ...(await signedInTo(opened.person, opened.destination, opened.setCookies)),
         };
       },
 
@@ -1181,9 +1301,8 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           await identity.signOut(cookie);
           return {
             kind: "redirect",
-            location: whereOpened(finished.person, finished.destination),
             headers: LINK_HEADERS,
-            setCookies: finished.setCookies,
+            ...(await signedInTo(finished.person, finished.destination, finished.setCookies)),
           };
         }
         return {
@@ -1212,10 +1331,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       async signOut(cookie) {
         await identity.signOut(cookie);
         console.log("[dashboard] a session was signed out");
+        // The site's sign-out is pressed on the scanner's pages too, so the
+        // sign-in it leads to makes no merchant; somebody who has one is sent
+        // on to it all the same.
         return {
           kind: "redirect",
-          location: `${base}/sign-in`,
-          setCookies: clearingLines(identity, config.cookieSecure),
+          location: `${base}/sign-in?destination=reports`,
+          setCookies: [...clearingLines(identity, config.cookieSecure), unopenedLine(false)],
         };
       },
     },
@@ -1223,41 +1345,29 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     start: {
       where: (person) => ({
         kind: "redirect",
-        location: person.merchant === null ? `${base}/merchant` : `${base}/cards`,
+        location: person.merchant === null ? `${base}/merchant` : `${base}/products`,
       }),
 
       // Drawing it makes nothing; only the same-origin press asks the gateway
       // for the merchant.
-      merchant: (person) =>
-        person.merchant === null
-          ? { kind: "view", view: { unavailable: false } }
-          : { kind: "redirect", location: `${base}/cards` },
+      merchant: (person, cookie) => {
+        if (person.merchant !== null) return { kind: "redirect", location: `${base}/products` };
+        const told = carriesUnopened(cookie);
+        return {
+          kind: "view",
+          view: { unavailable: told },
+          ...(told ? { setCookies: [unopenedLine(false)] } : {}),
+        };
+      },
 
       async openMerchant(person) {
         if (person.merchant !== null) {
-          return { kind: "redirect", location: `${base}/cards` };
+          return { kind: "redirect", location: `${base}/products` };
         }
-        const attached = await identity.attachMerchant(person.id, registerMerchant);
-        if (attached.status === "attached") {
-          return { kind: "redirect", location: `${base}/choose-name` };
-        }
-        if (attached.status === "already-attached") {
-          return { kind: "redirect", location: `${base}/cards` };
-        }
-        if (attached.status === "person-missing") {
-          return {
-            kind: "redirect",
-            location: `${base}/sign-in`,
-            setCookies: clearingLines(identity, config.cookieSecure),
-          };
-        }
-        // A press that did not make a merchant leaves the person signed in to
-        // press again rather than spending another link.
-        blocked(person, "merchant", "create_merchant", {
-          outcome: "failed",
-          reason_code: "dependency_unavailable",
-        });
-        return { kind: "view", status: 503, view: { unavailable: true } };
+        const made = await merchantMadeFor(person);
+        return made === null
+          ? { kind: "view", status: 503, view: { unavailable: true } }
+          : { kind: "redirect", ...made };
       },
     },
 
@@ -1287,7 +1397,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const set = await gatewayAs(person).setSellerName(typed);
         if (!set.ok) return problemOf(set);
         noted(person, "chose the name their products are sold under");
-        return { kind: "redirect", location: `${base}/cards` };
+        return { kind: "redirect", location: `${base}/products` };
       },
     },
 
@@ -1365,7 +1475,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             {
               id: id.data,
               note: null,
-              refusal: `Your explanation ${reason.replace(/^a closure message /, "")}.`,
+              refusal: `Your note ${reason.replace(/^a closure message /, "")}.`,
               typed: said,
             },
             400,
@@ -1471,7 +1581,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
 
       orders: ordersScreen,
 
-      async receipts(person) {
+      async receipts(person, query) {
         const gateway = gatewayAs(person);
         const [cards, receipts, paidInto] = await Promise.all([
           gateway.cards(),
@@ -1489,6 +1599,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             receipts.document,
             config.transactionPage,
             paidInto.document,
+            query,
           ),
         };
       },
@@ -1508,8 +1619,17 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 },
                 {
                   selling: standing.value.selling,
-                  through: standing.value.through,
                   busy: standing.value.busy,
+                  ...(standing.value.pendingPayoutWallet === null
+                    ? {}
+                    : {
+                        walletChange: {
+                          wallet: standing.value.pendingPayoutWallet.address,
+                          takesEffectAt: new Date(
+                            standing.value.pendingPayoutWallet.takesEffectAt,
+                          ).toISOString(),
+                        },
+                      }),
                   unserved: standing.value.unserved,
                   ...(standing.value.withdrawn === null
                     ? {}
@@ -1666,14 +1786,20 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         const read = await gateway.payoutWallet();
         if (!read.ok) return problemOf(read);
         const shown = shownIn(form);
+        const back = pageToReturnTo(form);
         const { payout_wallet: applies, pending } = read.document;
-        if (pending !== null && applies !== null) {
-          return await cancelWaiting(person, cookie, gateway, applies, pending, false);
-        }
+        // A change that applied before the press is answered on Settings
+        // wherever it was pressed, since what to do next is done there. It is
+        // asked first: a change waiting now is then one the page never showed,
+        // such as the change back asked for since, which a cancel sent again by
+        // a reload would otherwise take away.
         if (shown !== null && applies === shown.waiting) {
           return await tookEffectBeforePress(person, cookie, shown, "pressed cancel");
         }
-        return toSettings;
+        if (pending !== null && applies !== null) {
+          return await cancelWaiting(person, cookie, gateway, applies, pending, false, back);
+        }
+        return backTo(back);
       },
     },
 
@@ -1681,16 +1807,28 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       // A shops read that fails is drawn as one that could not be read, never as
       // no block, which would tell a merchant who connected a shop that none is.
       // The failure is logged as a line: a store's exception can carry a shop's
-      // key.
+      // key. The integration failing to read marks neither way rather than
+      // failing the page.
       async page(person) {
-        if (parts.woo === null) return { kind: "view", view: integrationsView(undefined) };
-        const shop = await parts.woo.stateOf(person.id).catch((): ShopTile => {
-          console.error(
-            "[dashboard] the WooCommerce connection could not be read for the integrations screen",
-          );
-          return { kind: "unread" };
-        });
-        return { kind: "view", view: integrationsView(shop) };
+        if (parts.woo === null) return { kind: "view", view: integrationsView() };
+        const [shop, integration] = await Promise.all([
+          parts.woo.stateOf(person.id).catch((): ShopTile => {
+            console.error(
+              "[dashboard] the WooCommerce connection could not be read for the integrations screen",
+            );
+            return { kind: "unread" };
+          }),
+          gatewayAs(person).integration(),
+        ]);
+        return {
+          kind: "view",
+          view: integrationsView(
+            shop,
+            integration.ok
+              ? { through: integration.document.through, offSale: integration.document.offSale }
+              : { unread: true },
+          ),
+        };
       },
     },
 
@@ -1700,7 +1838,10 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         if (!keys.ok) return problemOf(keys);
         return {
           kind: "view",
-          view: keysView(keys.document, { startNew: once(query.getAll("new")) === "key" }),
+          view: keysView(keys.document, {
+            startNew: once(query.getAll("new")) === "key",
+            confirming: textOf(once(query.getAll("revoke"))),
+          }),
         };
       },
 
@@ -1714,7 +1855,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
           // looking at.
           const keys = await gateway.keys();
           if (!keys.ok) return problemOf(keys);
-          return { kind: "view", status: 400, view: keysView(keys.document, { problem }) };
+          return {
+            kind: "view",
+            status: 400,
+            view: keysView(keys.document, { problem, typed: label }),
+          };
         }
         const issued = await gateway.issueKey(label);
         if (!issued.ok) return problemOf(issued);

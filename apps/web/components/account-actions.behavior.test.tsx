@@ -12,6 +12,10 @@ import { AccountActions } from "./account-actions";
 
 const OWNER = "owner@example.com";
 const SOMEBODY_ELSE = "somebody-else@example.com";
+const PRIVACY = "privacy@example.com";
+
+/** A copy mailed to the owner while they waited, as the route answers it. */
+const SENT_NOW = { status: "sent", type: "access", sent_to: OWNER, fresh: true, minutes_ago: 0 };
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -34,9 +38,12 @@ const refusal = (status: number, code: string, message: string) =>
 function siteWith({
   visitor,
   signedInNow = OWNER,
+  copy = SENT_NOW,
 }: {
   visitor: { status: number; body: unknown };
   signedInNow?: string;
+  /** What the route answers a request for a copy with. */
+  copy?: unknown;
 }) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const address = String(input);
@@ -54,10 +61,26 @@ function siteWith({
         `The page this came from could not be matched to the address signed in now, ${signedInNow}, so nothing was changed. Reload the page to act as this address.`,
       );
     }
-    return unsubscribe
-      ? json(200, { status: "unsubscribed" })
-      : json(200, { status: "requested", type: "type" in parsed.data ? parsed.data.type : "" });
+    if (unsubscribe) return json(200, { status: "unsubscribed" });
+    return "type" in parsed.data && parsed.data.type === "access"
+      ? json(200, copy)
+      : json(200, { status: "requested", type: "deletion" });
   });
+}
+
+/**
+ * A claim either way about whether a copy reached the mailbox: that it was
+ * emailed, or that it was not sent.
+ */
+const NEITHER_WAY = /was emailed|went to|was not sent|not sent/;
+
+/** Presses Request data access and reads what the page then says about the copy. */
+async function toldAfterAskingForACopy(): Promise<string> {
+  await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
+  const said = await screen.findByText((_content, element) =>
+    Boolean(element?.classList.contains("message-answer") && element.textContent),
+  );
+  return said.textContent ?? "";
 }
 
 const signedIn = { status: 200, body: { status: "signed_in", email: OWNER, operator: false } };
@@ -68,19 +91,99 @@ afterEach(() => {
 });
 
 describe("the account requests on the site's own pages", () => {
+  it("keeps the irreversible deletion off the primary button until it is confirmed", async () => {
+    siteWith({ visitor: signedIn });
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+    const asked = await screen.findByRole("button", { name: "Delete my data" });
+    expect(asked.classList.contains("button-primary")).toBe(false);
+    await userEvent.click(asked);
+    expect(
+      screen.getByRole("button", { name: "Confirm deletion" }).classList.contains("button-primary"),
+    ).toBe(true);
+  });
+
   it("say which address they act for, and send it with the press", async () => {
     siteWith({ visitor: signedIn });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
     expect(await screen.findByText(OWNER)).toBeTruthy();
-    await userEvent.click(screen.getByRole("button", { name: "Request data access" }));
 
-    expect(await screen.findByText("Request recorded.")).toBeTruthy();
+    expect(await toldAfterAskingForACopy()).toContain(OWNER);
+  });
+
+  it("say the copy was emailed to the signed-in address, while the person waited", async () => {
+    siteWith({ visitor: signedIn });
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+    const told = await toldAfterAskingForACopy();
+
+    expect(told).toContain(`emailed to ${OWNER}`);
+  });
+
+  it("say how many minutes ago a copy already went, when a second press sends none", async () => {
+    siteWith({ visitor: signedIn, copy: { ...SENT_NOW, fresh: false, minutes_ago: 3 } });
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+    const told = await toldAfterAskingForACopy();
+
+    expect(told).toContain(OWNER);
+    expect(told).toContain("3 minutes ago");
+  });
+
+  it.each([
+    ["the mail service did not take it", "refused"],
+    ["no answer came back from sending it", "no_answer"],
+    ["another try is under way", "in_progress"],
+  ])(
+    "say for how many minutes the copy is still tried when %s, and where to write after",
+    async (_when, outcome) => {
+      siteWith({
+        visitor: signedIn,
+        copy: { status: "pending", type: "access", sent_to: OWNER, outcome, within_minutes: 57 },
+      });
+      render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+      const told = await toldAfterAskingForACopy();
+
+      expect(told).toContain(OWNER);
+      expect(told).toContain("57 minutes");
+      expect(told).toContain(PRIVACY);
+    },
+  );
+
+  it.each([
+    ["every try ended unconfirmed", "unconfirmed"],
+    ["no answer came back from sending it", "pending"],
+    ["the address's data was deleted while the copy was made", "deleted"],
+  ])("claim neither that the copy went nor that it did not when %s", async (_when, status) => {
+    // Any of these may have reached the mailbox, or not; saying either would
+    // be a guess presented as knowledge.
+    siteWith({
+      visitor: signedIn,
+      copy: { status, type: "access", sent_to: OWNER, outcome: "no_answer", within_minutes: 57 },
+    });
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+    const told = await toldAfterAskingForACopy();
+
+    expect(told).toContain(OWNER);
+    expect(told).not.toMatch(NEITHER_WAY);
+  });
+
+  it.each([
+    ["every try ended unconfirmed", "unconfirmed"],
+    ["the copy is too large to email", "too_large"],
+  ])("say where to write when %s", async (_when, status) => {
+    siteWith({ visitor: signedIn, copy: { status, type: "access", sent_to: OWNER } });
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
+
+    expect(await toldAfterAskingForACopy()).toContain(PRIVACY);
   });
 
   it("name the address in the deletion's confirmation, and send it with the deletion", async () => {
     siteWith({ visitor: signedIn });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Delete my data" }));
     expect(screen.getByText(new RegExp(`For ${OWNER}, this closes report access`))).toBeTruthy();
@@ -97,14 +200,14 @@ describe("the account requests on the site's own pages", () => {
       await screen.findByRole("button", { name: "Unsubscribe from marketing" }),
     );
 
-    expect(await screen.findByText("Request recorded.")).toBeTruthy();
+    expect(await screen.findByText(/unsubscribed/i)).toBeTruthy();
   });
 
   it("stop offering anything to press once the site says somebody else is signed in now", async () => {
     // The page still says it was loaded for the first address; leaving its
     // buttons there would invite pressing them again for nothing.
     siteWith({ visitor: signedIn, signedInNow: SOMEBODY_ELSE });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Request data access" }));
 
@@ -118,7 +221,7 @@ describe("the account requests on the site's own pages", () => {
     // "nothing was changed" would invite repeating an irreversible step
     // on a promise that may be false.
     siteWith({ visitor: signedIn });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
     await userEvent.click(await screen.findByRole("button", { name: "Delete my data" }));
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
@@ -137,7 +240,7 @@ describe("the account requests on the site's own pages", () => {
     // A proxy's error page in place of the site's answer says nothing about
     // whether the site recorded the request.
     siteWith({ visitor: signedIn });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
     const pressed = await screen.findByRole("button", { name: "Request data access" });
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       new Response("<html>Bad gateway</html>", {
@@ -154,7 +257,7 @@ describe("the account requests on the site's own pages", () => {
 
   it("pass on the site's own refusal in its own words", async () => {
     siteWith({ visitor: signedIn });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
     await userEvent.click(await screen.findByRole("button", { name: "Delete my data" }));
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       refusal(
@@ -170,19 +273,20 @@ describe("the account requests on the site's own pages", () => {
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
   });
 
-  it("offer nothing to press to somebody not signed in", async () => {
+  it("offer nothing to press to somebody not signed in, only a sign-in to read their reports", async () => {
     // There is no address to act for, so there is nothing a press could do but
     // be refused.
     siteWith({ visitor: { status: 200, body: { status: "signed_out" } } });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
-    expect(await screen.findByRole("link", { name: /sign in/i })).toBeTruthy();
+    const signIn = await screen.findByRole("link", { name: /sign in/i });
+    expect(signIn.getAttribute("href")).toBe("/dashboard/sign-in?destination=reports");
     expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("offer nothing to press while it cannot tell who is visiting", async () => {
     siteWith({ visitor: { status: 503, body: null } });
-    render(<AccountActions mode="data" />);
+    render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
     expect(await screen.findByText(/cannot tell who is visiting/i)).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();

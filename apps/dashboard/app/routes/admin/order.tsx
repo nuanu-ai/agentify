@@ -6,6 +6,7 @@
 
 import { type LoaderFunctionArgs, useLoaderData } from "react-router";
 import { readOnly } from "../../answer.js";
+import { readFailedIn } from "../../components/admin/read-failed.js";
 import { AdminFrame } from "../../components/admin-frame.js";
 import { OrderScreen } from "../../screens/admin/orders.js";
 import { workspaceIn } from "../../services.js";
@@ -15,6 +16,13 @@ export async function loader(asked: LoaderFunctionArgs) {
   const { params } = asked;
   return await readOnly(() => admin.orders.one(operator, params.order_id ?? ""), asked);
 }
+
+/** A read that failed, said in the workspace's frame. */
+export const ErrorBoundary = readFailedIn({
+  section: "orders",
+  title: "Order",
+  back: { to: "/admin/orders", words: "All orders" },
+});
 
 export default function Order() {
   const view = useLoaderData<typeof loader>();

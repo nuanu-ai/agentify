@@ -11,6 +11,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
+import { inViewersZone } from "../../src/moments.js";
 import { formsIn, readable } from "../../src/testing/html.js";
 import {
   CLOSURE_NOTES,
@@ -420,7 +421,23 @@ describe("a long list of orders", () => {
       (day) => day[1],
     );
 
-    expect(days).toStrictEqual(["12 October 2026", "11 October 2026"]);
+    expect(days).toStrictEqual(["12 October 2026 · UTC", "11 October 2026 · UTC"]);
+  });
+
+  it("puts them under the days of the viewer's calendar, the heading naming the zone each time is in", () => {
+    // Every order here falls between 07:00 and 09:00 in Bali, on the twelfth.
+    const html = inViewersZone("Asia/Makassar", () =>
+      served(() => (
+        <OrdersScreen view={ordersView("live", CARDS, many, many, new URLSearchParams("page=2"))} />
+      )),
+    );
+
+    const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
+      (day) => day[1],
+    );
+
+    expect(days).toStrictEqual(["12 October 2026 · UTC+8"]);
+    expect(readable(html)).toContain("08:09:00");
   });
 });
 
@@ -606,7 +623,7 @@ describe("merchant fulfillment closure", () => {
 
     expect(text).toContain("Closed by you");
     expect(text).toContain("Payment Paid");
-    expect(text).toContain("Your explanation");
+    expect(text).toContain("Your note to the buyer");
     expect(text).toContain("A refund was agreed <outside Agentify>.");
     expect(html).toContain("&lt;outside Agentify&gt;");
     expect(html).not.toContain("<outside Agentify>");
@@ -623,7 +640,7 @@ describe("merchant fulfillment closure", () => {
     expect(text).toContain("Payment outcome unknown");
     expect(text).toContain("Closed by you 2026-10-19 09:30:00 UTC");
     expect(text).toContain("Payment Outcome unknown");
-    expect(text).not.toContain("Your explanation");
+    expect(text).not.toContain("Your note to the buyer");
   });
 
   it("does not invent an actor for a historical closure without metadata", () => {
@@ -657,7 +674,7 @@ describe("merchant fulfillment closure", () => {
       );
 
     expect(needs(reopened)).toContain("Needs you 1");
-    expect(needs(reopened)).toContain("payment completed after you closed fulfillment");
+    expect(needs(reopened)).toMatch(/payment arrived after you closed this order/i);
     expect(reopened).toContain(`name="order_id" value="${id}"`);
     expect(readable(reopened)).toContain("Close again");
     expect(needs(settled)).toBe("");
@@ -747,22 +764,31 @@ describe("a closure made from the Needs you list", () => {
 });
 
 describe("an order's details", () => {
+  /** The opened part of the row the address names, its `details` tag. */
   const detailsOf = (html: string, id: string) =>
-    new RegExp(`<details[^>]*id="details-${id}"[^>]*>`).exec(html)?.[0] ?? "";
+    new RegExp(`id="details-${id}"[^>]*>[\\s\\S]*?(<details[^>]*>)`).exec(html)?.[1] ?? "";
 
-  it("are drawn under a wide row only where they hold something its columns do not", () => {
+  it("open from every row on every width, each named apart from another sale of its product", () => {
+    // The order's ID, its payment and the merchant's share are in no column,
+    // so every row opens to them, whatever its state; two sales of one
+    // product read out by name alone could not be told apart, nor could two
+    // made at the same time of day on different days.
     const orders = ordersOf([
-      { id: FIRST, status: "unfulfilled" },
-      { id: SAME_HEAD, status: "delivered" },
+      { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
+      { id: SAME_HEAD, status: "delivered", at: "2026-10-11T16:40:00Z" },
     ]);
     const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
 
-    expect(detailsOf(html, FIRST)).toContain("wide");
-    expect(detailsOf(html, SAME_HEAD)).not.toBe("");
-    expect(detailsOf(html, SAME_HEAD)).not.toContain("wide");
+    expect(detailsOf(html, FIRST)).toContain("row-more");
+    expect(detailsOf(html, SAME_HEAD)).toContain("row-more");
+    const names = [...html.matchAll(/aria-label="(Details of VPN, one month[^"]*)"/g)].map(
+      (found) => found[1],
+    );
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
   });
 
-  it("are drawn under a wide row where a press made on the order is said", () => {
+  it("are drawn open where a press made on the order is said", () => {
     // An order that ended before its closure arrived has nothing else to
     // read there, and the merchant must still see what became of the press.
     const orders = ordersOf([{ id: SAME_HEAD, status: "delivered" }]);
@@ -770,7 +796,13 @@ describe("an order's details", () => {
     const pressed = { id: SAME_HEAD, note: CLOSURE_NOTES.ended, refusal: null, typed: "" };
     const html = served(() => <OrdersScreen view={{ ...view, pressed }} />);
 
-    expect(detailsOf(html, SAME_HEAD)).toContain("wide");
+    expect(detailsOf(html, SAME_HEAD)).toMatch(/\bopen\b/);
+    expect(
+      detailsOf(
+        served(() => <OrdersScreen view={view} />),
+        SAME_HEAD,
+      ),
+    ).not.toMatch(/\bopen\b/);
   });
 
   it("are reached from Needs you without searching for an order already on the page", () => {
@@ -876,7 +908,7 @@ describe("the purchases that lapsed unpaid", () => {
     expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
       second.map((attempt) => attempt.id),
     );
-    expect(there.listing.cut).toStrictEqual({
+    expect(there.listing.cut).toMatchObject({
       from: 51,
       to: 100,
       of: 120,
@@ -994,9 +1026,7 @@ describe("the purchases that lapsed unpaid", () => {
 describe("an order's facts", () => {
   /** The opened part of one order's row, read apart from the rest of the page. */
   const detailsText = (html: string, id: string) =>
-    readable(
-      new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "",
-    );
+    readable(new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "");
 
   const lapsedPage = (attempts: LapsedAttempt[]) =>
     ordersView(
@@ -1136,18 +1166,17 @@ describe("an order's facts", () => {
     );
   });
 
-  it("are told on the order's row in Needs you, where the deadline's passing is read beside its cause", () => {
-    const text = readable(opened(FIRST));
+  it("say the deadline's passing in the order's details, while its row in Needs you reads its cause", () => {
+    const html = opened(FIRST);
 
-    expect(text).toMatch(
-      /delivery window ran out[\s\S]*Delivering late[\s\S]*Delivery deadline passed 2026-10-12 17:40:05 UTC/,
-    );
+    expect(readable(html)).toMatch(/before the delivery deadline[\s\S]*Delivering late/);
+    expect(detailsText(html, FIRST)).toContain("Delivery deadline passed 2026-10-12 17:40:05 UTC");
   });
 });
 
 describe("the way on for an unfulfilled order", () => {
   const detailsOf = (html: string, id: string) =>
-    new RegExp(`<details[^>]*id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "";
+    new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "";
   const SDK_DOCS = 'href="/docs/orders#confirming-a-delivery-with-a-separate-call"';
   const PARCELS = 'href="/docs/woocommerce#parcels"';
   const RECOVER = `/integrations/woocommerce/recover/${SAME_HEAD}`;
@@ -1237,7 +1266,7 @@ describe("the way on for an unfulfilled order", () => {
     const details = opened(LOST);
 
     expect(readable(details)).not.toContain("late");
-    expect(readable(details)).toContain("Close fulfillment with an explanation to the buyer");
+    expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
     expect(details).not.toContain(SDK_DOCS);
     expect(details).not.toContain("/integrations/woocommerce/recover/");
   });
@@ -1253,7 +1282,7 @@ describe("the way on for an unfulfilled order", () => {
     const details = opened(NEVER_RECEIVED);
 
     expect(readable(details)).not.toContain("late");
-    expect(readable(details)).toContain("Close fulfillment with an explanation to the buyer");
+    expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
     expect(details).not.toContain(SDK_DOCS);
   });
 });
@@ -1298,7 +1327,7 @@ describe("the transaction that paid an order", () => {
     ));
     // The page holds this one order, so its details run to the end of it; the
     // copy buttons inside hold details of their own.
-    const details = html.slice(Math.max(0, html.indexOf(`<details id="details-${FIRST}"`)));
+    const details = html.slice(Math.max(0, html.indexOf(`id="details-${FIRST}"`)));
     return { html, details, text: readable(details) };
   };
 
@@ -1309,7 +1338,6 @@ describe("the transaction that paid an order", () => {
     ]) {
       const { details, text } = drawn(orders);
 
-      expect(details).toMatch(/<details[^>]*class="[^"]*wide/);
       expect(text).toContain(`Transfer ${shortened(PAID_WITH)}`);
       expect(details).toContain(`href="${EXPLORER}${PAID_WITH}"`);
       expect(details).toContain(`href="${REFUND}"`);
@@ -1327,7 +1355,6 @@ describe("the transaction that paid an order", () => {
     for (const status of ["in_progress", "delivered"]) {
       const { details, text } = drawn(one(status, "paid", PAID_WITH));
 
-      expect(details, status).toMatch(/<details[^>]*class="[^"]*wide/);
       expect(text, status).toContain(`Transfer ${shortened(PAID_WITH)}`);
       expect(details, status).not.toContain(REFUND);
     }

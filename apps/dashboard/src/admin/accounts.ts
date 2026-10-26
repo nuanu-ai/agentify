@@ -21,15 +21,16 @@ import type {
   JournalSubject,
 } from "@agentify/gateway/journal";
 import type { MoneyHistory } from "@agentify/gateway/operator";
-import type { SectionCounts } from "@agentify/ui/workspace-view";
+import { inChannel, type SectionCounts } from "@agentify/ui/workspace-view";
 import { adminDestinationIn } from "../dashboard-entry.js";
 import { type Identity, OperatorMailRefused } from "../identity.js";
 import { askedIn, type Listing, listingOf, PAGE_ROWS, type SegmentRule } from "../listing.js";
 import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
-import type { Operator } from "./access.js";
+import { type Operator, signedInFreshly } from "./access.js";
 import { type ActionAnswer, type ChangeAnswer, pressed } from "./action.js";
 import type { AdminParts } from "./parts.js";
+import { type StepUpView, stepUpViewOf } from "./step-up.js";
 
 /** The accounts as an operator reads and changes them. */
 export type AccountsDirectory = Pick<
@@ -101,8 +102,6 @@ const LIST_CUT = PAGE_ROWS;
 
 export interface AccountsListView {
   readonly readAt: MomentView;
-  /** The channel is the test channel or a sandbox, where accounts can be forgotten. */
-  readonly forgetting: boolean;
   readonly listing: Listing<AccountRowView>;
   /** The accounts that only signed in: counted, never listed. */
   readonly unlisted: number;
@@ -160,8 +159,18 @@ export type AccountPageView =
       forget: ForgetStanding;
       history: JournalLines;
       pressed: AccountPressed | null;
+      /**
+       * Where the page was read with a sign-in too old to act, the step that
+       * asks for a fresh one, drawn in place of every action.
+       */
+      stepUp: StepUpView | null;
     }>
-  | Readonly<{ kind: "absent"; id: string; pressed: AccountPressed | null }>;
+  | Readonly<{ kind: "absent"; id: string; pressed: AccountPressed | null }>
+  /**
+   * A press answered without its page, which could not be read again after
+   * it: what the press came to, since it may have changed the account.
+   */
+  | Readonly<{ kind: "pressed-unread"; id: string; pressed: AccountPressed }>;
 
 type JournalKind = "all" | "admission" | "keys" | "sessions" | "flag" | "forgotten";
 
@@ -198,21 +207,32 @@ const REFUSALS: Readonly<Record<string, string>> = {
   no_reason: "no reason was written; nothing changed",
   reason_refused: "the reason could not be kept as written; nothing changed",
   no_such_account: "no account has that identifier; nothing changed",
-  last_operator: "it is the channel's last operator; nothing changed",
+  last_operator: "it is the last operator here; nothing changed",
   holds_flag: "the account holds the operator flag; remove the flag first; nothing changed",
-  mail_not_handed:
-    "a mail to an operator was not handed to the provider; the flag stayed as it was",
-  live_channel: "accounts are forgotten only on the test channel; nothing changed",
+  mail_not_handed: "the notice to operators could not be sent, so the flag was not changed",
+  live_channel: `accounts are forgotten only ${inChannel("test")}; nothing changed`,
   money_history: "the merchant has orders or receipts, which are never deleted; nothing changed",
   shared_merchant: "another account names the same merchant; nothing changed",
   history_unread: "whether the merchant has orders or receipts could not be read; nothing changed",
-  not_live_channel: "admission is decided on the live channel only; nothing changed",
+  not_live_channel: `admission is decided ${inChannel("live")} only; nothing changed`,
   no_such_merchant: "no merchant has that identifier; nothing changed",
   no_such_key: "the key is not one of this merchant's; nothing changed",
 };
 
 export const refusalSaid = (code: string): string =>
   REFUSALS[code] ?? `refused with the code ${code}; nothing changed`;
+
+/** What the operator who pressed is told where the journal's sentence leaves them no way on. */
+const PRESS_REFUSALS: Readonly<Record<string, string>> = {
+  mail_not_handed:
+    "The flag was not changed: the notice to operators could not be sent. Try again in a few minutes.",
+  last_operator: "You are the last operator, so the flag stays.",
+};
+
+/** A refusal of a press on an account, as the operator who pressed reads it under the button. */
+export const pressRefusalSaid = (code: string): string =>
+  PRESS_REFUSALS[code] ??
+  `${refusalSaid(code).slice(0, 1).toUpperCase()}${refusalSaid(code).slice(1)}.`;
 
 export interface AccountsPages {
   list(operator: Operator, query: URLSearchParams): Promise<Outcome<AccountsListView>>;
@@ -373,7 +393,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     const refused = (code: string): ChangeAnswer => ({
       kind: "refused",
       code,
-      said: `${refusalSaid(code).slice(0, 1).toUpperCase()}${refusalSaid(code).slice(1)}.`,
+      said: pressRefusalSaid(code),
     });
     const settled = (changed: boolean | null): ChangeAnswer =>
       changed === null ? refused("no_such_account") : { kind: changed ? "done" : "unchanged" };
@@ -445,6 +465,43 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     }
   };
 
+  /** One account's page, read after any press made on this request. */
+  const accountPage = async (
+    operator: Operator,
+    accountId: string,
+    pressedNow: AccountPressed | null,
+  ): Promise<Outcome<AccountPageView>> => {
+    const now = parts.now();
+    const found = await accounts.operatorAccount(accountId, now);
+    if (found === null) {
+      return {
+        kind: "view",
+        status: pressedNow === null ? 404 : 200,
+        view: { kind: "absent", id: accountId, pressed: pressedNow },
+      };
+    }
+    const operators = (await accounts.operatorAccounts(now)).listed.filter((one) => one.operator);
+    const lastOperator = found.operator && operators.length === 1;
+    const named = await namesOf(found.merchantId === null ? [] : [found.merchantId]);
+    const destination = adminDestinationIn(`admin/accounts/${found.id}`);
+    return {
+      kind: "view",
+      view: {
+        kind: "found",
+        stepUp:
+          signedInFreshly(operator, now) || destination === null
+            ? null
+            : stepUpViewOf(operator, destination, parts.pressing.googleEnabled),
+        readAt: momentOf(now),
+        account: { ...rowOf(operator, named, found), createdAt: momentOf(found.createdAt) },
+        lastOperator,
+        forget: await forgetStanding(found.merchantId, found.operator),
+        history: await historyOfAccount(found.id),
+        pressed: pressedNow,
+      },
+    };
+  };
+
   return {
     async list(operator, query) {
       const now = parts.now();
@@ -475,7 +532,6 @@ export function accountsFor(parts: AdminParts): AccountsPages {
         kind: "view",
         view: {
           readAt: momentOf(now),
-          forgetting: forgettingHere,
           listing: listingOf({
             rows: summaries.map((one) => rowOf(operator, named, one)),
             asked,
@@ -497,30 +553,17 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     },
 
     async one(operator, accountId, pressedNow) {
-      const now = parts.now();
-      const found = await accounts.operatorAccount(accountId, now);
-      if (found === null) {
+      try {
+        return await accountPage(operator, accountId, pressedNow);
+      } catch (thrown) {
+        if (pressedNow === null) throw thrown;
+        console.error("[dashboard] an account's page could not be read again after a press");
         return {
           kind: "view",
-          status: pressedNow === null ? 404 : 200,
-          view: { kind: "absent", id: accountId, pressed: pressedNow },
+          status: pressedNow.answer.kind === "refused" ? 409 : 200,
+          view: { kind: "pressed-unread", id: accountId, pressed: pressedNow },
         };
       }
-      const operators = (await accounts.operatorAccounts(now)).listed.filter((one) => one.operator);
-      const lastOperator = found.operator && operators.length === 1;
-      const named = await namesOf(found.merchantId === null ? [] : [found.merchantId]);
-      return {
-        kind: "view",
-        view: {
-          kind: "found",
-          readAt: momentOf(now),
-          account: { ...rowOf(operator, named, found), createdAt: momentOf(found.createdAt) },
-          lastOperator,
-          forget: await forgetStanding(found.merchantId, found.operator),
-          history: await historyOfAccount(found.id),
-          pressed: pressedNow,
-        },
-      };
     },
 
     async press(operator, accountId, act, form) {
@@ -546,8 +589,11 @@ export function accountsFor(parts: AdminParts): AccountsPages {
     async journal(_operator, query) {
       const now = parts.now();
       const wanted = oneParam(query, "kind");
+      // A kind the channel never does is no segment: the live channel forgets
+      // nobody, and nobody is admitted anywhere else.
+      const live = parts.config.surfaceMode === "live";
       const kinds = (Object.keys(JOURNAL_KINDS) as JournalKind[]).filter(
-        (kind) => forgettingHere || kind !== "forgotten",
+        (kind) => (forgettingHere || kind !== "forgotten") && (live || kind !== "admission"),
       );
       const kind = kinds.find((one) => one === wanted) ?? "all";
       const asked = oneParam(query, "q").trim();

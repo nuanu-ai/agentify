@@ -5,6 +5,7 @@
  * administrative action, or a stale session could act.
  */
 
+import { CHANNEL_NAMES, inChannel } from "@agentify/ui/workspace-view";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { afterEach, describe, expect, it } from "vitest";
 import routes from "../../app/routes.js";
@@ -134,6 +135,15 @@ describe("who the operator's workspace answers", () => {
     );
   });
 
+  it("gives the lookup's own page one search box, and every other page the bar's", async () => {
+    const { signedIn } = await serve({ channel: "live" });
+    const operator = await signedIn(OPERATOR, { operator: true });
+    const boxes = (html: string) => html.match(/<input[^>]*type="search"/g)?.length ?? 0;
+
+    expect(boxes((await operator.get("/admin/find?q=ord_1")).html)).toBe(1);
+    expect(boxes((await operator.get("/admin/health")).html)).toBe(1);
+  });
+
   it("answers an operator on every page, in the workspace's frame, naming the channel", async () => {
     const { signedIn, harnessed } = await serve({ channel: "live" });
     const operator = await signedIn(OPERATOR, { operator: true });
@@ -154,8 +164,62 @@ describe("who the operator's workspace answers", () => {
       // A record the walk makes up is drawn in the frame as one there is none of.
       const madeUp = path.endsWith("nothing-here") || path.includes("acc_somebody");
       expect(read.status, path).toBe(madeUp ? 404 : 200);
-      expect(readable(read.html), path).toContain("Live channel");
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
       expect(readable(read.html), path).toContain("Operator");
+    }
+  });
+
+  it("answers a page whose read failed inside the workspace's frame, offering the same address again", async () => {
+    // Thrown out to the seller dashboard's own error page, an operator would
+    // lose their place and be offered a way into a merchant's screens.
+    const gone = async (): Promise<never> => {
+      throw new Error("the database does not answer");
+    };
+    const workspace = await serve({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: { ...real.merchants, list: gone, merchant: gone },
+      }),
+      identity: (real) => ({ ...real, operatorAccounts: gone }) as Identity,
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+
+    for (const path of [
+      "/admin/merchants?show=waiting",
+      `/admin/merchants/${workspace.harnessed.merchant.id}`,
+      "/admin/accounts?show=operators",
+    ]) {
+      const read = await operator.get(path);
+      expect(read.status, path).toBe(500);
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
+      expect(read.html, path).toContain('aria-label="Admin sections"');
+      expect(read.html, path).toContain(`href="${ADMIN_BASE}${path.replace("&", "&amp;")}"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/products"`);
+    }
+  });
+
+  it("answers Orders and an order inside the workspace's frame where their read answers what the page cannot draw", async () => {
+    // Each read there catches its own failure; anything else that throws on
+    // the way to the page is still said in the frame, never on the seller
+    // dashboard's error page.
+    const malformed = async (): Promise<never> => undefined as never;
+    const workspace = await serve({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        orders: { ...real.orders, orders: malformed, order: malformed },
+      }),
+    });
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+
+    for (const path of ["/admin/orders?segment=unfulfilled", "/admin/orders/ord_something"]) {
+      const read = await operator.get(path);
+      expect(read.status, path).toBe(500);
+      expect(readable(read.html), path).toContain(CHANNEL_NAMES.live);
+      expect(read.html, path).toContain('aria-label="Admin sections"');
+      expect(read.html, path).toContain(`href="${ADMIN_BASE}${path}"`);
+      expect(read.html, path).not.toContain(`href="${ADMIN_BASE}/products"`);
     }
   });
 
@@ -209,6 +273,8 @@ describe("signing in again before an action", () => {
     expect(mail?.to).toBe(OPERATOR);
     expect(mail?.subject).toBe("Confirm an administrative action on Agentify");
     expect(mail?.body).toContain("If you did not ask for this");
+    // A mail has no band, so it names its environment in words.
+    expect(mail?.body).toContain(inChannel(workspace.config.surfaceMode));
     const link = new URL(/(https?:\/\/\S+)/.exec(mail?.body ?? "")?.[1] ?? "");
     const opened = await operator.post("/sign-in/open", {
       token: link.searchParams.get("token") ?? "",
@@ -262,6 +328,30 @@ describe("signing in again before an action", () => {
   });
 });
 
+describe("a page read with a sign-in older than fifteen minutes", () => {
+  it("asks for a fresh sign-in where its actions are, before the operator types a reason", async () => {
+    // A reason typed into a form the press then refuses for the sign-in's age
+    // is a reason written twice.
+    const workspace = await serve({ channel: "live" });
+    const { harnessed, identity } = workspace;
+    await identity.make(MERCHANT, harnessed.merchant.id);
+    const account = (await identity.byEmail(MERCHANT))?.id ?? "acc_missing";
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const pages = [`/admin/merchants/${harnessed.merchant.id}`, `/admin/accounts/${account}`];
+    for (const path of pages) {
+      expect((await operator.get(path)).html, path).toContain('name="reason"');
+    }
+
+    workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
+
+    for (const path of pages) {
+      const read = await operator.get(path);
+      expect(read.html, path).toContain(`action="${ADMIN_BASE}/admin/sign-in-again"`);
+      expect(read.html, path).not.toContain('name="reason"');
+    }
+  });
+});
+
 describe("a press made with a sign-in older than fifteen minutes", () => {
   /**
    * Everything a press could change: the gateway's rows, the journal's rows
@@ -306,7 +396,11 @@ describe("a press made with a sign-in older than fifteen minutes", () => {
       // A page with no press of its own is not handed a post at all; the
       // address that is no page is answered as none.
       const refused = pressed.status === 404 || pressed.status === 405;
-      const steppedUp = readable(pressed.html).includes("Confirm it is you");
+      // The step-up's own press sends the link and draws what became of it.
+      const steppedUp =
+        path === "/admin/sign-in-again"
+          ? pressed.status === 202
+          : pressed.html.includes(`action="${ADMIN_BASE}/admin/sign-in-again"`);
       expect(refused || steppedUp, `POST ${path} answered ${pressed.status}`).toBe(true);
     }
     expect(await stateOf(workspace)).toBe(before);
@@ -328,41 +422,38 @@ const anyDoorIn = (html: string): boolean =>
   doorsIn(html).length > 0 || /\bAdmin\b/.test(readable(html));
 
 describe("the door into the workspace from the merchant's dashboard", () => {
-  it("stands in an operator's header, saying Admin, and in the menu, and nowhere for an account the flag does not confirm", async () => {
+  it("stands in an operator's header, saying Admin, in the row and in the menu, and nowhere for an account the flag does not confirm", async () => {
     const workspace = await serve();
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     const merchant = await workspace.signedIn(MERCHANT);
 
-    for (const path of ["/cards", "/orders", "/settings"]) {
-      expect(doorsIn((await operator.get(path)).html), path).toStrictEqual([
-        "Admin",
-        "Open the admin →",
-      ]);
+    for (const path of ["/products", "/orders", "/settings"]) {
+      expect(doorsIn((await operator.get(path)).html), path).toStrictEqual(["Admin", "Admin"]);
       expect(anyDoorIn((await merchant.get(path)).html), path).toBe(false);
     }
   });
 
-  it("is not named in the data a merchant's page is drawn from, while an operator's carries its address", async () => {
+  it("is not named in the data a merchant's page is drawn from, while an operator's carries the flag", async () => {
     // A merchant's browser is not told the workspace exists, not even that
     // their account lacks the flag for it.
     const workspace = await serve();
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
     const merchant = await workspace.signedIn(MERCHANT);
 
-    const merchants = await merchant.get("/cards.data");
+    const merchants = await merchant.get("/products.data");
     expect(merchants.status).toBe(200);
     expect(merchants.html).not.toMatch(/admin|"operator"/i);
-    expect((await operator.get("/cards.data")).html).toContain("/dashboard/admin");
+    expect((await operator.get("/products.data")).html).toContain('"operator"');
   });
 
   it("is gone from the next request once the flag is taken away", async () => {
     const { signedIn, rows } = await serve();
     const operator = await signedIn(OPERATOR, { operator: true });
-    expect(doorsIn((await operator.get("/cards")).html)).not.toStrictEqual([]);
+    expect(doorsIn((await operator.get("/products")).html)).not.toStrictEqual([]);
 
     flagRow(rows, OPERATOR, false);
 
-    expect(anyDoorIn((await operator.get("/cards")).html)).toBe(false);
+    expect(anyDoorIn((await operator.get("/products")).html)).toBe(false);
   });
 
   it("is not drawn on a page drawn where the flag could not be read", async () => {

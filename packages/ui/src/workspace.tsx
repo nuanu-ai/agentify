@@ -1,13 +1,13 @@
 /**
  * The frame every page of the operator's workspace is drawn in, by whichever
  * application serves the page: the working header with the operator's mark
- * beside the lockup, and under it the workspace's sidebar headed by the
- * channel, so an admission is never given on the wrong one, with its sections
- * in three groups, each carrying its count where something waits. The bar
- * over the page holds its title and the one box that finds any record by what
- * an operator has in hand. Where there is no room for the sidebar, the menu at
- * the end of the header's row holds the channel and the sections, and the
- * channel stands at the head of the page.
+ * beside the lockup, and under it the workspace's sidebar with its sections
+ * in three groups, each carrying its count where something waits. The channel
+ * is named once, so an admission is never given on the wrong one: by the
+ * stack's band on a test stack, and on the live one, which draws no band, at
+ * the head of the sidebar, or of the page and the menu where there is no
+ * room for the sidebar. The bar over the page holds its title and the one box
+ * that finds any record by what an operator has in hand.
  *
  * The seller dashboard serves every section but one, the scanner's, which the
  * scanner serves at its own `/admin`; a section the drawing application does
@@ -18,7 +18,6 @@
 import type { ReactNode } from "react";
 import { SiteFooter } from "./footer.js";
 import { type Drawn, type Place, PlaceLink, WorkHeader } from "./header.js";
-import { HeaderMenu } from "./menu.js";
 import type { AdminSection, ChannelView, SectionCount, SectionCounts } from "./workspace-view.js";
 
 interface SectionLink {
@@ -109,7 +108,7 @@ function Lookup({ find }: Readonly<{ find: string }>) {
           type="search"
           name="q"
           aria-label="Find a record"
-          placeholder="Find a record"
+          placeholder="ID, email, site or transaction"
         />
       </form>
     </search>
@@ -117,14 +116,16 @@ function Lookup({ find }: Readonly<{ find: string }>) {
 }
 
 /**
- * `visitor` is who is signed in with the way out, as the header's doors draw
- * it. `counts` are the sections' counts where the drawing application can read
- * them; without them no section carries one, since a count left out claims
- * nothing while a zero would claim that nothing waits. `find` is the address
- * the lookup reads. `note` stands at the head of the workspace, over the bar.
+ * `who` is the operator signed in, whose way back to their seller dashboard
+ * the header holds beside the workspace's. `counts` are the sections' counts
+ * where the drawing application can read them; without them no section
+ * carries one, since a count left out claims nothing while a zero would claim
+ * that nothing waits. `find` is the address the lookup reads, absent on the
+ * lookup's own page, which has its box. `note` stands at the head of the
+ * workspace, over the bar.
  */
 export function WorkspaceFrame({
-  visitor,
+  who,
   channel,
   counts = {},
   section,
@@ -135,42 +136,39 @@ export function WorkspaceFrame({
   ...drawn
 }: Drawn &
   Readonly<{
-    visitor: ReactNode;
+    who: string;
     channel: ChannelView;
     counts?: SectionCounts;
     /** Absent on a page that is none of the sections, such as the lookup's. */
     section?: AdminSection;
     heading: string;
-    find: string;
+    find?: string;
     note?: ReactNode;
     children: ReactNode;
   }>) {
+  const live = channel.mode === "live";
   return (
     <div className="page app-frame">
       <WorkHeader
         {...drawn}
+        current="admin"
         mark={<span className="op-mark">Operator</span>}
-        visitor={visitor}
-        menu={
-          <HeaderMenu>
-            <p className="op-menu-channel">
-              {channel.name} · {channel.line}
-            </p>
+        visitor={{ status: "signed_in", email: who, operator: true }}
+        contents={
+          <>
+            {live && <p className="op-menu-channel">{channel.name}</p>}
             <Sections current={section} counts={counts} {...drawn} />
-            <a className="app-menu-door" href="/docs/">
-              Open the docs →
-            </a>
-            {visitor}
-          </HeaderMenu>
+          </>
         }
       />
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-inner">
-            <div className={channel.mode === "live" ? "op-channel" : "op-channel test"}>
-              <span className="badge">{channel.name}</span>
-              <span className="op-channel-sub">{channel.line}</span>
-            </div>
+            {live && (
+              <div className="op-channel">
+                <span className="badge">{channel.name}</span>
+              </div>
+            )}
             <Sections current={section} counts={counts} {...drawn} />
           </div>
         </aside>
@@ -180,14 +178,15 @@ export function WorkspaceFrame({
             <div className="top">
               <div className="top-inner">
                 <h1 className="top-title">{heading}</h1>
-                <Lookup find={find} />
+                {find !== undefined && <Lookup find={find} />}
               </div>
             </div>
             <div className="app-content">
-              <p className="op-channel-line">
-                <span className="badge">{channel.name}</span>
-                <span>{channel.line}</span>
-              </p>
+              {live && (
+                <p className="op-channel-line">
+                  <span className="badge">{channel.name}</span>
+                </p>
+              )}
               {children}
             </div>
           </main>

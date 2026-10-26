@@ -1,19 +1,15 @@
 /**
  * The frame every screen about a merchant's selling is drawn in: the working
- * header with the documentation and who is signed in with the way out, and
- * under it the dashboard's working area, its sections in a sidebar beside a
- * bar with the screen's title, and over the screen the banner about the
- * account where something about it is not as usual. Where there is no room
- * for the sidebar, a menu at the end of the header's row holds the sections,
- * the documentation and who is signed in with the way out.
+ * header, and under it the dashboard's working area, its sections in a
+ * sidebar beside a bar with the screen's title, and over the screen the
+ * banner about the account where something about it is not as usual. Where
+ * there is no room for the sidebar, the header's menu holds the sections.
  */
 
 import {
-  HeaderMenu,
   OnItsWay,
   type Section,
   SectionNav,
-  SignedIn,
   SiteFooter,
   SurfaceNote,
   WorkHeader,
@@ -30,10 +26,10 @@ import { useGoingTo } from "./going-to.js";
  * Each section is also a destination the sign-in returns to, so a section
  * cannot be added that the sign-in forgets.
  */
-export type Tab = "cards" | Exclude<SectionDestination, "default" | "woocommerce">;
+export type Tab = "products" | Exclude<SectionDestination, "default" | "woocommerce">;
 
 const TABS: readonly (readonly [Tab, string])[] = [
-  ["cards", "Cards"],
+  ["products", "Products"],
   ["orders", "Orders"],
   ["receipts", "Receipts"],
   ["integrations", "Integrations"],
@@ -54,7 +50,6 @@ export function Frame({
   title,
   heading = title,
   action,
-  navigation,
   drawn,
   children,
 }: Readonly<{
@@ -63,8 +58,6 @@ export function Frame({
   title: string;
   heading?: string;
   action?: ReactNode;
-  /** The administrative workspace uses the same frame with its own sections. */
-  navigation?: Readonly<{ label: string; sections: readonly Section[] }>;
   drawn?: DrawnFor & Readonly<{ chrome: Chrome }>;
   children: ReactNode;
 }>) {
@@ -87,25 +80,12 @@ export function Frame({
           ([key]) => going.pathname === `/${key}` || going.pathname.startsWith(`/${key}/`),
         )?.[0] ?? tab);
   const framed = useRouteLoaderData<FrameView>("routes/merchant-only") ?? drawn?.framed;
-  const sections: readonly Section[] =
-    navigation?.sections ??
-    TABS.map(([key, label]) => ({
-      key,
-      label,
-      current: key === marked,
-      to: `/${key}`,
-    }));
-  // The header's row draws the door into the workspace beside the address, as
-  // the site's header does; the menu lists it among its own doors instead, so
-  // the address is not drawn between two links that look alike.
-  const signedIn = (admin?: string) => (
-    <SignedIn
-      who={gate.who}
-      account={`${chrome.base}/settings`}
-      signOut={`${chrome.base}/sign-out`}
-      admin={admin}
-    />
-  );
+  const sections: readonly Section[] = TABS.map(([key, label]) => ({
+    key,
+    label,
+    current: key === marked,
+    to: `/${key}`,
+  }));
   return (
     <div className="page app-frame">
       <title>{`${title} — Agentify`}</title>
@@ -113,34 +93,20 @@ export function Frame({
       <WorkHeader
         surface="dashboard"
         link={Link}
-        visitor={signedIn(gate.admin)}
-        menu={
-          <HeaderMenu>
-            <SectionNav
-              className="app-menu-sections"
-              label={navigation?.label ?? "Dashboard sections"}
-              sections={sections}
-            />
-            <a className="app-menu-door" href="/docs/">
-              Open the docs →
-            </a>
-            {gate.admin === undefined ? null : (
-              <a className="app-menu-door" href={gate.admin}>
-                Open the admin →
-              </a>
-            )}
-            {signedIn()}
-          </HeaderMenu>
+        current="dashboard"
+        visitor={{ status: "signed_in", email: gate.who, operator: gate.operator === true }}
+        contents={
+          <SectionNav
+            className="app-menu-sections"
+            label="Dashboard sections"
+            sections={sections}
+          />
         }
       />
       <div className="app-shell">
         <aside className="app-sidebar">
           <div className="app-sidebar-inner">
-            <SectionNav
-              className="tabs"
-              label={navigation?.label ?? "Dashboard sections"}
-              sections={sections}
-            />
+            <SectionNav className="tabs" label="Dashboard sections" sections={sections} />
           </div>
         </aside>
         <div className="app-workspace">

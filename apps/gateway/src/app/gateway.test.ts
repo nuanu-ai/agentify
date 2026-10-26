@@ -3021,6 +3021,8 @@ describe("a merchant's standing in one read", () => {
       through: integration.through,
       sellerName: (await harnessed.gateway.sellerName(id)).seller_name,
       payoutWallet: (await harnessed.gateway.payoutWallet(id)).payout_wallet,
+      // The test channel applies a new wallet at once, so none waits.
+      pendingPayoutWallet: null,
       liveApproved: await harnessed.gateway.liveApproved(id),
       // Nothing is refused for silence, the harness's merchant having just
       // polled, nor for purchases waiting, of which there are none.

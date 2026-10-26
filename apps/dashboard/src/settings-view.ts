@@ -12,10 +12,9 @@ import { MERCHANT_FINDINGS, type PayoutWallet } from "@nuanu-ai/agentify-contrac
 import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
 import { CHANGE_ON_ITS_WAY, LIVE_CHANGE_WAITS, WALLET_RULE } from "./payout-wallet.js";
-import { NAME_CANNOT_BE_TAKEN_AWAY, NAME_RULE, SITE_RULE } from "./seller-name.js";
+import { NAME_RULE, nameRefusedSaying, SITE_RULE } from "./seller-name.js";
 import { usdcOf } from "./shares.js";
 import { type MomentView, momentView } from "./views.js";
-import { APPROVAL_GIVEN } from "./words.js";
 
 /**
  * What the page is drawn from: the gateway's answers, all read together,
@@ -36,10 +35,7 @@ export interface Settings {
   readonly analyticsOptedOut: boolean;
 }
 
-/**
- * A payout split shown whole beside the wallet it pays. What it pays is said
- * once, in the paragraph that names the commission.
- */
+/** A payout split shown whole beside the wallet it pays. */
 export interface SplitView {
   readonly address: string;
   /** Where the chain shows what it holds; null where there is no such page. */
@@ -61,31 +57,67 @@ export type PayoutView =
   | Readonly<{
       kind: "send";
       /**
-       * What sending it now would bring, or that this is not known, and on
-       * which one chain, from what, it is sent.
+       * What sending it now would bring, or that this is not known, and who
+       * pays out if the merchant does not.
        */
-      lead: string;
-      /** The amount `lead` names, with its currency; null where it is not known. */
+      said: string;
+      /** On which one chain, from what, the raw transaction is sent. */
+      sentOn: string;
+      /** The amount `said` names, with its currency; null where it is not known. */
       brings: string | null;
       to: string;
+      /** What `to` is, said beside it. */
+      toIs: string;
       data: string;
       /** Each split it pays out, beside the wallet written into it. */
       pays: readonly Readonly<{ split: string; wallet: string }>[];
-      /** What sending it can and cannot do, and when the merchant is paid without it. */
+      /** What sending it takes from the wallet that sends it. */
       after: string;
-      /** Coinbase Wallet's way of sending it, on the chain `lead` names. */
+      /** Coinbase Wallet's way of sending it, on the chain `sentOn` names. */
       coinbase: CoinbaseView;
     }>
   | Readonly<{ kind: "nothing" | "too_many" | "unbuilt"; said: string }>;
 
+/**
+ * What a press on the wallet did that is not what it looked like: typing the
+ * wallet paid now cancelled a waiting change, or a cancel arrived after the
+ * change had applied. Each names the wallets it is about, which the screen
+ * shows whole.
+ */
+export type WalletNotice =
+  | Readonly<{ kind: "cancelled"; paid: string }>
+  | Readonly<{
+      kind: "landed";
+      /** The wallet the change applied, paid now. */
+      wallet: string;
+      /** When it applied; null where the page that pressed did not say. */
+      at: string | null;
+      /** The wallet paid before, where known. */
+      before: string | null;
+      /** Whether the press asked for `before` back, which then waits as a change of its own. */
+      askedBack: boolean;
+    }>;
+
 /** What a press did, where it answers with the page rather than sending the browser on. */
 export type SettingsPress =
   | Readonly<{ kind: "name" | "site" | "wallet"; problem: string; typed: string }>
-  | Readonly<{ kind: "wallet-notice"; notice: string }>;
+  | Readonly<{ kind: "wallet-notice"; notice: WalletNotice }>;
+
+/** A notice as the screen draws it, with its moment ready for the page's clock. */
+export type WalletNoticeView =
+  | Readonly<{ kind: "cancelled"; paid: string }>
+  | Readonly<{
+      kind: "landed";
+      wallet: string;
+      at: MomentView | null;
+      before: string | null;
+      askedBack: boolean;
+    }>;
 
 export interface WalletView {
+  /** Where the share is paid and in what, or that nothing is paid here. */
   readonly purpose: string;
-  /** The rate, how it is taken, and that saving a wallet agrees to it. */
+  /** The rate, and that saving a wallet agrees to it: said by the button that saves. */
   readonly commission: string;
   /** As the gateway answered it, in the spelling a wallet shows; null where none is set. */
   readonly saved: string | null;
@@ -95,10 +127,9 @@ export interface WalletView {
     wallet: string;
     takesEffectAt: string;
     from: MomentView;
-    split: SplitView | null;
   }>;
-  /** Why a press was not what it looked like: a cancel after the change took effect. */
-  readonly notice: string | null;
+  readonly notice: WalletNoticeView | null;
+  /** The address's form and what is checked, under the box. */
   readonly rule: string;
   /** Where a different address waits before it takes effect, which is live alone. */
   readonly waits: string | null;
@@ -112,18 +143,11 @@ export interface WalletView {
 
 export interface SettingsView {
   readonly who: string;
-  /** The name buyers read; null where none is set, which the banner says. */
-  readonly lede: string | null;
-  /** That Agentify approved the merchant for live sales; null otherwise. */
-  readonly approval: string | null;
-  readonly name: Readonly<{
-    rule: string;
-    /** Left out where the refusal on the page is that very sentence. */
-    standing: string | null;
-    value: string;
-    problem: string | null;
-  }>;
-  readonly site: Readonly<{ rule: string; value: string; problem: string | null }>;
+  /** That Agentify approved the business for live sales; a missing approval is the banner's to say. */
+  readonly approved: boolean;
+  /** Each box with its rule, sent from here so the page's script carries no schema. */
+  readonly name: Readonly<{ value: string; problem: string | null; rule: string }>;
+  readonly site: Readonly<{ value: string; problem: string | null; rule: string }>;
   readonly wallet: WalletView;
   /** Null in the sandbox, where nothing is ever deployed, and where no split can hold money. */
   readonly payout: PayoutView | null;
@@ -133,27 +157,52 @@ export interface SettingsView {
   }>;
 }
 
-const SETTLES: Readonly<Record<SurfaceMode, string>> = {
-  test: "Your share of every TEST sale, paid in test USDC on Base Sepolia, is paid out to this wallet.",
-  live: "Your share of every sale, paid in USDC on Base, is paid out to this wallet.",
-  sandbox: "SANDBOX does not settle a payment.",
+const PAID_IN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
+  test: "Your share of each sale is paid here, in test USDC on Base Sepolia.",
+  live: "Your share of each sale is paid here, in USDC on Base.",
 };
+
+/** Where publishing asks for no address, because no payment settles. */
+const OPTIONAL = "Nothing is settled or paid out here, so this address is optional.";
 
 /**
- * The one chain a payout is sent on, and what its sender pays the fee with.
- * Multicall3 is at the same address on most chains, and sent on another one
- * the transaction can succeed and pay out nothing.
+ * Every note Getting paid says, by the state it is in, so each is written once
+ * and one test reads them all. Only the network's own count of what a payout
+ * would bring says there is money in a payout contract; no other note does,
+ * so a merchant with no sale yet reads the same words.
  */
-const SENT_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
-  test: "To be paid now, send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
-  live: "To be paid now, send this transaction on Base only, from any wallet with a little ETH for the fee.",
-};
-
-/** When a merchant who sends nothing is paid: Agentify's own payout pays out every contract, whenever it is sent. */
-const PAID_ON_NO_SET_DATE = "paid when Agentify next pays out every contract, on no set date.";
+export const PAYOUT_NOTES = Object.freeze({
+  /**
+   * The one chain a payout is sent on, and what its sender pays the fee with.
+   * Multicall3 is at the same address on most chains, and sent on another one
+   * the transaction can succeed and pay out nothing.
+   */
+  sentOn: {
+    test: "Send this transaction on Base Sepolia only, from any wallet with a little test ETH for the fee.",
+    live: "Send this transaction on Base only, from any wallet with a little ETH for the fee.",
+  } satisfies Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>>,
+  multicall3: "Multicall3, a public contract, not Agentify's.",
+  brings: (amount: string, one: boolean): string =>
+    `Sent now, it would bring ${amount} ${one ? "to your wallet" : "to the wallets beside your payout contracts"}, as the network showed when this page was drawn.`,
+  unknown:
+    "Agentify could not read from the network what this payout would bring. Sending it anyway does no harm: it pays out only what is there.",
+  counted: "A payout already sent is still counted here until the network carries it out.",
+  nothing:
+    "A payout sent now would bring nothing, as the network showed when this page was drawn. Once a buyer pays into your payout contract, it shows here.",
+  noCoinbaseOnTest:
+    "Coinbase Wallet can't send this payout on the test network, Base Sepolia, so send it from another wallet.",
+  orAgentify: "If nobody sends it, Agentify's next payout does the same, on no fixed date.",
+  fromTheSender: "Sending this transaction costs only the network fee.",
+  tooMany: (count: number): string =>
+    `You have ${count} payout contracts, more than one transaction can carry. Agentify's next payout covers them all, on no fixed date.`,
+  // Agentify's own payout refuses every contract the merchant's refuses, and
+  // refuses as a whole, so it does not cover this one in the meantime.
+  unbuilt:
+    "Agentify could not build your payout transaction. The fault is on Agentify's side, and until it is fixed Agentify's own payouts cannot move what is in your payout contracts either. Write to admin@agentify.ad about it.",
+});
 
 /** The token a payout brings on each channel that settles. */
-const PAID_IN: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
+const TOKEN_ON: Readonly<Record<Exclude<SurfaceMode, "sandbox">, string>> = {
   test: "test USDC",
   live: "USDC",
 };
@@ -172,8 +221,7 @@ const COINBASE_ON: Readonly<
   8453: { box: true, payout: true },
   84532: {
     box: true,
-    payout:
-      "Coinbase Wallet's payout is not known to work on the test network, Base Sepolia, so send it from another wallet, as below.",
+    payout: PAYOUT_NOTES.noCoinbaseOnTest,
   },
 };
 
@@ -185,13 +233,8 @@ const coinbaseOn = (chain: number | null, panel: "box" | "payout"): CoinbaseView
 const sameAddress = (one: string, other: string): boolean =>
   one.toLowerCase() === other.toLowerCase();
 
-const commissionOf = (mode: SurfaceMode, rate: CommissionRate): string => {
-  const { commission, share } = percentagesOf(rate);
-  return (
-    `Agentify keeps ${commission} of every sale, a refunded one included. Buyers pay into a payout contract made for this wallet: it pays ${share} to the wallet and ${commission} to Agentify, and nobody can change that. The money waits in the contract until somebody pays it out: you, at any time, or Agentify, on no set date. Saving a wallet here is your agreement.` +
-    (mode === "sandbox" ? " In the sandbox nothing is deployed and no money moves." : "")
-  );
-};
+const commissionOf = (rate: CommissionRate): string =>
+  `Agentify keeps ${percentagesOf(rate).commission} of each sale, refunded sales included. Saving a wallet means you agree to this fee.`;
 
 /**
  * The split recorded for this wallet, or null where the gateway named one for
@@ -224,50 +267,46 @@ const payoutView = (
   const { payout } = splits;
   if (mode === "sandbox" || payout === null) return null;
   if (payout === "unbuilt") {
-    return {
-      kind: "unbuilt",
-      said: "Agentify could not build the transaction that pays out your payout contracts as they are recorded, so there is none to send here. Whatever buyers paid into them stays there until somebody pays it out.",
-    };
+    return { kind: "unbuilt", said: PAYOUT_NOTES.unbuilt };
   }
   if ("tooMany" in payout) {
-    return {
-      kind: "too_many",
-      said: `You have ${payout.tooMany} payout contracts that can hold money, more than one transaction can pay out, so there is no transaction for you to send here. You are ${PAID_ON_NO_SET_DATE}`,
-    };
+    return { kind: "too_many", said: PAYOUT_NOTES.tooMany(payout.tooMany) };
   }
   const { transaction, brings } = payout;
   if (brings === 0n) {
-    return {
-      kind: "nothing",
-      said: "A payout sent now would bring you nothing, as the network stood when this page was drawn, so there is none to send here. Once a buyer has paid into your payout contract, the payout shows here with what it would bring.",
-    };
+    return { kind: "nothing", said: PAYOUT_NOTES.nothing };
   }
   const pays = transaction.splits.map((split) => ({
     split: split.address,
     wallet: split.merchantWallet,
   }));
   const one = new Set(pays.map((pair) => pair.wallet.toLowerCase())).size === 1;
-  const amount = brings === UNKNOWN ? null : `${usdcOf(brings)} ${PAID_IN[mode]}`;
+  const amount = brings === UNKNOWN ? null : `${usdcOf(brings)} ${TOKEN_ON[mode]}`;
   return {
     kind: "send",
-    lead:
-      amount === null
-        ? `Agentify could not read from the network what this payout would bring, so it does not know whether anything is waiting for you. Sending it anyway does no harm: it pays out only what is there, though it costs the network's fee even when that is nothing. ${SENT_ON[mode]}`
-        : `Sent now, this payout would bring ${amount} ${
-            one ? "to your wallet" : "to the wallets beside your payout contracts, between them"
-          }. That is what the network showed when this page was drawn: a buyer who pays before the payout goes out adds to it, and if Agentify's own payout goes out first, that one brings it to you instead. A payout already sent, from this page or any wallet, is counted here until the network has carried it out. ${SENT_ON[mode]}`,
+    said: [
+      amount === null ? PAYOUT_NOTES.unknown : PAYOUT_NOTES.brings(amount, one),
+      PAYOUT_NOTES.counted,
+      PAYOUT_NOTES.orAgentify,
+    ].join(" "),
+    sentOn: PAYOUT_NOTES.sentOn[mode],
     brings: amount,
     to: transaction.to,
+    toIs: PAYOUT_NOTES.multicall3,
     data: transaction.data,
     pays,
-    after: `It carries no money and can take nothing from the wallet that sends it; ${
-      one
-        ? "your share arrives in the same transaction"
-        : "each share arrives in the wallet beside its contract, in the same transaction"
-    }. Otherwise you are ${PAID_ON_NO_SET_DATE}`,
+    after: PAYOUT_NOTES.fromTheSender,
     coinbase: coinbaseOn(walletChain, "payout"),
   };
 };
+
+const noticeView = (notice: WalletNotice): WalletNoticeView =>
+  notice.kind === "cancelled"
+    ? notice
+    : { ...notice, at: notice.at === null ? null : momentView(notice.at) };
+
+/** Said where a box that holds no name is saved empty, where there is no name to keep. */
+const NAME_EMPTY = "Enter a seller name.";
 
 export const settingsView = (
   mode: SurfaceMode,
@@ -305,31 +344,36 @@ export const settingsView = (
 
   return {
     who,
-    // A missing name is the banner's to say, with what it holds back.
-    lede: sellerName === null ? null : `Your products are sold under ${sellerName}.`,
-    // A missing approval is the banner's to say, over every page; Settings
-    // says only that it was given.
-    approval: mode === "live" && liveApproval === true ? APPROVAL_GIVEN : null,
+    approved: mode === "live" && liveApproval === true,
     name: {
+      // A box emptied and refused shows the name buyers still read; a refused
+      // name stays in the box to be corrected.
+      value: name === null || name.typed === "" ? (sellerName ?? "") : name.typed,
+      // The box holds what was refused, so the refusal says which name buyers
+      // still read.
+      problem:
+        name === null
+          ? null
+          : name.typed === "" && sellerName === null
+            ? NAME_EMPTY
+            : `${nameRefusedSaying(name.typed, name.problem)}${
+                name.typed === "" || sellerName === null ? "" : ` Buyers still see “${sellerName}”.`
+              }`,
       rule: NAME_RULE,
-      standing: name?.problem === NAME_CANNOT_BE_TAKEN_AWAY ? null : NAME_CANNOT_BE_TAKEN_AWAY,
-      // A refused name stays in the box to be corrected; the lede still says
-      // which name buyers read.
-      value: name?.typed ?? sellerName ?? "",
-      problem: name?.problem ?? null,
     },
     site: {
-      rule: SITE_RULE,
-      value: site?.typed ?? sellerSite ?? "",
+      value: site === null || site.typed === "" ? (sellerSite ?? "") : site.typed,
       problem: site?.problem ?? null,
+      rule: SITE_RULE,
     },
     wallet: {
       // Where publishing asks for an address and none is set, the banner over
       // the page says what that holds back.
-      purpose: !door.asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
-        ? `${SETTLES[mode]} Publishing does not ask for this address here, so it is optional.`
-        : SETTLES[mode],
-      commission: commissionOf(mode, payoutSplits.rate),
+      purpose:
+        mode !== "sandbox" && door.asked.includes(MERCHANT_FINDINGS.NO_PAYOUT_WALLET)
+          ? PAID_IN[mode]
+          : OPTIONAL,
+      commission: commissionOf(payoutSplits.rate),
       saved,
       split: saved === null ? null : splitBeside(saved, payoutSplits.inForce, addressPage),
       pending:
@@ -339,9 +383,8 @@ export const settingsView = (
               wallet: pending.payout_wallet,
               takesEffectAt: pending.takes_effect_at,
               from: momentView(pending.takes_effect_at),
-              split: splitBeside(pending.payout_wallet, payoutSplits.pending, addressPage),
             },
-      notice: press?.kind === "wallet-notice" ? press.notice : null,
+      notice: press?.kind === "wallet-notice" ? noticeView(press.notice) : null,
       rule: WALLET_RULE,
       waits: saved !== null && mode === "live" ? LIVE_CHANGE_WAITS : null,
       onItsWay: saved !== null && mode === "live" ? CHANGE_ON_ITS_WAY : null,

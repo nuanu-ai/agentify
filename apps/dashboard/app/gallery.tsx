@@ -24,6 +24,7 @@ import {
 } from "@agentify/gateway";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import {
+  CardSchema,
   MerchantCardListSchema,
   OrderListSchema,
   PayoutWalletSchema,
@@ -42,9 +43,10 @@ import config from "../react-router.config.js";
 import { type AccountNote, type AccountRead, accountOf } from "../src/account-banner.js";
 import { ANSWER_WITHIN_MS } from "../src/deadlines.js";
 import { NOT_FROM_HERE } from "../src/form-post.js";
-import { type Answer, lateAnswer, type PayoutSplits, switchRefused } from "../src/gateway.js";
+import { type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
+import { inViewersZone } from "../src/moments.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -81,9 +83,18 @@ import {
 } from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
 import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
-import type { WooRecoveryView } from "../src/woo-recovery-pages.js";
+import { gapOf } from "../src/woo-money.js";
+import { findingsOf, rateFarSays } from "../src/woo-pages.js";
+import { CREATE_UNKNOWN } from "../src/woo-recovery.js";
+import {
+  RECOVERY_UNKNOWN,
+  type SavedSale,
+  unavailableOf,
+  type WooRecoveryView,
+} from "../src/woo-recovery-pages.js";
 import {
   NOT_APPROVED_YET,
+  type Said,
   type ShopAnswer,
   type ShopRead,
   type ShopState,
@@ -155,11 +166,8 @@ const TABLE: RouteObject[] = [{ id: "root", path: "/", children: routes.map(matc
 const BASE = config.basename;
 const WHO = "owner@example.com";
 
-/**
- * What the gate reads for the operator the examples name, whose account holds
- * the flag: the door's address with the gallery's dashboard at the root.
- */
-const OPERATOR_GATED: Gated = { who: "operator@example.com", admin: "/admin" };
+/** What the gate reads for the operator the examples name, whose account holds the flag. */
+const OPERATOR_GATED: Gated = { who: "operator@example.com", operator: true };
 
 const chromeIn = (mode: SurfaceMode): Chrome => ({
   base: "",
@@ -262,6 +270,9 @@ const WALLET_CHAINS: Readonly<Record<SurfaceMode, number | null>> = {
 /** The example addresses from the checksum's own specification. */
 const PAID_INTO = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 const ASKED_FOR = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+/** A change to `ASKED_FOR` waiting on the live site, as the merchant's layout reads it. */
+const WALLET_CHANGING = { wallet: ASKED_FOR, takesEffectAt: "2026-10-28T16:05:00Z" } as const;
+
 /** The first with its last letter's case flipped, which the checksum catches. */
 const MISTYPED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAeD";
 
@@ -448,9 +459,9 @@ const seenBy = (mode: SurfaceMode, more: Partial<Viewer> = {}): Viewer => ({
   ...more,
 });
 
-/** The banner the merchant's layout reads for this viewer, selling through their code unless told. */
+/** The banner the merchant's layout reads for this viewer, selling unless told. */
 const bannerOf = (viewer: Viewer, read: AccountRead = {}) =>
-  accountOf(viewer, { selling: "open", through: "api", ...read });
+  accountOf(viewer, { selling: "open", ...read });
 
 type Status =
   | "in_progress"
@@ -619,6 +630,35 @@ const IMPORTED = cardsFromTheShop(
       downloadable: false,
       manage_stock: true,
     }),
+    storeProduct(15, {
+      name: "Batik Sarong, Hand-Stamped Cap Technique, Indigo on Cream Rayon (115 × 180 cm)",
+      description: "<p>Stamped by hand with copper blocks in a family workshop near Ubud.</p>",
+      virtual: false,
+      downloadable: false,
+      status: "draft",
+    }),
+    storeProduct(16, {
+      name: "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+      description:
+        "<p>Forty recipes from our morning class, from sambal matah to babi guling, with a market shopping list.</p>",
+      downloads: [{ id: "dl_book", name: "Recipe book.pdf", file: `${SHOP}/recipe-book.pdf` }],
+      prices: { price: "1500", currency_code: "USD", currency_minor_unit: 2 },
+    }),
+    storeProduct(17, {
+      name: "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+      description:
+        "<p>Endek is the weft ikat of Bali: each bundle of thread is tied and dyed by hand before" +
+        " it goes on the loom, so the pattern appears as the cloth is woven. This runner comes" +
+        " from a cooperative of weavers in Klungkung, who still use the ceremonial red and gold" +
+        " worn for temple festivals. It is woven from mercerised cotton, finished with a hand-knotted" +
+        " fringe at both ends, and washed once to set the colours. Every piece differs slightly in" +
+        " where the pattern meets, which is how you can tell it was not printed. Wash cold by hand" +
+        " with mild soap, dry in the shade, and iron on the reverse while still damp. It fits a" +
+        " table for six to eight and makes a good wall hanging for a long hallway.</p>",
+      virtual: false,
+      downloadable: false,
+      prices: { price: "6400", currency_code: "USD", currency_minor_unit: 2 },
+    }),
   ],
   SHOP,
 );
@@ -627,6 +667,27 @@ const imported = (title: string) => {
   const found = IMPORTED.cards.find((one) => one.title === title);
   if (found === undefined) throw new Error(`the example shop's ${title} did not become a card`);
   return found;
+};
+
+/**
+ * A product the publish door refuses, in the door's own findings: the card is
+ * held to the contract's card rules, the source of the gateway's sentences.
+ */
+const refusedByTheDoor = (title: string) => {
+  const one = imported(title);
+  const parsed = CardSchema.safeParse(one.card);
+  if (parsed.success) throw new Error(`the example shop's ${title} would have been published`);
+  return {
+    id: one.id,
+    title,
+    ...findingsOf(
+      parsed.error.issues.map((issue) => ({
+        path: issue.path.map(String),
+        code: issue.code,
+        message: issue.message,
+      })),
+    ),
+  };
 };
 
 /** A gateway answer the example needs as a refusal, its words included. */
@@ -646,8 +707,16 @@ const LATE_PROBLEM = (() => {
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
 const ORDERS_WAITING = [idOf("ord", "waiting one"), idOf("ord", "waiting two")];
-const TO_THE_SHOP = refusalIn(switchRefused("woocommerce", ORDERS_WAITING));
-const TO_THE_CODE = refusalIn(switchRefused("api", ORDERS_WAITING));
+const TO_THE_SHOP: Said = {
+  held: { to: "woocommerce", orders: ORDERS_WAITING, quick: false, parcels: false },
+};
+const TO_THE_CODE: Said = {
+  held: { to: "api", orders: ORDERS_WAITING, quick: false, parcels: true },
+};
+/** Purchases the merchant's code priced and nobody has paid yet, which lapse in seconds. */
+const PRICES_RUNNING: Said = {
+  held: { to: "woocommerce", orders: ORDERS_WAITING, quick: true, parcels: false },
+};
 
 // --- the states ----------------------------------------------------------------
 
@@ -672,6 +741,15 @@ const asked = (answer: LinkAnswer): SignInView => ({
   destination: "default",
   answer,
   googleEnabled: GOOGLE_ON,
+});
+
+/**
+ * A page whose resend waits, as its script leaves it: the button taken away
+ * and counting, which is what a person sees, rather than as it is served.
+ */
+const waiting = (state: GalleryState): GalleryState => ({
+  ...state,
+  scene: { shows: "Send another link in" },
 });
 
 const SIGNING_IN: GalleryState[] = [
@@ -787,79 +865,93 @@ const SIGNING_IN: GalleryState[] = [
     "/sign-in",
     { screen: "ask", destination: "default", googleEnabled: GOOGLE_ON, problem: NOT_AN_ADDRESS },
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-link-sent",
-      screen: "Sign in",
-      when: "Somebody asks for a sign-in link.",
-      cause:
-        "The mail provider accepted the message; the button counts down the minute before another link.",
-    },
-    "/sign-in",
-    asked({ sent: true, seconds: 60 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-link-sent",
+        screen: "Sign in",
+        when: "Somebody asks for a sign-in link.",
+        cause:
+          "The mail provider accepted the message; the button counts down the minute before another link.",
+      },
+      "/sign-in",
+      asked({ sent: true, seconds: 60 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-last-link-this-hour",
-      screen: "Sign in",
-      when: "Somebody asks for their third link within an hour.",
-      cause: "The link went out, and it was the last of the three an address gets in an hour.",
-    },
-    "/sign-in",
-    asked({ sent: true, seconds: 2_820 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-last-link-this-hour",
+        screen: "Sign in",
+        when: "Somebody asks for their third link within an hour.",
+        cause: "The link went out, and it was the last of the three an address gets in an hour.",
+      },
+      "/sign-in",
+      asked({ sent: true, seconds: 2_820 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-wait-a-minute",
-      screen: "Sign in",
-      when: "Somebody asks for another link less than a minute after the last one.",
-      cause: "One address gets one link a minute, so no new link was sent.",
-    },
-    "/sign-in",
-    asked({ wall: "interval", seconds: 43 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-wait-a-minute",
+        screen: "Sign in",
+        when: "Somebody asks for another link less than a minute after the last one.",
+        cause: "One address gets one link a minute, so no new link was sent.",
+      },
+      "/sign-in",
+      asked({ wall: "interval", seconds: 43 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-hour-spent",
-      screen: "Sign in",
-      when: "Somebody asks for a fourth link within an hour.",
-      cause: "One address gets three links an hour, so no new link was sent.",
-    },
-    "/sign-in",
-    asked({ wall: "hourly", seconds: 2_820 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-hour-spent",
+        screen: "Sign in",
+        when: "Somebody asks for a fourth link within an hour.",
+        cause: "One address gets three links an hour, so no new link was sent.",
+      },
+      "/sign-in",
+      asked({ wall: "hourly", seconds: 2_820 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-client-spent",
-      screen: "Sign in",
-      when: "Somebody asks for a link from a connection that has asked for many in the last hour.",
-      cause:
-        "One connection gets a set number of links an hour whatever addresses it types, so no link was sent; Google sign-in still works.",
-    },
-    "/sign-in",
-    asked({ wall: "client", seconds: 2_820 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-client-spent",
+        screen: "Sign in",
+        when: "Somebody asks for a link from a connection that has asked for many in the last hour.",
+        cause:
+          "One connection gets a set number of links an hour whatever addresses it types, so no link was sent; Google sign-in still works.",
+      },
+      "/sign-in",
+      asked({ wall: "client", seconds: 2_820 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-shared-spent",
-      screen: "Sign in",
-      when: "Somebody asks for a link through an address that names no single visitor, such as the test channel's ingress, after many links went out through such addresses this hour.",
-      cause:
-        "Requests whose address names no visitor share one hourly allowance, so no link was sent; Google sign-in still works.",
-    },
-    "/sign-in",
-    asked({ wall: "shared", seconds: 1_980 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-shared-spent",
+        screen: "Sign in",
+        when: "Somebody asks for a link through an address that names no single visitor, such as the test channel's ingress, after many links went out through such addresses this hour.",
+        cause:
+          "Requests whose address names no visitor share one hourly allowance, so no link was sent; Google sign-in still works.",
+      },
+      "/sign-in",
+      asked({ wall: "shared", seconds: 1_980 }),
+    ),
   ),
-  signIn(
-    {
-      id: "dashboard-sign-in-ceiling",
-      screen: "Sign in",
-      when: "Somebody asks for a link in an hour the site has already sent its share of links in.",
-      cause:
-        "The site sends a set number of sign-in links an hour to everybody together, so no link was sent; Google sign-in still works.",
-    },
-    "/sign-in",
-    asked({ wall: "ceiling", seconds: 1_260 }),
+  waiting(
+    signIn(
+      {
+        id: "dashboard-sign-in-ceiling",
+        screen: "Sign in",
+        when: "Somebody asks for a link in an hour the site has already sent its share of links in.",
+        cause:
+          "The site sends a set number of sign-in links an hour to everybody together, so no link was sent; Google sign-in still works.",
+      },
+      "/sign-in",
+      asked({ wall: "ceiling", seconds: 1_260 }),
+    ),
   ),
   signIn(
     {
@@ -870,7 +962,7 @@ const SIGNING_IN: GalleryState[] = [
         "The mail provider refused the message or did not answer in time, so the send is not confirmed.",
     },
     "/sign-in",
-    { screen: "unavailable" },
+    { screen: "unavailable", destination: "default" },
   ),
   at(
     {
@@ -902,6 +994,7 @@ const SIGNING_IN: GalleryState[] = [
           screen: "open",
           token: "the token from the email",
           email: WHO,
+          destination: "default",
         },
       },
     },
@@ -916,7 +1009,7 @@ const SIGNING_IN: GalleryState[] = [
     {
       path: "/sign-in/open?token=…",
       mode: "live",
-      loaded: { "routes/sign-in-open": { screen: "refused" } },
+      loaded: { "routes/sign-in-open": { screen: "refused", destination: "default" } },
     },
   ),
 ];
@@ -963,25 +1056,30 @@ const SETTING_UP: GalleryState[] = [
       pressed: { "routes/merchant": { unavailable: true } },
     },
   ),
-  at(
-    {
-      id: "dashboard-choose-name",
-      screen: "Choosing the seller name",
-      when: "A new merchant's dashboard has just been opened.",
-      cause: "The merchant has no seller name yet; this is the last step of setting up.",
-    },
-    {
-      path: "/choose-name",
-      mode: "live",
-      loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
-    },
-  ),
+  {
+    ...at(
+      {
+        id: "dashboard-choose-name",
+        screen: "Choosing the seller name",
+        when: "A new merchant's dashboard has just been opened.",
+        cause:
+          "The merchant has no seller name yet; this is the last step of setting up, and the button waits for a name to be typed.",
+      },
+      {
+        path: "/choose-name",
+        mode: "live",
+        loaded: { "routes/choose-name": { typed: "", rule: NAME_RULE } },
+      },
+    ),
+    scene: { shows: "Choose a seller name" },
+  },
   at(
     {
       id: "dashboard-choose-name-needed",
       screen: "Choosing the seller name",
-      when: "A new merchant presses Use this name with the box empty.",
-      cause: "An empty name is refused, and the page offers to leave it for later.",
+      when: "A new merchant's browser, which runs no script, sends the name form with the box empty.",
+      cause:
+        "Where the script runs the button waits for a name; here the server refuses the empty one and the page offers to choose later.",
     },
     {
       path: "/choose-name",
@@ -1017,10 +1115,10 @@ const cards = (
   more: Readonly<{ path?: string; account?: readonly AccountNote[] }> = {},
 ): GalleryState =>
   at(told, {
-    path: more.path ?? "/cards",
+    path: more.path ?? "/products",
     mode,
     ...(more.account === undefined ? {} : { account: more.account }),
-    loaded: { "routes/cards": view },
+    loaded: { "routes/products": view },
   });
 
 /** The cards at an address that asks for a search, a segment or a page. */
@@ -1126,6 +1224,94 @@ const WHOLE_CATALOGUE = MerchantCardListSchema.parse({
 });
 
 /**
+ * A shop's whole catalogue short of a page, as an eSIM and VPN seller lists
+ * it: plans per region and size, VPN by the month and the year, numbers by
+ * country priced at purchase, and a router by parcel; some paused.
+ */
+const MANY = MerchantCardListSchema.parse({
+  selling: "open",
+  cards: [
+    ...(
+      [
+        ["Europe", "eu", 39, ["4.50", "13.00", "21.00"]],
+        ["Asia", "asia", 14, ["4.00", "11.50", "19.00"]],
+        ["United States", "us", 1, ["5.00", "15.00", "24.00"]],
+        ["Latin America", "latam", 18, ["7.50", "24.00", "39.00"]],
+        ["Middle East", "me", 12, ["8.00", "26.00", "45.00"]],
+        ["Africa", "africa", 20, ["11.00", "36.00", "59.00"]],
+        ["Global", "global", 120, ["9.00", "32.00", "55.00"]],
+      ] as const
+    ).flatMap(([region, code, countries, prices]) =>
+      (
+        [
+          [1, 7, prices[0]],
+          [5, 30, prices[1]],
+          [10, 30, prices[2]],
+        ] as const
+      ).map(([gigabytes, days, price]) => ({
+        merchant_item_id: `esim-${code}-${gigabytes}gb-${days}d`,
+        title: `eSIM ${region}, ${gigabytes} GB for ${days} days`,
+        description: `A data plan for ${countries} ${countries === 1 ? "country" : "countries"}, delivered as a profile after the purchase`,
+        price: { amount: price, currency: "USD" },
+        result: { iccid: { type: "string" } },
+        fulfillment: "async",
+        fulfill_deadline_seconds: region === "Global" ? 900 : 14_400,
+      })),
+    ),
+    ...[
+      ["one month", "1m", "5.00"],
+      ["three months", "3m", "13.50"],
+      ["six months", "6m", "24.00"],
+      ["one year", "12m", "45.00"],
+    ].map(([span, code, price]) => ({
+      merchant_item_id: `vpn-${code}`,
+      title: `VPN, ${span}`,
+      description: "Access from the moment it is delivered",
+      price: { amount: price, currency: "USD" },
+      result: { access_url: { type: "string" } },
+      fulfillment: "sync",
+    })),
+    ...["United Kingdom", "Germany", "Netherlands"].map((country) => ({
+      merchant_item_id: `number-sms-${country.toLowerCase().replaceAll(" ", "-")}`,
+      title: `A virtual number in ${country}, inbound SMS`,
+      description: `Rent a ${country} phone number for inbound SMS for thirty days.`,
+      price: { amount: "2.00", currency: "USD" },
+      result: { number: { type: "string" } },
+      fulfillment: "sync",
+      price_check: "handler",
+    })),
+    {
+      merchant_item_id: "travel-router",
+      title: "A pocket travel router",
+      description: "A router for a hotel room, sent by post",
+      price: { amount: "39.00", currency: "USD" },
+      fulfillment: "ship",
+      ship_within_seconds: 172_800,
+      price_check: "handler",
+    },
+    {
+      merchant_item_id: "esim-jp-3gb-15d",
+      title: "eSIM Japan, 3 GB for 15 days",
+      description: "A data plan delivered as a profile after the purchase",
+      price: { amount: "8.00", currency: "USD" },
+      result: { iccid: { type: "string" } },
+      fulfillment: "async",
+    },
+  ].map((card) => {
+    const paused = ["esim-me-10gb-30d", "vpn-6m", "number-sms-germany"].includes(
+      card.merchant_item_id,
+    );
+    return {
+      id: idOf("itm", card.merchant_item_id),
+      as_of: "2026-10-01T09:00:00Z",
+      card,
+      selling: paused ? "paused" : "open",
+      paused,
+    };
+  }),
+});
+
+/**
  * A parcel, which names its time to reach a carrier, and a data plan sent
  * later that names no window of its own, beside one that names its window.
  */
@@ -1176,39 +1362,39 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
-/** Cards as an operator who also sells sees them, with the door into the workspace in the header. */
+/** Products as an operator who also sells sees it, with the door into the workspace in the header. */
 const operatorsCards = (told: Told): GalleryState =>
   at(told, {
-    path: "/cards",
+    path: "/products",
     mode: "live",
-    loaded: { "routes/gate": OPERATOR_GATED, "routes/cards": cardsView(CATALOGUE, ORIGIN.live) },
+    loaded: { "routes/gate": OPERATOR_GATED, "routes/products": cardsView(CATALOGUE, ORIGIN.live) },
   });
 
 const CARDS: GalleryState[] = [
   operatorsCards({
     id: "dashboard-cards-operator",
-    screen: "Cards",
+    screen: "Products",
     when: "An operator who also sells opens their own dashboard.",
     cause:
-      "The session's account holds the operator flag, so the header has a door into the operator's workspace beside the address.",
+      "The session's account holds the operator flag, so the header has a door into the operator's workspace among its doors.",
   }),
   {
     ...operatorsCards({
       id: "dashboard-cards-operator-menu",
-      screen: "Cards",
+      screen: "Products",
       when: "An operator who also sells opens the menu at the end of the header's row on a phone.",
       cause:
         "The menu holds what the header's row leaves out, the door into the operator's workspace with it.",
     }),
     scene: {
-      steps: [{ shows: "Product cards", does: openTheMenu }],
-      shows: "Open the admin →",
+      steps: [{ shows: "Products", does: openTheMenu }],
+      shows: "Admin",
     },
   },
   cards(
     {
       id: "dashboard-cards",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant whose code has published a few products opens the dashboard.",
       cause: "The gateway lists three cards, all on sale.",
     },
@@ -1219,24 +1405,24 @@ const CARDS: GalleryState[] = [
     ...cards(
       {
         id: "dashboard-cards-menu",
-        screen: "Cards",
+        screen: "Products",
         when: "A merchant on a phone or a tablet opens the menu at the end of the header's row.",
         cause:
-          "Where the sidebar gives way, the header keeps the lockup and the menu's button, and the menu holds the sections, the way to the documentation, the address and the way out.",
+          "Where the sidebar gives way, the header keeps the lockup, the documentation, the dashboard and the menu's button, and the menu holds the sections, the address and the way out.",
       },
       cardsView(CATALOGUE, ORIGIN.live),
       "live",
     ),
     scene: {
-      steps: [{ shows: "Product cards", does: openTheMenu }],
+      steps: [{ shows: "Products", does: openTheMenu }],
       shows: "Sign out",
     },
   },
   cards(
     {
       id: "dashboard-cards-account-unread",
-      screen: "Cards",
-      when: "A merchant opens Cards while the read of their account's standing does not answer in time.",
+      screen: "Products",
+      when: "A merchant opens Products while the read of their account's standing does not answer in time.",
       cause:
         "The layout could not read whether anything holds the account's sales, so the banner says it could not check rather than showing nothing.",
     },
@@ -1247,10 +1433,10 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-out-of-touch",
-      screen: "Cards",
-      when: "A merchant whose own process stopped polling over ten minutes ago opens Cards.",
+      screen: "Products",
+      when: "A merchant whose own process stopped polling over ten minutes ago opens Products.",
       cause:
-        "The gateway leaves their cards out of the catalogue and refuses new purchases of them until their integration polls again, so the banner says since when it has not connected.",
+        "The gateway leaves their products out of the catalogue and refuses new purchases of them until their integration polls again, so the banner says since when it has not connected.",
     },
     cardsView(CATALOGUE, ORIGIN.live),
     "live",
@@ -1261,10 +1447,10 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-busy",
-      screen: "Cards",
-      when: "A merchant opens Cards while as many purchases of theirs as Agentify allows are priced and unpaid.",
+      screen: "Products",
+      when: "A merchant opens Products while as many purchases of theirs as Agentify allows are priced and unpaid.",
       cause:
-        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so; each place comes free when its purchase is paid or its price runs out.",
+        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so and that sales resume by themselves; each place comes free when its purchase is paid or its price runs out.",
     },
     cardsView(CATALOGUE, ORIGIN.live),
     "live",
@@ -1272,53 +1458,32 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
-      id: "dashboard-cards-many",
-      screen: "Cards",
-      when: "A merchant with a whole catalogue opens Cards.",
-      cause: "The gateway lists eight cards, one of them paused by the merchant.",
+      id: "dashboard-cards-wallet-changing",
+      screen: "Products",
+      when: "A merchant on the live site opens Products while a change of their payout wallet waits to apply.",
+      cause:
+        "A replacement wallet applies forty-eight hours after every account is told, and until then every screen says so and offers to cancel it from there.",
     },
-    cardsView(
-      cardsOf("open", [
-        "esimEurope",
-        "esimAsia",
-        "esimUnitedStates",
-        "esimGlobal",
-        "esimWeek",
-        { product: "vpn", paused: true },
-        "vpnYear",
-        "number",
-      ]),
-      ORIGIN.live,
-    ),
+    cardsView(CATALOGUE, ORIGIN.live),
+    "live",
+    { account: bannerOf(seenBy("live"), { walletChange: WALLET_CHANGING }) },
+  ),
+  cards(
+    {
+      id: "dashboard-cards-many",
+      screen: "Products",
+      when: "A merchant with a whole catalogue of data plans, VPN and numbers opens Products.",
+      cause:
+        "The gateway lists thirty cards, short of a page: plans delivered later within their own window, VPN and numbers delivered at once, numbers priced at purchase, a router sent by parcel, and three cards the merchant paused.",
+    },
+    cardsView(MANY, ORIGIN.live),
     "live",
   ),
-  {
-    ...cards(
-      {
-        id: "dashboard-cards-opened-row",
-        screen: "Cards",
-        when: "A merchant taps a card's price to read since when it holds.",
-        cause:
-          "A row shows the title, the price, the state, the delivery and the product code; a fixed price opens to the moment it holds from, which no row prints, on every width.",
-      },
-      cardsView(CATALOGUE, ORIGIN.live),
-      "live",
-    ),
-    scene: {
-      steps: [
-        {
-          shows: "On the card since",
-          does: (page) => page.querySelector("details.price-since")?.setAttribute("open", ""),
-        },
-      ],
-      shows: "On the card since",
-    },
-  },
   cards(
     {
       id: "dashboard-cards-windows",
-      screen: "Cards",
-      when: "A merchant who sells a parcel and a data plan whose card names no delivery window opens Cards.",
+      screen: "Products",
+      when: "A merchant who sells a parcel and a data plan whose card names no delivery window opens Products.",
       cause:
         "A parcel's card names its time to reach a carrier; a card sent later that names no window is held to Agentify's default one, which the row says and links to rather than reading as no window at all.",
     },
@@ -1328,84 +1493,84 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-cut-short",
-      screen: "Cards",
-      when: "A merchant selling a data plan per country and size opens Cards.",
+      screen: "Products",
+      when: "A merchant selling a data plan per country and size opens Products.",
       cause:
         "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many and leads to the next page.",
     },
-    cardsAt("/cards", WHOLE_CATALOGUE),
+    cardsAt("/products", WHOLE_CATALOGUE),
     "live",
   ),
   cards(
     {
       id: "dashboard-cards-search",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant searches a long catalogue for one country's plans.",
       cause:
         "The address carries the search, which the loader answers with the three cards whose title or product code holds it; each segment counts its share of them.",
     },
-    cardsAt("/cards?q=japan", WHOLE_CATALOGUE),
+    cardsAt("/products?q=japan", WHOLE_CATALOGUE),
     "live",
-    { path: "/cards?q=japan" },
+    { path: "/products?q=japan" },
   ),
   cards(
     {
       id: "dashboard-cards-search-by-code",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant follows the link the WooCommerce import gives a published product, or types a card's whole product code.",
       cause:
         "The search is one card's whole product code, so the list shows that card alone and says so, not every card whose code holds it.",
     },
-    cardsAt("/cards?q=esim-japan-1gb", WHOLE_CATALOGUE),
+    cardsAt("/products?q=esim-japan-1gb", WHOLE_CATALOGUE),
     "live",
-    { path: "/cards?q=esim-japan-1gb" },
+    { path: "/products?q=esim-japan-1gb" },
   ),
   cards(
     {
       id: "dashboard-cards-search-no-match",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant searches their cards for a word none of them holds.",
       cause:
         "No title or product code holds the search, so the list says what was searched for and offers to clear it, which is not what an empty catalogue says.",
     },
     cardsAt(
-      "/cards?q=router",
+      "/products?q=router",
       cardsOf("open", ["esimEurope", "esimAsia", { product: "vpn", paused: true }, "number"]),
     ),
     "live",
-    { path: "/cards?q=router" },
+    { path: "/products?q=router" },
   ),
   ((pasted) =>
     cards(
       {
         id: "dashboard-cards-search-cut",
-        screen: "Cards",
+        screen: "Products",
         when: "A merchant pastes a card's whole description into the search.",
         cause:
           "The search is longer than 200 characters, so its first 200 are matched and given back, and the page says the rest was not used.",
       },
-      cardsAt(`/cards?${new URLSearchParams({ q: pasted })}`, CATALOGUE),
+      cardsAt(`/products?${new URLSearchParams({ q: pasted })}`, CATALOGUE),
       "live",
-      { path: `/cards?${new URLSearchParams({ q: pasted })}` },
+      { path: `/products?${new URLSearchParams({ q: pasted })}` },
     ))(
     "A data plan delivered as a profile after the purchase. Scan the code it arrives with, keep the profile switched off until you land, and turn it on in your phone's settings once you are there; the plan starts counting its thirty days from that moment.",
   ),
   cards(
     {
       id: "dashboard-cards-segment-empty",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant whose every card is on sale picks Off sale.",
       cause: "The segment holds no card, so the list says so and leads back to all of them.",
     },
-    cardsAt("/cards?show=off-sale", CATALOGUE),
+    cardsAt("/products?show=off-sale", CATALOGUE),
     "live",
-    { path: "/cards?show=off-sale" },
+    { path: "/products?show=off-sale" },
   ),
   cards(
     {
       id: "dashboard-cards-none",
-      screen: "Cards",
-      when: "A merchant opens Cards before their code has published anything.",
+      screen: "Products",
+      when: "A merchant opens Products before their code has published anything.",
       cause: "The gateway lists no cards, and everything publishing needs is set.",
     },
     cardsView(cardsOf("open", []), ORIGIN.live),
@@ -1414,7 +1579,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-first-on-live",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who has just signed up on the live site opens the dashboard for the first time.",
       cause:
         "No cards, no payout wallet and no approval yet, so the banner names both and leads to the test channel's dashboard, where the first sale is made.",
@@ -1426,8 +1591,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-none-without-name",
-      screen: "Cards",
-      when: "A new merchant skipped choosing a seller name and opens Cards.",
+      screen: "Products",
+      when: "A new merchant skipped choosing a seller name and opens Products.",
       cause:
         "The merchant has no seller name, so every card their code publishes would be refused.",
     },
@@ -1438,8 +1603,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-none-with-woocommerce",
-      screen: "Cards",
-      when: "A merchant on the test site opens Cards before publishing anything.",
+      screen: "Products",
+      when: "A merchant on the test site opens Products before publishing anything.",
       cause: "No cards, and this dashboard offers the WooCommerce connector beside the SDK.",
     },
     cardsView(cardsOf("open", []), ORIGIN.test, true),
@@ -1448,7 +1613,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-not-approved",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant on the live site has published cards before Agentify approved them.",
       cause:
         "Publishing on live waits for the operator's approval, so the gateway keeps every card off sale.",
@@ -1466,7 +1631,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-live-sales-stopped",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant opens their dashboard after an operator withdrew their admission to live sales.",
       cause:
         "The withdrawal stands, so the gateway keeps every card off sale on the live site and the banner says since when, with the note the operator wrote for them.",
@@ -1491,7 +1656,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-no-wallet",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant on the test site has cards but has not set a payout wallet.",
       cause:
         "Where payments settle, a card is off sale until the wallet its share is paid out to is set.",
@@ -1509,8 +1674,8 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-no-name",
-      screen: "Cards",
-      when: "A merchant whose code published cards before they chose a seller name opens Cards.",
+      screen: "Products",
+      when: "A merchant whose code published cards before they chose a seller name opens Products.",
       cause:
         "Without a seller name the gateway keeps every card off sale, so the banner over the page says so and leads to Settings.",
     },
@@ -1527,10 +1692,10 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-several-reasons",
-      screen: "Cards",
+      screen: "Products",
       when: "A new merchant on the live site pressed Pause all sales before Agentify approved them or they set a payout wallet.",
       cause:
-        "Three things hold the whole account at once, so the one banner names each of them, broadest first.",
+        "Three things hold the whole account at once, so the one banner heads them once and lists each, those the merchant puts right first, then the approval Agentify gives.",
     },
     cardsView(cardsOf("paused", ON_SALE), ORIGIN.live),
     "live",
@@ -1543,7 +1708,7 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-all-paused",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who had paused one card has pressed Pause all sales.",
       cause:
         "The merchant's selling is paused, so every card is off sale and the banner says why; each card keeps its own switch, and the one they paused themselves stays paused when all sales resume.",
@@ -1558,22 +1723,36 @@ const CARDS: GalleryState[] = [
   cards(
     {
       id: "dashboard-cards-selling-through-shop",
-      screen: "Cards",
-      when: "A merchant who switched to their WooCommerce shop looks at the cards their code published.",
+      screen: "Products",
+      when: "A merchant who switched to their WooCommerce shop looks at their cards.",
       cause:
-        "The merchant sells through the shop, so the code's cards are off sale until they switch back.",
+        "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, and each of those rows says why.",
     },
-    cardsView(CATALOGUE, ORIGIN.test, true, {
-      through: "woocommerce",
-      offSale: CATALOGUE.cards.map((entry) => entry.id),
-    }),
+    ((shop) =>
+      cardsView(shop, ORIGIN.test, true, {
+        through: "woocommerce",
+        offSale: CATALOGUE.cards.map((entry) => entry.id),
+      }))(
+      MerchantCardListSchema.parse({
+        selling: "open",
+        cards: [
+          ...["Coffee & Brunch Gift Card", "Coffee beans, one kilogram"].map((title) => ({
+            id: idOf("itm", title),
+            as_of: "2026-10-01T09:00:00Z",
+            card: imported(title).card,
+            selling: "open",
+            paused: false,
+          })),
+          ...CATALOGUE.cards.map((entry) => ({ ...entry, selling: "paused" })),
+        ],
+      }),
+    ),
     "test",
-    { account: bannerOf(seenBy("test"), { through: "woocommerce" }) },
   ),
   cards(
     {
       id: "dashboard-cards-shop-cards-while-code-sells",
-      screen: "Cards",
+      screen: "Products",
       when: "A merchant who imported products from their WooCommerce shop switched back to selling through their own code.",
       cause:
         "The code sells, so the cards the shop published are off sale; no banner reason covers them, so each of those rows says why.",
@@ -1590,6 +1769,28 @@ const CARDS: GalleryState[] = [
  * The orders the gateway's open list would hold among these: the ones still
  * owed goods or money, as near as a status can say it.
  */
+/**
+ * The products as a shop's catalogue names them, at the length a WooCommerce
+ * shop's titles reach, so the orders and receipts are drawn with the names
+ * real orders carry rather than short ones that hide a column too narrow.
+ */
+const SOLD_AS: Readonly<Record<string, string>> = {
+  "esim-eu-5gb-30d": "eSIM Europe – 39 Countries, 5 GB / 30 Days, 5G, Hotspot Allowed",
+  "vpn-1m": "VPN Premium – 1 Month, Unlimited Devices, WireGuard & OpenVPN",
+  "number-sms": "Virtual Phone Number for SMS Verification – Any Country, 30-Day Rental",
+};
+
+const soldAs = (list: ReturnType<typeof cardsOf>) =>
+  MerchantCardListSchema.parse({
+    ...list,
+    cards: list.cards.map((entry) => ({
+      ...entry,
+      card: { ...entry.card, title: SOLD_AS[entry.card.merchant_item_id] ?? entry.card.title },
+    })),
+  });
+
+const SOLD = soldAs(CATALOGUE);
+
 const openAmong = (listed: ReturnType<typeof ordersOf>) =>
   OrderListSchema.parse({
     orders: listed.orders.filter((order) =>
@@ -1608,7 +1809,7 @@ const ordersAt = (
   listed: ReturnType<typeof ordersOf>,
   {
     mode = "live",
-    cards = CATALOGUE,
+    cards = SOLD,
     open = openAmong(listed),
     owed = {},
     lapsed,
@@ -1727,7 +1928,10 @@ const CLOSED = OrderListSchema.parse({
     merchant_closure: {
       closed_at: "2026-10-19T09:30:00Z",
       ...(at === 0
-        ? { message: "The buyer and merchant arranged the remedy outside Agentify." }
+        ? {
+            message:
+              "We could not issue this eSIM, so we refunded 8.00 USDC to your wallet on 19 October. Sorry for the trouble.",
+          }
         : {}),
     },
   })),
@@ -1775,18 +1979,18 @@ const ORDERS: GalleryState[] = [
         screen: "Orders",
         when: "A merchant checks an order they closed and an original payment still unknown.",
         cause:
-          "Merchant closure is shown separately from the original payment. The explanation is attributed to the merchant; the unknown payment remains unknown.",
+          "Merchant closure is shown separately from the original payment. The note to the buyer is attributed to the merchant; the unknown payment remains unknown.",
       },
       CLOSED,
     ),
     scene: {
       steps: [
         {
-          shows: "Order details",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "All orders",
+          does: (page) => page.querySelector("details.row-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Your explanation",
+      shows: "Your note to the buyer",
     },
   },
   {
@@ -1803,11 +2007,11 @@ const ORDERS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Order details",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "All orders",
+          does: (page) => page.querySelector("details.row-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Close fulfillment",
+      shows: "Note to the buyer",
     },
   },
   closurePressed(
@@ -1816,7 +2020,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant pressed Close fulfillment and the answer was lost, and the order read afterwards shows no closure.",
       cause:
-        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the explanation typed is still in the box.",
+        "The page answers the press itself: the order is opened, the line saying the closure could not be confirmed stands by its form, and the note typed is still in the box.",
     },
     OWING,
     {
@@ -1828,15 +2032,15 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-close-refused",
       screen: "Orders",
-      when: "A merchant typed markup into the explanation and pressed Close fulfillment.",
+      when: "A merchant typed markup into the note to the buyer and pressed Close fulfillment.",
       cause:
-        "The explanation is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
+        "The note is plain text, so nothing was closed: the reason is said under the box, which keeps what was typed.",
     },
     OWING,
     {
       note: null,
       refusal:
-        "Your explanation carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
+        "Your note carries HTML markup at character 21, and it is plain text, which the buyer's agent reads exactly as it is written.",
       typed: "Your payment was <b>returned</b>.",
     },
   ),
@@ -1862,7 +2066,7 @@ const ORDERS: GalleryState[] = [
     {
       path: "/orders",
       mode: "live",
-      account: bannerOf(seenBy("live"), { through: "woocommerce", selling: "open" }),
+      account: bannerOf(seenBy("live")),
       loaded: {
         "routes/orders": ordersAt("/orders", OWING, {
           owed: OWED_BECAUSE,
@@ -1892,6 +2096,29 @@ const ORDERS: GalleryState[] = [
       open: OrderListSchema.parse({ orders: PAID_AFTER_CLOSURE.orders.slice(0, 1) }),
     },
   ),
+  at(
+    {
+      id: "dashboard-orders-wallet-changing",
+      screen: "Orders",
+      when: "A merchant on the live site opens Orders while a change of their payout wallet waits to apply, and all sales are paused.",
+      cause:
+        "The waiting change is said first among the reasons in the banner, with its cancel, which brings the merchant back to Orders.",
+    },
+    {
+      path: "/orders",
+      mode: "live",
+      account: bannerOf(seenBy("live"), { selling: "paused", walletChange: WALLET_CHANGING }),
+      loaded: {
+        "routes/orders": ordersAt(
+          "/orders",
+          ordersOf([
+            ["vpn", "delivered"],
+            ["esimEurope", "delivered"],
+          ]),
+        ),
+      },
+    },
+  ),
   orders(
     {
       id: "dashboard-orders",
@@ -1906,6 +2133,23 @@ const ORDERS: GalleryState[] = [
       ["number", "delivered"],
       ["esimEurope", "delivered"],
     ]),
+  ),
+  inViewersZone("Asia/Makassar", () =>
+    orders(
+      {
+        id: "dashboard-orders-in-reader-zone",
+        screen: "Orders",
+        when: "A merchant whose browser named its time zone, here Bali's, opens Orders.",
+        cause:
+          "Each time is in the zone the browser named, with its offset after it, and the orders fall under the days of that zone's calendar.",
+      },
+      ordersOf([
+        ["vpn", "delivered"],
+        ["esimEurope", "in_progress"],
+        ["number", "delivered"],
+        ["esimEurope", "delivered"],
+      ]),
+    ),
   ),
   orders(
     {
@@ -1969,9 +2213,9 @@ const ORDERS: GalleryState[] = [
       {
         id: "dashboard-orders-opened-row",
         screen: "Orders",
-        when: "A merchant on a phone taps the first order's line to read what the narrow row leaves out.",
+        when: "A merchant taps the first order's line to read what the row leaves out.",
         cause:
-          "A phone's row shows the product, the amount, the state and the time; the whole order ID, both shares and the moment the price was set are in the row's opened part.",
+          "A row shows the time, the product, the state and the amount; the whole order ID, the payment and the merchant's share are in the row's opened part, on every width.",
       },
       OWING,
       "/orders",
@@ -1980,11 +2224,11 @@ const ORDERS: GalleryState[] = [
     scene: {
       steps: [
         {
-          shows: "Order details",
-          does: (page) => page.querySelector("details.cell-more")?.setAttribute("open", ""),
+          shows: "All orders",
+          does: (page) => page.querySelector("details.row-more")?.setAttribute("open", ""),
         },
       ],
-      shows: "Order details",
+      shows: "Order ID",
     },
   },
   orders(
@@ -2051,16 +2295,16 @@ const ORDERS: GalleryState[] = [
     {
       id: "dashboard-orders-sales-paused",
       screen: "Orders",
-      when: "A merchant who pressed Pause all sales on Cards opens Orders.",
+      when: "A merchant who pressed Pause all sales on Products opens Orders.",
       cause:
-        "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Cards to resume them.",
+        "The orders read the merchant's selling state, so the banner says all sales are paused and leads back to Products to resume them.",
     },
     ordersOf([
       ["vpn", "delivered"],
       ["esimEurope", "in_progress"],
     ]),
     "/orders",
-    { cards: cardsOf("paused", ON_SALE) },
+    { cards: soldAs(cardsOf("paused", ON_SALE)) },
   ),
   orders(
     {
@@ -2107,7 +2351,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
       cause:
-        "Every order on the test site is a test purchase, one of them unfulfilled, and each sum carries the test mark.",
+        "Every order on the test site is a test purchase, one of them unfulfilled; the band over the page says so, and no sum repeats it.",
     },
     ordersOf(
       [
@@ -2137,7 +2381,7 @@ const RECEIPTS: GalleryState[] = [
     ((listed) =>
       receiptsView(
         seenBy("live"),
-        CATALOGUE,
+        SOLD,
         listed,
         TRANSACTIONS.live,
         paidIntoSplit(
@@ -2163,7 +2407,7 @@ const RECEIPTS: GalleryState[] = [
     },
     receiptsView(
       seenBy("live"),
-      CATALOGUE,
+      SOLD,
       receiptsOf([
         ["vpn", "delivered"],
         ["esimEurope", "in_progress"],
@@ -2185,7 +2429,7 @@ const RECEIPTS: GalleryState[] = [
       when: "A merchant opens Receipts before any product was released to a buyer.",
       cause: "The gateway lists no receipts.",
     },
-    receiptsView(seenBy("live"), CATALOGUE, receiptsOf([]), TRANSACTIONS.live),
+    receiptsView(seenBy("live"), SOLD, receiptsOf([]), TRANSACTIONS.live),
     "live",
   ),
   receipts(
@@ -2197,7 +2441,7 @@ const RECEIPTS: GalleryState[] = [
     },
     receiptsView(
       seenBy("test"),
-      CATALOGUE,
+      SOLD,
       receiptsOf(
         [
           ["vpn", "delivered"],
@@ -2209,7 +2453,40 @@ const RECEIPTS: GalleryState[] = [
     ),
     "test",
   ),
+  at(
+    {
+      id: "dashboard-receipts-cut-short",
+      screen: "Receipts",
+      when: "A merchant with months of sales turns to the third page of their receipts.",
+      cause:
+        "The gateway lists 420 receipts and a page draws fifty, the latest payment first, so the pager says which fifty of how many, names the pages around this one and leads both ways.",
+    },
+    {
+      path: "/receipts?page=3",
+      mode: "live",
+      loaded: {
+        "routes/receipts": receiptsView(
+          seenBy("live"),
+          SOLD,
+          receiptsOf(
+            Array.from(
+              { length: 420 },
+              (_, at) =>
+                [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
+            ),
+          ),
+          TRANSACTIONS.live,
+          {},
+          new URLSearchParams("page=3"),
+        ),
+      },
+    },
+  ),
 ];
+
+/** What the gateway says of a merchant who sells through their shop, or through their code. */
+const THROUGH_THE_SHOP = { through: "woocommerce", offSale: [] } as const;
+const THROUGH_THE_CODE = { through: "api", offSale: [] } as const;
 
 const integrations = (told: Told, view: ReturnType<typeof integrationsView>, mode: SurfaceMode) =>
   at(told, { path: "/integrations", mode, loaded: { "routes/integrations": view } });
@@ -2222,7 +2499,7 @@ const INTEGRATIONS: GalleryState[] = [
       when: "A merchant on the live site opens Integrations without having connected a shop.",
       cause: "The live site offers the SDK and the WooCommerce connector, as the test site does.",
     },
-    integrationsView({ kind: "none" }),
+    integrationsView({ kind: "none" }, THROUGH_THE_CODE),
     "live",
   ),
   integrations(
@@ -2230,9 +2507,10 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations",
       screen: "Integrations",
       when: "A merchant on the test site opens Integrations without having connected a shop.",
-      cause: "No WooCommerce connection and no Connect started for the account.",
+      cause:
+        "No WooCommerce connection, no Connect started and no product imported, so neither way is marked as chosen.",
     },
-    integrationsView({ kind: "none" }),
+    integrationsView({ kind: "none" }, THROUGH_THE_CODE),
     "test",
   ),
   integrations(
@@ -2240,9 +2518,19 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations-shop-connected",
       screen: "Integrations",
       when: "A merchant whose WooCommerce shop is connected opens Integrations.",
-      cause: "The shop's keys arrived and grant read and write.",
+      cause: "The shop's keys arrived and grant read and write, and the merchant sells through it.",
     },
-    integrationsView(CONNECTED),
+    integrationsView(CONNECTED, THROUGH_THE_SHOP),
+    "test",
+  ),
+  integrations(
+    {
+      id: "dashboard-integrations-shop-on-code",
+      screen: "Integrations",
+      when: "A merchant whose shop is connected still sells through their own code.",
+      cause: "The shop is connected, but the merchant's integration is their code.",
+    },
+    integrationsView(CONNECTED, { through: "api", offSale: [idOf("itm", "gift card")] }),
     "test",
   ),
   integrations(
@@ -2252,10 +2540,13 @@ const INTEGRATIONS: GalleryState[] = [
       when: "A merchant approved only read access in their shop.",
       cause: "The shop's keys arrived granting read, which cannot create an order.",
     },
-    integrationsView({
-      kind: "connected",
-      shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date("2026-10-12T09:12:00Z") },
-    }),
+    integrationsView(
+      {
+        kind: "connected",
+        shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date("2026-10-12T09:12:00Z") },
+      },
+      THROUGH_THE_SHOP,
+    ),
     "test",
   ),
   integrations(
@@ -2263,9 +2554,10 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations-shop-waiting",
       screen: "Integrations",
       when: "A merchant comes to Integrations minutes after pressing Connect.",
-      cause: "A Connect started less than fifteen minutes ago and no keys have arrived yet.",
+      cause:
+        "A Connect started less than fifteen minutes ago and no keys have arrived yet, so the merchant still sells through their code.",
     },
-    integrationsView(WAITING_FOR_KEYS),
+    integrationsView(WAITING_FOR_KEYS, THROUGH_THE_CODE),
     "test",
   ),
   integrations(
@@ -2273,9 +2565,10 @@ const INTEGRATIONS: GalleryState[] = [
       id: "dashboard-integrations-shop-no-keys",
       screen: "Integrations",
       when: "A merchant comes back to Integrations long after a Connect they never finished.",
-      cause: "Fifteen minutes passed after a Connect with no keys arriving from the shop.",
+      cause:
+        "Fifteen minutes passed after a Connect with no keys arriving from the shop, so nothing changed and the merchant sells through their code.",
     },
-    integrationsView(NO_KEYS),
+    integrationsView(NO_KEYS, THROUGH_THE_CODE),
     "test",
   ),
   integrations(
@@ -2286,15 +2579,11 @@ const INTEGRATIONS: GalleryState[] = [
       cause:
         "The account's WooCommerce connection could not be read, which the page says rather than guessing.",
     },
-    integrationsView({ kind: "unread" }),
+    integrationsView({ kind: "unread" }, { through: "api", offSale: [] }),
     "test",
   ),
 ];
 
-/**
- * The banner over a WooCommerce screen: the shop's when the merchant sells
- * through it, and all sales paused where the example says so.
- */
 /** What the merchant's layout reads beside a WooCommerce example, where it is not as usual. */
 interface ShopAccount {
   readonly selling?: AccountRead["selling"];
@@ -2306,19 +2595,17 @@ interface ShopAccount {
   readonly approved?: boolean;
 }
 
-const shopBanner = (
-  view: ReturnType<typeof wooShopView> | ReturnType<typeof wooImportView>,
-  { selling = "open", noWallet, mode = "test", approved = true }: ShopAccount,
-) =>
+/**
+ * The banner over a WooCommerce screen: all sales paused, no wallet, or on live
+ * no approval, where the example says so.
+ */
+const shopBanner = ({ selling = "open", noWallet, mode = "test", approved = true }: ShopAccount) =>
   bannerOf(
     seenBy(mode, {
       ...(noWallet ? { payout: { wallet: null } } : {}),
       ...(mode === "live" ? { liveApproval: approved } : {}),
     }),
-    {
-      through: view.screen === "shop" && view.connectSwitches ? "api" : "woocommerce",
-      selling,
-    },
+    { selling },
   );
 
 const shop = (
@@ -2329,7 +2616,7 @@ const shop = (
   at(told, {
     path,
     mode: account.mode ?? "test",
-    account: shopBanner(view, account),
+    account: shopBanner(account),
     loaded: { "routes/woocommerce": view },
   });
 
@@ -2343,7 +2630,7 @@ const shopPress = (
   at(told, {
     path: `/woocommerce/${press}`,
     mode: account.mode ?? "test",
-    account: shopBanner(view, account),
+    account: shopBanner(account),
     pressed: { [`routes/woocommerce-${press}`]: view },
   });
 
@@ -2353,9 +2640,10 @@ const WOOCOMMERCE: GalleryState[] = [
       id: "dashboard-woocommerce",
       screen: "WooCommerce",
       when: "A merchant who sells through their own code opens the WooCommerce screen.",
-      cause: "No shop is connected and no Connect is under way.",
+      cause:
+        "No shop is connected and no Connect is under way; the merchant's code published 12 products.",
     },
-    shopOn(shopRead({ kind: "none" }, { through: "api" })),
+    shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
@@ -2377,7 +2665,7 @@ const WOOCOMMERCE: GalleryState[] = [
         "The operator's approval is asked before the shop is read, so nothing was read or published.",
     },
     "import",
-    shopOn(shopRead(CONNECTED, { testMoney: false }), { problem: NOT_APPROVED_YET }),
+    shopOn(shopRead(CONNECTED, { testMoney: false }), { importing: NOT_APPROVED_YET }),
     { mode: "live", approved: false },
   ),
   shop(
@@ -2385,28 +2673,30 @@ const WOOCOMMERCE: GalleryState[] = [
       id: "dashboard-woocommerce-waiting",
       screen: "WooCommerce",
       when: "A merchant comes back to the screen a few minutes after pressing Connect.",
-      cause: "A Connect started less than fifteen minutes ago and no keys have arrived yet.",
+      cause:
+        "A Connect started less than fifteen minutes ago and no keys have arrived yet, so the 12 products the merchant's code published are still on sale.",
     },
-    shopOn(shopRead(WAITING_FOR_KEYS)),
+    shopOn(shopRead(WAITING_FOR_KEYS, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
       id: "dashboard-woocommerce-no-keys",
       screen: "WooCommerce",
       when: "A merchant comes back long after a Connect they did not finish.",
-      cause: "Fifteen minutes passed with no keys from the shop; why is not known.",
+      cause:
+        "Fifteen minutes passed with no keys from the shop; why is not known, and nothing changed for the merchant's code.",
     },
-    shopOn(shopRead(NO_KEYS)),
+    shopOn(shopRead(NO_KEYS, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
       id: "dashboard-woocommerce-way-back",
       screen: "WooCommerce",
-      when: "A merchant pressed Connect, never approved in the shop, and comes back.",
+      when: "A merchant whose account started on the shop, from cards it had imported, has no shop connected.",
       cause:
-        "The merchant sells through the shop and none is connected, so nothing sells until they switch back.",
+        "The merchant sells through the shop and none is connected, so nothing sells until they connect one or switch back.",
     },
-    shopOn(shopRead({ kind: "none" })),
+    shopOn(shopRead({ kind: "none" }, { codeProducts: 12 })),
   ),
   shop(
     {
@@ -2415,18 +2705,18 @@ const WOOCOMMERCE: GalleryState[] = [
       when: "A merchant approves access in their shop and is sent back here.",
       cause: "The shop's server posted its keys, and the browser came back from the shop.",
     },
-    shopOn(shopRead(CONNECTED), { cameBack: true }),
+    shopOn(shopRead(CONNECTED, { codeProducts: 0, unset: [] }), { cameBack: true }),
     { path: "/woocommerce?from=shop" },
   ),
   shop(
     {
       id: "dashboard-woocommerce-connected-on-code",
       screen: "WooCommerce",
-      when: "A merchant whose shop is connected still sells through their own code.",
+      when: "A merchant's shop sent its keys while an order from their code was still open.",
       cause:
-        "The shop is connected but the merchant's integration is their code, so the shop's cards are off sale.",
+        "The open order refused the switch, so the shop is connected, the merchant still sells through their code, and the shop's cards are off sale.",
     },
-    shopOn(shopRead(CONNECTED, { through: "api" })),
+    shopOn(shopRead(CONNECTED, { through: "api", codeProducts: 12 })),
   ),
   shop(
     {
@@ -2434,9 +2724,9 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant with a connected shop has not set a payout wallet.",
       cause:
-        "The gateway refuses every card until the wallet is set, so Import would publish nothing.",
+        "The gateway refuses every card until the wallet is set, so Import is held and says where to set it.",
     },
-    shopOn(shopRead(CONNECTED)),
+    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] })),
     { noWallet: true },
   ),
   shop(
@@ -2516,11 +2806,14 @@ const WOOCOMMERCE: GalleryState[] = [
       {
         rate: {
           typed: "1800",
-          again:
-            "1800 IDR per US dollar is 90.0% below Coinbase's 18035.292596, read at 2026-10-21" +
-            " 14:52:48 UTC. So Rayon Sarong, priced 240000 IDR, would sell for 133.34 USD" +
-            " instead of 13.31 USD. Type the rate again to save it; if you wrote a dot between" +
-            " thousands, leave it out.",
+          again: rateFarSays({
+            rate: "1800",
+            typed: "1800",
+            currency: "IDR",
+            gap: gapOf("1800", COINBASE_RUPIAH.rate).shown,
+            reference: COINBASE_RUPIAH.rate,
+            example: { kind: "priced", name: "Rayon Sarong", price: "240000" },
+          }),
         },
       },
     ),
@@ -2534,8 +2827,8 @@ const WOOCOMMERCE: GalleryState[] = [
         cause: "The typed address is refused before the browser is sent anywhere.",
       },
       "connect",
-      shopOn(shopRead({ kind: "none" }, { through: "api" }), {
-        problem: whatIsWrongWithTheShopUrl(typed) ?? "",
+      shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 0 }), {
+        addressProblem: whatIsWrongWithTheShopUrl(typed) ?? "",
         typed,
       }),
     ))("shop.example.com/wp-admin"),
@@ -2543,12 +2836,13 @@ const WOOCOMMERCE: GalleryState[] = [
     {
       id: "dashboard-woocommerce-connect-orders-waiting",
       screen: "WooCommerce",
-      when: "A merchant presses Connect while orders their code took are still open.",
-      cause: "The gateway refuses the switch to the shop until those orders end.",
+      when: "A merchant presses Connect while buyers are still answering prices their code gave.",
+      cause:
+        "The gateway would refuse the switch until those purchases are paid or lapse, which takes seconds, so the screen says to try again in a minute and sends nobody to the shop.",
     },
     "connect",
-    shopOn(shopRead({ kind: "none" }, { through: "api" }), {
-      problem: TO_THE_SHOP,
+    shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 12 }), {
+      problem: PRICES_RUNNING,
       typed: SHOP,
     }),
   ),
@@ -2574,6 +2868,16 @@ const WOOCOMMERCE: GalleryState[] = [
           title: "Coffee beans, one kilogram",
           problems: [SITE_IN_SETTINGS],
         },
+        {
+          id: imported(
+            "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+          ).id,
+          title: "Ubud Cooking Class Recipe Book: 40 Balinese Dishes from Market to Table (PDF)",
+          published: idOf("itm", "recipe book"),
+        },
+        refusedByTheDoor(
+          "Handwoven Endek Table Runner, Klungkung Weave, Ceremonial Red and Gold, 35 × 200 cm",
+        ),
       ],
       IMPORTED.skipped,
     ),
@@ -2592,7 +2896,7 @@ const WOOCOMMERCE: GalleryState[] = [
         {
           id: imported("Coffee beans, one kilogram").id,
           title: "Coffee beans, one kilogram",
-          failed: LATE.why,
+          failed: true,
         },
         {
           id: imported("Coffee & Brunch Gift Card").id,
@@ -2609,10 +2913,12 @@ const WOOCOMMERCE: GalleryState[] = [
       screen: "WooCommerce",
       when: "A merchant presses Import before setting a payout wallet.",
       cause:
-        "The gateway would refuse every card, so the shop was not read and nothing was imported.",
+        "The wallet was unset when the press came, so the shop was not read; the page says nothing was imported, holds Import and says where to set it.",
     },
     "import",
-    shopOn(shopRead(CONNECTED), { refused: ["no_payout_wallet"] }),
+    shopOn(shopRead(CONNECTED, { unset: ["no_payout_wallet"] }), {
+      importing: "Nothing was imported: set your payout wallet in Settings first.",
+    }),
     { noWallet: true },
   ),
   shopPress(
@@ -2623,7 +2929,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The gateway refuses the switch until those orders end.",
     },
     "switch",
-    shopOn(shopRead(CONNECTED, { through: "api" }), {
+    shopOn(shopRead(CONNECTED, { through: "api", codeProducts: 12 }), {
       switching: TO_THE_SHOP,
     }),
   ),
@@ -2635,7 +2941,7 @@ const WOOCOMMERCE: GalleryState[] = [
       cause: "The gateway refuses the switch back to the merchant's code until those orders end.",
     },
     "disconnect",
-    shopOn(shopRead(CONNECTED), {
+    shopOn(shopRead(CONNECTED, { codeProducts: 12 }), {
       leaving: TO_THE_CODE,
     }),
   ),
@@ -2648,13 +2954,15 @@ const WOOCOMMERCE: GalleryState[] = [
         "The gateway refuses the switch back; the screen names the first five orders and counts the rest.",
     },
     "disconnect",
-    shopOn(shopRead(CONNECTED), {
-      leaving: refusalIn(
-        switchRefused(
-          "api",
-          Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
-        ),
-      ),
+    shopOn(shopRead(CONNECTED, { codeProducts: 12 }), {
+      leaving: {
+        held: {
+          to: "api",
+          orders: Array.from({ length: 7 }, (_, at) => idOf("ord", `waiting ${at}`)),
+          quick: false,
+          parcels: true,
+        },
+      },
     }),
   ),
   at(
@@ -2673,23 +2981,38 @@ const RECOVERY_SALE = {
   product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
   amount: "25.00 USD",
-  test: true,
 };
+
+/** Sales saved with no shop order yet, as the recovery page reads them. */
+const DOWNLOAD_SALE = { facts: {}, placed: null } as const satisfies Omit<SavedSale, "phase">;
+const PARCEL_SALE = { facts: { kind: "parcel" }, placed: null } as const satisfies Omit<
+  SavedSale,
+  "phase"
+>;
 
 const RECOVERY_FRAME = {
   path: `/integrations/woocommerce/recover/${RECOVERY_SALE.orderId}`,
   mode: "test" as const,
-  account: bannerOf(seenBy("test"), { through: "woocommerce", selling: "open" }),
+  account: bannerOf(seenBy("test")),
 };
 
 /** A recovery page as the server draws it: drawn on opening, or answering a press. */
 const recovery = (
   told: Told,
-  view: Omit<WooRecoveryView, keyof typeof RECOVERY_SALE | "typedRefusal"> &
-    Partial<Pick<WooRecoveryView, "typedRefusal">>,
+  view: Omit<
+    WooRecoveryView,
+    keyof typeof RECOVERY_SALE | "typedRefusal" | "unknown" | "unavailable"
+  > &
+    Partial<Pick<WooRecoveryView, "typedRefusal" | "unknown" | "unavailable">>,
   answering = false,
 ): GalleryState => {
-  const drawn = { ...RECOVERY_SALE, typedRefusal: null, ...view } satisfies WooRecoveryView;
+  const drawn = {
+    ...RECOVERY_SALE,
+    typedRefusal: null,
+    unknown: false,
+    unavailable: null,
+    ...view,
+  } satisfies WooRecoveryView;
   return at(told, {
     ...RECOVERY_FRAME,
     ...(answering
@@ -2746,13 +3069,49 @@ const WOO_RECOVERY: GalleryState[] = [
       screen: "Recover WooCommerce delivery",
       when: "A press of Link and deliver failed inside Agentify partway.",
       cause:
-        "Whether a shop order or a delivery was recorded is not known, so the page says so and asks for a reload before another press.",
+        "Whether a shop order or a delivery was recorded is not known, so the page says so and offers a reload instead of another press.",
+    },
+    { mode: "link", wooOrderId: "13", message: RECOVERY_UNKNOWN, unknown: true },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-create",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a download their shop never received, after connecting the same shop again.",
+      cause:
+        "The connector refused the sale before sending anything to the shop, so the page offers one press that creates the shop order at the price paid and delivers its download.",
+    },
+    { mode: "create", wooOrderId: "", message: null },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-create-refused",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant presses Create shop order, and the shop's product check says no before anything is sent.",
+      cause:
+        "Nothing reached the shop, so the shop's reason is said at the top and the same press stays offered for once it is fixed.",
+    },
+    {
+      mode: "create",
+      wooOrderId: "",
+      message:
+        "The product no longer matches the accepted WooCommerce sale. The shop has no product 11 any more.",
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-create-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant pressed Create shop order, and the shop's answer did not arrive.",
+      cause:
+        "Whether the shop holds the order is not known, so the create is never offered again; the page asks for the shop order to link instead.",
     },
     {
       mode: "link",
-      wooOrderId: "13",
-      message:
-        "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
+      wooOrderId: "",
+      message: CREATE_UNKNOWN,
     },
     true,
   ),
@@ -2760,15 +3119,101 @@ const WOO_RECOVERY: GalleryState[] = [
     {
       id: "dashboard-woo-recovery-unavailable",
       screen: "Recover WooCommerce delivery",
-      when: "A merchant opens recovery for a download whose shop was never asked to create the order.",
+      when: "A merchant opens recovery for a download their shop never received, before connecting the shop again.",
       cause:
-        "This page cannot create a shop order, so it offers no press and says what the merchant can do instead.",
+        "A create waits for the same shop to be connected again, so the page offers no press and leads to the WooCommerce page.",
     },
     {
       mode: "unavailable",
       wooOrderId: "",
-      message:
-        "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders.",
+      message: null,
+      unavailable: unavailableOf({ ...DOWNLOAD_SALE, phase: "precreate_refused" }, "unfulfilled"),
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-closed-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant reloads recovery for a download whose create got no clear answer, after closing its fulfillment.",
+      cause:
+        "The saved sale still says nobody knows whether the shop holds the order, so the page asks the merchant to look in the shop for the one whose Transaction ID is this order ID, and offers no press.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: unavailableOf(
+        { ...DOWNLOAD_SALE, phase: "create_unknown" },
+        "fulfillment_closed",
+      ),
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-closed-unknown-press",
+      screen: "Recover WooCommerce delivery",
+      when: "A press of Create shop order broke inside Agentify, and fulfillment was closed meanwhile.",
+      cause:
+        "What the press did is not known, so the page says only that and offers a reload, which then says what the saved sale knows of the shop order.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: RECOVERY_UNKNOWN,
+      unknown: true,
+      unavailable: unavailableOf(
+        { ...DOWNLOAD_SALE, phase: "create_unknown" },
+        "fulfillment_closed",
+      ),
+    },
+    true,
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-parcel-unknown",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a parcel whose shop order got no clear answer.",
+      cause:
+        "Nobody knows whether the shop holds the order, and a parcel's order is never linked here, so the page tells the merchant not to ship it and leads to closing fulfillment.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: unavailableOf({ ...PARCEL_SALE, phase: "create_unknown" }, "unfulfilled"),
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-parcel-refused",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant opens recovery for a parcel their shop never received.",
+      cause:
+        "Nothing of where a parcel goes is kept, so its shop order cannot be made later; the page says so and leads to closing fulfillment.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: unavailableOf({ ...PARCEL_SALE, phase: "precreate_refused" }, "unfulfilled"),
+    },
+  ),
+  recovery(
+    {
+      id: "dashboard-woo-recovery-parcel-closed",
+      screen: "Recover WooCommerce delivery",
+      when: "A merchant comes back to recovery for a parcel their shop never received, after closing its fulfillment.",
+      cause:
+        "The sale no longer waits for delivery, so the page says the shop never got the order and offers nothing more.",
+    },
+    {
+      mode: "unavailable",
+      wooOrderId: "",
+      message: null,
+      unavailable: unavailableOf(
+        { ...PARCEL_SALE, phase: "precreate_refused" },
+        "fulfillment_closed",
+      ),
     },
   ),
   recovery(
@@ -2790,6 +3235,39 @@ const WOO_RECOVERY: GalleryState[] = [
 const keys = (told: Told, list: readonly MerchantKey[], options = {}, path = "/keys") =>
   at(told, { path, mode: "live", loaded: { "routes/keys": keysView(list, options) } });
 
+/** Six keys of one merchant, two of them revoked, one older than the record of calls. */
+const MANY_KEYS = [
+  WORKER,
+  keyOf("Price checks for the virtual numbers", "2026-09-10T11:30:00Z", "2026-10-12T16:39:58Z"),
+  keyOf("Nightly catalogue sync", "2026-09-11T02:00:00Z", "2026-10-12T02:00:07Z"),
+  keyOf("Staging", "2026-09-15T13:45:00Z", null),
+  OLD_WORKER,
+  keyOf(
+    "A laptop that was lost",
+    "2026-08-21T10:00:00Z",
+    "2026-08-30T18:22:10Z",
+    "2026-08-31T07:03:00Z",
+  ),
+];
+
+/** Clipboard access as a browser grants it to a page on https. */
+const clipboardGranted = (page: Document) => {
+  Object.defineProperty(page.defaultView?.navigator ?? navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: async () => undefined },
+  });
+};
+
+/** Presses the button that says `words`, once `before` has set the browser up for it. */
+const pressIn = (page: Document, words: string, before: (page: Document) => void = () => {}) => {
+  before(page);
+  const button = [...page.querySelectorAll("button")].find(
+    (one) => one.textContent?.trim() === words,
+  );
+  if (button === undefined) throw new Error(`the page has no button that says ${words}`);
+  button.click();
+};
+
 const KEYS: GalleryState[] = [
   keys(
     {
@@ -2805,7 +3283,8 @@ const KEYS: GalleryState[] = [
       id: "dashboard-keys-one-never-used",
       screen: "API keys",
       when: "A merchant has created a key their code has not used yet.",
-      cause: "One key, with no call recorded against it.",
+      cause:
+        "One key made since every call is recorded, with none recorded against it, so it was never used.",
     },
     [keyOf("The order worker on our server", "2026-10-12T15:02:00Z", null)],
   ),
@@ -2823,20 +3302,42 @@ const KEYS: GalleryState[] = [
       id: "dashboard-keys-many",
       screen: "API keys",
       when: "A merchant with several services, each with its own key, opens API keys.",
-      cause: "The gateway lists six keys, two of them revoked.",
+      cause:
+        "The gateway lists six keys, two of them revoked, and one made before every call was recorded, which no call is recorded against.",
+    },
+    MANY_KEYS,
+  ),
+  keys(
+    {
+      id: "dashboard-keys-revoke-asked",
+      screen: "API keys",
+      when: "A merchant presses Revoke beside a key.",
+      cause:
+        "The address asks to revoke that key, so the row says what revoking does and offers the press that does it, or a way to keep the key.",
+    },
+    MANY_KEYS,
+    { confirming: idOf("key", "Nightly catalogue sync") },
+    `/keys?revoke=${idOf("key", "Nightly catalogue sync")}`,
+  ),
+  keys(
+    {
+      id: "dashboard-keys-long-names",
+      screen: "API keys",
+      when: "A merchant who names keys after where they run opens API keys.",
+      cause: "Key names run to the hundred characters a name may have, and wrap in their column.",
     },
     [
-      WORKER,
-      keyOf("Price checks for the virtual numbers", "2026-09-10T11:30:00Z", "2026-10-12T16:39:58Z"),
-      keyOf("Nightly catalogue sync", "2026-09-11T02:00:00Z", "2026-10-12T02:00:07Z"),
-      keyOf("Staging", "2026-09-15T13:45:00Z", null),
-      OLD_WORKER,
       keyOf(
-        "A laptop that was lost",
-        "2026-08-21T10:00:00Z",
-        "2026-08-30T18:22:10Z",
-        "2026-08-31T07:03:00Z",
+        "WooCommerce order sync on the production VPS in Frankfurt (eu-central-1), replaced 2026-10",
+        "2026-10-01T09:12:00Z",
+        "2026-10-12T16:40:02Z",
       ),
+      keyOf(
+        "Price checks for the virtual numbers, staging server behind the office VPN",
+        "2026-10-03T14:00:00Z",
+        null,
+      ),
+      WORKER,
     ],
   ),
   keys(
@@ -2854,7 +3355,7 @@ const KEYS: GalleryState[] = [
     {
       id: "dashboard-keys-name-refused",
       screen: "API keys",
-      when: "A merchant presses Issue a key with the name box empty.",
+      when: "A merchant presses Create key with the name box empty.",
       cause:
         "A key with no name is refused, because it could not be told from the others when revoking.",
     },
@@ -2871,7 +3372,7 @@ const KEYS: GalleryState[] = [
     {
       id: "dashboard-keys-issued",
       screen: "The new key",
-      when: "A merchant presses Issue a key.",
+      when: "A merchant presses Create key.",
       cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
     },
     {
@@ -2881,6 +3382,27 @@ const KEYS: GalleryState[] = [
       pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
     },
   ),
+  {
+    ...at(
+      {
+        id: "dashboard-keys-issued-copied",
+        screen: "The new key",
+        when: "A merchant presses Copy key on the new key's page.",
+        cause:
+          "The page's script puts the key on the clipboard, which the browser allows, and says so beside the button.",
+      },
+      {
+        path: "/keys",
+        mode: "live",
+        loaded: { "routes/keys": null },
+        pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+      },
+    ),
+    scene: {
+      steps: [{ shows: "Copy key", does: (page) => pressIn(page, "Copy key", clipboardGranted) }],
+      shows: "Copied.",
+    },
+  },
 ];
 
 const settings = (
@@ -2913,6 +3435,45 @@ const SETTINGS: GalleryState[] = [
     },
     settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
   ),
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-scripted",
+        screen: "Settings",
+        when: "A merchant who has set everything opens Settings in a browser that runs the page's script.",
+        cause:
+          "The script draws Coinbase Wallet's two buttons, one that fills the wallet box and one that sends the payout, which a page without script leaves out.",
+      },
+      settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
+    ),
+    scene: { shows: "Pay out with Coinbase Wallet" },
+  },
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-another-wallet",
+        screen: "Settings",
+        when: "A merchant opens Send it from another wallet and presses Copy the data.",
+        cause:
+          "The raw transaction is drawn whole under the main way to send it, and the page's script puts its data on the clipboard, which the browser allows.",
+      },
+      settingsView("live", WHO, { ...settingsOf(), liveApproval: true }),
+    ),
+    scene: {
+      steps: [
+        {
+          shows: "Send it from another wallet",
+          does: (page) => {
+            [...page.querySelectorAll("main details")]
+              .find((one) => one.textContent?.includes("Send it from another wallet"))
+              ?.setAttribute("open", "");
+            pressIn(page, "Copy the data", clipboardGranted);
+          },
+        },
+      ],
+      shows: "Copied.",
+    },
+  },
   settings(
     {
       id: "dashboard-settings-new-merchant",
@@ -2934,6 +3495,31 @@ const SETTINGS: GalleryState[] = [
       account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
     },
   ),
+  {
+    ...settings(
+      {
+        id: "dashboard-settings-new-merchant-scripted",
+        screen: "Settings",
+        when: "A new merchant with no wallet opens Settings in a browser that runs the page's script.",
+        cause:
+          "The script draws the button that creates or connects a Coinbase Wallet and fills the box with its address, the way in for a merchant who has no wallet.",
+      },
+      settingsView("test", WHO, {
+        sellerName: null,
+        sellerSite: null,
+        payoutWallet: PayoutWalletSchema.parse({ payout_wallet: null, pending: null }),
+        payoutSplits: splitsOf("test", null),
+        addressPage: ADDRESSES.test,
+        walletChain: WALLET_CHAINS.test,
+        analyticsOptedOut: false,
+      }),
+      {
+        mode: "test",
+        account: bannerOf(seenBy("test", { sellerName: null, payout: { wallet: null } })),
+      },
+    ),
+    scene: { shows: "Create or connect a Coinbase Wallet" },
+  },
   settings(
     {
       id: "dashboard-settings-not-approved",
@@ -2959,6 +3545,11 @@ const SETTINGS: GalleryState[] = [
       }),
       liveApproval: true,
     }),
+    {
+      account: bannerOf(seenBy("live"), {
+        walletChange: { wallet: ASKED_FOR, takesEffectAt: "2026-10-14T16:05:00Z" },
+      }),
+    },
   ),
   settings(
     {
@@ -3182,7 +3773,7 @@ const SETTINGS: GalleryState[] = [
       "live",
       WHO,
       { ...settingsOf(), liveApproval: true },
-      { kind: "wallet-notice", notice: cancelledByTyping(PAID_INTO, ASKED_FOR) },
+      { kind: "wallet-notice", notice: cancelledByTyping(PAID_INTO) },
     ),
     { path: "/settings/payout-wallet" },
   ),
@@ -3241,22 +3832,22 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-page-not-answered",
-      screen: "Product cards",
-      when: "A merchant opens Cards while Agentify is not answering.",
+      screen: "Products",
+      when: "A merchant opens Products while Agentify is not answering.",
       cause:
         "The gateway did not answer the page's read in time. A read changes nothing, so the page says so in the frame and offers itself again; Orders, Receipts and API keys say the same of theirs.",
     },
     {
-      path: "/cards",
+      path: "/products",
       mode: "live",
       account: bannerOf(seenBy("live"), { selling: CATALOGUE.selling }),
-      loaded: { "routes/cards": null },
+      loaded: { "routes/products": null },
       failed: {
-        "routes/cards": thrown(LATE_PROBLEM.status, {
+        "routes/products": thrown(LATE_PROBLEM.status, {
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,
-          again: "/cards",
+          again: "/products",
         }),
       },
     },
@@ -3286,19 +3877,20 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-press-not-answered",
-      screen: "Something went wrong",
-      when: "A merchant presses Pause on a card while Agentify is not answering.",
-      cause: "The gateway did not answer the press in time, so whether it was done is not known.",
+      screen: "A press that failed",
+      when: "A merchant presses Pause on a product while Agentify is not answering.",
+      cause:
+        "The gateway did not answer the press in time, so whether it was done is not known, and the way on is the screen it was pressed on, to look there.",
     },
     {
-      path: `/cards?pause=${idOf("itm", "vpn")}`,
+      path: `/products?pause=${idOf("itm", "vpn")}`,
       mode: "live",
       failed: {
         "routes/gate": thrown(LATE_PROBLEM.status, {
           kind: "problem",
           chrome: chromeIn("live"),
           said: LATE_PROBLEM.said,
-          reopen: `/cards?pause=${idOf("itm", "vpn")}`,
+          reopen: `/products?pause=${idOf("itm", "vpn")}`,
         }),
       },
     },
@@ -3306,7 +3898,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-not-drawn-for-you",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "A merchant presses a button on a page drawn before they signed in as somebody else in another tab.",
       cause:
         "The form was drawn for another address than the one signed in now, so it was refused.",
@@ -3319,7 +3911,7 @@ const PROBLEMS: GalleryState[] = [
           kind: "not-drawn-for-you",
           chrome: chromeIn("live"),
           who: "sales@example.com",
-          start: "/cards",
+          start: "/products",
         }),
       },
     },
@@ -3327,13 +3919,13 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-form-from-elsewhere",
-      screen: "Something went wrong",
+      screen: "A press that failed",
       when: "A form is sent to the dashboard from another site.",
       cause:
         "The post's origin is not the dashboard's host, so it is refused before any page reads it.",
     },
     {
-      path: "/cards?selling=pause",
+      path: "/products?selling=pause",
       mode: "live",
       failed: {
         root: thrown(403, { kind: "problem", chrome: chromeIn("live"), said: NOT_FROM_HERE }),

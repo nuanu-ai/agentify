@@ -164,6 +164,22 @@ async function journalWith(
   if (press !== undefined) await journalAlong(tx, settledPress(press, changed));
 }
 
+/** The open orders of this merchant that still wait on the integration they sell through, oldest first. */
+async function holdingASwitch(db: Queries, merchantId: string): Promise<string[]> {
+  const waiting = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(
+      and(
+        eq(orders.merchantId, merchantId),
+        eq(orders.open, true),
+        not(inArray(orders.state, [...NO_PENDING_HANDLER])),
+      ),
+    )
+    .orderBy(orders.createdAt);
+  return waiting.map((row) => row.id);
+}
+
 /**
  * The drizzle handle together with its pool. The pool is needed because a
  * session-level advisory lock must be released on the connection that took it.
@@ -874,19 +890,9 @@ export class PostgresStore implements Store {
         return { switched: true, sellingPaused: false };
       }
 
-      const waiting = await tx
-        .select({ id: orders.id })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.merchantId, merchantId),
-            eq(orders.open, true),
-            not(inArray(orders.state, [...NO_PENDING_HANDLER])),
-          ),
-        )
-        .orderBy(orders.createdAt);
+      const waiting = await holdingASwitch(tx, merchantId);
       if (waiting.length > 0) {
-        return { switched: false, waiting: waiting.map((row) => row.id) };
+        return { switched: false, waiting };
       }
 
       const comingBack =
@@ -915,6 +921,20 @@ export class PostgresStore implements Store {
       if (sellingPaused) await recordWith(tx, analytics, undefined, new Date());
       return { switched: true, sellingPaused };
     });
+  }
+
+  async switchHeldBy(merchantId: string, to: Integration): Promise<readonly string[]> {
+    const [merchant] = await this.#db
+      .select({ integration: merchants.integration })
+      .from(merchants)
+      .where(eq(merchants.id, merchantId))
+      .limit(1);
+    if (merchant === undefined) {
+      throw new Error(`there is no merchant ${merchantId} to switch to ${to}`);
+    }
+    return integrationOf(merchant.integration) === to
+      ? []
+      : await holdingASwitch(this.#db, merchantId);
   }
 
   // --- orders ---------------------------------------------------------------

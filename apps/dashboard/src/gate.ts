@@ -8,8 +8,8 @@ import {
   adminDestinationIn,
   type DashboardDestination,
   type DashboardIdentity,
-  dashboardDestinationIn,
   type Person,
+  sectionNamed,
 } from "./dashboard-entry.js";
 
 /**
@@ -17,31 +17,31 @@ import {
  * a report: it shows the latest, and sends somebody with none back to the
  * dashboard's screen with the one control that makes a merchant. Never that
  * screen for a person with reports, and never the merchant itself, which only
- * the explicit press makes.
+ * a request to the dashboard makes.
  */
 const LATEST_REPORT = "/report/latest";
 
 /** A merchant's owner starts on the dashboard, anybody else on the scanner. */
 export const startOf = (base: string, person: Person): string =>
-  person.merchant !== null ? `${base}/cards` : LATEST_REPORT;
-
-const dashboardPathFor = (base: string, destination: DashboardDestination): string =>
-  `${base}/${destination === "default" ? "cards" : destination}`;
+  person.merchant !== null ? `${base}/products` : LATEST_REPORT;
 
 /**
  * Where a sign-in that opened leads `person`: the destination's page, except
  * that somebody with no merchant goes to the control that makes one instead of
  * a section about a merchant's selling. A page of the operator's workspace
- * needs no merchant, and its own check decides who it answers.
+ * needs no merchant, and its own check decides who it answers. A sign-in to
+ * read reports goes where the dashboard's own address would.
  */
 export const pathAfterSignIn = (
   base: string,
   person: Person,
   destination: DashboardDestination,
 ): string =>
-  person.merchant === null && adminDestinationIn(destination) === null
-    ? `${base}/merchant`
-    : dashboardPathFor(base, destination);
+  destination === "reports"
+    ? startOf(base, person)
+    : person.merchant === null && adminDestinationIn(destination) === null
+      ? `${base}/merchant`
+      : `${base}/${destination === "default" ? "products" : destination}`;
 
 /**
  * Every cookie the sign-in component sets, not only the session, or the others
@@ -105,7 +105,9 @@ export function gateFor(base: string, identity: DashboardIdentity, cookieSecure:
       // of the operator's workspace whole. An address outside them leads to
       // the start.
       const asked = path.slice(`${base}/`.length);
-      const going = adminDestinationIn(asked) ?? dashboardDestinationIn(asked.split("/", 1)[0]);
+      const page = asked.split("/", 1)[0];
+      const going =
+        adminDestinationIn(asked) ?? adminDestinationIn(page) ?? sectionNamed(page) ?? "default";
       // A form sent without a cookie is told it was not kept.
       const query = [
         carriesIdentityCookie(cookie) ? `reason=${reason}` : reading ? "" : "reason=unsaved",

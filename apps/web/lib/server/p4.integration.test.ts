@@ -1333,7 +1333,9 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await unsubscribedAt()).not.toBeNull();
   });
 
-  it("tells a signed-in person with no reports that there is nothing to request, not to sign in", async () => {
+  it("tells a signed-in person with no reports that there is nothing to delete, not to sign in", async () => {
+    // A copy is asked of the address, which may hold a seller dashboard, so
+    // only a deletion has nothing to act on without reports.
     const answer = await requestDataAction(
       new Request("http://localhost:3000/api/v1/account/data-request", {
         method: "POST",
@@ -1342,7 +1344,7 @@ describe("P4 dashboard-owned scanner identity", () => {
           origin: "http://localhost:3000",
           "content-type": "application/json",
         },
-        body: JSON.stringify({ type: "access", signed_in_as: "no-reports-data@example.com" }),
+        body: JSON.stringify({ type: "deletion", signed_in_as: "no-reports-data@example.com" }),
       }),
     );
     expect(answer.status).toBe(404);

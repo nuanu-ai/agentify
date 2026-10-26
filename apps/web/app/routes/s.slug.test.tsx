@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PublicSharePage } from "../../components/public-share-page";
 import type { PublicAppConfig } from "../../lib/app-config";
+import { barIn } from "../../testing/bar";
 import { visitTo } from "../../testing/loader-args";
 import { onSite } from "../../testing/on-site";
 
@@ -88,6 +89,17 @@ describe("a public result", () => {
     expect(page).toContain("46");
     expect(page).toContain("Scanned Jul 13, 2026");
     expect(page).toContain('name="url"');
+  });
+
+  it("draws the site's one bar, the scanner marked as where the page is", async () => {
+    world.shares.set(SLUG, published(false));
+
+    const { preview } = await load(SLUG);
+    const bar = barIn(renderToStaticMarkup(onSite(<PublicSharePage preview={preview} />)));
+
+    expect(bar.count).toBe(1);
+    expect(bar.whole).toBe(true);
+    expect(bar.marked).toStrictEqual(["Scanner"]);
   });
 
   it("hands the browser nothing of the stored share beyond its public snapshot", async () => {

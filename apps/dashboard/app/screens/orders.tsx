@@ -8,12 +8,12 @@ import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
   DayHeading,
+  DisclosedRow,
   Fact,
   Facts,
   Group,
   List,
   ListEmpty,
-  Row,
   RowMore,
 } from "../components/list.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
@@ -26,8 +26,10 @@ import { Word } from "../components/word.js";
 import styles from "./orders.module.css";
 
 /**
- * An unmarked sum for a test purchase is proof of a payment that never
- * happened, so every test sum carries the mark.
+ * A test sum on a page that does not say otherwise which of its sums are
+ * tests would be proof of a payment that never happened, so there it carries
+ * the mark; where the channel's band says every payment is a test, `test` is
+ * false for all of them.
  */
 export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
   test ? (
@@ -37,17 +39,19 @@ export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
     </>
   ) : null;
 
+type Order = OrdersView["listing"]["rows"][number];
+
 /**
  * An order that needs saying in full, in a row of its own: its state, its
  * product and its sum, then what happened and what is the merchant's to do,
- * then its ID, its facts, and the way to its details or its closure; where
- * `closure` is given, the closure opens in the row itself in place of that
- * way.
+ * then the one way on, which leads to its details or, where `closure` is
+ * given, opens the closure in the row itself.
  */
 const Told = ({
   order,
+  marked,
   closure,
-}: Readonly<{ order: ToldOrders["rows"][number]; closure?: ReactNode }>) => (
+}: Readonly<{ order: ToldOrders["rows"][number]; marked: boolean; closure?: ReactNode }>) => (
   <li className={styles.told}>
     <div className={styles.state}>
       <Word word={order.state} />
@@ -55,7 +59,7 @@ const Told = ({
     <div className={styles.product}>{order.product}</div>
     <div className={styles.amount}>
       {order.amount}
-      <TestMark test={order.test} />
+      <TestMark test={marked && order.test} />
     </div>
     <p className={styles.why}>
       {order.why}
@@ -67,38 +71,29 @@ const Told = ({
       ) : null}
       {order.rest === null ? null : <Rest rest={order.rest} />}
     </p>
-    <div className={styles.meta}>
-      <Ident value={order.id} what="order ID" />
-      {closure === undefined ? (
+    <div className={styles.way}>
+      {closure ?? (
         <Link
+          className="button button-secondary button-compact"
           to={{ pathname: "/orders", search: order.opens.search, hash: `#details-${order.id}` }}
         >
           {order.opens.words}
         </Link>
-      ) : null}
-      <OrderFactsSaid facts={order.facts} />
+      )}
     </div>
-    {closure}
   </li>
 );
-
-const OrderFactsSaid = ({
-  facts,
-}: Readonly<{ facts: OrdersView["listing"]["rows"][number]["facts"] }>) =>
-  facts.map((fact) => (
-    <span key={fact.label}>
-      {fact.label} <Moment at={fact.at} />
-    </span>
-  ));
 
 /** Orders told in full, a row of their own each, each with the closure `closing` draws for it. */
 const ToldRows = ({
   told,
   label,
+  marked,
   closing,
 }: Readonly<{
   told: ToldOrders;
   label: string;
+  marked: boolean;
   closing?: (order: ToldOrders["rows"][number]) => ReactNode;
 }>) => (
   <List label={label} columns="1fr">
@@ -106,6 +101,7 @@ const ToldRows = ({
       <Told
         key={order.id}
         order={order}
+        marked={marked}
         {...(closing === undefined ? {} : { closure: closing(order) })}
       />
     ))}
@@ -119,10 +115,11 @@ const ToldRows = ({
 const ToldList = ({
   told,
   label,
+  marked,
   all,
-}: Readonly<{ told: ToldOrders; label: string; all?: string }>) => (
+}: Readonly<{ told: ToldOrders; label: string; marked: boolean; all?: string }>) => (
   <>
-    <ToldRows told={told} label={label} />
+    <ToldRows told={told} label={label} marked={marked} />
     {told.rows.length === told.of ? null : (
       <p className="cut">
         <span>{`Showing the newest ${told.rows.length} of ${told.of}`}</span>
@@ -137,7 +134,7 @@ const pressFor = (again: boolean) => (again ? "Close again" : "Close fulfillment
 /**
  * The same form closes an order the first time and, where its payment
  * completed after that closure, again: the second records its own time and
- * explanation.
+ * note.
  */
 const CloseFulfillment = ({
   id,
@@ -145,24 +142,20 @@ const CloseFulfillment = ({
   typed,
   refusal,
   place,
-  headed = true,
 }: Readonly<{
   id: string;
   again: boolean;
   typed: string;
   refusal: string | null;
   place: OrdersView["listing"]["place"];
-  /** False where the control that opened the form already names the press. */
-  headed?: boolean;
 }>) => {
   const press = pressFor(again);
   return (
     <section className={styles.close} aria-label={press}>
-      {headed ? <h3>{press}</h3> : null}
       <p className={styles.help}>
         {again
-          ? "The payment arrived after you closed this order. Closing again records a new time and explanation; it moves no money."
-          : "Stops delivery through Agentify for this order. It cannot be undone, and it cancels nothing in your shop and moves no money."}
+          ? "The buyer paid after you closed this order. Close it again with a note saying what you did; this moves no money."
+          : "Delivery through Agentify stops for this order, and this cannot be undone. It moves no money and changes nothing in your shop."}
       </p>
       <PostForm action="/orders" className="issue">
         {(pending) => (
@@ -171,13 +164,13 @@ const CloseFulfillment = ({
             <KeptPlace place={place} />
             <Field
               name="message"
-              label="Explanation to the buyer (optional)"
+              label="Note to the buyer (optional)"
               rows={3}
               maxLength={2000}
               autoComplete="off"
               defaultValue={typed}
               {...(refusal === null ? {} : { error: refusal })}
-              hint="Shown to the buyer as your words; Agentify does not check them."
+              hint="The buyer sees it as you wrote it. Agentify does not check it."
             />
             <Button variant="secondary" pending={pending}>
               {press}
@@ -189,18 +182,57 @@ const CloseFulfillment = ({
   );
 };
 
+/** What an order's line leaves out: its ID, its payment and the merchant's share of it, and what was closed. */
+const OrderFacts = ({ row, marked }: Readonly<{ row: Order; marked: boolean }>) => (
+  <Facts>
+    <Fact label="Order ID">
+      <Ident value={row.id} what="order ID" whole />
+    </Fact>
+    <Fact label="Payment">
+      {row.payment}
+      <TestMark test={marked && row.test} />
+    </Fact>
+    {row.transfer.kind === "none" ? null : (
+      <Fact label="Transfer">
+        <Transfer transfer={row.transfer} />
+      </Fact>
+    )}
+    {row.facts.map((fact) => (
+      <Fact key={fact.label} label={fact.label}>
+        <Moment at={fact.at} />
+      </Fact>
+    ))}
+    {row.share === null ? null : <Fact label="Your share">{row.share}</Fact>}
+    {row.inTheShop === null ? null : <Fact label="In your shop">{row.inTheShop}</Fact>}
+    {row.shopTotal === null ? null : (
+      <Fact label="Shop's order total">{row.shopTotal}, within a cent of what the buyer paid</Fact>
+    )}
+    {row.closure?.message === undefined ? null : (
+      <Fact label="Your note to the buyer">
+        <span className="words">{row.closure.message}</span>
+      </Fact>
+    )}
+  </Facts>
+);
+
 /**
- * What the row's columns do not show, opened from the row: drawn on a wide
- * row too only where there is something to read or do there, a closure, a
- * press, a payment still unknown or the transfer that paid it; elsewhere, as
- * on every list, on a narrow row alone.
+ * Where nobody knows yet whether the buyer paid: what the merchant can do
+ * while Agentify looks, and that a closure cancels no payment.
  */
+const UNKNOWN_OPEN =
+  "Nobody knows yet whether the buyer paid, and Agentify keeps checking. You can wait or close fulfillment now; closing does not cancel the payment, and if it arrives the order comes back to Needs you.";
+const UNKNOWN_CLOSED =
+  "Nobody knows yet whether the buyer paid, and Agentify keeps checking. Your closure does not cancel the payment: if it arrives, the order comes back to Needs you.";
+
+/** An order's opened part: its facts, then what became of a press on it and the closure. */
 const OrderDetails = ({
   row,
+  marked,
   pressed,
   place,
 }: Readonly<{
-  row: OrdersView["listing"]["rows"][number];
+  row: Order;
+  marked: boolean;
   pressed: ClosurePressed | null;
   place: OrdersView["listing"]["place"];
 }>) => {
@@ -208,103 +240,51 @@ const OrderDetails = ({
   // A refusal is said under the box it is about; with no form left, here.
   const told = said === null ? null : (said.note ?? (row.closing === null ? said.refusal : null));
   return (
-    <RowMore
-      summary="Order details"
-      wide={
-        row.closing !== null ||
-        row.closure !== null ||
-        row.paymentUnresolved ||
-        row.transfer.kind !== "none" ||
-        said !== null
-      }
-      id={`details-${row.id}`}
-      open={row.opened || said !== null || undefined}
-      of={row.product}
-    >
-      <div className={styles.details}>
-        <Facts>
-          <Fact label="Order ID">
-            <Ident value={row.id} what="order ID" whole />
-          </Fact>
-          <Fact label="Payment">
-            {row.payment}
-            <TestMark test={row.test} />
-          </Fact>
-          {row.transfer.kind === "none" ? null : (
-            <Fact label="Transfer">
-              <Transfer transfer={row.transfer} />
-            </Fact>
-          )}
-          {row.facts.map((fact) => (
-            <Fact key={fact.label} label={fact.label}>
-              <Moment at={fact.at} />
-            </Fact>
-          ))}
-          {row.inTheShop === null ? null : <Fact label="In your shop">{row.inTheShop}</Fact>}
-          {row.shopTotal === null ? null : (
-            <Fact label="Shop's order total">
-              {row.shopTotal}, within a cent of what the buyer paid
-            </Fact>
-          )}
-          {row.shares === null ? null : (
-            <Fact label="Shares">
-              {row.shares.merchant} to you
-              <br />
-              {row.shares.commission} to Agentify
-            </Fact>
-          )}
-          {row.closure?.message === undefined ? null : (
-            <Fact label="Your explanation">
-              <span className="words">{row.closure.message}</span>
-            </Fact>
-          )}
-        </Facts>
-        {row.why === null ? null : (
-          <p className={styles.help}>
-            {row.why}
-            {row.rest === null ? null : <Rest rest={row.rest} />}
-          </p>
-        )}
-        {row.refund === null ? null : (
-          <p className={styles.help}>
-            Any refund is yours to send.
-            <Rest rest={row.refund} />
-          </p>
-        )}
-        {row.paymentUnresolved ? (
-          <p className={styles.help}>
-            This payment may still complete. Closing fulfillment does not cancel it, and Agentify
-            keeps checking it.
-          </p>
-        ) : null}
-        {told === null ? null : (
-          <p className="problem" role="alert">
-            {told}
-          </p>
-        )}
-        {said === null || said.typed === "" || row.closing !== null ? null : (
-          <>
-            <p className={styles.help}>The explanation you typed:</p>
-            <p className={`${styles.help} ${styles.typed}`}>{said.typed}</p>
-          </>
-        )}
-        {row.closing === null ? null : (
-          <CloseFulfillment
-            id={row.id}
-            again={row.closing === "again"}
-            typed={said?.typed ?? ""}
-            refusal={said?.refusal ?? null}
-            place={place}
-          />
-        )}
-      </div>
-    </RowMore>
+    <div className={styles.details}>
+      <OrderFacts row={row} marked={marked} />
+      {row.why === null ? null : (
+        <p className={styles.help}>
+          {row.why}
+          {row.rest === null ? null : <Rest rest={row.rest} />}
+        </p>
+      )}
+      {row.refund === null ? null : (
+        <p className={styles.help}>
+          Any refund is yours to send.
+          <Rest rest={row.refund} />
+        </p>
+      )}
+      {row.paymentUnresolved ? (
+        <p className={styles.help}>{row.closing === null ? UNKNOWN_CLOSED : UNKNOWN_OPEN}</p>
+      ) : null}
+      {told === null ? null : (
+        <p className="problem" role="alert">
+          {told}
+        </p>
+      )}
+      {said === null || said.typed === "" || row.closing !== null ? null : (
+        <>
+          <p className={styles.help}>The note you typed:</p>
+          <p className={`${styles.help} ${styles.typed}`}>{said.typed}</p>
+        </>
+      )}
+      {row.closing === null ? null : (
+        <CloseFulfillment
+          id={row.id}
+          again={row.closing === "again"}
+          typed={said?.typed ?? ""}
+          refusal={said?.refusal ?? null}
+          place={place}
+        />
+      )}
+    </div>
   );
 };
 
-/** Every order the address asks for, a row each, with the details each opens. */
+/** Every order the address asks for, a row each, each opening to its details. */
 const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
   const { listing } = view;
+  const marked = view.testNote !== null;
   const here = listing.segments.find((one) => one.here);
   const title =
     here?.key === "open" ? "Open orders" : here?.key === "lapsed" ? "Lapsed unpaid" : "All orders";
@@ -315,45 +295,42 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
       ) : (
         <List
           label={title}
-          columns="6rem minmax(12rem, 1fr) 9.5rem minmax(10rem, 13rem) 9rem"
+          columns={ORDER_COLUMNS}
           // "Price set", not "Bought": the moment is when the price was
           // fixed, and where the price is checked at purchase the buyer may
           // pay well after it.
-          head={["Price set", "Product", { text: "Amount", end: true }, "State", "Order"]}
+          head={["Price set", "Product", "State", { text: "Amount", end: true }, ""]}
         >
           {listing.rows.map((row, at) => (
             <Fragment key={row.id}>
               {row.day === listing.rows[at - 1]?.day ? null : <DayHeading>{row.day}</DayHeading>}
-              <Row>
-                <Cell at="fact">
-                  {row.priced === null
-                    ? "Not priced"
-                    : "time" in row.priced
-                      ? row.priced.time
-                      : row.priced.text}
-                </Cell>
-                <Cell at="title">{row.product}</Cell>
-                <Cell at="amount">
-                  <span className={styles.sum}>
-                    {row.amount}
-                    <TestMark test={row.test} />
-                  </span>
-                  {row.shares === null ? null : (
-                    <Cell at="aside">
-                      <div className={`under ${styles.sum}`}>{row.shares.merchant} to you</div>
+              <DisclosedRow
+                of={{ title: row.product, day: row.day, time: row.time, id: row.id }}
+                id={`details-${row.id}`}
+                open={row.opened || view.pressed?.id === row.id || undefined}
+                cells={
+                  <>
+                    <Cell at="fact">{row.priced === null ? "Not priced" : row.time}</Cell>
+                    <Cell at="title">{row.product}</Cell>
+                    <Cell at="state">
+                      <span className={styles.wraps}>
+                        <Word word={row.state} />
+                      </span>
                     </Cell>
-                  )}
-                </Cell>
-                <Cell at="state">
-                  <span className={styles.wraps}>
-                    <Word word={row.state} />
-                  </span>
-                </Cell>
-                <Cell at="aside">
-                  <Ident value={row.id} what="order ID" />
-                </Cell>
-                <OrderDetails row={row} pressed={view.pressed} place={listing.place} />
-              </Row>
+                    <Cell at="amount">
+                      {row.amount}
+                      <TestMark test={marked && row.test} />
+                    </Cell>
+                  </>
+                }
+              >
+                <OrderDetails
+                  row={row}
+                  marked={marked}
+                  pressed={view.pressed}
+                  place={listing.place}
+                />
+              </DisclosedRow>
             </Fragment>
           ))}
         </List>
@@ -364,16 +341,26 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
 };
 
 /**
+ * The time a price was set, the product, the state, the amount and the
+ * chevron. The product takes what the others leave and wraps, so a long name
+ * is read whole; the state's column holds "Payment outcome unknown" on one
+ * line.
+ */
+const ORDER_COLUMNS = "7rem minmax(0, 1fr) 12.5rem 8.5rem 1rem";
+
+/**
  * A closure opened from the row it closes, on a list whose rows already say
- * what the order's details would: named by the press it opens, and holding
- * what became of a press made on it.
+ * what happened: named by the press it opens, and holding the order's facts
+ * and what became of a press made on it.
  */
 const CloseInRow = ({
   row,
+  marked,
   pressed,
   place,
 }: Readonly<{
-  row: OrdersView["listing"]["rows"][number];
+  row: Order;
+  marked: boolean;
   pressed: ClosurePressed | null;
   place: OrdersView["listing"]["place"];
 }>) => {
@@ -386,22 +373,9 @@ const CloseInRow = ({
       id={`details-${row.id}`}
       open={row.opened || said !== null || undefined}
       of={row.product}
+      className={styles.opens}
     >
-      <div className={styles.details}>
-        {said?.note == null ? null : (
-          <p className="problem" role="alert">
-            {said.note}
-          </p>
-        )}
-        <CloseFulfillment
-          id={row.id}
-          again={row.closing === "again"}
-          typed={said?.typed ?? ""}
-          refusal={said?.refusal ?? null}
-          place={place}
-          headed={false}
-        />
-      </div>
+      <OrderDetails row={row} marked={marked} pressed={pressed} place={place} />
     </RowMore>
   );
 };
@@ -419,6 +393,7 @@ const closureHelp = (
  */
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const { listing } = view;
+  const marked = view.testNote !== null;
   const here = listing.segments.find((one) => one.here);
   const needs = listing.segments.find((one) => one.key === "needs");
   // The page's own links to an order search for its ID and open it; the
@@ -428,8 +403,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   );
   const note = (
     <p className="note">
-      Purchases that closed before they had a price are not listed with the others; nothing was
-      charged for them, and those refused or run out are under Lapsed.
+      Purchases that ended before they had a price are under Lapsed, not here; nothing was charged
+      for them.
     </p>
   );
   if (view.none) {
@@ -470,7 +445,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         <p className="quiet">
           {`Fulfillment closed for ${shortened(view.closedElsewhere.id)} · `}
           <Link to={{ pathname: "/orders", search: view.closedElsewhere.opens }}>
-            Order details
+            Show the order
           </Link>
         </p>
       )}
@@ -490,8 +465,14 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
             <ToldRows
               told={view.needsYou}
               label="Orders that need you"
+              marked={marked}
               closing={(order) => (
-                <CloseInRow row={order} pressed={view.pressed} place={listing.place} />
+                <CloseInRow
+                  row={order}
+                  marked={marked}
+                  pressed={view.pressed}
+                  place={listing.place}
+                />
               )}
             />
           )}
@@ -504,13 +485,18 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
               <ToldList
                 told={view.needsYou}
                 label="Orders that need you"
+                marked={marked}
                 {...(needs === undefined ? {} : { all: needs.to })}
               />
             </Group>
           )}
           {view.waitsOnTheBuyer.of === 0 ? null : (
             <Group title="Waiting on the buyer" count={view.waitsOnTheBuyer.of}>
-              <ToldList told={view.waitsOnTheBuyer} label="Orders waiting on the buyer" />
+              <ToldList
+                told={view.waitsOnTheBuyer}
+                label="Orders waiting on the buyer"
+                marked={marked}
+              />
             </Group>
           )}
           <OrderList view={view} />
@@ -523,8 +509,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
 
 /**
  * A closure's answer where the orders could not be read after it: what was
- * typed is kept on the page, since no form is drawn to keep it in. Only an
- * explanation refused before it was sent can be said to have changed nothing.
+ * typed is kept on the page, since no form is drawn to keep it in. Only a
+ * note refused before it was sent can be said to have closed nothing.
  */
 export function ClosureUnlistedScreen({ view }: Readonly<{ view: ClosureUnlisted }>) {
   const { note, refusal, typed } = view.pressed;
@@ -533,14 +519,15 @@ export function ClosureUnlistedScreen({ view }: Readonly<{ view: ClosureUnlisted
       <div className="what">{note ?? refusal}</div>
       {typed === "" ? null : (
         <>
-          <p className="why">The explanation you typed:</p>
+          <p className="why">The note you typed:</p>
           <p className="why words">{typed}</p>
         </>
       )}
-      <p className="why">Your orders could not be loaded.</p>
-      {note === null ? (
-        <p className="why">Nothing was closed, and loading them changed nothing.</p>
-      ) : null}
+      <p className="why">
+        {note === null
+          ? "Nothing was closed. Your orders could not be loaded."
+          : "Your orders could not be loaded."}
+      </p>
     </NotLoaded>
   );
 }

@@ -737,15 +737,7 @@ export class MemoryStore implements Store {
     if (row.integration === to) {
       return { switched: true, sellingPaused: false };
     }
-    const waiting = [...this.#orders.values()]
-      .filter(
-        (record) =>
-          record.merchantId === merchantId &&
-          listedAsOpen(record.order) &&
-          !(NO_PENDING_HANDLER as readonly string[]).includes(record.order.state),
-      )
-      .sort((one, other) => one.order.timestamps.createdAt - other.order.timestamps.createdAt)
-      .map((record) => record.order.id);
+    const waiting = this.#holdingASwitch(merchantId);
     if (waiting.length > 0) {
       return { switched: false, waiting };
     }
@@ -761,6 +753,26 @@ export class MemoryStore implements Store {
       await this.#recordWith(analytics, undefined, this.#now());
     }
     return { switched: true, sellingPaused };
+  }
+
+  async switchHeldBy(merchantId: string, to: Integration): Promise<readonly string[]> {
+    const row = this.#merchants.get(merchantId);
+    if (row === undefined) {
+      throw new Error(`there is no merchant ${merchantId} to switch to ${to}`);
+    }
+    return row.integration === to ? [] : this.#holdingASwitch(merchantId);
+  }
+
+  #holdingASwitch(merchantId: string): string[] {
+    return [...this.#orders.values()]
+      .filter(
+        (record) =>
+          record.merchantId === merchantId &&
+          listedAsOpen(record.order) &&
+          !(NO_PENDING_HANDLER as readonly string[]).includes(record.order.state),
+      )
+      .sort((one, other) => one.order.timestamps.createdAt - other.order.timestamps.createdAt)
+      .map((record) => record.order.id);
   }
 
   // --- orders ---------------------------------------------------------------

@@ -61,9 +61,9 @@ charged](/#when-your-buyer-is-charged)), and the receipt follows the goods
 
 ### Can I pause the selling?
 
-Yes, at any moment: the Cards screen of your dashboard has a pause on each card
+Yes, at any moment: Products in your dashboard has a pause on each product
 and one button that stops selling altogether, and your code can do the same
-with a call. A paused card disappears from the catalogue, while the orders
+with a call. A paused product disappears from the catalogue, while the orders
 already taken play out in the ordinary way ([After you are
 connected](/#after-you-are-connected)).
 

@@ -18,8 +18,9 @@ import type {
   OrdersPage,
   OrdersShown,
 } from "@agentify/gateway/operator";
+import { dayOf, moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
-import { FULFILLMENT_WORDS, moment, money, ORDER_WORDS, type Word } from "../words.js";
+import { FULFILLMENT_WORDS, money, ORDER_WORDS, type Word } from "../words.js";
 
 /** How long the gateway keeps a lapsed attempt, as the notes say it. */
 const LAPSED_KEPT = durationInWords(LAPSED_KEPT_MS, "day");
@@ -28,7 +29,7 @@ const LAPSED_KEPT = durationInWords(LAPSED_KEPT_MS, "day");
 const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
   ["payment_unknown", "Payment unknown"],
   ["unfulfilled", "Unfulfilled"],
-  ["delivered_unpaid", "Delivered, not paid"],
+  ["delivered_unpaid", "Held for payment"],
   ["in_progress", "In progress"],
   ["ended", "Ended"],
   ["lapsed", "Lapsed"],
@@ -39,7 +40,7 @@ const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
 const SEGMENT_NAMES: Readonly<Record<OrderSegment, string>> = {
   payment_unknown: "those whose payment is unknown",
   unfulfilled: "the unfulfilled",
-  delivered_unpaid: "those delivered and not paid",
+  delivered_unpaid: "those held for payment",
   in_progress: "those in progress",
   ended: "those that ended",
   lapsed: "the lapsed attempts",
@@ -48,7 +49,7 @@ const SEGMENT_NAMES: Readonly<Record<OrderSegment, string>> = {
 const EMPTY_SEGMENT: Readonly<Record<OrderSegment, string>> = {
   payment_unknown: "No order's payment outcome is unknown.",
   unfulfilled: "No order is unfulfilled.",
-  delivered_unpaid: "No order holds goods delivered and not paid.",
+  delivered_unpaid: "No order holds goods for payment.",
   in_progress: "No order is in progress.",
   ended: "No order has ended.",
   lapsed: `No lapsed attempt is kept: the gateway forgets them after ${LAPSED_KEPT}.`,
@@ -146,12 +147,16 @@ interface OrderRowView {
   readonly to: string;
   /** When the price was set; null where none was. */
   readonly priced: MomentView | null;
+  /**
+   * The day for the heading over the row: the day its price was set, or the
+   * day it was made where it has no price.
+   */
+  readonly day: string;
   readonly merchant: string;
   readonly product: string;
   readonly amount: string | null;
   readonly state: Word;
   readonly payment: Toned;
-  readonly test: boolean;
 }
 
 const at = (ms: number): MomentView => momentView(new Date(ms).toISOString());
@@ -160,12 +165,12 @@ const orderRowView = (row: OperatorOrderRow): OrderRowView => ({
   id: row.id,
   to: `/admin/orders/${encodeURIComponent(row.id)}`,
   priced: row.pricedAt === null ? null : at(row.pricedAt),
+  day: dayOf(new Date(row.pricedAt ?? row.createdAt).toISOString()),
   merchant: merchantName(row.merchant),
   product: row.product.title ?? row.product.merchantItemId,
   amount: row.price === null ? null : money(row.price),
   state: ORDER_WORDS[row.status],
   payment: paymentToned(row.payment),
-  test: row.test,
 });
 
 interface SegmentView {
@@ -181,7 +186,7 @@ type OrdersResult =
   | Readonly<{
       kind: "rows";
       rows: readonly OrderRowView[];
-      /** "Showing 1–50 of 61, newest first." */
+      /** "Showing 1–50 of 61, newest first". */
       cut: string;
       earlier: string | null;
       newest: string | null;
@@ -230,9 +235,9 @@ export function ordersListView(
     const said =
       page.counts.all === 0
         ? !narrowed
-          ? "No order has been made on this channel yet."
+          ? "No order has been made here yet."
           : asked.q === ""
-            ? "This merchant has no order on this channel."
+            ? "This merchant has no order here."
             : `No order matches “${asked.q}”.`
         : asked.before !== null || asked.shown === "all"
           ? "No earlier order is in this segment."
@@ -251,7 +256,7 @@ export function ordersListView(
     result: {
       kind: "rows",
       rows: page.rows.map(orderRowView),
-      cut: `Showing ${from}–${to} of ${of}, newest first.`,
+      cut: `Showing ${from}–${to} of ${of}, newest first`,
       earlier: page.earlier === null ? null : placeOf(asked, { before: page.earlier }),
       newest: asked.before === null ? null : placeOf(asked, { before: null }),
     },
@@ -286,7 +291,6 @@ export interface OrderView {
   readonly merchant: Readonly<{ name: string; to: string }>;
   /** "Card esim-7d · Later, within 1 hour". */
   readonly card: string;
-  readonly test: boolean;
   readonly agent: Readonly<{
     status: string;
     paymentStatus: string;
@@ -314,11 +318,15 @@ export interface OrderView {
   }>;
   readonly receipt: Readonly<{
     head: string;
-    facts: readonly Readonly<{ label: string; value: string }>[];
+    facts: readonly ReceiptFact[];
     said: string | null;
   }>;
   readonly withheld: string;
 }
+
+/** A fact on a receipt: an identifier shown short, a word, or a moment. */
+type ReceiptFact = Readonly<{ label: string }> &
+  (Readonly<{ ident: string }> | Readonly<{ text: string }> | Readonly<{ at: MomentView }>);
 
 export type OrderPageView =
   | OrderView
@@ -647,6 +655,30 @@ function withheldOf(order: OperatorOrder): string {
   return said.join(" ");
 }
 
+/**
+ * Why an order holds no receipt. One is written when the goods are released
+ * or the parcel's shipment is recorded, and never once the merchant closed
+ * fulfillment, so an order that ended without that will never have one.
+ */
+function noReceiptOf(order: OperatorOrder): Readonly<{ head: string; said: string }> {
+  if (order.agent.merchant_closure !== undefined || order.status === "fulfillment_closed") {
+    return {
+      head: "None",
+      said: "Fulfillment was closed, so the goods are never released and no receipt will be written.",
+    };
+  }
+  if (order.status === "rejected" || order.status === "expired") {
+    return {
+      head: "None",
+      said: "The order ended before any goods were released, so no receipt will be written.",
+    };
+  }
+  return {
+    head: "Not yet",
+    said: "One is written when the goods are released or the parcel ships.",
+  };
+}
+
 export function orderPageView(
   id: string,
   order: OperatorOrder | null | "unread",
@@ -666,7 +698,6 @@ export function orderPageView(
     amount: order.price === null ? null : money(order.price),
     merchant: { name: merchant, to: `/admin/merchants/${encodeURIComponent(order.merchant.id)}` },
     card: cardOf(order),
-    test: order.test,
     agent: {
       status: agent.status,
       paymentStatus: agent.payment_status,
@@ -681,20 +712,16 @@ export function orderPageView(
     payment: paymentPanelOf(order, explorer, readAt),
     receipt:
       order.receipt === null
-        ? {
-            head: "None",
-            facts: [],
-            said: "No receipt is issued yet: one is written once a delivered or shipped order's payment is recorded.",
-          }
+        ? { ...noReceiptOf(order), facts: [] }
         : {
             head: "Issued",
             facts: [
-              { label: "Receipt", value: order.receipt.id },
-              { label: "Outcome", value: order.receipt.outcome },
-              { label: "Paid at", value: moment(order.receipt.paid_at) },
+              { label: "Receipt", ident: order.receipt.id },
+              { label: "Outcome", text: ORDER_WORDS[order.receipt.outcome].text },
+              { label: "Paid at", at: momentView(order.receipt.paid_at) },
               ...(order.receipt.transaction === undefined
                 ? []
-                : [{ label: "Transaction", value: order.receipt.transaction }]),
+                : [{ label: "Transaction", ident: order.receipt.transaction }]),
             ],
             said: null,
           },
@@ -718,12 +745,19 @@ interface FoundView {
 export type FindView =
   /** Opened with nothing asked: what the box reads. */
   | Readonly<{ kind: "asked"; q: "" }>
-  | Readonly<{ kind: "none"; q: string; said: string; unknown: string | null }>
+  | Readonly<{
+      kind: "none";
+      q: string;
+      said: string;
+      unknown: string | null;
+      /** Where text the lookup does not read is searched instead, among the merchants. */
+      merchants: string | null;
+    }>
   | Readonly<{ kind: "several"; q: string; found: readonly FoundView[] }>
   | Readonly<{ kind: "unread"; q: string }>;
 
 export const FIND_READS =
-  "Paste an order ID, a merchant ID, a transaction, a wallet or split address, an email address or a shop's site; one match opens its record.";
+  "Find reads an order or merchant ID, a whole email address, a site, a wallet or split address, or a transaction. One match opens its record.";
 
 const BY: Readonly<Record<string, string>> = {
   id: "its identifier",
@@ -734,7 +768,7 @@ const BY: Readonly<Record<string, string>> = {
   email: "its email address",
 };
 
-const foundView = (found: Found | AccountFound): FoundView => {
+const foundView = (found: Found | AccountFound, q: string): FoundView => {
   if (found.kind === "account") {
     return {
       kind: "Account",
@@ -758,7 +792,8 @@ const foundView = (found: Found | AccountFound): FoundView => {
     kind: "Merchant",
     label: merchantName(found.merchant),
     id: found.merchant.id,
-    by: BY[found.by] ?? found.by,
+    // Two merchants may name one site; the line says which site it was.
+    by: found.by === "site" ? `${BY.site}, ${q.trim()}` : (BY[found.by] ?? found.by),
     to: `/admin/merchants/${encodeURIComponent(found.merchant.id)}`,
   };
 };
@@ -770,24 +805,51 @@ export interface AccountFound {
   readonly email: string;
 }
 
-/** What the lookup answers for what it found: none, one to open, or several to list. */
+/**
+ * What the lookup answers for what it found: none, one to open, or several to
+ * list. `read` says whether the text was looked up at all: text that is no
+ * identifier, address, site or transaction is not.
+ */
 export function findView(
   q: string,
   found: readonly (Found | AccountFound)[] | "unread",
   isTransaction: boolean,
+  read: "looked-up" | "not-read" = "looked-up",
 ): FindView | Readonly<{ kind: "open"; to: string }> {
   if (q === "") return { kind: "asked", q: "" };
   if (found === "unread") return { kind: "unread", q };
   const first = found[0];
-  if (found.length === 1 && first !== undefined) return { kind: "open", to: foundView(first).to };
-  if (found.length > 1) return { kind: "several", q, found: found.map(foundView) };
-  return isTransaction
-    ? {
-        kind: "none",
-        q,
-        said: `No order on this channel names the transaction “${q}” yet.`,
-        unknown:
-          "An order whose payment outcome is unknown may hold no transaction yet; the orders whose payment is unknown are listed apart.",
-      }
-    : { kind: "none", q, said: `Nothing on this channel matches “${q}”.`, unknown: null };
+  if (found.length === 1 && first !== undefined) {
+    return { kind: "open", to: foundView(first, q).to };
+  }
+  if (found.length > 1) {
+    return { kind: "several", q, found: found.map((one) => foundView(one, q)) };
+  }
+  if (isTransaction) {
+    return {
+      kind: "none",
+      q,
+      said: `No order here names the transaction “${q}” yet.`,
+      unknown: "Orders with an unknown payment may have no transaction yet.",
+      merchants: null,
+    };
+  }
+  // Text that is no identifier, address, site or transaction was not looked
+  // up at all, so "nothing matches" would claim a search that never ran.
+  if (read === "not-read") {
+    return {
+      kind: "none",
+      q,
+      said: `Find does not read text like “${q}”: it reads order and merchant IDs, whole email addresses, sites, wallet addresses and transactions.`,
+      unknown: null,
+      merchants: `/admin/merchants?${new URLSearchParams({ q })}`,
+    };
+  }
+  return {
+    kind: "none",
+    q,
+    said: `Nothing here matches “${q}”. An ID from another environment is not found here.`,
+    unknown: null,
+    merchants: null,
+  };
 }

@@ -36,7 +36,7 @@
   align-items: center;
   padding: 0 14px;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 
@@ -63,7 +63,7 @@
   border-radius: var(--radius-pill);
   background: var(--raised);
   color: var(--fg-2);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
   vertical-align: 2px;
 }
@@ -117,7 +117,7 @@
   border-radius: 10px;
   gap: 11px;
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   font-weight: 550;
   box-shadow: none;
 }
@@ -237,31 +237,13 @@
   }
 }
 
-/* The menu at the end of the header's row holds, where there is no room for
-   the sidebar, the sections as the sidebar lists them and the doors out, to
-   the documentation and for an operator to the workspace, over who is signed
-   in. */
-.site-menu .app-menu-sections [aria-current="page"] {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-.site-menu .app-menu-door {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  margin-top: 6px;
-  padding: 0 12px;
-  font-size: 0.875rem;
-  font-weight: 650;
-}
-
 /* --- figures ------------------------------------------------------------- */
 
 .summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin: 24px 0 0;
+  gap: var(--space-block);
+  margin: var(--space-card) 0 0;
 }
 
 .tile {
@@ -273,16 +255,17 @@
 
 .tile .label {
   color: var(--muted);
-  font: 500 0.75rem / 1.3 var(--font-mono);
+  font: 500 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .tile .figure {
+  margin-top: var(--space-tight);
   font-family: var(--font-mono);
   font-size: 1.625rem;
-  margin-top: 10px;
   letter-spacing: -0.02em;
+  line-height: var(--leading-heading);
 }
 
 .tile .figure.ok {
@@ -290,9 +273,14 @@
 }
 
 .tile .aside {
+  margin-top: var(--space-tight);
   color: var(--muted);
-  font-size: 0.875rem;
-  margin-top: 4px;
+  font-size: var(--text-small);
+}
+
+/* A moment breaks between its date and its time and nowhere else. */
+.when > span {
+  white-space: nowrap;
 }
 
 /* --- lists -------------------------------------------------------------- */
@@ -305,7 +293,7 @@
  * query, so the rule holds wherever a list is put.
  */
 .list-box {
-  margin: 20px 0 14px;
+  margin: var(--space-block) 0 var(--space-control);
   container-type: inline-size;
 }
 
@@ -348,8 +336,9 @@
   border-bottom: var(--hairline) solid var(--line);
   background: var(--surface-sunken);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
+  line-height: var(--leading-ui);
 }
 
 .list > .list-head + li {
@@ -363,14 +352,15 @@
 
 .list-row {
   padding-block: 14px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .list-row.off {
   background: color-mix(in srgb, var(--surface-sunken) 50%, var(--surface));
 }
 
-.list-row.needs-you {
+.list-row.needs-you,
+.list-opens.needs-you {
   background: color-mix(in oklab, var(--fail) 7%, var(--surface));
 }
 
@@ -379,7 +369,7 @@
   border-bottom: var(--hairline) solid var(--line);
   background: var(--surface-sunken);
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
   font-weight: 600;
 }
 
@@ -409,7 +399,7 @@
 
 .cell-title {
   color: var(--fg);
-  font-size: 1rem;
+  font-size: var(--text-body);
   font-weight: 500;
   overflow-wrap: anywhere;
 }
@@ -420,7 +410,7 @@
 
 .cell-amount {
   color: var(--fg);
-  font-size: 1rem;
+  font-size: var(--text-body);
   font-weight: 500;
   white-space: nowrap;
 }
@@ -456,7 +446,7 @@
   grid-column: 1 / -1;
   margin-top: -6px;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
 }
 
 .cell-more > summary {
@@ -465,9 +455,74 @@
 }
 
 .more-body {
-  margin-top: 4px;
+  margin-top: var(--space-snug);
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
+}
+
+/*
+ * A row that opens: the press is the whole line, drawn over it, and the
+ * chevron in the row's last column is only its sign. Whatever in a cell is a
+ * link or a button of its own stands over the press, and so does the opened
+ * part, so a press inside it does not close it.
+ */
+.list-opens {
+  position: relative;
+  /* Reached by its address, the row stands clear of the working header,
+     which stays 68px tall over the page on a laptop. */
+  scroll-margin-top: 80px;
+}
+
+.row-more > summary {
+  position: absolute;
+  inset: 0;
+  list-style: none;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.row-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-more > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.list-opens > .list-row :is(a, button, details, input, .copy-whole) {
+  position: relative;
+  z-index: 1;
+}
+
+.list-opens:has(> .row-more > summary:hover) > .list-row {
+  background: color-mix(in srgb, var(--surface-sunken) 60%, transparent);
+}
+
+.row-more > .more-body {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  padding: var(--space-snug) 20px var(--space-card);
+}
+
+.cell-chevron {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--muted);
+}
+
+.cell-chevron svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 150ms ease;
+}
+
+.list-opens:has(> .row-more[open]) .cell-chevron svg {
+  transform: rotate(180deg);
 }
 
 /* A row's facts, a label beside each value; a box narrower than a label and an
@@ -574,6 +629,18 @@
     align-self: flex-start;
   }
 
+  /* Beside the amount, at the end of the row's first line. */
+  .cell-chevron {
+    order: 2;
+    flex: none;
+    align-self: flex-start;
+    margin-top: 4px;
+  }
+
+  .row-more > .more-body {
+    padding: var(--space-snug) 16px var(--space-block);
+  }
+
   .cell-aside {
     display: none;
   }
@@ -622,9 +689,9 @@
     order: 10;
     flex-basis: 100%;
     display: block;
-    margin-top: 4px;
+    margin-top: var(--space-snug);
     color: var(--muted);
-    font-size: 0.8125rem;
+    font-size: var(--text-label);
   }
 }
 
@@ -633,19 +700,112 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 16px;
-  margin: 0 0 14px;
+  gap: var(--space-snug) var(--space-block);
+  margin: 0 0 var(--space-control);
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 .cut a {
   font-weight: 500;
 }
 
+/*
+ * The pager: the range read first, then the steps and the pages at the end of
+ * the line, under the list's right edge. Each way is a 36px target, the page
+ * shown is filled, and a step with nowhere to go stays in its place in grey,
+ * so the row does not shift from page to page.
+ */
+.pager {
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-tight) var(--space-block);
+  margin-top: var(--space-control);
+}
+
+.pager-ways {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-snug);
+}
+
+.pager-step,
+.pager-page,
+.pager-gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--fg-2);
+}
+
+.pager a.pager-step,
+.pager a.pager-page {
+  font-weight: 500;
+}
+
+.pager a:hover {
+  background: var(--raised);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.pager-page[aria-current="page"] {
+  background: var(--raised);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.pager-step[aria-disabled="true"] {
+  color: var(--na);
+}
+
+.pager-gap {
+  min-width: 20px;
+  padding: 0;
+  color: var(--muted);
+}
+
+.pager-step.prev::before,
+.pager-step.next::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 0 1.5px 1.5px;
+}
+
+.pager-step.prev::before {
+  margin-right: var(--space-tight);
+  transform: rotate(45deg);
+}
+
+.pager-step.next::after {
+  margin-left: var(--space-tight);
+  transform: rotate(-135deg);
+}
+
+/* On a phone the steps stand at the two ends of their own line with the page
+   shown between them; the range over them says how far the list goes. */
+@media (max-width: 560px) {
+  .pager-ways {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pager-page:not([aria-current]),
+  .pager-gap {
+    display: none;
+  }
+}
+
 /* A heading over a group of rows, with its count in a pill. */
 .group {
-  margin-top: 28px;
+  margin-top: var(--space-section);
 }
 
 .group-head {
@@ -657,11 +817,10 @@
 
 .group-head h2 {
   margin: 0;
-  font-size: 1.1875rem;
-  font-weight: 600;
+  font-size: var(--text-heading);
 }
 
 .group-aside {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }

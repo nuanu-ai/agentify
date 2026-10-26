@@ -6,7 +6,9 @@
  * one-time token, and a page may run a script only where a control needs one.
  */
 
-import type { ReactNode } from "react";
+import { rememberZone } from "@agentify/ui/remember-zone";
+import { zoneIn } from "@agentify/ui/zone";
+import { type ReactNode, useEffect } from "react";
 import {
   type DataStrategyResult,
   data,
@@ -23,6 +25,7 @@ import {
   useRouteError,
   useRouteLoaderData,
 } from "react-router";
+import { inViewersZone } from "../src/moments.js";
 import type { Screen } from "../src/page-services.js";
 import { type Chrome, chromeOf, saidAsAsked, type Trouble, troubleIn } from "./answer.js";
 import { GatePage } from "./components/gate-page.js";
@@ -43,7 +46,7 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   "sign-in": "sign_in",
   merchant: "merchant",
   "choose-name": "choose_name",
-  cards: "cards",
+  products: "cards",
   orders: "orders",
   receipts: "receipts",
   integrations: "integrations",
@@ -64,6 +67,8 @@ const SCREENS: Readonly<Record<string, Screen>> = {
  * reads the mark a form carries.
  */
 export const middleware: MiddlewareFunction<Response>[] = [
+  // Every moment a page writes is in the zone the reader's browser named.
+  ({ request }, next) => inViewersZone(zoneIn(request.headers.get("cookie")), next),
   async ({ context, pattern, request }, next) => {
     const response = await next();
     const screen = SCREENS[pattern];
@@ -126,7 +131,13 @@ export function Layout({ children }: Readonly<{ children: ReactNode }>) {
   );
 }
 
+/**
+ * The page was drawn on the server in the zone the browser named before, or
+ * in UTC where it named none; the browser names its zone now for the next
+ * page, rather than this one being written again after it is shown.
+ */
 export default function App() {
+  useEffect(rememberZone, []);
   return <Outlet />;
 }
 
@@ -137,7 +148,7 @@ export default function App() {
  * begins.
  */
 const PRESSED_ON: Readonly<Record<string, readonly [string, string]>> = {
-  cards: ["/cards", "Products"],
+  products: ["/products", "Products"],
   orders: ["/orders", "Orders"],
   receipts: ["/receipts", "Receipts"],
   integrations: ["/integrations", "Integrations"],
@@ -159,7 +170,7 @@ function MessagePage({
 }: Readonly<{ chrome: Chrome; title: string; said: ReactNode; way: readonly [string, string] }>) {
   return (
     <GatePage chrome={chrome} title={title}>
-      <div className="gate-card">
+      <div className="message-panel">
         <h1>{title}</h1>
         <p>{said}</p>
         <a className="button button-primary" href={way[0]}>
@@ -193,20 +204,24 @@ export function ErrorBoundary() {
   const [path, name] = screenOf(pathname);
   const open = [`${chrome.base}${path}`, `Open ${name}`] as const;
   if (trouble?.kind === "not-drawn-for-you") {
+    // The gate's start is Products for somebody who sells, and the scanner's
+    // latest report for somebody who does not, whom no screen here is for.
+    const way =
+      trouble.start === `${chrome.base}/products`
+        ? open
+        : ([trouble.start, "Open your latest report"] as const);
     return (
-      <GatePage chrome={chrome} title="Nothing was changed">
-        <div className="gate-card">
-          <h1>Nothing was changed</h1>
-          <p>
-            What you pressed was not done, because the page it came from could not be matched to the
-            address signed in on this browser now, <strong>{trouble.who}</strong>. Open the screen
-            again to make the change as this address.
-          </p>
-          <a className="button button-primary" href={trouble.start}>
-            Continue
-          </a>
-        </div>
-      </GatePage>
+      <MessagePage
+        chrome={chrome}
+        title="Nothing was changed"
+        said={
+          <>
+            You are signed in as <strong>{trouble.who}</strong>, and the page you pressed was not
+            opened for this sign-in. Open it again to make the change.
+          </>
+        }
+        way={way}
+      />
     );
   }
   const again =

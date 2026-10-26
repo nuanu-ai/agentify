@@ -53,7 +53,7 @@ input {
 
 .docs-contents a {
   color: var(--fg-2);
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   text-decoration: none;
 }
 
@@ -80,7 +80,7 @@ input {
   margin-left: -13px;
   border-left: 2px solid transparent;
   padding-left: 11px;
-  font-size: 0.8125rem;
+  font-size: var(--text-label);
 }
 
 /* The section being read, as the page scrolls. */
@@ -102,7 +102,7 @@ input {
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
   text-align: left;
 }
 
@@ -110,7 +110,14 @@ input {
   border: var(--hairline) solid var(--line);
   border-radius: 6px;
   padding: 0 6px;
-  font: 0.75rem / 1.6 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
+}
+
+/* A phone has no key to press, and the bar's width goes to the word. */
+@media (max-width: 600px) {
+  .docs-search-button kbd {
+    display: none;
+  }
 }
 
 /* Over the consent banner, which is not reached past the search, and under
@@ -173,7 +180,7 @@ input {
 
 .search-path {
   color: var(--muted);
-  font: 0.75rem / 1.4 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 .search-title {
@@ -182,8 +189,7 @@ input {
 
 .search-excerpt {
   color: var(--fg-2);
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  font-size: var(--text-label);
 }
 
 .search-excerpt mark {
@@ -213,17 +219,15 @@ input {
 
 .doc h3 {
   scroll-margin-top: 96px;
-  margin: 32px 0 10px;
-  font-size: 1.125rem;
-  font-weight: 600;
-  line-height: 1.4;
+  margin: var(--space-section) 0 var(--gap-heading);
+  font-size: var(--text-heading);
 }
 
 .doc ul,
 .doc ol {
   display: grid;
-  gap: 8px;
-  margin: 0 0 16px;
+  gap: var(--space-tight);
+  margin: 0 0 var(--gap-paragraph);
   padding-left: 22px;
 }
 
@@ -246,7 +250,7 @@ input {
 .doc .custom-block-title {
   margin-bottom: 8px;
   color: var(--notice-ink);
-  font: 600 0.75rem / 1.5 var(--font-mono);
+  font: 600 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -281,7 +285,7 @@ input {
   top: 8px;
   right: 44px;
   color: var(--muted);
-  font: 0.6875rem / 1.4 var(--font-mono);
+  font: var(--text-caption) / var(--leading-ui) var(--font-mono);
 }
 
 .doc .copy {
@@ -309,7 +313,7 @@ input {
 .doc .copy-status:not(.sr-only) {
   display: block;
   padding: 0 20px 16px;
-  font-size: 0.875rem;
+  font-size: var(--text-small);
 }
 
 /* A table wider than the column scrolls inside itself, not the page. */
@@ -321,7 +325,6 @@ input {
   border-collapse: separate;
   border-spacing: 0;
   font-size: var(--text-small);
-  line-height: 1.55;
 }
 
 /* Each cell draws its own right and bottom rule, and the first row and column
@@ -331,7 +334,7 @@ input {
 .doc td {
   border: 0 solid var(--line);
   border-width: 0 var(--hairline) var(--hairline) 0;
-  padding: 8px 12px;
+  padding: 8px 10px;
   text-align: left;
   vertical-align: top;
 }
@@ -434,7 +437,7 @@ input {
 
 .docs-turn a span {
   color: var(--muted);
-  font: 400 0.6875rem / 1.4 var(--font-mono);
+  font: 400 var(--text-caption) / var(--leading-ui) var(--font-mono);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -445,12 +448,11 @@ input {
   display: none;
 }
 
-/* The pages in the header's menu, where the page has no column for them. */
+/* The pages in the header's menu, where the page has no column for them;
+   the menu draws the rule under them. */
 .docs-menu .docs-contents {
   gap: 14px;
-  margin-bottom: 10px;
-  border-bottom: var(--hairline) solid var(--line);
-  padding: 4px 0 14px;
+  padding: 4px 0 6px;
 }
 
 .docs-menu .docs-group {

@@ -3,7 +3,9 @@ import {
   deleteUnattachedPersonResponseSchema,
   type ReadSessionResponse,
   readSessionResponseSchema,
+  type SendDataCopyResponse,
   type SendReportLinkResponse,
+  sendDataCopyResponseSchema,
   sendReportLinkResponseSchema,
 } from "@agentify/scanner-contracts/report-identity";
 import type { z } from "zod";
@@ -18,6 +20,22 @@ const REPORT_IDENTITY_TIMEOUT_MS = 15_000;
  * hanging dashboard must turn into "we cannot tell who is visiting" in seconds.
  */
 const SESSION_QUESTION_TIMEOUT_MS = 3_000;
+/**
+ * A copy is read from the dashboard's tables and handed to the mail provider,
+ * whose own deadline is ten seconds, while the person who pressed waits.
+ */
+export const DATA_COPY_TIMEOUT_MS = 30_000;
+
+/**
+ * The dashboard refused the request as larger than it takes. Nothing was done
+ * with it, and the same request would be refused again.
+ */
+export class DashboardRequestTooLarge extends Error {
+  constructor() {
+    super("dashboard_request_too_large");
+    this.name = "DashboardRequestTooLarge";
+  }
+}
 
 class DashboardIdentityUnavailableError extends Error {
   constructor() {
@@ -49,6 +67,13 @@ type Client = Readonly<{
     operationId: string;
     email: string;
   }): Promise<DeleteUnattachedPersonResponse>;
+  /** For an access request: mail this address a copy of its data, with the scanner's part. */
+  sendDataCopy(input: {
+    request: string;
+    requestedAt: Date;
+    email: string;
+    scanner: Record<string, unknown>;
+  }): Promise<SendDataCopyResponse>;
 }>;
 
 export function createDashboardReportIdentityClient(options: ClientOptions): Client {
@@ -72,6 +97,7 @@ export function createDashboardReportIdentityClient(options: ClientOptions): Cli
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+      if (response.status === 413) throw new DashboardRequestTooLarge();
       if (
         response.status !== 200 ||
         !response.headers.get("content-type")?.startsWith("application/json")
@@ -82,7 +108,11 @@ export function createDashboardReportIdentityClient(options: ClientOptions): Cli
       if (!parsed.success) throw new DashboardIdentityUnavailableError();
       return parsed.data;
     } catch (error) {
-      if (error instanceof DashboardIdentityUnavailableError) throw error;
+      if (
+        error instanceof DashboardIdentityUnavailableError ||
+        error instanceof DashboardRequestTooLarge
+      )
+        throw error;
       throw new DashboardIdentityUnavailableError();
     } finally {
       clearTimeout(timeout);
@@ -105,6 +135,12 @@ export function createDashboardReportIdentityClient(options: ClientOptions): Cli
       post(
         { operation: "delete", operation_id: operationId, email },
         deleteUnattachedPersonResponseSchema,
+      ),
+    sendDataCopy: ({ request, requestedAt, email, scanner }) =>
+      post(
+        { operation: "copy", request, requested_at: requestedAt.toISOString(), email, scanner },
+        sendDataCopyResponseSchema,
+        DATA_COPY_TIMEOUT_MS,
       ),
   };
 }

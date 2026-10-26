@@ -197,6 +197,20 @@
       "when": 1792578546043,
       "tag": "0027_the_scanner_keeps_no_card_signal",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793014524692,
+      "tag": "0028_the_scanner_answers_data_copies",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793016410185,
+      "tag": "0029_a_data_copy_too_large_is_said",
+      "breakpoints": true
     }
   ]
 }

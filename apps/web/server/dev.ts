@@ -1,8 +1,9 @@
 /**
  * The scanner for a developer, `pnpm --filter @agentify/web dev`: compiled
  * from source on each request, reloaded on an edit, on `PORT` (3000) of
- * loopback only, with the background retry of identity deletions where the
- * dashboard's private route is configured, as the built process has it.
+ * loopback only, with the background retry of identity deletions and data
+ * copies where the dashboard's private route is configured, as the built
+ * process has it.
  */
 
 import { createServer } from "node:http";
@@ -14,10 +15,14 @@ createServer(scanner.listener).listen(port, LOOPBACK, () =>
   console.log(`[web] http://${LOOPBACK}:${port}`),
 );
 
-const [{ startDeletionRetries }, { retryPendingScannerIdentityDeletions }] = await Promise.all([
-  scanner.load<typeof import("./deletion-retries")>("/server/deletion-retries.ts"),
-  scanner.load<typeof import("../lib/server/scanner-identity-deletion")>(
-    "/lib/server/scanner-identity-deletion.ts",
-  ),
-]);
-startDeletionRetries(process.env, retryPendingScannerIdentityDeletions);
+const [{ startPrivacyRetries }, { retryPendingScannerIdentityDeletions }, { retryDueDataCopies }] =
+  await Promise.all([
+    scanner.load<typeof import("./privacy-retries")>("/server/privacy-retries.ts"),
+    scanner.load<typeof import("../lib/server/scanner-identity-deletion")>(
+      "/lib/server/scanner-identity-deletion.ts",
+    ),
+    scanner.load<typeof import("../lib/server/data-copy")>("/lib/server/data-copy.ts"),
+  ]);
+startPrivacyRetries(process.env, () =>
+  Promise.all([retryPendingScannerIdentityDeletions(), retryDueDataCopies()]),
+);

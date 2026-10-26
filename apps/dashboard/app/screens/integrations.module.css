@@ -1,0 +1,50 @@
+/*
+ * The integrations screen's ways in, on the dashboard's connect panel: each
+ * way's heading with the mark of the way sales go through, its words, and its
+ * action right under them rather than at the foot of the taller column.
+ */
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-control);
+  margin-bottom: var(--gap-heading);
+}
+
+/* At the size of every panel's heading, which these two ways are. */
+:global(.connect-way) .head > h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+}
+
+/* The package's name reads as one word, never broken at its hyphen. */
+.package {
+  white-space: nowrap;
+}
+
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-snug) var(--space-control);
+}
+
+.state + p {
+  margin-top: var(--gap-paragraph);
+}
+
+.shop {
+  color: var(--fg);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* One way alone fills its panel rather than the first of two columns. */
+.alone {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.head ~ :global(.connect-actions) {
+  margin-top: 0;
+}

@@ -1,8 +1,8 @@
 import type { MetaArgs } from "react-router";
 
 import { AccountActions } from "../../components/account-actions";
-import { EditorialPage, Notice, ProseList } from "../../components/editorial-page";
 import { usePublicConfig } from "../../components/public-config";
+import { SiteFooter, SiteHeader, Trail } from "../../components/site-chrome";
 import { pageMeta, siteConfigOf } from "../../lib/page-meta";
 
 export const meta = ({ matches }: MetaArgs) =>
@@ -12,57 +12,35 @@ export const meta = ({ matches }: MetaArgs) =>
     referrer: "no-referrer",
   });
 
+/**
+ * Asking for a copy of the data held about your own address, which is emailed
+ * to it, or for its deletion. What each request covers is on the privacy page;
+ * anything the buttons do not cover goes by email, which never carries a
+ * scan's private link.
+ */
 export default function DataRequestPage() {
   const config = usePublicConfig();
   const subject = encodeURIComponent(`${config.displayBrand} data request`);
   return (
-    <EditorialPage
-      eyebrow="Data control · private request"
-      intro="Request access, correction, deletion, unsubscribe, or share revocation without putting private capability tokens in an email."
-      sections={[
-        {
-          id: "request",
-          title: "Send a request",
-          content: (
-            <Notice>
-              <p>
-                Email{" "}
-                <a href={`mailto:${config.privacyEmail}?subject=${subject}`}>
-                  {config.privacyEmail}
-                </a>{" "}
-                from the address connected to the report when possible. State the request type and
-                public domain. Do not include scan/report tokens, passwords, or a private URL.
-              </p>
-              <AccountActions mode="data" />
-            </Notice>
-          ),
-        },
-        {
-          id: "types",
-          title: "Supported requests",
-          content: (
-            <ProseList>
-              <li>Access or correct lead information.</li>
-              <li>Complete verified deletion with an explicit final confirmation.</li>
-              <li>Close report access for your address and revoke its public shares.</li>
-              <li>Unsubscribe from optional marketing email.</li>
-              <li>Object to optional dataset reuse or analytics processing.</li>
-            </ProseList>
-          ),
-        },
-        {
-          id: "verify",
-          title: "Identity and safety",
-          content: (
-            <p>
-              We may ask for a verification step before disclosing or changing a private record. We
-              do not use a public website domain alone as proof that someone controls an email,
-              sign-in, or share.
-            </p>
-          ),
-        },
-      ]}
-      title="Request access or deletion"
-    />
+    <>
+      <SiteHeader />
+      <main className="message-page" id="main">
+        <section className="message-panel">
+          <Trail parent={["Privacy", "/privacy"]} page="Data request" />
+          <h1>Request access or deletion</h1>
+          <p>
+            Ask for a copy of the data held for your address, which is emailed to it as a file, or
+            have it deleted. <a href="/privacy#rights">What each request covers</a>
+          </p>
+          <AccountActions mode="data" privacyEmail={config.privacyEmail} />
+          <p>
+            For a correction or anything else, email{" "}
+            <a href={`mailto:${config.privacyEmail}?subject=${subject}`}>{config.privacyEmail}</a>{" "}
+            from the address your reports were sent to. Leave out private links and passwords.
+          </p>
+        </section>
+      </main>
+      <SiteFooter />
+    </>
   );
 }

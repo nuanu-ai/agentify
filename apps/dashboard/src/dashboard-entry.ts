@@ -42,7 +42,14 @@ export type SectionDestination = (typeof DASHBOARD_DESTINATIONS)[number];
  */
 export type AdminDestination = `admin${string}`;
 
-export type DashboardDestination = SectionDestination | AdminDestination;
+/**
+ * Where the scanner's doors send a person to sign in to read their reports: a
+ * sign-in asked for with it leads where the dashboard's own address leads that
+ * person, and makes no merchant.
+ */
+type ReportsDestination = "reports";
+
+export type DashboardDestination = SectionDestination | AdminDestination | ReportsDestination;
 
 /**
  * One closed shape per page of the workspace, a record's identifier held to
@@ -56,15 +63,29 @@ const ADMIN_PAGES =
 export const adminDestinationIn = (value: unknown): AdminDestination | null =>
   typeof value === "string" && ADMIN_PAGES.test(value) ? (value as AdminDestination) : null;
 
+/** The section of the merchant's dashboard a value names exactly, or null. */
+export const sectionNamed = (value: unknown): SectionDestination | null =>
+  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? null;
+
 /** The destination a value names exactly, or null where it names none. */
 export const destinationNamed = (value: unknown): DashboardDestination | null =>
-  DASHBOARD_DESTINATIONS.find((destination) => destination === value) ?? adminDestinationIn(value);
+  sectionNamed(value) ?? (value === "reports" ? value : adminDestinationIn(value));
 
 export const dashboardDestinationIn = (value: unknown): DashboardDestination =>
   destinationNamed(value) ?? "default";
 
 /** A closed set, recorded with the token when the link is asked for. */
 export type LinkDestination = DashboardDestination | Readonly<{ report: string }>;
+
+/**
+ * Whether a sign-in was asked for on the dashboard's own sign-in page for the
+ * seller's dashboard, which makes the merchant of a person who has none. Read
+ * only from what was recorded when the sign-in was asked for. A report's link,
+ * a scanner's door and a page of the operator's workspace make no merchant:
+ * the scanner signs in people who only read a report.
+ */
+export const asksForSellerDashboard = (destination: LinkDestination): boolean =>
+  sectionNamed(destination) !== null;
 
 /**
  * The waits differ by an order of magnitude (under a minute against most of an

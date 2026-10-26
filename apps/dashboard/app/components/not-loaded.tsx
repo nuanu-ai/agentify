@@ -66,7 +66,6 @@ export const readFailedIn = ({
       <Frame tab={tab} title={title}>
         <NotLoaded again={again}>
           <div className="what">{`Your ${what} could not be loaded.`}</div>
-          <p className="why">Loading them changed nothing.</p>
           {trouble?.kind === "unread" && trouble.answered === true ? (
             <p className="why">Your change was made before this failed.</p>
           ) : null}

@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReportLocked } from "../../components/report-locked";
 import { ReportPage } from "../../components/report-page";
+import { barIn } from "../../testing/bar";
 import { visitTo } from "../../testing/loader-args";
 import { onSite } from "../../testing/on-site";
 
@@ -92,13 +93,57 @@ afterEach(() => {
 });
 
 describe("a report's page", () => {
-  it("names the address a signed-in person is not, where the report is filed under another", async () => {
+  it.each([
+    ["the report", undefined],
+    ["a stranger's page", { kind: "stranger" }],
+    ["the page for somebody else", { kind: "not_yours", email: "someone-else@shop.example" }],
+    ["the page for a visitor nobody could tell", { kind: "unknown", scanId: SCAN }],
+  ] as const)(
+    "draws the site's one bar over %s, the scanner marked as where the page is",
+    async (_, locked) => {
+      if (locked !== undefined) world.page = locked;
+
+      const bar = barIn(await drawn());
+
+      expect(bar.count).toBe(1);
+      expect(bar.whole).toBe(true);
+      expect(bar.marked).toStrictEqual(["Scanner"]);
+    },
+  );
+
+  it("names the address a signed-in person is, where the report is filed under another, and offers to sign in with another", async () => {
     world.page = { kind: "not_yours", email: "someone-else@shop.example" };
 
     const page = await drawn();
 
-    expect(page).toContain("This report is not filed under someone-else@shop.example");
+    expect(page).toContain("<strong>someone-else@shop.example</strong>");
+    expect(page).toMatch(
+      /<form[^>]*action="\/dashboard\/sign-out"[^>]*method="post"[^>]*>\s*<button[^>]*type="submit"/,
+    );
     expect(page).not.toContain("All 18 checks");
+  });
+
+  it.each([
+    [
+      "somebody signed in as another address to sign out",
+      { kind: "not_yours", email: "someone-else@shop.example" },
+      /^<form[^>]*action="\/dashboard\/sign-out"[^>]*method="post"/,
+    ],
+    [
+      "a stranger to sign in to read reports",
+      { kind: "stranger" },
+      /^<a[^>]*href="\/dashboard\/sign-in\?destination=reports"/,
+    ],
+  ] as const)("leaves %s, and offers no other way", async (_, locked, way) => {
+    world.page = locked;
+
+    const panel =
+      /<section class="message-panel">([\s\S]*?)<\/section>/.exec(await drawn())?.[1] ?? "";
+    // Each locked state has one way on, and it is the panel's only control.
+    const controls = panel.match(/<(?:a|form|button)\b[^>]*>/g) ?? [];
+
+    expect(controls.filter((tag) => !tag.startsWith("<button"))).toHaveLength(1);
+    expect(controls[0]).toMatch(way);
   });
 
   it("shows its owner the level, the score on the scan page's scale, the coverage and the segment's average", async () => {

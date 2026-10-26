@@ -30,44 +30,82 @@ const SCOPE = "read_write";
 
 export const GRANT_MINUTES = 15;
 
+/** The example every refusal of an address shows, where nothing typed suggests a better one. */
+const AN_ADDRESS = "Enter your shop's address, like https://shop.example.com.";
+
+/**
+ * The https root of what was typed, where it names a host at all: what a
+ * merchant who pasted an address from their shop's admin, or left the scheme
+ * off, most likely meant. It only words a refusal; nothing typed is accepted
+ * in its place.
+ */
+const likelyMeant = (typed: string): string | null => {
+  const written = /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`;
+  if (!URL.canParse(written)) return null;
+  const { host, hostname } = new URL(written);
+  return hostname.includes(".") ? `https://${host}` : null;
+};
+
+/**
+ * WordPress's and WooCommerce's own pages, whose addresses a merchant copies
+ * from the address bar of their shop or its dashboard: everything from one of
+ * them on is left out to find the site the shop is.
+ */
+const OWN_PAGE =
+  /\/(wp-admin|wp-login\.php|index\.php|shop|product|product-category|product-tag|cart|checkout|my-account)(\/.*)?$/;
+
+/**
+ * What a typed address carries before the shop's own pages, which may be a
+ * WordPress installed in that folder; null where nothing does. Its site's root
+ * would then be another WordPress, so no address is suggested for it.
+ */
+const folderOf = (typed: string): string | null => {
+  const written = /^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `https://${typed}`;
+  if (!URL.canParse(written)) return null;
+  const folder = new URL(written).pathname.replace(OWN_PAGE, "").replace(/\/+$/, "");
+  return folder === "" ? null : folder;
+};
+
 /**
  * https is required although http would work: WooCommerce then wants an OAuth
  * 1.0a signature instead of HTTP Basic, and we would send the merchant's
  * consumer secret in the clear on every order. WooCommerce also refuses to post
- * keys to a callback that is not https.
+ * keys to a callback that is not https. A refusal ends with the address the
+ * merchant most likely meant, to be copied as it stands, so it carries no
+ * full stop after it.
  */
 export const whatIsWrongWithTheShopUrl = (typed: string): string | null => {
   const trimmed = typed.trim();
   if (trimmed === "") {
-    return "Enter the address of your WooCommerce shop.";
+    return AN_ADDRESS;
   }
+  const folder = folderOf(trimmed);
+  if (folder !== null) {
+    return `Enter the address of your site's home page. If your shop's WordPress is installed in ${folder}, Agentify can't connect it yet.`;
+  }
+  const meant = likelyMeant(trimmed);
   if (!URL.canParse(trimmed)) {
-    return (
-      "That is not an address of the shape https://shop.example.com. It is the address you open" +
-      " your own shop at, with the scheme in front of it."
-    );
+    return meant === null ? AN_ADDRESS : `Start the address with https://, like this: ${meant}`;
   }
   const address = new URL(trimmed);
-  if (address.protocol === "http:") {
-    return "Use the public https address of your WooCommerce shop.";
-  }
   if (address.protocol !== "https:") {
-    return "That address has to start with https://.";
+    return meant === null ? AN_ADDRESS : `Use the https address: ${meant}`;
   }
-  if (address.hostname === "") {
-    return "That address names no shop.";
-  }
-  if (address.search !== "" || address.hash !== "") {
-    return (
-      "Leave off anything after the address of the shop itself — no question mark and no hash." +
-      " We add the rest of the address ourselves."
-    );
-  }
-  if (address.pathname !== "/" && address.pathname !== "") {
-    return "This connector currently supports a WooCommerce shop at the root of its https address.";
+  if (address.hostname === "" || meant === null) {
+    return AN_ADDRESS;
   }
   if (address.username !== "" || address.password !== "") {
-    return "Leave the user name and password out of the address.";
+    return `Leave out the user name and password: ${meant}`;
+  }
+  // A query or a fragment would be swallowed once a path is appended, reaching
+  // an address nobody meant; what is left of a path is one of the site's own
+  // pages.
+  if (
+    address.search !== "" ||
+    address.hash !== "" ||
+    (address.pathname !== "/" && address.pathname !== "")
+  ) {
+    return `Enter your site's root address: ${meant}`;
   }
   return null;
 };

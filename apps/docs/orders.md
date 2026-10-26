@@ -27,7 +27,7 @@ and what the moment of charging means for the owner of the business is on
 ### A parcel
 
 A parcel's order is the asynchronous one with an address in it and a shipment
-at its end; what its card asks of you is on [Cards](/cards).
+at its end; what its card asks of you is on [The product card](/cards).
 
 The agent sends the address under `ship_to`, beside the purchase parameters.
 Here is the purchase of a parcel's card that asks for no parameters, with the

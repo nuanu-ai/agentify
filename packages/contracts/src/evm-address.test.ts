@@ -70,13 +70,29 @@ describe("an address on an EVM chain", () => {
     expect(accepts("0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d358")).toBe(false);
   });
 
-  it("says the address looks mistyped, rather than talking about hexadecimal", () => {
+  it("says the address looks mistyped and to copy it again from the wallet, never to drop the checksum", () => {
     // The reader is a merchant holding a wallet address, who needs to hear
-    // that this is not the address they think and what to do.
+    // that this is not the address they think and what to do. Lower case is
+    // accepted but carries no checksum, so suggesting it here would turn the
+    // mistyped address, somebody else's valid one, into an accepted one.
     const complaint = errorOf(EvmAddressSchema, oneLetterFlipped(CHECKSUMMED[0] ?? ""));
 
     expect(complaint).toMatch(/wrong|mistyp/i);
-    expect(complaint).toContain("lower case");
+    expect(complaint).toMatch(/copy .*from your wallet/i);
+    expect(complaint).not.toMatch(/lower ?case/i);
+  });
+
+  it("tells an address a tool wrote in capitals that its case changed, not that it has a typo", () => {
+    // Some QR generators and tools print an address all in capitals. No
+    // character is wrong, so a refusal claiming a typo would send the merchant
+    // hunting for one that is not there.
+    const shouted = `0x${(CHECKSUMMED[0] ?? "").slice(2).toUpperCase()}`;
+    const complaint = errorOf(EvmAddressSchema, shouted);
+
+    expect(accepts(shouted)).toBe(false);
+    expect(complaint).toMatch(/changed case/i);
+    expect(complaint).not.toMatch(/has a mistyped/i);
+    expect(complaint).not.toMatch(/lower ?case/i);
   });
 
   it("refuses a shape that is not an address at all", () => {

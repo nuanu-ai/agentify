@@ -1,4 +1,7 @@
-/** Merchant recovery stays inside the connector and never creates a shop order. */
+/**
+ * Merchant recovery stays inside the connector. It creates a shop order only
+ * for a download its shop never received, and only once.
+ */
 import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
@@ -18,13 +21,32 @@ export interface WooRecoveryView {
   readonly product: string;
   readonly shopOrigin: string;
   readonly amount: string;
-  readonly test: boolean;
-  readonly mode: "link" | "retry" | "delivered" | "unavailable";
+  /** `create` is offered once, for a download its shop never received. */
+  readonly mode: "create" | "link" | "retry" | "delivered" | "unavailable";
   readonly wooOrderId: string;
-  /** What became of the page or the last press, about the sale as a whole. */
+  /** What became of the last press, about the sale as a whole. */
   readonly message: string | null;
-  /** Why the WooCommerce order ID just typed was refused, said under its box. */
+  /**
+   * What the last press did is not known, so the page is read again before
+   * anything is pressed: a second press could repeat what the first did.
+   */
+  readonly unknown: boolean;
+  /** Why nothing can be done here, and where the merchant goes instead. */
+  readonly unavailable: Unavailable | null;
+  /** Why the shop order ID just typed was refused, said under its box. */
   readonly typedRefusal: string | null;
+}
+
+/**
+ * Why nothing can be done here. `shopOrder` is what is known of the shop's
+ * order for the sale: the shop never got one, nobody knows whether it holds
+ * one, or the one it holds. Closing fulfillment is on Orders; a shop is
+ * connected again on the WooCommerce page; a parcel is followed by its shop's
+ * Completed; an order no longer waiting needs nothing.
+ */
+export interface Unavailable {
+  readonly shopOrder: "none" | "unknown" | { readonly id: string };
+  readonly instead: "close" | "reconnect" | "parcel" | "nothing";
 }
 
 export interface WooRecoveryPages {
@@ -42,36 +64,75 @@ type Known = {
   readonly record: RecoveryOrder;
   readonly order: OrderWithStatus;
   readonly title: string;
+  /**
+   * Whether the shop that refused is connected again under a new grant, the
+   * one condition a create waits for; read only for a refused download.
+   */
+  readonly reconnected: boolean;
 };
 
-const modeOf = ({ record, order }: Known): WooRecoveryView["mode"] => {
+const modeOf = ({ record, order, reconnected }: Known): WooRecoveryView["mode"] => {
   if (record.facts.kind !== "parcel" && record.phase === "placed" && order.status === "delivered") {
     return "delivered";
   }
   if (
     record.facts.kind === "parcel" ||
-    record.phase === "precreate_refused" ||
+    (record.phase === "precreate_refused" && !reconnected) ||
     (record.phase === "placed" && record.placed?.permission == null) ||
     order.status !== "unfulfilled"
   ) {
     return "unavailable";
   }
-  return record.phase === "placed" ? "retry" : "link";
+  return record.phase === "precreate_refused"
+    ? "create"
+    : record.phase === "placed"
+      ? "retry"
+      : "link";
 };
 
-/** Why nothing can be done here, said in place of a form. */
-const unavailableBecause = ({ record }: Known): string =>
-  record.facts.kind === "parcel"
-    ? "This page recovers downloads. A parcel order follows its shipping rules on the WooCommerce page."
-    : record.phase === "precreate_refused"
-      ? "Your shop was never asked to create this order, and this page cannot create one. To stop delivery, close fulfillment on Orders."
-      : record.phase === "placed" && record.placed?.permission == null
-        ? "The saved shop order has no download to send. To stop delivery, close fulfillment on Orders."
-        : "This order is not waiting for a late delivery, so there is nothing to recover.";
+/** What of a saved sale decides why nothing can be done for it here. */
+export interface SavedSale {
+  readonly facts: Pick<RecoveryOrder["facts"], "kind">;
+  readonly phase: RecoveryOrder["phase"];
+  readonly placed: Pick<NonNullable<RecoveryOrder["placed"]>, "id" | "permission"> | null;
+}
+
+/**
+ * Why nothing can be done here, said in place of a form. It is read from the
+ * saved sale and its order's status alone, so a reload says the same as the
+ * press that led here.
+ */
+export const unavailableOf = (
+  record: SavedSale,
+  status: OrderWithStatus["status"],
+): Unavailable => {
+  const shopOrder: Unavailable["shopOrder"] =
+    record.placed !== null
+      ? { id: record.placed.id }
+      : record.phase === "create_unknown"
+        ? "unknown"
+        : "none";
+  // An order no longer waiting for delivery, closed or delivered, asks nothing
+  // more of the merchant, here or in the shop.
+  if (status !== "unfulfilled") return { shopOrder, instead: "nothing" };
+  if (record.facts.kind === "parcel") {
+    return { shopOrder, instead: record.phase === "placed" ? "parcel" : "close" };
+  }
+  return { shopOrder, instead: record.phase === "placed" ? "close" : "reconnect" };
+};
+
+/** Said where what a press did is not known; the page then asks for a reload, not a press. */
+export const RECOVERY_UNKNOWN =
+  "We don't know if this worked: a shop order or a delivery may already be recorded. Reload to see where it stands.";
 
 const viewOf = (
   known: Known,
-  said: Readonly<{ message?: string | null; typedRefusal?: string | null; typed?: string }> = {},
+  said: Readonly<{
+    message?: string | null;
+    unknown?: boolean;
+    typedRefusal?: string | null;
+    typed?: string;
+  }> = {},
 ): WooRecoveryView => {
   const mode = modeOf(known);
   return {
@@ -79,10 +140,11 @@ const viewOf = (
     product: known.title,
     shopOrigin: known.record.facts.shopOrigin,
     amount: money({ amount: known.record.facts.amount, currency: known.record.facts.currency }),
-    test: known.order.test,
     mode,
     wooOrderId: known.record.placed?.id ?? said.typed ?? "",
-    message: said.message ?? (mode === "unavailable" ? unavailableBecause(known) : null),
+    message: said.message ?? null,
+    unknown: said.unknown ?? false,
+    unavailable: mode === "unavailable" ? unavailableOf(known.record, known.order.status) : null,
     typedRefusal: said.typedRefusal ?? null,
   };
 };
@@ -114,11 +176,20 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           (entry) => entry.card.merchant_item_id === record.facts.merchantItemId,
         )?.card.title
       : undefined;
+    const connection =
+      record.phase === "precreate_refused"
+        ? await parts.shops.connectionOf(record.accountId)
+        : null;
     return {
       kind: "known",
       record,
       order: state.document,
       title: title ?? record.facts.merchantItemId,
+      reconnected:
+        connection !== null &&
+        new URL(connection.shopUrl).origin === record.facts.shopOrigin &&
+        connection.revision !== record.facts.connectionRevision &&
+        connection.permissions === "read_write",
     };
   };
   return {
@@ -138,7 +209,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           status: 400,
           view: viewOf(known, {
             typedRefusal:
-              "Enter the order's numeric ID from its address in your shop, which can differ from its order number.",
+              "Enter the number from the order's address in WooCommerce, the one after id= or post=.",
             typed,
           }),
         };
@@ -148,7 +219,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       }
       // Every other press, one this page offers no form for included, is
       // decided by the recovery itself, which turns away what it cannot do.
-      let said: { message?: string; typedRefusal?: string } = {};
+      let said: { message?: string; unknown?: boolean; typedRefusal?: string } = {};
       let status = 200;
       try {
         const outcome = await recoverWooOrderAs(
@@ -161,10 +232,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           status = outcome.state === "unresolved" ? 503 : 409;
         }
       } catch {
-        said = {
-          message:
-            "The recovery result is unknown. A saved shop order or delivery may already have been recorded. Reload this page before trying again.",
-        };
+        said = { message: RECOVERY_UNKNOWN, unknown: true };
         status = 503;
       }
       const after = await read(person, orderId);
@@ -175,12 +243,13 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           kind: "view",
           status: 503,
           view: viewOf(
-            { ...known, record: saved },
+            { ...known, record: saved, reconnected: false },
             {
               message:
                 saved.placed === null
-                  ? "The recovery result could not be read. Reload this page before deciding whether anything was recorded."
-                  : "The delivery result could not be read. The linked shop order shown here is saved; reload this page to check delivery before trying again.",
+                  ? "We couldn't read the result, so we don't know if anything was recorded. Reload to see where it stands."
+                  : `Shop order ${saved.placed.id} is linked, but we couldn't read whether its download was delivered. Reload to check.`,
+              unknown: true,
               typed,
             },
           ),
@@ -188,12 +257,34 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
       }
       const now = modeOf(after);
       if (now === "delivered") return { kind: "view", view: viewOf(after) };
-      if (now === "unavailable") return { kind: "view", status: 409, view: viewOf(after) };
+      if (now === "unavailable") {
+        // The saved sale says what became of the shop order; a press adds only
+        // that its own end is unknown.
+        return {
+          kind: "view",
+          status: after.record.phase === known.record.phase && said.unknown !== true ? 409 : status,
+          view: viewOf(
+            after,
+            said.unknown === true ? { message: said.message ?? null, unknown: true } : {},
+          ),
+        };
+      }
+      const created =
+        known.record.phase === "precreate_refused" && after.record.placed != null
+          ? `Your shop created order ${after.record.placed.id}. `
+          : "";
       // Only the linking form has a box to say a refusal under.
       const told =
         now === "link"
           ? said
-          : { message: said.message ?? said.typedRefusal ?? null, typedRefusal: null };
+          : {
+              message:
+                said.message === undefined
+                  ? (said.typedRefusal ?? null)
+                  : `${created}${said.message}`,
+              unknown: said.unknown ?? false,
+              typedRefusal: null,
+            };
       return { kind: "view", status, view: viewOf(after, { ...told, typed }) };
     },
   };

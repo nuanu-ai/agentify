@@ -225,10 +225,9 @@ export const EvmAddressSchema = z
   )
   .refine(
     carriesItsOwnChecksum,
-    "the capital letters in an address are a checksum over the address itself, and these do not" +
-      " match the rest of it — so a character in it is wrong, or something has changed its case" +
-      " along the way; paste it again exactly as your wallet shows it, or write it all in lower" +
-      " case",
+    "the capital letters in this address are a checksum, and they do not match the rest of it: a" +
+      " character is mistyped, or its letters changed case on the way; copy the address again" +
+      " from your wallet and paste it whole",
   )
   .meta({
     description:

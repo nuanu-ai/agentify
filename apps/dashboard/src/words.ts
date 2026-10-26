@@ -30,8 +30,10 @@ export interface Word {
 /**
  * Endings that cost the merchant something are `warn`, those that cost nobody
  * are quiet. Only `delivered` and `shipped` are `ok`: the goods have gone to
- * the buyer and the original payment is recorded. Goods delivered and not paid wait
- * on the buyer, who can pay again.
+ * the buyer and the original payment is recorded. Goods the merchant delivered
+ * against a charge that then failed have not reached the buyer, who receives
+ * them only by paying again, which the word says, so it does not read as goods
+ * given away unpaid.
  */
 export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   in_progress: { text: "In progress", tone: "busy" },
@@ -42,7 +44,7 @@ export const ORDER_WORDS: Readonly<Record<OrderStatus, Word>> = Object.freeze({
   expired: { text: "Closed on time limit", tone: "quiet" },
   unfulfilled: { text: "Unfulfilled", tone: "warn" },
   fulfillment_closed: { text: "Fulfillment closed", tone: "quiet" },
-  delivered_unpaid: { text: "Delivered, not paid", tone: "waiting" },
+  delivered_unpaid: { text: "Held for payment", tone: "waiting" },
 });
 
 /**
@@ -91,16 +93,9 @@ export const waitsOnTheBuyer = (status: OrderStatus): boolean => status === "del
  * The gateway's own codes, less the operator's approval, which nobody sets in
  * Settings, and less the shop's site, which is asked only of a parcel's card.
  * Which of them is required on which channel is the gateway's rule
- * (`readinessOf` in the core), never a screen's. Total by its type: a code
- * added to the contract does not compile here until it has words or is
- * excluded.
+ * (`readinessOf` in the core), never a screen's.
  */
 export type Unset = Exclude<MerchantFinding, "no_operator_approval" | "no_seller_site">;
-
-export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
-  no_seller_name: "the name your products are sold under",
-  no_payout_wallet: "the wallet your share of every sale is paid out to",
-});
 
 /**
  * The gateway's own words name the call a merchant's code makes; the person
@@ -108,18 +103,18 @@ export const UNSET_WORDS: Readonly<Record<Unset, string>> = Object.freeze({
  */
 export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import again.";
 
-export const APPROVAL_GIVEN = "Agentify has approved your business for live sales.";
-
 /**
- * Why the account as a whole is not selling as usual: all sales are paused,
- * something publishing needs is missing, the cards are off sale while their
- * integration is not connected, new purchases are refused
- * while as many wait for payment as Agentify allows or while as many paid
- * orders are left unserved as it allows, or the cards their own code published
- * are off sale while a WooCommerce shop sells; or that what would say so could
- * not be read.
+ * Why the account as a whole is not as usual: a change of the payout wallet
+ * waits to apply, all sales are paused, something publishing needs is
+ * missing, the products are off sale while their integration is not
+ * connected, or new purchases are refused while as many wait for payment as
+ * Agentify allows or while as many paid orders are left unserved as it
+ * allows; or that what would say so could not be read. Selling through a
+ * WooCommerce shop is not among them: it holds nothing, and the products it
+ * leaves off sale say so on their own rows.
  */
 export type AccountReason =
+  | "wallet_change"
   | "paused"
   | "not_approved"
   | "no_seller_name"
@@ -127,7 +122,6 @@ export type AccountReason =
   | "out_of_touch"
   | "busy"
   | "unserved"
-  | "through_shop"
   | "unread";
 
 /**
@@ -140,19 +134,30 @@ export interface Way {
 }
 
 /**
- * One title and one sentence each, and the page that puts it right where one
- * does. The approval says what is known, that there is none, and not that a
- * review is under way, since nothing records one. The merchant cannot grant
- * it, so the banner leads to the test channel's own dashboard, where the first
- * sale is made under another account.
+ * Each reason's title, which heads the banner when it is the only one, its
+ * one line, and the page that puts it right where one does. Each line says
+ * who lifts the hold: the merchant at the way it names, Agentify, or nobody,
+ * since it lifts by itself. The approval says what is known, that there is
+ * none, and not that a review is under way, since nothing records one; the
+ * merchant cannot grant it, so the way leads to the test channel's own
+ * dashboard, where test sales need none.
  */
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
 > = Object.freeze({
+  // The banner draws the address and the moment before this line, and its
+  // cancel after it.
+  wallet_change: {
+    title: "Your payout wallet is changing",
+    says: "If nobody at your business asked for this, cancel it. Cancelling also signs out every other session on your account.",
+    fix: null,
+  },
+  // Selling stops by the button, by the code's call and by a switch back to
+  // code alike, and nothing read here says which, so the line names no cause.
   paused: {
-    title: "All sales are paused",
-    says: "No new orders are accepted; the orders you have already accepted play out as usual.",
-    fix: { to: "/cards", words: "Resume on Cards" },
+    title: "Sales are paused",
+    says: "New orders are refused.",
+    fix: { to: "/products", words: "Resume on Products" },
   },
   not_approved: {
     title: "Not approved for live sales yet",
@@ -160,18 +165,18 @@ export const ACCOUNT_WORDS: Readonly<
     fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Make a test sale" },
   },
   no_seller_name: {
-    title: "No seller name yet",
-    says: "Your cards are off sale, and every card you publish is refused, until you choose the name buyers see.",
-    fix: { to: "/settings", words: "Choose it in Settings" },
+    title: "Your products are off sale",
+    says: "Publishing and selling need a seller name.",
+    fix: { to: "/settings", words: "Choose one in Settings" },
   },
   no_payout_wallet: {
-    title: "No payout wallet yet",
-    says: "Your cards are off sale, and every card you publish is refused, until you set the wallet your share of every sale is paid out to.",
-    fix: { to: "/settings", words: "Set it in Settings" },
+    title: "Your products are off sale",
+    says: "Publishing and selling need a payout wallet.",
+    fix: { to: "/settings", words: "Set one in Settings" },
   },
   out_of_touch: {
-    title: "Your cards are off sale",
-    says: "Your integration has not connected yet, so agents do not see your cards in the catalogue and new purchases are refused until it does.",
+    title: "Your products are off sale",
+    says: "Your integration has not connected yet, so agents don't see your products and new purchases are refused until it does.",
     fix: null,
   },
   busy: {
@@ -184,17 +189,40 @@ export const ACCOUNT_WORDS: Readonly<
     says: "As many paid orders you were given as Agentify allows are left without delivery or closure, so agents cannot buy anything from you until you deliver or close some of them. Under Needs you, each order that counts says so.",
     fix: { to: "/orders?show=needs", words: "See them on Orders" },
   },
-  through_shop: {
-    title: "Selling through your WooCommerce shop",
-    says: "The cards your own code published are off sale until you switch back to it on the WooCommerce page.",
-    fix: { to: "/woocommerce", words: "Open WooCommerce" },
-  },
   unread: {
-    title: "Your account could not be checked",
-    says: "Whether anything holds your sales could not be read just now, so a reason may be missing here; reload the page to check again.",
+    title: "We could not check your account",
+    says: "We don't know right now whether anything holds your sales. Reload the page to check again.",
     fix: null,
   },
 });
+
+/** The reasons that each keep every product off sale. */
+const KEEP_OFF_SALE: ReadonlySet<AccountReason> = new Set([
+  "paused",
+  "no_seller_name",
+  "no_payout_wallet",
+  "not_approved",
+  "out_of_touch",
+]);
+
+/**
+ * The banner's heading. One reason is headed by its own title; several by
+ * what they come to together where one of them keeps every product off sale,
+ * otherwise by the refused purchases where they hold, since those refuse every
+ * product, and otherwise by the first.
+ * Here rather than beside the reasons, so the page's script that draws the
+ * banner does not carry the rules that find them.
+ */
+export const headingOf = (
+  notes: readonly Readonly<{ reason: AccountReason; title: string }>[],
+): string => {
+  const [first] = notes;
+  if (first === undefined) return "";
+  if (notes.length === 1) return first.title;
+  if (notes.some((note) => KEEP_OFF_SALE.has(note.reason))) return "Your products are off sale";
+  return (notes.find((note) => note.reason === "busy" || note.reason === "unserved") ?? first)
+    .title;
+};
 
 /**
  * Said beside an order under Needs you that counts toward the stop on new
@@ -208,17 +236,15 @@ export const COUNTS_TOWARD_THE_STOP =
 export const LIVE_SALES_STOPPED = "Live sales are stopped";
 
 /**
- * Its sentence: since when, and the note Agentify wrote for the merchant,
- * quoted as written, or that there is none.
+ * Its line: since when, and the note Agentify wrote for the merchant, quoted
+ * as written, or nothing where there is none.
  */
 export const liveSalesStoppedSince = (when: string, note: string | null): string =>
-  `Agentify stopped your sales on the live site on ${when}, so agents cannot buy your cards there; orders already taken carry on.${
-    note === null ? "" : ` The note left for you: “${note}”`
-  }`;
+  `Agentify stopped your live sales on ${when}.${note === null ? "" : ` Its note: “${note}”`}`;
 
-/** The out-of-touch reason's sentence where the integration did connect once, at `when`. */
+/** The out-of-touch reason's line where the integration did connect once, at `when`. */
 export const notConnectedSince = (when: string): string =>
-  `Your integration has not connected since ${when}, so agents do not see your cards in the catalogue and new purchases are refused until it connects again.`;
+  `Your integration has not connected since ${when}, so agents don't see your products and new purchases are refused until it connects again.`;
 
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on
@@ -227,48 +253,3 @@ export const notConnectedSince = (when: string): string =>
  */
 export const money = (sum: { readonly amount: string; readonly currency: string }): string =>
   `${sum.amount} ${sum.currency}`;
-
-/**
- * UTC, said beside every moment, because nothing in the request carries the
- * reader's zone and the server's zone would be off by hours with nothing to say
- * so. To the second, because receipts are reconciled against a wallet and two
- * payments a few seconds apart must not look like one line twice.
- */
-export const moment = (iso: string): string => {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) {
-    // A timestamp we cannot read is shown raw: it is what we were told, and an
-    // invented date would put a moment on a receipt that nothing stands behind.
-    return iso;
-  }
-  const date = at.toISOString();
-  return `${date.slice(0, 10)} ${date.slice(11, 19)} UTC`;
-};
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
-
-/**
- * The day a moment falls on in UTC, written out, for a heading over the
- * moments of that day; each moment under it keeps its time to the second. A
- * timestamp that cannot be read is given as it came.
- */
-export const dayOf = (iso: string): string => {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) {
-    return iso;
-  }
-  return `${at.getUTCDate()} ${MONTHS[at.getUTCMonth()]} ${at.getUTCFullYear()}`;
-};

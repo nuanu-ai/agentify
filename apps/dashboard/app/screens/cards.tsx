@@ -1,9 +1,8 @@
 import { Button } from "@agentify/ui";
-import type { CardControl, CardPrice, CardsView } from "../../src/views.js";
+import type { CardControl, CardsView } from "../../src/views.js";
 import { CodeCopy } from "../components/copy.js";
 import { Cell, List, ListEmpty, Row } from "../components/list.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
-import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
@@ -11,33 +10,25 @@ import styles from "./cards.module.css";
 
 type Place = CardsView["listing"]["place"];
 
-/**
- * A fixed price opens to the moment it holds from, which the browser does at
- * a press, a tap or a key with no script on the page; on every such row the
- * line would be the same one, so the row does not print it.
- */
-const Price = ({ price, priced }: Readonly<{ price: string; priced: CardPrice }>) =>
-  "asked" in priced ? (
-    price
-  ) : (
-    <details className="price-since">
-      <summary>{price}</summary>
-      <span className="since-said">
-        On the card since <Moment at={priced.since} />
-      </span>
-    </details>
-  );
-
 const Control = ({
   id,
   control,
   place,
-}: Readonly<{ id: string; control: CardControl; place: Place }>) => {
-  if (control.kind === "none") return null;
-  if (control.kind === "reason") return <Cell at="note">{control.text}</Cell>;
+  base,
+}: Readonly<{ id: string; control: CardControl; place: Place; base: string }>) => {
+  if (control.kind === "reason") {
+    return (
+      <Cell at="note">
+        <a href={`${base}${control.to}`}>{control.text}</a>
+      </Cell>
+    );
+  }
   return (
     <Cell at="action">
-      <PostForm className="inline" action={`/cards?${new URLSearchParams({ [control.verb]: id })}`}>
+      <PostForm
+        className="inline"
+        action={`/products?${new URLSearchParams({ [control.verb]: id })}`}
+      >
         {(pending) => (
           <>
             <KeptPlace place={place} />
@@ -59,7 +50,7 @@ const Control = ({
 export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
   const { allSelling, listing } = view;
   return (
-    <PostForm className="inline" action={`/cards?selling=${allSelling.verb}`}>
+    <PostForm className="inline" action={`/products?selling=${allSelling.verb}`}>
       {(pending) => (
         <>
           <KeptPlace place={listing.place} />
@@ -101,8 +92,8 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
     <>
       <ListTools
         listing={listing}
-        path="/cards"
-        label="Search cards"
+        path="/products"
+        label="Search products"
         placeholder="Search by name or product code"
       />
       {view.byCode === null || listing.rows.length === 0 ? null : (
@@ -112,7 +103,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         <NothingHere listing={listing} />
       ) : (
         <List
-          label="Product cards"
+          label="Products"
           columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 12rem)" : "6.5rem"}`}
           head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
         >
@@ -120,14 +111,12 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
             <Row key={row.id} off={row.off}>
               <Cell at="main">
                 <Cell at="title">{row.title}</Cell>
-                {"asked" in row.priced ? <Cell at="aside">Price asked at purchase</Cell> : null}
+                {row.priceAsked ? <Cell at="aside">Price asked at purchase</Cell> : null}
                 <Cell at="ident">
                   <CodeCopy code={row.itemId} address={row.buy} />
                 </Cell>
               </Cell>
-              <Cell at="amount">
-                <Price price={row.price} priced={row.priced} />
-              </Cell>
+              <Cell at="amount">{row.price}</Cell>
               <Cell at="fact">
                 {row.delivery.says}
                 {row.delivery.byDefault === null ? null : (
@@ -136,28 +125,23 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
                     <a href={row.delivery.byDefault.href}>{row.delivery.byDefault.words}</a>
                   </>
                 )}
-                {"asked" in row.priced ? (
+                {row.priceAsked ? (
                   <span className={styles.narrowOnly}> · price asked at purchase</span>
                 ) : null}
               </Cell>
               <Cell at="state">
                 <Word word={row.state} />
               </Cell>
-              <Control id={row.id} control={row.control} place={listing.place} />
+              <Control id={row.id} control={row.control} place={listing.place} base={base} />
             </Row>
           ))}
         </List>
       )}
       <CutNote cut={listing.cut} />
-      <div className={styles.notes}>
-        <p>
-          {note.says}
-          <Rest rest={note.rest} />
-        </p>
-        {listing.rows.length === 0 ? null : (
-          <p>The link icon beside a product code copies the address an agent buys the card at.</p>
-        )}
-      </div>
+      <p className={styles.note}>
+        {note.says}
+        <Rest rest={note.rest} />
+      </p>
     </>
   );
 }

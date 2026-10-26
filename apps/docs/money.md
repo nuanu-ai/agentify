@@ -1,9 +1,13 @@
 # Money
 
-You run an online business, and you are deciding whether it is worth selling
-to programs that buy on a person's behalf. The money side of that decision is
-collected here: where the payments go, when your share reaches you, what you
-risk on the way, and what we take.
+## In short
+
+- A buyer pays the whole price, in USDC, into your payout contract: a contract
+  made for your wallet that nobody owns.
+- A payout sends 99.9% of it to your wallet and 0.1% to Agentify.
+- From Settings you can usually send a payout yourself. Otherwise Agentify
+  pays out, on no fixed date.
+- A payment is final: a buyer cannot reverse it, and a refund is yours to give.
 
 ## Where the money arrives
 
@@ -65,10 +69,10 @@ contract.
 
 ## What they pay in
 
-Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A card
-may write its price in USD or USDC; either way the buyer is asked for the same
-number of USDC. There is no exchange-rate conversion in between, so a price in
-any other currency is refused when the card is published. A WooCommerce shop
+Buyers pay in USDC, a digital dollar whose rate is pegged to the dollar. A
+product's price may be written in USD or USDC; either way the buyer is asked for
+the same number of USDC. There is no exchange-rate conversion in between, so a
+price in any other currency is refused when the product is published. A WooCommerce shop
 priced in another currency is converted at its merchant's own rate before any
 price reaches Agentify ([how](/woocommerce#a-shop-priced-in-another-currency)). The test channel
 uses Base Sepolia and test USDC, which is worth nothing; the live channel uses
@@ -84,8 +88,8 @@ decision.
 ## When the money reaches you
 
 The buyer is charged either after you have delivered or at the moment of
-purchase, and you choose which product by product, in its card ([When your
-buyer is charged](/#when-your-buyer-is-charged)). Either way the payment goes
+purchase, and you choose which, product by product ([When your buyer is
+charged](/#when-your-buyer-is-charged)). Either way the payment goes
 into your payout contract, and your share reaches your wallet with the payout
 after it.
 
@@ -158,7 +162,7 @@ network, or be replaced by another agreement. Agentify does not send a refund,
 check one or judge whether you and the buyer have settled. You hold the
 buyer's details only where the product needs them: a parcel's address, with
 the name and phone number it carries, and whatever a purchase parameter your
-card asks for holds, such as an email. A paid order also names its payment's
+product asks for holds, such as an email. A paid order also names its payment's
 transaction, when one was recorded, in Order details whether or not the goods
 were delivered, and on its receipt once there is one. The transaction is on a
 public chain, but a block explorer shows as its sender the payment service
@@ -188,9 +192,9 @@ who handle refunds and does not pay a buyer back from its own funds.
 ## What we take
 
 We take {{commission}} of every payment, and it is inside your price. The buyer pays the
-price on your card and nothing on top of it, and your payout contract sends
+price of your product and nothing on top of it, and your payout contract sends
 {{merchant-share}} of it to you and {{commission}} to us. If you want what reaches you to be the
-whole of a price you have in mind, raise the price on the card yourself. There
+whole of a price you have in mind, raise the product's price yourself. There
 is no subscription and no monthly fee. The Settings screen of your dashboard
 names the commission, and saving your wallet there is how you accept it.
 
@@ -236,12 +240,12 @@ it is theirs to collect, and if you have lost access to it, it is lost with it.
 On the live channel a wallet you have already saved is not replaced at once,
 because the wallet is the one setting that sends your money somewhere else,
 and a dashboard session left open on another device could ask for a change.
-Everybody who signs in to your merchant's dashboard is sent a message first,
-saying the change was asked for and from which account's session, and the new
-address takes effect forty-eight hours after the messages went out. Until then
-buyers pay into the old contract, and your Settings screen shows the waiting
+Everyone who signs in to your dashboard is sent a message first, saying the
+change was asked for and from which account's session, and the new address
+takes effect forty-eight hours after the messages went out. Until then buyers
+pay into the old contract, and every screen of your dashboard shows the waiting
 address, the moment it takes effect and a button that cancels the change.
-Cancelling also signs out every session of your merchant, including a copy
+Cancelling also signs out every session on your account, including a copy
 somebody may have taken of your own browser's, and keeps the browser you
 cancel from signed in on a new session. So if you can no longer trust the
 old wallet, replace it at once and pause selling for those two days.

@@ -1,4 +1,4 @@
-import { SignedIn, SiteFooter, SiteHeader, SurfaceNote } from "@agentify/ui";
+import { SiteFooter, SiteHeader, SurfaceNote } from "@agentify/ui";
 import type { ReactNode } from "react";
 import { Link, useRouteLoaderData } from "react-router";
 import type { Chrome, Gated } from "../answer.js";
@@ -21,19 +21,15 @@ export function GatePage({
       <SiteHeader
         surface="dashboard"
         link={Link}
+        current="dashboard"
         visitor={
-          gate === undefined ? null : (
-            <SignedIn
-              who={gate.who}
-              account={`${chrome.base}/settings`}
-              signOut={`${chrome.base}/sign-out`}
-              admin={gate.admin}
-            />
-          )
+          gate === undefined
+            ? { status: "signed_out" }
+            : { status: "signed_in", email: gate.who, operator: gate.operator === true }
         }
       />
       <SurfaceNote surface={chrome.surface} />
-      <main className="gate" id="main">
+      <main className="gate message-page" id="main">
         {children}
       </main>
       <SiteFooter surface="dashboard" link={Link} />
