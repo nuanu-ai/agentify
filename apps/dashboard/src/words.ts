@@ -154,7 +154,7 @@ export const ACCOUNT_WORDS: Readonly<
   // cancel after it.
   wallet_change: {
     title: "Your payout wallet is changing",
-    says: "If nobody at your business asked for this, cancel it.",
+    says: "If nobody at your business asked for this, cancel it. Cancelling also signs out every other session on your account.",
     fix: null,
   },
   paused: {

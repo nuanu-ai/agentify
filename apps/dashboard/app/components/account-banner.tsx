@@ -2,7 +2,7 @@ import { Button } from "@agentify/ui";
 import { Link, useLocation } from "react-router";
 import type { AccountNote, WalletChangeNote } from "../../src/account-banner.js";
 import { headingOf } from "../../src/words.js";
-import { ShortAddress } from "../wallet/address.js";
+import { Address } from "../wallet/address.js";
 import styles from "./account-banner.module.css";
 import { Moment } from "./moment.js";
 import { PostForm } from "./post-form.js";
@@ -40,7 +40,7 @@ function Reason({ note, here, back }: Readonly<{ note: AccountNote; here: string
     return (
       <>
         From <Moment at={change.from} />, your share of each sale goes to{" "}
-        <ShortAddress address={change.wallet} />. {note.says}
+        <Address address={change.wallet} />. {note.says}
         {isOn(here, "/settings") ? null : <CancelChange change={change} back={back} />}
       </>
     );

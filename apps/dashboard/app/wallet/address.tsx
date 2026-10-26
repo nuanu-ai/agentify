@@ -20,22 +20,3 @@ export function Address({ address }: Readonly<{ address: string }>) {
     </span>
   );
 }
-
-/**
- * An address shortened to its first and last two groups, for a line that
- * points at it rather than shows it: the page it points to shows it whole.
- */
-export function ShortAddress({ address }: Readonly<{ address: string }>) {
-  const groups = groupsOf(address);
-  return (
-    <span className="address" title={address}>
-      <span className="lead">{address.slice(0, 2)}</span>
-      {[...groups.slice(0, 2), "…", ...groups.slice(-2)].map((group, at) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the groups of one address never reorder
-        <span className="quad" key={at}>
-          {group}
-        </span>
-      ))}
-    </span>
-  );
-}
