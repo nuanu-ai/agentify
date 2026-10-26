@@ -14,11 +14,13 @@ const PARCELS = "/docs/woocommerce#parcels";
 
 /** What the merchant does here, in a line, under what the last press came to. */
 const introOf = (view: WooRecoveryView): string | null =>
-  view.mode === "link"
-    ? "Your shop may have created this order without telling Agentify. Find the WooCommerce order whose Transaction ID is the order ID below, and enter its number."
-    : view.mode === "retry"
-      ? `Shop order ${view.wooOrderId} is linked. Retry sends its download again without making a new order.`
-      : null;
+  view.mode === "create"
+    ? "Your shop never got this order, so the buyer has nothing yet. Create it now: Agentify makes the order in your shop once, at the price the buyer paid, and sends the download."
+    : view.mode === "link"
+      ? "Your shop may have created this order without telling Agentify. Find the WooCommerce order whose Transaction ID is the order ID below, and enter its number."
+      : view.mode === "retry"
+        ? `Shop order ${view.wooOrderId} is linked. Retry sends its download again without making a new order.`
+        : null;
 
 /** A link styled as the panel's one action, under the facts. */
 function Next({
@@ -40,7 +42,7 @@ export function WooRecoveryScreen({
   base,
 }: Readonly<{ view: WooRecoveryView; base: string }>) {
   const link = view.mode === "link";
-  const acts = (link || view.mode === "retry") && !view.unknown;
+  const acts = (link || view.mode === "retry" || view.mode === "create") && !view.unknown;
   const intro = introOf(view);
   const here = `${base}/integrations/woocommerce/recover/${encodeURIComponent(view.orderId)}`;
   const onOrders = `${base}/orders?${new URLSearchParams({ q: view.orderId })}`;
@@ -84,6 +86,10 @@ export function WooRecoveryScreen({
             </Next>
           ) : view.unavailable?.instead === "close" ? (
             <Next to={onOrders}>Close fulfillment</Next>
+          ) : view.unavailable?.instead === "reconnect" ? (
+            <Next to={`${base}/woocommerce`} primary>
+              Connect shop again
+            </Next>
           ) : view.unavailable?.instead === "parcel" ? (
             <Next to={PARCELS}>Parcel rules</Next>
           ) : null}
@@ -109,7 +115,13 @@ export function WooRecoveryScreen({
                       required
                     />
                   ) : null}
-                  <Button pending={pending}>{link ? "Link and deliver" : "Retry delivery"}</Button>
+                  <Button pending={pending}>
+                    {link
+                      ? "Link and deliver"
+                      : view.mode === "create"
+                        ? "Create shop order"
+                        : "Retry delivery"}
+                  </Button>
                 </>
               )}
             </PostForm>
@@ -117,6 +129,11 @@ export function WooRecoveryScreen({
           {acts && link ? (
             <p className={`quiet ${styles.instead}`}>
               No such order in your shop? <a href={onOrders}>Close fulfillment</a>
+            </p>
+          ) : null}
+          {acts && view.mode === "create" ? (
+            <p className={`quiet ${styles.instead}`}>
+              Can't sell it after all? <a href={onOrders}>Close fulfillment</a>
             </p>
           ) : null}
         </section>

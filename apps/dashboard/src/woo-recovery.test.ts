@@ -355,15 +355,9 @@ describe("a merchant creating the shop order of a download refused before creati
 
   it("creates nothing more on a second press, a double click or a press from a stale page", async () => {
     const shops = await setup("precreate_refused");
-    let answer: (made: OrderMade) => void = () => undefined;
-    let calls = 0;
+    const waiting: ((made: OrderMade) => void)[] = [];
     const test = parts(shops, {
-      placeOrder: async () => {
-        calls += 1;
-        return await new Promise<OrderMade>((resolve) => {
-          answer = resolve;
-        });
-      },
+      placeOrder: async () => await new Promise<OrderMade>((resolve) => waiting.push(resolve)),
     });
 
     // Two presses at once: whichever moves the ledger first sends the one
@@ -372,22 +366,28 @@ describe("a merchant creating the shop order of a download refused before creati
       recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value),
       recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value),
     ];
-    expect(await Promise.race(presses)).toMatchObject({ ok: false });
-    await vi.waitFor(() => expect(calls).toBe(1));
-    answer({
-      ok: true,
-      id: "13",
-      number: "WOO-13",
-      orderKey: "wc_order_13",
-      downloadId: PRODUCT.downloadId,
-      total: FACTS.amount,
-    });
+    const first = await Promise.race([
+      ...presses,
+      new Promise((resolve) => setTimeout(() => resolve("both presses are still waiting"), 500)),
+    ]);
+    await vi.waitFor(() => expect(waiting.length).toBeGreaterThan(0));
+    for (const answer of waiting) {
+      answer({
+        ok: true,
+        id: "13",
+        number: "WOO-13",
+        orderKey: "wc_order_13",
+        downloadId: PRODUCT.downloadId,
+        total: FACTS.amount,
+      });
+    }
+    expect(first).toMatchObject({ ok: false });
     expect((await Promise.all(presses)).filter((outcome) => outcome.ok)).toHaveLength(1);
     // A third press, from the page drawn before any of them.
     const stale = await wooRecoveryPagesFor(test.value).recover(OWNER, "ord_1", new FormData());
 
     expect(stale).toMatchObject({ kind: "view", view: { mode: "delivered", wooOrderId: "13" } });
-    expect(calls).toBe(1);
+    expect(waiting).toHaveLength(1);
   });
 
   it("leaves a create whose answer was lost to linking, and never sends it again", async () => {
@@ -641,9 +641,9 @@ describe("merchant recovery pages", () => {
       status: 400,
       view: { mode: "link" },
     });
-    expect(
-      await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value),
-    ).toMatchObject({ ok: false });
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+    });
     expect(test.created()).toBe(0);
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("create_unknown");
   });

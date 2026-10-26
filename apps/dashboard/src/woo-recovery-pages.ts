@@ -1,4 +1,7 @@
-/** Merchant recovery stays inside the connector and never creates a shop order. */
+/**
+ * Merchant recovery stays inside the connector. It creates a shop order only
+ * for a download its shop never received, and only once.
+ */
 import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
@@ -6,6 +9,8 @@ import { type Outcome, problemOf } from "./page-services.js";
 import {
   matchesSavedWooSale,
   ownWooRecoveryOrder,
+  PARCEL_NOT_CREATED,
+  RECONNECT_FIRST,
   type RecoveryGateway,
   recoverWooOrderAs,
   type WooRecoveryParts,
@@ -18,7 +23,8 @@ export interface WooRecoveryView {
   readonly product: string;
   readonly shopOrigin: string;
   readonly amount: string;
-  readonly mode: "link" | "retry" | "delivered" | "unavailable";
+  /** `create` is offered once, for a download its shop never received. */
+  readonly mode: "create" | "link" | "retry" | "delivered" | "unavailable";
   readonly wooOrderId: string;
   /** What became of the last press, about the sale as a whole. */
   readonly message: string | null;
@@ -34,12 +40,13 @@ export interface WooRecoveryView {
 }
 
 /**
- * Closing fulfillment is on Orders; a parcel is followed by its shop's
- * Completed; an order no longer waiting needs nothing.
+ * Closing fulfillment is on Orders; a shop is connected again on the
+ * WooCommerce page; a parcel is followed by its shop's Completed; an order no
+ * longer waiting needs nothing.
  */
 export interface Unavailable {
   readonly why: string;
-  readonly instead: "close" | "parcel" | "nothing";
+  readonly instead: "close" | "reconnect" | "parcel" | "nothing";
 }
 
 export interface WooRecoveryPages {
@@ -57,41 +64,49 @@ type Known = {
   readonly record: RecoveryOrder;
   readonly order: OrderWithStatus;
   readonly title: string;
+  /**
+   * Whether the shop that refused is connected again under a new grant, the
+   * one condition a create waits for; read only for a refused download.
+   */
+  readonly reconnected: boolean;
 };
 
-const modeOf = ({ record, order }: Known): WooRecoveryView["mode"] => {
+const modeOf = ({ record, order, reconnected }: Known): WooRecoveryView["mode"] => {
   if (record.facts.kind !== "parcel" && record.phase === "placed" && order.status === "delivered") {
     return "delivered";
   }
   if (
     record.facts.kind === "parcel" ||
-    record.phase === "precreate_refused" ||
+    (record.phase === "precreate_refused" && !reconnected) ||
     (record.phase === "placed" && record.placed?.permission == null) ||
     order.status !== "unfulfilled"
   ) {
     return "unavailable";
   }
-  return record.phase === "placed" ? "retry" : "link";
+  return record.phase === "precreate_refused"
+    ? "create"
+    : record.phase === "placed"
+      ? "retry"
+      : "link";
 };
 
 /** Why nothing can be done here, said in place of a form. */
-const unavailableBecause = ({ record }: Known): Unavailable =>
+const unavailableBecause = ({ record, order }: Known): Unavailable =>
   record.facts.kind === "parcel"
-    ? {
-        why: "This page recovers downloads only. A parcel counts as shipped once you mark it Completed in WooCommerce.",
-        instead: "parcel",
-      }
-    : record.phase === "precreate_refused"
-      ? {
-          why: "Your shop never received this order, and this page can't create it.",
-          instead: "close",
+    ? record.phase === "precreate_refused" && order.status === "unfulfilled"
+      ? { why: PARCEL_NOT_CREATED, instead: "close" }
+      : {
+          why: "This page recovers downloads only. A parcel counts as shipped once you mark it Completed in WooCommerce.",
+          instead: "parcel",
         }
-      : record.phase === "placed" && record.placed?.permission == null
-        ? { why: "The linked shop order has no download to send.", instead: "close" }
-        : {
+    : record.phase === "placed" && record.placed?.permission == null
+      ? { why: "The linked shop order has no download to send.", instead: "close" }
+      : order.status !== "unfulfilled"
+        ? {
             why: "This order isn't waiting for a late delivery, so there's nothing to recover.",
             instead: "nothing",
-          };
+          }
+        : { why: `Your shop never got this order. ${RECONNECT_FIRST}`, instead: "reconnect" };
 
 /** Said where what a press did is not known; the page then asks for a reload, not a press. */
 export const RECOVERY_UNKNOWN =
@@ -148,11 +163,19 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           (entry) => entry.card.merchant_item_id === record.facts.merchantItemId,
         )?.card.title
       : undefined;
+    const connection =
+      record.phase === "precreate_refused"
+        ? await parts.shops.connectionOf(record.accountId)
+        : null;
     return {
       kind: "known",
       record,
       order: state.document,
       title: title ?? record.facts.merchantItemId,
+      reconnected:
+        connection !== null &&
+        new URL(connection.shopUrl).origin === record.facts.shopOrigin &&
+        connection.revision !== record.facts.connectionRevision,
     };
   };
   return {
@@ -206,7 +229,7 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           kind: "view",
           status: 503,
           view: viewOf(
-            { ...known, record: saved },
+            { ...known, record: saved, reconnected: false },
             {
               message:
                 saved.placed === null
