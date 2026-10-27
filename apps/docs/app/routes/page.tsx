@@ -60,7 +60,7 @@ const builtOf = (matches: MetaArgs["matches"]): string =>
 export const meta = ({ loaderData, matches }: MetaArgs<typeof loader>) =>
   loaderData?.kind === "page"
     ? headOf(loaderData, builtOf(matches))
-    : [{ title: "No such page · Agentify" }, { name: "robots", content: "noindex" }];
+    : [{ title: "Page not found · Agentify" }, { name: "robots", content: "noindex" }];
 
 /**
  * A press inside the page's text: a copy button copies its block, and a link

@@ -29,7 +29,7 @@ is recorded as unfulfilled after.
 | The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; the risk is one sale's price |
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
 | {{Waiting-for-payment-at-most}} of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; your cards stay in the catalogue, nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses {{quote-ttl}} after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps {{waiting-for-payment-at-most}} unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
-| No process of yours has polled for {{silent-after}} | a new purchase is refused with `seller_not_taking_orders` before its price is asked and before any order exists, and so is a payment for a price named before the silence; your cards leave the catalogue, nothing is charged, and the agent tries again later | as in the synchronous mode | as in the synchronous mode | keep a process running and polling: its first poll brings your cards back and lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected |
+| No process of yours has polled for {{silent-after}} | a new purchase is refused with `seller_not_taking_orders` before its price is asked and before any order exists, and so is a payment for a price named before the silence; your cards leave the catalogue, nothing is charged, and the agent tries again later | as in the synchronous mode | as in the synchronous mode | keep a process running and polling: its first poll brings your cards back and lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected, and [what to check](#your-integration-has-not-connected) |
 | {{Unserved-at-most}} paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the {{unserved-at-most:ordinal}} such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than {{unserved-at-most}} remain, the next purchase goes through with nothing switched back on |
 
 Silence from a price check is any of three things: no answer within
@@ -137,6 +137,35 @@ or with where its payment stands and never charges twice. Asking for a new
 price instead starts a new purchase, which is charged again once paid. A
 purchase that fails before any payment it could read is told that nothing was
 charged, and the agent asks for the price again.
+
+## Your integration has not connected
+
+Agentify counts your integration as connected while a process of yours polls
+for orders, which it does from the moment it calls `start()`. When no poll has
+arrived for {{silent-after}}, your dashboard says since when, your cards leave
+the catalogue and new purchases are refused. The next poll brings them back,
+and you do not have to switch anything on again.
+
+When the dashboard says this, check the process that should be polling:
+
+- It is running, and it has called `start()`. A process that crashed, was not
+  started again after a deploy, or registered its handlers without starting
+  does not poll.
+- Its key still works. A poll made with a key you revoked on API keys is
+  refused and does not count, and your problem handler receives a
+  `poll_failed` problem each time.
+- Its problem handler has not received `contract_version_mismatch`. After
+  that problem the subscription has stopped, and the process stays up without
+  selling until you upgrade the package ([When Agentify is newer than your
+  package](/orders#when-agentify-is-newer-than-your-package)).
+- Its handlers are not all busy. A process whose every handler is busy asks
+  for no new work, so it does not poll either.
+- It reaches the address you gave the client. A poll that does not get
+  through is reported as `poll_failed` too.
+
+A WooCommerce shop is never counted this way, because Agentify fills the
+shop's orders itself, so while your shop sells for you the dashboard does not
+say this.
 
 ## What is not settled yet
 

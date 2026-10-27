@@ -26,18 +26,22 @@ export function Unavailable() {
   );
 }
 
-/** The page for an address the documentation has no page at. */
+/**
+ * The page for an address the documentation has no page at, in the panel the
+ * scanner's and the dashboard's own such pages use. It stands outside the
+ * reading layout, whose rules for an article's headings, paragraphs and links
+ * would restyle the panel's.
+ */
 export function Missing() {
   return (
-    <Reading current={null} sections={[]}>
-      <div className="eyebrow">Documentation</div>
-      <div className="doc">
-        <h1>There is no such page</h1>
-        <p>
-          The documentation has no page at this address. Its pages are listed beside this one, and
-          its front page is <Link to="/">Connecting to Agentify</Link>.
-        </p>
-      </div>
-    </Reading>
+    <main className="message-page" id="main">
+      <section className="message-panel">
+        <h1>Page not found</h1>
+        <p>There is no page at this address. It may have moved.</p>
+        <Link className="button button-primary" to="/">
+          Back to the documentation
+        </Link>
+      </section>
+    </main>
   );
 }

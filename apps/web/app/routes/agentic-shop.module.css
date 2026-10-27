@@ -223,7 +223,7 @@
   font-size: 4.5rem;
   font-weight: 500;
   letter-spacing: -0.065em;
-  line-height: 1.1;
+  line-height: var(--leading-display);
   color: var(--shop-mint);
 }
 .growth strong > span {

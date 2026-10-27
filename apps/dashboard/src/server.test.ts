@@ -3024,7 +3024,7 @@ describe("the settings screen", () => {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
-      expect(readable(data.html), path).not.toContain("There is no such page");
+      expect(readable(data.html), path).not.toContain("Page not found");
     }
   });
 
@@ -3487,6 +3487,18 @@ describe("the way out to the documentation", () => {
       const out = /<a[^>]+href="\/docs\/"[^>]*>([^<]+)<\/a>/.exec(screen.html);
       expect(out?.[1]?.trim(), `${path} has no readable link to the documentation`).toBeTruthy();
     }
+  });
+
+  it("leaves the mount point from the banner too, where a reason leads to what to check", async () => {
+    const { browser, gateway, harnessed } = await started({ base: "/dashboard" });
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    harnessed.advance(11 * 60_000);
+
+    const { html } = await browser.get("/dashboard/products");
+
+    expect(reasonsIn(html)).toStrictEqual(["out_of_touch"]);
+    expect(html).toContain('href="/docs/failures#your-integration-has-not-connected"');
   });
 });
 
@@ -4285,7 +4297,7 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toContain("the goods are held");
+    expect(text).toContain("so we hold the goods");
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
@@ -5416,7 +5428,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const answered = await browser.get("/nowhere");
 
     expect(answered.status).toBe(404);
-    expect(readable(answered.html)).toContain("There is no such page");
+    expect(readable(answered.html)).toContain("Page not found");
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/products"[^>]*>Back to the dashboard<\/a>/);
@@ -5706,7 +5718,7 @@ describe("when the gateway will not answer", () => {
     expect(answered.status).toBe(504);
     const text = readable(answered.html);
     expect(text).toContain("could not be loaded");
-    expect(text).not.toContain("Publish a card through the SDK");
+    expect(answered.html).not.toContain('href="/docs/quickstart"');
   });
 });
 

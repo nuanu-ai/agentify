@@ -290,7 +290,7 @@ export const cardsFromTheShop = (
     if (dollars === null || !CurrencyCodeSchema.safeParse(currency).success) {
       refused(
         `The shop prices this product at ${JSON.stringify(product.prices.price)} in` +
-          ` ${JSON.stringify(product.prices.currency_code)}, which is not an amount we can put on a card.`,
+          ` ${JSON.stringify(product.prices.currency_code)}, which is not a price Agentify can read.`,
       );
       continue;
     }
@@ -305,7 +305,7 @@ export const cardsFromTheShop = (
     }
 
     if (title === "") {
-      refused("The product has no name in the shop, and a card is found by its title.");
+      refused("The product has no name in the shop, and agents find a product by its name.");
       continue;
     }
     if (!name.plain) {
@@ -314,7 +314,7 @@ export const cardsFromTheShop = (
     }
     const merchantItemId = merchantItemIdFor(shopOrigin, id);
     if (!IdentifierSchema.safeParse(merchantItemId).success) {
-      unsupported("The shop's own identifier for this product is not one a card can be keyed by.");
+      unsupported("Agentify cannot use the shop's own identifier for this product.");
       continue;
     }
 
@@ -322,8 +322,8 @@ export const cardsFromTheShop = (
     const description = prose.text;
     if (description === "") {
       refused(
-        "The shop's page for this product has no description. A card carries one, because it is" +
-          " what an agent reads before it decides to buy.",
+        "The shop's page for this product has no description, and an agent reads the description" +
+          " before it decides to buy.",
       );
       continue;
     }
