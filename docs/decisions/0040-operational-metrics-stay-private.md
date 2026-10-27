@@ -1,6 +1,7 @@
 # Operational metrics stay private
 
-Status: accepted, 2026-10-20.
+Status: accepted, 2026-10-20; public build identity approved by the product
+owner, 2026-10-27.
 
 ## Context
 
@@ -32,6 +33,11 @@ operation or move money.
 Public probes run independently of the application hosts and perform only
 anonymous reads. Their results identify the probe's vantage point and do not
 claim that a purchase, sign-in or scan completed end to end.
+
+The gateway's public `/healthz` reports process liveness, the image's source
+`revision` (`null` where unknown) and `contract_version`. It checks no serving
+dependencies and exposes no operational configuration. Its responses send
+`Cache-Control: no-store` to instruct caches to retain no build response.
 
 ## Alternatives rejected
 

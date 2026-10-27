@@ -148,9 +148,9 @@
 	# port finds it closed.
 	#
 	# /healthz is public and outside /v0, which is the merchant's contract. It
-	# reports the gateway alone and reveals nothing beyond `{"ok":true}`; it says
-	# nothing about Postgres or the dashboard, which answers /dashboard/healthz
-	# itself through the block below.
+	# reports process liveness, the image's source revision and the wire-contract
+	# version. It checks neither Postgres nor the dashboard, which answers
+	# /dashboard/healthz itself through the block below.
 	@gateway path /v0 /v0/* /x402 /x402/* /healthz
 	handle @gateway {
 		reverse_proxy {$AGENTIFY_GATEWAY_UPSTREAM:app:3000}

@@ -179,7 +179,11 @@ describe("the surface is the table", () => {
       const answered = await served.call("GET", "/healthz");
 
       expect(answered.status).toBe(200);
-      expect(answered.body).toStrictEqual({ ok: true, revision, contract_version: CONTRACT_VERSION });
+      expect(answered.body).toStrictEqual({
+        ok: true,
+        revision,
+        contract_version: CONTRACT_VERSION,
+      });
       expect(answered.headers.get("cache-control")).toBe("no-store");
     },
   );
