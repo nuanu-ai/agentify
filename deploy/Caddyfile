@@ -157,9 +157,11 @@
 	}
 
 	# The dashboard. The prefix is passed through, not stripped, so the dashboard
-	# builds its links from the path it was asked for. Two exact paths rather than
-	# a /dashboard* glob, so a scanner page such as /dashboards-x is not captured.
-	@dashboard path /dashboard /dashboard/*
+	# builds its links from the path it was asked for. Exact paths rather than a
+	# /dashboard* glob, so a scanner page such as /dashboards-x is not captured.
+	# A link or a redirect to the dashboard's start makes the browser ask for
+	# that page's data at /dashboard.data, beside the prefix rather than under it.
+	@dashboard path /dashboard /dashboard.data /dashboard/*
 	handle @dashboard {
 		header @dashboard_link Referrer-Policy strict-origin
 		reverse_proxy {$AGENTIFY_DASHBOARD_UPSTREAM:app:3001} {
