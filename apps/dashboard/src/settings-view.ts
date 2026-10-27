@@ -71,8 +71,8 @@ export type PayoutView =
       data: string;
       /** Each split it pays out, beside the wallet written into it. */
       pays: readonly Readonly<{ split: string; wallet: string }>[];
-      /** What sending it takes from the wallet that sends it. */
-      after: string;
+      /** Whom the one transaction pays, and what sending it costs: said under either way of sending it. */
+      paysBoth: string;
       /** Coinbase Wallet's way of sending it, on the chain `sentOn` names. */
       coinbase: CoinbaseView;
     }>
@@ -296,7 +296,7 @@ const payoutView = (
     toIs: PAYOUT_NOTES.multicall3,
     data: transaction.data,
     pays,
-    after: PAYOUT_NOTES.paysBoth(percentagesOf(splits.rate).commission),
+    paysBoth: PAYOUT_NOTES.paysBoth(percentagesOf(splits.rate).commission),
     coinbase: coinbaseOn(walletChain, "payout"),
   };
 };
