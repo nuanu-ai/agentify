@@ -142,9 +142,10 @@ charged, and the agent asks for the price again.
 
 Agentify counts your integration as connected while a process of yours polls
 for orders, which it does from the moment it calls `start()`. When no poll has
-arrived for {{silent-after}}, your dashboard says since when, your cards leave
-the catalogue and new purchases are refused. The next poll brings them back,
-and you do not have to switch anything on again.
+arrived for {{silent-after}}, or none has arrived yet, your cards leave the
+catalogue and new purchases are refused, and your dashboard says so, with the
+time of the last poll if there was one. The next poll brings them back, and
+you do not have to switch anything on again.
 
 When the dashboard says this, check the process that should be polling:
 
@@ -158,14 +159,16 @@ When the dashboard says this, check the process that should be polling:
   that problem the subscription has stopped, and the process stays up without
   selling until you upgrade the package ([When Agentify is newer than your
   package](/orders#when-agentify-is-newer-than-your-package)).
-- Its handlers are not all busy. A process whose every handler is busy asks
-  for no new work, so it does not poll either.
+- Fewer than four of its messages are unfinished. An instance with four still
+  running asks for nothing more until one finishes, so it does not poll either
+  ([Running the handler in several
+  instances](/orders#running-the-handler-in-several-instances)).
 - It reaches the address you gave the client. A poll that does not get
   through is reported as `poll_failed` too.
 
-A WooCommerce shop is never counted this way, because Agentify fills the
-shop's orders itself, so while your shop sells for you the dashboard does not
-say this.
+A WooCommerce shop is never counted this way, because Agentify's connector
+takes the shop's orders and nothing of yours polls, so while your shop sells
+for you the dashboard does not say this.
 
 ## What is not settled yet
 
