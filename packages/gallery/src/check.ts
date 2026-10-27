@@ -227,9 +227,14 @@ function crampedOf(): Cramped[] {
     const range = document.createRange();
     for (let text = words.nextNode(); text !== null; text = words.nextNode()) {
       if ((text.textContent ?? "").trim() === "") continue;
-      // Words kept for a screen reader alone sit in a box a pixel wide.
-      const holder = text.parentElement?.getBoundingClientRect();
-      if (holder !== undefined && (holder.width <= 1 || holder.height <= 1)) continue;
+      // Words kept for a screen reader alone sit in a box a pixel wide that
+      // hides what overflows it; a wrapper drawn as its contents measures
+      // nothing and is not one.
+      const holder = text.parentElement;
+      if (holder !== null && getComputedStyle(holder).overflow === "hidden") {
+        const box = holder.getBoundingClientRect();
+        if (box.width <= 1 || box.height <= 1) continue;
+      }
       range.selectNodeContents(text);
       for (const line of range.getClientRects()) {
         if (line.width === 0) continue;
@@ -281,8 +286,11 @@ function runtsOf(): Runt[] {
     const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const range = document.createRange();
     for (let text = texts.nextNode(); text !== null; text = texts.nextNode()) {
-      const holder = text.parentElement?.getBoundingClientRect();
-      if (holder !== undefined && (holder.width <= 1 || holder.height <= 1)) continue;
+      const holder = text.parentElement;
+      if (holder !== null && getComputedStyle(holder).overflow === "hidden") {
+        const box = holder.getBoundingClientRect();
+        if (box.width <= 1 || box.height <= 1) continue;
+      }
       for (const found of (text.textContent ?? "").matchAll(/\S+/g)) {
         range.setStart(text, found.index);
         range.setEnd(text, found.index + found[0].length);
