@@ -38,7 +38,15 @@ describe("what a handler may answer", () => {
   });
 
   it("refuses an answer that is none of the three", () => {
-    for (const answer of [{}, { ok: true }, null, "delivered", { delivery: {} }]) {
+    for (const answer of [
+      {},
+      { ok: true },
+      null,
+      "delivered",
+      { delivery: {} },
+      { deferred: { retry_after_seconds: 30 } },
+      { delivered: { access_url: "https://example.com/a" }, extra: 1 },
+    ]) {
       expect(HandlerAnswerSchema.safeParse(answer).success, JSON.stringify(answer)).toBe(false);
     }
   });

@@ -586,7 +586,15 @@ describe("the order a payment names", () => {
         const notOne = await present(served, itemId, onlyTheOrder(challenge));
 
         expect(stranger.status).toBe(409);
-        expect((stranger.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
+        expect(stranger.body).toStrictEqual({
+          error: {
+            code: "not_this_purchase",
+            message: expect.stringMatching(/\S/),
+            retryable: false,
+          },
+        });
+        expect(JSON.stringify(stranger.body)).not.toContain(orderId);
+        expect(JSON.stringify(stranger.body)).not.toContain("status_url");
         expect(notOne.status).toBe(409);
         for (const answered of [stranger, notOne]) {
           expectNoKeyIn(answered.body);
@@ -1348,11 +1356,8 @@ describe("goods made for a purchase whose charge did not go through", () => {
     });
     const itemId = await shop.publish(syncCard);
     const challenge = await challengeFor(shop.served, itemId);
-    const bought = await present(
-      shop.served,
-      itemId,
-      await paymentAgainst(challenge, BUYER, "0x01"),
-    );
+    const firstPayment = await paymentAgainst(challenge, BUYER, "0x01");
+    const bought = await present(shop.served, itemId, firstPayment);
     const { order_id: orderId, status_url: statusUrl } = bought.body as {
       order_id: string;
       status_url: string;
@@ -1365,6 +1370,7 @@ describe("goods made for a purchase whose charge did not go through", () => {
     });
     return {
       network,
+      firstPayment,
       shop,
       handled,
       itemId,
@@ -1387,11 +1393,8 @@ describe("goods made for a purchase whose charge did not go through", () => {
       expect(sale.reason?.message).toMatch(/same purchase again/i);
       expect(JSON.stringify(sale.reason)).not.toContain("SESAME");
 
-      const again = await present(
-        sale.shop.served,
-        sale.itemId,
-        await paymentAgainst(sale.challenge, BUYER, "0x02"),
-      );
+      const retryPayment = await paymentAgainst(sale.challenge, BUYER, "0x02");
+      const again = await present(sale.shop.served, sale.itemId, retryPayment);
 
       expect(again.status, JSON.stringify(again.body)).toBe(200);
       expect(again.body).toMatchObject({
@@ -1401,6 +1404,13 @@ describe("goods made for a purchase whose charge did not go through", () => {
         delivered: { access_code: "SESAME" },
       });
       expect(sale.network.charged).toStrictEqual([payToIn(sale.challenge)]);
+      const attempted = sale.network.sent
+        .map((line) => JSON.parse(line) as { settle?: { payload: PaymentPayload } })
+        .flatMap((sent) => (sent.settle ? [sent.settle.payload.payload] : []));
+      expect(attempted).toEqual([
+        decodePaymentSignatureHeader(sale.firstPayment).payload,
+        decodePaymentSignatureHeader(retryPayment).payload,
+      ]);
       expect(sale.handled).toStrictEqual([sale.orderId]);
     } finally {
       await sale.close();
