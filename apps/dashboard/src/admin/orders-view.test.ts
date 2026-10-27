@@ -191,6 +191,11 @@ describe("the orders list", () => {
     expect(asked("after=1787000000000.ord_b&after=1787000000000.ord_c").from).toBeNull();
   });
 
+  it("reads a search pasted from the page, which keeps a number with its unit, as typed", () => {
+    expect(asked("q=eSIM%205%C2%A0GB").q).toBe("eSIM 5 GB");
+    expect(asked("merchant=mch_a&q=8.00%C2%A0USD")).toMatchObject({ q: "8.00 USD" });
+  });
+
   it("reads a cursor past the last moment a date holds, and control characters, as nothing asked", () => {
     expect(asked("before=9999999999999999.ord_x").from).toBeNull();
     expect(asked("before=8640000000000000.ord_x").from).toStrictEqual({

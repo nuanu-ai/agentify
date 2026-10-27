@@ -162,6 +162,26 @@ describe("searching the orders", () => {
     );
   });
 
+  it("finds an order by a product name that holds a number and its unit, typed with a space or pasted from the page", () => {
+    const sized = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: CARDS.cards.map((entry) =>
+        entry.card.merchant_item_id === "vpn-1m"
+          ? { ...entry, card: { ...entry.card, title: "VPN 30 days, 5 GB" } }
+          : entry,
+      ),
+    });
+    const orders = ordersOf([{ id: FIRST }, { id: SAME_HEAD, item: "number-sms" }]);
+    const named = (q: string) =>
+      ordersView(sized, orders, orders, new URLSearchParams({ q })).listing.rows.map(
+        (row) => row.id,
+      );
+
+    expect(named("30 days, 5 gb")).toStrictEqual([FIRST]);
+    // The page keeps a number with its unit by a no-break space, which a copy carries.
+    expect(named("30 days, 5 GB")).toStrictEqual([FIRST]);
+  });
+
   describe("among IDs whose hidden middle holds a word a merchant might search for", () => {
     // The middle of an ID is never shown, so a few characters found only there
     // would list orders whose rows show nothing of what was searched for.

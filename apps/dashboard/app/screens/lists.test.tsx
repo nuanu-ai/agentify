@@ -736,6 +736,32 @@ describe("a search over the cards", () => {
     expect(drawn("q=room")).not.toContain("product code “");
   });
 
+  it("finds a card whose title holds a number and its unit, typed with a space or pasted from the page", () => {
+    const sized = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [
+        { ...entry, card: { ...entry.card, title: "eSIM Indonesia 5 GB, 30 days" } },
+        {
+          ...entry,
+          id: "itm_2",
+          card: { ...entry.card, merchant_item_id: "esim-10", title: "eSIM Indonesia 10 GB" },
+        },
+      ],
+    });
+    const found = (q: string) =>
+      cardsView(
+        sized,
+        "https://agentify.ad",
+        false,
+        undefined,
+        new URLSearchParams({ q }),
+      ).listing.rows.map((row) => row.itemId);
+
+    expect(found("5 gb, 30 days")).toStrictEqual(["room-101"]);
+    // The page keeps a number with its unit by a no-break space, which a copy carries.
+    expect(found("5 GB, 30 days")).toStrictEqual(["room-101"]);
+  });
+
   it("finds a card by its product code as well as its title", () => {
     const text = page(many(12), "q=room-11");
 
