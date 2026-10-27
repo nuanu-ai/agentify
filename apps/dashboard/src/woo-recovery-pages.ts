@@ -229,7 +229,8 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           parts,
         );
         if (!outcome.ok) {
-          said = outcome.typed === true ? { typedRefusal: outcome.why } : { message: outcome.why };
+          const why = keepUnits(outcome.why);
+          said = outcome.typed === true ? { typedRefusal: why } : { message: why };
           status = outcome.state === "unresolved" ? 503 : 409;
         }
       } catch {

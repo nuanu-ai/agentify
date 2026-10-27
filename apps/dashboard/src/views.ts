@@ -1111,7 +1111,7 @@ const shareIn = (
   if (terms === undefined) return null;
   const { merchant } = sharesOf(price, terms);
   const fee = percentOf(terms.commissionAllocation, terms.totalAllocation);
-  return `${merchant.replace(/^≈ /, "about ")}, after Agentify's ${fee}`;
+  return keepUnits(`${merchant.replace(/^≈ /, "about ")}, after Agentify's ${fee}`);
 };
 
 // --- receipts ----------------------------------------------------------------

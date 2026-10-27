@@ -1069,8 +1069,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return await importFor(
         person,
         read.ok
-          ? `Rate saved: ${groupedRate(rate)} ${currency.code} per US dollar.`
-          : `Rate saved: ${groupedRate(rate)} ${currency.code} per US dollar. Coinbase's rate` +
+          ? `Rate saved: ${withUnit(groupedRate(rate), currency.code)} per US dollar.`
+          : `Rate saved: ${withUnit(groupedRate(rate), currency.code)} per US dollar. Coinbase's rate` +
               " couldn't be read, so it wasn't compared with anything.",
       );
     },
