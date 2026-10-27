@@ -166,10 +166,11 @@ describe("a merchant's payout of one split", () => {
     // offset of each element, then each element: target, allowFailure, the
     // offset of its data, the data's length and the data padded to words.
     expect(paid.data).toBe(
-      `0x82ad56cb${word("20")}${word("3")}${word("60")}${word("2c0")}${word("500")}` +
+      `0x82ad56cb${word("20")}${word("4")}${word("80")}${word("2e0")}${word("520")}${word("600")}` +
         `${word(ON_CHAIN.factory)}${word("0")}${word("60")}${word("1c4")}${padded(CREATE_S)}` +
         `${word(S.address)}${word("1")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
-        `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_M)}`,
+        `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_M)}` +
+        `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_A)}`,
     );
     expect(paid.splits).toStrictEqual([S_ROW]);
   });
@@ -191,9 +192,12 @@ describe("a merchant's payout of one split", () => {
     expect(merchantPayout(today, [S_ROW], NETWORKS).data).toBe(
       merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS).data,
     );
-    const [create, distribute] = callsOf(merchantPayout(today, [S_ROW], NETWORKS).data);
+    const [create, distribute, , commission] = callsOf(
+      merchantPayout(today, [S_ROW], NETWORKS).data,
+    );
     expect(create?.data).toBe(CREATE_S);
     expect(distribute?.data).toBe(DISTRIBUTE);
+    expect(commission?.data).toBe(WITHDRAW_A);
   });
 });
 
@@ -220,10 +224,15 @@ describe("every call of a payout", () => {
       const salt = handEncoded.salts.find(
         (vector) => vector.network === network.network && vector.merchantId === merchantId,
       );
-      const [create, distribute, withdraw, ...more] = callsOf(
+      const [create, distribute, withdraw, commission, ...more] = callsOf(
         merchantPayout(network, [split], NETWORKS).data,
       );
-      if (create === undefined || distribute === undefined || withdraw === undefined) {
+      if (
+        create === undefined ||
+        distribute === undefined ||
+        withdraw === undefined ||
+        commission === undefined
+      ) {
         throw new Error("a call is missing");
       }
 
@@ -247,12 +256,18 @@ describe("every call of a payout", () => {
       expect(withdraw.target).toBe(network.warehouse.toLowerCase());
       expect(addressIn(argumentOf(withdraw.data, 0))).toBe(MERCHANT.toLowerCase());
       expect(addressIn(argumentOf(withdraw.data, 1))).toBe(network.usdc.toLowerCase());
+      expect(commission.target).toBe(network.warehouse.toLowerCase());
+      expect(commission.allowFailure).toBe(true);
+      expect(addressIn(argumentOf(commission.data, 0))).toBe(
+        network.commissionWallet.toLowerCase(),
+      );
+      expect(addressIn(argumentOf(commission.data, 1))).toBe(network.usdc.toLowerCase());
     },
   );
 });
 
 describe("a merchant's payout over every split that can hold their money", () => {
-  it("creates and distributes each, then withdraws each of their wallets once", () => {
+  it("creates and distributes each, then withdraws each of their wallets once and the commission last", () => {
     const { merchantOverTwoWallets } = handEncoded.payouts;
     const [first, second] = merchantOverTwoWallets.merchantWallets;
     const splits = [first, second].map((wallet) =>
@@ -262,6 +277,39 @@ describe("a merchant's payout over every split that can hold their money", () =>
     expect(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, splits, NETWORKS).data).toBe(
       merchantOverTwoWallets.data,
     );
+  });
+
+  it("withdraws the commission once for the whole transaction, never once per split", () => {
+    const { merchantOverTwoWallets } = handEncoded.payouts;
+    const splits = merchantOverTwoWallets.merchantWallets.map((wallet) =>
+      payoutSplitFor(WITH_THE_EXPERIMENTS_COMMISSION, merchantOverTwoWallets.merchantId, wallet),
+    );
+
+    const calls = callsOf(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, splits, NETWORKS).data);
+
+    expect(calls.filter(({ data }) => data === WITHDRAW_A)).toHaveLength(1);
+    expect(calls.at(-1)).toStrictEqual(call(ON_CHAIN.warehouse, true, WITHDRAW_A));
+  });
+
+  it("withdraws each commission wallet their splits recorded, once each and last", () => {
+    // A split keeps the commission wallet it was made with, so a merchant's
+    // older split may credit another one than their split in force does.
+    const formerCommission = aWallet(99);
+    const older = payoutSplitFor(
+      { ...TEST_NETWORK, commissionWallet: formerCommission },
+      S_ROW.merchantId,
+      MERCHANT,
+    );
+
+    const calls = callsOf(
+      merchantPayout(TEST_NETWORK, [S_ROW, older, S2_OF_THE_SAME_MERCHANT], NETWORKS).data,
+    );
+
+    expect(calls.slice(-3)).toStrictEqual([
+      call(ON_CHAIN.warehouse, true, WITHDRAW_M),
+      call(ON_CHAIN.warehouse, true, WITHDRAW_A),
+      call(ON_CHAIN.warehouse, true, withdrawCall(formerCommission, ON_CHAIN.usdc)),
+    ]);
   });
 
   it("withdraws a wallet two of their splits name only once", () => {
@@ -275,6 +323,7 @@ describe("a merchant's payout over every split that can hold their money", () =>
       call(ON_CHAIN.factory, false, CREATE_S2),
       call(S2.address, true, DISTRIBUTE),
       call(ON_CHAIN.warehouse, true, WITHDRAW_M),
+      call(ON_CHAIN.warehouse, true, WITHDRAW_A),
     ]);
   });
 });
@@ -285,7 +334,10 @@ describe("a payout's withdrawals", () => {
     const withdrawals = callsOf(merchantPayout(TEST_NETWORK, [S_ROW, lower], NETWORKS).data).filter(
       ({ target }) => target === ON_CHAIN.warehouse,
     );
-    expect(withdrawals).toStrictEqual([call(ON_CHAIN.warehouse, true, WITHDRAW_M)]);
+    expect(withdrawals).toStrictEqual([
+      call(ON_CHAIN.warehouse, true, WITHDRAW_M),
+      call(ON_CHAIN.warehouse, true, WITHDRAW_A),
+    ]);
   });
 });
 

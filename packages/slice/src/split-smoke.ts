@@ -35,17 +35,18 @@
  *   1. The split has no code; the first payment settles, and its one USDC
  *      transfer is the buyer's p to the split.
  *   2. The payout screen's transaction creates the split (one SplitCreated with
- *      the journal's parameters), distributes p - 1 and withdraws the
- *      merchant's share: credited floor((p - 1) × 999000 / 1000000) = 9989, it
- *      receives 9988; Agentify is credited floor((p - 1) × 1000 / 1000000) = 9.
+ *      the journal's parameters), distributes p - 1 and withdraws both shares:
+ *      the merchant, credited floor((p - 1) × 999000 / 1000000) = 9989,
+ *      receives 9988; the commission wallet, credited
+ *      floor((p - 1) × 1000 / 1000000) = 9 on top of c, receives c + 9 - 1.
  *      One unit stays on the split, the rounding's one unit in its credit, and
- *      one in the merchant's.
+ *      one in each wallet's.
  *   3. A second payment of p settles to the created split.
  *   4. The same transaction creates nothing and distributes exactly p: the
- *      merchant receives 9990, Agentify is credited 10.
- *   5. The operator's transaction for this split distributes 0, pays the
- *      merchant a transfer of 0 and the commission wallet c + 9 + 10 - 1; one
- *      unit stays credited to each, four one-unit residues in all.
+ *      merchant receives 9990 and the commission wallet 10.
+ *   5. The operator's transaction for this split distributes 0 and pays each
+ *      wallet a transfer of 0; one unit stays credited to each, four one-unit
+ *      residues in all.
  *   6. At every transaction's block each party's USDC, held and credited, is
  *      the predicted amount, and the transaction's USDC transfers are exactly
  *      the predicted ones, between the buyer, the split, the warehouse, the

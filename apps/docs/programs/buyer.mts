@@ -1,4 +1,19 @@
-import { appendFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import {
+  closeSync,
+  constants,
+  existsSync,
+  fchmodSync,
+  fstatSync,
+  fsyncSync,
+  linkSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { dirname } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { x402Client, x402HTTPClient } from '@x402/core/client'
 import { registerExactEvmScheme } from '@x402/evm/exact/client'
@@ -6,10 +21,75 @@ import { privateKeyToAccount } from 'viem/accounts'
 
 type Card = { id: string; purchase_url: string; price: { amount: string } }
 type Order = { order_id: string; status: string; status_url: string }
+type Purchase = {
+  site: string
+  itemId: string
+  wallet: string
+  url: string
+  maxUsd: string
+  body: string
+  paymentRequired: string
+  statusUrl?: string
+}
 
-// The order's address carries the buyer's key, the only thing that opens the
-// order, so it is written here, readable by you alone, and never printed.
-const ADDRESSES = 'orders.txt'
+// Each file is one purchase. A different filename starts another purchase.
+const FILE = process.argv[2] ?? 'purchase.json'
+
+function syncDirectory(): void {
+  const fd = openSync(dirname(FILE), 'r')
+  try {
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function savedPurchase(): Purchase | undefined {
+  if (!existsSync(FILE)) return undefined
+  const fd = openSync(FILE, constants.O_RDWR | constants.O_NOFOLLOW)
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error(`${FILE} is not a regular file.`)
+    fchmodSync(fd, 0o600)
+    const saved = JSON.parse(readFileSync(fd, 'utf8')) as Partial<Purchase> | null
+    const fields = ['site', 'itemId', 'wallet', 'url', 'maxUsd', 'body', 'paymentRequired'] as const
+    if (
+      !saved ||
+      fields.some((field) => typeof saved[field] !== 'string') ||
+      (saved.statusUrl !== undefined && typeof saved.statusUrl !== 'string')
+    ) {
+      throw new Error('missing purchase fields')
+    }
+    fsyncSync(fd)
+    syncDirectory()
+    return saved as Purchase
+  } catch {
+    throw new Error(
+      `Cannot read the saved purchase in ${FILE}. Keep the file; nothing will be paid.`,
+    )
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function save(purchase: Purchase, first = false): void {
+  const temporary = `${FILE}.${randomUUID()}.tmp`
+  try {
+    const fd = openSync(temporary, 'wx', 0o600)
+    try {
+      writeFileSync(fd, JSON.stringify(purchase))
+      fsyncSync(fd)
+    } finally {
+      closeSync(fd)
+    }
+    // Publish a complete first record without replacing another process's
+    // purchase. Updates keep the previous record if writing is interrupted.
+    if (first) linkSync(temporary, FILE)
+    else renameSync(temporary, FILE)
+    syncDirectory()
+  } finally {
+    rmSync(temporary, { force: true })
+  }
+}
 
 // An answer is an order when it names a status and the order's address,
 // whatever its HTTP status: a purchase that ended without the goods is a 409.
@@ -29,56 +109,95 @@ async function orderIn(answer: Promise<Response>): Promise<Order | undefined> {
 
 const stopped = (order: Order, what: string) =>
   new Error(
-    `Order ${order.order_id} ${what}. Its address is in ${ADDRESSES}, and the order is ` +
-      "on your dashboard's Orders screen.",
+    `Order ${order.order_id} ${what}. Its address is in ${FILE}, and the order is ` +
+      'kept for the next run.',
   )
 
 async function buy(): Promise<void> {
+  if (process.argv.length > 3 || FILE.startsWith('-')) {
+    throw new Error('Usage: node --env-file=.env buyer.mts [purchase-file.json]')
+  }
   const { AGENTIFY_URL, BUYER_PRIVATE_KEY, ITEM_ID } = process.env
   if (!AGENTIFY_URL || !BUYER_PRIVATE_KEY || !ITEM_ID) {
     throw new Error('.env needs AGENTIFY_URL, BUYER_PRIVATE_KEY and ITEM_ID.')
   }
-  const catalogue = (await (await fetch(`${AGENTIFY_URL}/x402/catalog`)).json()) as {
-    items: Card[]
-  }
-  const card = catalogue.items.find((item) => item.id === ITEM_ID)
-  if (card === undefined) {
-    throw new Error(
-      `${ITEM_ID} is not in the catalogue. A card is listed only once it is published, ` +
-        'and only while the process from step 4 is running and polling.',
-    )
-  }
-
-  // Asking to buy is answered 402, with a payment request. Nothing is charged yet.
-  const purchase = {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ params: { email: 'you@example.com' } }),
-  }
-  const asked = await fetch(card.purchase_url, purchase)
-  if (asked.status !== 402) throw new Error(`HTTP ${asked.status}: ${await asked.text()}`)
-
-  // The wallet signs only on Base Sepolia, the test channel's chain, and for no
-  // more than the card's price; any other payment request is refused unsigned.
-  const client = new x402Client()
   const signer = privateKeyToAccount(BUYER_PRIVATE_KEY as `0x${string}`)
-  registerExactEvmScheme(client, { signer, networks: ['eip155:84532'] })
-  client.setSpendControls({ maxAmountPerPayment: `$${card.price.amount}` })
-  const payer = new x402HTTPClient(client)
-  const payment = await payer.createPaymentPayload(
-    payer.getPaymentRequiredResponse((name) => asked.headers.get(name)),
-  )
-
-  // The same purchase again, carrying the payment. It is sent once.
-  const headers = { ...purchase.headers, ...payer.encodePaymentSignatureHeader(payment) }
-  let order = await orderIn(fetch(card.purchase_url, { ...purchase, headers }))
-  if (order === undefined) {
+  const site = AGENTIFY_URL.replace(/\/+$/, '')
+  let purchase = savedPurchase()
+  if (
+    purchase &&
+    (purchase.site !== site ||
+      purchase.itemId !== ITEM_ID ||
+      purchase.wallet.toLowerCase() !== signer.address.toLowerCase())
+  ) {
     throw new Error(
-      "No order came back; your dashboard's Orders shows if one was made. " +
-        'Running this again is a new purchase.',
+      `${FILE} belongs to another site, product or wallet. Restore its .env to resume it; use a different filename for a new purchase.`,
     )
   }
-  appendFileSync(ADDRESSES, `${order.order_id} ${order.status_url}\n`, { mode: 0o600 })
+  if (!purchase) {
+    const catalogue = (await (await fetch(`${site}/x402/catalog`)).json()) as { items: Card[] }
+    const card = catalogue.items.find((item) => item.id === ITEM_ID)
+    if (!card)
+      throw new Error(
+        `${ITEM_ID} is not in the catalogue. Keep the merchant's process running and polling.`,
+      )
+    const body = JSON.stringify({ params: { email: 'you@example.com' } })
+    const asked = await fetch(card.purchase_url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    })
+    if (asked.status !== 402) throw new Error(`HTTP ${asked.status}: ${await asked.text()}`)
+    const paymentRequired = asked.headers.get('payment-required')
+    await asked.body?.cancel()
+    if (!paymentRequired) throw new Error('No payment request came back. Nothing was paid.')
+    purchase = {
+      site,
+      itemId: ITEM_ID,
+      wallet: signer.address,
+      url: card.purchase_url,
+      maxUsd: card.price.amount,
+      body,
+      paymentRequired,
+    }
+    save(purchase, true)
+  }
+
+  let order: Order | undefined
+  if (purchase.statusUrl) {
+    order = await orderIn(fetch(purchase.statusUrl))
+  } else {
+    const client = new x402Client()
+    registerExactEvmScheme(client, { signer, networks: ['eip155:84532'] })
+    client.setSpendControls({ maxAmountPerPayment: `$${purchase.maxUsd}` })
+    const payer = new x402HTTPClient(client)
+    const required = payer.getPaymentRequiredResponse((name) =>
+      name.toLowerCase() === 'payment-required' ? purchase.paymentRequired : null,
+    )
+    if (!required.accepts?.every((offer) => typeof offer.extra?.order_id === 'string')) {
+      throw new Error(`${FILE} has no order to resume. Nothing was paid.`)
+    }
+    // A fresh signature returns an already paid order. Reusing the signature
+    // that paid is refused because that signature is public on the chain.
+    const payment = await payer.createPaymentPayload(required)
+    order = await orderIn(
+      fetch(purchase.url, {
+        method: 'POST',
+        body: purchase.body,
+        headers: {
+          'content-type': 'application/json',
+          ...payer.encodePaymentSignatureHeader(payment),
+        },
+      }),
+    )
+    if (order) {
+      purchase.statusUrl = order.status_url
+      save(purchase)
+    }
+  }
+  if (order === undefined) {
+    throw new Error(`No order came back. Run the same command to resume the purchase in ${FILE}.`)
+  }
   console.log(`Order ${order.order_id}: ${order.status}`)
 
   // Goods that come later are read at the order's address, every five seconds for

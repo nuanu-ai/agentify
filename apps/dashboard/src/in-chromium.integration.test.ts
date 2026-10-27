@@ -268,7 +268,11 @@ describe("a press answered on its own page", () => {
       });
       if (!published.ok) throw new Error("the test's card was not published");
     }
-    const listing = `${origin}${BASE}/products?q=suite&show=on-sale&page=2`;
+    // The page Next leads to from the first: right after the fiftieth suite.
+    const fiftieth = (await harnessed.store.cards(harnessed.merchant.id))
+      .filter((card) => card.card.merchant_item_id.startsWith("suite-"))
+      .sort((one, other) => one.asOf - other.asOf || (one.id < other.id ? -1 : 1))[49];
+    const listing = `${origin}${BASE}/products?q=suite&show=on-sale&after=${fiftieth?.asOf}.${fiftieth?.id}`;
     const page = await onTheCards();
     await page.goto(listing);
     await page.waitForLoadState("networkidle");

@@ -5,6 +5,7 @@
  */
 
 import { SILENT_AFTER_MS } from "@agentify/core/published";
+import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { type SQL, sql } from "drizzle-orm";
 import { CONTACT_WRITTEN_EVERY_MS } from "../../../app/gateway.js";
 import {
@@ -139,7 +140,7 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
       const {
         rows: [contact],
       } = await tx.execute<{ within: number; ever: number }>(sql`
-        select (count(*) filter (where polled_at >= ${quiet}))::int as within, count(*)::int as ever
+        select (count(*) filter (where contract_version = ${CONTRACT_VERSION} and polled_at >= ${quiet}))::int as within, count(*)::int as ever
           from merchant_contact`);
       const { rows } = await tx.execute<{
         id: string;
@@ -151,7 +152,7 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
           from merchants m
           left join merchant_contact mc on mc.merchant_id = m.id
          where m.selling = 'open' and m.integration = 'api' and ${ready(asked, scope.network)}
-           and (mc.polled_at is null or mc.polled_at < ${quiet})
+           and (mc.contract_version is distinct from ${CONTRACT_VERSION} or mc.polled_at < ${quiet})
            and exists (select 1 from cards c
                         where c.merchant_id = m.id and not c.paused and c.integration = 'api')
          order by mc.polled_at nulls first, m.id collate "C"

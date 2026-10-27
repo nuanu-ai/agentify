@@ -15,6 +15,8 @@ import type { JournalPress, JournalRow } from "@agentify/gateway/journal";
 import {
   MERCHANT_SEGMENTS,
   type MerchantList,
+  type MerchantListQuery,
+  type MerchantPlace,
   type MerchantRecord,
   type MerchantRow,
   type MerchantSegment,
@@ -25,7 +27,8 @@ import type { NamedAccount } from "../dashboard-entry.js";
 export type { MerchantList, MerchantRecord, MerchantRow } from "@agentify/gateway/operator";
 
 import type { SectionCounts } from "@agentify/ui/workspace-view";
-import { askedIn, cutOfPage, type Listing, PAGE_ROWS } from "../listing.js";
+import { type From, type Mark, writeFrom } from "../cursor.js";
+import { askedIn, type Listing, PAGE_ROWS } from "../listing.js";
 import type { Outcome } from "../page-services.js";
 import { type MomentView, momentView } from "../views.js";
 import { FULFILLMENT_WORDS, ORDER_WORDS, type Word } from "../words.js";
@@ -306,9 +309,40 @@ export interface MerchantsRead {
   readonly accountsUnread: boolean;
   /** True where the search of addresses stopped at the most it reads. */
   readonly accountsCut: boolean;
-  /** The page `found` holds, a page of `PAGE_ROWS` at a time. */
-  readonly page: number;
 }
+
+/**
+ * A merchant's place in the list as an address writes it: whether they wait
+ * for admission, their latest sale or -1 where they never sold, and when they
+ * were made, then their identifier.
+ */
+const KEYS = 3;
+
+const markOf = (place: MerchantPlace): Mark => ({
+  key: [Number(place.waiting), place.lastSaleAt ?? -1, place.createdAt],
+  id: place.id,
+});
+
+const placeOf = (mark: Mark): MerchantPlace => {
+  const [waiting = 0, lastSaleAt = -1, createdAt = 0] = mark.key;
+  return {
+    waiting: waiting === 1,
+    lastSaleAt: lastSaleAt < 0 ? null : lastSaleAt,
+    createdAt,
+    id: mark.id,
+  };
+};
+
+const placesOf = (from: NonNullable<From>): NonNullable<MerchantListQuery["from"]> =>
+  "after" in from ? { after: placeOf(from.after) } : { before: placeOf(from.before) };
+
+/** A place behind every merchant: the page nearest before it is the last. */
+const BEHIND_EVERY_MERCHANT: MerchantPlace = {
+  waiting: false,
+  lastSaleAt: null,
+  createdAt: -1,
+  id: "",
+};
 
 /** The Merchants list, from what was read. */
 export function merchantsViewOf({
@@ -319,15 +353,14 @@ export function merchantsViewOf({
   accounts,
   accountsUnread,
   accountsCut,
-  page,
 }: MerchantsRead): MerchantsView {
-  const listed = askedIn(query, SEGMENT_KEYS);
+  const listed = askedIn(query, SEGMENT_KEYS, KEYS);
   const rows = found.rows.map((row) => listRowOf(row, accounts?.get(row.id) ?? null));
-  const linkTo = (show: string, q: string, at = 1) => {
+  const linkTo = (show: string, q: string, from: From = null) => {
     const fields = new URLSearchParams();
     if (q !== "") fields.set("q", q);
     if (show !== "all") fields.set("show", show);
-    if (at !== 1) fields.set("page", String(at));
+    writeFrom(fields, from);
     const written = fields.toString();
     return written === "" ? PATH : `${PATH}?${written}`;
   };
@@ -360,7 +393,22 @@ export function merchantsViewOf({
       to: linkTo(key, listed.q),
       here: key === listed.show,
     })),
-    cut: cutOfPage(page, found.total, (one) => linkTo(listed.show, listed.q, one)),
+    cut:
+      found.previous === null && found.next === null
+        ? null
+        : {
+            from: found.newer + 1,
+            to: found.newer + found.rows.length,
+            of: found.total,
+            previous:
+              found.previous === null
+                ? null
+                : linkTo(listed.show, listed.q, { before: markOf(found.previous) }),
+            next:
+              found.next === null
+                ? null
+                : linkTo(listed.show, listed.q, { after: markOf(found.next) }),
+          },
     nothing: nothing(),
     place: {},
   };
@@ -799,7 +847,7 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
 
   return {
     async list(_operator, query) {
-      const listed = askedIn(query, SEGMENT_KEYS);
+      const listed = askedIn(query, SEGMENT_KEYS, KEYS);
       const segment = listed.show === "all" ? undefined : (listed.show as MerchantSegment);
       let accountsUnread = false;
       let accountsCut = false;
@@ -817,22 +865,21 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
         }
       }
       const { at: readAt, surface } = asked();
-      const read = async (page: number) =>
+      const read = async (from: MerchantListQuery["from"]) =>
         await reader.merchants.list({
           at: readAt,
           surface,
           ...(listed.q === "" ? {} : { search: listed.q, alsoIds }),
           ...(segment === undefined ? {} : { segment }),
           limit: PAGE_ROWS,
-          offset: (page - 1) * PAGE_ROWS,
+          ...(from === undefined ? {} : { from }),
         });
-      let page = listed.page;
-      let found = await read(page);
-      // An address kept from a longer list draws its last page, not no rows.
-      const last = Math.max(1, Math.ceil(found.total / PAGE_ROWS));
-      if (page > last) {
-        page = last;
-        found = await read(page);
+      const wanted = listed.from === null ? undefined : placesOf(listed.from);
+      let found = await read(wanted);
+      // A cursor past either end, as an address kept from a longer list
+      // holds, draws the page at that end rather than no rows.
+      if (wanted !== undefined && found.rows.length === 0 && found.total > 0) {
+        found = await read("after" in wanted ? { before: BEHIND_EVERY_MERCHANT } : undefined);
       }
       const accounts = await accountsOf(found.rows.map((row) => row.id));
       return {
@@ -845,7 +892,6 @@ export function merchantsFor(parts: AdminParts): MerchantsPages {
           accounts,
           accountsUnread,
           accountsCut,
-          page,
         }),
       };
     },

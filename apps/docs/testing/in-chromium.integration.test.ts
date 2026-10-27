@@ -632,7 +632,7 @@ describe("a move between pages", () => {
     await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
 
     await page.getByRole("heading", { name: "This page could not be loaded" }).waitFor();
-    expect(await page.getByText("There is no such page").count()).toBe(0);
+    expect(await page.getByText("Page not found").count()).toBe(0);
     await page.context().close();
   });
 });
@@ -879,7 +879,21 @@ describe("an address the documentation answered at before", () => {
     const answered = await page.goto(`${edge.origin}/docs/no-such-page`);
 
     expect(answered?.status()).toBe(404);
-    expect(await page.locator("h1").textContent()).toContain("There is no such page");
+    expect(await page.locator("h1").textContent()).toContain("Page not found");
+    await context.close();
+  });
+
+  it("offers the search on a page it never had, and the search finds a page it has", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${edge.origin}/docs/no-such-page`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Search the documentation" }).click();
+    await page.getByRole("combobox", { name: "Search the documentation" }).fill("tracking number");
+    const first = page.locator(".search-results a").first();
+    await first.waitFor();
+
+    expect(await first.getAttribute("href")).toMatch(/^\/docs\/[a-z-]+#/);
     await context.close();
   });
 });

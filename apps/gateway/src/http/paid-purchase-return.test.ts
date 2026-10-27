@@ -194,12 +194,27 @@ describe("a purchase already paid for", () => {
 
   it("is not returned to the payment that paid it, which can be read from the chain", async () => {
     const sale = await aPaidSale();
+    const paid = await sale.harnessed.store.orderById(sale.orderId);
+    expect(paid?.buyerKey).toMatch(/\S/);
+    expect(sale.paid.body).toMatchObject({ delivered: { access_code: "SESAME" } });
 
     const replayed = await sale.present(sale.paying);
 
     expect(replayed.status).toBe(409);
-    expect(codeOf(replayed.body)).toBe("payment_not_verified");
-    expect(JSON.stringify(replayed.body)).not.toContain(sale.orderId);
+    expect(replayed.body).toEqual({
+      error: {
+        code: "payment_not_verified",
+        retryable: false,
+        message: expect.stringMatching(/already.*used/i),
+      },
+    });
+    const publicRefusal = JSON.stringify(replayed.body);
+    for (const secret of [sale.orderId, paid?.buyerKey, "SESAME"]) {
+      expect(secret).toMatch(/\S/);
+      expect(publicRefusal).not.toContain(secret);
+    }
+    expect(publicRefusal).not.toMatch(/nothing was charged/i);
+    expect(publicRefusal).toMatch(/if.*already paid.*fresh payment.*without a second charge/i);
     expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
   });
 

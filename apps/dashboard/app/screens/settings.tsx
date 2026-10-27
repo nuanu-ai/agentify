@@ -392,7 +392,6 @@ function AnotherWallet({ payout }: Readonly<{ payout: Extract<PayoutView, { kind
             ))}
           </tbody>
         </table>
-        <p>{payout.after}</p>
       </div>
     </details>
   );
@@ -416,6 +415,7 @@ function GettingPaid({ payout }: Readonly<{ payout: PayoutView }>) {
           ) : (
             <NoCoinbase coinbase={payout.coinbase} />
           )}
+          <p>{payout.paysBoth}</p>
           <AnotherWallet payout={payout} />
         </>
       )}

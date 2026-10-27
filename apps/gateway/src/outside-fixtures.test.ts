@@ -9,6 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
+import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { describe, expect, it } from "vitest";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
@@ -137,7 +138,7 @@ function aMerchantsWorker(
   const loop = (async () => {
     while (running) {
       const drawn = await call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0, max: 10 },
+        body: { contract_version: CONTRACT_VERSION, wait_seconds: 0, max: 10 },
         headers: { authorization: `Bearer ${key}` },
       });
       const { envelopes } = drawn.body as {
@@ -202,10 +203,19 @@ describe("a purchase from the outside", () => {
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
 
+      expect((await gateway.call("GET", "/x402/catalog")).body).toMatchObject({ items: [] });
+      const premature = await gateway.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: { nights: 1 } },
+      });
+      expect(premature.status).toBe(409);
+      expect(premature.body).toMatchObject({ error: { code: "seller_not_taking_orders" } });
+      expect(gateway.facilitator.verifies).toStrictEqual([]);
+      expect(gateway.facilitator.settles).toStrictEqual([]);
+
       // The merchant's worker is running, as nothing of theirs is offered
       // while it is not.
       await gateway.call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0 },
+        body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
         headers: { authorization: `Bearer ${MERCHANT_KEY}` },
       });
 
@@ -309,7 +319,7 @@ describe("a purchase from the outside", () => {
       // The merchant's worker is running before the sale, as nothing of
       // theirs is offered while it is not.
       await gateway.call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0 },
+        body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
         headers: { authorization: `Bearer ${MERCHANT_KEY}` },
       });
       const catalog = await gateway.call("GET", "/x402/catalog");
@@ -344,7 +354,7 @@ describe("a purchase from the outside", () => {
 
       // The merchant draws the order and takes it on.
       const drawn = await gateway.call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0 },
+        body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
         headers: { authorization: `Bearer ${MERCHANT_KEY}` },
       });
       const { envelopes } = drawn.body as {
@@ -520,7 +530,7 @@ describe("a purchase from the outside", () => {
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
       await gateway.call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0 },
+        body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
         headers: { authorization: `Bearer ${theirKey}` },
       });
 

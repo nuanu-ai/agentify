@@ -62,22 +62,25 @@ function Words({ of }: Readonly<{ of: RichText }>) {
   );
 }
 
-/** A title's lines, the last drawn in the accent where `accent` says so. */
+/**
+ * A title's lines, each a block of its own rather than text broken by `<br>`:
+ * the browser balances a heading that wraps only where no forced break stands
+ * in it. A space stands between them, so the title read as text keeps its
+ * words apart. The last is drawn in the accent where `accent` says so.
+ */
 function Lines({ of, accent = false }: Readonly<{ of: readonly string[]; accent?: boolean }>) {
-  return of.map((line, index) =>
-    index === of.length - 1 ? (
-      accent ? (
-        <span key={line}>{line}</span>
-      ) : (
-        line
-      )
-    ) : (
-      <Fragment key={line}>
+  return of.map((line, index) => (
+    <Fragment key={line}>
+      {index > 0 ? " " : null}
+      <span
+        className={
+          accent && index === of.length - 1 ? `${styles.line} ${styles.accent}` : styles.line
+        }
+      >
         {line}
-        <br />
-      </Fragment>
-    ),
-  );
+      </span>
+    </Fragment>
+  ));
 }
 
 export default function AgenticShopPage() {

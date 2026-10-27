@@ -51,6 +51,7 @@ import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
 import { MemoryQueue } from "../memory/queue.js";
 import { PgBossQueue, REMINDERS, streamOf } from "../pgboss/queue.js";
+import { postgresOperatorReader } from "./operator/index.js";
 import { connect, type Database, PostgresStore } from "./store.js";
 
 /** The merchant everything in this suite belongs to. */
@@ -258,6 +259,48 @@ if (databaseUrl === null) {
 
     afterEach(() => {
       now = Date.parse("2026-08-26T12:00:00.000Z");
+    });
+
+    it("keeps a product off sale until a worker confirms this contract, even with a recent contact from an older gateway", async () => {
+      const card = await store.publishCard(A, syncCard, now);
+      await store.addKey(
+        { id: "mk_worker_contract", merchantId: A, label: "worker", digest: "d".repeat(64) },
+        now,
+      );
+      const reader = postgresOperatorReader(contract.db, "eip155:84532");
+      const asked = { at: now, surface: "test" } as const;
+      await pool.query("insert into merchant_contact (merchant_id, polled_at) values ($1, $2)", [
+        A,
+        new Date(now + 5_000),
+      ]);
+
+      try {
+        for (const version of [null, "4", "999"]) {
+          await pool.query(
+            "update merchant_contact set contract_version = $1 where merchant_id = $2",
+            [version, A],
+          );
+          expect(await store.lastContact(A)).toBeNull();
+          expect(
+            (await store.catalogEntries()).find((entry) => entry.card.id === card.id)?.lastContact,
+          ).toBeNull();
+          expect((await gateway.catalog()).items.map((item) => item.id)).not.toContain(card.id);
+          const workers = await reader.figures.workers(asked);
+          expect(workers.everConnected).toBe(1);
+          expect(workers.connectedWithin).toBe(0);
+          expect(workers.silent).toMatchObject([{ merchantId: A, since: now + 5_000 }]);
+          expect((await reader.merchants.merchant(A, asked))?.lastContactAt).toBe(now + 5_000);
+          const funnel = await reader.figures.funnel(asked, { merchantIds: [] });
+          expect(funnel.steps.find((step) => step.step === "connected")?.merchants).toBe(1);
+        }
+        await store.noteContact(A, now);
+        expect(await store.lastContact(A)).toBe(now);
+        expect((await gateway.catalog()).items.map((item) => item.id)).toContain(card.id);
+      } finally {
+        await pool.query("delete from merchant_keys where id = $1", ["mk_worker_contract"]);
+        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
+        await pool.query("delete from cards where id = $1", [card.id]);
+      }
     });
 
     it("records the first live grant without moving the merchant update time", async () => {

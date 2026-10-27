@@ -18,7 +18,8 @@ import type {
   Receipt,
 } from "@nuanu-ai/agentify-contracts";
 import type { WrittenOrderStatus } from "../../app/written.js";
-import { lapsedAttempt, type StoredOrder } from "../store.js";
+import type { PageFrom } from "../paging.js";
+import { lapsedAttempt, type OrderPlace, type StoredOrder } from "../store.js";
 
 export interface OperatorOrders {
   /**
@@ -61,12 +62,6 @@ export type OrderSegment = (typeof ORDER_SEGMENTS)[number];
 
 export type OrdersShown = OrderSegment | "all";
 
-/** Where a page of the list starts: the orders made before this one. */
-export interface OrdersCursor {
-  readonly createdAt: number;
-  readonly id: string;
-}
-
 export interface OrdersQuery {
   readonly shown: OrdersShown;
   /**
@@ -76,7 +71,8 @@ export interface OrdersQuery {
    */
   readonly search?: string;
   readonly merchantId?: string;
-  readonly before?: OrdersCursor;
+  /** Where the page stands; the newest page where absent. */
+  readonly from?: PageFrom<OrderPlace>;
 }
 
 export interface OrdersPage {
@@ -86,8 +82,10 @@ export interface OrdersPage {
   readonly rows: readonly OperatorOrderRow[];
   /** How many orders of the segment shown are newer than the page: the rows before it. */
   readonly newer: number;
-  /** Where the next page of earlier orders starts, or null where the page holds the oldest. */
-  readonly earlier: OrdersCursor | null;
+  /** The page's first order, where newer ones precede it: the cursor the newer page ends before. */
+  readonly previous: OrderPlace | null;
+  /** The page's last order, where older ones follow it: the cursor the older page starts after. */
+  readonly next: OrderPlace | null;
   /** The merchants that have any order on the channel, for the filter, by identifier. */
   readonly merchants: readonly OrderMerchant[];
 }

@@ -1,18 +1,15 @@
 # 0006. What the contract version promises, and when it moves
 
 Date: 2026-08-27
-Status: accepted; the reading rule rewritten on 2026-10-21; the version moved
-to `"4"` on 2026-10-26, when the merchant's order read gained the transaction
-that paid it
+Status: accepted; compatible-worker admission approved by the product owner,
+2026-10-27
 
 ## Context
 
 A merchant's process reads every gateway answer through the SDK, and each poll
-answer names the gateway's `CONTRACT_VERSION`, which the SDK compares with its
-own. The product owner's criterion for the SDK: it is simple and
-understandable, creates minimum friction for an outside user, is built as a pit
-of success, and is super reliable, with all of that reliability hidden under
-the hood. What follows from it here: never deliver wrongly in silence, while a
+request and answer name the contract their side understands. The product
+owner's criterion is a small, reliable SDK that refuses early when it cannot
+carry a purchase through. Delivering wrongly in silence is unacceptable; a
 loud stop is acceptable. The storefront's reader is a stranger's agent no
 handshake reaches.
 
@@ -28,21 +25,26 @@ handshake reaches.
    delivers (product, parameters, price, address, test flag), off the stream or
    read back, is read closed: an unknown field or address shape fails the poll
    or the read. The gateway writes closed, so a leaked field fails on our side.
-2. The version is `"4"`. It moves when a field or a word is renamed or removed,
+2. The version is `"5"`. It moves when a field or a word is renamed or removed,
    a field's meaning changes, or a field or shape is added to what the merchant
    delivers or prices: an order's core, anything at the top of an order read,
    which is kept closed, and a price question's contents, where an older SDK
    would drop the field. It moves too for a new card mode, selling state or kind
    of message on the stream, work or configuration an older SDK cannot do.
-   Only informational additions leave it alone. An older SDK stops at the
-   first poll answer it can read, after its running handlers answer or its
-   stop's wait for them runs out, and until then reports each unreadable
-   answer as a failed poll that says another version was named, without
-   repeating it. What no SDK worker reads moves nothing: the
-   payout wallet's pending fields (ADR-0019), and the routes and codes only
-   the dashboard called (`docs/research/35-one-process.md`). The version moved
-   from `"2"` at the switch from strict to lenient reading, and from `"3"` when
-   the top of an order read gained `transaction`, the transaction that paid it.
+   Only informational additions leave it alone. The poll request requires
+   `contract_version`, supplied by the SDK without merchant configuration.
+   A request naming another version returns the gateway's version and no work;
+   it draws nothing and establishes no worker contact. The SDK stops after its
+   running handlers answer or its stop's wait runs out. A missing version is
+   refused with an SDK update instruction. An unreadable answer remains a
+   reported failed poll and never establishes agreement.
+   Worker contact is stored with its contract version. Only contact speaking
+   the running gateway's version opens sales, including after a restart or
+   upgrade; an unversioned contact establishes none. Publishing before a worker
+   connects is allowed. The first compatible poll opens sales automatically,
+   subject to the ordinary selling rules. An incompatible worker does not
+   erase another compatible worker's contact. Already accepted orders remain
+   queued for compatible workers, and their handlers may still finish them.
 3. Every SDK call names its release in `user-agent` as `agentify-sdk/<version>`,
    and the gateway notes it beside a key's last use whenever it writes that
    down, so the team sees who runs what. Nothing refuses a call on it.

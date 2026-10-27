@@ -205,6 +205,11 @@ removal, a changed meaning, or anything added to what an order delivers or to
 the top of an order read back moves the contract version, and a
 process whose version Agentify does not share stops at the first poll answer,
 before it takes an order.
+The SDK supplies its contract version in every poll, and Agentify checks it
+before handing over work or counting the worker as connected. Products may be
+published before a worker starts, but take purchases only after a compatible
+worker connects. Sales resume automatically when it does; already accepted
+orders remain to be fulfilled without another charge.
 Every call names the package's release in its `user-agent`. What changed in each
 release is in the
 [changelog](https://github.com/nuanu-ai/agentify/blob/main/packages/sdk/CHANGELOG.md). Register `agentify.on('problem', …)`, which is where you

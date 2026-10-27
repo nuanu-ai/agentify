@@ -1,15 +1,22 @@
 /**
  * A long list as its address asks for it: the words searched for (`q`), the
- * segment shown (`show`) and the page (`page`), all read by the loader, so a
- * search is a plain GET that works without the page's script and a link to a
- * segment or a page can be fetched ahead. Every link keeps what the address
- * asked of the list except what the link changes, and a link back to the start
- * drops what is at its default, so the plain address is the plain list.
+ * segment shown (`show`) and where the page stands (`after` or `before`, a
+ * cursor), all read by the loader, so a search is a plain GET that works
+ * without the page's script and a link to a segment or a page can be fetched
+ * ahead. Every link keeps what the address asked of the list except what the
+ * link changes; a link to another search or segment starts at its first page,
+ * and a link back to the start drops what is at its default, so the plain
+ * address is the plain list.
+ *
+ * A page leads on from its last row and back from its first, never by a count
+ * of rows, so a row that arrives between two clicks moves no other row.
  *
  * A list cut short says how much was cut, and a search that matches nothing
  * says what was searched for, in a sentence of its own: "nothing matches" and
  * "nothing yet" are different claims.
  */
+
+import { type From, fromIn, type Mark, once, rising, writeFrom } from "./cursor.js";
 
 /** The most rows a page draws. */
 export const PAGE_ROWS = 50;
@@ -21,7 +28,7 @@ export interface Asked {
   readonly cut: boolean;
   /** A segment's key; the first segment's where the address names none. */
   readonly show: string;
-  readonly page: number;
+  readonly from: From;
 }
 
 /**
@@ -51,79 +58,17 @@ interface Segment {
 }
 
 /**
- * A page of a list cut short, by its number and its address; the page shown
- * has none. A gap stands where pages between two are left out.
+ * Said under a list cut short: which rows are drawn of how many, counted in
+ * the list as it was read for this page, and the addresses of the pages
+ * before and after it, null at either end.
  */
-export type PageLink = Readonly<{ page: number; to: string | null }> | Readonly<{ gap: true }>;
-
-/** Said under a list cut short: which rows are drawn of how many, and the ways to the rest. */
 export interface CutView {
   readonly from: number;
   readonly to: number;
   readonly of: number;
   readonly previous: string | null;
   readonly next: string | null;
-  readonly pages: readonly PageLink[];
 }
-
-/** The most pages named one by one; past it, the ones far from the page shown give way to a gap. */
-const PAGES_NAMED = 7;
-
-/**
- * Every page where there are few; where there are many, the first and the
- * last, and the page shown with its neighbours, so the reader always sees where
- * they are and how far the list goes.
- */
-const pagesOf = (page: number, pages: number, at: (page: number) => string): PageLink[] => {
-  const named =
-    pages <= PAGES_NAMED
-      ? Array.from({ length: pages }, (_, index) => index + 1)
-      : [
-          ...new Set(
-            [
-              1,
-              ...(page <= 4 ? [2, 3, 4, 5] : []),
-              page - 1,
-              page,
-              page + 1,
-              ...(page >= pages - 3 ? [pages - 4, pages - 3, pages - 2, pages - 1] : []),
-              pages,
-            ].filter((one) => one >= 1 && one <= pages),
-          ),
-        ].sort((one, other) => one - other);
-  return named.flatMap((one, index): PageLink[] => {
-    const link = { page: one, to: one === page ? null : at(one) };
-    const before = named[index - 1];
-    return before !== undefined && one - before > 1 ? [{ gap: true }, link] : [link];
-  });
-};
-
-/**
- * The cut under a list another reader reads a page at a time: page `page` of
- * `of` rows, `at` giving each page's address; null where one page holds every
- * row.
- */
-export const cutOfPage = (
-  page: number,
-  of: number,
-  at: (page: number) => string,
-): CutView | null => {
-  const pages = Math.max(1, Math.ceil(of / PAGE_ROWS));
-  return of <= PAGE_ROWS ? null : cutOf(Math.min(page, pages), pages, of, at);
-};
-
-/** The cut under page `page` of `pages`, holding `of` rows a page of `PAGE_ROWS` at a time. */
-const cutOf = (page: number, pages: number, of: number, at: (page: number) => string): CutView => {
-  const start = (page - 1) * PAGE_ROWS;
-  return {
-    from: start + 1,
-    to: Math.min(start + PAGE_ROWS, of),
-    of,
-    previous: page === 1 ? null : at(page - 1),
-    next: page === pages ? null : at(page + 1),
-    pages: pagesOf(page, pages, at),
-  };
-};
 
 /** Why a list that has rows draws none here, and the way to some. */
 interface Nothing {
@@ -144,20 +89,12 @@ export interface Listing<Row> {
   /** Null where a row is drawn, or where the list has none at all. */
   readonly nothing: Nothing | null;
   /**
-   * The search, the segment and the page drawn, each only where it is not the
-   * default, as fields a form posted from the list carries back (`placeOf`).
+   * The search, the segment and the cursor of the page drawn, each only where
+   * it is not the default, as fields a form posted from the list carries back
+   * (`placeOf`).
    */
   readonly place: Readonly<Record<string, string>>;
 }
-
-/**
- * A value named once, as an address names it; named twice it is nobody's
- * choice, and is read as not named at all.
- */
-const once = (query: URLSearchParams, name: string): string | null => {
-  const values = query.getAll(name);
-  return values.length === 1 ? (values[0] ?? null) : null;
-};
 
 /**
  * The most characters of a search that are matched and given back: more than
@@ -167,20 +104,19 @@ const once = (query: URLSearchParams, name: string): string | null => {
 const Q_AT_MOST = 200;
 
 /**
- * What an address asks of a list with these segments. A segment nobody
- * defined, and a page that is not a whole number from one, read as the
- * default.
+ * What an address asks of a list with these segments, sorted by `keys`
+ * numbers. A segment nobody defined, and a cursor that is no place in such a
+ * list, read as the default.
  */
-export const askedIn = (query: URLSearchParams, segments: readonly string[]): Asked => {
+export const askedIn = (query: URLSearchParams, segments: readonly string[], keys = 1): Asked => {
   const show = once(query, "show");
-  const page = Number(once(query, "page") ?? "1");
   // By character, not by unit of the string, so no character is cut in half.
   const typed = [...(once(query, "q") ?? "").trim()];
   return {
     q: typed.slice(0, Q_AT_MOST).join("").trim(),
     cut: typed.length > Q_AT_MOST,
     show: show !== null && segments.includes(show) ? show : (segments[0] ?? ""),
-    page: Number.isInteger(page) && page >= 1 ? page : 1,
+    from: fromIn(query, keys),
   };
 };
 
@@ -188,7 +124,7 @@ const fieldsOf = (asked: Asked, first: string): URLSearchParams => {
   const query = new URLSearchParams();
   if (asked.q !== "") query.set("q", asked.q);
   if (asked.show !== first) query.set("show", asked.show);
-  if (asked.page !== 1) query.set("page", String(asked.page));
+  writeFrom(query, asked.from);
   return query;
 };
 
@@ -203,18 +139,56 @@ const addressOf = (path: string, asked: Asked, first: string): string => {
  * the merchant is shown the search, the segment and the page they pressed on
  * and a field nobody's list would draw is the default.
  */
-export const placeOf = (path: string, fields: URLSearchParams, segments: readonly string[]) =>
-  addressOf(path, askedIn(fields, segments), segments[0] ?? "");
+export const placeOf = (
+  path: string,
+  fields: URLSearchParams,
+  segments: readonly string[],
+  keys = 1,
+) => addressOf(path, askedIn(fields, segments, keys), segments[0] ?? "");
 
 /**
- * The rows of `path`'s list that the address asks for. A page past the last
- * draws the last, so an address kept from a longer list still shows rows.
+ * Where the page `from` asks for starts and ends among `marks`, the list's
+ * rows in its order: right after the cursor, or the rows nearest before it.
+ * A cursor past either end draws the page at that end, so an address kept
+ * from a longer list still shows rows.
+ */
+const cutIn = (
+  marks: readonly Mark[],
+  from: From,
+  order: (one: Mark, other: Mark) => number,
+): Readonly<{ start: number; end: number; from: From }> => {
+  const first = { start: 0, end: Math.min(PAGE_ROWS, marks.length), from: null };
+  if (from === null) return first;
+  if ("after" in from) {
+    const start = marks.findIndex((mark) => order(mark, from.after) > 0);
+    if (start === -1) {
+      const last = Math.max(0, marks.length - PAGE_ROWS);
+      const before = marks[last - 1];
+      return {
+        start: last,
+        end: marks.length,
+        from: before === undefined ? null : { after: before },
+      };
+    }
+    return { start, end: Math.min(start + PAGE_ROWS, marks.length), from };
+  }
+  const found = marks.findIndex((mark) => order(mark, from.before) >= 0);
+  const end = found === -1 ? marks.length : found;
+  return end === 0 ? first : { start: Math.max(0, end - PAGE_ROWS), end, from };
+};
+
+/**
+ * The rows of `path`'s list that the address asks for, in the list's order:
+ * newest first by the place `markOf` gives each row, the oldest first where
+ * `oldestFirst`.
  */
 export const listingOf = <Row>({
   rows,
   asked,
   path,
   segments,
+  markOf,
+  oldestFirst = false,
   matches,
   noMatch,
   showAll,
@@ -223,6 +197,9 @@ export const listingOf = <Row>({
   asked: Asked;
   path: string;
   segments: readonly SegmentRule<Row>[];
+  /** Where a row stands in the list: the numbers it is sorted by, then its identifier. */
+  markOf: (row: Row) => Mark;
+  oldestFirst?: boolean;
   matches: (row: Row, words: string) => boolean;
   /** The sentence for a search with no match, given the segment's label. */
   noMatch: (q: string, within: string | null) => string;
@@ -230,31 +207,36 @@ export const listingOf = <Row>({
   showAll: string;
 }>): Listing<Row> => {
   const first = segments[0]?.key ?? "";
+  const order = (one: Mark, other: Mark) => (oldestFirst ? rising(one, other) : rising(other, one));
   const words = asked.q.toLocaleLowerCase();
   const found = words === "" ? rows : rows.filter((row) => matches(row, words));
   const segment = segments.find((one) => one.key === asked.show) ?? segments[0];
-  const shown = segment === undefined ? found : found.filter(segment.holds);
-  const pages = Math.max(1, Math.ceil(shown.length / PAGE_ROWS));
-  const page = Math.min(asked.page, pages);
-  const start = (page - 1) * PAGE_ROWS;
-  const at = (moved: Partial<Asked>) => addressOf(path, { ...asked, page, ...moved }, first);
+  const shown = (segment === undefined ? found : found.filter(segment.holds))
+    .map((row) => ({ row, mark: markOf(row) }))
+    .sort((one, other) => order(one.mark, other.mark));
+  const marks = shown.map((one) => one.mark);
+  const cut = cutIn(marks, asked.from, order);
+  const here = { ...asked, from: cut.from };
+  const at = (moved: Partial<Asked>) => addressOf(path, { ...here, ...moved }, first);
+  const opening = marks[cut.start];
+  const closing = marks[cut.end - 1];
 
   const nothing = (): Nothing | null => {
     if (shown.length > 0 || rows.length === 0) return null;
     if (asked.q !== "") {
       return {
         says: noMatch(asked.q, asked.show === first ? null : (segment?.label ?? null)),
-        way: { to: at({ q: "", page: 1 }), words: "Clear the search" },
+        way: { to: at({ q: "", from: null }), words: "Clear the search" },
       };
     }
     return {
       says: segment?.none ?? "",
-      way: { to: at({ show: first, page: 1 }), words: showAll },
+      way: { to: at({ show: first, from: null }), words: showAll },
     };
   };
 
   return {
-    rows: shown.slice(start, start + PAGE_ROWS),
+    rows: shown.slice(cut.start, cut.end).map((one) => one.row),
     search: {
       q: asked.q,
       show: asked.show === first ? null : asked.show,
@@ -264,29 +246,43 @@ export const listingOf = <Row>({
       key: one.key,
       label: one.label,
       count: one.counted ?? found.filter(one.holds).length,
-      to: at({ show: one.key, page: 1 }),
+      to: at({ show: one.key, from: null }),
       here: one.key === segment?.key,
     })),
     cut:
-      shown.length <= PAGE_ROWS
+      cut.start === 0 && cut.end === shown.length
         ? null
-        : cutOf(page, pages, shown.length, (one) => at({ page: one })),
+        : {
+            from: cut.start + 1,
+            to: cut.end,
+            of: shown.length,
+            previous:
+              cut.start === 0 || opening === undefined ? null : at({ from: { before: opening } }),
+            next:
+              cut.end === shown.length || closing === undefined
+                ? null
+                : at({ from: { after: closing } }),
+          },
     nothing: nothing(),
-    place: Object.fromEntries(fieldsOf({ ...asked, page }, first)),
+    place: Object.fromEntries(fieldsOf(here, first)),
   };
 };
 
 /**
  * The listing of a segment whose rows are read apart a page at a time: `rows`
- * is the page the address asks for, read already, and `of` how many the
- * segment holds in all. It is not searched, and a page past the last is the
- * last, as the reader of the rows is held to. `listing` is the list's own
- * listing for the same address, whose segments it keeps.
+ * is the page the address asks for, read already, `of` how many the segment
+ * holds in all and `newer` how many come before the page, and `previous` and
+ * `next` the places of its first and last rows where the segment goes on that
+ * way. It is not searched. `listing` is the list's own listing for the same
+ * address, whose segments it keeps.
  */
 export const pagedListingOf = <Row>({
   listing,
   rows,
   of,
+  newer,
+  previous,
+  next,
   asked,
   path,
   first,
@@ -296,6 +292,9 @@ export const pagedListingOf = <Row>({
   listing: Listing<Row>;
   rows: readonly Row[];
   of: number;
+  newer: number;
+  previous: Mark | null;
+  next: Mark | null;
   asked: Asked;
   path: string;
   /** The key of the list's first segment, which an address leaves out. */
@@ -303,17 +302,24 @@ export const pagedListingOf = <Row>({
   none: string;
   showAll: string;
 }>): Listing<Row> => {
-  const pages = Math.max(1, Math.ceil(of / PAGE_ROWS));
-  const page = Math.min(asked.page, pages);
-  const here = { ...asked, q: "", cut: false, page };
+  const here = { ...asked, q: "", cut: false };
   const at = (moved: Partial<Asked>) => addressOf(path, { ...here, ...moved }, first);
   return {
     rows,
     search: { q: "", show: asked.show === first ? null : asked.show, cutAt: null },
     segments: listing.segments,
-    cut: of <= PAGE_ROWS ? null : cutOf(page, pages, of, (one) => at({ page: one })),
+    cut:
+      previous === null && next === null
+        ? null
+        : {
+            from: newer + 1,
+            to: newer + rows.length,
+            of,
+            previous: previous === null ? null : at({ from: { before: previous } }),
+            next: next === null ? null : at({ from: { after: next } }),
+          },
     nothing:
-      of > 0 ? null : { says: none, way: { to: at({ show: first, page: 1 }), words: showAll } },
+      of > 0 ? null : { says: none, way: { to: at({ show: first, from: null }), words: showAll } },
     place: Object.fromEntries(fieldsOf(here, first)),
   };
 };

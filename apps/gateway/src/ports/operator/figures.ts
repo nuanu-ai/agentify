@@ -92,13 +92,13 @@ interface SilentMerchant {
 export const SILENT_NAMED_AT_MOST = 20;
 
 export interface Workers extends Read {
-  /** How many merchants' processes polled within the window the purchase guard waits. */
+  /** How many merchants' compatible processes polled within the purchase guard's window. */
   readonly connectedWithin: number;
   /** How many merchants' processes ever polled. */
   readonly everConnected: number;
   /**
    * The merchants selling through their own code, with a card on sale, whose
-   * process has not polled for longer than the guard waits, so their purchases
+   * process has not polled with a compatible contract within the guard's window, so purchases
    * are being refused and their cards left out of the catalogue; the longest
    * silent first.
    */

@@ -983,7 +983,7 @@ export const startWorker = (
       if (stopping) break;
       const startedAt = clock.now();
       const answer = await callRoute(gateway, "poll_worker", {
-        body: { wait_seconds: POLL_WAIT_SECONDS },
+        body: { contract_version: contractVersion, wait_seconds: POLL_WAIT_SECONDS },
         // Ends early when the worker is stopped or the answer takes longer
         // than any answer should.
         signal: AbortSignal.any([polling.signal, AbortSignal.timeout(deadlineMs)]),

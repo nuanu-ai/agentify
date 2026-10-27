@@ -1,7 +1,7 @@
 /**
  * Loaded with `--import` into the process that runs the quickstart's buyer
- * program, so the program can meet a broken network without a line of it
- * changing. It does four things and nothing else.
+ * program to exercise network and storage failures without changing the
+ * program itself.
  *
  * It refuses every address that is not on this machine, so the program cannot
  * reach the real test channel from `pnpm test`.
@@ -13,6 +13,8 @@
  * `statusReads`, the HTTP statuses the first reads of an order answer with
  * instead of reaching the gateway; `losePaidAnswer`, which lets a paid purchase
  * reach the gateway and then drops its answer as a broken connection would;
+ * `stopBeforePayment`, which drops the request before it reaches the gateway;
+ * `failDirectorySync`, which refuses the journal's directory flush;
  * and `challengeNetwork` with `challengeAsset`, which move a payment request
  * onto another chain and that chain's token.
  *
@@ -30,6 +32,8 @@ interface Faults {
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
   readonly waitMs?: number;
+  readonly stopBeforePayment?: boolean;
+  readonly failDirectorySync?: boolean;
 }
 
 const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
@@ -40,8 +44,24 @@ const QUICK_WAITS = `data:text/javascript,${encodeURIComponent(
   `export const setTimeout = (_ms, value) => new Promise((done) => globalThis.setTimeout(() => done(value), ${faults.waitMs ?? 1}));`,
 )}`;
 
+const REFUSED_DIRECTORY_SYNC = `data:text/javascript,${encodeURIComponent(`
+  export * from 'node:fs';
+  import { fsyncSync as flush, fstatSync } from 'node:fs';
+  export const fsyncSync = (fd) => {
+    if (fstatSync(fd).isDirectory()) throw new Error('disk refused directory sync');
+    flush(fd);
+  };
+`)}`;
+
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (
+      specifier === "node:fs" &&
+      faults.failDirectorySync &&
+      PROGRAM.test(context.parentURL ?? "")
+    ) {
+      return { url: REFUSED_DIRECTORY_SYNC, shortCircuit: true };
+    }
     if (specifier === "node:timers/promises" && PROGRAM.test(context.parentURL ?? "")) {
       return { url: QUICK_WAITS, shortCircuit: true };
     }
@@ -87,8 +107,9 @@ globalThis.fetch = async (input, init) => {
   if (failed !== undefined) return unavailable(failed);
 
   if (reading) console.error("[faults] order read");
-  const answer = await reachable(input, init);
   const paid = new Headers(init?.headers).has("payment-signature");
+  if (paid && faults.stopBeforePayment) throw new TypeError("payment was not sent");
+  const answer = await reachable(input, init);
   if (paid && faults.losePaidAnswer === true) {
     await answer.body?.cancel();
     throw new TypeError("fetch failed: the connection closed before the answer arrived");

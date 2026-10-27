@@ -48,8 +48,8 @@ the money until it is paid out and then sends {{merchant-share}} to your wallet 
 us. Nobody, Agentify included, can change whom it pays. Our {{commission}} is inside
 your price, and there is no subscription and no monthly fee. Your share
 reaches your wallet when you send a payout from your dashboard, at any time,
-or when we collect our own share, which pays out your contract too; there is
-no fixed day for that. [Money](/money) draws the whole path and says what you
+and ours reaches us in the same transaction. If you send none, our own payout
+of every contract pays out yours too, on no fixed day. [Money](/money) draws the whole path and says what you
 risk on the way.
 
 ## When your buyer is charged

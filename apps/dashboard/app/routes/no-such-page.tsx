@@ -20,12 +20,12 @@ export function NoSuchPage({
 }: Readonly<{ drawn?: DrawnFor & Readonly<{ chrome: Chrome }> }>) {
   const base = (useRouteLoaderData<Chrome>("root") ?? drawn?.chrome)?.base ?? "";
   return (
-    <Frame title="There is no such page" {...(drawn === undefined ? {} : { drawn })}>
+    <Frame title="Page not found" {...(drawn === undefined ? {} : { drawn })}>
       <div className="lede">
         <div>
           <p>
-            The link may have a typo or be out of date. Every section of your dashboard is in the
-            menu.
+            There is no page at this address. The link may have a typo or be out of date. Every
+            section of your dashboard is in the menu.
           </p>
         </div>
       </div>

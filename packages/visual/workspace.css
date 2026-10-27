@@ -7,12 +7,6 @@
  * token; nothing here declares one.
  */
 
-/* Text in the workspace runs the full width of its block, wherever it is drawn:
-   no balanced or "pretty" early line breaks inherited from the shared tokens. */
-.app-frame :is(h1, h2, h3, p) {
-  text-wrap: wrap;
-}
-
 /* --- the operator's workspace in the frame -------------------------------- */
 
 /* The dark chip beside the lockup: the operator's workspace is drawn in the

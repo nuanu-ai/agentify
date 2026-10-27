@@ -12,7 +12,7 @@ import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
 import type { AnalyticsEvent, SetupResult } from "@agentify/gateway/analytics";
 import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
-import { MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
+import { CONTRACT_VERSION, MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
@@ -2338,7 +2338,7 @@ describe("one integration at a time", () => {
 
   const theCodePolls = (running: Running) =>
     running.gateway.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 0 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
       headers: asTheCode(running),
     });
 

@@ -351,6 +351,15 @@ above, and checks the cards against those on sale before its first run. The
 timer never names a card, so on TEST a release that takes cards off sale waits
 for a person's run.
 
+A release that changes the merchant contract requires a matching SDK release
+and updated merchant workers. Publish the SDK and prepare those workers before
+activating the gateway. Each worker supplies its contract version automatically;
+a missing version receives an update instruction and an incompatible one takes
+no work. Only a compatible poll opens sales, so a contact recorded before the
+contract change cannot keep a card on sale. Already accepted orders remain for
+compatible workers to finish. The catalogue verification below holds an upgrade
+to the same rule: a worker that has not reconnected cannot be counted as selling.
+
 A card also leaves the catalog for its seller's own state, whatever is
 released: while the seller has left too many paid orders without delivery or
 closure, or while the seller's own process has not polled for ten minutes.
@@ -533,9 +542,12 @@ from the revision `current` names.
 ## Collecting the commission
 
 Agentify's commission ([Money](https://agentify.ad/docs/money#what-we-take))
-stays credited to its commission wallet in the shared 0xSplits warehouse until
-somebody pays the splits out; nothing does that on a timer. The
-operator's workspace shows the payout on its Money page, under the splits, at
+arrives with every merchant's payout: the transaction a merchant sends from
+Settings withdraws their share and then the commission wallet's whole credit in
+the 0xSplits warehouse, so the commission reaches the Safe with no transaction
+of ours. What waits in a split nobody pays out stays there, and nothing pays
+it out on a timer; that is what the operator's payout is for. The operator's
+workspace shows it on its Money page, under the splits, at
 `/dashboard/admin/money`: for every split recorded on the channel's network,
 the transactions that create each split if it has no code yet, distribute it,
 withdraw each merchant's share to their wallet and, last in each, withdraw the
@@ -551,7 +563,7 @@ own wallets in the same transaction. On TEST the same page, on the test
 channel's workspace, shows Base Sepolia transactions whose commission goes to
 the test channel's wallet. A
 payout costs gas whether or not a split holds anything, so it is worth sending
-when the commission credited covers it (`docs/research/47-commission-in-the-product.md`,
+when what waits in the splits covers it (`docs/research/47-commission-in-the-product.md`,
 «Выплата вручную»).
 
 ## Backups

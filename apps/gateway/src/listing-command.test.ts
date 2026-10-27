@@ -440,6 +440,7 @@ describe("asking the catalog whether it would take our resources", () => {
     const secure = aRun({ answers: () => accepted });
     expect(await secure.run("https://agentify.example", "itm_1")).toBe(0);
     expect(secure.asked).toStrictEqual(["POST https://agentify.example/x402/itm_1/purchase"]);
+    expect(secure.text()).not.toMatch(/https.*public|public.*https/i);
   });
 
   it("asks for an address rather than guessing at one", async () => {

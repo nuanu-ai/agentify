@@ -16,11 +16,12 @@ import {
   MERCHANT_SEGMENTS,
   type MerchantList,
   type MerchantListQuery,
+  type MerchantPlace,
   type MerchantRecord,
   type MerchantRow,
   type MerchantSegment,
   merchantLimitOf,
-  merchantOffsetOf,
+  merchantPlaceOf,
   type OperatorMerchants,
   SELLING_DAYS,
   searchOf,
@@ -42,10 +43,12 @@ const rowsOf = async (tx: ReadOnlyTransaction, query: SQL): Promise<Row[]> =>
   (await tx.execute(query)).rows as Row[];
 
 /**
- * A moment as milliseconds since the epoch, which the driver hands back as a
- * number; it hands a timestamp back as text in a spelling of its own.
+ * A moment as whole milliseconds since the epoch, which the driver hands back
+ * as a number; it hands a timestamp back as text in a spelling of its own.
+ * Whole, because a row the database's own clock wrote holds microseconds,
+ * which the memory reader and a cursor in an address cannot.
  */
-const ms = (moment: string): SQL => sql.raw(`(extract(epoch from ${moment}) * 1000)::float8`);
+const ms = (moment: string): SQL => sql.raw(`floor(extract(epoch from ${moment}) * 1000)::float8`);
 
 const instantOf = (value: unknown): number => Number(value);
 const instantOrNull = (value: unknown): number | null => (value === null ? null : instantOf(value));
@@ -180,6 +183,17 @@ function rowOf(row: Row, surface: SurfaceMode, settled: Tally, from: number): Me
   };
 }
 
+/**
+ * Where a merchant stands in the list, as one row comparison in the list's
+ * order: who waits for the operator, the latest sale (never is the least),
+ * when they were made, and the identifier by its bytes.
+ */
+const PLACE = sql`((j.segment = 'waiting')::int, coalesce(j.last_sale, -1)::float8, j.created_ms,
+  j.id collate "C")`;
+const placeOf = (place: MerchantPlace): SQL =>
+  sql`(${Number(place.waiting)}::int, ${place.lastSaleAt ?? -1}::float8, ${place.createdAt}::float8,
+    ${place.id}::text collate "C")`;
+
 export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchants => ({
   async list(query) {
     const from = sellingFrom(query.at);
@@ -188,9 +202,22 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
       // settled order anywhere that cannot be added fails the read.
       await refuseUnaddable(tx, SETTLED);
       const facts = judged(scope, query.at, query.surface);
+      const page = query.from;
+      const back = page !== undefined && "before" in page;
+      const past =
+        page === undefined
+          ? undefined
+          : "after" in page
+            ? sql`${PLACE} < ${placeOf(page.after)}`
+            : sql`${PLACE} > ${placeOf(page.before)}`;
+      // Going on, the merchants short of the cursor precede the page; going
+      // back, the ones past it are the page and every merchant before it.
+      const ahead = past === undefined ? sql`false` : back ? past : sql`not (${past})`;
       const counted = await rowsOf(
         tx,
-        sql`with ${facts} select j.segment, count(*)::int as n from judged j where ${found(query)} group by 1`,
+        sql`with ${facts} select j.segment, count(*)::int as n,
+          (count(*) filter (where ${ahead}))::int as ahead
+          from judged j where ${found(query)} group by 1`,
       );
       const segments = Object.fromEntries([
         ["all", counted.reduce((sum, row) => sum + Number(row.n), 0)],
@@ -200,14 +227,23 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
         ]),
       ]) as MerchantList["segments"];
       const inSegment = query.segment === undefined ? sql`true` : sql`j.segment = ${query.segment}`;
-      const rows = await rowsOf(
+      const total = query.segment === undefined ? segments.all : segments[query.segment];
+      const aheadOf = counted
+        .filter((row) => query.segment === undefined || row.segment === query.segment)
+        .reduce((sum, row) => sum + Number(row.ahead), 0);
+      const direction = sql.raw(back ? "asc" : "desc");
+      const limit = merchantLimitOf(query);
+      // One more than the page, to tell whether the list goes on past it.
+      const read = await rowsOf(
         tx,
         sql`with ${facts} select j.* from judged j
-          where ${found(query)} and ${inSegment}
-          order by (j.segment = 'waiting') desc, j.last_sale desc nulls last,
-            j.created_at desc, j.id collate "C"
-          limit ${merchantLimitOf(query)} offset ${merchantOffsetOf(query)}`,
+          where ${found(query)} and ${inSegment} and ${past ?? sql`true`}
+          order by (j.segment = 'waiting') ${direction}, coalesce(j.last_sale, -1) ${direction},
+            j.created_ms ${direction}, j.id collate "C" ${direction}
+          limit ${limit + 1}`,
       );
+      const rows = read.slice(0, limit);
+      if (back) rows.reverse();
       const sales = await rowsOf(
         tx,
         settledIn(
@@ -217,16 +253,24 @@ export const postgresOperatorMerchants = (scope: OperatorScope): OperatorMerchan
           query.at,
         ),
       );
-      return {
-        rows: rows.map((row) =>
-          rowOf(
-            row,
-            query.surface,
-            tallyFrom(sales.filter((sale) => sale.merchant_id === row.id)),
-            from,
-          ),
+      const listed = rows.map((row) =>
+        rowOf(
+          row,
+          query.surface,
+          tallyFrom(sales.filter((sale) => sale.merchant_id === row.id)),
+          from,
         ),
-        total: query.segment === undefined ? segments.all : segments[query.segment],
+      );
+      const newer = back ? aheadOf - listed.length : aheadOf;
+      const older = back ? total - aheadOf > 0 : read.length > limit;
+      const first = listed[0];
+      const last = listed.at(-1);
+      return {
+        rows: listed,
+        total,
+        newer,
+        previous: newer > 0 && first !== undefined ? merchantPlaceOf(first) : null,
+        next: older && last !== undefined ? merchantPlaceOf(last) : null,
         segments,
       };
     });

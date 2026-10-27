@@ -86,32 +86,68 @@ describe("the orders list", () => {
     expect(view.segments[6]?.to).toBe("/admin/orders?q=esim&merchant=mch_a");
   });
 
-  it("says which rows of how many it shows, and leads to the earlier ones and back to the newest", () => {
+  it("says which rows of how many it shows, and leads on to the older ones and back to the newer", () => {
     const first = ordersListView(
       asked(),
       aPage({
         counts: counts({ ended: 61 }),
         rows: [aRow("ord_a"), aRow("ord_b")],
-        earlier: { createdAt: 1_787_000_000_000, id: "ord_b" },
+        next: { createdAt: 1_787_000_000_000, id: "ord_b" },
       }),
       READ_AT,
     );
     expect(first.result).toMatchObject({
       kind: "rows",
       cut: "Showing 1–2 of 61, newest first",
-      earlier: "/admin/orders?before=1787000000000.ord_b",
-      newest: null,
+      previous: null,
+      next: "/admin/orders?after=1787000000000.ord_b",
     });
 
     const later = ordersListView(
-      asked("before=1787000000000.ord_b"),
-      aPage({ counts: counts({ ended: 61 }), rows: [aRow("ord_c")], newer: 50 }),
+      asked("q=esim&after=1787000000000.ord_b"),
+      aPage({
+        counts: counts({ ended: 61 }),
+        rows: [aRow("ord_c")],
+        newer: 50,
+        previous: { createdAt: 1_786_900_000_000, id: "ord_c" },
+      }),
       READ_AT,
     );
     expect(later.result).toMatchObject({
       cut: "Showing 51–51 of 61, newest first",
-      earlier: null,
+      previous: "/admin/orders?q=esim&before=1786900000000.ord_c",
+      next: null,
+    });
+  });
+
+  it("starts every segment's link at its newest page, keeping the search and the merchant", () => {
+    const view = ordersListView(
+      asked("q=esim&merchant=mch_a&after=1787000000000.ord_b"),
+      aPage({ counts: counts({ ended: 61 }), rows: [aRow("ord_c")], newer: 50 }),
+      READ_AT,
+    );
+
+    expect(view.segments.map((one) => one.to)).not.toContainEqual(
+      expect.stringMatching(/after|before/),
+    );
+    expect(view.segments[4]?.to).toBe("/admin/orders?segment=ended&q=esim&merchant=mch_a");
+  });
+
+  it("says which way nothing is found past a cursor, and leads back to the newest", () => {
+    const past = (address: string) =>
+      ordersListView(asked(address), aPage({ counts: counts({ ended: 3 }) }), READ_AT).result;
+
+    expect(past("after=1787000000000.ord_b")).toStrictEqual({
+      kind: "none",
+      said: "No earlier order is in this segment.",
+      clear: null,
       newest: "/admin/orders",
+    });
+    expect(past("segment=ended&before=1787000000000.ord_b")).toStrictEqual({
+      kind: "none",
+      said: "No later order is in this segment.",
+      clear: null,
+      newest: "/admin/orders?segment=ended",
     });
   });
 
@@ -144,19 +180,21 @@ describe("the orders list", () => {
   });
 
   it("reads an unknown segment, a malformed cursor and an overlong search as the plain list", () => {
-    expect(asked(`segment=nonsense&before=yesterday&q=${"x".repeat(500)}`)).toStrictEqual({
+    expect(asked(`segment=nonsense&after=yesterday&q=${"x".repeat(500)}`)).toStrictEqual({
       shown: "all",
       q: "x".repeat(200),
       merchantId: null,
-      before: null,
+      from: null,
     });
+    expect(asked("before=ord_x").from).toBeNull();
+    expect(asked("after=1787000000000.ord_b&before=1787000000000.ord_b").from).toBeNull();
+    expect(asked("after=1787000000000.ord_b&after=1787000000000.ord_c").from).toBeNull();
   });
 
   it("reads a cursor past the last moment a date holds, and control characters, as nothing asked", () => {
-    expect(asked("before=9999999999999999.ord_x").before).toBeNull();
-    expect(asked("before=8640000000000000.ord_x").before).toStrictEqual({
-      createdAt: 8.64e15,
-      id: "ord_x",
+    expect(asked("before=9999999999999999.ord_x").from).toBeNull();
+    expect(asked("before=8640000000000000.ord_x").from).toStrictEqual({
+      before: { createdAt: 8.64e15, id: "ord_x" },
     });
     expect(asked("q=%00esim%1f&merchant=%20mch_a%00")).toMatchObject({
       q: "esim",

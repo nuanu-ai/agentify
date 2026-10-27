@@ -13,9 +13,9 @@ export const action = loader;
 
 export default function NoSuchAdminPage() {
   return (
-    <AdminFrame title="There is no such page">
+    <AdminFrame title="Page not found">
       <div className="message-panel">
-        <p>The link may have a typo or be out of date.</p>
+        <p>There is no page at this address. The link may have a typo or be out of date.</p>
         <Link className="button button-primary" to="/admin">
           Back to the overview
         </Link>

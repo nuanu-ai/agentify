@@ -12,6 +12,7 @@
 import {
   type Card,
   CardSchema,
+  CONTRACT_VERSION,
   type QuoteResponse,
   type ShipTo,
 } from "@nuanu-ai/agentify-contracts";
@@ -453,6 +454,112 @@ describe("a purchase that charges before its goods", () => {
     await worker.stop();
 
     expect(answered.status).toBe(402);
+  });
+});
+
+describe("a worker's contract admission", () => {
+  it.each([syncCard, prepaidCard])(
+    "keeps a $fulfillment product off sale through repeated incompatible polls",
+    async (card) => {
+      const { harnessed, served } = await started();
+      const itemId = await selling(harnessed, card);
+      const lastCompatible = harnessed.now();
+      harnessed.advance(11 * MINUTE);
+
+      for (const version of ["3", "4", "999"]) {
+        const poll = await served.call("POST", "/v0/worker/poll", {
+          headers: { authorization: `Bearer ${harnessed.merchant.key}` },
+          body: { contract_version: version, wait_seconds: 0 },
+        });
+        expect(poll.status).toBe(200);
+        expect(poll.body).toStrictEqual({ contract_version: CONTRACT_VERSION, envelopes: [] });
+        harnessed.advance(31_000);
+      }
+
+      expect(await harnessed.store.lastContact(harnessed.merchant.id)).toBe(lastCompatible);
+      expect(await listedIn(served)).not.toContain(itemId);
+      const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: { params: {} },
+      });
+      expect(refused.status).toBe(409);
+      expect((refused.body as Refused).error.code).toBe("seller_not_taking_orders");
+      expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+      expect(harnessed.facilitator.verifies).toStrictEqual([]);
+      expect(harnessed.facilitator.settles).toStrictEqual([]);
+    },
+  );
+
+  it("refuses a poll that does not name its contract with words naming the missing field", async () => {
+    const { harnessed, served } = await started();
+    const lastCompatible = harnessed.now();
+    harnessed.advance(11 * MINUTE);
+    const poll = await served.call("POST", "/v0/worker/poll", {
+      headers: { authorization: `Bearer ${harnessed.merchant.key}` },
+      body: { wait_seconds: 0 },
+    });
+    expect(poll.status).toBe(400);
+    expect((poll.body as Refused).error.message).toContain("contract_version");
+    expect(await harnessed.store.lastContact(harnessed.merchant.id)).toBe(lastCompatible);
+  });
+
+  it("keeps an accepted paid order for a compatible worker and delivers it without a second charge", async () => {
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await selling(harnessed, prepaidCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
+    const orderId = offered.order.order.id;
+    const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
+    const paid = await harnessed.gateway.payPurchase(orderId, payment, fingerprint);
+    expect(paid.step).toBe("under_way");
+    await vi.waitFor(async () =>
+      expect((await harnessed.store.orderById(orderId))?.order.state).toBe("paid"),
+    );
+    harnessed.advance(11 * MINUTE);
+    const poll = (version: string) =>
+      served.call("POST", "/v0/worker/poll", {
+        headers: { authorization: `Bearer ${harnessed.merchant.key}` },
+        body: { contract_version: version, wait_seconds: 0 },
+      });
+
+    expect((await poll("3")).body).toStrictEqual({
+      contract_version: CONTRACT_VERSION,
+      envelopes: [],
+    });
+    const resumed = await poll(CONTRACT_VERSION);
+    const { envelopes } = resumed.body as {
+      envelopes: { kind: string; payload: { id: string } }[];
+    };
+    expect(
+      envelopes.some((envelope) => envelope.kind === "order" && envelope.payload.id === orderId),
+    ).toBe(true);
+    expect(await listedIn(served)).toContain(itemId);
+    const goods = { activation_code: "the-original-esim" };
+    expect(await harnessed.gateway.deliverOrder(merchantId, orderId, goods)).toMatchObject({
+      ok: true,
+    });
+    expect((await harnessed.store.orderById(orderId))?.delivery).toStrictEqual(goods);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+
+  it("does not shut a compatible worker's sales when another worker names a different contract", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await selling(harnessed, prepaidCard);
+    const headers = { authorization: `Bearer ${harnessed.merchant.key}` };
+    harnessed.advance(11 * MINUTE);
+    const connected = await served.call("POST", "/v0/worker/poll", {
+      headers,
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
+    });
+    expect(connected.status).toBe(200);
+    await served.call("POST", "/v0/worker/poll", {
+      headers,
+      body: { contract_version: "3", wait_seconds: 0 },
+    });
+    expect(await listedIn(served)).toContain(itemId);
+    expect(
+      (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
+    ).toBe(402);
   });
 });
 

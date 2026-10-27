@@ -113,7 +113,7 @@ const busy = aPage({
       segment: "delivered_unpaid",
     }),
   ],
-  earlier: { createdAt: minutes(1_309), id: "ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b" },
+  next: { createdAt: minutes(1_309), id: "ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b" },
   merchants: [
     EXAMPLE_MERCHANT,
     TRAVEL_SHOP,
@@ -144,7 +144,7 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
     screen: "Orders",
     when: "An operator opens Orders on a channel with orders in every segment.",
     cause:
-      "The reader counts every segment and lists the newest fifty, cut with the way to the earlier ones.",
+      "The reader counts every segment and lists the newest fifty, with Next to the older ones.",
     path: "/admin/orders",
     mode: "live",
     loaded: loadedList(list("", busy)),
@@ -174,27 +174,33 @@ export const ORDERS_STATES: readonly AdminGalleryState[] = [
               segment: "payment_unknown",
             }),
           ],
-          earlier: null,
+          next: null,
         }),
       ),
     ),
   },
   {
-    id: "dashboard-admin-orders-earlier",
+    id: "dashboard-admin-orders-older",
     screen: "Orders",
-    when: "An operator follows the cut to the earlier orders.",
+    when: "An operator presses Next to the older orders.",
     cause:
-      "The list's address carries where the last page ended, and the cut says which rows of how many it shows.",
-    path: "/admin/orders?before=1787745600000.ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b",
+      "The list's address carries the order the page before ended on, so an order made meanwhile moves no row; the range says which rows of how many it shows.",
+    path: "/admin/orders?after=1787745600000.ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b",
     mode: "live",
     loaded: loadedList(
       list(
-        "before=1787745600000.ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b",
+        "after=1787745600000.ord_4727a0b1c2d3e4f5a6b7c8d9e0f1a18b",
         aPage({
           ...busy,
-          rows: [aRow("ord_2805a1b2c3d4e5f6a7b8c9d0e1f2be4c")],
+          rows: [
+            aRow("ord_2805a1b2c3d4e5f6a7b8c9d0e1f2be4c", {
+              createdAt: minutes(1_320),
+              pricedAt: minutes(1_320),
+            }),
+          ],
           newer: 50,
-          earlier: null,
+          previous: { createdAt: minutes(1_320), id: "ord_2805a1b2c3d4e5f6a7b8c9d0e1f2be4c" },
+          next: null,
         }),
       ),
     ),

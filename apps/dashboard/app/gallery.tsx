@@ -1491,11 +1491,11 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
-      id: "dashboard-cards-cut-short",
+      id: "dashboard-cards-first-page",
       screen: "Products",
       when: "A merchant selling a data plan per country and size opens Products.",
       cause:
-        "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many and leads to the next page.",
+        "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many; Previous is grey on the first page and Next leads on from its last card.",
     },
     cardsAt("/products", WHOLE_CATALOGUE),
     "live",
@@ -1817,13 +1817,12 @@ const ordersAt = (
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
-    owed?: Parameters<typeof ordersView>[5];
-    lapsed?: Parameters<typeof ordersView>[7];
-    connector?: Parameters<typeof ordersView>[9];
+    owed?: Parameters<typeof ordersView>[4];
+    lapsed?: Parameters<typeof ordersView>[6];
+    connector?: Parameters<typeof ordersView>[8];
   }> = {},
 ) =>
   ordersView(
-    mode,
     cards,
     listed,
     open,
@@ -1890,7 +1889,7 @@ const secondsAfter = (iso: string, seconds: number) =>
  * and its hour to deliver ran out; the second was refused by the merchant's
  * code after payment.
  */
-const OWED_BECAUSE: Parameters<typeof ordersView>[5] = Object.fromEntries(
+const OWED_BECAUSE: Parameters<typeof ordersView>[4] = Object.fromEntries(
   OWING.orders
     .filter((order) => order.status === "unfulfilled")
     .map((order, at) => {
@@ -1967,7 +1966,6 @@ const LAPSED: readonly LapsedAttempt[] = ordersOf([
   price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
   asked_at: secondsAfter(order.price.at, -2),
   priced_at: at === 2 ? null : order.price.at,
-  test: order.test,
 }));
 
 const ORDERS: GalleryState[] = [
@@ -2282,11 +2280,11 @@ const ORDERS: GalleryState[] = [
   ),
   orders(
     {
-      id: "dashboard-orders-cut-short",
+      id: "dashboard-orders-first-page",
       screen: "Orders",
       when: "A merchant with a season of sales opens Orders.",
       cause:
-        "The gateway lists 214 orders and a page draws fifty, the newest first, so the list says which fifty of how many and leads to the next page.",
+        "The gateway lists 214 orders and a page draws fifty, the newest first, so the list says which fifty of how many; Previous is grey on the first page and Next leads on from its last order.",
     },
     SEASON,
   ),
@@ -2318,7 +2316,7 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     "/orders?show=lapsed",
-    { lapsed: { page: LAPSED, of: LAPSED.length } },
+    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
   ),
   orders(
     {
@@ -2333,7 +2331,7 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     `/orders?${new URLSearchParams({ show: "lapsed", details: LAPSED[2]?.id ?? "" })}`,
-    { lapsed: { page: LAPSED, of: LAPSED.length } },
+    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
   ),
   orders(
     {
@@ -2350,7 +2348,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
       cause:
-        "Every order on the test site is a test purchase, one of them unfulfilled; the band over the page says so, and no sum repeats it.",
+        "Every order on the test site is a test purchase, one of them unfulfilled, and the band over the page says so.",
     },
     ordersOf(
       [
@@ -2368,6 +2366,23 @@ const ORDERS: GalleryState[] = [
 const receipts = (told: Told, view: ReturnType<typeof receiptsView>, mode: SurfaceMode) =>
   at(told, { path: "/receipts", mode, loaded: { "routes/receipts": view } });
 
+/** Months of sales: 420 receipts, the latest payment first. */
+const MONTHS_OF_RECEIPTS = receiptsOf(
+  Array.from(
+    { length: 420 },
+    (_, at) => [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
+  ),
+);
+
+const receiptsAt = (address: string) =>
+  receiptsView(SOLD, MONTHS_OF_RECEIPTS, TRANSACTIONS.live, {}, new URLSearchParams(address));
+
+/** The address Next leads to from the second page of those receipts. */
+const THIRD_PAGE_OF_RECEIPTS = [1, 2].reduce(
+  (address) => (receiptsAt(address).listing.cut?.next ?? "").replace(/^\/receipts\??/, ""),
+  "",
+);
+
 const RECEIPTS: GalleryState[] = [
   receipts(
     {
@@ -2379,7 +2394,6 @@ const RECEIPTS: GalleryState[] = [
     },
     ((listed) =>
       receiptsView(
-        seenBy("live"),
         SOLD,
         listed,
         TRANSACTIONS.live,
@@ -2405,7 +2419,6 @@ const RECEIPTS: GalleryState[] = [
         "The contract admits receipts with historical unfulfilled or closed outcomes; the gateway currently issues only delivered or shipped receipts. One row has no recorded transaction.",
     },
     receiptsView(
-      seenBy("live"),
       SOLD,
       receiptsOf([
         ["vpn", "delivered"],
@@ -2428,7 +2441,7 @@ const RECEIPTS: GalleryState[] = [
       when: "A merchant opens Receipts before any product was released to a buyer.",
       cause: "The gateway lists no receipts.",
     },
-    receiptsView(seenBy("live"), SOLD, receiptsOf([]), TRANSACTIONS.live),
+    receiptsView(SOLD, receiptsOf([]), TRANSACTIONS.live),
     "live",
   ),
   receipts(
@@ -2439,7 +2452,6 @@ const RECEIPTS: GalleryState[] = [
       cause: "Every receipt there is a test purchase, paid in test funds on Base Sepolia.",
     },
     receiptsView(
-      seenBy("test"),
       SOLD,
       receiptsOf(
         [
@@ -2454,30 +2466,17 @@ const RECEIPTS: GalleryState[] = [
   ),
   at(
     {
-      id: "dashboard-receipts-cut-short",
+      id: "dashboard-receipts-older",
       screen: "Receipts",
-      when: "A merchant with months of sales turns to the third page of their receipts.",
+      when: "A merchant with months of sales presses Next twice on Receipts.",
       cause:
-        "The gateway lists 420 receipts and a page draws fifty, the latest payment first, so the pager says which fifty of how many, names the pages around this one and leads both ways.",
+        "The gateway lists 420 receipts and a page draws fifty, the latest payment first. The address carries the receipt the page before ended on, so a payment that arrives meanwhile moves no row, and the pager says which fifty of how many and leads both ways.",
     },
     {
-      path: "/receipts?page=3",
+      path: `/receipts?${THIRD_PAGE_OF_RECEIPTS}`,
       mode: "live",
       loaded: {
-        "routes/receipts": receiptsView(
-          seenBy("live"),
-          SOLD,
-          receiptsOf(
-            Array.from(
-              { length: 420 },
-              (_, at) =>
-                [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
-            ),
-          ),
-          TRANSACTIONS.live,
-          {},
-          new URLSearchParams("page=3"),
-        ),
+        "routes/receipts": receiptsAt(THIRD_PAGE_OF_RECEIPTS),
       },
     },
   ),
@@ -3822,7 +3821,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-no-such-page",
-      screen: "No such page",
+      screen: "Page not found",
       when: "A signed-in merchant follows a link to an address the dashboard does not have.",
       cause: "The address matches none of the dashboard's pages.",
     },

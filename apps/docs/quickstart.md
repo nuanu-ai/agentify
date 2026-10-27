@@ -422,52 +422,56 @@ ITEM_ID=item_...
 
 <<< @/programs/buyer.mts
 
-The program finds the card in the catalogue and posts the purchase parameters
-to the purchase address the catalogue gives for the card. The parameters
-written in it are the email the card from step 3 asks for; change them to
-what your card asks, or to `{}` for a card that asks for none. It buys no
-parcel, since it sends no address. The first answer is a 402 whose payment
-request names the price and your payout contract, and nothing is charged by
-it. The program signs that request once, only on Base Sepolia, the test
-channel's chain, and only up to the price on the card, then sends the same
-purchase again with the payment. A payment request for another chain or for
-more is refused before anything is signed, and so is a card whose price check
-at purchase answers more than the card says; to try such a price, raise the
-`maxAmountPerPayment` the program sets.
+The program keeps one purchase in `purchase.json`, in the directory where you
+run it. If that file exists, running the same command resumes its purchase.
+To buy again, choose a different filename:
 
-The answer to the payment is the order whatever its HTTP status, and a 409
-says the purchase stands without the goods. In the order, `status` says where
-it stands, `delivered` holds the goods once they are the buyer's, and
-`status_url` is where it is read again. That address carries the buyer's key,
-the only thing that opens the order and its goods, so the program never
-prints it: it adds a line to `orders.txt` beside itself, a file only you can
-read, with the order's `order_id` and its address. Keep that file out of git
-and delete it once you are done. `order_id` is the order's ordinary reference,
-the one your handler saw as `order.id`, and the program prints it.
+```sh
+node --env-file=.env buyer.mts second-purchase.json
+```
 
-While the order reads `in_progress`, the goods have not come yet, and the
-program reads it again at its address every five seconds for five minutes. A
-read that fails is printed, and reading goes on. Then it prints everything the
-order says except its address, and it exits with `0` when the order reads
-`delivered`, with the goods in `delivered`.
+For a new purchase, the program finds the card in the catalogue and posts to
+its purchase address. The parameters in the program are the email the card
+from step 3 asks for; change them to what your card asks, or to `{}` for a
+card that asks for none. These edits apply to new purchases. A saved purchase
+keeps its original parameters. The program sends no address and buys no parcel.
 
-Anything else stops the program with a non-zero exit code and a line that says
-what happened. A purchase refused before the payment, or a payment request the
-program would not sign, charges nothing, and a refused payment says in its own
-words that it charged nothing. When an order came back and ended without the
-goods, its payment is not settled, or five minutes of reads passed without an
-end, its address is in `orders.txt` and the order is on your dashboard's
-Orders screen, which shows what became of it; an order that ended names its
-refusal or its reason in what the program printed. When no order comes back,
-because the payment was refused or its answer never arrived, the program has
-no address to keep, and the Orders screen shows whether an order was made.
-The program never signs a second time, and running it again is a new
-purchase, charged again once paid. A buyer that recovers a lost answer keeps
-the payment request and signs it again, as [Telling a repeat
-apart](/orders#telling-a-repeat-apart) describes. The reason a
-`delivered_unpaid` order prints asks for that kept request; this program
-keeps none, so releasing the goods held for that order takes a buyer of the
-recovering kind.
+The first answer is a 402 with the payment requirements. Before signing or
+sending a payment, the program saves those requirements with the purchase
+address, parameters, wallet address and price limit. If saving fails, no
+payment is sent. It signs only on Base Sepolia and for no more than the price
+on the card. A price check that asks more is refused unsigned; to try that
+price, change the price limit in the program and use a new purchase file.
+
+If the payment answer is lost, keep the file and run the same command with
+the same `.env`. The program signs the saved requirements again from the
+same wallet to recover that order. An already paid order is returned without
+another charge. This recovery signature still authorizes a payment for the
+full amount; Agentify uses it as proof of wallet control when returning an
+already paid purchase. An unknown payment outcome stays unknown, and the
+program stops without starting another purchase. An expired price also stops
+the purchase; a fresh price requires a different file.
+
+An order can come back with HTTP 409 when it ended without the goods. Once
+any order comes back, the program saves its `status_url`. Later runs read
+that address without a payment signature or a catalogue lookup, so the
+purchase remains readable if its card goes off sale. A changed site, product
+or wallet in `.env`, or a damaged purchase file, stops the program without
+replacing the saved purchase.
+
+The status address opens the order and its goods. The program keeps the file
+readable and writable only by its owner, correcting its permissions if it
+already exists, and never prints the address. Keep purchase files out of git.
+Keep them through a lost response or unfinished order: deleting a file loses
+the program's way back, and running with a filename that does not exist
+starts a new purchase. The buyer's private wallet key stays in `.env`.
+
+While an order reads `in_progress`, the program reads it every five seconds
+for up to five minutes. A failed read is printed, and reading continues. It
+then prints the order with its goods, excluding the status address, and exits
+with `0` for `delivered`. Other results exit non-zero and keep the purchase
+file. Running again continues reading the saved order. If no order answer
+has arrived yet, it retries that same saved purchase.
 
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the

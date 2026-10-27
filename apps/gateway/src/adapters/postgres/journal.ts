@@ -9,9 +9,11 @@
 
 import {
   and,
+  asc,
   count,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   lt,
@@ -92,26 +94,45 @@ export async function readJournal(
     }
   }
   const limit = journalLimitOf(query);
-  const paged =
-    query.before === undefined ? filters : [...filters, lt(operatorJournal.sequence, query.before)];
-  // One more than the page, to tell whether a page follows.
-  const [rows, [counted]] = await Promise.all([
+  const from = query.from;
+  const back = from !== undefined && "before" in from;
+  const past =
+    from === undefined
+      ? undefined
+      : "after" in from
+        ? lt(operatorJournal.sequence, from.after)
+        : gt(operatorJournal.sequence, from.before);
+  // Going on, the rows short of the cursor precede the page; going back, the
+  // ones past it are the page and every row before it.
+  const ahead = past === undefined ? sql`false` : back ? past : sql`not (${past})`;
+  // One more than the page, to tell whether the journal goes on past it.
+  const [read, [counted]] = await Promise.all([
     db
       .select()
       .from(operatorJournal)
-      .where(and(...paged))
-      .orderBy(desc(operatorJournal.sequence))
+      .where(and(...filters, past))
+      .orderBy(back ? asc(operatorJournal.sequence) : desc(operatorJournal.sequence))
       .limit(limit + 1),
     db
-      .select({ total: count() })
+      .select({
+        total: count(),
+        ahead: sql<number>`(count(*) filter (where ${ahead}))::int`,
+      })
       .from(operatorJournal)
       .where(and(...filters)),
   ]);
-  const page = rows.slice(0, limit).map(journalRowOf);
+  const page = read.slice(0, limit).map(journalRowOf);
+  if (back) page.reverse();
+  const total = counted?.total ?? 0;
+  const aheadOf = counted?.ahead ?? 0;
+  const newer = back ? aheadOf - page.length : aheadOf;
+  const older = back ? total - aheadOf > 0 : read.length > limit;
   return {
     rows: page,
-    total: counted?.total ?? 0,
-    next: rows.length > limit ? (page.at(-1)?.sequence ?? null) : null,
+    total,
+    newer,
+    previous: newer > 0 ? (page[0]?.sequence ?? null) : null,
+    next: older ? (page.at(-1)?.sequence ?? null) : null,
   };
 }
 

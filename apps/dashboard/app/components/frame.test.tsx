@@ -119,13 +119,7 @@ const dashboardAt = (base: string, path: string) => {
                   loads.push(load);
                   await load.done;
                 }
-                return ordersView(
-                  "live",
-                  NO_CARDS,
-                  ORDERS,
-                  ORDERS,
-                  new URL(request.url).searchParams,
-                );
+                return ordersView(NO_CARDS, ORDERS, ORDERS, new URL(request.url).searchParams);
               },
               Component: () => {
                 const view = useLoaderData() as OrdersView;

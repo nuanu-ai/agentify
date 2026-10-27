@@ -630,13 +630,13 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
     for (const silent of workers.silent) {
       items.push({
         badge: { tone: "fail", word: "Sales stopped" },
-        title: `${silent.name}'s worker stopped polling`,
+        title: `${silent.name} has no compatible worker in touch`,
         href: `/admin/merchants/${silent.merchantId}`,
         aside:
           silent.since === null
             ? "never connected"
             : `since ${durationWritten(at - silent.since)} ago`,
-        why: "The gateway leaves its products out of the catalogue and refuses their purchases until the worker polls again; nothing was charged for them.",
+        why: "The gateway leaves its products out of the catalogue and refuses their purchases until a compatible worker polls; nothing was charged for them.",
         links: [{ label: "See the merchant", href: `/admin/merchants/${silent.merchantId}` }],
         meta: [],
       });
@@ -1279,7 +1279,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
             part: "Merchants' workers",
             badge: { tone: "fail", word: `${workers.silentOf} out of touch` },
             fact: [
-              `${plural(workers.silentOf, "merchant")} with products on sale ${workers.silentOf === 1 ? "has" : "have"} not polled within the last ${minutes} minutes, so their products are out of the catalogue and their purchases are refused: `,
+              `${plural(workers.silentOf, "merchant")} with products on sale ${workers.silentOf === 1 ? "has" : "have"} no compatible worker that polled within the last ${minutes} minutes, so their products are out of the catalogue and their purchases are refused: `,
               ...workers.silent.flatMap((silent, index) => [
                 ...(index === 0 ? [] : [", "]),
                 { text: silent.name, href: `/admin/merchants/${silent.merchantId}` },
@@ -1290,7 +1290,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
               ...(workers.silentOf > workers.silent.length
                 ? [`, and ${workers.silentOf - workers.silent.length} more`]
                 : []),
-              `. ${workers.connectedWithin} of ${workers.everConnected} ever connected polled within the window.`,
+              `. ${workers.connectedWithin} of ${workers.everConnected} ever connected polled within the window with a compatible worker.`,
             ],
           }
         : workers.everConnected === 0
@@ -1303,7 +1303,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
               part: "Merchants' workers",
               badge: { tone: "pass", word: "Connected" },
               fact: [
-                `${workers.connectedWithin} of the ${plural(workers.everConnected, "merchant")} whose worker ever connected did so within the last ${minutes} minutes. No merchant with products on sale is out of touch.`,
+                `${workers.connectedWithin} of the ${plural(workers.everConnected, "merchant")} whose worker ever connected did so with a compatible worker within the last ${minutes} minutes. No merchant with products on sale is out of touch.`,
               ],
             },
   );

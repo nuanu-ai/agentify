@@ -3,7 +3,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   Suspense,
+  useCallback,
   useEffect,
+  useRef,
+  useState,
 } from "react";
 
 /** `onClose(true)` when the reader closes the panel, so the focus goes back where it was; `onClose(false)` when they follow a result. */
@@ -75,6 +78,25 @@ export function SearchUnavailable({ onClose }: Close) {
 const SearchPanel = lazy(() =>
   import("../search-panel.js").catch(() => ({ default: SearchUnavailable })),
 );
+
+/**
+ * Whether the search is open, and the two ways to change it. Closed by the
+ * reader, the focus goes back to what opened the search.
+ */
+export function useSearchOpener() {
+  const [searching, setSearching] = useState(false);
+  const opener = useRef<Element | null>(null);
+  const open = useCallback(() => {
+    opener.current = document.activeElement;
+    setSearching(true);
+  }, []);
+  const close = useCallback((restoreFocus: boolean) => {
+    setSearching(false);
+    const back = opener.current;
+    if (restoreFocus && back instanceof HTMLElement) requestAnimationFrame(() => back.focus());
+  }, []);
+  return { searching, open, close };
+}
 
 /** The search's button, which the column and the phone's bar each draw. */
 export function SearchButton({ onOpen }: Readonly<{ onOpen: () => void }>) {

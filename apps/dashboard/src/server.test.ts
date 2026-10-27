@@ -2997,7 +2997,7 @@ describe("the settings screen", () => {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
-      expect(readable(data.html), path).not.toContain("There is no such page");
+      expect(readable(data.html), path).not.toContain("Page not found");
     }
   });
 
@@ -3204,7 +3204,10 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(screen.html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
     const copied = payoutOn(screen.html);
     expect(copied.distributed).toStrictEqual([split.toLowerCase()]);
-    expect(copied.withdrawn).toStrictEqual([AS_A_WALLET_SHOWS_IT.toLowerCase()]);
+    expect(copied.withdrawn).toStrictEqual([
+      AS_A_WALLET_SHOWS_IT.toLowerCase(),
+      recorded.inForce?.commissionWallet.toLowerCase(),
+    ]);
   });
 
   it("names the commission at the terms the split of the saved wallet was recorded with", async () => {
@@ -3256,7 +3259,11 @@ describe("the wallet a merchant's share is paid out to", () => {
       [earlier?.address.toLowerCase(), now?.address.toLowerCase()].sort(),
     );
     expect(copied.withdrawn.sort()).toStrictEqual(
-      [harnessed.merchant.wallet.toLowerCase(), AS_A_WALLET_SHOWS_IT.toLowerCase()].sort(),
+      [
+        harnessed.merchant.wallet.toLowerCase(),
+        AS_A_WALLET_SHOWS_IT.toLowerCase(),
+        now?.commissionWallet.toLowerCase(),
+      ].sort(),
     );
     const pairs = [
       ...screen.html.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td><td[^>]*>([\s\S]*?)<\/td><\/tr>/g),
@@ -3465,6 +3472,18 @@ describe("the way out to the documentation", () => {
       const out = /<a[^>]+href="\/docs\/"[^>]*>([^<]+)<\/a>/.exec(screen.html);
       expect(out?.[1]?.trim(), `${path} has no readable link to the documentation`).toBeTruthy();
     }
+  });
+
+  it("leaves the mount point from the banner too, where a reason leads to what to check", async () => {
+    const { browser, gateway, harnessed } = await started({ base: "/dashboard" });
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    harnessed.advance(11 * 60_000);
+
+    const { html } = await browser.get("/dashboard/products");
+
+    expect(reasonsIn(html)).toStrictEqual(["out_of_touch"]);
+    expect(html).toContain('href="/docs/failures#your-integration-has-not-connected"');
   });
 });
 
@@ -3756,19 +3775,19 @@ describe("the cards screen", () => {
     const kept = await browser.post(switchOf(room, "pause"), {
       q: "room",
       show: "off-sale",
-      page: "3",
+      after: "1787000000000.item_7d3e",
     });
     const unknown = await browser.post(switchOf(room, "resume"), {
       q: " room ",
       show: "every",
-      page: "-1",
+      after: "page-3",
     });
     // A search in another script goes back as a browser writes it, since a
     // header carries no letter outside Latin-1.
     const written = await browser.post(switchOf(room, "pause"), { q: "кофе" });
     await browser.post(switchOf(room, "resume"));
 
-    expect(kept.to).toBe("/products?q=room&show=off-sale&page=3");
+    expect(kept.to).toBe("/products?q=room&show=off-sale&after=1787000000000.item_7d3e");
     expect(unknown.to).toBe("/products?q=room");
     expect(written.to).toBe(`/products?q=${encodeURIComponent("кофе")}`);
     expect(await purchasable(gateway, room)).toBe(true);
@@ -4224,11 +4243,11 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toContain("the goods are held");
+    expect(html).toContain("#you-delivered-and-the-payment-did-not-execute");
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
-    expect(text).toContain("The buyer can pay again for this same order");
+    expect(text).toContain("the buyer pays again for this same order");
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
@@ -5283,7 +5302,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const answered = await browser.get("/nowhere");
 
     expect(answered.status).toBe(404);
-    expect(readable(answered.html)).toContain("There is no such page");
+    expect(readable(answered.html)).toContain("Page not found");
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/products"[^>]*>Back to the dashboard<\/a>/);
@@ -5998,6 +6017,8 @@ describe("a list, when it could not be read", () => {
       expect(readable(failed.html)).not.toMatch(
         /Publish a card through the SDK|may or may not have been done/i,
       );
+      if (path.startsWith("/products"))
+        expect(failed.html).not.toContain('href="/docs/quickstart"');
     },
   );
 });
@@ -6336,7 +6357,10 @@ describe("a wallet change waiting on the live deployment", () => {
     expect(waiting.html.replaceAll(/<[^>]*>/g, "")).toContain(WAITING);
     expect(payoutOn(waiting.html)).toStrictEqual({
       distributed: [paidNowSplit?.address.toLowerCase()],
-      withdrawn: [running.harnessed.merchant.wallet.toLowerCase()],
+      withdrawn: [
+        running.harnessed.merchant.wallet.toLowerCase(),
+        paidNowSplit?.commissionWallet.toLowerCase(),
+      ],
     });
 
     running.harnessed.advance(48 * 60 * 60 * 1_000);
@@ -6344,7 +6368,7 @@ describe("a wallet change waiting on the live deployment", () => {
 
     expect(payoutOn(applied.html)).toStrictEqual({
       distributed: [waitingSplit?.address.toLowerCase()],
-      withdrawn: [WAITING.toLowerCase()],
+      withdrawn: [WAITING.toLowerCase(), waitingSplit?.commissionWallet.toLowerCase()],
     });
   });
 
@@ -7560,11 +7584,13 @@ describe("closing fulfillment from Orders", () => {
     const closed = await running.browser.post("/orders", {
       order_id: id,
       show: "needs",
-      page: "2",
+      before: "1787000000000.ord_7d3e",
     });
 
     expect(closed.status).toBe(303);
-    expect(closed.to).toBe(`/orders?show=needs&page=2&details=${id}#details-${id}`);
+    expect(closed.to).toBe(
+      `/orders?show=needs&before=1787000000000.ord_7d3e&details=${id}#details-${id}`,
+    );
   });
 
   it("rereads an unanswered write and shows the recorded closure", async () => {
