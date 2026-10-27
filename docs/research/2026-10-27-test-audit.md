@@ -84,7 +84,7 @@ bootstrap, contracts/SDK, gateway/storage, payments, dashboard and scanner/web
 owners. Reviewers found lost or unreachable assertions, including whitespace
 refusals, authenticated replay privacy, a missing diagnostic, the secure-URL
 warning contrast, long-rule cost accounting, native submit controls and
-first-control skip navigation. Each accepted gap was restored and checked with
+first-control skip navigation and client-ID redaction in preflight diagnostics. Each accepted gap was restored and checked with
 a production mutation before source restoration. Review records retain the
 finding and its resolution; no preservation finding remains open. Targeted
 controls include invalid and retargeted attempts in their evidence, rather
@@ -99,11 +99,11 @@ inventory. Test-support classification is reconstructed explicitly in external
 | Surface | Original audit | Integrated main before campaign | Candidate |
 | --- | ---: | ---: | ---: |
 | Test files | 424 | 424 | 416 |
-| Test lines | 150,942 | 151,497 | 148,932 |
+| Test lines | 150,942 | 151,497 | 148,933 |
 | Test-support lines | 13,128 | 13,388 | 13,221 |
 | Production lines | 145,696 | 146,355 | 146,010 |
 
-Relative to integrated main, tests shrink by 2,565 lines, support by 167 and
+Relative to integrated main, tests shrink by 2,564 lines, support by 167 and
 production by 345. Assertions added to repair weak proof count against these
 savings. New main changes explain why comparisons with the original audit
 differ. The final collected and executed total is 7,700 cases, compared with

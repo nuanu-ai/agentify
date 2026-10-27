@@ -43,6 +43,7 @@ const expectNoFixtureSecrets = (stderr: string, resolved: ResolvedCompose): void
     resolved.services.app.environment?.CDP_API_KEY_ID,
     resolved.services.app.environment?.CDP_API_KEY_SECRET,
     resolved.services.app.environment?.AUTH_SECRET,
+    resolved.services.app.environment?.GOOGLE_CLIENT_ID,
     resolved.services.app.environment?.GOOGLE_CLIENT_SECRET,
   ];
   for (const value of values) {
