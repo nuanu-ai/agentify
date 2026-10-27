@@ -6,7 +6,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
 
 const readCatalogue = (url: string, atMost?: number) => catalogueOf(url, atMost, fetch);
@@ -39,6 +39,7 @@ import {
   readTheOrderInTheShop,
   shipmentInTheShop,
   shippingRatesInTheShop,
+  WooShopRuntime,
 } from "./woo-shop.js";
 
 interface Asked {
@@ -1005,6 +1006,54 @@ describe("the protected product check", () => {
       expect(read, requested).toMatchObject({ ok: false, again: false, saidNo: false });
       await stand.close();
       stand = null;
+    }
+  });
+
+  it("coalesces short product reads and longer settings reads for quotes while paid inspection stays fresh", async () => {
+    let price = "20.00";
+    let refuseProduct = false;
+    stand = await shopAnswering((asked) =>
+      asked.url.includes("/settings/")
+        ? { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) }
+        : refuseProduct
+          ? { status: 503, body: {} }
+          : { status: 200, body: parcelDocument({ price }) },
+    );
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    try {
+      const keys = connectionTo(stand.url);
+      const runtime = new WooShopRuntime(keys, fetch);
+      const item = merchantItemIdFor(stand.url, "28");
+      const first = await Promise.all([
+        runtime.inspectForQuote(item),
+        runtime.inspectForQuote(item),
+      ]);
+      expect(first.every((read) => read.ok && read.product.price.amount === "20.00")).toBe(true);
+      expect(stand.asked.filter((call) => /\/products\/28$/.test(call.url))).toHaveLength(1);
+      const settings = stand.asked.filter((call) => call.url.includes("/settings/")).length;
+      price = "21.00";
+      expect(await inspectProductInTheShop(keys, item, fetch)).toMatchObject({
+        ok: true,
+        product: { price: { amount: "21.00" } },
+      });
+      clock.mockReturnValue(1_800_000_006_000);
+      refuseProduct = true;
+      expect(await runtime.inspectForQuote(item)).toMatchObject({ ok: false, again: true });
+      refuseProduct = false;
+      expect(await runtime.inspectForQuote(item)).toMatchObject({
+        ok: true,
+        product: { price: { amount: "21.00" } },
+      });
+      expect(stand.asked.filter((call) => call.url.includes("/settings/"))).toHaveLength(
+        settings * 2,
+      );
+      clock.mockReturnValue(1_800_000_181_000);
+      await runtime.inspectForQuote(item);
+      expect(stand.asked.filter((call) => call.url.includes("/settings/"))).toHaveLength(
+        settings * 3,
+      );
+    } finally {
+      clock.mockRestore();
     }
   });
 
@@ -2237,6 +2286,80 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       return answered();
     });
   const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
+
+  it("reuses one exclusive cart across complete locality replacements and leaves it empty after each question", async () => {
+    let sessions = 0;
+    let held = false;
+    const localities: unknown[] = [];
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        if (asked.cartToken === undefined) sessions += 1;
+        return {
+          status: 200,
+          body: cart([], { items: held ? [LINE] : [], needs_shipping: held, shipping_rates: [] }),
+          headers: { "Cart-Token": TOKEN },
+        };
+      }
+      if (asked.url.endsWith("/add-item")) {
+        held = true;
+        return { status: 201, body: cart([]) };
+      }
+      if (asked.url.endsWith("/remove-item")) {
+        held = false;
+        return {
+          status: 200,
+          body: cart([], { items: [], needs_shipping: false, shipping_rates: [] }),
+        };
+      }
+      localities.push(JSON.parse(asked.body).shipping_address);
+      return { status: 200, body: cart([rate()]) };
+    });
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+    expect(
+      await runtime.shippingRates("28", {
+        country: "ID",
+        state: "JK",
+        city: "Jakarta",
+        postal_code: "10110",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(held).toBe(false);
+    expect(await runtime.shippingRates("28", { country: "DE", city: "Berlin" })).toMatchObject({
+      ok: true,
+    });
+    expect(held).toBe(false);
+    expect(sessions).toBe(1);
+    expect(localities).toStrictEqual([
+      { country: "ID", state: "JK", city: "Jakarta", postcode: "10110" },
+      { country: "DE", state: "", city: "Berlin", postcode: "" },
+    ]);
+    expect(stand.asked.filter((call) => call.url.endsWith("/remove-item"))).toHaveLength(2);
+  });
+
+  it("quarantines uncertain carts within four slots without opening replacements on repeated failures", async () => {
+    let sessions = 0;
+    const tokens = new Set<string>();
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        if (asked.cartToken === undefined) sessions += 1;
+        const token = asked.cartToken ?? `cart-${sessions}`;
+        tokens.add(token);
+        return {
+          status: 200,
+          body: cart([], { items: [], needs_shipping: false, shipping_rates: [] }),
+          headers: { "Cart-Token": token },
+        };
+      }
+      if (asked.url.endsWith("/remove-item")) return { status: 503, body: {} };
+      return { status: asked.url.endsWith("/add-item") ? 201 : 200, body: cart([rate()]) };
+    });
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+    for (let count = 0; count < 7; count += 1) {
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+    }
+    expect(sessions).toBe(4);
+    expect(tokens.size).toBe(4);
+  });
 
   it("asks a fresh cart with its token and no nonce, and sends every field of the place", async () => {
     // A field left out keeps the shop's base location, so a German address
