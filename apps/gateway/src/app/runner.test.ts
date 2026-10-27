@@ -1,4 +1,4 @@
-import type { Order } from "@agentify/core";
+import { createOrder, type Order } from "@agentify/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Birth, StoredOrder } from "../ports/store.js";
 import { drawEverything, type Harness, harness } from "../testing/harness.js";
@@ -395,6 +395,159 @@ describe("who an order belongs to", () => {
     const after = await open.store.orderById(orderId);
     expect(after?.payment).toBe("PAY-A");
     expect(after?.paidBy).toBe("alice");
+  });
+});
+
+describe("the first verified buyer of an admitted parcel", () => {
+  const address = {
+    name: "Agentify",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+
+  const admitted = (harnessed: Harness): StoredOrder => {
+    const created = createOrder({
+      id: "ord_admitted_parcel",
+      at: harnessed.now() - 100,
+      mode: { settle: "on_purchase", parcel: true },
+      policy: {
+        deadlines: {
+          quoteResponseMs: 5_000,
+          quoteTtlMs: 30_000,
+          settleResponseMs: 2_000,
+          syncResponseMs: 8_000,
+          asyncFulfillmentMs: 86_400_000,
+        },
+        redelivery: { baseDelayMs: 500, factor: 2, maxDelayMs: 30_000, maxAttempts: 5 },
+      },
+      priceCheck: "none",
+      cardPrice: { amount: "80.00", currency: "USD", asOf: harnessed.now() - 100 },
+      test: true,
+      selling: "open",
+    });
+    if (!created.ok) throw new Error("the parcel could not be priced");
+    return {
+      merchantId: harnessed.merchant.id,
+      itemId: "item_1",
+      merchantItemId: "sku-1",
+      buyerKey: "bk_admitted_parcel",
+      params: {},
+      priceId: null,
+      delivery: null,
+      payment: null,
+      payTo: null,
+      paidBy: null,
+      settlement: null,
+      paymentWords: [],
+      paymentWordsDropped: 0,
+      openDeliveryId: null,
+      through: "api",
+      priceOffer: {
+        stamp: "a-stamped-offer",
+        expiresAt: harnessed.now() + 30_000,
+        requirements: {
+          scheme: "exact",
+          network: "eip155:84532",
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          amount: "80000000",
+          payTo: PAID_AT,
+          maxTimeoutSeconds: 60,
+          extra: {},
+        },
+      },
+      order: {
+        ...created.order,
+        timestamps: {
+          ...created.order.timestamps,
+          createdAt: harnessed.now(),
+          paymentPresentedAt: harnessed.now(),
+        },
+      },
+    };
+  };
+
+  it("requires and freezes the first verified owner's address, and another payer cannot replace it", async () => {
+    open = await harness();
+    const record = admitted(open);
+    expect(await open.gateway.runner.create(record, [], open.now(), { through: "api" })).toBe(
+      "written",
+    );
+    expect((await open.store.orderById(record.order.id))?.shipTo).toBeUndefined();
+    await open.store.claimPayment("first-authorization", record.order.id);
+
+    expect(
+      (
+        await open.gateway.runner.presentVerifiedPayment(
+          record.order.id,
+          "alice",
+          "PAY-A",
+          PAID_AT,
+          open.now(),
+          { fingerprint: "first-authorization" },
+        )
+      ).kind,
+    ).toBe("ship_to_required");
+    expect((await open.store.orderById(record.order.id))?.paidBy).toBeNull();
+
+    const accepted = await open.gateway.runner.presentVerifiedPayment(
+      record.order.id,
+      "alice",
+      "PAY-A",
+      PAID_AT,
+      open.now(),
+      { fingerprint: "first-authorization", shipTo: address },
+    );
+    expect(accepted.kind).toBe("took");
+    await open.store.claimPayment("other-authorization", record.order.id);
+    const stranger = await open.gateway.runner.presentVerifiedPayment(
+      record.order.id,
+      "bob",
+      "PAY-B",
+      PAID_AT,
+      open.now(),
+      {
+        fingerprint: "other-authorization",
+        shipTo: { ...address, line_one: "a substituted destination" },
+      },
+    );
+
+    expect(stranger.kind).toBe("not_owner");
+    const stored = await open.store.orderById(record.order.id);
+    expect(stored?.shipTo).toStrictEqual(address);
+    expect(stored?.paidBy).toBe("alice");
+    expect(stored?.payment).toBe("PAY-A");
+  });
+
+  it("takes no ownership, address or financial action after the merchant switched integration", async () => {
+    open = await harness();
+    const record = admitted(open);
+    await open.gateway.runner.create(record, [], open.now(), { through: "api" });
+    expect((await open.store.switchIntegration(open.merchant.id, "woocommerce")).switched).toBe(
+      true,
+    );
+    await open.store.claimPayment("first-authorization", record.order.id);
+
+    const accepted = await open.gateway.runner.presentVerifiedPayment(
+      record.order.id,
+      "alice",
+      "PAY-A",
+      PAID_AT,
+      open.now(),
+      { fingerprint: "first-authorization", shipTo: address },
+    );
+
+    expect(accepted.kind).toBe("switched_away");
+    const stored = await open.store.orderById(record.order.id);
+    expect(stored?.paidBy).toBeNull();
+    expect(stored?.payment).toBeNull();
+    expect(stored?.shipTo).toBeUndefined();
+    expect(stored?.order.payment).toBe("none");
+    expect(stored?.paymentAttempt).toBeUndefined();
+    expect(await drawEverything(open.queue, open.merchant.id)).toStrictEqual([]);
   });
 });
 

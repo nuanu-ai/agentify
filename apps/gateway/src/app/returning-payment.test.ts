@@ -113,3 +113,34 @@ describe("a key's signature for a paid purchase", () => {
     expect(checked).toMatchObject({ verified: true, payer: WALLET.address });
   });
 });
+
+
+describe("returning a paid purchase against its persisted price offer", () => {
+  const savedRequirements = {
+    scheme: "exact",
+    network: "eip155:84532" as const,
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    amount: "80000000",
+    payTo: paid.payTo,
+    maxTimeoutSeconds: 75,
+    extra: { name: "USDC", version: "2", price_stamp: "signed-offer-1" },
+  };
+  const saved = {
+    ...paid,
+    priceOffer: { stamp: "signed-offer-1", requirements: savedRequirements, expiresAt: NOW - 1 },
+  };
+
+  it("accepts a fresh owner signature after the saved offer expires without rebuilding its terms", async () => {
+    const payment = await signedPayment(WALLET, savedRequirements, { nonce: "0x03", validBefore: NOW + 60_000 });
+    expect(await returningPayment(payment, saved, {
+      edge, now: NOW, claimHolder: async () => null,
+    })).toMatchObject({ verified: true, payer: WALLET.address });
+  });
+
+  it("still refuses the retained original authorization", async () => {
+    const payment = await signedPayment(WALLET, savedRequirements, { nonce: "0x02", validBefore: NOW + 60_000 });
+    expect(await returningPayment(payment, saved, {
+      edge, now: NOW, claimHolder: async () => ({ orderId: paid.orderId, retained: true }),
+    })).toMatchObject({ verified: false, reason: "signature" });
+  });
+});

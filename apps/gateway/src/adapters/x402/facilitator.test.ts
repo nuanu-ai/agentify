@@ -1041,6 +1041,45 @@ describe("a facilitator that answers a check with a failure status and no verdic
     });
   };
 
+  it("verifies and settles the exact saved stamped offer after deployment terms change", async () => {
+    const requirements: PaymentRequirements = {
+      scheme: "exact",
+      network: "eip155:84532",
+      asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      amount: "80000000",
+      payTo: PAY_TO,
+      maxTimeoutSeconds: 75,
+      extra: { name: "USDC", version: "2", price_stamp: "signed-offer-1" },
+    };
+    const server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (part) => { body += part; });
+      request.on("end", () => {
+        const received = JSON.parse(body) as { paymentRequirements: unknown };
+        const exact = JSON.stringify(received.paymentRequirements) === JSON.stringify(requirements);
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify(request.url === "/verify"
+          ? { isValid: exact, payer: PAYER, invalidReason: "invalid_payment_requirements" }
+          : { success: exact, transaction: exact ? "0xsaved-offer" : "", network: "eip155:84532" }));
+      });
+    });
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    closing.push(() => new Promise((resolve) => server.close(() => resolve())));
+    const client = new HTTPFacilitatorClient({
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    });
+    const payment = encodePaymentSignatureHeader({ x402Version: 2, accepted: requirements, payload: signed() });
+    const saved = { ...charge(payment), requirements };
+    const facilitator = facilitatorFor(client, edge);
+
+    expect(await facilitator.verify(saved)).toMatchObject({ verified: true, payer: PAYER });
+    expect(await facilitator.settle(saved)).toStrictEqual({ settled: true, transaction: "0xsaved-offer" });
+    expect(await facilitator.recoveryFor(saved, NOW_SECONDS * 1000)).toMatchObject({
+      network: "eip155:84532", amount: "80000000", payTo: PAY_TO,
+    });
+  });
+
   const NOT_A_VERDICT = JSON.stringify({ error: "a body the log must not carry" });
 
   it.each([401, 403, 404])(

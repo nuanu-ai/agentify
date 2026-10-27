@@ -13,7 +13,7 @@
  * only on Postgres, across two pools; the envelopes in each adapter's own file.
  */
 
-import type { Order } from "@agentify/core";
+import { type Order, transition } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { JournalEntry, JournalPage, JournalPress, JournalSubject } from "../ports/journal.js";
@@ -1601,6 +1601,103 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.disableKey("mk_1", 7_000))?.lastUsedAt).toBe(5_000);
         expect((await store.keysOf(A))[0]?.lastUsedAt).toBe(5_000);
+      });
+    });
+
+    describe("a payment admitted against a stamped price", () => {
+      const admitted = (id: string, buyerKey: string): StoredOrder => {
+        const record = anOrder(id, "quoted", { buyerKey, createdAt: 1_500 });
+        return {
+          ...record,
+          through: "api",
+          priceOffer: {
+            stamp: "a-stamped-offer",
+            expiresAt: 31_000,
+            requirements: {
+              scheme: "exact",
+              network: "eip155:84532",
+              asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+              amount: "5000000",
+              payTo: W1,
+              maxTimeoutSeconds: 60,
+              extra: {},
+            },
+          },
+          order: {
+            ...record.order,
+            price: record.order.cardPrice,
+            quoteSource: "card_snapshot",
+            policy: {
+              ...record.order.policy,
+              deadlines: { ...record.order.policy.deadlines, quoteTtlMs: 30_000 },
+            },
+            timestamps: {
+              ...record.order.timestamps,
+              quotedAt: 1_000,
+              paymentPresentedAt: 1_500,
+            },
+          },
+        };
+      };
+
+      it("creates one order and preserves its original buyer key when the same price is submitted concurrently", async () => {
+        const store = await twoMerchants();
+        const candidates = [admitted("ord_one_price", "bk_first"), admitted("ord_one_price", "bk_second")];
+
+        const born = await Promise.all(
+          candidates.map((record) => store.addOrder(record, { through: "api" })),
+        );
+
+        expect([...born].sort()).toStrictEqual(["exists", "written"]);
+        const winner = candidates[born.indexOf("written")];
+        expect(winner).toBeDefined();
+        expect(await store.orderById("ord_one_price")).toStrictEqual(winner);
+      });
+
+      it("holds the merchant's integration until first ownership commits, while an unverified attempt alone holds no switch", async () => {
+        const store = await twoMerchants();
+        const record = admitted("ord_admitted", "bk_admitted");
+        await store.addOrder(record, { through: "api" });
+        expect(await store.switchHeldBy(A, "woocommerce")).toStrictEqual([]);
+        expect(await store.orders(A)).toStrictEqual([]);
+
+        let entered!: () => void;
+        let release!: () => void;
+        const inside = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const accepted = store.withOrder(
+          record.order.id,
+          async (found, integration) => {
+            entered();
+            await resume;
+            const paid = transition(found.order, { kind: "payment_verified", at: 2_000 });
+            if (!paid.ok) throw new Error("the admitted payment could not become paid");
+            return {
+              result: integration,
+              save: {
+                ...found,
+                paidBy: W1,
+                payment: "verified-payment",
+                order: paid.order,
+              },
+            };
+          },
+          undefined,
+          undefined,
+          A,
+        );
+        await inside;
+        const switched = store.switchIntegration(A, "woocommerce");
+        release();
+
+        expect(await accepted).toStrictEqual({ found: true, result: "api" });
+        expect(await switched).toStrictEqual({ switched: false, waiting: [record.order.id] });
+        expect((await store.merchantById(A))?.integration).toBe("api");
+        expect((await store.orders(A)).map((order) => order.order.id)).toStrictEqual([record.order.id]);
       });
     });
 
