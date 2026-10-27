@@ -386,7 +386,7 @@ describe("a copy out of a page", () => {
     await price.selectText();
     await page.keyboard.press("ControlOrMeta+C");
 
-    expect(await price.textContent()).toBe("80.00 USD");
+    expect(await price.textContent()).toBe("80.00\u00a0USD");
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("80.00 USD");
     await page.context().close();
   });
