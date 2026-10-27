@@ -63,8 +63,58 @@ are the negative control: an intentional second purchase still works.
 The independent review finds a missing directory flush in an intermediate
 implementation. The fix adds it before payment and on resume, with a storage
 failure test. The second review has no actionable finding. Host power loss
-was not simulated. This run does not establish acceptance on the remote TEST
-channel or compatibility with every external wallet.
+was not simulated. External wallet integrations are outside this check.
+
+## Remote TEST acceptance
+
+With the product owner's permission, `deploy-test` moves to
+`90a445c68ad6a8c9f5481678b97be0e592ee6983`. CI and Images pass on that
+commit. The host verifies the release, both migrations apply, and all six
+existing public cards remain available with a Base Sepolia payment challenge.
+
+A separate test merchant uses the SDK from this branch. Its initial identity,
+key and payout wallet are created through internal test setup, so this run
+does not test merchant signup or installation from npm. The merchant publishes
+the existing gift-message text file at 0.01 test USDC with asynchronous delivery.
+Before its worker connects, the card is absent from the catalogue and purchase
+returns `409 seller_not_taking_orders`, without creating an order. A poll with
+no version returns 400; contract 4 receives contract 5 with no envelopes.
+The compatible SDK connects and the card becomes available.
+
+The unmodified buyer program runs through its documented Node command. A
+loopback HTTP proxy routes the catalogue's purchase addresses to TEST and drops
+the first paid answer after TEST reports payment. The saved file survives.
+Restart returns the same order and the exact gift-message file. The buyer's
+USDC balance is 4.682000 after payment and remains 4.682000 after recovery.
+Another run reads the saved status address without signing. A different
+filename starts a second purchase, preserves the first journal byte for byte
+and brings the balance to 4.672000 from its initial 4.692000.
+
+Both chain receipts succeed on Base Sepolia. Each contains exactly one USDC
+transfer of 10,000 atomic units from the buyer to its merchant's payout split:
+
+- Original purchase: [transaction c9ccd40b](https://sepolia.basescan.org/tx/0xc9ccd40b418f4e34e5ac90409ebe666aa641ae8d08483867f46dba1566f1f588).
+- Explicit second purchase: [transaction a6505695](https://sepolia.basescan.org/tx/0xa6505695e3ae8997ffd6205950653428c1a38d6f161cae90adb9f80080f6bf19).
+
+The total is 0.02 test USDC against a 0.05 cap. The proxy forwards three
+signatures, including the recovery signature, with a combined authorized
+amount of 0.03 test USDC. The merchant receives two paid orders and delivers
+both. The journal is mode 0600. The test card and merchant are paused, the
+worker stops, its temporary API key is disabled and the temporary buyer-key
+copy is removed. All six original catalogue entries remain.
+
+There is also one expired, unpaid attempt with `email: "string"`, matching the
+Bazaar declaration's generated input. The buyer sends `you@example.com` and
+makes only two unsigned purchase requests. The additional caller is not
+established; identifying it as Bazaar would be an inference. It reaches no
+settlement or merchant hand-over. The initial unpaid setup checks stop on a
+wrong expected error code in the check script; this is corrected to the
+existing `seller_not_taking_orders` response before any payment is signed.
+
+The private local report, process logs, purchase journals and check script are
+under `2026-10-27-pr211-z3bhOy` in the operator's Agentify acceptance directory.
+This is bounded TEST evidence. Mainnet, third-party wallets, npm installation,
+host power loss and upgrades of a remote merchant's service are untested.
 
 ## Draft reply to the report author
 
@@ -83,5 +133,7 @@ integrations encounter the limitations of signature-based recovery.
 
 Recovery still requires the saved requirements and the original wallet, and it
 uses a fresh payment signature when the status address was lost. It returns an
-already paid order without another charge. The regression and a separate Node
-run both lose the paid response and recover the same order after restart.
+already paid order without another charge. The regression and the deployed
+TEST run both lose the paid response and recover the same order after restart. On Base Sepolia, recovery leaves the
+buyer balance unchanged; an explicit second purchase produces its own
+0.01 test USDC transfer.

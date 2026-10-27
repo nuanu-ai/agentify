@@ -14,9 +14,10 @@ version, so an earlier deployment's contact cannot keep sales open. Historical
 connections remain visible in the operator's counts and merchant history.
 
 This changes the poll request contract to version 5 and carries a minor
-Changeset for the SDK and contracts. A matching SDK must be published and
-merchant workers prepared before gateway activation. No release tag, npm
-publication or deployed channel was changed for this work.
+Changeset for the SDK and contracts. A production release requires the matching
+SDK to be published and merchant workers prepared before gateway activation.
+TEST runs the branch with a matching worker built from its sources; npm
+publication and production activation remain pending.
 
 ## Evidence
 
@@ -55,9 +56,9 @@ implementation: compatibility filtering incorrectly erases historical
 connection facts from operator views. The PostgreSQL regression catches it,
 the fix preserves those facts, and the second review has no actionable finding.
 
-Live SDK installation, deployed upgrades, paid purchases and delivery on a
-remote merchant's service were not exercised. The release still needs its
-normal channel acceptance with matching merchant workers.
+Installation from npm and upgrades of a remote merchant's service are not
+exercised. Production still needs its normal release checks with matching
+merchant workers.
 
 Integration with main preserves its order index migration as 0032 and adds
 worker contact as 0033. The generated worker migration adds only
@@ -65,3 +66,12 @@ worker contact as 0033. The generated worker migration adds only
 tests in 26 files after the merge, and the offline suite passes 7,411 tests in
 380 files. A separate review confirms that current compatible contact and
 historical operator facts remain separate.
+
+The coordinated TEST release of `90a445c68ad6a8c9f5481678b97be0e592ee6983`
+passes its route and six-card checks. An isolated merchant's card is refused
+before a compatible poll, with no order created. Missing and earlier poll
+versions do not open sales; a worker on the branch's SDK does. Two paid
+asynchronous orders reach delivery, and recovery after a lost paid answer adds
+no charge. The total is 0.02 test USDC on Base Sepolia. The temporary merchant
+and card are paused and its key is disabled. The chain receipts and limits of
+this check are in [buyer recovery](2026-10-27-buyer-example-recovery.md#remote-test-acceptance).
