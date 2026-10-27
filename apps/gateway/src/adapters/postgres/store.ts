@@ -183,6 +183,12 @@ async function holdingASwitch(db: Queries, merchantId: string): Promise<string[]
 }
 
 /**
+ * How a page and its counts are read together: in one read-only snapshot, so
+ * a row written between the two cannot make the range say "51–100 of 99".
+ */
+const ONE_MOMENT = { isolationLevel: "repeatable read", accessMode: "read only" } as const;
+
+/**
  * The drizzle handle together with its pool. The pool is needed because a
  * session-level advisory lock must be released on the connection that took it.
  */
@@ -687,7 +693,7 @@ export class PostgresStore implements Store {
   }
 
   async journal(query: JournalQuery): Promise<JournalPage> {
-    return await readJournal(this.#db, query);
+    return await this.#db.transaction(async (tx) => await readJournal(tx, query), ONE_MOMENT);
   }
 
   async standingWithdrawal(merchantId: string): Promise<JournalRow | null> {
@@ -1136,39 +1142,41 @@ export class PostgresStore implements Store {
     // Going on, the attempts short of the cursor precede the page; going back,
     // the ones past it are the page and every attempt before it.
     const ahead = past === undefined ? sql`false` : back ? past : sql`not (${past})`;
-    const [counted] = await this.#db
-      .select({
-        of: sql<number>`count(*)::int`,
-        ahead: sql<number>`(count(*) filter (where ${ahead}))::int`,
-      })
-      .from(orders)
-      .where(theirs);
-    const of = counted?.of ?? 0;
-    if (page.limit === 0) return { orders: [], of, newer: 0, previous: null, next: null };
-    const direction = back ? sql`asc` : sql`desc`;
-    // One more than the page, to tell whether the list goes on past it.
-    const read = await this.#db
-      .select({ record: orders.record })
-      .from(orders)
-      .where(and(theirs, past))
-      .orderBy(sql`${orders.createdAt} ${direction}`, sql`${orders.id} collate "C" ${direction}`)
-      .limit(page.limit + 1);
-    const rows = read.slice(0, page.limit).map((row) => row.record);
-    if (back) rows.reverse();
-    const aheadOf = counted?.ahead ?? 0;
-    const newer = back ? aheadOf - rows.length : aheadOf;
-    const older = back ? of - aheadOf > 0 : read.length > page.limit;
-    const placeAt = (record: StoredOrder | undefined): OrderPlace | null =>
-      record === undefined
-        ? null
-        : { createdAt: record.order.timestamps.createdAt, id: record.order.id };
-    return {
-      orders: rows,
-      of,
-      newer,
-      previous: newer > 0 ? placeAt(rows[0]) : null,
-      next: older ? placeAt(rows.at(-1)) : null,
-    };
+    return await this.#db.transaction(async (tx) => {
+      const [counted] = await tx
+        .select({
+          of: sql<number>`count(*)::int`,
+          ahead: sql<number>`(count(*) filter (where ${ahead}))::int`,
+        })
+        .from(orders)
+        .where(theirs);
+      const of = counted?.of ?? 0;
+      if (page.limit === 0) return { orders: [], of, newer: 0, previous: null, next: null };
+      const direction = back ? sql`asc` : sql`desc`;
+      // One more than the page, to tell whether the list goes on past it.
+      const read = await tx
+        .select({ record: orders.record })
+        .from(orders)
+        .where(and(theirs, past))
+        .orderBy(sql`${orders.createdAt} ${direction}`, sql`${orders.id} collate "C" ${direction}`)
+        .limit(page.limit + 1);
+      const rows = read.slice(0, page.limit).map((row) => row.record);
+      if (back) rows.reverse();
+      const aheadOf = counted?.ahead ?? 0;
+      const newer = back ? aheadOf - rows.length : aheadOf;
+      const older = back ? of - aheadOf > 0 : read.length > page.limit;
+      const placeAt = (record: StoredOrder | undefined): OrderPlace | null =>
+        record === undefined
+          ? null
+          : { createdAt: record.order.timestamps.createdAt, id: record.order.id };
+      return {
+        orders: rows,
+        of,
+        newer,
+        previous: newer > 0 ? placeAt(rows[0]) : null,
+        next: older ? placeAt(rows.at(-1)) : null,
+      };
+    }, ONE_MOMENT);
   }
 
   async openOrders(): Promise<readonly StoredOrder[]> {
