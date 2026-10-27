@@ -284,4 +284,13 @@ describe("a problem the server half answered", () => {
       reopen: "/dashboard/keys",
     });
   });
+
+  it("keeps a number in a refusal's words beside its unit, as the page will show them", () => {
+    expect(
+      thrownBy("POST", "http://dashboard.test/dashboard/keys", 429, "Try again in 30 s"),
+    ).toMatchObject({
+      kind: "problem",
+      said: "Try again in 30\u00a0s",
+    });
+  });
 });
