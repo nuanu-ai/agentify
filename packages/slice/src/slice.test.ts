@@ -114,7 +114,15 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The buyer walks the whole exchange: unpaid → 402 with the challenge →
     // signed payment → the goods themselves.
+    const issuedAtSettlement: boolean[] = [];
+    const settle = facilitator.settle.bind(facilitator);
+    facilitator.settle = async (charge) => {
+      const stored = await booted.gateway.runtime.store.orderById(charge.orderId);
+      issuedAtSettlement.push(stored?.delivery !== null && stored?.delivery !== undefined);
+      return settle(charge);
+    };
     const bought = await buyer.buy(rented, { area_code: "415" });
+    expect(issuedAtSettlement).toEqual([true]);
 
     expect(bought.status).toBe(200);
 
@@ -222,6 +230,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(parsedReceipt.outcome).toBe("delivered");
     expect(parsedReceipt.test).toBe(true);
     expect(parsedReceipt.price.amount).toBe("8.00");
+    expect(facilitator.settles).toHaveLength(1);
 
     // The happy asynchronous path carries no wire event: the event channel is
     // for the things a merchant would otherwise only find by reconciling by
@@ -423,11 +432,14 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(invented.status).toBe(404);
     expect(invented.state).toBeNull();
     expect(invented.delivered).toBeNull();
-    expect(invented.body).toStrictEqual({
-      error: { code: "no_such_order", message: "there is no such order", retryable: false },
-    });
-
-    for (const value of ["bk_nor_this_one", "ord_never_issued"]) {
+    expect(invented.body).toMatchObject({ error: { code: "no_such_order", retryable: false } });
+    const card = (await buyer.catalog()).find((entry) => entry.title === RENTED_NUMBER.title);
+    if (card === undefined) throw new Error("the synchronous card is not listed");
+    const existing = AgentOrderStatusSchema.parse(
+      (await buyer.buy(card, { area_code: "415" })).body,
+    );
+    expect(existing.status).toBe("delivered");
+    for (const value of ["bk_nor_this_one", "ord_never_issued", existing.order_id]) {
       const another = await buyer.status(statusAt(value));
       expect(another.status).toBe(invented.status);
       expect(another.body).toStrictEqual(invented.body);

@@ -94,6 +94,6 @@ async function buy(): Promise<void> {
 }
 
 await buy().catch((error: Error) => {
-  console.error(`The purchase stopped. ${error.message}`)
+  console.error(`The purchase stopped. ${error instanceof TypeError ? "The channel could not be reached. Check AGENTIFY_URL and your connection before trying again." : error.message}`)
   process.exitCode = 1
 })
