@@ -11,7 +11,6 @@ import { request } from "node:http";
 import type { RouteConfigEntry } from "@react-router/dev/routes";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import routes from "../app/routes";
-import { SECURITY_HEADERS } from "../lib/server/answer-headers";
 import { ORIGIN, stubOfflineScanner } from "../testing/api";
 import { testScanner } from "../testing/scanner";
 
@@ -68,12 +67,12 @@ async function allowOf(path: string): Promise<string[]> {
     .filter((method) => method !== "OPTIONS");
 }
 
-it.each(routes.map(addressOf))(
+it.each([...new Set(["/", ...routes.map(addressOf)])])(
   "sends each header the process writes on one line, whatever %s answers",
   async (path) => {
     for (const method of [...(await allowOf(path)), "OPTIONS", "PUT"]) {
       const lines = await headerLines(path, method);
-      for (const name of Object.keys(SECURITY_HEADERS)) {
+      for (const name of ["X-Content-Type-Options", "X-Frame-Options", "Permissions-Policy"]) {
         expect(
           lines.filter((line) => line === name.toLowerCase()),
           `${method} ${path}: ${name}`,

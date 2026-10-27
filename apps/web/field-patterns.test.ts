@@ -29,7 +29,12 @@ const sourcesIn = (directory: string): string[] =>
     return entry.name.endsWith(".tsx") && !entry.name.includes(".test.") ? [path] : [];
   });
 
-type Found = Readonly<{ where: string; value: string | undefined }>;
+type Found = Readonly<{
+  where: string;
+  value: string | undefined;
+  field: string | undefined;
+  type: string | undefined;
+}>;
 
 const patternAttributes = (): Found[] => {
   const files = sourcesIn(APP).filter((file) => readFileSync(file, "utf8").includes("pattern"));
@@ -58,7 +63,20 @@ const patternAttributes = (): Found[] => {
           initializer !== undefined && ts.isJsxExpression(initializer)
             ? initializer.expression
             : initializer;
-        found.push({ where, value: stringOf(expression) });
+        const attributeValue = (name: string) => {
+          const attribute = node.parent.properties.find(
+            (item) => ts.isJsxAttribute(item) && item.name.getText(source) === name,
+          );
+          if (!attribute || !ts.isJsxAttribute(attribute)) return undefined;
+          const initial = attribute.initializer;
+          return stringOf(initial && ts.isJsxExpression(initial) ? initial.expression : initial);
+        };
+        found.push({
+          where,
+          value: stringOf(expression),
+          field: attributeValue("name"),
+          type: attributeValue("type"),
+        });
       }
       ts.forEachChild(node, visit);
     };
@@ -80,9 +98,12 @@ describe("a form field's pattern", () => {
   const found = patternAttributes();
 
   it("is given to the report request's phone field", () => {
-    expect(found.some(({ where }) => where.startsWith("components/registration-form.tsx"))).toBe(
-      true,
-    );
+    expect(
+      found.some(
+        ({ field, type, value }) =>
+          field === "phone" && type === "tel" && typeof value === "string" && value.length > 0,
+      ),
+    ).toBe(true);
   });
 
   it.each(found.map(({ where, value }) => [where, value] as const))(
