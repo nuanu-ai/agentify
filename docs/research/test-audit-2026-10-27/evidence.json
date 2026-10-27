@@ -1,0 +1,185 @@
+{
+  "source_commit": "77a9b578312e696826f378405c099f4996bcd703",
+  "date": "2026-10-27",
+  "node": "v24.22.1",
+  "pnpm": "11.12.0",
+  "scope": "Targeted mutation sensitivity only; no whole-CI mutation pass was run. Original sources restored byte for byte after each experiment.",
+  "mutations": [
+    {
+      "subject": "apps/gateway/src/adapters/x402/payment-chain.ts",
+      "mutation": "args: [wallet as Address, nonce as Hex], -> args: [wallet as Address, `0x${\"00\".repeat(32)}` as Hex],",
+      "expected": "Reading a different authorization nonce should fail the replay-state boundary tests.",
+      "command": "pnpm exec vitest run --project unit apps/gateway/src/adapters/x402/payment-chain.test.ts --maxWorkers=1",
+      "sha256_before": "6c1eeb2b474c08559a1efc43e50a9c0093bdb000843e4a6b67e4700a1fd8e03c",
+      "exit_code": 0,
+      "result": "survived",
+      "restored_byte_for_byte": true,
+      "test_count": 10,
+      "passed": 10,
+      "failed": 0,
+      "id": "payment-rpc",
+      "node": "v24.22.1",
+      "substitution": {
+        "before": "args: [wallet as Address, nonce as Hex],",
+        "after": "args: [wallet as Address, `0x${\"00\".repeat(32)}` as Hex],"
+      },
+      "restoration_hash_rechecked": true
+    },
+    {
+      "subject": "apps/dashboard/src/woo-request.ts",
+      "mutation": "servername: target.hostname, -> servername: \"wrong.example\",",
+      "expected": "A wrong TLS server name should fail the advertised TLS-hostname proof.",
+      "command": "pnpm exec vitest run --project unit apps/dashboard/src/woo-request.test.ts apps/dashboard/src/woo-request-transport.test.ts --maxWorkers=1",
+      "sha256_before": "a095961ea1ab653333968adbd24e987256ede817678d8cf92e25cdef05b0b88d",
+      "exit_code": 0,
+      "result": "survived",
+      "restored_byte_for_byte": true,
+      "test_count": 25,
+      "passed": 25,
+      "failed": 0,
+      "id": "woo-tls",
+      "node": "v24.22.1",
+      "substitution": {
+        "before": "servername: target.hostname,",
+        "after": "servername: \"wrong.example\","
+      },
+      "restoration_hash_rechecked": true
+    },
+    {
+      "subject": "apps/web/lib/analytics-client.ts",
+      "mutation": "await sender(input.eventId); -> sender(input.eventId);",
+      "expected": "A promise that rejects after dispatch must not persist the destination once-key; retry tests should detect removing await.",
+      "command": "pnpm exec vitest run --project unit apps/web/lib/analytics-client.test.ts --maxWorkers=1",
+      "sha256_before": "8bc9e577a276ddd8213c5a735bb1f912135afd24e2b585043849acef1e0227ee",
+      "exit_code": 0,
+      "result": "survived",
+      "restored_byte_for_byte": true,
+      "test_count": 5,
+      "passed": 5,
+      "failed": 0,
+      "id": "analytics-async",
+      "node": "v24.22.1",
+      "substitution": {
+        "before": "await sender(input.eventId);",
+        "after": "sender(input.eventId);"
+      },
+      "restoration_hash_rechecked": true
+    },
+    {
+      "subject": "deploy/scanner-entrypoint.sh",
+      "mutation": "Replace exec of the provided server command with exit 0.",
+      "expected": "The two positive entrypoint tests should detect that the web process never starts.",
+      "command": "pnpm scanner:ops:test",
+      "sha256_before": "804db8d067d1d9044207576a24651b124a3448207c293f28e9734c6486f76ef1",
+      "exit_code": 0,
+      "result": "survived",
+      "restored_byte_for_byte": true,
+      "test_count": 14,
+      "passed": 14,
+      "failed": 0,
+      "id": "entrypoint",
+      "node": "v24.22.1",
+      "substitution": {
+        "before": "exec \"$@\"",
+        "after": "exit 0"
+      },
+      "restoration_hash_rechecked": true
+    },
+    {
+      "subject": "apps/docs/app/markdown-copy.ts",
+      "mutation": "Omit the opening Caddy conditional from Markdown output while retaining its closing end.",
+      "expected": "The documentation tests should reject a malformed conditional that cannot be served by Caddy.",
+      "command": "pnpm exec vitest run --project unit apps/docs --maxWorkers=1",
+      "sha256_before": "0853121a51f28290fbda58a7c346b4b426983fe5d339ea635f0caea8be22692d",
+      "exit_code": 0,
+      "result": "survived",
+      "restored_byte_for_byte": true,
+      "test_count": 155,
+      "passed": 155,
+      "failed": 0,
+      "id": "docs",
+      "node": "v24.22.1",
+      "substitution": {
+        "before": "        out.push(unlessTemplate(name));",
+        "after": "        out.push(\"\");"
+      },
+      "restoration_hash_rechecked": true
+    },
+    {
+      "subject": "deploy/scanner-entrypoint.sh",
+      "mutation": "[ \"${#TOKEN_HMAC_SECRET}\" -ge 32 ] -> [ \"${#TOKEN_HMAC_SECRET}\" -ge 1 ]",
+      "expected": "The short signing-secret negative control should fail if short secrets are accepted.",
+      "command": "pnpm scanner:ops:test",
+      "sha256_before": "804db8d067d1d9044207576a24651b124a3448207c293f28e9734c6486f76ef1",
+      "exit_code": 1,
+      "result": "killed",
+      "restored_byte_for_byte": true,
+      "test_count": 14,
+      "failure": "web entrypoint refuses a short signing secret without printing its value: expected status to be nonzero, received 0 (scanner-entrypoint.test.mjs:59)",
+      "passed": 13,
+      "failed": 1,
+      "id": "entrypoint-control",
+      "node": "v24.22.1",
+      "substitution": {
+        "before": "[ \"${#TOKEN_HMAC_SECRET}\" -ge 32 ]",
+        "after": "[ \"${#TOKEN_HMAC_SECRET}\" -ge 1 ]"
+      },
+      "restoration_hash_rechecked": true
+    }
+  ],
+  "checks": [
+    {
+      "command": "pnpm test",
+      "exit_code": 0,
+      "vitest_files": 380,
+      "vitest_tests": 7380,
+      "vitest_duration_seconds": 97.54,
+      "node_test_tests": 14,
+      "runtime": "Node v24.22.1"
+    },
+    {
+      "command": "pnpm test:db",
+      "exit_code": 0,
+      "files": 26,
+      "tests": 573,
+      "duration_seconds": 148.35,
+      "database": "Disposable PostgreSQL container using CI digest, tmpfs storage, fresh local-only credentials; removed after run.",
+      "runtime": "Node v24.22.1"
+    },
+    {
+      "command": "python3 -m unittest discover -s deploy -p 'test_*.py'",
+      "exit_code": 0,
+      "tests": 147,
+      "duration_seconds": 185.477,
+      "runtime": "Node v24.22.1"
+    },
+    {
+      "command": "python3 -m unittest discover -s deploy/ansible -p 'test_*.py'",
+      "exit_code": 0,
+      "tests": 14,
+      "runtime": "Python only"
+    },
+    {
+      "command": "pnpm exec vitest run --project unit apps/docs apps/gateway/src/adapters/x402/payment-chain.test.ts apps/dashboard/src/woo-request.test.ts apps/dashboard/src/woo-request-transport.test.ts apps/web/lib/analytics-client.test.ts --maxWorkers=1",
+      "exit_code": 0,
+      "files": 14,
+      "tests": 195,
+      "duration_seconds": 3.74,
+      "purpose": "Restored-source verification after all mutations.",
+      "runtime": "Node v24.22.1"
+    },
+    {
+      "command": "pnpm scanner:ops:test",
+      "exit_code": 0,
+      "tests": 14,
+      "purpose": "Restored-source verification after all mutations.",
+      "runtime": "Node v24.22.1"
+    }
+  ],
+  "initial_runtime": "v24.21.0",
+  "runtime_archive": {
+    "url": "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-arm64.tar.xz",
+    "checksums": "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt",
+    "sha256": "654ba79de6155647e22321932b45f2a1ccb705976cc337c9b8e278beb085a628"
+  }
+}

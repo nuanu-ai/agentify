@@ -1,0 +1,425 @@
+path,inspection_depth,baseline_lane
+apps/app/src/mail-rate.test.ts,full test file read,unit passed
+apps/app/src/main.test.ts,full test file read,unit passed
+apps/browser-observer-actor/src/actor.integration.test.ts,inventory/search only,integration not run
+apps/browser-observer-actor/src/apify-metadata.test.ts,full test file read,unit passed
+apps/browser-observer-actor/src/browser-signals.test.ts,inventory/search only,unit passed
+apps/browser-observer-actor/src/network-policy.test.ts,inventory/search only,unit passed
+apps/browser-observer-actor/src/observations.test.ts,full test file read,unit passed
+apps/browser-observer-actor/src/representative-pages.test.ts,full test file read,unit passed
+apps/browser-observer-actor/src/runner.test.ts,inventory/search only,unit passed
+apps/browser-observer-actor/src/sanitize-output.test.ts,full test file read,unit passed
+apps/dashboard/app/admin-gallery/here.test.ts,full test file read,unit passed
+apps/dashboard/app/answer.test.ts,full test file read,unit passed
+apps/dashboard/app/components/copy.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/components/frame.test.tsx,partial test read,unit passed
+apps/dashboard/app/components/gate-page.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/components/list.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/components/post-form.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/error-page.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/gallery.behavior.test.tsx,full test file read,unit passed
+apps/dashboard/app/gallery.test.tsx,full test file read,unit passed
+apps/dashboard/app/root.test.ts,full test file read,unit passed
+apps/dashboard/app/routes/gate.test.ts,full test file read,unit passed
+apps/dashboard/app/routes/keys.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/routes/sign-in.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/admin/figures.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/admin/orders.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/cards.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/integrations.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/keys.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/lists.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/orders.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/settings.test.tsx,partial test read,unit passed
+apps/dashboard/app/screens/setup.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/sign-in.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/woocommerce-recovery.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/screens/woocommerce.test.tsx,inventory/search only,unit passed
+apps/dashboard/app/wallet/coinbase.test.ts,inventory/search only,unit passed
+apps/dashboard/app/wallet/requests.test.ts,inventory/search only,unit passed
+apps/dashboard/src/account-banner.test.ts,partial test read,unit passed
+apps/dashboard/src/ad-reports.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/admin/access.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/accounts.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/action.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/figures-pages.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/figures.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/journal.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/admin/merchants-accounts.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/admin/merchants-accounts.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/merchants.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/operator-mail.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/orders-view.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/orders.test.ts,inventory/search only,unit passed
+apps/dashboard/src/admin/workspace.test.ts,inventory/search only,unit passed
+apps/dashboard/src/closing.test.ts,inventory/search only,unit passed
+apps/dashboard/src/config.test.ts,inventory/search only,unit passed
+apps/dashboard/src/dashboard-entry.test.ts,inventory/search only,unit passed
+apps/dashboard/src/data-copy.db-test.ts,full test file read,database passed
+apps/dashboard/src/data-copy.test.ts,full test file read,unit passed
+apps/dashboard/src/database.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/database.test.ts,inventory/search only,unit passed
+apps/dashboard/src/edge-headers.test.ts,full test file read,unit passed
+apps/dashboard/src/gateway-analytics.test.ts,inventory/search only,unit passed
+apps/dashboard/src/gateway.test.ts,partial test read,unit passed
+apps/dashboard/src/google-availability.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/google-identity.test.ts,inventory/search only,unit passed
+apps/dashboard/src/google-sign-in.integration.test.ts,inventory/search only,integration not run
+apps/dashboard/src/html-text.test.ts,inventory/search only,unit passed
+apps/dashboard/src/identity-admin-reads.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/identity-admin-reads.test.ts,inventory/search only,unit passed
+apps/dashboard/src/identity-analytics.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/identity-analytics.test.ts,inventory/search only,unit passed
+apps/dashboard/src/identity.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/identity.test.ts,inventory/search only,unit passed
+apps/dashboard/src/in-chromium.integration.test.ts,inventory/search only,integration not run
+apps/dashboard/src/listing.test.ts,inventory/search only,unit passed
+apps/dashboard/src/mail-template.test.ts,inventory/search only,unit passed
+apps/dashboard/src/mail.test.ts,inventory/search only,unit passed
+apps/dashboard/src/migrations.test.ts,full test file read,unit passed
+apps/dashboard/src/moments.test.ts,inventory/search only,unit passed
+apps/dashboard/src/nuanu-analytics.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/operator-accounts.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/payout-wallet.test.ts,inventory/search only,unit passed
+apps/dashboard/src/press-reads.test.ts,inventory/search only,unit passed
+apps/dashboard/src/report-identity-server.test.ts,inventory/search only,unit passed
+apps/dashboard/src/report-identity.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/report-identity.test.ts,inventory/search only,unit passed
+apps/dashboard/src/report-mail.test.ts,inventory/search only,unit passed
+apps/dashboard/src/seller-name.test.ts,inventory/search only,unit passed
+apps/dashboard/src/server.test.ts,partial test read,unit passed
+apps/dashboard/src/shares.test.ts,inventory/search only,unit passed
+apps/dashboard/src/teller.test.ts,inventory/search only,unit passed
+apps/dashboard/src/wallet-change.test.ts,inventory/search only,unit passed
+apps/dashboard/src/woo-catalog.test.ts,inventory/search only,unit passed
+apps/dashboard/src/woo-connect.test.ts,inventory/search only,unit passed
+apps/dashboard/src/woo-currency.test.ts,full test file read,unit passed
+apps/dashboard/src/woo-money.test.ts,full test file read,unit passed
+apps/dashboard/src/woo-rate-mail.test.ts,inventory/search only,unit passed
+apps/dashboard/src/woo-recovery.test.ts,inventory/search only,unit passed
+apps/dashboard/src/woo-reference.test.ts,full test file read,unit passed
+apps/dashboard/src/woo-request-transport.test.ts,full test file read,unit passed
+apps/dashboard/src/woo-request.test.ts,full test file read,unit passed
+apps/dashboard/src/woo-server.test.ts,partial test read,unit passed
+apps/dashboard/src/woo-shop.test.ts,inventory/search only,unit passed
+apps/dashboard/src/woo-shops.db-test.ts,inventory/search only,database passed
+apps/dashboard/src/woo-shops.test.ts,full test file read,unit passed
+apps/dashboard/src/woo-worker.test.ts,partial test read,unit passed
+apps/dashboard/src/words.test.ts,full test file read,unit passed
+apps/docs/app/build-values.test.ts,full test file read,unit passed
+apps/docs/app/diagrams.test.ts,full test file read,unit passed
+apps/docs/app/gallery.test.tsx,full test file read,unit passed
+apps/docs/app/markdown-copy.test.ts,full test file read,unit passed
+apps/docs/app/markdown.test.ts,full test file read,unit passed
+apps/docs/app/page-metadata.test.ts,full test file read,unit passed
+apps/docs/app/search-panel.test.tsx,inventory/search only,unit passed
+apps/docs/app/search.test.ts,full test file read,unit passed
+apps/docs/app/site-values.test.ts,full test file read,unit passed
+apps/docs/testing/caddyfile.test.ts,full test file read,unit passed
+apps/docs/testing/in-chromium.integration.test.ts,partial test read,integration not run
+apps/gateway/src/adapters/database-failure.test.ts,inventory/search only,unit passed
+apps/gateway/src/adapters/memory/operator/figures.test.ts,inventory/search only,unit passed
+apps/gateway/src/adapters/memory/operator/merchants.test.ts,inventory/search only,unit passed
+apps/gateway/src/adapters/memory/operator/orders.test.ts,full test file read,unit passed
+apps/gateway/src/adapters/memory/queue.test.ts,inventory/search only,unit passed
+apps/gateway/src/adapters/memory/store.test.ts,partial test read,unit passed
+apps/gateway/src/adapters/pgboss/queue.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/pgboss/queue.test.ts,full test file read,unit passed
+apps/gateway/src/adapters/postgres/adapters.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/catalog-analytics.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/journal.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/migration.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/migrations.test.ts,full test file read,unit passed
+apps/gateway/src/adapters/postgres/operator/figures.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/operator/merchants.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/operator/orders.db-test.ts,full test file read,database passed
+apps/gateway/src/adapters/postgres/operator/read-only.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/postgres/order-analytics.db-test.ts,inventory/search only,database passed
+apps/gateway/src/adapters/x402/client.test.ts,partial test read,unit passed
+apps/gateway/src/adapters/x402/facilitator.test.ts,inventory/search only,unit passed
+apps/gateway/src/adapters/x402/payment-chain.test.ts,full test file read,unit passed
+apps/gateway/src/adapters/x402/payout-check.test.ts,partial test read,unit passed
+apps/gateway/src/adapters/x402/recovery.test.ts,inventory/search only,unit passed
+apps/gateway/src/analytics/events.test.ts,inventory/search only,unit passed
+apps/gateway/src/analytics/record.db-test.ts,inventory/search only,database passed
+apps/gateway/src/app/answerable.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/canon.test.ts,full test file read,unit passed
+apps/gateway/src/app/catalog-analytics.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/deadlines.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/effects.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/gateway.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/lapsed-attempts.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/merchants.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/order-analytics.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/parcel-card.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/payment-recovery-capacity.test.ts,full test file read,unit passed
+apps/gateway/src/app/payment-recovery.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/recorded-splits.test.ts,partial test read,unit passed
+apps/gateway/src/app/returning-payment.test.ts,full test file read,unit passed
+apps/gateway/src/app/runner.test.ts,inventory/search only,unit passed
+apps/gateway/src/app/written.test.ts,inventory/search only,unit passed
+apps/gateway/src/command-application.test.ts,full test file read,unit passed
+apps/gateway/src/config.test.ts,partial test read,unit passed
+apps/gateway/src/facilitator-key-check.test.ts,inventory/search only,unit passed
+apps/gateway/src/failure-named.test.ts,inventory/search only,unit passed
+apps/gateway/src/health-facts.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/buyer-key.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/card-text.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/keys.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/live-approval.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/merchant-closure.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/merchant-readiness.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/order-status.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/paid-purchase-return.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/parcel-purchase.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/payment-order.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/payment-transaction.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/payout-wallet-wait.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/payout-wallet.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/purchase-door.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/seller-name.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/server.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/tenancy.test.ts,inventory/search only,unit passed
+apps/gateway/src/http/x402.test.ts,inventory/search only,unit passed
+apps/gateway/src/listing-check.test.ts,inventory/search only,unit passed
+apps/gateway/src/listing-command.test.ts,inventory/search only,unit passed
+apps/gateway/src/logs.test.ts,partial test read,unit passed
+apps/gateway/src/operator-reach.test.ts,inventory/search only,unit passed
+apps/gateway/src/outside-fixtures.test.ts,inventory/search only,unit passed
+apps/gateway/src/payout-listing.test.ts,inventory/search only,unit passed
+apps/gateway/src/split/address.test.ts,inventory/search only,unit passed
+apps/gateway/src/split/networks.test.ts,partial test read,unit passed
+apps/gateway/src/split/parameters.test.ts,partial test read,unit passed
+apps/gateway/src/split/payout.test.ts,inventory/search only,unit passed
+apps/gateway/src/split/wallet-rule.test.ts,inventory/search only,unit passed
+apps/gateway/src/start.test.ts,inventory/search only,unit passed
+apps/gateway/src/telemetry.db-test.ts,inventory/search only,database passed
+apps/gateway/src/telemetry.test.ts,inventory/search only,unit passed
+apps/gateway/src/testing/database.test.ts,full test file read,unit passed
+apps/scanner-worker/src/analytics-outbox.integration.test.ts,partial test read,integration not run
+apps/scanner-worker/src/analytics-outbox.test.ts,full test file read,unit passed
+apps/scanner-worker/src/browser-observation-janitor.test.ts,full test file read,unit passed
+apps/scanner-worker/src/browser-observation-job.test.ts,inventory/search only,unit passed
+apps/scanner-worker/src/database-failures.test.ts,full test file read,unit passed
+apps/scanner-worker/src/env.test.ts,full test file read,unit passed
+apps/scanner-worker/src/health.test.ts,full test file read,unit passed
+apps/scanner-worker/src/lost-scan-sweeper.test.ts,inventory/search only,unit passed
+apps/scanner-worker/src/queue-schema.test.ts,full test file read,unit passed
+apps/scanner-worker/src/readiness.test.ts,full test file read,unit passed
+apps/scanner-worker/src/safe-fetch.test.ts,inventory/search only,unit passed
+apps/scanner-worker/src/scan-job.test.ts,full test file read,unit passed
+apps/scanner-worker/src/scan-runner.test.ts,partial test read,unit passed
+apps/scanner-worker/src/telemetry.db-test.ts,full test file read,database passed
+apps/scanner-worker/src/telemetry.test.ts,full test file read,unit passed
+apps/web/admin-door.integration.test.ts,inventory/search only,integration not run
+apps/web/app/gallery.behavior.test.tsx,inventory/search only,unit passed
+apps/web/app/gallery.test.tsx,inventory/search only,unit passed
+apps/web/app/root.test.ts,full test file read,unit passed
+apps/web/app/routes/account-pages.test.ts,inventory/search only,unit passed
+apps/web/app/routes/admin.test.tsx,inventory/search only,unit passed
+apps/web/app/routes/agentic-shop.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/api.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/share-preview.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/v1/account.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/v1/measurement.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/v1/reports.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/v1/scans.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/v2/scans.test.ts,inventory/search only,unit passed
+apps/web/app/routes/api/v2/session.test.ts,inventory/search only,unit passed
+apps/web/app/routes/crawlers.test.ts,inventory/search only,unit passed
+apps/web/app/routes/icons.test.ts,inventory/search only,unit passed
+apps/web/app/routes/pages.test.ts,inventory/search only,unit passed
+apps/web/app/routes/pictures.test.tsx,inventory/search only,unit passed
+apps/web/app/routes/report.latest.test.ts,inventory/search only,unit passed
+apps/web/app/routes/report.scanId.test.tsx,inventory/search only,unit passed
+apps/web/app/routes/report.test.ts,inventory/search only,unit passed
+apps/web/app/routes/s.slug.test.tsx,inventory/search only,unit passed
+apps/web/app/routes/scan.test.ts,inventory/search only,unit passed
+apps/web/app/routes/sell.test.ts,inventory/search only,unit passed
+apps/web/app/site-footer.test.tsx,inventory/search only,unit passed
+apps/web/components/account-actions.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/analytics-runtime.behavior.test.tsx,full test file read,unit passed
+apps/web/components/browser-observations.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/browser-observations.test.tsx,full test file read,unit passed
+apps/web/components/copy-remediation-prompt.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/copy-remediation-prompt.test.tsx,full test file read,unit passed
+apps/web/components/lazy-part.behavior.test.tsx,full test file read,unit passed
+apps/web/components/pending-scan-experience.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/public-share-actions.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/public-share-actions.test.tsx,full test file read,unit passed
+apps/web/components/registration-form.behavior.test.tsx,full test file read,unit passed
+apps/web/components/registration-form.test.ts,full test file read,unit passed
+apps/web/components/report-action-panel.test.tsx,full test file read,unit passed
+apps/web/components/report-benchmark.test.ts,inventory/search only,unit passed
+apps/web/components/result-head.test.tsx,inventory/search only,unit passed
+apps/web/components/robots-notice.test.tsx,inventory/search only,unit passed
+apps/web/components/scan-experience.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/scan-experience.test.tsx,full test file read,unit passed
+apps/web/components/sell-landing.behavior.test.tsx,full test file read,unit passed
+apps/web/components/site-chrome.behavior.test.tsx,inventory/search only,unit passed
+apps/web/components/site-chrome.test.tsx,full test file read,unit passed
+apps/web/components/site-link.test.tsx,full test file read,unit passed
+apps/web/components/structured-data.test.tsx,inventory/search only,unit passed
+apps/web/components/turnstile-challenge.test.tsx,full test file read,unit passed
+apps/web/components/url-scan-form.behavior.test.tsx,inventory/search only,unit passed
+apps/web/content/methodology-page.test.ts,full test file read,unit passed
+apps/web/field-patterns.test.ts,full test file read,unit passed
+apps/web/lib/accept-negotiation.test.ts,inventory/search only,unit passed
+apps/web/lib/analytics-client.test.ts,full test file read,unit passed
+apps/web/lib/api-answers.test.ts,inventory/search only,unit passed
+apps/web/lib/attribution-client.test.ts,inventory/search only,unit passed
+apps/web/lib/browser-observation-ui.test.ts,inventory/search only,unit passed
+apps/web/lib/fix-prompts.test.ts,full test file read,unit passed
+apps/web/lib/landing-announcement.test.ts,full test file read,unit passed
+apps/web/lib/levels.test.ts,full test file read,unit passed
+apps/web/lib/link-answer.test.ts,full test file read,unit passed
+apps/web/lib/llms.test.ts,inventory/search only,unit passed
+apps/web/lib/pending-scan.test.ts,inventory/search only,unit passed
+apps/web/lib/public-markdown.test.ts,inventory/search only,unit passed
+apps/web/lib/report-view.test.ts,full test file read,unit passed
+apps/web/lib/resume-intent.test.ts,inventory/search only,unit passed
+apps/web/lib/robots-notice.test.ts,inventory/search only,unit passed
+apps/web/lib/robots-policy.test.ts,inventory/search only,unit passed
+apps/web/lib/server/auth.test.ts,inventory/search only,unit passed
+apps/web/lib/server/config.test.ts,inventory/search only,unit passed
+apps/web/lib/server/cookies.test.ts,inventory/search only,unit passed
+apps/web/lib/server/crypto.test.ts,inventory/search only,unit passed
+apps/web/lib/server/dashboard-report-identity.test.ts,inventory/search only,unit passed
+apps/web/lib/server/data-copy.test.ts,full test file read,unit passed
+apps/web/lib/server/dropped-connections.test.ts,inventory/search only,unit passed
+apps/web/lib/server/http.test.ts,inventory/search only,unit passed
+apps/web/lib/server/link-wait.test.ts,inventory/search only,unit passed
+apps/web/lib/server/markdown-download.test.ts,inventory/search only,unit passed
+apps/web/lib/server/operator.test.ts,inventory/search only,unit passed
+apps/web/lib/server/p4.integration.test.ts,partial test read,integration not run
+apps/web/lib/server/p5.integration.test.ts,inventory/search only,integration not run
+apps/web/lib/server/queue.test.ts,full test file read,unit passed
+apps/web/lib/server/share-image.answer.test.ts,inventory/search only,unit passed
+apps/web/lib/server/share-image.layout.test.ts,full test file read,unit passed
+apps/web/lib/server/share-image.test.ts,full test file read,unit passed
+apps/web/lib/server/turnstile.test.ts,inventory/search only,unit passed
+apps/web/lib/server/worker-health.test.ts,inventory/search only,unit passed
+apps/web/lib/share-copy.test.ts,inventory/search only,unit passed
+apps/web/lib/url-input.test.ts,inventory/search only,unit passed
+apps/web/server/answers.test.ts,inventory/search only,unit passed
+apps/web/server/in-chromium.integration.test.ts,inventory/search only,integration not run
+apps/web/server/privacy-retries.test.ts,inventory/search only,unit passed
+apps/web/server/process-headers.test.ts,inventory/search only,unit passed
+apps/web/server/start.integration.test.ts,inventory/search only,integration not run
+deploy/ansible/test_agentify_test_woo_hairpin.py,full test file read,python passed
+deploy/test_activate.py,inventory/search only,python passed
+deploy/test_agentify_release.py,inventory/search only,python passed
+deploy/test_backup.py,partial test read,python passed
+deploy/test_channel_render.py,partial test read,python passed
+ops/scripts/scan-evidence-lib.test.mjs,full test file read,operations passed
+ops/scripts/scanner-entrypoint.test.mjs,full test file read,operations passed
+packages/analytics/src/analytics.test.ts,full test file read,unit passed
+packages/consent/src/banner.behavior.test.tsx,full test file read,unit passed
+packages/consent/src/destinations.test.ts,full test file read,unit passed
+packages/contracts/src/api.test.ts,inventory/search only,unit passed
+packages/contracts/src/card-json-schema.test.ts,full test file read,unit passed
+packages/contracts/src/card.test.ts,inventory/search only,unit passed
+packages/contracts/src/closure.test.ts,inventory/search only,unit passed
+packages/contracts/src/envelope.test.ts,inventory/search only,unit passed
+packages/contracts/src/events.test.ts,partial test read,unit passed
+packages/contracts/src/evm-address.test.ts,inventory/search only,unit passed
+packages/contracts/src/handler.test.ts,full test file read,unit passed
+packages/contracts/src/index.test.ts,full test file read,unit passed
+packages/contracts/src/merchant.test.ts,inventory/search only,unit passed
+packages/contracts/src/order-status.test.ts,inventory/search only,unit passed
+packages/contracts/src/order.test.ts,full test file read,unit passed
+packages/contracts/src/outside-fixtures.test.ts,partial test read,unit passed
+packages/contracts/src/packaging.test.ts,inventory/search only,unit passed
+packages/contracts/src/param-spec.test.ts,inventory/search only,unit passed
+packages/contracts/src/plain-text.test.ts,inventory/search only,unit passed
+packages/contracts/src/portal-fixtures.test.ts,inventory/search only,unit passed
+packages/contracts/src/primitives.test.ts,inventory/search only,unit passed
+packages/contracts/src/quote.test.ts,full test file read,unit passed
+packages/contracts/src/reading.test.ts,full test file read,unit passed
+packages/contracts/src/receipt.test.ts,full test file read,unit passed
+packages/contracts/src/results.test.ts,inventory/search only,unit passed
+packages/contracts/src/selling.test.ts,inventory/search only,unit passed
+packages/contracts/src/ship-to.test.ts,full test file read,unit passed
+packages/contracts/src/shipment.test.ts,inventory/search only,unit passed
+packages/core/src/deployment/environment.test.ts,full test file read,unit passed
+packages/core/src/deployment/preflight.test.ts,inventory/search only,unit passed
+packages/core/src/deployment/undefined-tokens.test.ts,full test file read,unit passed
+packages/core/src/index.test.ts,full test file read,unit passed
+packages/core/src/merchant/readiness.test.ts,full test file read,unit passed
+packages/core/src/orders/create.test.ts,full test file read,unit passed
+packages/core/src/orders/deadlines.test.ts,inventory/search only,unit passed
+packages/core/src/orders/lifecycle.test.ts,full test file read,unit passed
+packages/core/src/orders/machine.test.ts,inventory/search only,unit passed
+packages/core/src/orders/merchant-closure.test.ts,inventory/search only,unit passed
+packages/core/src/orders/money.test.ts,full test file read,unit passed
+packages/core/src/orders/outcome.test.ts,inventory/search only,unit passed
+packages/core/src/orders/parcel.test.ts,inventory/search only,unit passed
+packages/core/src/orders/portal-tables.test.ts,inventory/search only,unit passed
+packages/core/src/orders/redelivery.test.ts,full test file read,unit passed
+packages/core/src/orders/walk.test.ts,inventory/search only,unit passed
+packages/core/src/orders/wire-alignment.test.ts,full test file read,unit passed
+packages/core/src/published.test.ts,inventory/search only,unit passed
+packages/gallery/src/browser.test.ts,full test file read,unit passed
+packages/gallery/src/page.test.ts,full test file read,unit passed
+packages/observability/src/index.test.ts,full test file read,unit passed
+packages/observability/src/metrics.test.ts,full test file read,unit passed
+packages/remediation/src/canonical-copy.test.ts,full test file read,unit passed
+packages/remediation/src/generate-prompt.test.ts,full test file read,unit passed
+packages/scanner-contracts/src/contracts.test.ts,partial test read,unit passed
+packages/scanner-contracts/src/report-identity.test.ts,inventory/search only,unit passed
+packages/scanner-contracts/src/required-fields.test.ts,partial test read,unit passed
+packages/scanner-database/src/client.test.ts,full test file read,unit passed
+packages/scanner-database/src/ids.test.ts,full test file read,unit passed
+packages/scanner-database/src/migrate.test.ts,inventory/search only,unit passed
+packages/scanner-database/src/migrations.integration.test.ts,inventory/search only,integration not run
+packages/scanner/src/engine.test.ts,inventory/search only,unit passed
+packages/scanner/src/ip.test.ts,full test file read,unit passed
+packages/scanner/src/parsers.test.ts,partial test read,unit passed
+packages/scanner/src/sitemap.test.ts,inventory/search only,unit passed
+packages/sdk/src/backoff.test.ts,full test file read,unit passed
+packages/sdk/src/check-card.test.ts,inventory/search only,unit passed
+packages/sdk/src/client.test.ts,inventory/search only,unit passed
+packages/sdk/src/close.test.ts,full test file read,unit passed
+packages/sdk/src/index.test.ts,full test file read,unit passed
+packages/sdk/src/outside-fixtures.test.ts,partial test read,unit passed
+packages/sdk/src/portal-codes.test.ts,inventory/search only,unit passed
+packages/sdk/src/portal-fences.test.ts,inventory/search only,unit passed
+packages/sdk/src/release-contract.test.ts,full test file read,unit passed
+packages/sdk/src/surface.test.ts,full test file read,unit passed
+packages/sdk/src/verify.test.ts,inventory/search only,unit passed
+packages/sdk/src/which-world.test.ts,inventory/search only,unit passed
+packages/sdk/src/worker-concurrency.test.ts,full test file read,unit passed
+packages/sdk/src/worker.test.ts,inventory/search only,unit passed
+packages/slice/src/additions-command.test.ts,inventory/search only,unit passed
+packages/slice/src/bootstrap-command.test.ts,inventory/search only,unit passed
+packages/slice/src/buy.test.ts,inventory/search only,unit passed
+packages/slice/src/buyer.test.ts,inventory/search only,unit passed
+packages/slice/src/catalog-reading.test.ts,full test file read,unit passed
+packages/slice/src/commission-wallet.test.ts,inventory/search only,unit passed
+packages/slice/src/cut-command.test.ts,inventory/search only,unit passed
+packages/slice/src/outbound-standin.test.ts,inventory/search only,unit passed
+packages/slice/src/payment-faults-command.test.ts,inventory/search only,unit passed
+packages/slice/src/quickstart-buyer.test.ts,inventory/search only,unit passed
+packages/slice/src/slice.test.ts,inventory/search only,unit passed
+packages/slice/src/smoke-command.test.ts,inventory/search only,unit passed
+packages/slice/src/smoke.test.ts,inventory/search only,unit passed
+packages/slice/src/spending-gate.test.ts,inventory/search only,unit passed
+packages/slice/src/split-ledger.test.ts,inventory/search only,unit passed
+packages/slice/src/split-smoke-command.test.ts,inventory/search only,unit passed
+packages/slice/src/split-smoke-run.test.ts,inventory/search only,unit passed
+packages/slice/src/stand-goods.test.ts,full test file read,unit passed
+packages/slice/src/stand-merchant.test.ts,inventory/search only,unit passed
+packages/slice/src/stand-page.test.ts,inventory/search only,unit passed
+packages/slice/src/stand.test.ts,inventory/search only,unit passed
+packages/slice/src/subscription.test.ts,inventory/search only,unit passed
+packages/slice/src/wallet-faults-command.test.ts,inventory/search only,unit passed
+packages/slice/src/woo-fault-command.test.ts,inventory/search only,unit passed
+packages/ui/src/assets.test.ts,full test file read,unit passed
+packages/ui/src/budget.test.ts,inventory/search only,unit passed
+packages/ui/src/button.test.tsx,full test file read,unit passed
+packages/ui/src/field.test.tsx,full test file read,unit passed
+packages/ui/src/footer.test.tsx,full test file read,unit passed
+packages/ui/src/header.test.tsx,partial test read,unit passed
+packages/ui/src/remember-zone.test.ts,full test file read,unit passed
+packages/ui/src/surface.test.ts,full test file read,unit passed
+packages/ui/src/zone.test.ts,full test file read,unit passed
