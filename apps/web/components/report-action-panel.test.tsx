@@ -1,5 +1,9 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { rememberResumeIntent, takeResumeIntent } from "../lib/resume-intent";
 
 import { ReportActionPanel } from "./report-action-panel";
 
@@ -13,20 +17,46 @@ const baseProps = {
   shareEnabled: true,
 };
 
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  localStorage.clear();
+  Reflect.deleteProperty(navigator, "clipboard");
+});
 describe("ReportActionPanel", () => {
-  it("offers a link that downloads the .md again when a download intent resumes", () => {
-    const markup = renderToStaticMarkup(
-      <ReportActionPanel {...baseProps} initialIntent="download-md" />,
+  it("downloads the supplied Markdown target once when its stored intent resumes", async () => {
+    const downloads: { href: string | null; download: boolean }[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloads.push({ href: this.getAttribute("href"), download: this.hasAttribute("download") });
+    });
+    rememberResumeIntent(baseProps.scanId, "download-md");
+    render(<ReportActionPanel {...baseProps} shareEnabled={false} />);
+    await waitFor(() =>
+      expect(downloads).toEqual([{ href: baseProps.downloadUrl, download: true }]),
     );
-    expect(markup).toMatch(/<a[^>]*download[^>]*>Download \.md again<\/a>/);
+    expect(screen.getByRole("link", { name: /Download.*again/i }).getAttribute("href")).toBe(
+      baseProps.downloadUrl,
+    );
+    expect(takeResumeIntent(baseProps.scanId)).toBeNull();
   });
-
-  it("points a copy intent at the prompt button instead of a separate card", () => {
-    const markup = renderToStaticMarkup(
-      <ReportActionPanel {...baseProps} initialIntent="copy-prompt" />,
-    );
-    expect(markup).toContain("prompt is ready");
-    expect(markup.match(/Copy AI fix prompt/g)).toHaveLength(1);
+  it("resumes a stored copy intent at the button that copies the complete prompt", async () => {
+    const copied: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          copied.push(text);
+        },
+      },
+    });
+    rememberResumeIntent(baseProps.scanId, "copy-prompt");
+    render(<ReportActionPanel {...baseProps} shareEnabled={false} />);
+    await screen.findByText(/prompt is ready/i);
+    await userEvent.click(screen.getByRole("button", { name: "Copy AI fix prompt" }));
+    expect(copied).toEqual(["Complete prompt"]);
+    expect(takeResumeIntent(baseProps.scanId)).toBeNull();
   });
 
   it.each([

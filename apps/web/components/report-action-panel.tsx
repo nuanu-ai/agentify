@@ -13,7 +13,6 @@ export function ReportActionPanel({
   aiPrompt,
   devBrief,
   downloadUrl,
-  initialIntent,
   preview,
   promptEnabled,
   scanId,
@@ -22,7 +21,6 @@ export function ReportActionPanel({
   aiPrompt: string;
   devBrief: string;
   downloadUrl: string;
-  initialIntent?: ResumeIntent;
   preview: Omit<PublicResultPreview, "hostLabel" | "scannedLabel" | "score"> & {
     hostLabel: string | null;
     score: number | null;
@@ -31,14 +29,13 @@ export function ReportActionPanel({
   scanId: string;
   shareEnabled: boolean;
 }>) {
-  const [intent, setIntent] = useState<ResumeIntent | null>(initialIntent ?? null);
+  const [intent, setIntent] = useState<ResumeIntent | null>(null);
   const [downloadStarted, setDownloadStarted] = useState(false);
 
   useEffect(() => {
-    if (initialIntent) return;
     const stored = takeResumeIntent(scanId);
     if (stored) setIntent(stored);
-  }, [initialIntent, scanId]);
+  }, [scanId]);
 
   useEffect(() => {
     if (!promptEnabled || intent !== "download-md" || downloadStarted) return;

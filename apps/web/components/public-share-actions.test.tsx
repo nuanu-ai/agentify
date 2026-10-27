@@ -34,28 +34,23 @@ describe("PublicShareActions", () => {
 
 describe("public share response safety", () => {
   it("accepts only a complete versioned public snapshot preview", () => {
-    expect(
-      parseSharePreviewResponse(
-        {
-          host: "example.com",
-          score: 46,
-          level: "readable",
-          rubric_version: "gtm-v1.0.0",
-          generated_at: "2026-07-13T12:00:00.000Z",
-          existing_share: null,
-        },
-        "https://agentify.ad",
-      ),
-    ).toEqual({
+    const complete = {
+      host: "example.com",
+      score: 46,
+      level: "readable",
+      rubric_version: "gtm-v1.0.0",
+      generated_at: "2026-07-13T12:00:00.000Z",
+      existing_share: null,
+    };
+    expect(parseSharePreviewResponse(complete, "https://agentify.ad")).toEqual({
       preview: { hostLabel: "example.com", score: 46, level: "readable" },
       existingShare: null,
     });
-    expect(
-      parseSharePreviewResponse(
-        { host: "placeholder", score: 46, level: "readable" },
-        "https://agentify.ad",
-      ),
-    ).toBeNull();
+    for (const field of Object.keys(complete)) {
+      const incomplete: Record<string, unknown> = { ...complete };
+      delete incomplete[field];
+      expect(parseSharePreviewResponse(incomplete, "https://agentify.ad"), field).toBeNull();
+    }
   });
 
   it("restores a live published share only for a same-origin canonical URL", () => {
