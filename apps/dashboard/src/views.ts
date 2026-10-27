@@ -1054,7 +1054,7 @@ const wayOn = (
 ): Readonly<{ why: string; rest: Rest | null }> => {
   if (order.status !== "unfulfilled") {
     return {
-      why: "Your integration delivered, then the payment failed, so we hold the goods. This is rare and happens only with immediate delivery: we check the payment before delivery and take it after, and the money can leave the buyer's wallet in between. The buyer can pay again for this same order, and then the goods are released. Whether to revoke what you delivered or wait is up to you.",
+      why: "Your integration delivered, then the payment failed, so the buyer does not get the goods yet. This is rare and happens only with immediate delivery: the payment is checked before delivery and made after it, and the money can leave the buyer's wallet in between. If the buyer pays again for this same order and that payment goes through, the goods are released. Whether to revoke what you delivered or wait is up to you.",
       rest: {
         href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
         words: "What can still happen",

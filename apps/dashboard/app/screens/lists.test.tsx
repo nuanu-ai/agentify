@@ -546,10 +546,10 @@ describe("an order delivered and not paid", () => {
     expect(text).toContain("Waiting on the buyer 1");
     expect(text).toContain("Needs you 0");
     expect(html).not.toContain('aria-label="Orders that need you"');
-    expect(text).toContain("the payment failed, so we hold the goods");
+    expect(html).toContain('href="/docs/orders#you-delivered-and-the-payment-did-not-execute"');
     // Paid again for the same order, never bought again, which would deliver
     // twice.
-    expect(text).toContain("The buyer can pay again for this same order");
+    expect(text).toContain("the buyer pays again for this same order");
   });
 
   it("leaves to the merchant whether to revoke what they delivered or to wait", () => {

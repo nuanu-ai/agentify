@@ -4297,11 +4297,11 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toContain("so we hold the goods");
+    expect(html).toContain("#you-delivered-and-the-payment-did-not-execute");
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
-    expect(text).toContain("The buyer can pay again for this same order");
+    expect(text).toContain("the buyer pays again for this same order");
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
