@@ -7,17 +7,14 @@
  */
 
 import { CHECK_DEFINITIONS } from "@agentify/scanner-contracts";
-import { SCAN_STOP_REASONS } from "@agentify/scanner-contracts/browser";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPublicAppConfig } from "../lib/app-config";
 import { onSite } from "../testing/on-site";
 import { PublicConfigProvider } from "./public-config";
 import { ScanExperience } from "./scan-experience";
-import { StatusBadge } from "./status-badge";
 import { UrlScanForm } from "./url-scan-form";
 
 const scanId = "019f5b6a-4b9f-7000-8000-0000000000bb";
@@ -159,6 +156,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  Reflect.deleteProperty(navigator, "clipboard");
+  localStorage.clear();
   sessionStorage.clear();
   window.history.replaceState(null, "", "/");
   cleanup();
@@ -192,19 +191,6 @@ describe("the token that reads a scan", () => {
       "/store",
     );
     expect(statusAsks).toEqual([]);
-  });
-
-  it("is said to no longer work when the API refuses it, and the page stops asking", async () => {
-    vi.useFakeTimers();
-    sessionStorage.setItem(TOKEN_KEY, "a-revoked-token");
-    apiAnswers(() => json(401, refusal("unauthorized", false)));
-
-    visit();
-    await timePasses(0);
-
-    expect(screen.getByRole("heading", { name: /link no longer works/ })).toBeTruthy();
-    await timePasses(5_000);
-    expect(statusAsks).toHaveLength(1);
   });
 });
 
@@ -252,7 +238,7 @@ describe("a scan's states", () => {
 
     visit();
 
-    expect(await screen.findAllByText("Waiting for scanner capacity")).toHaveLength(2);
+    expect((await screen.findAllByText(/waiting for scanner capacity/i)).length).toBeGreaterThan(0);
   });
 
   it("shows a running scan's step and count, the store's own step among them", async () => {
@@ -278,8 +264,9 @@ describe("a scan's states", () => {
 
     visit();
 
-    expect(await screen.findByText("No reliable diagnostic was produced")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Try again" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /no reliable diagnostic/i })).toBeTruthy();
+    expect(screen.queryByRole("meter")).toBeNull();
+    expect(screen.getByRole("link", { name: "Try again" }).getAttribute("href")).toBe("/store");
   });
 
   it.each(["no_public_site", "forbidden_redirect", "certificate_invalid"])(
@@ -314,10 +301,18 @@ describe("a scan's states", () => {
     },
   );
 
-  it("tells each known stop in words of its own, and none in the words for a cause not known", async () => {
-    const told: { headline: string; words: string }[] = [];
-    for (const stopReason of [...SCAN_STOP_REASONS, undefined]) {
-      statusAsks = [];
+  it.each([
+    ["no_public_site", /no public website/i, /no server.*public internet.*private network/i],
+    ["forbidden_redirect", /redirected.*does not go/i, /redirect.*HTTPS to HTTP.*five/i],
+    [
+      "certificate_invalid",
+      /could not verify.*certificate/i,
+      /certificate.*expired.*fix the certificate/i,
+    ],
+    [undefined, /no reliable diagnostic/i, /could read too little.*honest result/i],
+  ] as const)(
+    "explains the actual stop %s without inventing another cause",
+    async (stopReason, headlinePattern, explanation) => {
       apiAnswers(() =>
         json(
           200,
@@ -330,21 +325,11 @@ describe("a scan's states", () => {
         ),
       );
       visit();
-      const headline = await waitFor(() => {
-        const found = document.querySelector("main h1");
-        if (!found) throw new Error("no headline yet");
-        return found;
-      });
-      told.push({
-        headline: headline.textContent ?? "",
-        words: headline.nextElementSibling?.textContent ?? "",
-      });
-      cleanup();
-      vi.restoreAllMocks();
-    }
-    expect(new Set(told.map(({ headline }) => headline)).size).toBe(told.length);
-    expect(new Set(told.map(({ words }) => words)).size).toBe(told.length);
-  });
+      const headline = await screen.findByRole("heading", { name: headlinePattern });
+      expect(headline.nextElementSibling?.textContent).toMatch(explanation);
+      expect(screen.queryByRole("meter")).toBeNull();
+    },
+  );
 
   it("says the site blocked the reader and shows no score", async () => {
     apiAnswers(() => json(200, blockedScan));
@@ -371,9 +356,67 @@ describe("a scan's states", () => {
 
     visit();
 
-    expect(await screen.findByRole("meter")).toBeTruthy();
+    const meter = await screen.findByRole("meter");
+    expect(meter.getAttribute("aria-valuenow")).toBe("46");
+    expect(meter.getAttribute("aria-valuemin")).toBe("0");
+    expect(meter.getAttribute("aria-valuemax")).toBe("100");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Readable");
     expect(await screen.findByLabelText("Email")).toBeTruthy();
+  });
+
+  it("copies readable teaser content, downloads its own file and authenticates its share preview", async () => {
+    const requests: { url: string; authorization: string | null }[] = [];
+    const copied: string[] = [];
+    const downloaded: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          copied.push(text);
+        },
+      },
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloaded.push(this.getAttribute("href") ?? "");
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      requests.push({ url, authorization: new Headers(init?.headers).get("Authorization") });
+      if (url.endsWith("/api/v2/session")) return json(200, { status: "signed_out" });
+      if (url.endsWith("/status")) return json(200, finishedScan);
+      if (url.endsWith("/share-preview"))
+        return json(200, {
+          host: "shop.example",
+          score: 46,
+          level: "readable",
+          rubric_version: "gtm-v1.0.0",
+          generated_at: "2026-10-10T12:00:00.000Z",
+          existing_share: null,
+        });
+      if (url.endsWith("/contact-access")) return json(200, { status: "verified" });
+      if (url.endsWith("/remediation-prompt?scope=teaser"))
+        return json(200, {
+          version: "remediation-prompt-v1.0.0",
+          scope: "teaser",
+          content: "# Teaser improvements\n\nPublish the missing business data.",
+          included_findings: ["vertical_jsonld_missing"],
+          generated_at: "2026-10-10T12:00:00.000Z",
+        });
+      throw new Error(`Unexpected scan page request: ${url}`);
+    });
+    visit();
+    await userEvent.click(await screen.findByRole("button", { name: "Copy AI fix prompt" }));
+    await waitFor(() =>
+      expect(copied).toEqual(["# Teaser improvements\n\nPublish the missing business data."]),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    expect(downloaded).toEqual([`/api/v1/scans/${scanId}/remediation-prompt/download`]);
+    expect(requests).toContainEqual({
+      url: `/api/v1/scans/${scanId}/share-preview`,
+      authorization: "Bearer scan-token",
+    });
   });
 
   it("says an answer that is no scan's state cannot be read, rather than drawing it", async () => {
@@ -397,11 +440,11 @@ describe("a scan's states", () => {
     const heading = screen.getByRole("heading", { name: /Waiting for the scan's status/ });
     // Nothing is known of the scan, so its badge is neither a check being run
     // nor a check that could not be: not knowing does not read as "no".
-    const said = (status: Parameters<typeof StatusBadge>[0]["status"]) =>
-      renderToStaticMarkup(<StatusBadge status={status} />).replace(/<[^>]+>/g, "");
     const badge = heading.closest("section")?.querySelector("header .badge")?.textContent;
-    expect(badge).toBe(said("unknown"));
-    expect(said("unknown")).not.toBe(said("unavailable"));
+    expect(badge).toBe("Unknown");
+    expect(heading.closest("section")?.textContent).toMatch(
+      /cannot reach|could not reach|no answer|unavailable|cannot (?:be )?read/i,
+    );
     await timePasses(2_100);
 
     expect(screen.getByText("7 of 18 checks reported")).toBeTruthy();

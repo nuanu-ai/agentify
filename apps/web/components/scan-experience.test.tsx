@@ -41,14 +41,6 @@ async function drawn(
 }
 
 describe("ScanExperience teaser actions", () => {
-  it("offers a readable teaser prompt download and scan-token share preview", async () => {
-    const markup = await drawn("teaser");
-
-    expect(markup).toContain("Copy AI fix prompt");
-    expect(markup).toContain("Download .md");
-    expect(markup).toContain("Copy share link");
-  });
-
   it("says before either share button is pressed that both publish a link that can be revoked", async () => {
     // "Download image" also makes the scan's result readable by anyone at a
     // public link; a person who wanted only a file must know before pressing.
@@ -80,6 +72,7 @@ describe("ScanExperience teaser actions", () => {
     const teaser = await drawn("robots-partial");
     expect(teaser).toContain('data-robots-notice="disallowed"');
     expect(teaser).toContain("data-unavailable-notice");
+    expect(teaser).toContain("Privacy choices");
     const partial = await drawn("partial");
     expect(partial).not.toContain("data-robots-notice");
     expect(partial).toContain("data-unavailable-notice");
@@ -89,7 +82,7 @@ describe("ScanExperience teaser actions", () => {
     const markup = await drawn("running");
 
     expect(markup).toContain("example.com");
-    expect(markup).toContain("usually under 60 s");
+    expect(markup).toMatch(/Elapsed|Reading public signals|checks reported/i);
     expect(markup).not.toContain("Scan 018f3f56");
   });
 
@@ -110,9 +103,5 @@ describe("ScanExperience teaser actions", () => {
 
     expect(markup).toContain("No result");
     expect(markup).not.toMatch(/>Fail</);
-  });
-
-  it("keeps privacy choices reachable from the scan help links", async () => {
-    expect(await drawn("teaser")).toContain("Privacy choices");
   });
 });

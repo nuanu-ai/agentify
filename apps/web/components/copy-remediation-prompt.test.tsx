@@ -1,7 +1,15 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CopyRemediationPrompt } from "./copy-remediation-prompt";
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("CopyRemediationPrompt", () => {
   it("renders a real button and no hidden prompt textarea by default", () => {
@@ -15,8 +23,14 @@ describe("CopyRemediationPrompt", () => {
     expect(markup).not.toContain("Safe prompt");
   });
 
-  it("offers an explicit markdown download when requested", () => {
-    const markup = renderToStaticMarkup(
+  it("downloads the supplied Markdown URL when requested", async () => {
+    const downloads: { href: string | null; download: boolean }[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloads.push({ href: this.getAttribute("href"), download: this.hasAttribute("download") });
+    });
+    render(
       <CopyRemediationPrompt
         allowDownload
         downloadUrl="/api/v1/reports/id/remediation-prompt/download"
@@ -24,6 +38,9 @@ describe("CopyRemediationPrompt", () => {
         prompt="Safe prompt"
       />,
     );
-    expect(markup).toContain("Download .md");
+    await userEvent.click(screen.getByRole("button", { name: "Download .md" }));
+    expect(downloads).toEqual([
+      { href: "/api/v1/reports/id/remediation-prompt/download", download: true },
+    ]);
   });
 });
