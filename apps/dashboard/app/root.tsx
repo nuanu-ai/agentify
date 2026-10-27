@@ -7,7 +7,6 @@
  */
 
 import { rememberZone } from "@agentify/ui/remember-zone";
-import { keepUnits } from "@agentify/ui/units";
 import { zoneIn } from "@agentify/ui/zone";
 import { type ReactNode, useEffect } from "react";
 import {
@@ -173,7 +172,7 @@ function MessagePage({
     <GatePage chrome={chrome} title={title}>
       <div className="message-panel">
         <h1>{title}</h1>
-        <p>{typeof said === "string" ? keepUnits(said) : said}</p>
+        <p>{said}</p>
         <a className="button button-primary" href={way[0]}>
           {way[1]}
         </a>
