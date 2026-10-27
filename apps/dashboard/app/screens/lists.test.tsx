@@ -758,7 +758,8 @@ describe("a search over the cards", () => {
       ).listing.rows.map((row) => row.itemId);
 
     expect(found("5 gb, 30 days")).toStrictEqual(["room-101"]);
-    // The page keeps a number with its unit by a no-break space, which a copy carries.
+    // The no-break space a page keeps between a number and its unit, as a Mac
+    // types it for Option and the space bar.
     expect(found("5\u00a0GB, 30\u00a0days")).toStrictEqual(["room-101"]);
   });
 
