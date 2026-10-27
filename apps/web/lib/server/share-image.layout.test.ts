@@ -9,8 +9,10 @@
  */
 
 import type { PublicShareSnapshot } from "@agentify/scanner-contracts";
-import { Resvg } from "@resvg/resvg-wasm";
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
+import { pngPixels } from "../../testing/pixels";
+import { drawPng, HUMAN_FONT } from "./drawing";
 
 import { drawShareImage } from "./share-image";
 
@@ -67,22 +69,37 @@ const LEVELS: readonly [PublicShareSnapshot["level"], number][] = [
   ["incomplete", 30],
 ];
 
-/** The picture's pixels as RGBA, read back by the renderer that drew it. */
-const pixelsOf = (png: Uint8Array): Uint8Array => {
-  const image = `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
-  const resvg = new Resvg(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}"><image width="${WIDTH}" height="${HEIGHT}" href="${image}"/></svg>`,
-  );
-  try {
-    const rendered = resvg.render();
-    try {
-      return new Uint8Array(rendered.pixels);
-    } finally {
-      rendered.free();
+const pixelsOf = (png: Uint8Array): Uint8Array => pngPixels(png, WIDTH, HEIGHT);
+
+// Cropping and normalising the ink permits fitted font sizes while the
+// independently drawn reference still identifies the exact numeral.
+const inkShape = (inked: (x: number, y: number) => boolean): boolean[] => {
+  let left = WIDTH,
+    top = HEIGHT,
+    right = -1,
+    bottom = -1;
+  for (let y = 0; y < HEIGHT; y++)
+    for (let x = 0; x < WIDTH; x++) {
+      if (!inked(x, y)) continue;
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
     }
-  } finally {
-    resvg.free();
-  }
+  if (right < left || bottom < top) return [];
+  return Array.from({ length: 48 * 64 }, (_, index) =>
+    inked(
+      Math.min(right, left + Math.floor((((index % 48) + 0.5) * (right - left + 1)) / 48)),
+      Math.min(
+        bottom,
+        top + Math.floor(((Math.floor(index / 48) + 0.5) * (bottom - top + 1)) / 64),
+      ),
+    ),
+  );
+};
+const greenInk = (pixels: Uint8Array, x: number, y: number): boolean => {
+  const at = (y * WIDTH + x) * 4;
+  return (pixels[at + 3] ?? 0) > 128 && (pixels[at + 1] ?? 0) > (pixels[at] ?? 0) * 1.5;
 };
 
 const drawn = new Map<string, Promise<Uint8Array>>();
@@ -169,6 +186,7 @@ describe("a share's picture", () => {
         const long = await picture(host, level, score);
 
         expect(differing(short, long, outsideHeadline)).toBe(0);
+        expect(differing(short, long, (x, y) => !outsideHeadline(x, y))).toBeGreaterThan(0);
       },
     );
   });
@@ -181,6 +199,33 @@ describe("a share's picture", () => {
       const inked = pixelsIn(ringRim, (at) => luminance(pixels, at) < 200);
 
       expect(inked).toBe(0);
+      const reference = pixelsOf(
+        await drawPng(
+          createElement(
+            "div",
+            {
+              style: {
+                display: "flex",
+                fontFamily: HUMAN_FONT,
+                fontWeight: 600,
+                fontSize: 98,
+                color: "#2C774F",
+              },
+            },
+            String(score),
+          ),
+          { width: WIDTH, height: HEIGHT },
+        ),
+      );
+      const expected = inkShape((x, y) => greenInk(reference, x, y));
+      const actual = inkShape(
+        (x, y) =>
+          Math.hypot(x - RING.x, y - RING.y) < RING.clearRadius - 2 && greenInk(pixels, x, y),
+      );
+      expect(actual.length, "visible score numeral").toBe(48 * 64);
+      expect(expected.length).toBe(48 * 64);
+      const error = actual.filter((ink, index) => ink !== expected[index]).length / expected.length;
+      expect(error, `the visible numeral must read ${score}`).toBeLessThan(0.12);
     },
   );
 
@@ -204,6 +249,13 @@ describe("a share's picture", () => {
       expect(
         differing(drawn, await picture(host("shop", `m${site.slice(1)}`), "readable", 41)),
       ).not.toBe(0);
+      for (const index of [Math.floor(site.length / 2), site.length - 1]) {
+        const altered = `${site.slice(0, index)}x${site.slice(index + 1)}`;
+        expect(
+          differing(drawn, await picture(host("shop", altered), "readable", 41)),
+          `site label character ${index}`,
+        ).toBeGreaterThan(0);
+      }
       expect(differing(drawn, await picture(host("chop", site), "readable", 41))).not.toBe(0);
     });
 
