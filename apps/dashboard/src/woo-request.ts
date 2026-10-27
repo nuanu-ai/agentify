@@ -7,11 +7,6 @@ import { classifyIp } from "@agentify/scanner/ip";
 
 export type WooRequest = (url: string | URL, init?: RequestInit) => Promise<Response>;
 
-interface RequestParts {
-  readonly resolve: (host: string) => Promise<readonly string[]>;
-  readonly open: (target: URL, address: string, init: RequestInit) => Promise<Response>;
-}
-
 const publicOnly = (addresses: readonly string[]): void => {
   if (addresses.length === 0 || addresses.some((address) => !classifyIp(address).allowed)) {
     throw new Error("WooCommerce shop addresses must resolve only to public internet addresses.");
@@ -24,25 +19,22 @@ const publicOnly = (addresses: readonly string[]): void => {
  */
 const AGENTIFY_USER_AGENT = "Agentify/1 (+https://agentify.ad)";
 
-/** Injectable only so the boundary and the identity it sends are tested without a socket. */
-export const wooRequestWith =
-  (parts: RequestParts): WooRequest =>
-  async (url, init = {}) => {
-    const target = new URL(url);
-    if (target.protocol !== "https:") {
-      throw new Error("WooCommerce shop requests require https.");
-    }
-    const host = target.hostname.replace(/^\[(.*)\]$/, "$1");
-    const addresses = isIP(host) === 0 ? await parts.resolve(host) : [host];
-    publicOnly(addresses);
-    const address = addresses[0];
-    if (address === undefined) {
-      throw new Error("The WooCommerce shop address did not resolve.");
-    }
-    const headers = new Headers(init.headers);
-    headers.set("user-agent", AGENTIFY_USER_AGENT);
-    return await parts.open(target, address, { ...init, headers });
-  };
+export const wooRequest: WooRequest = async (url, init = {}) => {
+  const target = new URL(url);
+  if (target.protocol !== "https:") {
+    throw new Error("WooCommerce shop requests require https.");
+  }
+  const host = target.hostname.replace(/^\[(.*)\]$/, "$1");
+  const addresses = isIP(host) === 0 ? await resolvePublic(host) : [host];
+  publicOnly(addresses);
+  const address = addresses[0];
+  if (address === undefined) {
+    throw new Error("The WooCommerce shop address did not resolve.");
+  }
+  const headers = new Headers(init.headers);
+  headers.set("user-agent", AGENTIFY_USER_AGENT);
+  return await openPinned(target, address, { ...init, headers });
+};
 
 const resolvePublic = async (host: string): Promise<readonly string[]> =>
   (await lookup(host, { all: true, verbatim: true })).map((one) => one.address);
@@ -112,5 +104,3 @@ const openPinned = async (target: URL, address: string, init: RequestInit): Prom
     }
     request.end();
   });
-
-export const wooRequest: WooRequest = wooRequestWith({ resolve: resolvePublic, open: openPinned });
