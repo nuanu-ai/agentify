@@ -42,16 +42,18 @@
  * heading is not read either: it is a heading that should be marked as one.
  * Paragraphs are left to the browser's own rule, set in the shared tokens.
  *
- * At any of the four, a number and the unit after it stand on different
- * lines: "30 s", "4 min", "3 h", "7 days", "5 GB", "8.00 USD", "115 × 180 cm",
- * in our own words and in a merchant's product name alike. The units are the
- * ones the site writes after a number and those product names carry, a
- * spelled-out one with or without its capital. A number and its unit are read
- * where they stand in one element's text, even across the pieces a component
- * writes it in; set in two elements, "5 <strong>GB</strong>", they are not
- * read. Text a closed disclosure holds, a hidden element, a box kept for a
- * screen reader alone and code, which is shown as written, are not read
- * either. A failure names the state, the width and the words.
+ * At any of the four, a number and the unit after it are drawn with a space
+ * a line can break at between them, whether or not this width breaks it,
+ * since another width or a longer name would: "30 s", "4 min", "7 days",
+ * "5 GB", "8.00 USD", "115 × 180 cm", in our own words and in a merchant's
+ * product name alike. The units are the ones the surfaces join, read from the
+ * module they join them by. A number and its unit are read where they stand in
+ * one element's text, even across the pieces a component writes it in; set in
+ * two elements, "5 <strong>GB</strong>", they are not read. Text a closed
+ * disclosure holds, a hidden element, a box kept for a screen reader alone,
+ * a line that never wraps and code, which is shown as written, are not read
+ * either. A failure names the state, the widths it was drawn at and the
+ * words.
  *
  * At any of the four, axe rates a violation serious or critical. What it
  * rates moderate or minor is listed and passes.
@@ -132,7 +134,7 @@ interface Runt {
   readonly alone: string;
 }
 
-interface Split {
+interface Breakable {
   readonly words: string;
 }
 
@@ -419,12 +421,11 @@ function runtsOf(): Runt[] {
  * Runs in the page, as source, under the same constraint as `overflowOf`. The
  * text nodes that stand side by side in one element, with nothing but a
  * comment between them, are read as one text: a component writes
- * `in {seconds} s` as three of them. A pair is found by `pattern`, the
- * source of the expression the surfaces join pairs by; the number's last
- * character and the unit's first are measured, and stand on different lines
- * where their middles are further apart than half the number's height.
+ * `in {seconds} s` as three of them. A pair is found by `pattern`, the source
+ * of the expression the surfaces join pairs by, and is breakable where
+ * anything but a no-break space stands between the number and its unit.
  */
-function splitUnitsOf(pattern: string): Split[] {
+function breakableUnitsOf(pattern: string): Breakable[] {
   const runs: Text[][] = [];
   const texts = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let node = texts.nextNode(); node !== null; node = texts.nextNode()) {
@@ -440,47 +441,28 @@ function splitUnitsOf(pattern: string): Split[] {
       runs.push([text]);
     }
   }
-  const splits: Split[] = [];
-  const range = document.createRange();
+  const breakable: Breakable[] = [];
   for (const run of runs) {
     const holder = run[0]?.parentElement ?? null;
     if (holder === null) continue;
     if (holder.closest("details:not([open]) > :not(summary)") !== null) continue;
     // Code is shown as written, so it is not ours to keep together.
     if (holder.closest("pre, code") !== null) continue;
+    if (!holder.checkVisibility({ visibilityProperty: true })) continue;
     const style = getComputedStyle(holder);
-    if (style.visibility !== "visible") continue;
+    if (style.getPropertyValue("text-wrap-mode") === "nowrap") continue;
     if (style.overflow === "hidden") {
       const box = holder.getBoundingClientRect();
       if (box.width <= 1 || box.height <= 1) continue;
     }
     const value = run.map((text) => text.data).join("");
     for (const found of value.matchAll(new RegExp(pattern, "gu"))) {
-      const [, digits = "", space = ""] = found;
-      // The number's last character and the unit's first, as positions in the run.
-      const ends = [found.index + digits.length - 1, found.index + digits.length + space.length];
-      const drawn: DOMRect[] = [];
-      for (const at of ends) {
-        let offset = at;
-        for (const text of run) {
-          if (offset < text.data.length) {
-            range.setStart(text, offset);
-            range.setEnd(text, offset + 1);
-            drawn.push(range.getBoundingClientRect());
-            break;
-          }
-          offset -= text.data.length;
-        }
+      if ((found[2] ?? "").replaceAll("\u00a0", "") !== "") {
+        breakable.push({ words: found[0].replace(/\s+/g, " ") });
       }
-      const [number, unit] = drawn;
-      if (number === undefined || unit === undefined || number.width === 0 || unit.width === 0) {
-        continue;
-      }
-      const apart = Math.abs(unit.top + unit.bottom - number.top - number.bottom) / 2;
-      if (apart > number.height / 2) splits.push({ words: found[0].replace(/\s+/g, " ") });
     }
   }
-  return splits;
+  return breakable;
 }
 
 const drawnAt = async (page: Page, document: string, width: number, height: number) => {
@@ -524,7 +506,8 @@ const overflows: string[] = [];
 const bands: string[] = [];
 const crampedButtons: string[] = [];
 const runts: string[] = [];
-const splitUnits: string[] = [];
+/** A breakable pair once per state, with every width it was drawn at. */
+const breakableUnits = new Map<string, number[]>();
 /** A violation once per state, with every width it was found at. */
 const violations = new Map<string, { widths: number[]; where: readonly string[] }>();
 const notices = new Map<string, Set<string>>();
@@ -560,10 +543,11 @@ try {
             `${id} at ${width} px leaves "${runt.alone}" alone on the last line of "${runt.words}"`,
           );
         }
-        for (const split of await page.evaluate(splitUnitsOf, UNIT_AFTER_A_NUMBER)) {
-          splitUnits.push(
-            `${id} at ${width} px breaks "${split.words}" between the number and its unit`,
-          );
+        for (const pair of await page.evaluate(breakableUnitsOf, UNIT_AFTER_A_NUMBER)) {
+          const key = `${id} ${pair.words}`;
+          const widths = breakableUnits.get(key) ?? [];
+          if (!widths.includes(width)) widths.push(width);
+          breakableUnits.set(key, widths);
         }
         for (const violation of await axeOn(page, axe)) {
           const said = `${violation.rule} (${violation.impact}): ${violation.help}`;
@@ -590,7 +574,10 @@ const failures = [
   ...bands,
   ...crampedButtons,
   ...runts,
-  ...splitUnits,
+  ...[...breakableUnits].map(([key, widths]) => {
+    const [id = "", ...words] = key.split(" ");
+    return `${id} at ${widths.sort((one, other) => one - other).join(", ")} px draws "${words.join(" ")}" with a space a line can break at between the number and its unit`;
+  }),
   ...[...violations].map(([key, { widths, where }]) => {
     const [id = "", ...said] = key.split(" ");
     const at = widths.sort((one, other) => one - other).join(", ");
