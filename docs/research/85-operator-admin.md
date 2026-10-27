@@ -61,8 +61,8 @@ A *split* is a merchant's payout contract. Every payment goes into the split
 of the wallet the merchant had set when the payment was verified. A payout, a
 transaction anybody may send for the price of gas, distributes what a split
 holds by crediting 99.9% to that wallet and 0.1% to Agentify's commission
-wallet in a warehouse the splits share, and withdraws the merchant's share;
-Agentify's share waits in the warehouse until it is withdrawn the same way. A
+wallet in a warehouse the splits share, then withdraws the merchant's share and
+last, in the same transaction, the commission wallet's. A
 merchant who changes wallets gets a new split, and the old one keeps whatever
 was paid into it until a payout covers it.
 
