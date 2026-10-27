@@ -76,6 +76,14 @@ describe("browser network policy", () => {
     ).toEqual({ allowed: false, code: "navigation_cross_site" });
     expect(
       inspectRequest({
+        url: "https://cdn.example.net/app.js",
+        method: "GET",
+        isNavigation: false,
+        allowedDomain: "example.com",
+      }),
+    ).toMatchObject({ allowed: true });
+    expect(
+      inspectRequest({
         url: "http://shop.example.com/",
         method: "GET",
         isNavigation: true,
@@ -132,17 +140,6 @@ describe("browser network policy", () => {
     ).toThrow("redirect_downgrade");
   });
 
-  it("allows public cross-site subresources without allowing navigation", () => {
-    expect(
-      inspectRequest({
-        url: "https://cdn.example.net/app.js",
-        method: "GET",
-        isNavigation: false,
-        allowedDomain: "example.com",
-      }),
-    ).toMatchObject({ allowed: true });
-  });
-
   it("validates query-free same-site Actor input", () => {
     expect(
       validateActorTarget({
@@ -158,6 +155,19 @@ describe("browser network policy", () => {
         declaredDomain: "example.com",
       }),
     ).toThrowError("input_query_or_fragment_blocked");
+    for (const field of ["canonical", "representative"]) {
+      expect(
+        () =>
+          validateActorTarget({
+            canonicalUrl:
+              field === "canonical" ? "https://example.com/#private" : "https://example.com/",
+            representativeUrls:
+              field === "representative" ? ["https://example.com/item#private"] : [],
+            declaredDomain: "example.com",
+          }),
+        field,
+      ).toThrowError("input_query_or_fragment_blocked");
+    }
     expect(() =>
       validateActorTarget({
         canonicalUrl: "https://example.net/",
