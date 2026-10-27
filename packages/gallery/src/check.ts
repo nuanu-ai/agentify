@@ -23,22 +23,23 @@
  * state, the width and the band's height. A page taller than the window is
  * not measured here, since its footer ends where its content does.
  *
- * At any of the four, a button drawn as one, filled or with a border, has
- * its words closer than 4 pixels to its top or bottom edge or 8 to a side
- * (a button, a link, a disclosure's summary or anything with the button
- * role counts, whatever its class):
- * the words a narrow window wraps onto a second line press against the
- * button. A failure names the state, the width, the button's words and how
- * close they come.
+ * At any of the four, a button drawn as one, filled or with a border on its
+ * top and both sides, has its words closer than 4 pixels to its top or
+ * bottom edge or 8 to a side (a button, a link, a disclosure's summary or
+ * anything with the button role counts, whatever its class): the words a
+ * narrow window wraps onto a second line press against the button. A
+ * failure names the state, the width, the button's words and how close they
+ * come.
  *
  * At any of the four, a button drawn as one, as above, or a heading of any
  * level or with the heading role ends on a line of one word less than half
  * as wide as the line above it, in the same block, where the last word of
- * that line would have fit beside it: "Turn product analytics / off". Text
- * that sets a title under a label on a line of its own is not one wrapped
- * line, and is left alone. A failure names the state, the width, the words
- * and the one left alone. A title set in bold type rather than as a heading
- * is not read: it is a heading that should be marked as one.
+ * that line would have fit beside it: "Turn product analytics / off". A
+ * control whose words stand in blocks of their own, such as a card with a
+ * label over its title or a search result with its excerpt, is not read: its
+ * lines are not one label wrapped. A failure names the state, the width, the
+ * words and the one left alone. A title set in bold type rather than as a
+ * heading is not read either: it is a heading that should be marked as one.
  * Paragraphs are left to the browser's own rule, set in the shared tokens.
  *
  * At any of the four, axe rates a violation serious or critical. What it
@@ -224,7 +225,13 @@ function crampedOf(): Cramped[] {
     const style = getComputedStyle(button);
     if (style.visibility !== "visible") continue;
     const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
-    if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
+    if (
+      !filled &&
+      [style.borderTopWidth, style.borderLeftWidth, style.borderRightWidth].some(
+        (width) => Number.parseFloat(width) === 0,
+      )
+    )
+      continue;
     let top = Number.POSITIVE_INFINITY;
     let bottom = Number.NEGATIVE_INFINITY;
     let left = Number.POSITIVE_INFINITY;
@@ -285,9 +292,16 @@ function runtsOf(): Runt[] {
     if (element.closest("details:not([open]) > :not(summary)") !== null) continue;
     const style = getComputedStyle(element);
     if (style.visibility !== "visible") continue;
-    if (!element.matches("h1, h2, h3, h4, h5, h6, [role=heading]")) {
+    const heading = element.matches("h1, h2, h3, h4, h5, h6, [role=heading]");
+    if (!heading) {
       const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
-      if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
+      if (
+        !filled &&
+        [style.borderTopWidth, style.borderLeftWidth, style.borderRightWidth].some(
+          (width) => Number.parseFloat(width) === 0,
+        )
+      )
+        continue;
     }
     type Word = {
       word: string;
@@ -307,7 +321,11 @@ function runtsOf(): Runt[] {
         if (box.width <= 1 || box.height <= 1) continue;
       }
       let block = holder;
-      while (block !== null && block !== element && getComputedStyle(block).display === "inline") {
+      while (
+        block !== null &&
+        block !== element &&
+        /^(inline|contents)$/.test(getComputedStyle(block).display)
+      ) {
         block = block.parentElement;
       }
       for (const found of (text.textContent ?? "").matchAll(/\S+/g)) {
@@ -343,6 +361,9 @@ function runtsOf(): Runt[] {
     if (last === undefined || above === undefined || alone === undefined || moved === undefined) {
       continue;
     }
+    // A control whose words stand in blocks of their own is a card, not a
+    // button's label; its paragraphs are left to the browser as any other.
+    if (!heading && new Set(lines.flat().map((word) => word.block)).size > 1) continue;
     if (last.length !== 1 || alone.block !== moved.block) continue;
     const lastWidth = alone.right - alone.left;
     const aboveWidth = moved.right - Math.min(...above.map((word) => word.left));
