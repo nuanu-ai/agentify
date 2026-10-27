@@ -120,10 +120,13 @@ describe("who is visiting, in the scanner's bar", () => {
     // The header's doors, its menu and the full-report form on a scan page
     // all need the answer; more than one question would renew the session
     // more than once in one moment.
-    const fetched = visitorIs(200, {
-      status: "signed_in",
-      email: "owner@example.com",
-      operator: false,
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      requests.push(String(input));
+      return new Response(
+        JSON.stringify({ status: "signed_in", email: "owner@example.com", operator: false }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
     });
 
     render(
@@ -135,9 +138,11 @@ describe("who is visiting, in the scanner's bar", () => {
       ),
     );
 
-    expect(await screen.findAllByText(/owner@example\.com/)).toHaveLength(3);
-    expect(
-      fetched.mock.calls.filter(([input]) => String(input).endsWith("/api/v2/session")),
-    ).toHaveLength(1);
+    await doors().findByText("owner@example.com");
+    const registration = screen
+      .getByLabelText(/acknowledge the scanner data notice/i)
+      .closest("form");
+    expect(registration?.textContent).toContain("owner@example.com");
+    expect(requests).toEqual(["/api/v2/session"]);
   });
 });

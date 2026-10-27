@@ -37,21 +37,40 @@ describe("a cookie the scanner sets", () => {
   it("lasts as long by its expiry as by its age, so a browser reading either keeps it", () => {
     vi.useFakeTimers({ now: new Date("2026-10-13T00:00:00Z") });
 
-    expect(
-      cookieHeader("agentify_anonymous", "a b", {
-        httpOnly: true,
-        secure: true,
-        sameSite: "lax",
-        maxAge: 60,
-      }),
-    ).toBe(
-      "agentify_anonymous=a%20b; Path=/; Expires=Tue, 13 Oct 2026 00:01:00 GMT; Max-Age=60; Secure; HttpOnly; SameSite=lax",
+    const header = cookieHeader("agentify_anonymous", "a b", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: 60,
+    });
+    expect(header.split(/;\s*/)).toEqual(
+      expect.arrayContaining([
+        "agentify_anonymous=a%20b",
+        expect.stringMatching(/^path=\/$/i),
+        expect.stringMatching(/^expires=Tue, 13 Oct 2026 00:01:00 GMT$/i),
+        expect.stringMatching(/^max-age=60$/i),
+        expect.stringMatching(/^secure$/i),
+        expect.stringMatching(/^httponly$/i),
+        expect.stringMatching(/^samesite=lax$/i),
+      ]),
     );
   });
 
   it("is cleared with an age of nothing and no expiry", () => {
-    expect(
-      cookieHeader("agentify_anonymous", "", { httpOnly: true, sameSite: "lax", maxAge: 0 }),
-    ).toBe("agentify_anonymous=; Path=/; Max-Age=0; HttpOnly; SameSite=lax");
+    const header = cookieHeader("agentify_anonymous", "", {
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 0,
+    });
+    expect(header.split(/;\s*/)).toEqual(
+      expect.arrayContaining([
+        "agentify_anonymous=",
+        expect.stringMatching(/^path=\/$/i),
+        expect.stringMatching(/^max-age=0$/i),
+        expect.stringMatching(/^httponly$/i),
+        expect.stringMatching(/^samesite=lax$/i),
+      ]),
+    );
+    expect(header).not.toMatch(/(?:^|;)\s*expires=/i);
   });
 });

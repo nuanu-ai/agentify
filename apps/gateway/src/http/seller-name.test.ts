@@ -13,7 +13,6 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
-import { setServiceName } from "../app/merchants.js";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import { type Harness, harness, type Served, serve, statusPathOf } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
@@ -159,7 +158,10 @@ describe("the name a merchant is listed under", () => {
       seller_name: "The first shop's name",
       seller_site: null,
     });
-    expect((await sellerName(served, second.key)).seller_name).not.toBe("The first shop's name");
+    expect(await sellerName(served, second.key)).toStrictEqual({
+      seller_name: "Second shop",
+      seller_site: null,
+    });
   });
 
   it("refuses a name a discovery catalogue would silently mangle", async () => {
@@ -212,17 +214,6 @@ describe("the name a merchant is listed under", () => {
     ).toBe(401);
   });
 
-  it("puts the name it was given into the payment challenge for that merchant's card", async () => {
-    // The whole reason this name exists. A challenge is what a discovery
-    // catalogue reads and what a buyer's agent is shown before it pays, and the
-    // seller in it is this name and nothing else.
-    const { served, harnessed } = await started();
-    await setSellerName(served, harnessed.merchant.key, "Someone's shop");
-    const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
-
-    expect(await sellerInTheChallenge(served, itemId)).toBe("Someone's shop");
-  });
-
   it("puts a changed name into the challenge of a card already published", async () => {
     // The negative control for the assertion above: the challenge reads the
     // merchant's name at the moment it is asked for, rather than copying it on
@@ -232,6 +223,7 @@ describe("the name a merchant is listed under", () => {
     await setSellerName(served, harnessed.merchant.key, "Someone's shop");
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
 
+    expect(await sellerInTheChallenge(served, itemId)).toBe("Someone's shop");
     await setSellerName(served, harnessed.merchant.key, "The shop on the corner");
 
     expect(await sellerInTheChallenge(served, itemId)).toBe("The shop on the corner");
@@ -410,11 +402,14 @@ describe("publishing before a name has been chosen", () => {
     // A refusal that had already written the card would be worse than no rule:
     // the merchant would be told no and be selling anyway.
     const { served, harnessed } = await started();
-    const { key } = await nameless(harnessed);
+    const { merchantId, key } = await nameless(harnessed);
+    await payableAt(harnessed, merchantId);
 
-    await publishing(served, key, cardFor("a-room", "A room"));
+    const refused = await publishing(served, key, cardFor("a-room", "A room"));
+    expect(refused.status).toBe(422);
 
     const own = await served.call("GET", "/v0/cards", { headers: bearer(key) });
+    expect(own.status).toBe(200);
     expect((own.body as { cards: unknown[] }).cards).toStrictEqual([]);
   });
 
@@ -474,7 +469,7 @@ const soldUnderNoName = async (
   await setSellerName(served, key, "A name that was pulled");
   const itemId = await publish(served, key, cardFor(merchantItemId, "A room"));
 
-  await setServiceName(harnessed.store, merchantId, null, harnessed.now());
+  await harnessed.store.setServiceName(merchantId, null, harnessed.now());
   return { itemId, key, merchantId };
 };
 
@@ -535,7 +530,10 @@ describe("a card whose merchant is listed under no name", () => {
       cards: { id: string; selling: string }[];
     };
 
-    expect(own.cards.find((card) => card.id === itemId)?.selling).not.toBe("open");
+    expect(own.cards.find((card) => card.id === itemId)).toMatchObject({
+      id: itemId,
+      selling: "paused",
+    });
   });
 
   it("stops selling in the sandbox too, where a missing wallet is excused and a missing name is not", async () => {

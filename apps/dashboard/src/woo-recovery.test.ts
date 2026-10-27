@@ -1173,16 +1173,6 @@ describe("exact Woo order recovery", () => {
     expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
-  it("binds an unknown committed create by one verified Woo order id without another POST", async () => {
-    const shops = await setup("create_unknown");
-    const test = parts(shops);
-
-    expect(
-      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
-    ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
-    expect(test.counts()).toEqual({ delivered: 1, read: 1 });
-  });
-
   it("delivers an already-bound result after the shop is disconnected", async () => {
     const shops = await setup("create_unknown");
     await shops.recordOrder(
@@ -1378,7 +1368,13 @@ describe("a parcel's order the shop holds", () => {
 
     const outcome = await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, parts(shops).value);
 
-    expect(outcome).toMatchObject({ ok: false, state: "refused" });
+    expect(outcome).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringMatching(
+        /order is placed.*read in the shop.*marked Completed.*cancelled.*refunded.*thirty days/i,
+      ),
+    });
     expect(outcome.ok === false && outcome.why).not.toContain("do not ship");
   });
 });

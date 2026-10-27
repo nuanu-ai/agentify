@@ -11,7 +11,9 @@ const response = (body: unknown, status = 200) =>
 describe("verifyTurnstileToken", () => {
   it("accepts only a successful scan token for the configured hostname", async () => {
     let providerRequest: RequestInit | undefined;
+    let destination: unknown;
     const fetchImpl = async (_input: string | URL | Request, init?: RequestInit) => {
+      destination = _input;
       providerRequest = init;
       return response({
         success: true,
@@ -31,7 +33,13 @@ describe("verifyTurnstileToken", () => {
       }),
     ).resolves.toBe(true);
 
-    expect(String(providerRequest?.body)).toContain("remoteip=203.0.113.8");
+    expect(destination).toBe("https://challenges.cloudflare.com/turnstile/v0/siteverify");
+    expect(providerRequest?.method).toBe("POST");
+    expect(Object.fromEntries(new URLSearchParams(String(providerRequest?.body)))).toEqual({
+      secret: "secret",
+      response: "token",
+      remoteip: "203.0.113.8",
+    });
   });
 
   it.each([

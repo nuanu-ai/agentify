@@ -1,7 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
-import { formTo } from "../../src/testing/html.js";
+import { formTo, readable } from "../../src/testing/html.js";
 import type { WooRecoveryView } from "../../src/woo-recovery-pages.js";
 import { WooRecoveryScreen } from "./woocommerce-recovery.js";
 
@@ -63,12 +63,14 @@ describe("the merchant's recovery controls", () => {
     expect(form?.fields.has("woo_order_id")).toBe(false);
   });
 
-  it("offers no create press while what the last press did is unknown", () => {
-    const html = draw("create", null, { wooOrderId: "", message: "We don't know.", unknown: true });
-
-    expect(formTo(html, "post", PATH)).toBeUndefined();
-    expect(html).toContain(`href="/dashboard${PATH}"`);
-  });
+  it.each(["create", "link", "retry"] as const)(
+    "offers only a reload while a %s press has an unknown outcome",
+    (mode) => {
+      const html = draw(mode, null, { message: "We don't know if this worked.", unknown: true });
+      expect(formTo(html, "post", PATH)).toBeUndefined();
+      expect(html).toContain(`href="/dashboard${PATH}"`);
+    },
+  );
 
   it("leads a sale waiting for its shop to be connected again to the WooCommerce page", () => {
     const html = draw("unavailable", null, {
@@ -93,16 +95,12 @@ describe("the merchant's recovery controls", () => {
       const unknown = draw("unavailable", null, { unavailable: { shopOrder: "unknown", instead } });
       const none = draw("unavailable", null, { unavailable: { shopOrder: "none", instead } });
 
-      expect(unknown, instead).not.toBe(none);
-    }
-  });
-
-  it("offers a reload rather than a second press while what the last press did is unknown", () => {
-    for (const mode of ["link", "retry"] as const) {
-      const html = draw(mode, null, { message: "We don't know if this worked.", unknown: true });
-
-      expect(formTo(html, "post", PATH), mode).toBeUndefined();
-      expect(html, mode).toContain(`href="/dashboard${PATH}"`);
+      expect(readable(unknown), instead).toMatch(/don.t know if.*shop created.*order/i);
+      expect(readable(none), instead).toMatch(/shop never got.*order/i);
+      for (const html of [unknown, none]) {
+        expect(formTo(html, "post", PATH)).toBeUndefined();
+        expect(html.includes('href="/dashboard/orders?q=ord_1"')).toBe(instead === "close");
+      }
     }
   });
 

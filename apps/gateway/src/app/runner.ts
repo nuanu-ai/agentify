@@ -39,6 +39,7 @@ import {
   paidAfterClosure,
   transition,
 } from "@agentify/core";
+import { createLogger } from "@agentify/observability/source";
 import {
   type Delivery,
   localityOf,
@@ -289,23 +290,9 @@ export class OrderRunner {
    * what the store holds the write to (`Birth`): where the order is not
    * written, nothing is carried out either, and the answer says why.
    */
-  async create(
-    record: StoredOrder,
-    effects: readonly Effect[],
-    at: number,
-    birth: Birth,
-  ): Promise<Born> {
+  async create(record: StoredOrder, effects: readonly Effect[], birth: Birth): Promise<Born> {
     refuseToWriteAnImpossibleOrder(record.order);
     refuseToKeepAnAddressPastItsTime(record);
-
-    // `addOrder` takes nothing to write alongside the order, so an effect that
-    // must be written with it is refused here, before the order exists.
-    const written = this.#writesWithTheOrder(record, record.order, effects, at);
-    if (written.length > 0) {
-      throw new Error(
-        `creating ${record.order.id} asked for ${written.length} thing(s) to be written down with it, and the birth of an order has nowhere to write them`,
-      );
-    }
 
     const born = await this.#runtime.store.addOrder(
       record,
@@ -1190,9 +1177,16 @@ export class OrderRunner {
           `[gateway] payment recovery could not look for ${failed} of ${unresolved} unresolved payments: ${failure.replace(/\.?$/, ".")} It tries again every minute; an endpoint that keeps failing is replaced through PAYMENT_RPC_URL`,
         );
       if (unresolved > 0)
-        console.warn(
-          `[gateway] ${unresolved} unresolved payment${unresolved === 1 ? "" : "s"}, the oldest waiting ${Math.floor((now - oldest) / 60_000)} minutes${reconcile === undefined ? "; payment recovery is off because no RPC is configured, and setting PAYMENT_RPC_URL to a Base endpoint turns it on" : ""}`,
-        );
+        createLogger({
+          service: "gateway",
+          environment: this.#runtime.config.environment,
+          now: () => new Date(now),
+        }).warn("payment_recovery_pending", {
+          value: unresolved,
+          duration_ms: now - oldest,
+          status: reconcile === undefined ? "disabled" : "enabled",
+          ...(reconcile === undefined ? { destination: "PAYMENT_RPC_URL" } : {}),
+        });
     });
   }
 

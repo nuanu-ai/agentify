@@ -45,7 +45,17 @@ describe("browser observation worker env", () => {
   }
 
   it("refuses a build name that moves under it", () => {
-    for (const build of ["latest", "beta", "dev"]) {
+    for (const build of [
+      "latest",
+      "beta",
+      "dev",
+      "stable",
+      "production",
+      "release-1",
+      "1.0",
+      "1.0.42-next",
+      "LATEST",
+    ]) {
       expect(() => readWorkerEnv({ ...active, APIFY_BROWSER_ACTOR_BUILD: build }), build).toThrow(
         "APIFY_BROWSER_ACTOR_BUILD",
       );

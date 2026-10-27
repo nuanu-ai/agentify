@@ -213,6 +213,8 @@ async function buy(): Promise<void> {
 }
 
 await buy().catch((error: Error) => {
-  console.error(`The purchase stopped. ${error.message}`)
+  console.error(
+    `The purchase stopped. ${error instanceof TypeError ? 'The channel did not return a readable answer. Check AGENTIFY_URL and your connection. If the payment was sent, its outcome may be unknown; check any saved order address before buying again.' : error.message}`,
+  )
   process.exitCode = 1
 })

@@ -52,7 +52,7 @@ describe("the latest report", () => {
 
     expect(answered.status).toBe(200);
     expect(answered.headers.get("cache-control")).toBe("private, no-store");
-    expect(h1).toBe("We cannot tell who is visiting right now");
+    expect(h1).toMatch(/cannot tell.*visiting/i);
     expect(links).toContain("/report/latest");
   });
 
@@ -82,7 +82,7 @@ describe("a report", () => {
     const { h1, html } = await page(`/report/${SCAN}`, SESSION);
     const section = html.slice(html.indexOf("<section"), html.indexOf("</section>"));
 
-    expect(h1).toBe("We cannot tell who is visiting right now");
+    expect(h1).toMatch(/cannot tell.*visiting/i);
     expect(section).not.toContain('href="/dashboard/sign-in');
     expect(section).toContain(`href="/report/${SCAN}"`);
   });

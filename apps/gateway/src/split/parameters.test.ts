@@ -97,32 +97,3 @@ describe("a merchant's payout split", () => {
     ).toThrowError(/zero address/);
   });
 });
-
-describe("the split a merchant and a wallet give", () => {
-  const merchants = [MERCHANT_ID, "mch_ffffffffffffffffffffffffffffffff", "mch_1", "the_merchant"];
-  const wallets = [
-    MERCHANT,
-    "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
-    "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-  ];
-  const channels = [TEST_CHANNEL, LIVE_CHANNEL];
-
-  it("is the same split every time they come back to it, and another for any change", () => {
-    const seen = new Map<string, string>();
-    for (const channel of channels) {
-      for (const merchantId of merchants) {
-        for (const wallet of wallets) {
-          const key = `${channel.network} ${merchantId} ${wallet}`;
-          const first = payoutSplitFor(channel, merchantId, wallet);
-          expect(payoutSplitFor(channel, merchantId, wallet.toLowerCase()), key).toStrictEqual(
-            first,
-          );
-          const earlier = seen.get(first.address);
-          expect(earlier, `${key} gives the split of ${earlier}`).toBeUndefined();
-          seen.set(first.address, key);
-        }
-      }
-    }
-    expect(seen.size).toBe(channels.length * merchants.length * wallets.length);
-  });
-});

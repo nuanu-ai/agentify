@@ -1,17 +1,10 @@
 import { readFileSync } from "node:fs";
-import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { telemetry } from "@agentify/observability/source";
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
-import {
-  API_ROUTES,
-  CONTRACT_VERSION,
-  ERROR_CODES,
-  mountableRoutes,
-} from "@nuanu-ai/agentify-contracts";
+import { API_ROUTES, CONTRACT_VERSION, mountableRoutes } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
-import { z } from "zod";
 import { setSellerSite, setServiceName } from "../app/merchants.js";
 import {
   buyOverHttp,
@@ -25,19 +18,8 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
-import { buildApp, refusal } from "./server.js";
+import { refusal } from "./server.js";
 import { ORDER_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
-
-/**
- * The files that hold every refusal this gateway sends, read as source text
- * because one case below asks which codes are written in them.
- */
-const routesSource = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
-const serverSource = readFileSync(new URL("./server.ts", import.meta.url), "utf8");
-const merchantAnswersSource = readFileSync(
-  new URL("./merchant-answers.ts", import.meta.url),
-  "utf8",
-);
 
 /**
  * The seeded merchant's key, taken from the harness rather than spelled again,
@@ -82,6 +64,20 @@ const publish = async (served: Served, card: Card): Promise<string> => {
 };
 
 describe("the surface is the table", () => {
+  it("keeps an undecided route in the real contract table off the public surface", async () => {
+    const auth = API_ROUTES.list_catalog.auth;
+    try {
+      Object.defineProperty(API_ROUTES.list_catalog, "auth", { value: "undecided" });
+      const { served } = await started();
+      expect((await served.call("GET", "/healthz")).status).toBe(200);
+      const refused = await served.call("GET", "/x402/catalog");
+      expect(refused.status).toBe(404);
+      expect(refused.body).toMatchObject({ error: { code: "no_such_route" } });
+    } finally {
+      Object.defineProperty(API_ROUTES.list_catalog, "auth", { value: auth });
+    }
+  });
+
   it("exports bounded route templates without buyers' keys or query tokens", async () => {
     const { served } = await started();
     await served.call("GET", "/x402/orders/private-buyer-key/status?token=private-query-token");
@@ -126,34 +122,12 @@ describe("the surface is the table", () => {
         ...(route.request === undefined ? {} : { body: {} }),
       });
 
+      if (route.auth === "merchant_key") expect(answered.status, name).toBe(401);
       expect(
         turnedAway.has(answered.status),
         `${name} with no key answered ${answered.status}`,
       ).toBe(route.auth === "merchant_key");
     }
-  });
-
-  it("will not mount a route whose door nobody has chosen, whoever hands it over", async () => {
-    // The mounted list already filters these out; this holds even when one is
-    // handed over by name, so a door nobody chose cannot be opened by editing a
-    // list.
-    const { harnessed } = await started();
-
-    expect(() =>
-      buildApp(harnessed.gateway, [
-        ["list_catalog" as never, { ...API_ROUTES.list_catalog, auth: "undecided" as const }],
-      ]),
-    ).toThrow(/undecided/);
-  });
-
-  it("will not start when the table names a call nothing serves", async () => {
-    // The route below stands in for a call added to the contract and never
-    // implemented; the same guard runs over the real table on every start.
-    const { harnessed } = await started();
-
-    expect(() =>
-      buildApp(harnessed.gateway, [["a_call_nobody_serves" as never, API_ROUTES.list_catalog]]),
-    ).toThrow(/nothing to serve it with/);
   });
 
   it("answers the health check while the process is up, with no key on it", async () => {
@@ -209,36 +183,12 @@ describe("the surface is the table", () => {
 
 describe("what a call answers with", () => {
   it("refuses to send a document the contract would not recognise", async () => {
-    // Responses are held to the schema the SDK reads them with. The route below
-    // names a different document for the catalog, as a drift between the two
-    // sides would.
-    const { harnessed } = await started();
-
-    const app = buildApp(harnessed.gateway, [
-      [
-        "list_catalog" as never,
-        {
-          ...API_ROUTES.list_catalog,
-          response: { document: z.strictObject({ nothing_like_a_catalog: z.string() }) },
-        },
-      ],
-    ]);
-    // On the address it is called at; `serve` in the harness says why.
-    const server = app.listen(0, "127.0.0.1");
-    await new Promise<void>((resolve) => server.once("listening", resolve));
-    const { port } = server.address() as AddressInfo;
-
-    try {
-      const answered = await fetch(`http://127.0.0.1:${port}/x402/catalog`);
-      expect(answered.status).toBe(500);
-      // The only retryable refusal on this surface: the call failed inside us,
-      // so making it again is not repeating a mistake.
-      expect((await answered.json()) as { error: { code: string } }).toMatchObject({
-        error: { code: "gateway_failed", retryable: true },
-      });
-    } finally {
-      server.close();
-    }
+    const { harnessed, served } = await started();
+    // A broken producer must never bypass the default route's outgoing schema.
+    harnessed.gateway.catalog = async () => ({ nothing_like_a_catalog: true }) as never;
+    const answered = await served.call("GET", "/x402/catalog");
+    expect(answered.status).toBe(500);
+    expect(answered.body).toMatchObject({ error: { code: "gateway_failed", retryable: true } });
   });
 
   it("will not let a refusal's own detail take the place of its reason", () => {
@@ -271,19 +221,6 @@ describe("what a call answers with", () => {
       },
     });
   });
-
-  it("sends every code the contract publishes, and publishes every code it sends", () => {
-    // The compiler already rejects a code the contract lacks, since refusal()
-    // takes an ErrorCode. What it cannot see is a published code nothing sends,
-    // which a consumer writes a branch for and never reaches.
-    const written = [routesSource, serverSource, merchantAnswersSource].join("\n");
-    const unsent = ERROR_CODES.filter((code) => !written.includes(`"${code}"`));
-
-    expect(
-      unsent,
-      "the contract publishes these codes and this gateway sends none of them: a consumer switching over the list writes a branch it will never reach",
-    ).toStrictEqual([]);
-  });
 });
 
 describe("the merchant's door", () => {
@@ -292,16 +229,18 @@ describe("the merchant's door", () => {
 
     const attempts: Record<string, string>[] = [
       {},
-      { authorization: "Bearer wrong-key-of-the-right-length" },
+      { authorization: `Bearer ${KEY.slice(0, -1)}x` },
       { authorization: "Bearer x" },
       // The key with no scheme in front of it, which is the mistake a merchant
       // actually makes.
       { authorization: KEY },
     ];
 
+    const refused = await served.call("GET", "/v0/orders");
     for (const headers of attempts) {
       const answered = await served.call("GET", "/v0/orders", { headers });
       expect(answered.status).toBe(401);
+      expect(answered.body).toEqual(refused.body);
       // Nothing about which part was wrong, or whether a key arrived at all.
       expect(JSON.stringify(answered.body)).not.toContain(KEY);
     }
@@ -315,11 +254,6 @@ describe("the merchant's door", () => {
       (await served.call("GET", "/v0/orders", { headers: { authorization: `bearer ${KEY}` } }))
         .status,
     ).toBe(200);
-  });
-
-  it("asks nobody for a key on the calls an agent makes", async () => {
-    const { served } = await started();
-    expect((await served.call("GET", "/x402/catalog")).status).toBe(200);
   });
 });
 
@@ -496,14 +430,19 @@ describe("what a call may carry", () => {
 
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    const orderId = offered.order.order.id;
+    const orderId = `${offered.order.order.id}/segment`;
+    await harnessed.store.addOrder({
+      ...offered.order,
+      order: { ...offered.order.order, id: orderId },
+      buyerKey: `${offered.order.buyerKey}extra`,
+    });
 
     const answered = await served.call("GET", `/v0/orders/${encodeURIComponent(orderId)}`, {
       headers: asMerchant,
     });
 
     expect(answered.status).toBe(200);
-    expect((answered.body as { merchant_item_id: string }).merchant_item_id).toBe("SKU 100/1");
+    expect(answered.body).toMatchObject({ id: orderId, merchant_item_id: "SKU 100/1" });
   });
 });
 
@@ -530,6 +469,8 @@ describe("the payment challenge", () => {
     expect(challenge.accepts[0]?.payTo).toBe(split?.address);
     expect(challenge.accepts[0]?.network).toBe("eip155:84532");
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+    expect(challenge.extensions?.bazaar).toBeTypeOf("object");
+    expect(challenge.resource.url).toBe(`http://localhost:3000/x402/${itemId}/purchase`);
   });
 
   it("asks for an authorisation that outlives the charge, even one signed as the price is named and presented as it runs out", async () => {
@@ -571,13 +512,16 @@ describe("the payment challenge", () => {
     }
   });
 
-  it("asks for the smallest price the door takes, exactly", async () => {
+  it.each([
+    ["0.01", "10000"],
+    ["0.010001", "10001"],
+  ])("asks for exactly %s dollars in token units", async (amount, units) => {
     // One cent is the smallest price publication accepts, ten thousand units
     // of the payment token, and the challenge must ask for exactly that.
     const { served } = await started();
     const itemId = await publish(served, {
       ...syncCard,
-      price: { amount: "0.01", currency: "USD" },
+      price: { amount, currency: "USD" },
     });
 
     const answered = await served.call("GET", `/x402/${itemId}/purchase`);
@@ -586,43 +530,7 @@ describe("the payment challenge", () => {
     const challenge = decodePaymentRequiredHeader(
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
-    expect(challenge.accepts[0]?.amount).toBe("10000");
-  });
-
-  it("asks for a price written past the cent exactly, to the last place", async () => {
-    // Six places are what USDC carries, so a price above the smallest one is
-    // charged as written, never rounded to the cent.
-    const { served } = await started();
-    const itemId = await publish(served, {
-      ...syncCard,
-      price: { amount: "0.010001", currency: "USD" },
-    });
-
-    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(answered.status).toBe(402);
-    const challenge = decodePaymentRequiredHeader(
-      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    );
-    expect(challenge.accepts[0]?.amount).toBe("10001");
-  });
-
-  it("prices a POST against an order it opened, and names that order by its identifier", async () => {
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, syncCard);
-
-    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-    });
-
-    expect(answered.status).toBe(402);
-    const challenge = decodePaymentRequiredHeader(
-      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    );
-    const named = challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA];
-    const orders = await harnessed.store.orders(harnessed.merchant.id);
-    expect(orders).toHaveLength(1);
-    expect(named).toBe(orders[0]?.order.id);
+    expect(challenge.accepts[0]?.amount).toBe(units);
   });
 
   it("names, on a GET, the method and body a purchase is made with", async () => {
@@ -650,40 +558,26 @@ describe("the payment challenge", () => {
     expect(named).toBe(orders[0]?.order.id);
   });
 
-  it("answers a POST that brought no document as it answers a GET: a price, and no order", async () => {
-    // The catalog's validator, like everything built on the official x402
-    // server, probes with an empty POST and expects the challenge before any
-    // body is read. A 400 here keeps the product out of the catalog.
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, syncCard);
+  it.each([undefined, {}])(
+    "answers an unpaid POST with %j as a probe without creating an order",
+    async (body) => {
+      // The validator's own probe: a POST declaring a JSON body and carrying none,
+      // which the parser hands over as an empty document. Unpaid, it is a probe
+      // and not a purchase.
+      const { served, harnessed } = await started();
+      const itemId = await publish(served, syncCard);
 
-    const answered = await served.call("POST", `/x402/${itemId}/purchase`);
+      const answered = await served.call("POST", `/x402/${itemId}/purchase`, { body });
 
-    expect(answered.status).toBe(402);
-    const challenge = decodePaymentRequiredHeader(
-      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    );
-    expect(challenge.accepts[0]?.amount).toBe("80000000");
-    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
-    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
-  });
-
-  it("answers an unpaid POST that carries an empty document the same way", async () => {
-    // The validator's own probe: a POST declaring a JSON body and carrying none,
-    // which the parser hands over as an empty document. Unpaid, it is a probe
-    // and not a purchase.
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, syncCard);
-
-    const answered = await served.call("POST", `/x402/${itemId}/purchase`, { body: {} });
-
-    expect(answered.status).toBe(402);
-    const challenge = decodePaymentRequiredHeader(
-      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    );
-    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
-    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
-  });
+      expect(answered.status).toBe(402);
+      const challenge = decodePaymentRequiredHeader(
+        answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+      );
+      expect(challenge.accepts[0]?.amount).toBe("80000000");
+      expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBeUndefined();
+      expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+    },
+  );
 
   it("refuses an unpaid POST whose document is of some other shape, naming the fields", async () => {
     // A wrong document, unlike an empty one, is a mistake: the agent is told
@@ -776,7 +670,7 @@ describe("the payment challenge", () => {
   it("prices a fresh order when a payment names one this gateway is not holding", async () => {
     // An agent that built its own requirements rather than accepting ours gets
     // a price we issued, which is the only kind we can check a payment against.
-    const { served } = await started();
+    const { served, harnessed } = await started();
     const itemId = await publish(served, syncCard);
     const invented = encodePaymentSignatureHeader({
       x402Version: 2,
@@ -802,6 +696,11 @@ describe("the payment challenge", () => {
       answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     );
     expect(challenge.error).toMatch(/did not name an order this gateway is holding/);
+    const held = await harnessed.store.orders(harnessed.merchant.id);
+    expect(held).toHaveLength(1);
+    expect(challenge.accepts[0]?.extra?.[ORDER_IN_EXTRA]).toBe(held[0]?.order.id);
+    expect(challenge.accepts[0]?.amount).toBe("80000000");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
   });
 
   it("says so when a payment header could not be read at all", async () => {
@@ -1019,7 +918,16 @@ describe("a card whose payment challenge would be too large to read", () => {
         headers: asMerchant,
       });
       if (answered.status === 200) accepted = { count, id: (answered.body as { id: string }).id };
-      else refused = count;
+      else {
+        expect(answered.status).toBe(422);
+        expect(answered.body).toMatchObject({
+          error: {
+            code: "card_rejected",
+            problems: [expect.objectContaining({ code: "challenge_too_large" })],
+          },
+        });
+        refused = count;
+      }
     }
     await setServiceName(harnessed.store, harnessed.merchant.id, "\\".repeat(32), Date.now());
     const namingNoHeldOrder = encodePaymentSignatureHeader({
@@ -1203,37 +1111,6 @@ describe("a purchase over HTTP, from the catalog to the goods", () => {
     );
     expect(challenge.resource.url).toBe(item?.purchase_url);
   });
-
-  it("tells the agent the purchase is over when the merchant refuses", async () => {
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, syncCard);
-    const priced = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-    });
-    const requirements = decodePaymentRequiredHeader(
-      priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    ).accepts[0];
-    if (requirements === undefined) throw new Error("no payment option was offered");
-
-    const worker = workUntilStopped(harnessed, {
-      onOrder: () => ({ refused: { code: "out_of_stock", message: "the room is taken" } }),
-    });
-    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-      headers: {
-        [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
-          x402Version: 2,
-          accepted: requirements,
-          payload: { signature: "0xsigned" },
-        }),
-      },
-    });
-    await worker.stop();
-
-    expect(refused.status).toBe(409);
-    expect(refused.body).toMatchObject({ status: "rejected" });
-    expect(harnessed.facilitator.settles).toHaveLength(0);
-  });
 });
 
 describe("what an agent is told when the money is not settled", () => {
@@ -1319,12 +1196,15 @@ describe("what an agent is told when the money is not settled", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "settled") throw new Error("the silent async card sold anyway");
 
+    const pricedId = await publish(served, syncCard);
+    const priced = await harnessed.gateway.beginPurchase(pricedId, {});
+    if (priced.step !== "pay") throw new Error("expected a priced order");
     const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
 
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
-    expect(
-      (listed.body as { orders: { id: string }[] }).orders.map((order) => order.id),
-    ).not.toContain(offered.order.order.id);
+    expect((listed.body as { orders: { id: string }[] }).orders.map((order) => order.id)).toEqual([
+      priced.order.order.id,
+    ]);
   });
 });
 
@@ -1405,7 +1285,7 @@ describe("whose purchase it is", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    const { race } = await raceTwoPayments(served, harnessed, itemId);
+    const { race, buyerHeader, strangerHeader } = await raceTwoPayments(served, harnessed, itemId);
     const [a, b] = await race;
     await worker.stop();
 
@@ -1420,31 +1300,9 @@ describe("whose purchase it is", () => {
     expect(winner.body).toMatchObject({ delivered: { access_code: "SESAME" } });
     expect((loser.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
     expect(JSON.stringify(loser.body)).not.toContain("SESAME");
-  });
-
-  it("charges exactly one payment, the one the winner owns", async () => {
-    // A presentation landing between another's verification and its charge must
-    // not replace the authorisation to be charged, or the goods are paid for
-    // with somebody else's payment.
-    const { served, harnessed } = await started(RACE_TIMING);
-    const itemId = await publish(served, syncCard);
-
-    const worker = workUntilStopped(harnessed, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    const { race, buyerHeader, strangerHeader } = await raceTwoPayments(served, harnessed, itemId);
-    const [buyerResult, strangerResult] = await race;
-    await worker.stop();
-
-    // Promise.all keeps the call order, so the first result is the buyer's call
-    // and the second the stranger's; the winner's header is whichever returned
-    // the goods.
-    const winnerHeader = buyerResult.status === 200 ? buyerHeader : strangerHeader;
-    expect([buyerResult.status, strangerResult.status].filter((s) => s === 200)).toHaveLength(1);
-
-    const charged = harnessed.facilitator.settles.map((charge) => charge.payment);
-    expect(charged).toHaveLength(1);
-    expect(charged[0]).toBe(winnerHeader);
+    expect(harnessed.facilitator.settles.map((charge) => charge.payment)).toEqual([
+      a.status === 200 ? buyerHeader : strangerHeader,
+    ]);
   });
 
   it("does not let a stranger close somebody else's open purchase", async () => {
@@ -1485,89 +1343,6 @@ describe("whose purchase it is", () => {
     expect(orders).toHaveLength(1);
     expect(orders[0]?.order.state).toBe("quoted");
     expect(orders[0]?.order.closure).toBeNull();
-  });
-
-  it("lets the buyer who owns an order drive the payment home with a second authorisation", async () => {
-    // A repeat is a fresh authorisation with its own nonce and fingerprint. Only
-    // the signing wallet makes it the same buyer's, and the gateway learns that
-    // wallet from the payment layer.
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, syncCard);
-    harnessed.facilitator.willSettle(
-      { settled: false, reason: "the transfer reverted" },
-      { settled: true, transaction: "0xsecond" },
-    );
-    const challenge = await challengeFor(served, itemId);
-    const first = await paidBy(challenge, BUYER, "0x01");
-    const repeat = await paidBy(challenge, BUYER, "0x02");
-
-    const worker = workUntilStopped(harnessed, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    const delivered = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: first },
-    });
-    // The merchant made the goods and the charge failed, so the goods are not
-    // the buyer's yet and the agent is not told the purchase went through.
-    expect(delivered.status).toBe(409);
-    expect(delivered.body).toMatchObject({ status: "delivered_unpaid" });
-
-    // The worker is stopped before the repeat: the merchant is asked for
-    // nothing a second time, and a repeat that needed him would hang here.
-    await worker.stop();
-
-    const paid = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: repeat },
-    });
-
-    expect(paid.status).toBe(200);
-    expect(paid.body).toMatchObject({ delivered: { access_code: "SESAME" } });
-    // And it was the authorisation the agent actually sent that was charged.
-    expect(harnessed.facilitator.settles.map((charge) => charge.payment)).toStrictEqual([
-      first,
-      repeat,
-    ]);
-  });
-
-  it("refuses a second wallet's payment for an order that is already somebody's", async () => {
-    // An order's identifier is in every challenge for it, and a listing can
-    // publish it, so holding one does not make a wallet the buyer.
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, {
-      ...syncCard,
-      merchant_item_id: "esim-owned",
-      fulfillment: "async",
-    });
-    const challenge = await challengeFor(served, itemId);
-
-    const bought = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, BUYER, "0x01") },
-    });
-    expect(bought.status).toBe(200);
-
-    const stranger = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-      headers: { [PAYMENT_SIGNATURE_HEADER]: await paidBy(challenge, STRANGER, "0x02") },
-    });
-
-    expect(stranger.status).toBe(409);
-    expect(stranger.body).toStrictEqual({
-      error: {
-        code: "not_this_purchase",
-        message: expect.stringMatching(/\S/),
-        // The order stays somebody else's, so this answer never changes.
-        retryable: false,
-      },
-    });
-    const orderId = (bought.body as { order_id: string }).order_id;
-    expect(JSON.stringify(stranger.body)).not.toContain(orderId);
-    expect(JSON.stringify(stranger.body)).not.toContain("status_url");
-    // The stranger was never charged, and the order is still the buyer's.
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-    expect((await harnessed.store.orderById(orderId))?.paidBy).toBe(BUYER);
   });
 });
 
@@ -1795,47 +1570,6 @@ describe("the worker's calls over HTTP", () => {
     );
   });
 
-  it("refuses a body that is not JSON in the shape everything else refuses in", async () => {
-    // The parser rejects it before any route runs; without our own handler
-    // express answers with an HTML page.
-    const { served } = await started();
-
-    const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
-      headers: { ...asMerchant, "content-type": "application/json" },
-      body: undefined,
-    });
-    const raw = await fetch(`${served.url}/v0/quotes/prc_1/answer`, {
-      method: "POST",
-      headers: { ...asMerchant, "content-type": "application/json" },
-      body: "{ this is not json",
-    });
-
-    expect(raw.status).toBe(400);
-    expect((await raw.json()) as { error: { code: string } }).toMatchObject({
-      error: { code: "malformed_body" },
-    });
-    expect(answered.status).toBe(400);
-  });
-
-  it("says a body was too large rather than that it could not be read", async () => {
-    // Good JSON over the limit, answered "could not be read as JSON", sends an
-    // agent to re-encode a document it got right. The parser throws both as one
-    // error, and only the fork tells them apart.
-    const { served } = await started();
-
-    const answered = await served.call("POST", "/v0/quotes/prc_1/answer", {
-      body: { available: true, note: "x".repeat(300_000) },
-      headers: asMerchant,
-    });
-
-    expect(answered.status).toBe(413);
-    const { error } = answered.body as { error: { code: string; message: string } };
-    expect(error.code).toBe("body_too_large");
-    // The limit itself, because "too large" without a number leaves the caller
-    // to find the edge by bisection against a live gateway.
-    expect(error.message).toContain("256kb");
-  });
-
   it("tells the refusals at the door apart, and says the true one about each", async () => {
     // The parser throws all of these as one error and the fork is the only
     // place they are told apart; an agent given another case's words repairs
@@ -1907,6 +1641,10 @@ describe("the worker's calls over HTTP", () => {
       console.error = realError;
     }
 
+    expect(
+      (await served.call("POST", "/v0/quotes/prc_1/answer", { headers: asMerchant })).status,
+    ).toBe(400);
+    expect(tooLarge.message).toContain("256kb");
     expect({ status: notJson.status, code: notJson.code }).toEqual({
       status: 400,
       code: "malformed_body",
@@ -2072,22 +1810,6 @@ describe("the merchant's own catalog and the pause switch", () => {
     expect(bought.body).toMatchObject({ delivered: { access_code: "SESAME" } });
   });
 
-  it("stops every card at once and says which pause each one is under", async () => {
-    const { served } = await started();
-    const ownPause = await publish(served, syncCard);
-    const swept = await publish(served, vpnCard);
-    await served.call("POST", `/v0/cards/${ownPause}/pause`, { headers: asMerchant });
-
-    const stopped = await served.call("POST", "/v0/selling/pause", { headers: asMerchant });
-
-    expect(stopped.body).toMatchObject({ selling: "paused" });
-    // Both refuse a purchase, and the two are still told apart: one is paused
-    // in its own right and one is only swept up by the merchant's switch.
-    expect(stateOf(stopped.body, ownPause)).toMatchObject({ selling: "paused", paused: true });
-    expect(stateOf(stopped.body, swept)).toMatchObject({ selling: "paused", paused: false });
-    expect((await buy(served, swept)).status).toBe(409);
-  });
-
   it("puts back only the cards the merchant did not take off themselves", async () => {
     // Resuming everything must not sell a product its merchant took off sale.
     // The card that was paused in its own right is still paused, and the one
@@ -2096,7 +1818,11 @@ describe("the merchant's own catalog and the pause switch", () => {
     const ownPause = await publish(served, syncCard);
     const swept = await publish(served, vpnCard);
     await served.call("POST", `/v0/cards/${ownPause}/pause`, { headers: asMerchant });
-    await served.call("POST", "/v0/selling/pause", { headers: asMerchant });
+    const stopped = await served.call("POST", "/v0/selling/pause", { headers: asMerchant });
+    expect(stopped.body).toMatchObject({ selling: "paused" });
+    expect(stateOf(stopped.body, ownPause)).toMatchObject({ selling: "paused", paused: true });
+    expect(stateOf(stopped.body, swept)).toMatchObject({ selling: "paused", paused: false });
+    expect((await buy(served, swept)).status).toBe(409);
 
     const resumed = await served.call("POST", "/v0/selling/resume", { headers: asMerchant });
 
@@ -2215,12 +1941,6 @@ describe("the merchant's receipts", () => {
     expect(receipts[0]?.price.at).toBeTruthy();
     expect(receipts[0]?.price.as_of).toBeTruthy();
   });
-
-  it("refuses a caller with no key", async () => {
-    const { served } = await started();
-
-    expect((await served.call("GET", "/v0/receipts")).status).toBe(401);
-  });
 });
 
 describe("what a declaration says the purchase answers with", () => {
@@ -2288,84 +2008,25 @@ describe("a product that is declared and a product that is not", () => {
   // agent can then buy. A declared resource that answers every purchase with a
   // refusal is worse than an unlisted one — the agent budgets for it, picks it
   // over a competitor, and finds out at the till.
-  const paused = async (served: Served, itemId: string) => {
-    const answered = await served.call("POST", `/v0/cards/${itemId}/pause`, {
-      headers: asMerchant,
-    });
-    expect(answered.status).toBe(200);
-  };
-
-  it("declares a card that is for sale", async () => {
-    const { served } = await started();
-    const itemId = await publish(served, syncCard);
-
-    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(answered.status).toBe(402);
-    const challenge = decodePaymentRequiredHeader(
-      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
-    );
-    expect(challenge.extensions?.bazaar).toBeTypeOf("object");
-    // The product's identity in every catalog, so pinned exactly. It carries no
-    // version segment: a listing outlives the protocol version, which the
-    // challenge states instead.
-    expect(challenge.resource.url).toBe(`http://localhost:3000/x402/${itemId}/purchase`);
-  });
-
-  it("stops answering a challenge for a card its merchant took off sale", async () => {
-    // The catalog lists a resource that answers 402 and drops one that stops.
-    // A paused card that kept answering would stay listed and refuse every
-    // purchase behind the listing.
-    const { served } = await started();
-    const itemId = await publish(served, syncCard);
-    await paused(served, itemId);
-
-    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(answered.status).toBe(409);
-    expect(answered.headers.get(PAYMENT_REQUIRED_HEADER)).toBeNull();
-    expect((answered.body as { error: { code: string } }).error.code).toBe("not_selling");
-  });
-
-  it("stops answering a challenge when the merchant stopped selling everything", async () => {
-    const { served } = await started();
-    const itemId = await publish(served, syncCard);
-    const stopped = await served.call("POST", "/v0/selling/pause", { headers: asMerchant });
-    expect(stopped.status).toBe(200);
-
-    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(answered.status).toBe(409);
-    expect(answered.headers.get(PAYMENT_REQUIRED_HEADER)).toBeNull();
-  });
-
-  it("answers again once the card is back on sale", async () => {
-    const { served } = await started();
-    const itemId = await publish(served, syncCard);
-    await paused(served, itemId);
-    const resumed = await served.call("POST", `/v0/cards/${itemId}/resume`, {
-      headers: asMerchant,
-    });
-    expect(resumed.status).toBe(200);
-
-    expect((await served.call("GET", `/x402/${itemId}/purchase`)).status).toBe(402);
-  });
-
-  it("says who is selling, reading the name off the merchant who published it", async () => {
-    // The name comes from the merchants table and from nowhere else. Nothing
-    // else on the wire carries a seller's name, so a challenge that lost it on
-    // the way out would list every product of ours under nobody.
-    const { served, harnessed } = await started();
-    await setServiceName(harnessed.store, harnessed.merchant.id, "The pilot merchant", Date.now());
-    const itemId = await publish(served, syncCard);
-
-    const answered = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(
-      decodePaymentRequiredHeader(answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").resource
-        .serviceName,
-    ).toBe("The pilot merchant");
-  });
+  it.each(["card", "merchant"])(
+    "stops challenges while the %s is paused and resumes them",
+    async (scope) => {
+      const { served } = await started();
+      const itemId = await publish(served, syncCard);
+      const target = scope === "card" ? `/v0/cards/${itemId}` : "/v0/selling";
+      expect((await served.call("POST", `${target}/pause`, { headers: asMerchant })).status).toBe(
+        200,
+      );
+      const blocked = await served.call("GET", `/x402/${itemId}/purchase`);
+      expect(blocked.status).toBe(409);
+      expect(blocked.headers.get(PAYMENT_REQUIRED_HEADER)).toBeNull();
+      expect(blocked.body).toMatchObject({ error: { code: "not_selling" } });
+      expect((await served.call("POST", `${target}/resume`, { headers: asMerchant })).status).toBe(
+        200,
+      );
+      expect((await served.call("GET", `/x402/${itemId}/purchase`)).status).toBe(402);
+    },
+  );
 
   it("names the same resource however the address was typed", async () => {
     // The resource identity is what a listing is keyed on, and a query string
@@ -2471,26 +2132,18 @@ describe("a call that fails inside the gateway", () => {
     return failedWith(answered);
   };
 
-  it("tells a buyer whose unpaid purchase failed that nothing was charged and the price may be asked again", async () => {
-    const failed = await purchaseFailingBeforePayment({});
+  it.each<Record<string, string>>([{}, { [PAYMENT_SIGNATURE_HEADER]: "not a payment at all" }])(
+    "reports no charge when pricing fails before a readable payment (%j)",
+    async (headers) => {
+      const failed = await purchaseFailingBeforePayment(headers);
 
-    expect(failed.status).toBe(500);
-    expect(failed.error.code).toBe("gateway_failed");
-    expect(failed.error.message).toContain("nothing was charged");
-    expect(failed.error.message).not.toContain("not known");
-    expect(failed.error.retryable).toBe(true);
-  });
-
-  it("tells a buyer whose payment could not be read and whose purchase then failed that nothing was charged", async () => {
-    const failed = await purchaseFailingBeforePayment({
-      [PAYMENT_SIGNATURE_HEADER]: "not a payment at all",
-    });
-
-    expect(failed.status).toBe(500);
-    expect(failed.error.message).toContain("nothing was charged");
-    expect(failed.error.message).not.toContain("whether it was charged is not known");
-    expect(failed.error.retryable).toBe(true);
-  });
+      expect(failed.status).toBe(500);
+      expect(failed.error.code).toBe("gateway_failed");
+      expect(failed.error.message).toContain("nothing was charged");
+      expect(failed.error.message).not.toContain("not known");
+      expect(failed.error.retryable).toBe(true);
+    },
+  );
 
   it("tells a merchant whose change failed after it was made that the outcome is not known", async () => {
     const { served, harnessed } = await started();

@@ -90,14 +90,20 @@ describe("the merchant closes Agentify fulfillment without deciding the money", 
   });
 
   it("blocks delivery, dispatch and charging after closure while retaining held goods", () => {
-    const closed = must(reach("delivered_unpaid"), { kind: "close_called", at: T0 + 10 }).order;
+    const held = walk(reach("dispatched"), [
+      { kind: "deadline_expired", at: T0 + 999_999, deadline: "sync_response" },
+      { kind: "handler_delivered", at: T0 + 1_000_000 },
+    ]);
+    expect(held).toMatchObject({ state: "expired", heldFulfillment: true });
+    const closed = must(held, { kind: "close_called", at: T0 + 1_000_001 }).order;
+    expect(closed.heldFulfillment).toBe(true);
     for (const kind of [
       "deliver_called",
       "handler_delivered",
       "order_dispatched",
       "purchase_repeated",
     ] as const) {
-      const result = transition(closed, { kind, at: T0 + 20 });
+      const result = transition(closed, { kind, at: T0 + 1_000_002 });
       if (kind === "order_dispatched") {
         expect(result.ok).toBe(false);
       }

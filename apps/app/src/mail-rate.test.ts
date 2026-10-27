@@ -74,8 +74,10 @@ describe("the application's messages about a wallet", () => {
     const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, TEST_CHANNEL.PAYMENT_NETWORK);
     const percent = (part: number): string => `${(part / network.totalAllocation) * 100}%`;
     expect(held.tell).not.toBeNull();
-    expect(logged.join("\n")).toContain(
-      `It pays only this wallet, ${percent(network.totalAllocation - network.commissionAllocation)} of every sale, and Agentify, ${percent(network.commissionAllocation)}.`,
-    );
+    const message = logged.join("\n");
+    expect(message).toContain(WALLET);
+    expect(message).toContain(SPLIT);
+    expect(message).toContain(percent(network.totalAllocation - network.commissionAllocation));
+    expect(message).toContain(percent(network.commissionAllocation));
   });
 });

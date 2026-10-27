@@ -11,7 +11,7 @@
 import { createLogger } from "@agentify/observability";
 import { type FakePostgres, fakePostgres } from "@agentify/scanner-database/fake-postgres";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import type { WorkerHealth } from "./health.js";
+import { startHealthServer, type WorkerHealth } from "./health.js";
 import { workerDatabase } from "./infrastructure.js";
 
 let database: FakePostgres;
@@ -70,6 +70,16 @@ it("logs a connection the database ends while a transaction holds it once, by it
 
   expect(unlistened).toEqual([]);
   expect(health.databaseConnected).toBe(false);
+  expect(health.ready).toBe(false);
+  const server = startHealthServer(0, health);
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP health server");
+    expect((await fetch(`http://127.0.0.1:${address.port}/health/ready`)).status).toBe(503);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
   expect(logged.map((line) => JSON.parse(line))).toEqual([
     expect.objectContaining({
       level: "error",

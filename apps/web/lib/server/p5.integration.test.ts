@@ -20,17 +20,12 @@ import {
   waitlistEntries,
 } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { action as dataRequestRoute } from "../../app/routes/api/v1/account.data-request";
 import { visitorOf } from "./auth";
 import { encryptSensitiveValue, hmacHex } from "./crypto";
-import {
-  COPY_RETRY_DELAYS_MS,
-  retryDueDataCopies,
-  runDataCopy,
-  SETTLED_COPY_RETENTION_MS,
-} from "./data-copy";
+import { COPY_RETRY_DELAYS_MS, retryDueDataCopies, runDataCopy } from "./data-copy";
 import { getDatabase } from "./database";
 import { getOperatorDashboard } from "./operator-dashboard";
 import { executeRetentionCleanup } from "./privacy";
@@ -63,7 +58,9 @@ const migrationsFolder = fileURLToPath(
 const admin = createDatabase(connectionString, { max: 1 });
 let dashboardServer: Server | undefined;
 let sellerDashboardMode: "unavailable" | "retained" | "deleted" = "retained";
-let dashboardDelayMs = 0;
+const dashboardDelayMs = 0;
+let deletionGate: Promise<void> | undefined;
+let deletionStarted: (() => void) | undefined;
 let sellerDashboardDeleteRequests = 0;
 
 /**
@@ -73,7 +70,9 @@ let sellerDashboardDeleteRequests = 0;
 type AskedCopy = { email: string; request: string; scanner: Record<string, unknown> };
 const copiesAsked: AskedCopy[] = [];
 let copyAnswer: "accepted" | "refused" | "unknown" | "no_answer" | "too_large" = "accepted";
-let copyDelayMs = 0;
+const copyDelayMs = 0;
+let copyGate: Promise<void> | undefined;
+let copyStarted: (() => void) | undefined;
 
 /**
  * The sessions the stand-in dashboard answers for, by cookie value. A privacy
@@ -192,6 +191,8 @@ beforeAll(async () => {
         request: body.request ?? "",
         scanner: body.scanner ?? {},
       });
+      copyStarted?.();
+      if (copyGate) await copyGate;
       if (copyDelayMs) await new Promise((resolve) => setTimeout(resolve, copyDelayMs));
       if (copyAnswer === "no_answer") respondJson(response, 503, {});
       else if (copyAnswer === "too_large") respondJson(response, 413, {});
@@ -215,6 +216,8 @@ beforeAll(async () => {
       return;
     }
     sellerDashboardDeleteRequests += 1;
+    deletionStarted?.();
+    if (deletionGate) await deletionGate;
     if (dashboardDelayMs) {
       await new Promise((resolve) => setTimeout(resolve, dashboardDelayMs));
     }
@@ -361,19 +364,33 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
       .where(eq(scannerIdentityDeletionOperations.operationId, operation.operationId));
 
     sellerDashboardMode = "deleted";
-    dashboardDelayMs = 75;
+    let release!: () => void;
+    let reached!: () => void;
+    const received = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    deletionStarted = () => {
+      reached();
+      if (sellerDashboardDeleteRequests - before > 1) release();
+    };
+    deletionGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const before = sellerDashboardDeleteRequests;
-    const results = await Promise.all([
-      runScannerIdentityDeletionOperation({
-        operationId: operation.operationId,
-      }),
-      runScannerIdentityDeletionOperation({
-        operationId: operation.operationId,
-      }),
-    ]);
-    dashboardDelayMs = 0;
-    expect(results.sort()).toEqual(["completed", "not_found"]);
-    expect(sellerDashboardDeleteRequests - before).toBe(1);
+    const first = runScannerIdentityDeletionOperation({ operationId: operation.operationId });
+    try {
+      await received;
+      await expect(
+        runScannerIdentityDeletionOperation({ operationId: operation.operationId }),
+      ).resolves.toBe("not_found");
+      expect(sellerDashboardDeleteRequests - before).toBe(1);
+    } finally {
+      release();
+      deletionStarted = undefined;
+      deletionGate = undefined;
+      await first;
+    }
+    await expect(first).resolves.toBe("completed");
     await expect(retryPendingScannerIdentityDeletions()).resolves.toBe(0);
   });
 
@@ -482,25 +499,102 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
         expiresAt: new Date(now.getTime() - 86_400_000),
       });
 
+    const { db } = getDatabase();
+    const original = onlyRow(
+      await db
+        .select()
+        .from(registrationIntents)
+        .where(eq(registrationIntents.scanId, fixture.scanId)),
+    );
+    const keptIntentIds = [createUuidV7(), createUuidV7()];
+    await db.insert(registrationIntents).values(
+      keptIntentIds.map((id, index) => ({
+        ...original,
+        id,
+        consumedAt: new Date(now.getTime() - 7 * 86_400_000 + index),
+      })),
+    );
+    await db.insert(rateLimitEvents).values([
+      {
+        id: createUuidV7(),
+        keyHash: "fresh-rolling-rate",
+        kind: "scan_ip_hour",
+        occurredAt: now,
+        expiresAt: new Date(now.getTime() + 1),
+      },
+      {
+        id: createUuidV7(),
+        keyHash: "boundary-rolling-rate",
+        kind: "scan_ip_hour",
+        occurredAt: now,
+        expiresAt: now,
+      },
+    ]);
+    await db.insert(rateWindows).values([
+      {
+        keyHash: "fresh-fixed-rate",
+        kind: "scan_target_day",
+        windowStart: now,
+        expiresAt: new Date(now.getTime() + 1),
+      },
+      { keyHash: "boundary-fixed-rate", kind: "scan_target_day", windowStart: now, expiresAt: now },
+    ]);
     await expect(executeRetentionCleanup({ now, batchSize: 10 })).resolves.toMatchObject({
       registrationIntentsDeleted: 1,
-      rateLimitRowsDeleted: 2,
+      rateLimitRowsDeleted: 4,
     });
     await expect(executeRetentionCleanup({ now, batchSize: 10 })).resolves.toMatchObject({
       registrationIntentsDeleted: 0,
       rateLimitRowsDeleted: 0,
     });
+    expect(
+      (
+        await db
+          .select()
+          .from(registrationIntents)
+          .where(eq(registrationIntents.scanId, fixture.scanId))
+      )
+        .map((intent) => intent.id)
+        .sort(),
+    ).toEqual([...keptIntentIds].sort());
+    expect(
+      await db
+        .select()
+        .from(rateLimitEvents)
+        .where(eq(rateLimitEvents.keyHash, "fresh-rolling-rate")),
+    ).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(rateLimitEvents)
+        .where(eq(rateLimitEvents.keyHash, "boundary-rolling-rate")),
+    ).toHaveLength(0);
+    expect(
+      await db.select().from(rateWindows).where(eq(rateWindows.keyHash, "fresh-fixed-rate")),
+    ).toHaveLength(1);
+    expect(
+      await db.select().from(rateWindows).where(eq(rateWindows.keyHash, "boundary-fixed-rate")),
+    ).toHaveLength(0);
   });
 });
 
 describe("the operator page", () => {
   it("reads a database the migrations built, with nothing installed beside them", async () => {
+    const ids: string[] = [];
+    const newest = Date.now() + 60_000;
+    for (let index = 0; index < 55; index += 1) {
+      const fixture = await createLeadFixture(`operator-page-${index}`);
+      await getDatabase()
+        .db.update(scans)
+        .set({ acceptedAt: new Date(newest + index * 1000) })
+        .where(eq(scans.id, fixture.scanId));
+      ids.push(fixture.scanId);
+    }
     const dashboard = await getOperatorDashboard();
     expect(dashboard.daily).toHaveLength(30);
-    // The days are UTC days, whatever the zone of the database or of the process.
     expect(dashboard.daily.at(-1)?.day).toBe(new Date().toISOString().slice(0, 10));
-    expect(dashboard.overview.scansTotal).toBeGreaterThan(0);
-    expect(dashboard.recentScans.length).toBeLessThanOrEqual(50);
+    expect(dashboard.overview.scansTotal).toBeGreaterThanOrEqual(55);
+    expect(dashboard.recentScans.map((scan) => scan.scanId)).toEqual(ids.slice(-50).reverse());
   });
 
   it("counts a registration from its record, whether or not an event was kept for it", async () => {
@@ -663,23 +757,55 @@ describe("a request for a copy of an address's data", () => {
   });
 
   it("does not send a second copy for a press within ten minutes of the first, at once or after", async () => {
+    const now = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+    let release!: () => void;
+    let reached!: () => void;
+    const received = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    copyGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    copyStarted = () => {
+      reached();
+      if (copiesAsked.length - asked > 1) release();
+    };
     copyAnswer = "accepted";
     const fixture = await createLeadFixture("copy-twice");
     const cookie = signedInAs(fixture.email);
     const asked = copiesAsked.length;
-    copyDelayMs = 75;
-
-    const both = await Promise.all([
-      askForACopy(cookie, fixture.email),
-      askForACopy(cookie, fixture.email),
-    ]);
-    copyDelayMs = 0;
-    const again = await askForACopy(cookie, fixture.email);
-
-    expect(copiesAsked.slice(asked)).toHaveLength(1);
-    expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
-    expect(both.map(({ status }) => status)).toEqual([200, 200]);
-    expect(again.body).toMatchObject({ status: "sent", fresh: false, minutes_ago: 0 });
+    const first = askForACopy(cookie, fixture.email);
+    try {
+      await received;
+      const concurrent = await askForACopy(cookie, fixture.email);
+      expect(concurrent.body).toMatchObject({ status: "pending", outcome: "in_progress" });
+      expect(copiesAsked.slice(asked)).toHaveLength(1);
+      release();
+      copyGate = undefined;
+      copyStarted = undefined;
+      expect((await first).body).toMatchObject({ status: "sent" });
+      vi.setSystemTime(now + 599_999);
+      expect((await askForACopy(cookie, fixture.email)).body).toMatchObject({
+        status: "sent",
+        fresh: false,
+      });
+      expect(copiesAsked.slice(asked)).toHaveLength(1);
+      vi.setSystemTime(now + 600_000);
+      expect((await askForACopy(cookie, fixture.email)).body).toMatchObject({
+        status: "sent",
+        fresh: true,
+      });
+      expect(copiesAsked.slice(asked)).toHaveLength(2);
+      expect(await copyRequestsOf(fixture.email)).toHaveLength(2);
+    } finally {
+      release();
+      copyGate = undefined;
+      copyStarted = undefined;
+      await first;
+      vi.useRealTimers();
+    }
   });
 
   it("tries again a copy the mail service did not take, and sends it on a later try", async () => {
@@ -719,7 +845,14 @@ describe("a request for a copy of an address's data", () => {
 
     expect(answered.body).toMatchObject({ status: "pending", outcome: "no_answer" });
     expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({ lastOutcome: "no_answer" });
+    const [pending] = await copyRequestsOf(fixture.email);
+    if (!pending) throw new Error("the unknown copy request was not persisted");
+    const before = copiesAsked.length;
     copyAnswer = "accepted";
+    await makeDue(pending.id);
+    await expect(retryDueDataCopies()).resolves.toBeGreaterThanOrEqual(1);
+    expect(copiesAsked.slice(before).map(({ email }) => email)).toContain(fixture.email);
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({ state: "sent", attempts: 2 });
   });
 
   it("promises minutes that cover every try left when the press comes during the fourth", async () => {
@@ -761,7 +894,14 @@ describe("a request for a copy of an address's data", () => {
       state: "pending",
       lastOutcome: "no_answer",
     });
+    const [pending] = await copyRequestsOf(fixture.email);
+    if (!pending) throw new Error("the unknown copy request was not persisted");
+    const before = copiesAsked.length;
     copyAnswer = "accepted";
+    await makeDue(pending.id);
+    await expect(retryDueDataCopies()).resolves.toBeGreaterThanOrEqual(1);
+    expect(copiesAsked.slice(before).map(({ email }) => email)).toContain(fixture.email);
+    expect((await copyRequestsOf(fixture.email))[0]).toMatchObject({ state: "sent", attempts: 2 });
   });
 
   it("goes with the address when the address is deleted", async () => {
@@ -884,21 +1024,38 @@ describe("a request for a copy of an address's data", () => {
   });
 
   it("forgets a request thirty days after it was sent or gave up, and not before", async () => {
-    copyAnswer = "accepted";
-    const fixture = await createLeadFixture("copy-forgotten");
-    await askForACopy(signedInAs(fixture.email), fixture.email);
-    const [sent] = await copyRequestsOf(fixture.email);
-    if (sent === undefined) throw new Error("no copy request was recorded");
-
-    await retryDueDataCopies();
-    expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
-
-    await getDatabase()
-      .db.update(dataCopyRequests)
-      .set({ settledAt: new Date(Date.now() - SETTLED_COPY_RETENTION_MS - 1) })
-      .where(eq(dataCopyRequests.id, sent.id));
-    await retryDueDataCopies();
-
-    expect(await copyRequestsOf(fixture.email)).toEqual([]);
+    const now = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (const state of ["sent", "failed"] as const) {
+        vi.setSystemTime(now);
+        copyAnswer = "accepted";
+        const fixture = await createLeadFixture(`copy-forgotten-${state}`);
+        await askForACopy(signedInAs(fixture.email), fixture.email);
+        const [sent] = await copyRequestsOf(fixture.email);
+        if (!sent) throw new Error("no settled copy request was recorded");
+        await getDatabase()
+          .db.update(dataCopyRequests)
+          .set({
+            state,
+            attempts: state === "failed" ? 5 : 1,
+            lastOutcome: state === "failed" ? "no_answer" : null,
+            requestedAt: new Date(now - 31 * 86_400_000),
+            settledAt: new Date(now - 30 * 86_400_000),
+          })
+          .where(eq(dataCopyRequests.id, sent.id));
+        vi.setSystemTime(now - 1);
+        await retryDueDataCopies();
+        expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
+        vi.setSystemTime(now);
+        await retryDueDataCopies();
+        expect(await copyRequestsOf(fixture.email)).toHaveLength(1);
+        vi.setSystemTime(now + 1);
+        await retryDueDataCopies();
+        expect(await copyRequestsOf(fixture.email)).toEqual([]);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

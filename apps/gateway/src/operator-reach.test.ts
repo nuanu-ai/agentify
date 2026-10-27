@@ -13,6 +13,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const apps = fileURLToPath(new URL("../../", import.meta.url));
@@ -62,32 +63,51 @@ describe("the operator's reader", () => {
     expect(reaching).toStrictEqual([]);
   });
 
-  it("is reached in the dashboard's pages only through the workspace's layout, which opens its door", () => {
-    // The workspace's services hold the reader. The process hands the pages a
-    // door, which reads the operator flag; the layout opens it and sets what
-    // its pages read. A page that read either elsewhere would reach every
-    // merchant's rows from outside the layout's check.
+  it("keeps resolved workspace capabilities inside their authenticated boundary, including aliases", () => {
     const dashboard = join(apps, "dashboard");
-    const uses: readonly (readonly [RegExp, RegExp])[] = [
-      // Opening the door.
-      [/\.workspace\b/, /^(app\/routes\/admin\/only\.tsx$|src\/page-services\.ts$|src\/admin\/)/],
-      // What the layout set.
-      [
-        /\bworkspaceIn\(|\bcontext\.(get|set)\(workspace\)/,
-        /^(app\/services\.ts|app\/routes\/admin\/)/,
-      ],
-      // Building the door.
-      [/\bworkspaceDoorFor\b/, /^(src\/admin\/|src\/server\.ts$)/],
-    ];
-    const reaching = [...sourcesIn(join(dashboard, "src")), ...sourcesIn(join(dashboard, "app"))]
-      .map((file) => [relative(dashboard, file), readFileSync(file, "utf8")] as const)
-      .filter(([path]) => !path.startsWith("src/testing/"))
-      .flatMap(([path, text]) =>
-        uses
-          .filter(([use, allowed]) => use.test(text) && !allowed.test(path))
-          .map(([use]) => `${path} ${use}`),
-      );
-
+    const files = [...sourcesIn(join(dashboard, "src")), ...sourcesIn(join(dashboard, "app"))];
+    const config = ts.readConfigFile(join(dashboard, "tsconfig.json"), ts.sys.readFile);
+    const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, dashboard);
+    const program = ts.createProgram(files, parsed.options);
+    const checker = program.getTypeChecker();
+    const exported = (file: string, name: string): ts.Symbol => {
+      const source = program.getSourceFile(join(dashboard, file));
+      const module = source && checker.getSymbolAtLocation(source);
+      const found =
+        module && checker.getExportsOfModule(module).find((symbol) => symbol.name === name);
+      if (!found) throw new Error(`missing capability owner ${file}: ${name}`);
+      return found;
+    };
+    const pageServices = exported("src/page-services.ts", "PageServices");
+    const door = checker.getDeclaredTypeOfSymbol(pageServices).getProperty("workspace");
+    if (!door) throw new Error("page services have no workspace capability");
+    const boundaries = new Map<ts.Symbol, RegExp>([
+      [door, /^(app\/routes\/admin\/only\.tsx$|src\/page-services\.ts$|src\/admin\/)/],
+      [exported("app/services.ts", "workspace"), /^(app\/services\.ts$|app\/routes\/admin\/)/],
+      [exported("app/services.ts", "workspaceIn"), /^(app\/services\.ts$|app\/routes\/admin\/)/],
+      [exported("src/admin/index.ts", "workspaceDoorFor"), /^(src\/admin\/|src\/server\.ts$)/],
+    ]);
+    const reaching: string[] = [];
+    for (const file of files) {
+      const path = relative(dashboard, file);
+      if (path.startsWith("src/testing/")) continue;
+      const source = program.getSourceFile(file);
+      if (!source) throw new Error(`source not resolved: ${path}`);
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node)) {
+          let symbol = checker.getSymbolAtLocation(node);
+          if (symbol && symbol.flags & ts.SymbolFlags.Alias)
+            symbol = checker.getAliasedSymbol(symbol);
+          const allowed = symbol && boundaries.get(symbol);
+          if (allowed && !allowed.test(path)) {
+            const line = source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+            reaching.push(`${path}:${line}`);
+          }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source);
+    }
     expect(reaching).toStrictEqual([]);
   });
 });

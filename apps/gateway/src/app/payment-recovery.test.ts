@@ -1,7 +1,7 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { authorizationFingerprint } from "../http/x402.js";
+import { X402Facilitator } from "../adapters/x402/facilitator.js";
+import { authorizationFingerprint, PaymentEdge } from "../http/x402.js";
 import { type PaymentRecoveryContext, RecoveryFailure } from "../ports/facilitator.js";
 import { drawEverything, type Harness, harness, signedFor } from "../testing/harness.js";
 import { aWallet } from "../testing/signed-payment.js";
@@ -70,6 +70,33 @@ async function purchase(fulfillment: "async" | "sync" = "async", fulfillDeadline
   if (offered.step !== "pay") throw new Error("no price was offered");
   return { h, recovery, orderId: offered.order.order.id };
 }
+
+/** Parses the actual saved x402 terms; a reconstruction must never call a payment endpoint. */
+const legacyRecoveryParser = (h: Harness) =>
+  new X402Facilitator(
+    {
+      async verify() {
+        throw new Error("legacy parsing must not verify");
+      },
+      async settle() {
+        throw new Error("legacy parsing must not charge");
+      },
+      async getSupported() {
+        throw new Error("legacy parsing must not contact a provider");
+      },
+    },
+    new PaymentEdge(h.runtime.config),
+  );
+
+const recoveryDiagnostics = (lines: readonly string[]) =>
+  lines.flatMap((line) => {
+    try {
+      const parsed = JSON.parse(line);
+      return parsed.event === "payment_recovery_pending" ? [parsed] : [];
+    } catch {
+      return [];
+    }
+  });
 
 describe("recovering a payment without another charge", () => {
   it("keeps unpaid held goods private after closure and never charges a repeat", async () => {
@@ -195,39 +222,6 @@ describe("recovering a payment without another charge", () => {
     }
   });
 
-  it("refuses an expired original authorization without disclosing held goods or denying a possible charge", async () => {
-    const { h, recovery, orderId } = await purchase("sync");
-    await h.store.claimPayment("fp-original", orderId);
-    await h.gateway.runner.presentVerifiedPayment(
-      orderId,
-      PAYER,
-      "PAYMENT",
-      recovery.payTo,
-      h.now(),
-      { recovery, fingerprint: "fp-original" },
-    );
-    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.runner.apply(
-      orderId,
-      { kind: "handler_delivered", at: h.now() },
-      { delivery: { activation_code: "KEPT" } },
-    );
-    h.advance(700_000);
-    await h.gateway.runner.apply(orderId, {
-      kind: "deadline_expired",
-      deadline: "settle_response",
-      at: h.now(),
-    });
-    h.facilitator.willRefuseVerification("price_stale", "the authorization expired");
-    const retried = await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
-    expect(retried.step).toBe("payment_not_taken");
-    expect(JSON.stringify(retried)).not.toContain("nothing was charged");
-    expect(JSON.stringify(retried)).not.toContain(orderId);
-    expect(JSON.stringify(retried)).not.toContain("KEPT");
-    expect(h.facilitator.verifies).toHaveLength(0);
-    expect(h.facilitator.settles).toHaveLength(1);
-  });
-
   it("requires a fresh payment signed by its payer to retrieve goods after the original authorization was consumed", async () => {
     const { h, recovery, orderId } = await purchase();
     const quoted = await h.store.orderById(orderId);
@@ -261,7 +255,10 @@ describe("recovering a payment without another charge", () => {
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it("refuses a different payment while the original outcome is unknown without claiming nothing was charged", async () => {
+  it.each([
+    { label: "another signature", elapsed: 6000, presented: "FORGED-SIGNATURE" },
+    { label: "an expired original authorization", elapsed: 700000, presented: "PAYMENT" },
+  ])("keeps an unresolved payment private for $label", async ({ elapsed, presented }) => {
     const { h, recovery, orderId } = await purchase("sync");
     await h.store.claimPayment("fp-original", orderId);
     await h.gateway.runner.presentVerifiedPayment(
@@ -278,15 +275,20 @@ describe("recovering a payment without another charge", () => {
       { kind: "handler_delivered", at: h.now() },
       { delivery: { activation_code: "KEPT" } },
     );
+    h.advance(elapsed);
     await h.gateway.runner.apply(orderId, {
       kind: "deadline_expired",
       deadline: "settle_response",
-      at: h.now() + 6000,
+      at: h.now(),
     });
-    h.facilitator.willRefuseVerification("signature", "forged signature on the public nonce");
-    const forged = await h.gateway.payPurchase(orderId, "FORGED-SIGNATURE", "fp-original");
+    const forged = await h.gateway.payPurchase(orderId, presented, "fp-original");
     expect(forged.step).toBe("payment_not_taken");
-    expect(JSON.stringify(forged)).not.toContain("nothing was charged");
+    if (forged.step !== "payment_not_taken") throw new Error("unknown payment accepted another");
+    expect(forged.why).toMatch(/earlier payment.*not known.*no second/i);
+    expect(forged.retryable).toBe(true);
+    expect(JSON.stringify(forged)).not.toContain(orderId);
+    expect(JSON.stringify(forged)).not.toContain("KEPT");
+    expect(h.facilitator.settles).toHaveLength(1);
     expect(forged).not.toHaveProperty("delivery");
     expect(h.facilitator.verifies).toHaveLength(0);
     expect((await h.store.orderById(orderId))?.payment).toBe("PAYMENT");
@@ -311,7 +313,11 @@ describe("recovering a payment without another charge", () => {
     release();
     const refused = await checking;
     expect(refused.step).toBe("payment_not_taken");
-    expect(JSON.stringify(refused)).not.toContain("nothing was charged");
+    if (refused.step !== "payment_not_taken") throw new Error("a second payment was accepted");
+    expect(refused.why).toMatch(/earlier payment.*not known.*no second/i);
+    expect(refused.retryable).toBe(true);
+    expect((await h.store.orderById(orderId))?.payment).toBe("PAYMENT");
+    expect((await h.store.orderById(orderId))?.paidBy).toBe(PAYER);
     expect(refused).not.toHaveProperty("delivery");
     expect(h.facilitator.settles).toHaveLength(1);
   });
@@ -337,7 +343,11 @@ describe("recovering a payment without another charge", () => {
     const refused = await checking;
 
     expect(refused.step).toBe("payment_not_verified");
-    expect(JSON.stringify(refused)).not.toContain("nothing was charged");
+    if (refused.step !== "payment_not_verified")
+      throw new Error("unverified payment read a purchase");
+    expect(refused.why).toMatch(/this payment.*(?:charg.*nothing|no.*charge)/i);
+    expect(refused.why).toMatch(/already paid.*fresh payment.*without a second charge/i);
+    expect((await h.store.orderById(orderId))?.order.payment).toBe("settled");
     expect(JSON.stringify(refused)).not.toContain(orderId);
     expect(JSON.stringify(refused)).not.toContain("PRIVATE");
     expect(h.facilitator.settles).toHaveLength(1);
@@ -362,7 +372,10 @@ describe("recovering a payment without another charge", () => {
       "chain",
     );
     expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
     const envelopes = await drawEverything(h, h.merchant.id);
     expect(envelopes.map((envelope) => envelope.kind)).toEqual(["order_event"]);
     expect(envelopes[0]).toMatchObject({
@@ -442,7 +455,10 @@ describe("recovering a payment without another charge", () => {
       "chain",
     );
     expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
     release();
     await repeating;
     if (current === undefined) throw new Error("no fresh attempt");
@@ -489,14 +505,23 @@ describe("recovering a payment without another charge", () => {
     h.store.putReceipt = putReceipt;
     await h.gateway.runner.reconcilePayments();
     expect((await h.store.orderById(orderId))?.order.state).toBe("delivered");
-    expect(await h.store.receiptForOrder(orderId)).not.toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).not.toBeNull();
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it("reconstructs an old unanswered attempt from its saved terms and retains its authorization", async () => {
+  it("reconstructs an old unanswered attempt from its real saved signed terms and retains its authorization", async () => {
     const { h, recovery, orderId } = await purchase();
+    const quoted = await h.store.orderById(orderId);
+    if (!quoted) throw new Error("no quoted order");
+    const original = await signedFor(h, quoted, PAYER_WALLET, {
+      nonce: "0x01",
+      payTo: recovery.payTo,
+    });
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(orderId, original.payment, original.fingerprint);
     await h.store.withOrder(orderId, (found) => {
       const {
         paymentAttempt: _attempt,
@@ -506,28 +531,39 @@ describe("recovering a payment without another charge", () => {
       } = found;
       return { save: saved, result: null };
     });
-    // The search may start no later than the order's creation: the payment
-    // was checked after the order existed, and anything later could skip it.
-    const created = (await h.store.orderById(orderId))?.order.timestamps.createdAt;
+    const created = quoted.order.timestamps.createdAt;
+    const parser = legacyRecoveryParser(h);
     let searchedSince: number | undefined;
+    let savedPayment: string | undefined;
     h.runtime.facilitator.recoveryFor = async (charge, since) => {
-      expect(charge).toMatchObject({ payment: "PAYMENT", payTo: recovery.payTo, amount: "12.00" });
       searchedSince = since;
-      return recovery;
+      savedPayment = charge.payment;
+      return parser.recoveryFor(charge, since);
     };
     h.runtime.facilitator.reconcile = async () => ({
       settled: true,
       transaction: TRANSACTION,
       executedAt: h.now(),
     });
-    h.advance(60_000);
+    h.advance(60000);
     await h.gateway.runner.reconcilePayments();
+    expect(savedPayment).toBe(original.payment);
     expect(searchedSince).toBe(created);
-    expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
-    await h.store.forgetClaimsBefore(h.now() + 100_000);
-    expect(await h.store.claimPayment(authorizationFingerprint(recovery), "another-order")).toEqual(
-      { claimed: false, heldBy: orderId },
-    );
+    const reconstructed = await h.store.orderById(orderId);
+    expect(reconstructed?.order.state).toBe("unfulfilled");
+    expect(reconstructed?.paymentAttempt?.recovery).toMatchObject({
+      kind: "evm-exact-eip3009",
+      amount: "12000000",
+      payTo: recovery.payTo,
+      nonce: `0x${"1".padStart(64, "0")}`,
+      notBefore: String(Math.floor(created / 1000) - 30),
+    });
+    expect(reconstructed?.paymentAttempt?.recovery?.payer.toLowerCase()).toBe(PAYER);
+    await h.store.forgetClaimsBefore(h.now() + 100000);
+    expect(await h.store.claimPayment(original.fingerprint, "another-order")).toEqual({
+      claimed: false,
+      heldBy: orderId,
+    });
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
@@ -560,26 +596,16 @@ describe("recovering a payment without another charge", () => {
     ).toBe(true);
   });
 
-  it("leaves a legacy authorization assigned to two saved purchases unknown", async () => {
+  it("leaves a complete signed legacy authorization assigned to two saved purchases unknown", async () => {
     const { h, recovery, orderId } = await purchase();
-    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
-    const payment = encodePaymentSignatureHeader({
-      x402Version: 2,
-      accepted: {
-        scheme: "exact",
-        network: "eip155:84532",
-        asset: recovery.asset,
-        payTo: recovery.payTo,
-        amount: recovery.amount,
-        maxTimeoutSeconds: 600,
-        extra: {},
-      },
-      payload: {
-        authorization: { from: recovery.payer, nonce: recovery.nonce },
-        signature: "0xsigned",
-      },
+    const quoted = await h.store.orderById(orderId);
+    if (!quoted) throw new Error("no quoted order");
+    const original = await signedFor(h, quoted, PAYER_WALLET, {
+      nonce: "0x01",
+      payTo: recovery.payTo,
     });
+    h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await h.gateway.payPurchase(orderId, original.payment, original.fingerprint);
     await h.store.withOrder(orderId, (found) => {
       const {
         paymentAttempt: _attempt,
@@ -587,27 +613,44 @@ describe("recovering a payment without another charge", () => {
         paymentFingerprint: _fingerprint,
         ...saved
       } = found;
-      return { save: { ...saved, payment }, result: null };
+      return { save: saved, result: null };
     });
     const saved = await h.store.orderById(orderId);
-    if (saved === null) throw new Error("no saved order");
+    if (!saved) throw new Error("no saved order");
     await h.store.addOrder({
       ...saved,
       buyerKey: "bk_duplicate",
       order: { ...saved.order, id: "ord_duplicate" },
     });
-    h.runtime.facilitator.recoveryFor = async () => recovery;
-    h.runtime.facilitator.reconcile = async () => ({
-      settled: true,
-      transaction: TRANSACTION,
-      executedAt: h.now(),
-    });
-    h.advance(60_000);
+    const parser = legacyRecoveryParser(h);
+    const context = await parser.recoveryFor(
+      {
+        orderId,
+        payment: original.payment,
+        payTo: recovery.payTo,
+        amount: "12.00",
+        currency: "USD",
+      },
+      quoted.order.timestamps.createdAt,
+    );
+    expect(context).toMatchObject({ amount: "12000000", payTo: recovery.payTo });
+    expect(context?.payer.toLowerCase()).toBe(PAYER);
+    h.runtime.facilitator.recoveryFor = parser.recoveryFor.bind(parser);
+    let reads = 0;
+    h.runtime.facilitator.reconcile = async () => {
+      reads++;
+      return { settled: true, transaction: TRANSACTION, executedAt: h.now() };
+    };
+    h.advance(60000);
     await h.gateway.runner.reconcilePayments();
-    expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
-    expect((await h.store.orderById("ord_duplicate"))?.order.payment).toBe("settling");
-    expect((await h.store.orderById(orderId))?.paymentAttempt).toBeUndefined();
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(reads).toBe(0);
+    for (const id of [orderId, "ord_duplicate"]) {
+      const record = await h.store.orderById(id);
+      expect(record?.order.payment).toBe("settling");
+      expect(record?.paymentAttempt).toBeUndefined();
+    }
+    expect(await h.store.receipts(h.merchant.id)).toEqual([]);
+    expect(h.facilitator.settles).toHaveLength(1);
   });
 
   it("keeps an immutable attempt before the network call, and commits only one racing success", async () => {
@@ -711,7 +754,10 @@ describe("recovering a payment without another charge", () => {
     expect(recovered?.order.state).toBe("delivered");
     expect(recovered?.delivery).toEqual({ activation_code: "KEPT-GOODS" });
     expect(recovered?.settlement).toBeNull();
-    expect(await h.store.receiptForOrder(orderId)).toMatchObject({
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toMatchObject({
       transaction: TRANSACTION,
       paid_at: new Date(executedAt).toISOString(),
     });
@@ -737,7 +783,10 @@ describe("recovering a payment without another charge", () => {
       completion: null,
     });
     expect((await h.store.orderById(orderId))?.order.payment).not.toBe("settle_failed");
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
@@ -772,7 +821,9 @@ describe("recovering a payment without another charge", () => {
     for (let poll = 0; poll < 2; poll += 1) {
       const lines = await logged(() => h.gateway.runner.reconcilePayments());
       expect(lines.join("\n")).toContain("eth_getBlockByNumber at rpc.example failed: HTTP 429.");
-      expect(lines.join("\n")).toMatch(/\b1 unresolved payment\b.*\b21 minutes\b/);
+      expect(recoveryDiagnostics(lines)).toMatchObject([
+        { value: 1, duration_ms: 21 * 60000, status: "enabled" },
+      ]);
     }
     expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
   });
@@ -799,9 +850,9 @@ describe("recovering a payment without another charge", () => {
     await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
     h.advance(5 * 60_000);
     const lines = await logged(() => h.gateway.runner.reconcilePayments());
-    expect(lines.join("\n")).toMatch(
-      /\b1 unresolved payment\b.*\b5 minutes\b.*recovery is off.*no RPC.*PAYMENT_RPC_URL/,
-    );
+    expect(recoveryDiagnostics(lines)).toMatchObject([
+      { value: 1, duration_ms: 5 * 60000, status: "disabled", destination: "PAYMENT_RPC_URL" },
+    ]);
   });
 
   it("says nothing while no payment is unresolved", async () => {
@@ -824,6 +875,6 @@ describe("recovering a payment without another charge", () => {
     h.advance(60_000);
     const lines = await logged(() => h.gateway.runner.reconcilePayments());
     expect((await h.store.orderById(orderId))?.order.payment).toBe("settled");
-    expect(lines.join("\n")).not.toMatch(/unresolved payment/);
+    expect(recoveryDiagnostics(lines)).toEqual([]);
   });
 });

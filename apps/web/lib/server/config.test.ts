@@ -57,6 +57,8 @@ describe("clean-clone environment", () => {
     Object.assign(process.env, {
       DATABASE_URL: "postgresql://agentify:agentify@localhost:5432/agentify",
       REGISTRATION_ENABLED: "false",
+      DASHBOARD_IDENTITY_URL: "",
+      REPORT_IDENTITY_SECRET: "",
     });
     const config = getServerConfig();
     expect(config.REGISTRATION_ENABLED).toBe(false);

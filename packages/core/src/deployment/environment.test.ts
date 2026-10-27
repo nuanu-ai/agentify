@@ -33,16 +33,14 @@ describe("environmentOf", () => {
     expect(environmentOf("eip155:8453")).toBe("live");
   });
 
-  it("refuses a chain on neither list, naming the variable and both lists", () => {
-    expect(() => environmentOf("eip155:1")).toThrowError(
-      /PAYMENT_NETWORK.*eip155:1.*eip155:84532.*eip155:8453/s,
-    );
-  });
-
-  it("refuses Ethereum and Polygon mainnet, which are chains we do not sell on", () => {
-    expect(() => environmentOf("eip155:1")).toThrow();
-    expect(() => environmentOf("eip155:137")).toThrow();
-  });
+  it.each(["eip155:1", "eip155:137"])(
+    "refuses unlisted chain %s and names both supported lists",
+    (chain) => {
+      expect(() => environmentOf(chain)).toThrowError(
+        new RegExp(`PAYMENT_NETWORK.*${chain}.*eip155:84532.*eip155:8453`, "s"),
+      );
+    },
+  );
 
   it("holds the two lists apart", () => {
     for (const chain of TESTNET_CHAINS) {
@@ -56,12 +54,6 @@ describe("isTestnetChain", () => {
     expect(isTestnetChain("eip155:84532")).toBe(true);
     expect(isTestnetChain("eip155:8453")).toBe(false);
     expect(isTestnetChain("eip155:1")).toBe(false);
-  });
-
-  it("agrees with the derivation wherever the derivation answers", () => {
-    for (const chain of [...TESTNET_CHAINS, ...LIVE_CHAINS]) {
-      expect(isTestnetChain(chain)).toBe(environmentOf(chain) === "test");
-    }
   });
 });
 

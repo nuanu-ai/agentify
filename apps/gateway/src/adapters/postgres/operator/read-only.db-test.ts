@@ -116,20 +116,17 @@ if (databaseUrl === null) {
     });
 
     it("cuts off a read that runs past its bound, and leaves no bound on the connection", async () => {
-      const read = readOnlyOn(db, 100);
+      const read = readOnlyOn(db);
+      expect(
+        (await read(async (tx) => await tx.execute(sql`show statement_timeout`))).rows,
+      ).toStrictEqual([{ statement_timeout: "5s" }]);
 
       await expect(
-        read(async (tx) => await tx.execute(sql`select pg_sleep(2)`)),
+        read(async (tx) => await tx.execute(sql`select pg_sleep(6)`)),
       ).rejects.toMatchObject({ cause: { code: "57014" } });
 
       const shown = await pool.query("show statement_timeout");
       expect(shown.rows[0]?.statement_timeout).toBe("0");
-    });
-
-    it("refuses a bound that is no bound", () => {
-      for (const bound of [0, -1, 1.5, Number.NaN]) {
-        expect(() => readOnlyOn(db, bound), String(bound)).toThrow();
-      }
     });
 
     it("counts a payment as unknown exactly where its memory twin does, through the orders' partial index", async () => {

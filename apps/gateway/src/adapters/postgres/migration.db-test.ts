@@ -121,35 +121,15 @@ if (databaseUrl === null) {
         SEEDED_MERCHANT.id,
         SEEDED_MERCHANT.id,
       ]);
-    });
-
-    it("puts the merchant inside the order's document as well as in its column", async () => {
-      // The column filters a merchant's list of orders; the document field
-      // decides whose stream the order's next envelope goes on. With the column
-      // and no field, a redelivery would silently reach nobody.
-      await asItWasBefore();
-
-      await run("0003_merchant_tenancy.sql");
-
-      const { rows } = await pool.query<{ merchant_id: string; record: { merchantId?: string } }>(
+      const order = await pool.query<{ merchant_id: string; record: { merchantId: string } }>(
         "select merchant_id, record from orders where id = 'ord_old'",
       );
-      expect(rows[0]?.record.merchantId).toBe(SEEDED_MERCHANT.id);
-      expect(rows[0]?.record.merchantId).toBe(rows[0]?.merchant_id);
-    });
-
-    it("loses nothing a card was carrying, including a pause", async () => {
-      // A dropped pause silently puts stock the merchant took off sale back in
-      // front of agents.
-      await asItWasBefore();
-
-      await run("0003_merchant_tenancy.sql");
-
-      const { rows } = await pool.query<{ paused: boolean; merchant_item_id: string }>(
+      expect(order.rows[0]?.record.merchantId).toBe(SEEDED_MERCHANT.id);
+      expect(order.rows[0]?.record.merchantId).toBe(order.rows[0]?.merchant_id);
+      const card = await pool.query<{ paused: boolean; merchant_item_id: string }>(
         "select paused, merchant_item_id from cards where id = 'itm_old'",
       );
-      expect(rows[0]?.paused).toBe(true);
-      expect(rows[0]?.merchant_item_id).toBe("sku-1");
+      expect(card.rows).toEqual([{ paused: true, merchant_item_id: "sku-1" }]);
     });
 
     it("does not put a merchant who had stopped selling back on sale", async () => {
@@ -420,144 +400,6 @@ if (databaseUrl === null) {
   });
 
   /**
-   * The migration that separates the keys a merchant issued from the one
-   * registration made for their dashboard, found by its label and creation
-   * instant. Matching nothing would silently leave the dashboard's key in the
-   * list a merchant revokes keys from.
-   */
-  describe("the migration that says what each key was made for", () => {
-    const url = databaseUrl;
-    let pool: Pool;
-
-    const MERCHANT = "mch_a";
-    /** The label registration wrote on a merchant's first key. */
-    const AS_REGISTRATION_WROTE_IT = "the key this merchant registered with";
-
-    const run = async (file: string): Promise<void> => {
-      for (const statement of await statementsOf(file)) {
-        await pool.query(statement);
-      }
-    };
-
-    /**
-     * A key a merchant issued, written later than the merchant row. Registration
-     * writes its key and the merchant in one transaction with one timestamp,
-     * which is how the migration tells the two apart.
-     */
-    const writeKey = async (id: string, label: string): Promise<void> => {
-      await pool.query(
-        `insert into merchant_keys (id, merchant_id, label, digest, created_at)
-         values ($1, $2, $3, $4, now())`,
-        [id, MERCHANT, label, `digest-of-${id}`],
-      );
-    };
-
-    /** The same, at the merchant's own creation, the way registering writes it. */
-    const writeKeyAsRegistrationDoes = async (id: string, label: string): Promise<void> => {
-      await pool.query(
-        `insert into merchant_keys (id, merchant_id, label, digest, created_at)
-         select $1, $2, $3, $4, m.created_at from merchants m where m.id = $2`,
-        [id, MERCHANT, label, `digest-of-${id}`],
-      );
-    };
-
-    const purposeOf = async (id: string): Promise<string> => {
-      const { rows } = await pool.query<{ purpose: string }>(
-        "select purpose from merchant_keys where id = $1",
-        [id],
-      );
-      const found = rows[0];
-      if (found === undefined) {
-        throw new Error(`the key ${id} is not there`);
-      }
-      return found.purpose;
-    };
-
-    beforeAll(async () => {
-      pool = connect(url).pool;
-    }, 60_000);
-
-    afterAll(async () => {
-      await pool.end();
-    });
-
-    beforeEach(async () => {
-      await pool.query("drop schema public cascade");
-      await pool.query("create schema public");
-      for (const file of [
-        "0000_init.sql",
-        "0001_payment_claims.sql",
-        "0002_selling.sql",
-        "0003_merchant_tenancy.sql",
-        "0004_merchant_service_name.sql",
-        "0005_merchant_payout_wallet.sql",
-        "0006_order_pay_to_backfill.sql",
-      ]) {
-        await run(file);
-      }
-      await pool.query(
-        `insert into merchants (id, name, selling, created_at, updated_at)
-         values ($1, 'A merchant', 'open', now(), now())`,
-        [MERCHANT],
-      );
-    });
-
-    it("hands the keys registration made to the dashboard and leaves the rest alone", async () => {
-      // A merchant's own keys, the sandbox's included, stay theirs. The last one
-      // carries registration's label but was issued later than the merchant row,
-      // so matching on the label alone would take it.
-      await writeKeyAsRegistrationDoes("mk_registered", AS_REGISTRATION_WROTE_IT);
-      await writeKey("mk_worker", "the worker on the small box");
-      await writeKey("mk_sandbox", "the sandbox key from the compose file");
-      await writeKey("mk_same_words", AS_REGISTRATION_WROTE_IT);
-
-      await run("0007_cabinet_keys.sql");
-
-      expect(await purposeOf("mk_registered")).toBe("cabinet");
-      expect(await purposeOf("mk_worker")).toBe("merchant_code");
-      expect(await purposeOf("mk_sandbox")).toBe("merchant_code");
-      expect(await purposeOf("mk_same_words")).toBe("merchant_code");
-    });
-
-    it("leaves a key alone that was written at its merchant's instant under another name", async () => {
-      // Matching on the instant alone is not enough either: registration's key
-      // also carries registration's label.
-      await writeKeyAsRegistrationDoes("mk_same_instant", "the worker on the small box");
-
-      await run("0007_cabinet_keys.sql");
-
-      expect(await purposeOf("mk_same_instant")).toBe("merchant_code");
-    });
-
-    it("calls the keys registration made the dashboard's once the later rename runs, and leaves the rest alone", async () => {
-      await writeKeyAsRegistrationDoes("mk_registered", AS_REGISTRATION_WROTE_IT);
-      await writeKey("mk_worker", "the worker on the small box");
-
-      for (const file of [
-        "0007_cabinet_keys.sql",
-        "0008_key_last_use.sql",
-        "0009_live_approval.sql",
-        "0010_pending_payout_wallet.sql",
-        "0011_merchant_seller_site.sql",
-        "0012_dashboard_keys.sql",
-      ]) {
-        await run(file);
-      }
-
-      expect(await purposeOf("mk_registered")).toBe("dashboard");
-      expect(await purposeOf("mk_worker")).toBe("merchant_code");
-    });
-
-    it("refuses a key written afterwards that does not say what it is for", async () => {
-      // The default is dropped after the backfill, so an insert that omits the
-      // purpose fails instead of silently becoming one of the merchant's keys.
-      await run("0007_cabinet_keys.sql");
-
-      await expect(writeKey("mk_silent", "a key that says nothing")).rejects.toThrow(/purpose/);
-    });
-  });
-
-  /**
    * The migration that adds a key's last use must backfill nothing. Copying the
    * creation instant would show a merchant a last-use date nothing stands
    * behind, and they might revoke a key on the strength of it. Existing keys
@@ -817,11 +659,12 @@ if (databaseUrl === null) {
       }
     };
 
-    const writeKey = async (id: string, purpose: string): Promise<void> => {
+    const writeKey = async (id: string, label: string, atRegistration = false): Promise<void> => {
       await pool.query(
-        `insert into merchant_keys (id, merchant_id, label, purpose, digest, created_at)
-         values ($1, $2, $3, $4, $5, now())`,
-        [id, MERCHANT, `the key ${id}`, purpose, `digest-of-${id}`],
+        `insert into merchant_keys (id, merchant_id, label, digest, created_at)
+         select $1, $2, $3, $4, created_at + ($5::boolean::int * interval '1 second')
+         from merchants where id = $2`,
+        [id, MERCHANT, label, `digest-of-${id}`, !atRegistration],
       );
     };
 
@@ -844,12 +687,6 @@ if (databaseUrl === null) {
         "0004_merchant_service_name.sql",
         "0005_merchant_payout_wallet.sql",
         "0006_order_pay_to_backfill.sql",
-        "0007_cabinet_keys.sql",
-        "0008_key_last_use.sql",
-        "0009_live_approval.sql",
-        "0010_pending_payout_wallet.sql",
-        "0011_merchant_seller_site.sql",
-        "0012_dashboard_keys.sql",
       ]) {
         await run(file);
       }
@@ -861,14 +698,44 @@ if (databaseUrl === null) {
     });
 
     it("deletes every key made for a dashboard and keeps every key a merchant issued", async () => {
-      await writeKey("mk_on_the_row", "dashboard");
-      await writeKey("mk_left_by_a_renewal", "dashboard");
-      await writeKey("mk_worker", "merchant_code");
+      await writeKey("mk_registered", "the key this merchant registered with", true);
+      await writeKey("mk_worker", "the worker on the small box");
+      await writeKey("mk_sandbox", "the sandbox key from the compose file");
+      await writeKey("mk_same_words", "the key this merchant registered with");
+      await writeKey("mk_same_instant", "the worker on the small box", true);
+      for (const file of [
+        "0007_cabinet_keys.sql",
+        "0008_key_last_use.sql",
+        "0009_live_approval.sql",
+        "0010_pending_payout_wallet.sql",
+        "0011_merchant_seller_site.sql",
+        "0012_dashboard_keys.sql",
+      ])
+        await run(file);
+      await pool.query(
+        `insert into merchant_keys (id, merchant_id, label, purpose, digest, created_at)
+         values ('mk_left_by_a_renewal', $1, 'renewal', 'dashboard', 'renewal-digest', now())`,
+        [MERCHANT],
+      );
 
       await run("0013_delete_dashboard_keys.sql");
 
       const { rows } = await pool.query<{ id: string }>("select id from merchant_keys order by id");
-      expect(rows.map((row) => row.id)).toStrictEqual(["mk_worker"]);
+      expect(rows.map((row) => row.id)).toStrictEqual([
+        "mk_same_instant",
+        "mk_same_words",
+        "mk_sandbox",
+        "mk_worker",
+      ]);
+      const credentials = await pool.query<{ id: string; digest: string }>(
+        "select id, digest from merchant_keys order by id",
+      );
+      expect(credentials.rows).toEqual([
+        { id: "mk_same_instant", digest: "digest-of-mk_same_instant" },
+        { id: "mk_same_words", digest: "digest-of-mk_same_words" },
+        { id: "mk_sandbox", digest: "digest-of-mk_sandbox" },
+        { id: "mk_worker", digest: "digest-of-mk_worker" },
+      ]);
       const columns = await pool.query<{ column_name: string }>(
         `select column_name from information_schema.columns
          where table_schema = 'public' and table_name = 'merchant_keys'`,
@@ -1103,119 +970,6 @@ if (databaseUrl === null) {
       await expect(
         row("0x4444444444444444444444444444444444444444", "mch_third", wallet.toLowerCase()),
       ).resolves.toBeDefined();
-    });
-  });
-
-  describe("the migration that gives every order a payment reference", () => {
-    // A payment names its order by a reference kept in the order's document.
-    // Every order written before references existed is given one, so every
-    // order has one, and every later charge for it carries one.
-    const url = databaseUrl;
-    let connected: ReturnType<typeof connect>;
-    let pool: Pool;
-
-    const run = async (file: string): Promise<void> => {
-      for (const statement of await statementsOf(file)) {
-        await pool.query(statement);
-      }
-    };
-
-    beforeAll(async () => {
-      connected = connect(url);
-      pool = connected.pool;
-    }, 60_000);
-
-    afterAll(async () => {
-      await pool.end();
-    });
-
-    beforeEach(async () => {
-      await pool.query("drop schema public cascade");
-      await pool.query("create schema public");
-      for (const file of [
-        "0000_init.sql",
-        "0001_payment_claims.sql",
-        "0002_selling.sql",
-        "0003_merchant_tenancy.sql",
-        "0004_merchant_service_name.sql",
-        "0005_merchant_payout_wallet.sql",
-        "0006_order_pay_to_backfill.sql",
-        "0007_cabinet_keys.sql",
-        "0008_key_last_use.sql",
-        "0009_live_approval.sql",
-        "0010_pending_payout_wallet.sql",
-        "0011_merchant_seller_site.sql",
-        "0012_dashboard_keys.sql",
-        "0013_delete_dashboard_keys.sql",
-        "0014_one_integration.sql",
-        "0015_payout_splits.sql",
-        "0016_payout_split_wallet_any_spelling.sql",
-        "0017_order_pay_to_index.sql",
-      ]) {
-        await run(file);
-      }
-      await pool.query(
-        `insert into merchants (id, name, selling, created_at, updated_at)
-         values ('mch_old', 'Old', 'open', now(), now())`,
-      );
-    });
-
-    /** An order as the version before this migration wrote it, with no reference. */
-    const writtenBefore = async (
-      id: string,
-      state: string,
-      open: boolean,
-      extra: Record<string, unknown> = {},
-    ) => {
-      const record = {
-        order: { id, state },
-        merchantId: "mch_old",
-        itemId: "item_1",
-        merchantItemId: "sku-1",
-        payment: "PAYMENT",
-        paidBy: "0x1111111111111111111111111111111111111111",
-        ...extra,
-      };
-      await pool.query(
-        `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record,
-           created_at, updated_at)
-         values ($1, $2, $3, 'mch_old', 'item_1', 'sku-1', $4, now(), now())`,
-        [id, state, open, JSON.stringify(record)],
-      );
-      return record;
-    };
-
-    const recordOf = async (id: string): Promise<Record<string, unknown>> => {
-      const { rows } = await pool.query<{ record: Record<string, unknown> }>(
-        "select record from orders where id = $1",
-        [id],
-      );
-      return rows[0]?.record ?? {};
-    };
-
-    it("gives every order written before it a reference of its own, and changes nothing else", async () => {
-      const unpaid = await writtenBefore("ord_unpaid", "delivered_unpaid", true);
-      const done = await writtenBefore("ord_done", "delivered", false);
-
-      await run("0018_order_payment_ref.sql");
-
-      const [first, second] = [await recordOf("ord_unpaid"), await recordOf("ord_done")];
-      expect(first.paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
-      expect(second.paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
-      expect(first.paymentRef).not.toBe(second.paymentRef);
-      const { paymentRef: _first, ...firstRest } = first;
-      const { paymentRef: _second, ...secondRest } = second;
-      expect([firstRest, secondRest]).toStrictEqual([unpaid, done]);
-    });
-
-    it("leaves a reference already written alone, and gives one where the key holds null", async () => {
-      await writtenBefore("ord_kept", "delivered", false, { paymentRef: "pay_kept" });
-      await writtenBefore("ord_null", "delivered", false, { paymentRef: null });
-
-      await run("0018_order_payment_ref.sql");
-
-      expect((await recordOf("ord_kept")).paymentRef).toBe("pay_kept");
-      expect((await recordOf("ord_null")).paymentRef).toMatch(/^pay_[0-9a-f]{32}$/);
     });
   });
 

@@ -32,7 +32,17 @@ describe("worker health server", () => {
     const readiness = await fetch(`http://127.0.0.1:${address.port}/health/ready`);
     expect(readiness.status).toBe(503);
     expect(await readiness.json()).toMatchObject({
-      checks: { configured_concurrency: 10 },
+      checks: { configured_concurrency: 10, queue: false, database: false },
     });
+    Object.assign(health, {
+      live: false,
+      ready: true,
+      queueConnected: true,
+      databaseConnected: true,
+    });
+    expect((await fetch(`http://127.0.0.1:${address.port}/health/live`)).status).toBe(503);
+    const recovered = await fetch(`http://127.0.0.1:${address.port}/health/ready`);
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toMatchObject({ checks: { queue: true, database: true } });
   });
 });

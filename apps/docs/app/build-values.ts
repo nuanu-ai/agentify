@@ -36,7 +36,12 @@ import {
   unitsIn,
   WAITING_FOR_PAYMENT_AT_MOST,
 } from "@agentify/core/published";
-import { ShipToSchema, SMALLEST_PRICE } from "@nuanu-ai/agentify-contracts";
+import { ORDER_CALL_ERROR_CODES, ShipToSchema, SMALLEST_PRICE } from "@nuanu-ai/agentify-contracts";
+import {
+  ANSWER_NOT_UNDERSTOOD,
+  CALL_DID_NOT_REACH_US,
+  OUTCOME_UNKNOWN,
+} from "../../../packages/sdk/src/client.js";
 import { isSiteValueName } from "./site-values.js";
 import { APP } from "./where.server.js";
 
@@ -58,7 +63,12 @@ const sdk = JSON.parse(
 const [address] = (ShipToSchema.meta()?.examples as readonly unknown[] | undefined) ?? [];
 if (address === undefined) throw new Error("the contract's address schema publishes no example");
 
+const toolCodes = [ANSWER_NOT_UNDERSTOOD, CALL_DID_NOT_REACH_US, OUTCOME_UNKNOWN];
+
 const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
+  "order-call-codes": { count: ORDER_CALL_ERROR_CODES.length + toolCodes.length },
+  "gateway-order-call-codes": { count: ORDER_CALL_ERROR_CODES.length },
+  "tool-order-call-codes": { count: toolCodes.length },
   "sdk-version": { text: sdk.version },
   "parcel-purchase": { text: JSON.stringify({ params: {}, ship_to: address }, null, 2) },
   "smallest-price": { text: SMALLEST_PRICE },

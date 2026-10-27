@@ -583,7 +583,6 @@ function fromCreated(order: Order, event: StateEvent): TransitionResult {
     case "purchase_repeated":
       return ok(order);
     case "payment_verified":
-    case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
     case "order_dispatched":
@@ -605,13 +604,6 @@ function fromQuoted(order: Order, event: StateEvent): TransitionResult {
       return order.mode.settle === "after_fulfillment"
         ? enterPaid(order, event.at, "verified")
         : startSettle(order, event.at);
-    case "payment_verification_failed":
-      return ok(
-        closeWithoutMoney(order, "rejected", {
-          cause: "payment_not_verified",
-          reason: event.reason,
-        }),
-      );
     case "payment_settled":
       // Only a payment that was actually sent for execution can come back
       // done: without this, a stray settle would hand the merchant an order
@@ -681,7 +673,6 @@ function fromPaid(order: Order, event: StateEvent): TransitionResult {
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
       return notApplicable(order, event);
@@ -833,7 +824,6 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
       return notApplicable(order, event);
@@ -877,7 +867,6 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -919,7 +908,6 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
     case "handler_refused":
@@ -964,12 +952,6 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
       return order.payment === "settling" || order.payment === "outcome_unknown"
         ? ok({ ...order, payment: "settle_failed" })
         : notApplicable(order, event);
-    case "payment_verification_failed":
-      // A payment that did not check out never became a charge, so there is
-      // nothing to write down. In particular it must not clear the record of a
-      // charge that is out there unaccounted for, or a repeat would walk past
-      // the guard above and send a second one.
-      return ok(order);
     case "deliver_called":
     case "handler_delivered":
       return answer(order, { ok: true, result: "already_delivered" });
@@ -1014,7 +996,6 @@ function fromUnfulfilled(order: Order, event: StateEvent): TransitionResult {
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
       return notApplicable(order, event);
@@ -1056,7 +1037,6 @@ function fromFulfillmentClosed(order: Order, event: StateEvent): TransitionResul
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_refused":
@@ -1081,7 +1061,6 @@ function fromFailed(order: Order, event: StateEvent): TransitionResult {
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "payment_settled":
     case "payment_settle_failed":
     case "order_dispatched":
@@ -1143,10 +1122,6 @@ function fromExpired(order: Order, event: StateEvent): TransitionResult {
       return order.heldFulfillment && order.payment === "none"
         ? startSettle(order, event.at, "fulfilled")
         : notApplicable(order, event);
-    case "payment_verification_failed":
-      // The repeat's payment did not check out. The purchase stays closed and
-      // the goods stay where they are; the agent may try again.
-      return order.heldFulfillment ? ok(order) : notApplicable(order, event);
     case "deliver_called":
     case "refuse_called":
       return closedToMerchant(order);
@@ -1199,7 +1174,6 @@ function fromClosedWithoutMoney(order: Order, event: StateEvent): TransitionResu
     case "quote_answered":
     case "quote_silent":
     case "payment_verified":
-    case "payment_verification_failed":
     case "order_dispatched":
     case "handler_accepted":
     case "handler_delivered":

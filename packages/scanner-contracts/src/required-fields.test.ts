@@ -32,6 +32,7 @@ import {
 import {
   deleteUnattachedPersonRequestSchema,
   readSessionRequestSchema,
+  sendDataCopyRequestSchema,
   sendReportLinkRequestSchema,
 } from "./report-identity.js";
 
@@ -415,6 +416,18 @@ const contracts = [
       request: uuid,
     },
     required: ["operation", "email", "destination", ["destination", "report"], "request"],
+  },
+  {
+    name: "sendDataCopyRequestSchema",
+    schema: sendDataCopyRequestSchema,
+    valid: {
+      operation: "copy",
+      request: uuid,
+      requested_at: timestamp,
+      email: "owner@example.com",
+      scanner: { lead: { email: "owner@example.com" } },
+    },
+    required: ["operation", "request", "requested_at", "email", "scanner"],
   },
   {
     name: "readSessionRequestSchema",

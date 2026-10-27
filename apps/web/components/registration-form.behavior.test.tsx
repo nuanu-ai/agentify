@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -43,29 +43,70 @@ async function askForALink() {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
   sessionStorage.clear();
   cleanup();
 });
 
 describe("asking the scanner for a verification link", () => {
-  it("counts down the wait the refusal carried, not one of its own", async () => {
-    answerWith(429, {
-      error: {
-        code: "verification_link_cooldown",
-        message:
-          "No new link was sent, because one was asked for recently. You can ask for another in 45 seconds.",
-        retryable: true,
-        retry_after_seconds: 45,
-        request_id: "019f5b6a-4b9f-7000-8000-000000000001",
-      },
+  it.each([
+    [45, "45s"],
+    [510, "9m"],
+    [7, "7s"],
+    [40, "40s"],
+  ] as const)("counts down the server's %s-second wait through expiry", async (seconds, label) => {
+    let asks = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input).endsWith("/api/v2/session")) return json(200, { status: "signed_out" });
+      asks += 1;
+      return json(429, {
+        error: {
+          code: "verification_link_cooldown",
+          message: `No new link was sent. Wait ${seconds} seconds.`,
+          retryable: true,
+          retry_after_seconds: seconds,
+          request_id: "019f5b6a-4b9f-7000-8000-000000000001",
+        },
+      });
     });
-
-    const button = await askForALink();
-
-    await waitFor(() => expect(button().disabled).toBe(true));
-    expect(button().textContent).toContain("45");
-    expect(button().textContent).not.toContain("60");
-    expect(screen.getByText(/45 seconds/)).toBeTruthy();
+    sessionStorage.setItem(`agentify:scan-token:${scanId}`, "scan-token");
+    render(<RegistrationForm scanId={scanId} />);
+    const email = await screen.findByLabelText("Email");
+    fireEvent.change(email, { target: { value: "owner@example.com" } });
+    fireEvent.click(screen.getByLabelText(/acknowledge the scanner data notice/i));
+    const form = email.closest("form");
+    if (!form) throw new Error("registration email has no form");
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.submit(form);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const button = screen.getByRole("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain(label);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    if (seconds === 45) expect(button.textContent).toContain("44s");
+    for (let tick = 0; tick < seconds - 2; tick += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+    }
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toContain("1s");
+    fireEvent.click(button);
+    expect(asks).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(button.disabled).toBe(false);
+    fireEvent.submit(form);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(asks).toBe(2);
   });
 
   it("leaves the button working when the refusal names no wait", async () => {
@@ -91,16 +132,35 @@ describe("asking the scanner for a verification link", () => {
     const button = await askForALink();
 
     await waitFor(() => expect(screen.getByText(/Check your inbox/)).toBeTruthy());
+    expect(screen.getByText(/We sent a secure link to owner@example\.com/)).toBeTruthy();
     expect(button().disabled).toBe(false);
     expect(button().textContent).not.toMatch(/\d/);
   });
 
-  it("files a signed-in person's own ask under the address it showed, sends none, and says so first", async () => {
+  it("opens the acknowledged signed-in person's report under the displayed address", async () => {
     // The ask names the address the form showed, so a session changed in
     // another tab is refused rather than given the report. The API here
     // refuses an ask that names another address or none, or that does not
     // acknowledge the data notice, so the report opens only for the ask the
     // form must send.
+    const navigated: string[] = [];
+    let submitted: Record<string, unknown> | undefined;
+    const browserWindow = window;
+    vi.stubGlobal(
+      "window",
+      new Proxy(browserWindow, {
+        get(target, name) {
+          return name === "location"
+            ? {
+                ...target.location,
+                assign: (url: string) => {
+                  navigated.push(url);
+                },
+              }
+            : Reflect.get(target, name, target);
+        },
+      }),
+    );
     let settled = () => {};
     const answered = new Promise<void>((resolve) => {
       settled = resolve;
@@ -110,6 +170,7 @@ describe("asking the scanner for a verification link", () => {
         return json(200, { status: "signed_in", email: "owner@example.com", operator: false });
       }
       const ask = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      submitted = ask;
       settled();
       return ask.email !== "owner@example.com" || ask.dataset_reuse_acknowledged !== true
         ? json(400, {
@@ -135,9 +196,11 @@ describe("asking the scanner for a verification link", () => {
     await userEvent.click(screen.getByRole("button"));
 
     await answered;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    // Opening the report keeps the button waiting; a refusal would say why.
-    expect(screen.getByRole("button").textContent).toBe("Sending…");
+    await waitFor(() => expect(navigated).toEqual([`/report/${scanId}`]));
+    expect(submitted).toMatchObject({
+      email: "owner@example.com",
+      dataset_reuse_acknowledged: true,
+    });
     expect(screen.queryByText(/not one the form should send/)).toBeNull();
   });
 
@@ -352,6 +415,7 @@ describe("asking the scanner for a verification link", () => {
 
     const title = (await screen.findByLabelText(/^Phone/)).getAttribute("title") ?? "";
 
-    expect(title.trim()).not.toBe("");
+    expect(title).toMatch(/start with \+.*country code/i);
+    expect(title).toMatch(/8 to 15 digits/);
   });
 });

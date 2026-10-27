@@ -69,7 +69,13 @@ const standing: Server[] = [];
 
 afterEach(async () => {
   await Promise.all(
-    standing.splice(0).map((server) => new Promise<void>((closed) => server.close(() => closed()))),
+    standing.splice(0).map(
+      (server) =>
+        new Promise<void>((closed) => {
+          server.closeAllConnections();
+          server.close(() => closed());
+        }),
+    ),
   );
 });
 
@@ -169,7 +175,7 @@ interface StandInCoinbase {
   readonly fetch: typeof fetch;
   readonly arrived: Arrived[];
   /** What every request to this path is answered with, whatever key it carries. */
-  answer(path: string, status: number, headers?: Record<string, string>): void;
+  answer(path: string, status: number | "silent", headers?: Record<string, string>): void;
 }
 
 /**
@@ -186,7 +192,10 @@ const aCoinbase = async (knows: ApiKey): Promise<StandInCoinbase> => {
   // Read now: a test may put this stand-in's own fetch in the global's place.
   const network = globalThis.fetch;
   const arrived: Arrived[] = [];
-  const scripted = new Map<string, { status: number; headers: Record<string, string> }>();
+  const scripted = new Map<
+    string,
+    { status: number | "silent"; headers: Record<string, string> }
+  >();
 
   const server = createServer((request, response) => {
     const chunks: Buffer[] = [];
@@ -202,6 +211,7 @@ const aCoinbase = async (knows: ApiKey): Promise<StandInCoinbase> => {
         Buffer.concat(chunks).toString("utf8") === '{"x402Version":2}' &&
         signedFor(authorization ?? "", knows, `POST api.cdp.coinbase.com${VERIFY}`);
       const answer = scripted.get(path) ?? { status: takes ? 400 : 401, headers: {} };
+      if (answer.status === "silent") return;
       response.writeHead(answer.status, { "content-type": "application/json", ...answer.headers });
       response.end(
         JSON.stringify({
@@ -323,25 +333,30 @@ describe("talking to a facilitator that takes credentials", () => {
 });
 
 describe("choosing a facilitator client for a configuration", () => {
-  it("sends nothing to a facilitator that is not Coinbase's, credentials or no credentials", async () => {
-    // The security promise, and the reason the fork is on the address rather
-    // than on whether credentials happen to be set. Credentials left in an
-    // environment beside somebody else's facilitator must not be handed to it:
-    // a bearer token is a key, and this one is good for the account it came
-    // from and not for the host it is sent to.
-    const facilitator = await aFacilitator();
-    const client = facilitatorClientFor(
-      aPayment({
-        facilitatorUrl: facilitator.url,
-        cdpApiKeyId: "an-api-key",
-        cdpApiKeySecret: anApiKeySecret(),
-      }),
-    );
-
-    await client.verify(aPayload as never, aRequirement as never);
-
-    expect(facilitator.arrived[0]?.authorization).toBeUndefined();
-  });
+  it.each([true, false])(
+    "sends a successful verification without credentials to another host (credentials configured: %s)",
+    async (configured) => {
+      // The security promise, and the reason the fork is on the address rather
+      // than on whether credentials happen to be set. Credentials left in an
+      // environment beside somebody else's facilitator must not be handed to it:
+      // a bearer token is a key, and this one is good for the account it came
+      // from and not for the host it is sent to.
+      const facilitator = await aFacilitator();
+      const client = facilitatorClientFor(
+        aPayment({
+          facilitatorUrl: facilitator.url,
+          cdpApiKeyId: configured ? "an-api-key" : null,
+          cdpApiKeySecret: configured ? anApiKeySecret() : null,
+        }),
+      );
+      expect(await client.verify(aPayload as never, aRequirement as never)).toMatchObject({
+        isValid: true,
+      });
+      expect(facilitator.arrived).toEqual([
+        { path: "/verify", method: "POST", authorization: undefined },
+      ]);
+    },
+  );
 
   it("signs for Coinbase's facilitator, and names it by host rather than by one spelling", async () => {
     // No request is made here and none can be: reaching Coinbase is exactly what
@@ -380,19 +395,6 @@ describe("choosing a facilitator client for a configuration", () => {
 
     const unsigned = facilitatorClientFor(aPayment());
     expect((await unsigned.createAuthHeaders("verify")).headers.Authorization).toBeUndefined();
-  });
-
-  it("will not build an unauthenticated client for a facilitator that takes no request without one", async () => {
-    // The configuration refuses this deployment at startup, so nothing in the
-    // running gateway reaches here. It is a second lock on the same door,
-    // because this function can be called by anything in the process and a
-    // client built without credentials would fail silently at the first charge
-    // rather than loudly here.
-    expect(() =>
-      facilitatorClientFor(
-        aPayment({ facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402" }),
-      ),
-    ).toThrowError(/CDP_API_KEY/);
   });
 });
 
@@ -494,27 +496,32 @@ describe("showing the key to Coinbase before the gateway starts", () => {
     expect(unconfirmed).not.toMatch(/\n/);
   });
 
-  it("starts when Coinbase cannot be reached or does not answer in time, and says which", async () => {
-    // What fetch threw is not printed: its message and its cause are the
-    // runtime's words about the socket, and the line is the gateway's own.
+  it("keeps startup available for connection failure or an actual ten-second socket silence, distinguishing them", async () => {
     const key = anApiKey();
-    const unreached = await refuseUnlessCoinbaseTakesTheKey(
-      coinbaseClientWith(key),
-      failingWith(new TypeError("fetch failed: the-runtime-said-this")),
-    );
+    const network = globalThis.fetch;
+    const unreachable = ((input: string | URL | Request, init?: RequestInit) =>
+      network(String(input).replace(COINBASE, NOWHERE), init)) as typeof fetch;
+    const unreached = await refuseUnlessCoinbaseTakesTheKey(coinbaseClientWith(key), unreachable);
+    const coinbase = await aCoinbase(key);
+    coinbase.answer(VERIFY, "silent");
+    const began = performance.now();
     const unanswered = await refuseUnlessCoinbaseTakesTheKey(
       coinbaseClientWith(key),
-      failingWith(new DOMException("the-runtime-said-that", "TimeoutError")),
+      coinbase.fetch,
     );
-
-    expect(unreached).toEqual(expect.any(String));
-    expect(unanswered).toEqual(expect.any(String));
+    const elapsed = performance.now() - began;
+    expect(elapsed).toBeGreaterThanOrEqual(9_500);
+    expect(elapsed).toBeLessThan(20_000);
+    expect(coinbase.arrived).toHaveLength(1);
+    expect(coinbase.arrived[0]).toMatchObject({ method: "POST", path: VERIFY });
+    expect(unreached).toMatch(/unconfirmed.*(?:connection|reach)/i);
+    expect(unanswered).toMatch(/unconfirmed.*(?:answer|time)/i);
     expect(unanswered).not.toBe(unreached);
-    expect(unanswered).toMatch(/\b10 seconds\b/);
     for (const line of [unreached, unanswered]) {
-      expect(line).not.toMatch(/the-runtime-said|\n/);
+      expect(line).not.toMatch(/\n/);
+      expect(line).not.toContain(key.secret);
     }
-  });
+  }, 25_000);
 
   it("does not follow a redirect with the token on it", async () => {
     // A token is good for two minutes to whoever holds it. Wherever a

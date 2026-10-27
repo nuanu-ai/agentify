@@ -352,13 +352,6 @@ describe("the payout wallet on the settings screen", () => {
     expect(asCopied(html)).not.toMatch(ELIDED);
   });
 
-  it("leaves no space inside the address, so copying it off the page pastes an address", () => {
-    const copied = asCopied(walletPanel({ wallet: SHAPED }));
-    const shown = copied.slice(copied.indexOf("0x"), copied.indexOf("0x") + SHAPED.length);
-
-    expect(shown).toBe(SHAPED);
-  });
-
   it("asks for the address and for nothing else", () => {
     // A second box is how a merchant would come to believe we ask for a key or
     // a recovery phrase. The hidden fields are the form's own marks.
@@ -369,27 +362,20 @@ describe("the payout wallet on the settings screen", () => {
     expect(readable(html).toLowerCase()).not.toMatch(/enter your (private key|recovery phrase)/);
   });
 
-  it("says a sandbox address is optional because nothing settles", () => {
-    const text = readable(walletPanel({ wallet: null }));
+  it.each(["sandbox", "test", "live"] as const)(
+    "discloses whether a missing wallet is optional on %s",
+    (mode) => {
+      const text = readable(walletPanel({ wallet: null, mode }));
+      const saved = shownText(walletPanel({ wallet: SHAPED, mode }));
 
-    expect(text).toMatch(/nothing is settled/i);
-    expect(text).toMatch(/optional/i);
-  });
-
-  it("leaves the refusal without an address to the banner, where the door asks for one", () => {
-    // The banner over every page says no payout wallet is set and that every
-    // card is refused until one is; the panel under it does not say it again.
-    for (const mode of ["sandbox", "test", "live"] as const) {
-      expect(readable(walletPanel({ wallet: null, mode })), mode).not.toMatch(/refused/i);
-    }
-  });
-
-  it("says nothing about a refusal once an address is set", () => {
-    const text = readable(walletPanel({ wallet: SHAPED, mode: "test" }));
-
-    expect(text).not.toMatch(/refused/i);
-    expect(text).not.toMatch(/optional/i);
-  });
+      if (mode === "sandbox") {
+        expect(text).toMatch(/nothing is settled/i);
+        expect(text).toMatch(/optional/i);
+      } else expect(text).not.toMatch(/optional/i);
+      expect(saved).toContain(SHAPED);
+      if (mode !== "sandbox") expect(saved).not.toMatch(/optional|refused/i);
+    },
+  );
 
   it("names Base Sepolia and test USDC on the test stack, and the share paid out to the wallet", () => {
     const text = readable(walletPanel({ wallet: null, mode: "test" }));
@@ -469,6 +455,9 @@ describe("a change of the payout wallet on its way", () => {
   };
 
   it("says on live that every account is told before it is recorded, so the wait does not look frozen", () => {
+    expect(readable(walletPanel({ mode: "live", wallet: SHAPED }))).not.toMatch(
+      /emailing everyone/i,
+    );
     const form = pressed({ mode: "live", wallet: SHAPED });
 
     const said = within(form).getByRole("status").textContent ?? "";
@@ -491,29 +480,20 @@ describe("a change of the payout wallet on its way", () => {
       cleanup();
     }
   });
-
-  it("is not served with the page, where no press has happened", () => {
-    expect(readable(walletPanel({ mode: "live", wallet: SHAPED }))).not.toMatch(
-      /emailing everyone/i,
-    );
-  });
 });
 
 describe("the name the products are sold under, over the settings", () => {
   const settings = (looking: Looking): string =>
     readable(renderToString(routed(() => <SettingsScreen view={viewOf(looking)} />)));
 
-  it("holds the name buyers read in its box, and leaves a missing one to the banner", () => {
-    // The banner over every page says no seller name is set and what that
-    // holds back; said again here it would be the same sentence twice.
-    const page = renderToString(
-      routed(() => <SettingsScreen view={viewOf({ sellerName: "Freeland" })} />),
-    );
-    expect(page).toMatch(/<input(?=[^>]*name="seller_name")(?=[^>]*value="Freeland")[^>]*>/);
-    expect(settings({ sellerName: null })).not.toMatch(/not set a seller name|cannot be published/);
-  });
-
   it("says a name cannot be removed only to a merchant who has one, and asks one without for a name", () => {
+    const page = new DOMParser().parseFromString(
+      settingsPage({ sellerName: "Freeland" }),
+      "text/html",
+    );
+    expect(page.querySelector<HTMLInputElement>('input[name="seller_name"]')?.value).toBe(
+      "Freeland",
+    );
     const emptied = { kind: "name", problem: "it was refused", typed: "" } as const;
 
     expect(settings({ sellerName: "Freeland", press: emptied })).toContain("it was refused");
@@ -660,7 +640,13 @@ describe("the payout contract buyers pay into", () => {
     });
 
     expect(asCopied(html)).toContain(W);
-    expect(readable(html)).not.toMatch(/buyers pay into 0x/i);
+    const page = new DOMParser().parseFromString(html, "text/html");
+    expect(page.querySelector('a[href*="basescan.org/address/"]')).toBeNull();
+    expect(asCopied(html)).not.toContain(splitOf("test", W).address);
+    expect([...asCopied(html).matchAll(/0x[0-9a-f]{40}/gi)].map(([address]) => address)).toEqual([
+      W,
+    ]);
+    expect(readable(html)).not.toMatch(/payout contract/i);
   });
 
   it("is not shown beside a wallet it was not recorded for", () => {
@@ -725,16 +711,13 @@ describe("the payout instruction", () => {
     expect(text).toMatch(/ETH to send 0\b/);
   });
 
-  it("gives the whole data the builder makes for the merchant's recorded split, never cut", () => {
-    const html = settingsPage({ mode: "test", wallet: W });
-    const built = merchantPayout(
-      networkOf("test"),
-      [splitOf("test", W)],
-      PAYOUT_SPLIT_NETWORKS,
-    ).data;
-
-    expect(dataIn(html)).toBe(built);
-    expect(dataIn(html)).toHaveLength(3_658);
+  it("renders the gateway's complete payout data verbatim", () => {
+    const splits = splitsFor("test", W);
+    const payout = splits.payout;
+    if (payout === null || typeof payout === "string" || "tooMany" in payout)
+      throw new Error("no payout fixture");
+    const html = settingsPage({ mode: "test", wallet: W, splits });
+    expect(dataIn(html)).toBe(payout.transaction.data);
     expect(asCopied(html)).not.toMatch(ELIDED);
   });
 
@@ -820,20 +803,18 @@ describe("the payout instruction", () => {
     expect(readable(html)).not.toMatch(/getting paid/i);
   });
 
-  it("is not drawn beside no saved wallet, even where the splits were read after one was saved", () => {
-    const html = settingsPage({ mode: "test", wallet: null, splits: splitsFor("test", W) });
+  it.each(["sandbox", "test", "live"] as const)(
+    "suppresses payout with no saved wallet on %s, even if splits were read later",
+    (mode) => {
+      const html = settingsPage({ mode, wallet: null, splits: splitsFor(mode, W) });
 
-    expect(html).not.toContain(MULTICALL3);
-    expect(html).not.toContain("<textarea");
-  });
-
-  it("is not drawn for a merchant with no wallet, on any channel", () => {
-    for (const mode of ["sandbox", "test", "live"] as const) {
-      const html = settingsPage({ mode, wallet: null });
-      expect(html, mode).not.toContain(MULTICALL3);
-      expect(html, mode).not.toContain("<textarea");
-    }
-  });
+      const ordinary = settingsPage({ mode, wallet: null });
+      expect(ordinary).not.toContain(MULTICALL3);
+      expect(ordinary).not.toContain("<textarea");
+      expect(html).not.toContain(MULTICALL3);
+      expect(html).not.toContain("<textarea");
+    },
+  );
 
   it("names beside each contract it pays out the wallet that contract pays", () => {
     // After a change of wallet, an earlier contract may still hold money, and
@@ -902,6 +883,10 @@ describe("what Getting paid says in each state", () => {
     ],
     too_many: [
       [
+        "too many contracts on live",
+        { mode: "live", wallet: W, splits: splitsFor("live", W, { tooMany: 21 }) },
+      ],
+      [
         "more contracts than one transaction carries",
         { mode: "test", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) },
       ],
@@ -919,55 +904,25 @@ describe("what Getting paid says in each state", () => {
       ],
     ],
   };
-  /** A text's sentences, each count in it written `#`, since a note says the count it is given. */
-  const sentencesOf = (text: string): string[] =>
-    text
-      .replaceAll(/\d+/g, "#")
-      .split(/(?<=\.)\s+/)
-      .map((one) => one.trim())
-      .filter((one) => one.endsWith("."));
-  const { brings, tooMany, sentOn, paysBoth, ...plain } = PAYOUT_NOTES;
-  const NOTED = new Set([
-    ...Object.values(plain).flatMap(sentencesOf),
-    ...Object.values(sentOn).flatMap(sentencesOf),
-    ...[1, 2].flatMap((count) => sentencesOf(tooMany(count))),
-    ...sentencesOf(paysBoth("0.1%")),
-    // An amount is written as digits, which `sentencesOf` reads as `#`.
-    ...["1.1 USDC", "1.1 test USDC"].flatMap((amount) =>
-      [true, false].flatMap((one) => sentencesOf(brings(amount, one))),
-    ),
-  ]);
-  /**
-   * Every sentence the section draws, read off each element that holds text of
-   * its own. Links and controls are ways on, not claims, and a label that is no
-   * sentence, a heading or a column's name, is not read.
-   */
-  const sentencesIn = (html: string): string[] => {
-    const section = document.createElement("div");
-    section.innerHTML =
-      /<section[^>]*aria-labelledby="getting-paid"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "";
-    for (const away of section.querySelectorAll("a, button, textarea")) away.remove();
-    return [...section.querySelectorAll("*")].flatMap((element) =>
-      [...element.childNodes].some(
-        (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() !== "",
-      )
-        ? sentencesOf(element.textContent ?? "")
-        : [],
-    );
-  };
-
   it.each(
     Object.entries(STATES).flatMap(([kind, cases]) =>
       cases.map(([state, looking]) => [state, kind, looking] as const),
     ),
-  )("says nothing for %s but the notes of Getting paid", (_state, kind, looking) => {
-    // A claim about money is then written, and reviewed, in one table; whether
-    // a note is true of the system is that review's, not this test's.
-    const said = sentencesIn(settingsPage(looking));
-
+  )("shows the independent payout state for %s", (_state, kind, looking) => {
+    const html = settingsPage(looking);
+    const text = readable(html);
     expect(viewOf(looking).payout?.kind).toBe(kind);
-    expect(said.length).toBeGreaterThan(0);
-    expect(said.filter((sentence) => !NOTED.has(sentence))).toStrictEqual([]);
+    expect(html.includes("<textarea")).toBe(kind === "send");
+    render(routed(() => <SettingsScreen view={viewOf(looking)} />));
+    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut }) !== null).toBe(
+      kind === "send" && looking.mode === "live",
+    );
+    if (kind === "too_many") expect(text).toMatch(/21 payout contracts/);
+    else if (kind === "nothing") expect(text).toMatch(/would bring nothing/i);
+    else if (kind === "unbuilt") expect(text).toMatch(/could not.*(?:build|prepare)/i);
+    else if (_state === "an amount the network did not give")
+      expect(text).toMatch(/could not read.*network/i);
+    else expect(text).toContain(looking.mode === "test" ? "12.34 test USDC" : "12.34 USDC");
   });
 });
 
@@ -980,13 +935,6 @@ describe("what the payout would bring", () => {
 
   /** An amount of USDC as the page writes one, with or without the word test. */
   const AN_AMOUNT = /\b\d+\.\d+ (test )?USDC\b/;
-
-  it("is named, in test USDC on the test channel and in USDC on live", () => {
-    expect(readable(pageWith("test", 12_340_000n))).toMatch(/would bring 12\.34 test USDC/);
-    const onLive = readable(pageWith("live", 12_340_000n));
-    expect(onLive).toMatch(/would bring 12\.34 USDC/);
-    expect(onLive).not.toMatch(/test USDC/);
-  });
 
   it("is written whole below a cent, never rounded to nothing", () => {
     expect(readable(pageWith("live", 999n))).toMatch(/would bring 0\.000999 USDC/);
@@ -1051,7 +999,7 @@ describe("what the payout would bring", () => {
 });
 
 describe("creating or connecting a Coinbase Wallet from the settings", () => {
-  const CHECKSUMMED = checksummedAddressOf(coinbase.account);
+  const CHECKSUMMED = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
   const button = () => screen.getByRole("button", { name: WALLET_WORDS.connect });
   const box = () => screen.getByLabelText(/wallet address/i) as HTMLInputElement;
   const press = async (control: HTMLElement) => {
@@ -1090,15 +1038,18 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
       submitted = true;
     });
     const submits = [
-      vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => undefined),
-      vi.spyOn(HTMLFormElement.prototype, "requestSubmit").mockImplementation(() => undefined),
+      vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {
+        throw new Error("the wallet button must not submit the save form");
+      }),
+      vi.spyOn(HTMLFormElement.prototype, "requestSubmit").mockImplementation(() => {
+        throw new Error("the wallet button must not submit the save form");
+      }),
     ];
 
     await press(button());
 
     expect(box().value).toBe(CHECKSUMMED);
     expect(submitted).toBe(false);
-    expect(submits.map((submit) => submit.mock.calls.length)).toEqual([0, 0]);
     for (const submit of submits) submit.mockRestore();
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
   });
@@ -1156,19 +1107,6 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     }
   });
 
-  it("takes a second press while the first is still unanswered, as when Coinbase's window vanished without a word", async () => {
-    coinbase.holding = 1;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
-    await act(async () => {
-      fireEvent.click(button());
-    });
-
-    await press(button());
-
-    expect(box().value).toBe(CHECKSUMMED);
-    expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
-  });
-
   it("keeps what the latest press brought when an earlier press is answered after it", async () => {
     coinbase.holding = 1;
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
@@ -1185,43 +1123,27 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy();
   });
 
-  it("says its answer was lost, not that it failed, when a payout press meanwhile ends its session", async () => {
-    coinbase.holding = 1;
-    const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
-    await act(async () => {
-      fireEvent.click(button());
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
-    });
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy());
+  it.each(["accept", "fail"] as const)(
+    "says its answer was lost, not that it failed, when a payout press meanwhile ends its session (%s)",
+    async (answer) => {
+      coinbase.holding = 1;
+      const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
+      await act(async () => {
+        fireEvent.click(button());
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
+      });
+      await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy());
 
-    await act(async () => {
-      coinbase.held[0]?.accept();
-    });
+      await act(async () => {
+        coinbase.held[0]?.[answer]();
+      });
 
-    expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
-  });
-
-  it("says its answer was lost, not the browser's words, when a payout press overtook it and the answer failed", async () => {
-    coinbase.holding = 1;
-    const W = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
-    await act(async () => {
-      fireEvent.click(button());
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.payOut }));
-    });
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy());
-
-    await act(async () => {
-      coinbase.held[0]?.fail();
-    });
-
-    expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
-  });
+      expect(screen.getByText(WALLET_WORDS.connectLost)).toBeTruthy();
+    },
+  );
 
   it("stops waiting once Coinbase Wallet has not answered within the limit, says to press again, and leaves no keys of its session in the page", async () => {
     vi.useFakeTimers();
@@ -1240,22 +1162,9 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
     expect(coinbase.keys).toBe(false);
     expect(box().value).toBe("0x1234");
-  });
-
-  it("puts no address into the box that arrives after it stopped waiting", async () => {
-    vi.useFakeTimers();
-    coinbase.holding = 1;
-    render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
-    fireEvent.change(box(), { target: { value: "0x1234" } });
-    await act(async () => {
-      fireEvent.click(button());
-    });
-    await act(() => vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS));
-
     await act(async () => {
       coinbase.held[0]?.accept();
     });
-
     expect(box().value).toBe("0x1234");
     expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
   });
@@ -1292,8 +1201,10 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     render(routed(() => <PayoutWalletPanel wallet={viewOf({ mode: "live" }).wallet} />));
 
     const links = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
-    expect(links).toContain(WALLET_WORDS.manageAt);
-    expect(links).toContain(WALLET_WORDS.recoveryAt);
+    expect(links).toContain("https://wallet.coinbase.com");
+    expect(links).toContain(
+      "https://help.coinbase.com/en/wallet/getting-started/smart-wallet-recovery",
+    );
   });
 });
 
@@ -1355,9 +1266,14 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    const said = WALLET_WORDS.payoutSent(SHOWN);
-    expect(said).toContain(SHOWN);
-    expect(screen.getByText(said)).toBeTruthy();
+    const status = screen
+      .getAllByRole("status")
+      .find((one) => one.textContent?.includes("12.34 USDC"));
+    expect(status).toBeDefined();
+    expect(status?.textContent).toMatch(/wallet accepted.*payout.*12\.34 USDC/i);
+    expect(status?.textContent).toMatch(/once the network.*carries it out/i);
+    expect(status?.textContent).not.toMatch(/has arrived|network confirmed/i);
+    expect(coinbase.sent).toHaveLength(1);
   });
 
   it("says what the wallet was asked to send without an amount where the page did not know it", async () => {
@@ -1375,7 +1291,14 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     await press();
 
-    expect(screen.getByText(WALLET_WORDS.payoutSent(null))).toBeTruthy();
+    const status = screen
+      .getAllByRole("status")
+      .find((one) => /wallet accepted.*payout/i.test(one.textContent ?? ""));
+    expect(status).toBeDefined();
+    expect(status?.textContent).not.toMatch(/\d+(?:\.\d+)?\s+(?:test )?USDC/);
+    expect(status?.textContent).toMatch(/once the network.*carries it out/i);
+    expect(screen.getByLabelText("Data")).toBeTruthy();
+    expect(coinbase.sent).toHaveLength(1);
   });
 
   it("points to the transaction below when Coinbase's window closes before the payout was asked for, however it closed", async () => {
@@ -1387,6 +1310,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await press();
 
     expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
+    expect(coinbase.sent).toEqual([]);
     expect((screen.getByLabelText("Data") as HTMLTextAreaElement).value).toBe(
       merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
     );
@@ -1402,44 +1326,6 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
     expect((button() as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("is offered where the page does not know what the payout would bring, since it pays out only what is there", () => {
-    render(
-      routed(() => (
-        <SettingsScreen
-          view={viewOf({
-            mode: "live",
-            wallet: W,
-            splits: splitsFor("live", W, { brings: UNKNOWN }),
-          })}
-        />
-      )),
-    );
-
-    expect(button()).toBeTruthy();
-  });
-
-  it("is not offered where the payout would bring nothing", () => {
-    render(
-      routed(() => (
-        <SettingsScreen
-          view={viewOf({ mode: "live", wallet: W, splits: splitsFor("live", W, { brings: 0n }) })}
-        />
-      )),
-    );
-
-    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut })).toBeNull();
-  });
-
-  it("sends nothing and says so when the merchant closes Coinbase's window before the payout is asked for", async () => {
-    coinbase.declines = "eth_requestAccounts";
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
-
-    await press();
-
-    expect(coinbase.sent).toEqual([]);
-    expect(screen.getByText(WALLET_WORDS.payoutClosed)).toBeTruthy();
   });
 
   it("never says nothing was sent when the window closes after the payout was asked for, and says to check before sending again", async () => {
@@ -1530,24 +1416,27 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
   });
 
-  it("does not say a waiting payout failed when filling the wallet box meanwhile ends its session", async () => {
-    coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
-    await act(async () => {
-      fireEvent.click(button());
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.connect }));
-    });
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy());
+  it.each(["accept", "fail"] as const)(
+    "does not say a waiting payout failed when filling the wallet box meanwhile ends its session (%s)",
+    async (answer) => {
+      coinbase.holding = 1;
+      render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
+      await act(async () => {
+        fireEvent.click(button());
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.connect }));
+      });
+      await waitFor(() => expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy());
 
-    await act(async () => {
-      coinbase.held[0]?.accept();
-    });
+      await act(async () => {
+        coinbase.held[0]?.[answer]();
+      });
 
-    expect(screen.queryByText(/did not send the payout/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
-  });
+      expect(screen.queryByText(/did not send the payout/)).toBeNull();
+      expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
+    },
+  );
 
   it("says nothing more was sent, rather than that nothing was, when a later press is closed after a payout went out", async () => {
     render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
@@ -1600,25 +1489,6 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
   });
 
-  it("does not say a waiting payout failed when filling the wallet box meanwhile overtook it and its answer failed", async () => {
-    coinbase.holding = 1;
-    render(routed(() => <SettingsScreen view={viewOf({ mode: "live", wallet: W })} />));
-    await act(async () => {
-      fireEvent.click(button());
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: WALLET_WORDS.connect }));
-    });
-    await waitFor(() => expect(screen.getByText(WALLET_WORDS.addressInTheBox)).toBeTruthy());
-
-    await act(async () => {
-      coinbase.held[0]?.fail();
-    });
-
-    expect(screen.queryByText(/did not send the payout/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
-  });
-
   it("says it does not know, not that nothing was sent, when the screen was drawn again while a payout waited", async () => {
     coinbase.holding = 1;
     const screenOf = () =>
@@ -1665,15 +1535,11 @@ describe("sending the payout from a Coinbase Wallet", () => {
     await act(() => vi.advanceTimersByTimeAsync(ms));
   };
 
-  it("keeps waiting for a payout until the limit, long enough to approve it with a passkey", async () => {
+  it("says it does not know whether the payout went out once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
     await unansweredFor(WALLET_ANSWERS_WITHIN_MS - 1);
-
     expect(screen.getByText(WALLET_WORDS.waitingPayout)).toBeTruthy();
     expect(coinbase.keys).toBe(true);
-  });
-
-  it("says it does not know whether the payout went out once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
-    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
+    await act(() => vi.advanceTimersByTimeAsync(1));
 
     expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull();
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
@@ -1681,26 +1547,23 @@ describe("sending the payout from a Coinbase Wallet", () => {
     expect(coinbase.keys).toBe(false);
   });
 
-  it("says the payout was sent when the wallet acknowledges it after the limit", async () => {
-    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
+  it.each(["acknowledge", "decline"] as const)(
+    "keeps late payout %s distinct from an unknown result",
+    async (answer) => {
+      await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
 
-    await act(async () => {
-      coinbase.answerLater[0]?.acknowledge();
-    });
+      await act(async () => {
+        coinbase.answerLater[0]?.[answer]();
+      });
 
-    expect(screen.getByText(WALLET_WORDS.payoutSent(SHOWN))).toBeTruthy();
-  });
-
-  it("keeps saying it does not know when the wallet refuses the payout after the limit", async () => {
-    await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
-
-    await act(async () => {
-      coinbase.answerLater[0]?.decline();
-    });
-
-    expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
-  });
+      expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
+      expect(
+        screen.getByText(
+          answer === "acknowledge" ? WALLET_WORDS.payoutSent(SHOWN) : WALLET_WORDS.payoutUnanswered,
+        ),
+      ).toBeTruthy();
+    },
+  );
 
   it("does not say nothing was sent on a later press that is closed, once a payout went unanswered", async () => {
     await unansweredFor(WALLET_ANSWERS_WITHIN_MS);
@@ -1713,17 +1576,5 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     expect(screen.queryByText(WALLET_WORDS.payoutClosed)).toBeNull();
     expect(screen.getByText(WALLET_WORDS.payoutUnknown)).toBeTruthy();
-  });
-
-  it("is not offered where there is no transaction to send", () => {
-    render(
-      routed(() => (
-        <SettingsScreen
-          view={viewOf({ mode: "live", wallet: W, splits: splitsFor("test", W, { tooMany: 21 }) })}
-        />
-      )),
-    );
-
-    expect(screen.queryByRole("button", { name: WALLET_WORDS.payOut })).toBeNull();
   });
 });

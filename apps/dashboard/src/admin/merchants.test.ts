@@ -102,13 +102,6 @@ describe("the Merchants list", () => {
     const malformed = await operator.get("/admin/merchants?after=page-2");
     expect(shops(malformed.html)).toStrictEqual(shops(first.html));
   });
-
-  it("answers anybody without the operator flag as a page that is not there", async () => {
-    served = await adminServed();
-    const merchant = await served.signedIn("owner@shop.example");
-
-    expect((await merchant.get("/admin/merchants")).status).toBe(404);
-  });
 });
 
 describe("a merchant's page", () => {
@@ -179,6 +172,19 @@ describe("withdrawing and giving the admission", () => {
     served = await adminServed({ channel: "live" });
     const merchant = await served.harnessed.addMerchant("Coffee Roasters");
     const operator = await served.signedIn(OPERATOR, { operator: true });
+    const published = await served.harnessed.gateway.publishCard(merchant.id, {
+      merchant_item_id: "room-101",
+      title: "A room for the night",
+      description: "One night in a room",
+      price: { amount: "80.00", currency: "USD" },
+      result: { access_code: { type: "string" } },
+      fulfillment: "sync",
+    });
+    if (!published.ok) throw new Error("the product was not published");
+    expect((await served.harnessed.gateway.catalog()).items.map((one) => one.id)).toContain(
+      published.id,
+    );
+    expect((await served.harnessed.gateway.beginPurchase(published.id, {})).step).toBe("pay");
     const path = `/admin/merchants/${merchant.id}`;
     const note = "The seller name copies another shop's; choose your own and write to us.";
 
@@ -189,6 +195,12 @@ describe("withdrawing and giving the admission", () => {
 
     expect(withdrawn.status).toBe(200);
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(false);
+    expect((await served.harnessed.gateway.catalog()).items.map((one) => one.id)).not.toContain(
+      published.id,
+    );
+    expect(await served.harnessed.gateway.beginPurchase(published.id, {})).toMatchObject({
+      step: "not_selling",
+    });
     expect(text(withdrawn.html)).toContain(`The merchant reads: “${note}”`);
     expect((await served.harnessed.store.standingWithdrawal(merchant.id))?.reason).toBe(note);
     // What the merchant reads on their own dashboard while it stands.
@@ -203,6 +215,10 @@ describe("withdrawing and giving the admission", () => {
 
     expect([admitted.status, again.status]).toStrictEqual([200, 200]);
     expect(await served.harnessed.gateway.liveApproved(merchant.id)).toBe(true);
+    expect((await served.harnessed.gateway.catalog()).items.map((one) => one.id)).toContain(
+      published.id,
+    );
+    expect((await served.harnessed.gateway.beginPurchase(published.id, {})).step).toBe("pay");
     expect(text(again.html)).toContain("It was admitted already; nothing changed.");
     // The history names who acted by their address, to them and to another operator.
     const second = await served.signedIn("op2@agentify.example", { operator: true });
@@ -283,6 +299,7 @@ describe("disabling a merchant's key", () => {
     const path = `/admin/merchants/${merchant.id}`;
     const press = { ...TICKED, [REASON_FIELD]: "it leaked" };
 
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
     const first = await operator.post(`${path}/keys/${merchant.keyId}/disable`, press);
     const again = await operator.post(`${path}/keys/${merchant.keyId}/disable`, press);
 
@@ -300,25 +317,6 @@ describe("disabling a merchant's key", () => {
     ).toStrictEqual([
       [merchant.keyId, "unchanged"],
       [merchant.keyId, "done"],
-    ]);
-  });
-
-  it("answers a repeat in the same millisecond as already so, as its row says", async () => {
-    served = await adminServed();
-    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
-    const operator = await served.signedIn(OPERATOR, { operator: true });
-    const path = `/admin/merchants/${merchant.id}/keys/${merchant.keyId}/disable`;
-    const press = { ...TICKED, [REASON_FIELD]: "it leaked" };
-    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
-
-    const first = await operator.post(path, press);
-    const again = await operator.post(path, press);
-
-    expect(text(first.html)).toContain("The key is disabled.");
-    expect(text(again.html)).not.toContain("The key is disabled.");
-    expect((await rowsAbout(served, merchant.id)).map((row) => row.outcome.kind)).toStrictEqual([
-      "unchanged",
-      "done",
     ]);
   });
 

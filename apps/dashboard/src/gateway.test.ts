@@ -27,6 +27,7 @@ import {
   workUntilStopped,
 } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
+import { decodeFunctionData, parseAbi } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
@@ -429,37 +430,40 @@ describe("a call that does not finish", () => {
 });
 
 describe("who asks", () => {
-  it("is named in the message about a wallet change by the account the session is signed in as", async () => {
-    const harnessed = await started(LIVE);
+  it.each(["wallet_change", "key_issued"] as const)(
+    "attributes %s to the signed-in account",
+    async (kind) => {
+      const harnessed = await started(LIVE);
 
-    const asked = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
+      const asked =
+        kind === "wallet_change"
+          ? await asTheOwner(harnessed).setPayoutWallet(A_WALLET)
+          : await asTheOwner(harnessed).issueKey("the stock worker");
+      await new Promise((settled) => setImmediate(settled));
 
-    expect(asked.ok).toBe(true);
-    expect(harnessed.announcer.announced).toMatchObject([
-      { kind: "wallet_change", asked_with: { kind: "signed_in", email: OWNER } },
-    ]);
-  });
-
-  it("is named in the message about a new key the same way", async () => {
-    const harnessed = await started(LIVE);
-
-    const issued = await asTheOwner(harnessed).issueKey("the stock worker");
-
-    expect(issued.ok).toBe(true);
-    // The message about a key is sent after it is issued and never waited on.
-    await new Promise((settled) => setImmediate(settled));
-    expect(harnessed.announcer.announced).toMatchObject([
-      { kind: "key_issued", asked_with: { kind: "signed_in", email: OWNER } },
-    ]);
-  });
+      expect(asked.ok).toBe(true);
+      expect(harnessed.announcer.announced).toMatchObject([
+        { kind, asked_with: { kind: "signed_in", email: OWNER } },
+      ]);
+    },
+  );
 
   it("holds no key, so it can disable the one the merchant's own code is calling with", async () => {
     const harnessed = await started();
 
+    const served = await serve(harnessed);
+    if (open !== null) open.served = served;
+    const headers = { authorization: `Bearer ${harnessed.merchant.key}` };
+    expect((await served.call("GET", "/v0/cards", { headers })).status).toBe(200);
     const disabled = await asTheOwner(harnessed).disableKey(harnessed.merchant.keyId);
 
     expect(disabled.ok).toBe(true);
     expect(disabled.ok ? disabled.document.disabled_at : null).not.toBeNull();
+    expect((await served.call("GET", "/v0/cards", { headers })).status).toBe(401);
+    expect(await asTheOwner(harnessed).cards()).toMatchObject({
+      ok: true,
+      document: { cards: [] },
+    });
   });
 });
 
@@ -492,7 +496,8 @@ describe("where an order's payment went", () => {
       harnessed.merchant.wallet,
       harnessed.now(),
     );
-    const split = await splitInForce(harnessed);
+    const split =
+      (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split ?? null;
     expect(split).not.toBeNull();
     const client = asTheOwner(harnessed);
 
@@ -650,18 +655,51 @@ describe("the payout a merchant is shown", () => {
     const harnessed = await started();
     // The wallet the merchant started with was never paid into, so its split
     // holds nothing; each of these holds one sale.
+    const expected: string[] = [];
     for (let n = 1; n <= SPLITS_PER_PAYOUT; n += 1) {
       await paidInto(harnessed, walletNumber(n));
+      const split =
+        (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split ?? null;
+      if (split === null) throw new Error("the new wallet has no recorded split");
+      expected.push(split.address);
     }
 
+    const foreign = await harnessed.addMerchant();
+    await aPaidOrder(harnessed, foreign.id);
     const read = await asTheOwner(harnessed).payoutSplits();
 
     const payout = read.ok ? read.document.payout : null;
+    expect(new Set(expected).size).toBe(SPLITS_PER_PAYOUT);
+    if (typeof payout !== "object" || payout === null || !("transaction" in payout))
+      throw new Error("no payout transaction");
+    expect(payout.transaction.splits.map((split) => split.address).sort()).toStrictEqual(
+      [...expected].sort(),
+    );
     expect(
-      typeof payout === "object" && payout !== null && "transaction" in payout
-        ? payout.transaction.splits
-        : [],
-    ).toHaveLength(SPLITS_PER_PAYOUT);
+      payout.transaction.splits.every((split) => split.merchantId === harnessed.merchant.id),
+    ).toBe(true);
+    const decoded = decodeFunctionData({
+      abi: parseAbi([
+        "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)",
+      ]),
+      data: payout.transaction.data,
+    });
+    const distributions = decoded.args[0].filter((call) =>
+      expected.some((address) => address.toLowerCase() === call.target.toLowerCase()),
+    );
+    expect(distributions.map((call) => call.target.toLowerCase()).sort()).toStrictEqual(
+      expected.map((address) => address.toLowerCase()).sort(),
+    );
+    for (const call of distributions) {
+      expect(
+        decodeFunctionData({
+          abi: parseAbi([
+            "function distribute((address[] recipients, uint256[] allocations, uint256 totalAllocation, uint16 distributionIncentive) split, address token, address distributor)",
+          ]),
+          data: call.callData,
+        }).functionName,
+      ).toBe("distribute");
+    }
   });
 
   it("says how many there are, and builds no transaction, past the most one carries", async () => {
@@ -789,11 +827,22 @@ describe("what the payout a merchant is shown would bring", () => {
   });
 
   it("is not known once half the page's deadline has passed, even from a chain that ignores the time it was given", async () => {
-    // Sign-out-everywhere lives on the same page, which must never wait on a
-    // check that does not keep to its time.
     const harnessed = await started({}, aChain(() => new Promise(() => undefined)).check);
-
-    expect((await shown(harnessed, 400)).brings).toBe(UNKNOWN);
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      let complete = false;
+      const reading = shown(harnessed, 400).then((payout) => {
+        complete = true;
+        return payout;
+      });
+      await vi.advanceTimersByTimeAsync(199);
+      expect(complete).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(complete).toBe(true);
+      expect((await reading).brings).toBe(UNKNOWN);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("gets only what is left of half the page's deadline once the splits were read, so a slow database and a slow chain together still leave the page drawn", async () => {
@@ -805,14 +854,27 @@ describe("what the payout a merchant is shown would bring", () => {
       400,
     );
 
-    const read = await client.payoutSplits();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      let result: Awaited<ReturnType<typeof client.payoutSplits>> | undefined;
+      const reading = client.payoutSplits().then((value) => {
+        result = value;
+        return value;
+      });
+      await vi.advanceTimersByTimeAsync(301);
+      expect(result).toBeDefined();
+      const read = await reading;
 
-    expect(read.ok).toBe(true);
-    expect(chain.given.every((ms) => ms <= 0)).toBe(true);
-    const payout = read.ok ? read.document.payout : null;
-    expect(
-      typeof payout === "object" && payout !== null && "brings" in payout && payout.brings,
-    ).toBe(UNKNOWN);
+      expect(read.ok).toBe(true);
+      // Skipping a chain query is permitted once its half-page budget is exhausted.
+      expect(chain.given.filter((ms) => ms > 0)).toStrictEqual([]);
+      const payout = read.ok ? read.document.payout : null;
+      expect(
+        typeof payout === "object" && payout !== null && "brings" in payout && payout.brings,
+      ).toBe(UNKNOWN);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is not asked of the chain where there is no transaction to send", async () => {
@@ -891,10 +953,24 @@ describe("what an order's record says beside its document", () => {
 
   it("are read in the same read as the orders they describe", async () => {
     const harnessed = await started();
-    const client = asTheOwner(harnessed);
     const id = await aPaidOrder(harnessed, harnessed.merchant.id);
 
-    const read = await client.ordersWithRecords();
+    let snapshot = 0;
+    const changing = new Proxy(harnessed.gateway, {
+      get(target, property, receiver) {
+        if (property === "orders")
+          return async (...args: Parameters<Gateway["orders"]>) => {
+            snapshot += 1;
+            return snapshot === 1 ? await target.orders(...args) : [];
+          };
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const read = await gatewayFor(changing, {
+      merchantId: harnessed.merchant.id,
+      email: OWNER,
+    }).ordersWithRecords();
 
     expect(read.ok ? read.document.orders.orders.map((order) => order.id) : read.why).toStrictEqual(
       [id],

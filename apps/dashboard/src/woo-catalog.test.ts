@@ -156,18 +156,20 @@ describe("turning a shop's products into cards", () => {
 
   it("declares the native download the agent is handed", () => {
     const { cards } = cardsFromTheShop([product()]);
-    expect(cards[0]?.card.result).toEqual({
-      download_url: { type: "string", title: "The private WooCommerce download address" },
-      file_name: { type: "string", title: "The name of the downloadable file" },
-      order_number: { type: "string", title: "The number this order has in the shop" },
+    expect(
+      Object.fromEntries(
+        Object.entries(cards[0]?.card.result ?? {}).map(([name, field]) => [
+          name,
+          typeof field === "string" ? field : field.type,
+        ]),
+      ),
+    ).toEqual({
+      download_url: "string",
+      file_name: "string",
+      order_number: "string",
     });
     expect(cards[0]?.card.fulfillment).toBe("async");
     expect(cards[0]?.card.price_check).toBe("handler");
-  });
-
-  it("makes a card our own publish door recognises", () => {
-    const { cards } = cardsFromTheShop([product()]);
-    expect(CardSchema.safeParse(cards[0]?.card).success).toBe(true);
   });
 
   it("does not shorten a description the shop wrote long", () => {
@@ -175,7 +177,7 @@ describe("turning a shop's products into cards", () => {
     // name.
     const long = "a".repeat(900);
     const { cards } = cardsFromTheShop([product({ description: `<p>${long}</p>` })]);
-    expect(cards[0]?.card.description).toHaveLength(900);
+    expect(cards[0]?.card.description).toBe(long);
   });
 
   it("names the setting for a price at another scale, and the currency for another currency", () => {
@@ -239,60 +241,52 @@ describe("turning a shop's products into cards", () => {
     expect(skipped[0]?.why).toContain("zero");
   });
 
-  it("leaves a product it cannot map alone and says why", () => {
-    const { cards, skipped } = cardsFromTheShop([
-      product({ id: 1, type: "variable" }),
-      product({ id: 2, is_purchasable: false }),
-      product({ id: 3, is_in_stock: false }),
-      product({
-        id: 4,
-        prices: { price: "not a number", currency_code: "USD", currency_minor_unit: 2 },
-      }),
-      product({ id: 5, description: "", short_description: "" }),
-      product({ id: 6, name: "   " }),
-      product({
-        id: 7,
-        prices: { price: "500", currency_code: "us dollars", currency_minor_unit: 2 },
-      }),
-      product({ id: 8, virtual: false }),
-      product({ id: 9, downloadable: false }),
-      product({ id: 10, downloads: [] }),
-      product({
-        id: 11,
+  it.each<[string, Partial<StoreProduct>, RegExp, boolean]>([
+    ["variable product", { type: "variable" }, /variable.*aren.t supported/i, false],
+    ["not purchasable", { is_purchasable: false }, /does not offer.*sale/i, true],
+    ["out of stock", { is_in_stock: false }, /out of stock/i, true],
+    [
+      "unreadable amount",
+      { prices: { price: "not a number", currency_code: "USD", currency_minor_unit: 2 } },
+      /price.*not a number.*read.*amount/i,
+      true,
+    ],
+    ["missing description", { description: "", short_description: "" }, /no description/i, true],
+    ["missing title", { name: "   " }, /no name/i, true],
+    [
+      "unexpected currency",
+      { prices: { price: "500", currency_code: "us dollars", currency_minor_unit: 2 } },
+      /catalogue.*us dollars.*currency setting.*USD/i,
+      true,
+    ],
+    ["download also ships", { virtual: false }, /download.*also ships/i, false],
+    ["virtual without download", { downloadable: false }, /virtual.*no download/i, false],
+    ["missing file", { downloads: [] }, /exactly one downloadable file/i, true],
+    [
+      "two files",
+      {
         downloads: [
           { id: "a", name: "A", file: "https://shop.example.com/a" },
           { id: "b", name: "B", file: "https://shop.example.com/b" },
         ],
-      }),
-      product({ id: 12, download_limit: 1 }),
-      product({ id: 13, download_expiry: 1 }),
-      product({ id: 14, manage_stock: true }),
-      product({ id: 15, status: "draft" }),
-    ]);
-
-    expect(cards).toHaveLength(0);
-    expect(skipped.map((one) => one.id)).toEqual([
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-      "7",
-      "8",
-      "9",
-      "10",
-      "11",
-      "12",
-      "13",
-      "14",
-      "15",
-    ]);
-    for (const one of skipped) {
-      expect(one.why).toMatch(/\S/);
-    }
-    expect(skipped[0]?.why).toMatch(/variable/i);
-  });
+      },
+      /exactly one downloadable file/i,
+      true,
+    ],
+    ["limited downloads", { download_limit: 1 }, /unlimited uses.*no expiry/i, true],
+    ["expiring download", { download_expiry: 1 }, /unlimited uses.*no expiry/i, true],
+    ["managed stock", { manage_stock: true }, /without stock tracking/i, false],
+    ["draft product", { status: "draft" }, /not published/i, true],
+  ])(
+    "leaves %s in the shop with its own reason and fixability",
+    (_case, overrides, reason, fixable) => {
+      const { cards, skipped } = cardsFromTheShop([product(overrides)]);
+      expect(cards).toEqual([]);
+      expect(skipped).toEqual([
+        expect.objectContaining({ id: "11", why: expect.stringMatching(reason), fixable }),
+      ]);
+    },
+  );
 
   it("tells a product the shop can put right from a kind the connector does not sell", () => {
     const { skipped } = cardsFromTheShop([

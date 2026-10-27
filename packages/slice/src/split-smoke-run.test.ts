@@ -31,7 +31,6 @@ import {
   type SmokeWorld,
   type SplitCreation,
   smokeSettings,
-  whyNotBaseSepolia,
   whyNotWithinGasCap,
 } from "./split-smoke-run.js";
 
@@ -349,14 +348,6 @@ describe("the settings of a split smoke", () => {
   });
 });
 
-describe("the chain a split smoke runs on", () => {
-  it("is Base Sepolia and nothing else", () => {
-    expect(whyNotBaseSepolia(84532)).toBeNull();
-    expect(whyNotBaseSepolia(8453)).toMatch(/8453/);
-    expect(whyNotBaseSepolia(11155111)).toMatch(/11155111/);
-  });
-});
-
 describe("a split smoke's predictions", () => {
   it.each([
     [10_000n, 9_988n, 9n, 9_990n, 10n],
@@ -592,7 +583,10 @@ describe("a split smoke run", () => {
         created: [{ ...CREATED, allocations: [...CREATED.allocations].reverse() }],
       })),
     ],
-    ["the factory created nothing", withEffect(1, (payout) => ({ ...payout, created: [] }))],
+    [
+      "the factory created nothing",
+      withEffect(1, (payout) => ({ ...payout, created: [], code: CLONE })),
+    ],
     [
       "the split distributed other than its balance less the units it keeps",
       withEffect(1, (payout) => ({ ...payout, distributed: [9_998n] })),
@@ -617,12 +611,13 @@ describe("a split smoke run", () => {
       "its fees passed the gas cap, the L1 fee above its estimate",
       withEffect(1, (payout) => ({ ...payout, paid: 5n * 10n ** 14n + 1n })),
     ],
-  ])("stops at the first payout, sending nothing after it, when %s", async (_, effects) => {
+  ])("stops at the first payout, sending nothing after it, when %s", async (reason, effects) => {
     const chain = scriptedChain({ effects });
 
     const stopped = await stoppedAt(run(chain, aJournal()));
 
     expect(stopped.step).toBe("the first payout");
+    if (reason === "the factory created nothing") expect(stopped.message).toMatch(/factory.*\[\]/i);
     expect(chain.made()).toBe(2);
   });
 
@@ -791,16 +786,19 @@ describe("a split smoke run", () => {
     expect(chain.made()).toBe(0);
   });
 
-  it("pays nothing and writes nothing on a chain that is not Base Sepolia", async () => {
-    const chain = scriptedChain({ effects: AS_THE_CONTRACTS_DO, chainId: 8453 });
-    const journal = aJournal();
+  it.each([8453, 11155111])(
+    "pays nothing and writes nothing on disallowed chain %s",
+    async (chainId) => {
+      const chain = scriptedChain({ effects: AS_THE_CONTRACTS_DO, chainId });
+      const journal = aJournal();
 
-    const stopped = await stoppedAt(run(chain, journal));
+      const stopped = await stoppedAt(run(chain, journal));
 
-    expect(stopped.step).toBe("the chain");
-    expect(chain.made()).toBe(0);
-    expect(() => readFileSync(journal)).toThrow(/ENOENT/);
-  });
+      expect(stopped.step).toBe("the chain");
+      expect(chain.made()).toBe(0);
+      expect(() => readFileSync(journal)).toThrow(/ENOENT/);
+    },
+  );
 
   it("pays nothing when the payout key holds less ETH than the gas cap", async () => {
     const chain = scriptedChain({ effects: AS_THE_CONTRACTS_DO, payoutKeyBalance: 10n ** 14n });

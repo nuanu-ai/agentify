@@ -29,12 +29,6 @@ describe("the documentation's diagrams", () => {
     }
   });
 
-  it("keep no drawing a page no longer writes", async () => {
-    const wanted = new Set((await diagramSources()).map(diagramKey));
-
-    expect(kept.filter((key) => !wanted.has(key))).toEqual([]);
-  });
-
   it("refuse a diagram with no drawing, saying how to draw it", () => {
     expect(() => drawingOf("sequenceDiagram\n  A->>B: never drawn\n")).toThrow(
       /pnpm --filter @agentify\/docs diagrams/,

@@ -23,6 +23,9 @@
     "playwright": "1.61.1",
     "tsx": "4.23.12",
     "vite": "7.3.6",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "@types/react-dom": "19.2.3"
   }
 }

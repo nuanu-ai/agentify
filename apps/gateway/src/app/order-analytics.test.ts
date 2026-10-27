@@ -168,12 +168,6 @@ describe("the order an agent's purchase writes", () => {
     expect(at?.at).toStrictEqual(
       new Date((await stored(open, orderId)).order.timestamps.createdAt),
     );
-  });
-
-  it("is not recorded again when the agent repeats the purchase or reads its status", async () => {
-    open = await harness();
-    const orderId = await priced(open, await published(open));
-
     await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
     await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
     await open.gateway.orderById(orderId);
@@ -588,7 +582,9 @@ describe("what an order's analytics carry", () => {
     const order = await stored(open, orderId);
 
     const events = open.store.recordedAnalytics.map(({ event }) => event);
-    const ofTheOrder = events.filter((event) => event.name !== "agc_card_publish_result");
+    const ofTheOrder = events.filter(
+      (event) => event.name !== "agc_card_publish_result" && event.name !== "agc_setup_result",
+    );
     expect(ofTheOrder.map((event) => event.name)).toStrictEqual([
       "agc_order_created",
       "agc_payment_result",

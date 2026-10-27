@@ -169,7 +169,7 @@ export const validateActorTarget = (input: {
         index === 0 ? "target_blocked" : "representative_blocked",
       );
     }
-    if (decision.url.search || decision.url.hash) {
+    if (new URL(raw).search || new URL(raw).hash) {
       throw new BrowserNetworkPolicyError("input_query_or_fragment_blocked");
     }
     return decision.url;

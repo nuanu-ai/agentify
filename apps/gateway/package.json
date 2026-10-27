@@ -24,10 +24,10 @@
     "listing": "tsx src/listing.ts"
   },
   "dependencies": {
+    "@agentify/core": "workspace:*",
     "@agentify/observability": "workspace:*",
     "@coinbase/cdp-sdk": "1.55.0",
     "@nuanu-ai/agentify-contracts": "workspace:*",
-    "@agentify/core": "workspace:*",
     "@x402/core": "2.23.0",
     "@x402/evm": "2.23.0",
     "@x402/extensions": "2.23.0",
@@ -43,6 +43,7 @@
     "@types/pg": "^8.23.1",
     "drizzle-kit": "0.31.10",
     "tsx": "^4.23.12",
+    "typescript": "5.9.3",
     "vitest": "^4.1.11"
   }
 }

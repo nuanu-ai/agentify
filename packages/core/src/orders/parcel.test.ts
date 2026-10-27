@@ -316,6 +316,12 @@ describe("every parcel the machine can reach", () => {
     `${move.event.kind} in ${move.before.state}${move.before.dispatch.accepted ? " (taken on)" : ""}`;
 
   it("lets the address go exactly once, and never takes it back", () => {
+    const lettingGoFrom = new Set(
+      moves
+        .filter((move) => move.after !== null && erasures(move.effects) > 0)
+        .map((move) => move.before.state),
+    );
+    expect([...lettingGoFrom].sort()).toEqual(["created", "dispatched", "paid", "quoted"]);
     for (const move of moves) {
       if (move.after === null) continue;
       const letGo = holdsShipTo(move.before) && !holdsShipTo(move.after);
@@ -362,18 +368,6 @@ describe("every parcel the machine can reach", () => {
 
       expect(decision(move.result), where(move)).toEqual(decision(ordinary));
     }
-  });
-
-  it("reached every state that holds the address, and let it go from each", () => {
-    // A floor under the three above: a search that stopped at the first state
-    // would pass all of them.
-    const lettingGoFrom = new Set(
-      moves
-        .filter((move) => move.after !== null && erasures(move.effects) > 0)
-        .map((move) => move.before.state),
-    );
-
-    expect([...lettingGoFrom].sort()).toEqual(["created", "dispatched", "paid", "quoted"]);
   });
 });
 

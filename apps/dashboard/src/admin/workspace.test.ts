@@ -12,7 +12,7 @@ import routes from "../../app/routes.js";
 import type { Identity } from "../identity.js";
 import { flagRow } from "../testing/account-rows.js";
 import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
-import { readable } from "../testing/html.js";
+import { formTo, readable } from "../testing/html.js";
 import { FRESH_SIGN_IN_MS } from "./access.js";
 
 const OPERATOR = "operator@example.com";
@@ -73,48 +73,151 @@ afterEach(async () => {
   served = null;
 });
 
-describe("who the operator's workspace answers", () => {
-  it("holds every page the design names", () => {
-    expect(adminPaths()).toEqual(
-      expect.arrayContaining([
-        "/admin",
-        "/admin/merchants",
-        "/admin/merchants/mch_somebody",
-        "/admin/orders",
-        "/admin/orders/ord_something",
-        "/admin/find",
-        "/admin/money",
-        "/admin/health",
-        "/admin/accounts",
-        "/admin/journal",
-      ]),
-    );
+const ACTIONS = [
+  "admit",
+  "withdraw",
+  "disable-key",
+  "end-sessions",
+  "grant-operator",
+  "remove-operator",
+  "forget",
+  "health",
+] as const;
+type Action = (typeof ACTIONS)[number];
+const TARGET = "target@example.com";
+
+/** An actionable record for this route, with a fresh-success control after the refused press. */
+const actionFixture = async (action: Action) => {
+  const workspace = await serve({
+    channel: action === "admit" || action === "withdraw" ? "live" : "test",
   });
+  const operator = await workspace.signedIn(OPERATOR, { operator: true });
+  await workspace.signedIn(TARGET, { operator: action === "remove-operator" });
+  if (action === "end-sessions") await workspace.signedIn(TARGET);
+  const target = await workspace.identity.byEmail(TARGET);
+  if (target?.merchant === null || target === null) throw new Error("target merchant was not made");
+  const merchantId = target.merchant.id;
+  const key = (await workspace.harnessed.store.keysOf(merchantId))[0];
+  if (key === undefined) throw new Error("target key was not issued");
+  if (action === "admit") await workspace.harnessed.store.withdrawLiveApproval(merchantId);
+  const merchantPath = `/admin/merchants/${merchantId}`;
+  const accountPath = `/admin/accounts/${target.id}`;
+  const path =
+    action === "health"
+      ? "/admin/health"
+      : action === "admit" || action === "withdraw"
+        ? `${merchantPath}/${action}`
+        : action === "disable-key"
+          ? `${merchantPath}/keys/${key.id}/disable`
+          : `${accountPath}/${action}`;
+  const destination =
+    action === "health"
+      ? "admin/health"
+      : action === "admit" || action === "withdraw" || action === "disable-key"
+        ? merchantPath.slice(1)
+        : accountPath.slice(1);
+  const form = { confirm: "yes", reason: "The account owner asked", check: "key" };
+  const snapshot = async () =>
+    JSON.stringify({
+      account: (workspace.rows.dashboard_accounts ?? []).find((row) => row.id === target.id),
+      sessions: (workspace.rows.dashboard_sessions ?? []).filter((row) => row.userId === target.id),
+      keys: await workspace.harnessed.store.keysOf(merchantId),
+      merchant: await workspace.harnessed.store.merchantById(merchantId),
+      changes: (await workspace.harnessed.store.journal({ limit: 200 })).rows.filter(
+        (row) => row.outcome.kind !== "refused",
+      ),
+    });
+  const succeeds = async (browser: typeof operator) => {
+    const pressed = await browser.post(path, form);
+    expect(pressed.status, action).toBe(200);
+    if (action === "admit" || action === "withdraw")
+      expect(await workspace.harnessed.gateway.liveApproved(merchantId), action).toBe(
+        action === "admit",
+      );
+    else if (action === "disable-key")
+      expect(
+        (await workspace.harnessed.store.keysOf(merchantId)).find((one) => one.id === key.id)
+          ?.disabledAt,
+      ).not.toBeNull();
+    else if (action === "end-sessions")
+      expect(
+        (workspace.rows.dashboard_sessions ?? []).filter((row) => row.userId === target.id),
+      ).toStrictEqual([]);
+    else if (action === "forget") expect(await workspace.identity.byEmail(TARGET)).toBeNull();
+    else if (action === "grant-operator" || action === "remove-operator")
+      expect((await workspace.identity.operatorAccount(target.id, new Date()))?.operator).toBe(
+        action === "grant-operator",
+      );
+    else expect(readable(pressed.html)).toMatch(/not Coinbase.*facilitator/i);
+  };
+  return {
+    workspace,
+    operator,
+    path,
+    destination,
+    form,
+    snapshot,
+    succeeds,
+    ids: {
+      merchant_id: merchantId,
+      account_id: target.id,
+      key_id: key.id,
+      order_id: "ord_something",
+    },
+  };
+};
 
+describe("who the operator's workspace answers", () => {
   it("answers a signed-in account the flag does not confirm exactly as an address the dashboard does not have, on every page, read or pressed", async () => {
-    // Anything that told the two apart would tell a merchant the workspace is there.
-    const workspace = await serve();
-    const merchant = await workspace.signedIn(MERCHANT);
-    const withoutMerchant = await signedInWithoutMerchant(workspace, "visitor@nowhere.example");
-    const answered = async (browser: typeof merchant, method: "get" | "post", path: string) => {
-      const answer =
-        method === "get"
-          ? await browser.get(path)
-          : await browser.post(path, { confirm: "yes", reason: "Anything" });
-      // What the person is shown and sent to; the markup carries the asked
-      // address and the scripts of whichever route drew it, which they do not see.
-      return { status: answer.status, to: answer.to, page: readable(answer.html) };
-    };
-
-    for (const browser of [merchant, withoutMerchant]) {
-      for (const method of ["get", "post"] as const) {
-        const nowhere = await answered(browser, method, "/zzz-nothing");
-        for (const path of adminPaths()) {
-          expect(await answered(browser, method, path), `${method} ${path}`).toStrictEqual(nowhere);
-        }
+    for (const action of ACTIONS) {
+      const { workspace, path, form, ids, snapshot, succeeds, operator } =
+        await actionFixture(action);
+      const merchant = await workspace.signedIn(MERCHANT);
+      const withoutMerchant = await signedInWithoutMerchant(workspace, "visitor@nowhere.example");
+      const browsers = [merchant, withoutMerchant];
+      if (action === "withdraw" || action === "health") {
+        const published = await workspace.harnessed.gateway.publishCard(ids.merchant_id, {
+          merchant_item_id: "room-101",
+          title: "A room for the night",
+          description: "One night in a room",
+          price: { amount: "80.00", currency: "USD" },
+          result: { access_code: { type: "string" } },
+          fulfillment: "sync",
+        });
+        if (!published.ok) throw new Error("product was refused");
+        const offered = await workspace.harnessed.gateway.beginPurchase(published.id, {});
+        if (offered.step !== "pay") throw new Error("order was refused");
+        ids.order_id = offered.order.order.id;
       }
+      const before = await snapshot();
+      for (const browser of browsers) {
+        const nowhere = await browser.get("/admin/zzz-nothing");
+        const hidden = { status: nowhere.status, to: nowhere.to, page: readable(nowhere.html) };
+        // An unattached account meets the outer merchant gate before the operator check.
+        expect(hidden.status, action).toBe(browser === merchant ? 404 : 303);
+        if (browser === withoutMerchant) expect(hidden.to).toBe(`${ADMIN_BASE}/merchant`);
+        if (action === "withdraw" || action === "health") {
+          for (const method of ["get", "post"] as const)
+            for (const route of adminPaths(ids)) {
+              const answered =
+                method === "get" ? await browser.get(route) : await browser.post(route, form);
+              expect(
+                { status: answered.status, to: answered.to, page: readable(answered.html) },
+                `${method} ${route}`,
+              ).toStrictEqual(hidden);
+            }
+        }
+        const answered = await browser.post(path, form);
+        expect(
+          { status: answered.status, to: answered.to, page: readable(answered.html) },
+          action,
+        ).toStrictEqual(hidden);
+        expect(await snapshot(), action).toBe(before);
+      }
+      await succeeds(operator);
+      await workspace.close();
+      served = null;
     }
-    expect((await answered(merchant, "get", "/zzz-nothing")).status).toBe(404);
   });
 
   it("sends a visitor with no session to the sign-in, which returns them to the page", async () => {
@@ -153,7 +256,22 @@ describe("who the operator's workspace answers", () => {
       key_id: harnessed.merchant.keyId,
     };
 
-    for (const path of adminPaths(ids).filter((one) => !one.endsWith("/sign-in-again"))) {
+    const paths = adminPaths(ids);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "/admin",
+        "/admin/merchants",
+        `/admin/merchants/${ids.merchant_id}`,
+        "/admin/orders",
+        "/admin/orders/ord_something",
+        "/admin/find",
+        "/admin/money",
+        "/admin/health",
+        "/admin/accounts",
+        "/admin/journal",
+      ]),
+    );
+    for (const path of paths.filter((one) => !one.endsWith("/sign-in-again"))) {
       // A press's own address, read, leads to the page its form lives on,
       // which is then held to everything a page is.
       const first = await operator.get(path);
@@ -353,57 +471,24 @@ describe("a page read with a sign-in older than fifteen minutes", () => {
 });
 
 describe("a press made with a sign-in older than fifteen minutes", () => {
-  /**
-   * Everything a press could change: the gateway's rows, the journal's rows
-   * that record a change, and the accounts with their sessions. The links the
-   * step-up itself sends are left out, since asking for one is its answer.
-   */
-  const stateOf = async (workspace: AdminServed) => {
-    const holdings = workspace.harnessed.store.holdings();
-    const journal = await workspace.harnessed.store.journal({ limit: 200 });
-    return JSON.stringify({
-      ...holdings,
-      contact: [...holdings.contact],
-      changes: journal.rows.filter((row) => row.outcome.kind !== "refused"),
-      accounts: workspace.rows.dashboard_accounts,
-      sessions: (workspace.rows.dashboard_sessions ?? []).map((row) => row.userId),
-    });
-  };
-
   it("is answered on every page of the workspace with the step-up, or refused, and changes nothing", async () => {
-    // Every route the areas add is walked here as it lands, with real records
-    // to act on, so a press that skips the fresh sign-in changes something
-    // and fails this test.
-    const workspace = await serve({ channel: "live" });
-    const { harnessed, identity } = workspace;
-    const seller = harnessed.merchant;
-    await harnessed.store.grantLiveApproval(seller.id, harnessed.now());
-    await identity.make(MERCHANT, seller.id);
-    const account = (await identity.byEmail(MERCHANT))?.id ?? "acc_missing";
-    const operator = await workspace.signedIn(OPERATOR, { operator: true });
-    workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
-    const ids = { merchant_id: seller.id, key_id: seller.keyId, account_id: account };
-    const before = await stateOf(workspace);
-
-    for (const path of adminPaths(ids)) {
-      const pressed = await operator.post(path, {
-        confirm: "yes",
-        reason: "Walked by the test of every page",
-        destination: "admin",
-        ...ids,
-      });
-
-      // A page with no press of its own is not handed a post at all; the
-      // address that is no page is answered as none.
-      const refused = pressed.status === 404 || pressed.status === 405;
-      // The step-up's own press sends the link and draws what became of it.
-      const steppedUp =
-        path === "/admin/sign-in-again"
-          ? pressed.status === 202
-          : pressed.html.includes(`action="${ADMIN_BASE}/admin/sign-in-again"`);
-      expect(refused || steppedUp, `POST ${path} answered ${pressed.status}`).toBe(true);
+    for (const action of ACTIONS) {
+      const { workspace, operator, path, destination, form, snapshot, succeeds } =
+        await actionFixture(action);
+      workspace.ageSessions(FRESH_SIGN_IN_MS + 60_000);
+      const before = await snapshot();
+      const pressed = await operator.post(path, form);
+      expect(pressed.status, action).toBe(200);
+      const step = formTo(pressed.html, "post", `${ADMIN_BASE}/admin/sign-in-again`);
+      expect(step, action).toBeDefined();
+      expect(step?.fields.get("destination"), action).toBe(destination);
+      expect(readable(pressed.html), action).toMatch(/sign in again to act/i);
+      expect(await snapshot(), action).toBe(before);
+      const fresh = await workspace.signedIn(OPERATOR, { operator: true });
+      await succeeds(fresh);
+      await workspace.close();
+      served = null;
     }
-    expect(await stateOf(workspace)).toBe(before);
   });
 });
 

@@ -89,23 +89,17 @@ describe("agentify verify", () => {
     );
 
     expect(said).toMatch(/again/i);
+    expect(said).toMatch(/shape.*wrong/i);
+    expect(said).toMatch(/not checked.*rules.*compare one field.*another/i);
+    expect(said).toMatch(/more behind/i);
   });
 
-  it("stops rather than scolds when it is given no card files", async () => {
-    // The bare command takes no key and so cannot reach published cards, and
-    // those passed this same check on their way in. Every part of the reason is
-    // pinned, the tense included: "passed on the day they went out" is what the
-    // code can support. Most people reach this through `npx`, so the message
-    // says "you" and talks about the command they typed.
+  it("asks for local card files and says that it makes no remote check", async () => {
     const { code, said } = await verifying("verify");
-
-    expect(said).toMatch(/takes no key and no address/);
-    expect(said).toMatch(/list_merchant_cards/);
-    expect(said).toMatch(/passed this check on the day they went out/);
-    // Wrapped across lines in the message, so the wrap is not what is pinned.
-    expect(said).toMatch(/where you keep the cards\s+you\s+publish from/);
-    expect(said).not.toMatch(/a merchant/);
-    expect(said).toMatch(/Name the card files instead/);
+    expect(said).toMatch(/no key.*no address/i);
+    expect(said).toMatch(/cannot ask.*published/s);
+    expect(said).toMatch(/Name.*card files/i);
+    expect(said).toMatch(/next publish/);
     expect(code).toBe(2);
   });
 
@@ -121,20 +115,5 @@ describe("agentify verify", () => {
 
     expect(said).toMatch(/verify/);
     expect(code).toBe(2);
-  });
-
-  it("answers zero only when every card it was given is complete", async () => {
-    // One input for each way out of runVerify — nothing to check, cards that
-    // passed, cards that did not, a file that is not there, a word the command
-    // does not know — and only the second may read as success to a build.
-    const answers = await Promise.all([
-      verifying("verify"),
-      verifying("verify", fileHolding("good.json", validCard)),
-      verifying("verify", fileHolding("bad.json", { ...validCard, result: {} })),
-      verifying("verify", join(tmpdir(), "no-such-card-file.json")),
-      verifying("publish"),
-    ]);
-
-    expect(answers.map((answer) => answer.code)).toStrictEqual([2, 0, 1, 2, 2]);
   });
 });

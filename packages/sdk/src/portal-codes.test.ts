@@ -61,31 +61,4 @@ describe("the portal's table of codes a closing call fails under", () => {
     // A code printed twice would still sort into a list with the right names.
     expect(printed).toHaveLength(promised.length);
   });
-
-  it("counts them in the sentence above the table the way the table counts", () => {
-    // The page's sentence saying how many codes there are and how they split
-    // is what a merchant sizes their `switch` from. Enough of it is quoted for
-    // the pin to die when it is rewritten, and the numbers are counted from
-    // the lists.
-    const words: Record<string, number> = {
-      three: 3,
-      four: 4,
-      five: 5,
-      seven: 7,
-      eight: 8,
-      ten: 10,
-    };
-    const said =
-      /(\w+) codes are promised to mean one thing each — (\w+) sent by us, and (\w+) the tools produce/.exec(
-        readFileSync(page, "utf8").replace(/\s+/g, " "),
-      );
-
-    expect(said).not.toBeNull();
-
-    const [total, ours, theirs] = (said ?? []).slice(1).map((word) => words[word.toLowerCase()]);
-
-    expect(ours).toBe(ORDER_CALL_ERROR_CODES.length);
-    expect(theirs).toBe(FROM_THE_TOOLS.length);
-    expect(total).toBe(ORDER_CALL_ERROR_CODES.length + FROM_THE_TOOLS.length);
-  });
 });

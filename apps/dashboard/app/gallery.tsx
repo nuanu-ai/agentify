@@ -4,8 +4,7 @@
  * route tree, the one `routes.ts` declares, at the state's address, with the
  * data its loaders or presses would have answered: views built by the real
  * view functions from example data, the way the screen tests draw them.
- * Nothing here runs on the site; `gallery.test.tsx` holds that every page the
- * route table declares has a state here.
+ * Nothing here runs on the site.
  */
 
 import "./styles.css";

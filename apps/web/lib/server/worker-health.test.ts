@@ -20,19 +20,23 @@ describe("public worker dependency health", () => {
       ),
     ).toMatchObject({ ready: true });
 
-    expect(
-      evaluateWorkerHeartbeat(
-        {
-          heartbeat_at: "2026-07-17T00:00:20.000Z",
-          metadata: {
-            ready: false,
-            queue_connected: false,
-            database_connected: true,
+    for (const key of ["ready", "queue_connected", "database_connected"]) {
+      expect(
+        evaluateWorkerHeartbeat(
+          {
+            heartbeat_at: "2026-07-17T00:00:20.000Z",
+            metadata: {
+              ready: true,
+              queue_connected: true,
+              database_connected: true,
+              [key]: false,
+            },
           },
-        },
-        now,
-      ),
-    ).toMatchObject({ ready: false, queueConnected: false });
+          now,
+        ),
+        key,
+      ).toMatchObject({ ready: false });
+    }
   });
 
   it("does not mistake a stale or legacy heartbeat for readiness", () => {
@@ -40,13 +44,24 @@ describe("public worker dependency health", () => {
       evaluateWorkerHeartbeat(
         {
           heartbeat_at: "2026-07-16T23:59:00.000Z",
-          metadata: { queue: "pg-boss" },
+          metadata: { ready: true, queue_connected: true, database_connected: true },
         },
         now,
       ),
     ).toEqual({
       ready: false,
       heartbeatFresh: false,
+      queueConnected: true,
+      databaseConnected: true,
+    });
+    expect(
+      evaluateWorkerHeartbeat(
+        { heartbeat_at: "2026-07-17T00:00:20.000Z", metadata: { queue: "pg-boss" } },
+        now,
+      ),
+    ).toEqual({
+      ready: false,
+      heartbeatFresh: true,
       queueConnected: false,
       databaseConnected: false,
     });

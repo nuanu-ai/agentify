@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -10,31 +10,41 @@ const entrypoint = new URL("../../deploy/scanner-entrypoint.sh", import.meta.url
 function runEntrypoint(overrides = {}) {
   const directory = mkdtempSync(join(tmpdir(), "agentify-web-entrypoint-"));
   const command = join(directory, "command.sh");
-  writeFileSync(command, "#!/bin/sh\nexit 0\n");
+  writeFileSync(command, '#!/bin/sh\nprintf "child:%s\\n" "$@"\nexit 23\n');
   chmodSync(command, 0o700);
-  return spawnSync("/bin/sh", [entrypoint, command], {
-    encoding: "utf8",
-    env: {
-      PATH: process.env.PATH,
-      REGISTRATION_ENABLED: "true",
-      APP_BASE_URL: "https://agentify.ad",
-      DATABASE_URL: "postgresql://agentify:synthetic@postgres:5432/agentify",
-      TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
-      DASHBOARD_IDENTITY_URL: "http://app:3002",
-      REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",
-      ...overrides,
-    },
-  });
+  try {
+    return spawnSync("/bin/sh", [entrypoint, command, "argument with spaces", "--literal"], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH,
+        REGISTRATION_ENABLED: "true",
+        APP_BASE_URL: "https://agentify.ad",
+        DATABASE_URL: "postgresql://agentify:synthetic@postgres:5432/agentify",
+        TOKEN_HMAC_SECRET: "synthetic-hmac-key-000000000000000000000000",
+        DASHBOARD_IDENTITY_URL: "http://app:3002",
+        REPORT_IDENTITY_SECRET: "synthetic-report-identity-secret-32-bytes",
+        ...overrides,
+      },
+    });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 test("web entrypoint starts registration with its private dashboard identity route and without a mail credential", () => {
   const result = runEntrypoint();
-  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.status, 23, result.stderr);
+  assert.equal(result.stdout, "child:argument with spaces\nchild:--literal\n");
 });
 
 test("web entrypoint starts the same artifact with registration disabled", () => {
-  const result = runEntrypoint({ REGISTRATION_ENABLED: "false" });
-  assert.equal(result.status, 0, result.stderr);
+  const result = runEntrypoint({
+    REGISTRATION_ENABLED: "false",
+    DASHBOARD_IDENTITY_URL: "",
+    REPORT_IDENTITY_SECRET: "",
+  });
+  assert.equal(result.status, 23, result.stderr);
+  assert.equal(result.stdout, "child:argument with spaces\nchild:--literal\n");
 });
 
 test("web entrypoint requires the public runtime origin", () => {

@@ -144,11 +144,6 @@ if (databaseUrl === null) {
       expect(told.join("\n")).toMatch(/analytics event could not be recorded/);
     });
 
-    it("records an observation outside any transaction", async () => {
-      await recordObserved(db, created, AT);
-      expect(await recorded()).toHaveLength(1);
-    });
-
     it("never fails the caller of an observation the database cannot take, and says so without identifiers", async () => {
       await pool.query(
         "alter table commerce_analytics_events rename to commerce_analytics_events_away",

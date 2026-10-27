@@ -49,6 +49,16 @@ const privateEvidenceKey =
   /(?:^|_)(?:raw_html|raw_text|url|urls|ip|header|headers|body|token|cookie|authorization|secret|trace|stack|actor|actor_id|provider|run_id|operation_id)(?:$|_value$|_values$)/i;
 const privateEvidenceValue =
   /(?:https?:\/\/|(?:^|\s)(?:\d{1,3}\.){3}\d{1,3}(?:\s|$)|bearer\s+|api[_-]?key|(?:^|\s)\/[^\s]*|[?&][a-z0-9_-]+=|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:[/?#]|\b)|ignore\s+(?:all\s+)?previous\s+instructions?|system\s+prompt|developer\s+message|follow\s+(?:these|my)\s+instructions?)/i;
+// The URL parser validates IPv6 literals in browsers too, without a Node-only dependency.
+const containsIpv6Address = (value: string): boolean =>
+  value.split(/[\s,;()[\]{}<>"'=]+/).some((word) => {
+    if (!word.includes(":")) return false;
+    try {
+      return new URL(`http://[${word.split("%")[0]}]/`).hostname.startsWith("[");
+    } catch {
+      return false;
+    }
+  });
 const containsControlCharacters = (value: string): boolean =>
   [...value].some((character) => {
     const code = character.charCodeAt(0);
@@ -76,7 +86,9 @@ const browserObservationEvidenceSchema = z
         values.some(
           (entry) =>
             typeof entry === "string" &&
-            (privateEvidenceValue.test(entry) || containsControlCharacters(entry)),
+            (privateEvidenceValue.test(entry) ||
+              containsIpv6Address(entry) ||
+              containsControlCharacters(entry)),
         )
       ) {
         context.addIssue({

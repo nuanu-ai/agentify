@@ -260,15 +260,14 @@ function withWalletsHidden(value: unknown): unknown {
  * public address: what was checked, what came back and when, with every
  * wallet address in what the validator and the gateway's door said replaced
  * by the words "a wallet". The operator's request waits on it, so it stops
- * after `withinMs` and names what it did not check.
+ * after twenty seconds and names what it did not check.
  */
 export async function checkListingNow(
   base: string,
   reach: Reach,
   clock: () => number = Date.now,
-  withinMs: number = LISTING_CHECK_MS,
 ): Promise<ListingCheck & { readonly checkedAt: number }> {
-  const checked = await listingCheckOf(base.replace(/\/+$/, ""), [], reach, withinMs);
+  const checked = await listingCheckOf(base.replace(/\/+$/, ""), [], reach, LISTING_CHECK_MS);
   return { ...(withWalletsHidden(checked) as ListingCheck), checkedAt: clock() };
 }
 
@@ -356,16 +355,16 @@ function messageOf(thrown: unknown): string {
 
 /**
  * A probe that cannot reach its endpoint, or gets no whole answer within
- * `waitMs`, is turned into an answer rather than thrown, so it is one line in
+ * ten seconds, is turned into an answer rather than thrown, so it is one line in
  * the report instead of the end of the run.
  */
-export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
+export const overTheNetwork = (): Reach => ({
   catalog: async (baseUrl) => {
     const at = `${baseUrl}${API_ROUTES.list_catalog.path}`;
     try {
       const answered = await fetch(at, {
         headers: { accept: "application/json" },
-        signal: AbortSignal.timeout(waitMs),
+        signal: AbortSignal.timeout(FETCH_WAIT_MS),
       });
       if (!answered.ok) {
         throw new Error(`${at} answered ${answered.status}`);
@@ -377,7 +376,7 @@ export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
       return CATALOG_IDENTIFIERS.parse(await answered.json());
     } catch (thrown) {
       if (thrown instanceof Error && thrown.name === "TimeoutError") {
-        throw new Error(`${at} gave ${whyUnreached(thrown, waitMs)}`);
+        throw new Error(`${at} gave ${whyUnreached(thrown, FETCH_WAIT_MS)}`);
       }
       throw thrown;
     }
@@ -388,7 +387,7 @@ export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
       // agent makes before it has decided to buy.
       const answered = await fetch(resource, {
         method: "GET",
-        signal: AbortSignal.timeout(waitMs),
+        signal: AbortSignal.timeout(FETCH_WAIT_MS),
       });
       // Read and dropped: a body left unread holds its connection open.
       await answered.text();
@@ -398,7 +397,7 @@ export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
         challenge: answered.headers.get(PAYMENT_REQUIRED_HEADER),
       };
     } catch (thrown) {
-      return { kind: "unreachable", why: whyUnreached(thrown, waitMs) };
+      return { kind: "unreachable", why: whyUnreached(thrown, FETCH_WAIT_MS) };
     }
   },
   validate: async (resource, method) => {
@@ -407,7 +406,7 @@ export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resource, method }),
-        signal: AbortSignal.timeout(waitMs),
+        signal: AbortSignal.timeout(FETCH_WAIT_MS),
       });
       const text = await answered.text();
       let body: unknown;
@@ -420,7 +419,7 @@ export const overTheNetwork = (waitMs: number = FETCH_WAIT_MS): Reach => ({
       }
       return { kind: "answered", status: answered.status, body };
     } catch (thrown) {
-      return { kind: "unreachable", why: whyUnreached(thrown, waitMs) };
+      return { kind: "unreachable", why: whyUnreached(thrown, FETCH_WAIT_MS) };
     }
   },
 });

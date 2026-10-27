@@ -9,7 +9,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { encodeAbiParameters, type Hex } from "viem";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PayoutCheckFailure } from "../../ports/payout-check.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
 import { payoutSplitFor } from "../../split/parameters.js";
@@ -60,11 +60,17 @@ const dryRunAnswer = (before: bigint, after: bigint): Answer => {
 };
 
 let running: Server | null = null;
+const aClock = () => {
+  let now = 1_000_000;
+  vi.spyOn(Date, "now").mockImplementation(() => now);
+  return { pass: (ms: number) => (now += ms) };
+};
 
 afterEach(async () => {
   running?.closeAllConnections();
   await new Promise<void>((resolve) => (running ? running.close(() => resolve()) : resolve()));
   running = null;
+  vi.restoreAllMocks();
 });
 
 /**
@@ -191,16 +197,10 @@ describe("what a payout would bring, read from the chain", () => {
 });
 
 describe("how often the chain is asked about a payout", () => {
-  /** A clock the test moves by hand. */
-  const aClock = () => {
-    let now = 1_000_000;
-    return { now: () => now, pass: (ms: number) => (now += ms) };
-  };
-
   it("is once for the same payout asked about again within five seconds", async () => {
     const endpoint = await anEndpoint(84532, dryRunAnswer(0n, 10n), dryRunAnswer(0n, 20n));
     const clock = aClock();
-    const check = payoutCheckOn(NETWORK, endpoint.url, clock.now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
 
     await check?.wouldBring(PAYOUT, PATIENT);
     clock.pass(4_999);
@@ -213,7 +213,7 @@ describe("how often the chain is asked about a payout", () => {
   it("is again once the answer kept is five seconds old", async () => {
     const endpoint = await anEndpoint(84532, dryRunAnswer(0n, 10n), dryRunAnswer(0n, 20n));
     const clock = aClock();
-    const check = payoutCheckOn(NETWORK, endpoint.url, clock.now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
 
     await check?.wouldBring(PAYOUT, PATIENT);
     clock.pass(5_000);
@@ -224,7 +224,7 @@ describe("how often the chain is asked about a payout", () => {
 
   it("is again at once after a read that failed, which is not kept", async () => {
     const endpoint = await anEndpoint(84532, "unavailable", dryRunAnswer(0n, 10n));
-    const check = payoutCheckOn(NETWORK, endpoint.url, aClock().now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
 
     await expect(check?.wouldBring(PAYOUT, PATIENT)).rejects.toThrow();
 
@@ -233,7 +233,7 @@ describe("how often the chain is asked about a payout", () => {
 
   it("is once for pages that ask about the same payout while the read is under way", async () => {
     const endpoint = await anEndpoint(84532, dryRunAnswer(0n, 10n), dryRunAnswer(0n, 20n));
-    const check = payoutCheckOn(NETWORK, endpoint.url, aClock().now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
 
     const both = await Promise.all([
       check?.wouldBring(PAYOUT, PATIENT),
@@ -246,7 +246,7 @@ describe("how often the chain is asked about a payout", () => {
 
   it("is once for each payout, so one merchant's answer is never another's", async () => {
     const endpoint = await anEndpoint(84532, dryRunAnswer(0n, 10n), dryRunAnswer(0n, 20n));
-    const check = payoutCheckOn(NETWORK, endpoint.url, aClock().now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
 
     await check?.wouldBring(PAYOUT, PATIENT);
 
@@ -256,18 +256,10 @@ describe("how often the chain is asked about a payout", () => {
 });
 
 describe("a chain that does not answer in time", () => {
-  /** A clock the test moves by hand. */
-  const aClock = () => {
-    let now = 1_000_000;
-    return { now: () => now, pass: (ms: number) => (now += ms) };
-  };
-
   it("is given up on once the page's time for it has passed, said as too slow", async () => {
     const { url } = await anEndpoint(84532, "silent");
 
-    expect(await failureOf(payoutCheckOn(NETWORK, url, aClock().now)?.wouldBring(PAYOUT, 50))).toBe(
-      "TOO_SLOW",
-    );
+    expect(await failureOf(payoutCheckOn(NETWORK, url)?.wouldBring(PAYOUT, 50))).toBe("TOO_SLOW");
   });
 
   it("is not waited for again for five seconds: the next page about that payout is told at once", async () => {
@@ -275,7 +267,7 @@ describe("a chain that does not answer in time", () => {
     // spend the chain's whole share of its deadline on it.
     const endpoint = await anEndpoint(84532, "silent");
     const clock = aClock();
-    const check = payoutCheckOn(NETWORK, endpoint.url, clock.now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
     await failureOf(check?.wouldBring(PAYOUT, 50));
     clock.pass(4_999);
 
@@ -290,7 +282,7 @@ describe("a chain that does not answer in time", () => {
   it("is asked again once those five seconds have passed", async () => {
     const endpoint = await anEndpoint(84532, "silent", dryRunAnswer(0n, 10n));
     const clock = aClock();
-    const check = payoutCheckOn(NETWORK, endpoint.url, clock.now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
     await failureOf(check?.wouldBring(PAYOUT, 50));
     clock.pass(5_000);
 
@@ -305,7 +297,7 @@ describe("a chain that does not answer in time", () => {
       { late: 150, answer: "unavailable" },
       dryRunAnswer(0n, 10n),
     );
-    const check = payoutCheckOn(NETWORK, endpoint.url, aClock().now);
+    const check = payoutCheckOn(NETWORK, endpoint.url);
     await failureOf(check?.wouldBring(PAYOUT, 50));
     await new Promise((resolve) => setTimeout(resolve, 300));
 

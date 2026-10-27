@@ -757,6 +757,7 @@ describe("a body the transport cannot decode or that never decodes to anything",
 
   it("closes the connection when a body cannot be decoded", async () => {
     const artifact = await read("/corrupt-encoding", false);
+    expect(artifact).toMatchObject({ errorCode: "network_error", body: "", decodedBytes: 0 });
     expect(artifact.durationMs).toBeLessThan(5_000);
   });
 

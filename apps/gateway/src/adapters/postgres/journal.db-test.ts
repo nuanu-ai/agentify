@@ -116,20 +116,20 @@ if (databaseUrl === null) {
       expect((await store.journal({ limit: 50 })).total).toBe(1);
     });
 
-    it("rolls a withdrawal back with a row the table refuses", async () => {
-      // Past the application's own check, which would refuse it first: the
-      // table's refusal must take the change down with it too.
-      await expect(
-        db.transaction(async (tx) => {
-          await tx.update(merchants).set({ liveApprovedAt: null }).where(eq(merchants.id, A));
-          await tx.execute(
-            `insert into operator_journal (at, actor_kind, action, subject_kind, subject_id, outcome) values (now(), 'account', 'withdraw', 'merchant', '${A}', 'done')`,
-          );
-        }),
-      ).rejects.toThrow();
-
+    it("rolls the actual withdrawal back when its journal insert is refused", async () => {
+      await pool.query(
+        "alter table operator_journal add constraint audit_refuse_withdraw check (action <> 'withdraw')",
+      );
+      try {
+        await expect(store.withdrawLiveApproval(A, withdrawal(2_000))).rejects.toThrow();
+      } finally {
+        await pool.query("alter table operator_journal drop constraint audit_refuse_withdraw");
+      }
       expect((await store.merchantById(A))?.liveApprovedAt).toBe(1_500);
       expect((await store.journal({ limit: 10 })).total).toBe(0);
+      await store.withdrawLiveApproval(A, withdrawal(2_000));
+      expect((await store.merchantById(A))?.liveApprovedAt).toBeNull();
+      expect((await store.journal({ limit: 10 })).total).toBe(1);
     });
 
     it("commits a dashboard action's change with its row, and neither when the transaction fails after the row", async () => {

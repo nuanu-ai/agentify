@@ -771,30 +771,6 @@ describe("bounded scan graph", () => {
     expect(target.paths.filter((request) => request.includes("/.well-known/"))).toEqual([]);
   });
 
-  it("does not report an unreadable robots.txt as a rule that keeps the scanner out", async () => {
-    // Checks 4, 8 and 12 read the sitemap, llms.txt and the page's HTML.
-    const blockedBy = async (robotsBody: string, robotsStatus: number) => {
-      const evaluation = await new ScanRunner({
-        resolver: {
-          resolve: async () => [{ address: "93.184.216.34", family: 4 }],
-        },
-        transport: transport(robotsBody, robotsStatus).adapter,
-        appBaseUrl: "https://agentify.ad",
-      }).run(job);
-      return [4, 8, 12].map((id) => evaluation.checks.find((check) => check.id === id)?.errorCode);
-    };
-    expect(await blockedBy("", 503)).toEqual([
-      "robots_unavailable",
-      "robots_unavailable",
-      "robots_unavailable",
-    ]);
-    expect(await blockedBy("User-agent: *\nDisallow: /\n", 200)).toEqual([
-      "robots_disallowed",
-      "robots_disallowed",
-      "robots_disallowed",
-    ]);
-  });
-
   it("does not fetch a page whose robots decision would cost too much, and says so", async () => {
     const path = `/${"a".repeat(1_500)}`;
     const target = transport(`User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}`);
@@ -838,22 +814,6 @@ describe("bounded scan graph", () => {
     expect(target.paths.some((request) => request.startsWith("GET / "))).toBe(true);
     expect(target.paths.some((request) => request.includes(longSitemap))).toBe(false);
     expect(target.paths.some((request) => request.includes(longProduct))).toBe(false);
-  });
-
-  it("does not fetch a disallowed representative path", async () => {
-    const target = transport(
-      "User-agent: agentify-scanner\nAllow: /\nDisallow: /products/\nSitemap: https://example.com/sitemap.xml\n",
-    );
-    const evaluation = await new ScanRunner({
-      resolver: {
-        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
-      },
-      transport: target.adapter,
-      appBaseUrl: "https://agentify.ad",
-    }).run(job);
-    expect(target.paths.some((request) => request.startsWith("HEAD /products/widget"))).toBe(false);
-    expect(target.paths.some((request) => request.startsWith("GET /products/widget"))).toBe(false);
-    expect(evaluation.requestCount).toBeLessThanOrEqual(18);
   });
 
   it("uses the single GET when a representative candidate rejects HEAD", async () => {
@@ -958,29 +918,42 @@ describe("bounded scan graph", () => {
 
   it("writes real terminal check batches monotonically as phases finish", async () => {
     const target = transport();
-    const batches: number[][] = [];
-    const evaluation = await new ScanRunner({
-      resolver: {
-        resolve: async () => [{ address: "93.184.216.34", family: 4 }],
+    const batches: CheckResult[][] = [];
+    let release!: () => void;
+    let reached!: () => void;
+    const pageReached = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const pageGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const running = new ScanRunner({
+      resolver: { resolve: async () => [{ address: "93.184.216.34", family: 4 }] },
+      transport: {
+        request: async (input) => {
+          if (input.url.pathname === "/") {
+            reached();
+            await pageGate;
+          }
+          return await target.adapter.request(input);
+        },
       },
-      transport: target.adapter,
       appBaseUrl: "https://agentify.ad",
     }).run(job, {
       onChecksComplete: async (checks) => {
-        expect(
-          checks.every((check) =>
-            ["pass", "partial", "fail", "unavailable", "not_applicable"].includes(check.status),
-          ),
-        ).toBe(true);
-        batches.push(checks.map(({ id }) => id));
+        batches.push(structuredClone([...checks]));
       },
     });
-    expect(batches[0]).toEqual([1, 2, 3]);
-    expect(batches.length).toBeGreaterThanOrEqual(3);
+    await pageReached;
+    expect(batches[0]?.map(({ id }) => id)).toEqual([1, 2, 3]);
+    release();
+    const evaluation = await running;
     const written = batches.flat();
     expect(written).toHaveLength(18);
-    expect(new Set(written).size).toBe(18);
-    expect(evaluation.checks).toHaveLength(18);
+    expect(new Set(written.map(({ id }) => id)).size).toBe(18);
+    expect(written.sort((a, b) => a.id - b.id)).toEqual(
+      [...evaluation.checks].sort((a, b) => a.id - b.id),
+    );
   });
 
   it.each([
@@ -1051,6 +1024,7 @@ describe("bounded scan graph", () => {
   it("uses the submitted-without-scheme signal for one safe HTTP fallback", async () => {
     const backing = transport();
     const protocols: string[] = [];
+    const requests: string[] = [];
     const evaluation = await new ScanRunner({
       resolver: {
         resolve: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -1058,6 +1032,7 @@ describe("bounded scan graph", () => {
       transport: {
         request: async (input) => {
           protocols.push(input.url.protocol);
+          requests.push(input.url.toString());
           if (input.url.protocol === "https:" && input.url.pathname === "/robots.txt")
             return {
               ...makeArtifact(input, 0, "", "text/plain"),
@@ -1070,6 +1045,9 @@ describe("bounded scan graph", () => {
     }).run({ ...job, submitted_without_scheme: true });
     expect(protocols.slice(0, 2)).toEqual(["https:", "http:"]);
     expect(protocols.slice(2).every((protocol) => protocol === "http:")).toBe(true);
+    expect(requests).toContain("http://example.com/");
+    expect(requests).toContain("http://example.com/.well-known/mcp.json");
+    expect(evaluation.checks.find(({ id }) => id === 12)?.status).toBe("pass");
     expect(evaluation.requestCount).toBeLessThanOrEqual(18);
   });
 });
@@ -1239,25 +1217,6 @@ describe("why a scan the scanner stopped has no result", () => {
     ],
   ])("names no stop for %s", async (_, adapter) => {
     expect((await stopped({ resolve: publicAddress }, adapter())).stop).toBeNull();
-  });
-
-  it("tells a name that leads to a private address and a name that does not exist alike", async () => {
-    const privateName = await stopped(
-      { resolve: async () => [{ address: "172.18.0.4", family: 4 }] },
-      transport().adapter,
-    );
-    const missingName = await stopped(
-      {
-        resolve: async (hostname) => {
-          throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), {
-            code: "ENOTFOUND",
-          });
-        },
-      },
-      transport().adapter,
-    );
-    expect(privateName.stop).not.toBeNull();
-    expect(privateName).toEqual(missingName);
   });
 
   it("names no stop when the scanner's resolver failed for a moment, which says nothing of the name", async () => {

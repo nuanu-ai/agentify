@@ -418,6 +418,23 @@ if (databaseUrl === null) {
     it("forgets an account with its merchant and cards, and nothing where the row fails", async () => {
       await operator(OPERATOR);
       const seller = await withMerchant(MERCHANT);
+      const card = await store.publishCard(
+        seller.merchantId,
+        {
+          merchant_item_id: "room-101",
+          title: "A room for the night",
+          description: "One night in a room",
+          price: { amount: "80.00", currency: "USD" },
+          result: { access_code: { type: "string" } },
+          fulfillment: "sync",
+        },
+        Date.now(),
+      );
+      const key = await issueKey(store, randomIds, seller.merchantId, "worker", Date.now(), "test");
+      expect((await store.cards(seller.merchantId)).map((one) => one.id)).toStrictEqual([card.id]);
+      expect((await store.keysOf(seller.merchantId)).map((one) => one.id)).toStrictEqual([
+        key.key.id,
+      ]);
       const forgetting = press("forget_account", seller.person.id);
 
       await rowsFail();
@@ -431,20 +448,29 @@ if (databaseUrl === null) {
       await rowsWork();
       expect(await identity.byEmail(MERCHANT)).not.toBeNull();
       expect(await store.merchantById(seller.merchantId)).not.toBeNull();
+      expect(await store.cardById(card.id)).toMatchObject({
+        id: card.id,
+        merchantId: seller.merchantId,
+      });
+      expect((await store.keysOf(seller.merchantId)).map((one) => one.id)).toStrictEqual([
+        key.key.id,
+      ]);
 
-      const forgotten = await along(
-        forgetting,
-        async (tx) => await identity.forgetIn(tx, seller.person.id),
-        (result) => (result.kind === "forgotten" ? true : null),
-      );
-
-      expect(forgotten).toMatchObject({
+      await expect(
+        along(
+          forgetting,
+          async (tx) => await identity.forgetIn(tx, seller.person.id),
+          (result) => (result.kind === "forgotten" ? true : null),
+        ),
+      ).resolves.toMatchObject({
         kind: "forgotten",
         email: MERCHANT,
-        merchant: { id: seller.merchantId, present: true },
+        merchant: { id: seller.merchantId, present: true, cards: 1 },
       });
       expect(await identity.byEmail(MERCHANT)).toBeNull();
       expect(await store.merchantById(seller.merchantId)).toBeNull();
+      expect(await store.cardById(card.id)).toBeNull();
+      expect(await store.keysOf(seller.merchantId)).toStrictEqual([]);
       expect(await rows()).toMatchObject([{ action: "forget_account" }]);
       const again = await signIn(MERCHANT);
       expect(again.id).not.toBe(seller.person.id);
@@ -498,25 +524,40 @@ if (databaseUrl === null) {
       expect(await identity.byEmail(MERCHANT)).not.toBeNull();
     });
 
-    it("gives the configured first operator the flag at their sign-in, journaled as the configuration's, once", async () => {
-      const configured = identityWith({ FIRST_OPERATOR_EMAIL: FIRST });
-      await signIn("somebody@example.com", configured);
-      expect((await configured.operatorAccounts(new Date())).listed).toStrictEqual([]);
+    it.each(["configured", "earlier-manual-grant"])(
+      "grants the configured first operator once, prior history %s",
+      async (history) => {
+        const configured = identityWith({ FIRST_OPERATOR_EMAIL: FIRST });
+        await signIn("somebody@example.com", configured);
+        expect((await configured.operatorAccounts(new Date())).listed).toStrictEqual([]);
 
-      const first = await signIn(FIRST, configured);
+        if (history === "earlier-manual-grant") {
+          await pool.query(
+            "insert into operator_journal (at, actor_kind, action, subject_kind, subject_id, outcome) values (now(), 'terminal', 'grant_operator', 'account', 'acc_gone', 'done')",
+          );
+        }
+        const first = await signIn(FIRST, configured);
+        if (history === "earlier-manual-grant") {
+          expect(await flagOf(first.id)).toBe(false);
+          expect(await rows()).toStrictEqual([
+            { action: "grant_operator", subject_id: "acc_gone", actor_kind: "terminal" },
+          ]);
+          return;
+        }
 
-      expect(await flagOf(first.id)).toBe(true);
-      expect(await rows()).toStrictEqual([
-        { action: "first_operator", subject_id: first.id, actor_kind: "configuration" },
-      ]);
+        expect(await flagOf(first.id)).toBe(true);
+        expect(await rows()).toStrictEqual([
+          { action: "first_operator", subject_id: first.id, actor_kind: "configuration" },
+        ]);
 
-      // A channel that lost every operator does not take the configured one again.
-      await pool.query("update dashboard_accounts set operator = false");
-      await pool.query("delete from dashboard_link_sends");
-      await signIn(FIRST, configured);
-      expect(await flagOf(first.id)).toBe(false);
-      expect(await rows()).toHaveLength(1);
-    });
+        // A channel that lost every operator does not take the configured one again.
+        await pool.query("update dashboard_accounts set operator = false");
+        await pool.query("delete from dashboard_link_sends");
+        await signIn(FIRST, configured);
+        expect(await flagOf(first.id)).toBe(false);
+        expect(await rows()).toHaveLength(1);
+      },
+    );
 
     it("keeps an operator's account from the scanner's deletion until its flag is removed", async () => {
       const boss = await operator(OPERATOR);
@@ -564,17 +605,6 @@ if (databaseUrl === null) {
         receipts: 1,
       });
       expect(await reader.accounts.historyOf("mch_gone")).toStrictEqual({ orders: 0, receipts: 0 });
-    });
-
-    it("gives the configured address nothing on a channel whose flag was ever granted", async () => {
-      const configured = identityWith({ FIRST_OPERATOR_EMAIL: FIRST });
-      await pool.query(
-        "insert into operator_journal (at, actor_kind, action, subject_kind, subject_id, outcome) values (now(), 'terminal', 'grant_operator', 'account', 'acc_gone', 'done')",
-      );
-
-      const first = await signIn(FIRST, configured);
-
-      expect(await flagOf(first.id)).toBe(false);
     });
   });
 }

@@ -27,6 +27,6 @@ describe("owning a scan", () => {
   it("asks the database for an id that has a scan id's shape", async () => {
     await expect(
       owns("0190f4c5-0000-7000-8000-0000000000aa", "0190f4c5-0000-7000-8000-000000000000"),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ cause: { code: "ECONNREFUSED" } });
   });
 });

@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 /**
  * What the Caddyfile's `/docs` block decides by rules of its own, read from
  * the Caddyfile: a client that prefers Markdown is told apart as the scanner
@@ -8,7 +11,47 @@
 
 import { describe, expect, it } from "vitest";
 import { prefersMarkdown as scannerPrefersMarkdown } from "../../web/lib/accept-negotiation.js";
-import { prefersMarkdown, RULES } from "./edge.js";
+
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const CADDYFILE = readFileSync(join(ROOT, "deploy", "Caddyfile"), "utf8");
+
+const found = (pattern: RegExp, what: string): string => {
+  const value = pattern.exec(CADDYFILE)?.[1];
+  if (value === undefined) throw new Error(`deploy/Caddyfile no longer says ${what}`);
+  return value;
+};
+
+/** Go's `(?i)` written as JavaScript's flag; the rest of these expressions reads the same in both. */
+const goRegExp = (written: string): RegExp =>
+  written.startsWith("(?i)") ? new RegExp(written.slice(4), "i") : new RegExp(written);
+
+/** The block's own rules, as the Caddyfile writes them. */
+const RULES = {
+  prefersMarkdown: goRegExp(
+    found(/@docs_markdown \{\s*header_regexp Accept `([^`]+)`/, "which clients prefer Markdown"),
+  ),
+  htmlBefore: goRegExp(
+    found(/@docs_markdown \{[^}]*not header_regexp Accept `([^`]+)`/, "when HTML comes first"),
+  ),
+  formerAddress: goRegExp(found(/@docs_html path_regexp docs_html (\S+)/, "which addresses move")),
+  slashAddress: goRegExp(
+    found(/@docs_page_slash path_regexp docs_page_slash (\S+)/, "which page slashes move"),
+  ),
+  slashReserved: found(
+    /@docs_page_exists\s*\{\s*not path ([^\n]+)/,
+    "which generated pages have no slash alias",
+  )
+    .trim()
+    .split(/\s+/),
+  assetsKept: found(/header @docs_assets Cache-Control "([^"]+)"/, "how long assets are kept"),
+  dataType: found(/header @docs_data Content-Type "([^"]+)"/, "what type a page's data is"),
+  dataKept: found(/header @docs_kept Cache-Control "([^"]+)"/, "how long a page's data is kept"),
+  pagesKept: found(/header @docs_pages Cache-Control (\S+)/, "how long a page is kept"),
+} as const;
+
+/** Whether a client with this Accept header is answered with Markdown. */
+const prefersMarkdown = (accept: string): boolean =>
+  RULES.prefersMarkdown.test(accept) && !RULES.htmlBefore.test(accept);
 
 /** As agents, tools and browsers send them. */
 const ACCEPT = [

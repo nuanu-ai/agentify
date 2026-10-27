@@ -54,7 +54,7 @@ const RECENT_COPY_MS = 10 * 60_000;
 const CLAIM_LEASE_MS = 2 * 60_000;
 const RETRY_BATCH_SIZE = 10;
 /** How long a request is kept once it was sent or gave up: a fingerprint of its address and its dates. */
-export const SETTLED_COPY_RETENTION_MS = 30 * 86_400_000;
+const SETTLED_COPY_RETENTION_MS = 30 * 86_400_000;
 
 /** The most of each list the scanner's part carries; each list says how many there are. */
 const SCANNER_COPY_ROWS_MAX = {

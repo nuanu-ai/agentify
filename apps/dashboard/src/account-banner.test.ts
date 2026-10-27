@@ -77,14 +77,6 @@ describe("the account banner", () => {
     expect(note?.fix?.to).toBe("/orders?show=needs");
   });
 
-  it("heads silence and the unpaid purchases together by what silence does to every product", () => {
-    const both = accountOf(READY, { selling: "open", busy: true, outOfTouch: { since: null } });
-    const silent = accountOf(READY, { selling: "open", outOfTouch: { since: null } });
-
-    expect(both.map((note) => note.reason)).toStrictEqual(["out_of_touch", "busy"]);
-    expect(headingOf(both)).toBe(headingOf(silent));
-  });
-
   it("names a waiting change of the payout wallet before every other reason, with the address, the moment it applies and the wallet paid now", () => {
     const waiting = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
     const notes = accountOf(READY, {
@@ -119,10 +111,12 @@ describe("the account banner", () => {
       accountOf({ ...READY, sellerName: null }, { selling: "paused" }),
       accountOf({ ...READY, liveApproval: false, payout: { wallet: null } }),
       accountOf({ ...READY, sellerName: null }, { unread: true }),
+      accountOf(READY, { selling: "open", busy: true, outOfTouch: { since: null } }),
     ];
 
     expect(headingOf(one)).toBe(one[0]?.title);
-    expect(new Set(several.map(headingOf)).size).toBe(1);
+    expect(several[3]?.map((note) => note.reason)).toEqual(["out_of_touch", "busy"]);
+    for (const notes of several) expect(headingOf(notes)).toMatch(/products.*off sale/i);
     expect(headingOf(several[0] ?? [])).not.toBe(headingOf(one));
   });
 

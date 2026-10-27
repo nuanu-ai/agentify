@@ -95,8 +95,6 @@ export function sampleEvent(kind: OrderEventKind): OrderEvent {
       return { kind, at: T0 + 1, code: "out_of_stock", message: "none left" };
     case "refuse_called":
       return { kind, at: T0 + 1, code: "cannot_fulfill", message: "the supplier is silent" };
-    case "payment_verification_failed":
-      return { kind, at: T0 + 1, reason: "insufficient_funds" };
     case "deadline_expired":
       return { kind, at: T0 + 1_000_000, deadline: "sync_response" };
     default:

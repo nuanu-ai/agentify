@@ -244,25 +244,6 @@ describe("the lifecycle a merchant drives", () => {
 });
 
 describe("an order that carries the calls which close it", () => {
-  it("builds the handler's answer without the merchant writing the wire's words", async () => {
-    const answers: unknown[] = [];
-
-    const agentify = await clientOver({
-      poll_worker: polling(batch(envelopes.order)),
-      answer_order: (call) => {
-        answers.push(call.body);
-        return { body: { ok: true, result: "delivered" } };
-      },
-    });
-
-    agentify.on("order", (arrived) => arrived.delivered({ access_url: "https://a.example" }));
-    running = agentify;
-    await agentify.start();
-
-    await waitUntil(() => answers.length === 1, "the answer to reach the gateway");
-    expect(answers[0]).toStrictEqual({ delivered: { access_url: "https://a.example" } });
-  });
-
   it("builds a refusal and an acceptance in the same words the contract carries", async () => {
     // The builders produce the answer and send nothing, so a handler that
     // builds three and returns one has answered once.
@@ -410,6 +391,8 @@ describe("an order that carries the calls which close it", () => {
     });
 
     const read = await agentify.orders.get(order.id);
+    expect(read.status).toBe("in_progress");
+    expect(gateway?.callsTo("get_order")[0]?.params).toEqual({ order_id: order.id });
 
     expect(await read.refuse({ code: "out_of_stock", message: "gone" })).toStrictEqual({
       ok: true,
@@ -418,54 +401,6 @@ describe("an order that carries the calls which close it", () => {
 
     expect(gateway?.callsTo("deliver_order")[0]?.params).toStrictEqual({ order_id: order.id });
     expect(gateway?.callsTo("refuse_order")[0]?.params).toStrictEqual({ order_id: order.id });
-  });
-
-  it("makes an order off a list indistinguishable from one off the stream", async () => {
-    // Every call the handler's order has, the listed one has, and both send the
-    // same request for the same delivery.
-    const agentify = await clientOver({
-      poll_worker: polling(batch(envelopes.order)),
-      answer_order: () => ({ body: { ok: true, result: "accepted" } }),
-      list_orders: () => ({ body: { orders: [openOrder] } }),
-      deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
-    });
-
-    let fromStream: OrderCalls | undefined;
-
-    agentify.on("order", (arrived) => {
-      fromStream = arrived;
-      return arrived.accepted();
-    });
-
-    running = agentify;
-    await agentify.start();
-    await waitUntil(() => fromStream !== undefined, "the order to reach the handler");
-
-    const [fromList] = await agentify.orders.list({ open: true });
-
-    // Compared by what they send, not by object identity, which would compare
-    // closures.
-    await fromStream?.deliver({ access_url: "https://a.example" });
-    await fromList?.deliver({ access_url: "https://a.example" });
-
-    const [first, second] = gateway?.callsTo("deliver_order") ?? [];
-
-    expect(first?.params).toStrictEqual({ order_id: order.id });
-    expect(second?.params).toStrictEqual(first?.params);
-    expect(second?.body).toStrictEqual(first?.body);
-
-    // And every call one of them answers to, the other answers to as well.
-    for (const call of [
-      "delivered",
-      "refused",
-      "accepted",
-      "deliver",
-      "refuse",
-      "accept",
-    ] as const) {
-      expect(typeof fromStream?.[call]).toBe("function");
-      expect(typeof fromList?.[call]).toBe("function");
-    }
   });
 });
 

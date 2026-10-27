@@ -1,6 +1,6 @@
 import { getPublicAppConfig } from "./app-config";
 
-export const PRIVATE_ROBOTS_PATHS = [
+const PRIVATE_ROBOTS_PATHS = [
   "/admin",
   "/api/",
   "/scan/",
@@ -11,18 +11,6 @@ export const PRIVATE_ROBOTS_PATHS = [
   "/verification/",
   "/data-request",
 ] as const;
-
-export type ContentUsePolicy = Readonly<{
-  search: "yes" | "no";
-  aiInput: "yes" | "no";
-  aiTrain: "yes" | "no";
-}>;
-
-const PRODUCTION_CONTENT_USE_POLICY = {
-  search: "yes",
-  aiInput: "yes",
-  aiTrain: "no",
-} as const satisfies ContentUsePolicy;
 
 const allowedAgentTokens = [
   "OAI-SearchBot",
@@ -42,21 +30,17 @@ const agentGroup = (agents: readonly string[], rules: readonly string[]) => [
   ...rules,
 ];
 
-export function buildRobotsPolicy(
-  policy: ContentUsePolicy = PRODUCTION_CONTENT_USE_POLICY,
-): string {
+export function buildRobotsPolicy(): string {
   const { baseUrl } = getPublicAppConfig();
   const publicRules = privateRules();
-  const trainingRules = policy.aiTrain === "yes" ? publicRules : ["Disallow: /"];
-
   return [
     ...agentGroup(["*"], publicRules),
     "",
     ...agentGroup(allowedAgentTokens, publicRules),
     "",
-    ...agentGroup(["GPTBot", "Google-Extended"], trainingRules),
+    ...agentGroup(["GPTBot", "Google-Extended"], ["Disallow: /"]),
     "",
-    `Content-Signal: search=${policy.search}, ai-input=${policy.aiInput}, ai-train=${policy.aiTrain}`,
+    "Content-Signal: search=yes, ai-input=yes, ai-train=no",
     `Sitemap: ${new URL("/sitemap.xml", baseUrl).toString()}`,
     "",
   ].join("\n");

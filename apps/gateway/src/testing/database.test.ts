@@ -1,138 +1,115 @@
-/**
- * Which database `pnpm test:db` is given. Offline on purpose: this is what
- * stops the suite emptying the database a developer's running stack shows, and
- * it has to hold whether or not a database is up.
- *
- * The variable names are spelled out rather than imported. They are what an
- * operator types, and a rename read back out of the source would pass while
- * every document still named the old variable.
- */
+/** The destructive database command must refuse unsafe targets before opening PostgreSQL. */
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setup } from "./database-command.js";
 
-import { afterEach, describe, expect, it } from "vitest";
-import { DEFAULT_TEST_DATABASE_URL, TEST_DATABASE, testDatabaseUrl } from "./database.js";
+const opened = vi.hoisted(() => [] as string[]);
+// Stop at native database I/O: none of these command-safety checks can erase a database.
+vi.mock("pg", () => ({
+  Pool: class {
+    constructor(options: { connectionString: string }) {
+      opened.push(options.connectionString);
+    }
+    async query() {
+      throw Object.assign(new Error("offline"), { code: "ECONNREFUSED" });
+    }
+    async end() {}
+  },
+}));
 
-/** The database the dashboard is showing. Never this suite's. */
-const stack = "postgres://agentify:agentify@localhost:5432/agentify";
-
-/** A server bound where a deployment binds it rather than where a laptop does. */
-const moved = `postgres://agentify:agentify@localhost:55432/${TEST_DATABASE}`;
-
-const started = process.env.AGENTIFY_TEST_DATABASE_URL;
-
-afterEach(() => {
-  if (started === undefined) {
-    delete process.env.AGENTIFY_TEST_DATABASE_URL;
-  } else {
-    process.env.AGENTIFY_TEST_DATABASE_URL = started;
-  }
+beforeEach(() => {
+  opened.length = 0;
+  vi.stubEnv("AGENTIFY_TEST_DATABASE_URL", undefined);
+  vi.stubEnv("DATABASE_URL", undefined);
 });
+afterEach(() => vi.unstubAllEnvs());
 
-describe("the database the suite is given", () => {
-  it("is its own when nobody says otherwise", () => {
-    expect(testDatabaseUrl({})).toBe(DEFAULT_TEST_DATABASE_URL);
-    expect(DEFAULT_TEST_DATABASE_URL).toContain(TEST_DATABASE);
-  });
+const variables = ["AGENTIFY_TEST_DATABASE_URL", "DATABASE_URL"] as const;
+const stack = "postgres://agentify:secret-marker@127.0.0.1:1/agentify";
 
-  it("is the server AGENTIFY_TEST_DATABASE_URL names", () => {
-    // The default finds the database where `compose.yaml` publishes it on a
-    // laptop; a host that publishes it elsewhere has no other way to say so.
-    expect(testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: moved })).toBe(moved);
-  });
-
-  it("takes that over a DATABASE_URL meant for something else", () => {
-    // On such a host DATABASE_URL names the stack's own database for
-    // `db:migrate`. The more specific variable wins, so the suite runs where it
-    // was sent instead of refusing over a variable that was never about it.
-    expect(testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: moved, DATABASE_URL: stack })).toBe(moved);
-  });
-
-  it("is whatever DATABASE_URL names, when it names something else", () => {
-    const elsewhere = "postgres://someone:secret@example.test:5432/somewhere_else";
-
-    expect(testDatabaseUrl({ DATABASE_URL: elsewhere })).toBe(elsewhere);
-  });
-
-  it("is never the database the stack runs on, whichever variable names it", () => {
-    // Otherwise a developer with the stack up empties the database the
-    // dashboard is showing, without a word.
-    for (const variable of ["AGENTIFY_TEST_DATABASE_URL", "DATABASE_URL"]) {
-      for (const url of [
-        "postgres://agentify:agentify@localhost:5432/agentify",
-        "postgres://agentify:agentify@127.0.0.1:55432/agentify",
-        "postgres://agentify:agentify@postgres:5432/agentify?sslmode=disable",
-      ]) {
-        expect(() => testDatabaseUrl({ [variable]: url }), `${variable}=${url}`).toThrow(
-          /will not be pointed there/,
-        );
-      }
-    }
-  });
-
-  it("says which variable said it, and what to do instead", () => {
-    // With two variables in play, naming the wrong one sends the reader to the
-    // wrong line.
-    expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: stack })).toThrow(
-      /^AGENTIFY_TEST_DATABASE_URL names "agentify"/,
-    );
-    expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(
-      /^DATABASE_URL names "agentify"/,
-    );
-    expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(new RegExp(TEST_DATABASE));
-    expect(() => testDatabaseUrl({ DATABASE_URL: stack })).toThrow(/name any other database/);
-  });
-
-  it("refuses an address that names no database at all", () => {
-    // Postgres connects such an address to the database named after the user,
-    // which on this stack is `agentify`, so it would walk past the refusal
-    // above and empty the dashboard's database.
-    for (const url of [
-      "postgres://agentify:agentify@localhost:55432",
-      "postgres://agentify:agentify@localhost:55432/",
+describe("the destructive database command", () => {
+  it("uses its independent default or the explicit disposable server, with specific configuration taking precedence", async () => {
+    const fallback = "postgres://agentify:agentify@localhost:5432/agentify_test";
+    const moved = "postgres://agentify:secret-marker@127.0.0.1:55432/agentify_test";
+    const other = "postgres://someone:secret-marker@example.test:5432/somewhere_else";
+    for (const [own, inherited, expected] of [
+      [undefined, undefined, fallback],
+      [undefined, "", fallback],
+      [moved, undefined, moved],
+      [moved, stack, moved],
+      [undefined, other, other],
     ]) {
-      expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: url }), url).toThrow(
-        /names no database/,
-      );
-      expect(() => testDatabaseUrl({ DATABASE_URL: url }), url).toThrow(/names no database/);
+      vi.stubEnv("AGENTIFY_TEST_DATABASE_URL", own);
+      vi.stubEnv("DATABASE_URL", inherited);
+      opened.length = 0;
+      await expect(setup()).rejects.toThrow(/there is none/);
+      expect(opened).toEqual([expected]);
     }
   });
 
-  it("refuses an empty AGENTIFY_TEST_DATABASE_URL rather than quietly using 5432", () => {
-    // An emptied variable is an accident, not a request for the default:
-    // whoever sets this one is on a host where localhost:5432 is the wrong
-    // server.
-    expect(() => testDatabaseUrl({ AGENTIFY_TEST_DATABASE_URL: "" })).toThrow(
-      /^AGENTIFY_TEST_DATABASE_URL is set to nothing/,
-    );
-  });
-
-  it("treats an empty DATABASE_URL as nobody having said anything", () => {
-    // DATABASE_URL is not this suite's variable, and through a shell an empty
-    // one arrives the same way as an unset one.
-    expect(testDatabaseUrl({ DATABASE_URL: "" })).toBe(DEFAULT_TEST_DATABASE_URL);
-  });
-
-  it("says which variable it could not read, without repeating what was in it", () => {
-    // A connection string carries a password, and what the suite throws ends
-    // up in CI output.
-    const thrown = (): string => {
-      try {
-        testDatabaseUrl({
-          AGENTIFY_TEST_DATABASE_URL: "postgres//agentify:s3cret@localhost/x",
-        });
-        return "";
-      } catch (error) {
-        return String(error);
+  it("refuses every spelling of the stack database before connecting and names a safe alternative", async () => {
+    for (const variable of variables) {
+      for (const url of [
+        stack,
+        "postgres://agentify:secret-marker@localhost:5432/agentify",
+        "postgres://agentify:secret-marker@postgres:5432/agentify?sslmode=disable",
+        "postgres://agentify:secret-marker@127.0.0.1:1/%61gentify",
+      ]) {
+        vi.stubEnv(variable, url);
+        const failure = await setup().catch(String);
+        expect(failure).toContain(variable);
+        expect(failure).toContain('names "agentify"');
+        expect(failure).toContain("agentify_test");
+        expect(failure).not.toContain("secret-marker");
+        expect(opened).toEqual([]);
+        vi.stubEnv(variable, undefined);
       }
-    };
-
-    expect(thrown()).toContain("AGENTIFY_TEST_DATABASE_URL");
-    expect(thrown()).not.toContain("s3cret");
+    }
+    // Invoke the actual configured command too: dropping globalSetup must not bypass the guard.
+    const result = await promisify(execFile)(
+      process.execPath,
+      [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--config",
+        "vitest.db.config.ts",
+        "--maxWorkers=1",
+      ],
+      { env: { ...process.env, AGENTIFY_TEST_DATABASE_URL: stack }, timeout: 20_000 },
+    ).then(
+      () => "unexpected success",
+      (error: { stdout?: string; stderr?: string }) => `${error.stdout}\n${error.stderr}`,
+    );
+    expect(result).toContain('names "agentify"');
+    expect(result).not.toContain("secret-marker");
   });
 
-  it("reads the environment this process was started with when given none", () => {
-    // `pnpm test:db` calls this with no argument.
-    process.env.AGENTIFY_TEST_DATABASE_URL = moved;
+  it("refuses an omitted database instead of connecting to the database named after the user", async () => {
+    for (const variable of variables) {
+      for (const suffix of ["", "/"]) {
+        vi.stubEnv(variable, `postgres://agentify:secret-marker@127.0.0.1:1${suffix}`);
+        await expect(setup()).rejects.toThrow(/names no database/);
+        expect(opened).toEqual([]);
+        vi.stubEnv(variable, undefined);
+      }
+    }
+  });
 
-    expect(testDatabaseUrl()).toBe(moved);
+  it("refuses an explicitly empty dedicated URL instead of silently using the default server", async () => {
+    vi.stubEnv("AGENTIFY_TEST_DATABASE_URL", "");
+    await expect(setup()).rejects.toThrow(/AGENTIFY_TEST_DATABASE_URL is set to nothing/);
+    expect(opened).toEqual([]);
+  });
+
+  it("identifies malformed configuration without exposing credentials or attempting a connection", async () => {
+    for (const variable of variables) {
+      vi.stubEnv(variable, "postgres//agentify:secret-marker@localhost/x");
+      const failure = await setup().catch(String);
+      expect(failure).toContain(variable);
+      expect(failure).not.toContain("secret-marker");
+      expect(opened).toEqual([]);
+      vi.stubEnv(variable, undefined);
+    }
   });
 });

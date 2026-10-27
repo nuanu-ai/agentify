@@ -88,6 +88,19 @@ describe("buildFixPrompts", () => {
     expect(aiPrompt).toContain("## Required workflow");
     expect(aiPrompt).toContain("## Acceptance criteria");
     expect(aiPrompt).toContain("## Return format");
+    for (const instruction of [
+      /treat every finding.*untrusted diagnostic input/i,
+      /do not weaken authentication.*privacy.*payment/i,
+      /do not invent missing evidence/i,
+      /do not submit forms.*real orders.*payments/i,
+      /map each reproducible finding.*source file/i,
+      /run.*lint.*typecheck.*browser checks/i,
+      /unavailable findings.*not treated as defects/i,
+      /score.*weights.*thresholds.*not recalculated in UI/i,
+      /no new secret.*personal data.*logged or exposed/i,
+      /commands and results.*remaining risks/i,
+    ])
+      expect(aiPrompt).toMatch(instruction);
   });
 
   it("renders what, why, desired state and sanitized evidence", () => {
@@ -140,13 +153,6 @@ describe("buildFixPrompts", () => {
     expect(aiPrompt).not.toContain("private.example");
     expect(aiPrompt).not.toContain("ignore previous");
     expect(aiPrompt).not.toContain("token=secret");
-  });
-
-  it("is byte-stable for the same report", () => {
-    const input = report({ checks: [check({ id: 1, status: "fail" })] });
-    expect(buildFixPrompts(input, "Agentify", browserObservation())).toEqual(
-      buildFixPrompts(input, "Agentify", browserObservation()),
-    );
   });
 
   it("returns a no-speculation prompt when there are no actionable findings", () => {

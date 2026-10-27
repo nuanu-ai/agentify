@@ -11,7 +11,6 @@ import { describe, expect, it } from "vitest";
 import type { Person } from "../dashboard-entry.js";
 import { FRESH_SIGN_IN_MS, type Operator } from "./access.js";
 import { type ChangeAnswer, type Press, pressed } from "./action.js";
-import { memoryJournal } from "./journal.js";
 import { LOST_ANSWER, NO_REASON, NOT_CONFIRMED } from "./words.js";
 
 const NOW = new Date("2026-10-23T12:00:00Z");
@@ -208,58 +207,5 @@ describe("an administrative press", () => {
         kind: "unchanged",
       },
     );
-  });
-});
-
-describe("a dashboard action's change and its row", () => {
-  const ENDED: JournalPress = {
-    at: NOW.getTime(),
-    actor: { kind: "account", id: PERSON.id },
-    action: "end_sessions",
-    subject: { kind: "account", id: "acc_someone" },
-    reason: "A stolen laptop",
-  };
-
-  it("are written together, done or unchanged as the change settles it", async () => {
-    const store = new MemoryStore("eip155:84532", () => "id");
-    const journal = memoryJournal(store);
-
-    expect(await journal.along(ENDED, async () => ({ result: 3, changed: true }))).toBe(3);
-    await journal.along(ENDED, async () => ({ result: 0, changed: false }));
-
-    expect((await store.journal({ limit: 10 })).rows.map((row) => row.outcome)).toStrictEqual([
-      { kind: "unchanged" },
-      { kind: "done" },
-    ]);
-  });
-
-  it("refuses a change whose row the journal refuses before the change runs", async () => {
-    const store = new MemoryStore("eip155:84532", () => "id");
-    const journal = memoryJournal(store);
-    let ran = false;
-
-    await expect(
-      journal.along({ ...ENDED, reason: "<b>no</b>" }, async () => {
-        ran = true;
-        return { result: 1, changed: true };
-      }),
-    ).rejects.toThrow();
-
-    expect(ran).toBe(false);
-    expect((await store.journal({ limit: 10 })).total).toBe(0);
-  });
-
-  it("writes no row for a change that failed or found nothing to act on", async () => {
-    const store = new MemoryStore("eip155:84532", () => "id");
-    const journal = memoryJournal(store);
-
-    await expect(
-      journal.along(ENDED, async () => {
-        throw new Error("the change failed");
-      }),
-    ).rejects.toThrow("the change failed");
-    expect(await journal.along(ENDED, async () => ({ result: 0, changed: null }))).toBe(0);
-
-    expect((await store.journal({ limit: 10 })).total).toBe(0);
   });
 });

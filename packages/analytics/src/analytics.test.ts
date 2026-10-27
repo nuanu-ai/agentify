@@ -148,15 +148,16 @@ describe("analytics privacy and dedup contracts", () => {
       source: "banner",
     });
 
-    let keptWhenRecorded: number | undefined;
-    await saveConsentDecision({
-      storage,
-      snapshot,
-      persistAppendOnly: async () => {
-        keptWhenRecorded = values.size;
-      },
+    let finishPersistence = () => {};
+    const persisted = new Promise<void>((resolve) => {
+      finishPersistence = resolve;
     });
-    expect(keptWhenRecorded).toBe(0);
+    const saving = saveConsentDecision({ storage, snapshot, persistAppendOnly: () => persisted });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(values.size).toBe(0);
+    finishPersistence();
+    await saving;
     expect([...values.values()][0]).toContain('"ads_measurement":false');
 
     values.clear();
@@ -224,6 +225,24 @@ describe("analytics privacy and dedup contracts", () => {
       lead_id: "lead",
       share_id: "share",
     };
+    const fields = {
+      landing_view: ["session_id", "variant", "day"],
+      scan_started: ["scan_id"],
+      scan_completed: ["scan_id"],
+      results_viewed: ["session_id", "scan_id"],
+      registration_started: ["session_id", "scan_id"],
+      registration_completed: ["lead_id", "scan_id"],
+      result_shared: ["share_id"],
+    } as const;
+    for (const name of ANALYTICS_EVENT_NAMES) {
+      const key = eventOnceKey(name, ids);
+      expect(eventOnceKey(name, { ...ids })).toBe(key);
+      for (const field of fields[name])
+        expect(
+          eventOnceKey(name, { ...ids, [field]: `${ids[field]}-another` }),
+          `${name}.${field}`,
+        ).not.toBe(key);
+    }
     const keys = ANALYTICS_EVENT_NAMES.map((name) => eventOnceKey(name, ids));
     expect(new Set(keys).size).toBe(ANALYTICS_EVENT_NAMES.length);
     expect(eventOnceKey("registration_completed", ids)).toBe("registration_completed:lead:scan");

@@ -1,3 +1,4 @@
+import { setImmediate as nextTurn } from "node:timers/promises";
 /**
  * A payout wallet change on the live deployment. The payout address is the one
  * setting whose change redirects money, and only a dashboard session reaches
@@ -14,6 +15,7 @@
 import { type Card, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keyDigest } from "../app/merchants.js";
 import { payoutSplitFor } from "../split/parameters.js";
 import {
   buyOverHttp,
@@ -220,10 +222,17 @@ describe("the first address a merchant sets", () => {
     const merchantId = await aNewMerchant(harnessed);
     harnessed.announcer.answer = () => new Promise(() => undefined);
 
-    expect(await ask(harnessed, A_WALLET, merchantId)).toStrictEqual({
-      payout_wallet: A_WALLET,
-      pending: null,
-    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const observed: { result?: WalletAnswer } = {};
+      void ask(harnessed, A_WALLET, merchantId).then((result) => {
+        observed.result = result;
+      });
+      await nextTurn();
+      expect(observed.result).toStrictEqual({ payout_wallet: A_WALLET, pending: null });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is announced to nobody on the test channel", async () => {
@@ -302,6 +311,9 @@ describe("a replacement on the live deployment", () => {
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
     await ask(harnessed, A_WALLET);
+    expect(await payToNow(served, itemId)).toBe(
+      splitOf(harnessed, harnessed.merchant.wallet).address,
+    );
     await waitedOut(harnessed, THE_WAIT);
 
     const bought = await buyOverHttp(harnessed, served, itemId, {
@@ -312,27 +324,6 @@ describe("a replacement on the live deployment", () => {
     const recorded = await recordedSplitOf(harnessed, A_WALLET);
     expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(recorded?.address);
     expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(recorded?.address);
-  });
-
-  it("checks a payment against the split of the wallet in force when it arrives, whatever the challenge named", async () => {
-    // Between the challenge and the payment the waiting wallet's moment can
-    // come; a payment made out to the old split is a different purchase. The
-    // refusal itself is the payment layer's edge (`adapters/x402`); this pins
-    // which split verification carries.
-    const { served, harnessed } = await started();
-    const itemId = await published(served, harnessed.merchant.key);
-    await ask(harnessed, A_WALLET);
-    const challenged = await payToNow(served, itemId);
-    await waitedOut(harnessed, THE_WAIT);
-
-    await buyOverHttp(harnessed, served, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-
-    expect(challenged).toBe(splitOf(harnessed, harnessed.merchant.wallet).address);
-    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(
-      (await recordedSplitOf(harnessed, A_WALLET))?.address,
-    );
   });
 
   it("checks a payment against the split in force when it arrives, though its order opened before the moment", async () => {
@@ -519,32 +510,18 @@ describe("asking again", () => {
     expect(await payToNow(served, itemId)).toBe(splitOf(harnessed, ANOTHER_WALLET).address);
   });
 
-  it("names the kept split again after a cancel, and records nothing new for it", async () => {
-    const { served, harnessed } = await started();
-    const itemId = await published(served, harnessed.merchant.key);
-    await ask(harnessed, A_WALLET);
-
-    const written = await journalled(() => ask(harnessed, harnessed.merchant.wallet));
-    await waitedOut(harnessed, THE_WAIT);
-
-    expect(written).toStrictEqual([]);
-    expect(await recordedSplitOf(harnessed, A_WALLET)).not.toBeNull();
-    expect(await payToNow(served, itemId)).toBe(
-      splitOf(harnessed, harnessed.merchant.wallet).address,
-    );
-  });
-
   it("for the address paid now cancels the waiting change, and says so", async () => {
     const { served, harnessed } = await started();
     const itemId = await published(served, harnessed.merchant.key);
     await ask(harnessed, A_WALLET);
 
-    const cancelled = await ask(harnessed, harnessed.merchant.wallet);
-
-    expect(cancelled).toStrictEqual({
-      payout_wallet: harnessed.merchant.wallet,
-      pending: null,
+    const written = await journalled(async () => {
+      expect(await ask(harnessed, harnessed.merchant.wallet)).toStrictEqual({
+        payout_wallet: harnessed.merchant.wallet,
+        pending: null,
+      });
     });
+    expect(written).toStrictEqual([]);
     expect(harnessed.announcer.announced[1]).toStrictEqual({
       kind: "wallet_change_cancelled",
       merchant_id: harnessed.merchant.id,
@@ -809,21 +786,43 @@ describe("a new key on the live deployment", () => {
   ])("is issued all the same with %s", async (_why, outcome) => {
     // A key moves no money, and a merchant must not be kept from one — their
     // first above all — because mail is down.
-    const { harnessed } = await started();
+    const { harnessed, served } = await started();
     harnessed.announcer.answer = outcome;
 
     const issued = await aNewKey(harnessed);
 
-    expect(issued.secret).toMatch(/^csk_live_/);
+    expect(await harnessed.store.workingKey(keyDigest(issued.secret))).toMatchObject({
+      id: issued.key.id,
+      merchantId: harnessed.merchant.id,
+    });
+    expect((await served.call("GET", "/v0/cards", { headers: bearer(issued.secret) })).status).toBe(
+      200,
+    );
   });
 
   it("never waits on its message", async () => {
-    const { harnessed } = await started();
+    const { harnessed, served } = await started();
     harnessed.announcer.answer = () => new Promise(() => undefined);
-
-    const issued = await aNewKey(harnessed);
-
-    expect(issued.secret).toMatch(/^csk_live_/);
+    const observed: { issued?: Awaited<ReturnType<typeof aNewKey>> } = {};
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      void aNewKey(harnessed).then((issued) => {
+        observed.issued = issued;
+      });
+      await nextTurn();
+      expect(observed.issued).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+    const issued = observed.issued;
+    if (!issued) throw new Error("key issuance waited for the stalled announcement");
+    expect(await harnessed.store.workingKey(keyDigest(issued.secret))).toMatchObject({
+      id: issued.key.id,
+      merchantId: harnessed.merchant.id,
+    });
+    expect((await served.call("GET", "/v0/cards", { headers: bearer(issued.secret) })).status).toBe(
+      200,
+    );
   });
 });
 
