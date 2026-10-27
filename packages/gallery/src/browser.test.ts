@@ -3,7 +3,8 @@
 /**
  * What a scene promises the surface that writes it: a state whose page asks
  * the site for something the scene does not answer is not drawn, and the
- * refusal names the request. Drawing a real surface's scenes is held by that
+ * refusal names the request; a page that watches what comes into view is
+ * drawn, with nothing in view. Drawing a real surface's scenes is held by that
  * surface's own gallery check.
  */
 
@@ -33,7 +34,25 @@ const state: GalleryState = {
   draw: () => null as unknown as ReactElement,
 };
 
+/** A page that watches its heading come into view, as a link that fetches its page once seen does. */
+const watching: BrowserReact = {
+  act: async (work) => await work(),
+  createRoot: (container) => ({
+    render: () => {
+      container.textContent = "Contents";
+      new IntersectionObserver(() => undefined).observe(container);
+    },
+    unmount: () => undefined,
+  }),
+};
+
 describe("a state drawn in the browser", () => {
+  it("is drawn when its page watches what comes into view", async () => {
+    await expect(drawnInBrowser(state, { shows: "Contents" }, watching)).resolves.toContain(
+      "Contents",
+    );
+  });
+
   it("is drawn once its page shows the scene's words and every request it made was answered", async () => {
     const scene = {
       answers: { "GET /api/v2/session": { status: 200, body: {} } },

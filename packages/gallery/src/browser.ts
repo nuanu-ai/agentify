@@ -87,6 +87,22 @@ export async function drawnInBrowser(
       return [this.getBoundingClientRect()] as unknown as DOMRectList;
     };
   }
+  // Nor is anything ever in view of it, so a part that watches for that, as a
+  // link that fetches its page once seen does, is told of nothing.
+  const watchesNothing = typeof globalThis.IntersectionObserver === "undefined";
+  if (watchesNothing) {
+    globalThis.IntersectionObserver = class {
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [];
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    } as unknown as typeof IntersectionObserver;
+  }
   const acting = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
   const wasActing = acting.IS_REACT_ACT_ENVIRONMENT;
   acting.IS_REACT_ACT_ENVIRONMENT = true;
@@ -132,6 +148,7 @@ export async function drawnInBrowser(
     globalThis.fetch = fetched;
     if (unscrollable) Reflect.deleteProperty(Element.prototype, "scrollIntoView");
     if (drawsNoBoxes) Element.prototype.getClientRects = boxesOf;
+    if (watchesNothing) Reflect.deleteProperty(globalThis, "IntersectionObserver");
     acting.IS_REACT_ACT_ENVIRONMENT = wasActing;
     sessionStorage.clear();
     localStorage.clear();
