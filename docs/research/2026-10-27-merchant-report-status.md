@@ -9,14 +9,14 @@ reply covering every finding, including explanations for deferred proposals.
 Work proceeds one finding at a time: explain the problem and proposed response,
 get agreement, implement or verify that it is already resolved, then stop for
 the next discussion. PR #211 is merged. Further accepted work shares the
-`agent/report-followups` branch; a new pull request is not opened yet.
+`agent/report-followups` branch so it can be reviewed together.
 
 | Finding | Current status | Evidence or remaining work |
 | --- | --- | --- |
 | ENG01: reporter's acceptance runner | Outside the product fix scope. | The reporter identifies this as their own harness and is fixing it. The synthetic 9.99 USDC example is not an on-chain charge. Do not describe it as a defect in Agentify's tests. |
 | ENG02: lost paid answer | The buyer example is fixed in [PR #211](https://github.com/nuanu-ai/agentify/pull/211). | It saves requirements before payment and resumes the same purchase. The [recovery check](2026-10-27-buyer-example-recovery.md) verifies no extra debit on TEST. This does not update third-party buyer clients. |
 | ENG03: buyer state file permissions | The example enforces private state-file permissions in PR #211. | Existing purchase journals are corrected to 0600; storage failure refuses payment. Previously written legacy files are not automatically migrated. |
-| ENG04: purchase response caching | Confirmed in current code; proposal awaiting agreement. | The status route sets `no-store`, while purchase and recovery do not. No cache leak is established. |
+| ENG04: purchase response caching | Implemented on the follow-up branch; awaiting review and deployment. | The [cache-protection check](2026-10-27-purchase-response-cache-control.md) covers purchase, recovery and order-bearing errors. All 507 gateway HTTP tests pass; discovery probes still create no order. No cache leak is established. |
 | ENG05: empty wallet receives signing advice | Reported wrong advice is not reproduced on current TEST. | The code already changes through [PR #201](https://github.com/nuanu-ai/agentify/pull/201). The [recheck](2026-10-27-eng05-payment-refusal-recheck.md) distinguishes unknown cause, wrong signature and wrong chain with zero spend. Explicit insufficient-funds codes have a funding instruction offline. The live service gives a generic refusal, so this is not a claim of reliable balance diagnosis. |
 | ENG06: conflicting repeated delivery | Proposed diagnostic improvement; no implementation decision. | The original goods remain intact. Evaluate a signal to the merchant without adding an overwrite path or exposing credentials. |
 | ENG07: terms before async payment | Product and public-contract decision pending. | Assess what the buyer can learn about settlement timing, the merchant's policy and support before paying. Agentify does not confirm refunds. |

@@ -104,7 +104,17 @@ async function aPaidSale(
     return { requirements: theirs, orderId: (bought.body as { order_id: string }).order_id };
   };
 
-  return { harnessed, requirements, fresh, present, paying, paid, orderId, anotherOrder, anotherSale };
+  return {
+    harnessed,
+    requirements,
+    fresh,
+    present,
+    paying,
+    paid,
+    orderId,
+    anotherOrder,
+    anotherSale,
+  };
 }
 
 /**
