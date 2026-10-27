@@ -73,7 +73,7 @@ function wordsIn(page: string, heading: string, row: string, column: string): re
   if (at === -1) throw new Error(`the table under "${heading}" has no column ${column}`);
   const cells = rows.find((each) => each[0] === row);
   if (cells === undefined) throw new Error(`the table under "${heading}" has no row "${row}"`);
-  return [...(cells[at] ?? "").matchAll(/`([a-z_.]+)`/g)].map((found) => found[1] ?? "");
+  return [...(cells[at] ?? "").matchAll(/`([^`]+)`/g)].map((found) => found[1] ?? "");
 }
 
 function rowOf(page: string, heading: string, name: string | undefined): readonly string[] {
