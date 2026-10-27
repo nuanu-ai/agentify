@@ -580,6 +580,9 @@ importers:
       '@types/react':
         specifier: 19.2.17
         version: 19.2.17
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.17)
       axe-core:
         specifier: 4.12.1
         version: 4.12.1
@@ -589,6 +592,12 @@ importers:
       playwright:
         specifier: 1.61.1
         version: 1.61.1
+      react:
+        specifier: 19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: 19.2.7
+        version: 19.2.7(react@19.2.7)
       tsx:
         specifier: 4.23.12
         version: 4.23.12

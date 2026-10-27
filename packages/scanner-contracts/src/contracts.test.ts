@@ -246,33 +246,50 @@ describe("canonical contracts", () => {
 
   it("keeps browser observation versioned, bounded, and non-scoring", () => {
     const operationId = "019b41a0-7c51-7d63-84bd-a5a20faef497";
+    const boundedInput = {
+      schema_version: BROWSER_OBSERVATION_VERSION,
+      operation_id: operationId,
+      target: {
+        canonical_url: "https://example.com/",
+        registrable_domain: "example.com",
+        segment: "owner",
+      },
+      representative_urls: [],
+      policy: {
+        user_agent: "agentify-browser-observer/1.0",
+        methods: ["GET", "HEAD"],
+        use_proxy: false,
+        respect_robots: true,
+        crawl_purpose: "search",
+      },
+      limits: {
+        max_pages: 3,
+        max_requests_per_page: 80,
+        max_total_bytes: 8 * 1024 * 1024,
+        page_timeout_ms: 12_000,
+        run_timeout_ms: 45_000,
+      },
+    };
+    expect(browserObservationInputV1Schema.safeParse(boundedInput).success).toBe(true);
+    for (const field of Object.keys(boundedInput.limits) as (keyof typeof boundedInput.limits)[]) {
+      const parsed = browserObservationInputV1Schema.safeParse({
+        ...boundedInput,
+        limits: { ...boundedInput.limits, [field]: boundedInput.limits[field] + 1 },
+      });
+      expect(parsed.success, field).toBe(false);
+      if (!parsed.success)
+        expect(parsed.error.issues.map((issue) => issue.path)).toContainEqual(["limits", field]);
+    }
     expect(
       browserObservationInputV1Schema.safeParse({
-        schema_version: BROWSER_OBSERVATION_VERSION,
-        operation_id: operationId,
-        target: {
-          canonical_url: "https://example.com/",
-          registrable_domain: "example.com",
-          segment: "owner",
-        },
-        representative_urls: [],
-        policy: {
-          user_agent: "agentify-browser-observer/1.0",
-          methods: ["GET", "HEAD"],
-          use_proxy: false,
-          respect_robots: true,
-          crawl_purpose: "search",
-        },
-        limits: {
-          max_pages: 3,
-          max_requests_per_page: 80,
-          max_total_bytes: 8 * 1024 * 1024,
-          page_timeout_ms: 12_000,
-          run_timeout_ms: 45_000,
-        },
+        ...boundedInput,
+        representative_urls: [
+          "https://example.com/a",
+          "https://example.com/b",
+          "https://example.com/c",
+        ],
       }).success,
-    ).toBe(true);
-
+    ).toBe(false);
     const output = {
       schema_version: BROWSER_OBSERVATION_VERSION,
       operation_id: operationId,
@@ -293,6 +310,8 @@ describe("canonical contracts", () => {
       "::1",
       "::ffff:192.0.2.1",
       "contact [2001:db8::1] failed",
+      "ip=2001:db8::1",
+      "<2001:db8::1>",
     ]) {
       const parsed = browserObservationOutputV1Schema.safeParse({
         ...output,
@@ -314,6 +333,25 @@ describe("canonical contracts", () => {
           "debug_value",
         ]);
     }
+    for (const unsafe of ["ip=2001:db8::1", "<2001:db8::1>", "::ffff:192.0.2.1"])
+      expect(
+        browserObservationFindingSchema.safeParse({
+          ...output.observations[0],
+          evidence: { categories: [unsafe] },
+        }).success,
+        unsafe,
+      ).toBe(false);
+    expect(
+      browserObservationOutputV1Schema.safeParse({ ...output, pages_assessed: 4 }).success,
+    ).toBe(false);
+    expect(
+      browserObservationFindingSchema.safeParse({
+        ...output.observations[0],
+        evidence: Object.fromEntries(
+          Array.from({ length: 18 }, (_, i) => [`category_${i}`, "a".repeat(500)]),
+        ),
+      }).success,
+    ).toBe(false);
     const [firstObservation] = output.observations;
     if (!firstObservation) throw new Error("the observation fixture has no observations");
     for (const status of ["completed", "partial", "blocked", "failed"]) {
@@ -458,6 +496,10 @@ describe("canonical contracts", () => {
       updated_at: "2026-07-13T12:00:00.000Z",
     };
     expect(browserObservationStatusResponseSchema.safeParse(publicResponse).success).toBe(true);
+    expect(
+      browserObservationStatusResponseSchema.safeParse({ ...publicResponse, non_scoring: false })
+        .success,
+    ).toBe(false);
     expect(
       browserObservationStatusResponseSchema.safeParse({
         ...publicResponse,

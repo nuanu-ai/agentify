@@ -16,17 +16,11 @@ afterEach(() => {
 });
 
 describe("a browser's zone", () => {
-  it("is named for the pages drawn after this one", () => {
-    browserIn("Asia/Makassar");
-    rememberZone();
-    vi.restoreAllMocks();
-    expect(zoneIn(document.cookie)).toBe("Asia/Makassar");
-  });
-
   it("is named again once the browser has moved to another zone", () => {
     browserIn("Asia/Makassar");
     rememberZone();
     vi.restoreAllMocks();
+    expect(zoneIn(document.cookie)).toBe("Asia/Makassar");
     browserIn("Europe/Lisbon");
     rememberZone();
     vi.restoreAllMocks();

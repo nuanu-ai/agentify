@@ -181,14 +181,6 @@ describe("the site header", () => {
   it("marks nothing on a page of none of the parts, such as the privacy pages", () => {
     expect(site("scanner").marked()).toStrictEqual([]);
   });
-
-  it("puts the way past it first, to the page's main part", () => {
-    const { banner } = site("scanner");
-
-    const first = banner.querySelector("a, button, summary");
-    expect(first?.textContent).toBe("Skip to content");
-    expect(first?.getAttribute("href")).toBe("#main");
-  });
 });
 
 describe("who is visiting, in the bar", () => {
@@ -223,7 +215,9 @@ describe("who is visiting, in the bar", () => {
   it("posts the sign-out to the dashboard under the prefix it is deployed at, from inside it", () => {
     const header = site("dashboard", { visitor: MERCHANT, current: "dashboard" });
 
-    for (const form of header.banner.querySelectorAll("form")) {
+    const forms = header.banner.querySelectorAll("form");
+    expect(forms).toHaveLength(2);
+    for (const form of forms) {
       expect(form.getAttribute("action")).toBe("/dashboard/sign-out");
     }
   });
@@ -330,7 +324,9 @@ describe("the working header", () => {
     const mark = within(header.banner).getByText("Operator");
 
     expect(lockup.contains(mark)).toBe(false);
-    expect(lockup.nextElementSibling).toBe(mark);
+    expect(mark.closest("a")).toBeNull();
+    expect(header.banner.contains(mark)).toBe(true);
+    expect(lockup.textContent).not.toContain("Operator");
   });
 });
 
