@@ -76,9 +76,14 @@ describe("the merchant's price gate", () => {
       );
       let finished = 0;
       for (const request of pending)
-        request.then(() => {
-          finished += 1;
-        });
+        void request.then(
+          () => {
+            finished += 1;
+          },
+          () => {
+            finished += 1;
+          },
+        );
       const bought = await buyOverHttp(h, served, offered.id, {
         merchantId: other.id,
         through,

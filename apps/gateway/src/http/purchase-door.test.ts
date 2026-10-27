@@ -151,6 +151,7 @@ const fiftyWaiting = async (
         body: { params: {} },
       });
       expect(answered.status).toBe(402);
+      harnessed.advance(100);
     }
   } finally {
     await worker.stop();

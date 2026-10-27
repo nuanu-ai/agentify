@@ -53,7 +53,7 @@ import {
  * told to wait before trying again: long enough not to knock at once, short
  * against the half minute a price holds.
  */
-const SELLER_BUSY_RETRY_AFTER_SECONDS = 5;
+const SELLER_BUSY_RETRY_AFTER_SECONDS = 2;
 
 /**
  * The merchant whose key opened this call. The mounting loop answers 401
@@ -680,15 +680,14 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
-      // A purchase waiting for payment lapses with its price, so a place comes
-      // free within a minute and usually much sooner.
+      // Busy admission is transient; retrying asks again before any payment.
       response.setHeader("retry-after", String(SELLER_BUSY_RETRY_AFTER_SECONDS));
       return written(
         response,
         TOO_MANY_REQUESTS,
         refusal(
           "seller_busy",
-          "this seller has too many purchases waiting for payment right now, so this one was not started and nothing was charged; try again in a few seconds",
+          "this seller is busy right now, so this purchase was not started and nothing was charged; try again in a few seconds",
         ),
       );
 

@@ -104,6 +104,7 @@ import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
 import type { NotAPayoutWallet } from "../split/wallet-rule.js";
 import { purchaseUrlOf } from "./addresses.js";
 import { orderCallResponseOf } from "./answers.js";
+import { MerchantPriceGate } from "./merchant-price-gate.js";
 import {
   issueKey,
   keyDigest,
@@ -609,7 +610,8 @@ export class Gateway {
    * — so the answer is checked against the merchant too, or anyone holding one
    * from a log could set the price of somebody else's purchase.
    */
-  readonly #questions = new Map<string, { orderId: string; merchantId: string }>();
+  readonly #questions = new Map<string, { orderId: string; merchantId: string; until: number }>();
+  readonly #priceGate = new MerchantPriceGate();
   /**
    * The polls held open right now, by merchant, with the key each came in on,
    * so revoking a key in this process ends their waiting at once rather than
@@ -1791,91 +1793,107 @@ export class Gateway {
         break;
     }
 
-    const created = createOrder({
-      id: this.runtime.ids("ord"),
-      at,
-      mode: modeForCard(stored.card),
-      policy: policyFor(stored.card, this.runtime.config),
-      priceCheck: priceCheckOf(stored.card),
-      cardPrice: {
-        amount: stored.card.price.amount,
-        currency: stored.card.price.currency,
-        asOf: stored.asOf,
-      },
-      // Whether the money that pays for this is real, which only the chain's
-      // environment decides. The receipt copies it from the order, so this is
-      // the one place it is set.
-      test: this.runtime.config.environment === "test",
-      // The merchant's switch, the card's own pause, whether the card's
-      // integration is the one the merchant sells through, and whether the
-      // merchant could make a sale at all (a payout wallet, a name), folded
-      // into one word the machine refuses on before an order exists.
-      selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
-    });
-
-    if (!created.ok) {
-      return { step: "not_selling", message: created.rejection.message };
-    }
-
-    // The price question is named before the order is written, because a
-    // parcel's order keeps the name: the question carries where the parcel
-    // goes, and it leaves the queue with the rest of the address.
-    const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
-    const priceQuestion = asksThePrice ? this.runtime.ids("prc") : null;
-
-    const record: StoredOrder = {
-      order: created.order,
-      // Settled here and never again: this puts the order on the card's
-      // merchant's stream, and every later read of it is checked against it.
-      merchantId: stored.merchantId,
-      itemId: stored.id,
-      merchantItemId: stored.card.merchant_item_id,
-      buyerKey: this.runtime.ids("bk"),
-      // What the agent was promised, kept with the order so a card republished
-      // since cannot change what this sale is held to. A parcel's card declares
-      // none: its order is held to a shipment.
-      ...(stored.card.result === undefined ? {} : { result: stored.card.result }),
-      params: { ...params },
-      ...(shipTo === undefined ? {} : { shipTo }),
-      ...(shipTo === undefined || priceQuestion === null ? {} : { priceQuestion }),
-      priceId: null,
-      delivery: null,
-      payment: null,
-      // Set when a payment is verified and not before: the merchant may still
-      // move their wallet between now and the moment an agent pays.
-      payTo: null,
-      paidBy: null,
-      settlement: null,
-      paymentWords: [],
-      paymentWordsDropped: 0,
-      openDeliveryId: null,
-      through: stored.integration,
-    };
-    // Written only while the merchant still sells through the card's
-    // integration, since a switch landing between the word above and this
-    // write would leave an order nothing will draw, and only while the
-    // seller's purchases waiting for payment are fewer than the limit. Both
-    // are decided before the price question below is asked. The limit keeps
-    // anyone from loading a seller's shop with price questions for purchases
-    // nobody pays; while somebody holds that many open, the seller's sales
-    // through Agentify wait, though their shop does not.
-    const born = await this.runner.create(record, created.effects, at, {
-      through: stored.integration,
-      waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
-    });
-    if (born === "switched_away") {
-      return { step: "not_selling", message: NOT_ON_SALE };
-    }
-    if (born === "too_many_waiting") {
-      await this.#sayBusy(stored.merchantId, at);
+    const wantsPrice = priceCheckOf(stored.card) === "merchant";
+    const releasePrice = wantsPrice ? this.#priceGate.enter(stored.merchantId, at) : null;
+    const priceBusy = wantsPrice && releasePrice === null;
+    if (priceBusy && modeForCard(stored.card).settle !== "after_fulfillment") {
       return { step: "seller_busy" };
     }
 
-    if (priceQuestion !== null) {
-      await this.#askThePrice(record, stored, priceQuestion);
-    }
+    try {
+      const created = createOrder({
+        id: this.runtime.ids("ord"),
+        at,
+        mode: modeForCard(stored.card),
+        policy: policyFor(stored.card, this.runtime.config),
+        priceCheck: priceCheckOf(stored.card),
+        cardPrice: {
+          amount: stored.card.price.amount,
+          currency: stored.card.price.currency,
+          asOf: stored.asOf,
+        },
+        // Whether the money that pays for this is real, which only the chain's
+        // environment decides. The receipt copies it from the order, so this is
+        // the one place it is set.
+        test: this.runtime.config.environment === "test",
+        // The merchant's switch, the card's own pause, whether the card's
+        // integration is the one the merchant sells through, and whether the
+        // merchant could make a sale at all (a payout wallet, a name), folded
+        // into one word the machine refuses on before an order exists.
+        selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
+      });
 
-    return this.#wherePurchaseStands(record.order.id);
+      if (!created.ok) {
+        return { step: "not_selling", message: created.rejection.message };
+      }
+
+      // The price question is named before the order is written, because a
+      // parcel's order keeps the name: the question carries where the parcel
+      // goes, and it leaves the queue with the rest of the address.
+      const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
+      const priceQuestion = asksThePrice && !priceBusy ? this.runtime.ids("prc") : null;
+
+      const record: StoredOrder = {
+        order: created.order,
+        // Settled here and never again: this puts the order on the card's
+        // merchant's stream, and every later read of it is checked against it.
+        merchantId: stored.merchantId,
+        itemId: stored.id,
+        merchantItemId: stored.card.merchant_item_id,
+        buyerKey: this.runtime.ids("bk"),
+        // What the agent was promised, kept with the order so a card republished
+        // since cannot change what this sale is held to. A parcel's card declares
+        // none: its order is held to a shipment.
+        ...(stored.card.result === undefined ? {} : { result: stored.card.result }),
+        params: { ...params },
+        ...(shipTo === undefined ? {} : { shipTo }),
+        ...(shipTo === undefined || priceQuestion === null ? {} : { priceQuestion }),
+        priceId: null,
+        delivery: null,
+        payment: null,
+        // Set when a payment is verified and not before: the merchant may still
+        // move their wallet between now and the moment an agent pays.
+        payTo: null,
+        paidBy: null,
+        settlement: null,
+        paymentWords: [],
+        paymentWordsDropped: 0,
+        openDeliveryId: null,
+        through: stored.integration,
+      };
+      // Written only while the merchant still sells through the card's
+      // integration, since a switch landing between the word above and this
+      // write would leave an order nothing will draw, and only while the
+      // seller's purchases waiting for payment are fewer than the limit. Both
+      // are decided before the price question below is asked. The limit keeps
+      // anyone from loading a seller's shop with price questions for purchases
+      // nobody pays; while somebody holds that many open, the seller's sales
+      // through Agentify wait, though their shop does not.
+      const born = await this.runner.create(record, created.effects, at, {
+        through: stored.integration,
+        waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
+      });
+      if (born === "switched_away") {
+        return { step: "not_selling", message: NOT_ON_SALE };
+      }
+      if (born === "too_many_waiting") {
+        await this.#sayBusy(stored.merchantId, at);
+        return { step: "seller_busy" };
+      }
+
+      if (priceBusy) {
+        await this.runner.apply(record.order.id, {
+          kind: "quote_silent",
+          at: this.runtime.clock(),
+        });
+      } else if (priceQuestion !== null) {
+        await this.#askThePrice(record, stored, priceQuestion);
+      }
+
+      return this.#wherePurchaseStands(record.order.id);
+    } finally {
+      releasePrice?.();
+    }
   }
 
   /**
@@ -2599,6 +2617,17 @@ export class Gateway {
         continue;
       }
       if (delivery.envelope.kind !== "order") {
+        if (delivery.envelope.kind === "quote_request") {
+          const question = this.#questions.get(delivery.envelope.payload.price_id);
+          if (
+            question === undefined ||
+            question.merchantId !== merchantId ||
+            question.until <= clock()
+          ) {
+            finished.push(delivery.handle);
+            continue;
+          }
+        }
         handing.push(delivery.envelope);
         finished.push(delivery.handle);
         continue;
@@ -2760,6 +2789,11 @@ export class Gateway {
     }
 
     const at = this.runtime.clock();
+    if (asked.until <= at) {
+      this.#questions.delete(priceId);
+      this.quotes.giveUp(priceId);
+      return { used: false };
+    }
     const applied = await this.runner.apply(
       asked.orderId,
       response.available
@@ -3005,8 +3039,13 @@ export class Gateway {
     // Registered and parked before the question goes out: a worker on a poll
     // is woken by the publish, and a fast answer would otherwise find nobody
     // listening and be thrown away.
-    this.#questions.set(priceId, { orderId, merchantId: record.merchantId });
-    const parked = this.quotes.wait(priceId, config.deadlines.quoteResponseMs);
+    const until = record.order.timestamps.createdAt + config.deadlines.quoteResponseMs;
+    if (until <= askedAt) {
+      await this.runner.apply(orderId, { kind: "quote_silent", at: askedAt });
+      return;
+    }
+    this.#questions.set(priceId, { orderId, merchantId: record.merchantId, until });
+    const parked = this.quotes.wait(priceId, until - askedAt);
 
     const question: WorkerEnvelope = {
       kind: "quote_request",
