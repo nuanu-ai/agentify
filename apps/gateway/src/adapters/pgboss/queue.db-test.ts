@@ -185,17 +185,10 @@ if (databaseUrl === null) {
 
       const first = await queue.draw(A, 2, 0);
       expect(first.map((d) => d.envelope.id).sort()).toStrictEqual(["env_event", "env_o1"]);
+      expect((await queue.draw(A, 1, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_o2"]);
       const rest = await queue.draw(A, 10, 0);
-      expect(rest.map((d) => d.envelope.kind)).toStrictEqual([
-        "order",
-        "quote_request",
-        "quote_request",
-      ]);
-      expect(rest.map((d) => d.envelope.id).sort()).toStrictEqual([
-        "env_o2",
-        "env_q1",
-        "env_q2",
-      ]);
+      expect(rest.map((d) => d.envelope.kind)).toStrictEqual(["quote_request", "quote_request"]);
+      expect(rest.map((d) => d.envelope.id).sort()).toStrictEqual(["env_q1", "env_q2"]);
       expect(await queue.draw(A, 1, 0)).toStrictEqual([]);
     }, 30_000);
 
