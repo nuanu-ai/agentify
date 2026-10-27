@@ -19,6 +19,7 @@ import type {
   OrdersQuery,
   OrdersShown,
 } from "@agentify/gateway/operator";
+import { asTyped } from "@agentify/ui/units";
 import { type From, fromIn, type Mark, writeFrom } from "../cursor.js";
 import { dayOf, moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
@@ -70,10 +71,14 @@ const SEARCH_AT_MOST = 200;
 
 /**
  * A text as an address carried it, without the control characters no
- * identifier, product or site holds and a database refuses, trimmed.
+ * identifier, product or site holds and a database refuses, trimmed, and with
+ * the no-break spaces a copy from a page brings read as the spaces typed.
  */
 export const typedIn = (text: string | null, atMost: number): string =>
-  (text ?? "").replaceAll(CONTROL, "").trim().slice(0, atMost);
+  asTyped(text ?? "")
+    .replaceAll(CONTROL, "")
+    .trim()
+    .slice(0, atMost);
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it takes out
 const CONTROL = /[\u0000-\u001f\u007f]/g;

@@ -9,6 +9,7 @@
 
 import { percentOf } from "@agentify/core/published";
 import type { Integration } from "@agentify/gateway";
+import { asTyped } from "@agentify/ui/units";
 import {
   API_ROUTES,
   expandPath,
@@ -297,7 +298,7 @@ export const cardsView = (
       matches: (row, words) =>
         byCode
           ? row.itemId.toLocaleLowerCase() === words
-          : row.title.toLocaleLowerCase().includes(words) ||
+          : asTyped(row.title).toLocaleLowerCase().includes(words) ||
             row.itemId.toLocaleLowerCase().includes(words),
       noMatch: (q, within) => {
         const which = within === null ? "No product" : `No product ${within.toLocaleLowerCase()}`;
@@ -623,7 +624,7 @@ const orderSearch = (words: string): ((row: OrderRow) => boolean) => {
   const short = parts.length === 2 && head + tail !== "";
   return (row) => {
     if (
-      row.product.toLocaleLowerCase().includes(words) ||
+      asTyped(row.product).toLocaleLowerCase().includes(words) ||
       row.itemId.toLocaleLowerCase().includes(words)
     ) {
       return true;
