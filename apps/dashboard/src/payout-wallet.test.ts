@@ -5,7 +5,6 @@
  * driven over HTTP in `server.test.ts`.
  */
 
-import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { WALLET_NEEDED, WALLET_RULE, whatIsWrongWithTheWallet } from "./payout-wallet.js";
 
@@ -18,7 +17,7 @@ describe("the rule an address is held to", () => {
     // copies, its capitals a checksum. Both are addresses merchants are
     // actually given.
     expect(whatIsWrongWithTheWallet(SHAPED)).toBeNull();
-    expect(whatIsWrongWithTheWallet(checksummedAddressOf(SHAPED))).toBeNull();
+    expect(whatIsWrongWithTheWallet("0x70997970C51812dc3A010C7d01b50e0d17dc79C8")).toBeNull();
   });
 
   it("refuses capitals that disagree with the rest, and says which failure it is", () => {
@@ -63,14 +62,8 @@ describe("the rule an address is held to", () => {
     const said = whatIsWrongWithTheWallet(`0x${SHAPED.slice(2).toUpperCase()}`) ?? "";
 
     expect(said).toMatch(/copy it again/i);
-    expect(said).not.toMatch(/lower ?case/i);
-  });
-
-  it("never suggests lower case on the wallet's box, in its rule or in an empty box's refusal", () => {
-    // Written in lower case, an address carries no checksum, and a typo in it
-    // is somebody else's valid address.
-    for (const said of [WALLET_RULE, WALLET_NEEDED]) {
-      expect(said).not.toMatch(/lower ?case/i);
+    for (const advice of [said, WALLET_RULE, WALLET_NEEDED]) {
+      expect(advice).not.toMatch(/lower ?case/i);
     }
   });
 
