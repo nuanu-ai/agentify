@@ -2638,6 +2638,12 @@ describe("the gate", () => {
       "/dashboard/products",
       "/dashboard/merchant",
       "/dashboard/settings",
+      "/dashboard/woocommerce",
+      "/dashboard/woocommerce/import",
+      "/dashboard/orders",
+      "/dashboard/receipts",
+      "/dashboard/keys",
+      "/dashboard/no-such-page",
     ]) {
       expect(gate(await stranger.get(path)), path).toBe(true);
     }
@@ -2670,6 +2676,7 @@ describe("the address a press posts to, opened as a page", () => {
       const read = await browser.get(path);
       expect({ status: read.status, to: read.to }, path).toStrictEqual({ status: 303, to: page });
     }
+    expect((await browser.get("/woocommerce/import.data?_routes=routes%2Fgate")).status).toBe(200);
   });
 });
 
@@ -7188,15 +7195,31 @@ describe("the screen a signed-out person was going to", () => {
   // the sign-in in the address and is kept with the link's token.
   const SECTIONS = ["orders", "receipts", "integrations", "keys", "settings", "woocommerce"];
 
-  it.each(SECTIONS)("is %s after the link, for a visitor with no session", async (section) => {
+  it.each(
+    SECTIONS.flatMap((section) =>
+      section === "woocommerce"
+        ? [
+            { section, expired: false },
+            { section, expired: true },
+          ]
+        : [{ section, expired: false }],
+    ),
+  )("opens $section through its link, expired session $expired", async ({ section, expired }) => {
     // Mounted with the shop screens, so the WooCommerce section is a page.
     const running = await started({ wooShops: memoryWooShops() });
 
+    if (expired) {
+      await running.browser.signIn();
+      await endSessionsOf(running.identity, PERSON);
+    }
     const arrived = await running.browser.get(`/${section}`);
-    expect(arrived.to).toBe(`/sign-in?destination=${section}`);
+    expect(arrived.to).toBe(
+      `/sign-in?${expired ? "reason=session-ended&" : ""}destination=${section}`,
+    );
     const form = await running.browser.get(arrived.to ?? "");
     expect(form.html).toContain(`name="destination" value="${section}"`);
 
+    if (expired) rewindLinkSends(running.rows);
     await running.browser.post("/sign-in", { email: PERSON, destination: section });
     const action = actionIn(running.mails.at(-1));
     const opened = await running.browser.from(running.url).post("/sign-in/open", {
