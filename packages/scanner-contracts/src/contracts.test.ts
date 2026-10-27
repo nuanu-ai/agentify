@@ -287,6 +287,33 @@ describe("canonical contracts", () => {
       })),
       timings: { total_ms: 100 },
     };
+    for (const unsafe of [
+      "192.0.2.1",
+      "2001:db8::1",
+      "::1",
+      "::ffff:192.0.2.1",
+      "contact [2001:db8::1] failed",
+    ]) {
+      const parsed = browserObservationOutputV1Schema.safeParse({
+        ...output,
+        observations: output.observations.map((finding, index) =>
+          index === 0
+            ? {
+                ...finding,
+                evidence: { debug_value: unsafe },
+              }
+            : finding,
+        ),
+      });
+      expect(parsed.success, unsafe).toBe(false);
+      if (!parsed.success)
+        expect(parsed.error.issues.map((issue) => issue.path)).toContainEqual([
+          "observations",
+          0,
+          "evidence",
+          "debug_value",
+        ]);
+    }
     const [firstObservation] = output.observations;
     if (!firstObservation) throw new Error("the observation fixture has no observations");
     for (const status of ["completed", "partial", "blocked", "failed"]) {
