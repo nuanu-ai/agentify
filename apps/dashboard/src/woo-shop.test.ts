@@ -2291,6 +2291,54 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     });
   const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
 
+  it("waits for an in-flight cart mutation after quote cancellation before cleaning or reusing its slot", async () => {
+    const adding = Promise.withResolvers<void>();
+    const finishAdd = Promise.withResolvers<void>();
+    let held = false;
+    let first = true;
+    let finished = false;
+    const request: WooRequest = async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/add-item") && first) {
+        first = false;
+        adding.resolve();
+        return await new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("request aborted")), {
+            once: true,
+          });
+          void finishAdd.promise.then(() => {
+            held = true;
+            resolve(Response.json(cart([])));
+          });
+        });
+      }
+      if (path.endsWith("/add-item")) held = true;
+      if (path.endsWith("/remove-item")) held = false;
+      return Response.json(held ? cart([rate()]) : emptyCart(), {
+        headers: { "Cart-Token": TOKEN },
+      });
+    };
+    const runtime = new WooShopRuntime(connectionTo("https://woo.nuanu.ai"), request);
+    const caller = new AbortController();
+    const work = runtime.shippingRates("28", JAKARTA, caller.signal).finally(() => {
+      finished = true;
+    });
+    await adding.promise;
+    caller.abort();
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(finished).toBe(false);
+    } finally {
+      finishAdd.resolve();
+      await work;
+    }
+    expect(held).toBe(false);
+    expect(await runtime.shippingRates("28", { country: "DE", city: "Berlin" })).toMatchObject({
+      ok: true,
+    });
+    expect(held).toBe(false);
+  });
+
   it("renews an observed empty cart after its shop-declared token expiry", async () => {
     let time = 1_800_000_000_000;
     let sessions = 0;
