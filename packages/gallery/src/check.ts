@@ -2,7 +2,7 @@
  * `pnpm gallery:check`: every state of every surface in the page
  * `pnpm gallery` wrote, each drawn in Chromium from that page's own markup,
  * stylesheets and fonts, composed by the gallery's own `frame.js` as its
- * frames are. It fails on five things.
+ * frames are. It fails on six things.
  *
  * At a small phone's, a phone's, a tablet's and a desktop's width (320, 390,
  * 768 and 1440 pixels), something on the page reaches past the window's right
@@ -41,6 +41,17 @@
  * words and the one left alone. A title set in bold type rather than as a
  * heading is not read either: it is a heading that should be marked as one.
  * Paragraphs are left to the browser's own rule, set in the shared tokens.
+ *
+ * At any of the four, a number and the unit after it stand on different
+ * lines: "30 s", "4 min", "3 h", "7 days", "5 GB", "8.00 USD", "115 × 180 cm",
+ * in our own words and in a merchant's product name alike. The units are the
+ * ones the site writes after a number and those product names carry, a
+ * spelled-out one with or without its capital. A number and its unit are read
+ * where they stand in one element's text, even across the pieces a component
+ * writes it in; set in two elements, "5 <strong>GB</strong>", they are not
+ * read. Text a closed disclosure holds, a hidden element, a box kept for a
+ * screen reader alone and code, which is shown as written, are not read
+ * either. A failure names the state, the width and the words.
  *
  * At any of the four, axe rates a violation serious or critical. What it
  * rates moderate or minor is listed and passes.
@@ -114,6 +125,10 @@ interface Cramped {
 interface Runt {
   readonly words: string;
   readonly alone: string;
+}
+
+interface Split {
+  readonly words: string;
 }
 
 interface Violation {
@@ -395,6 +410,75 @@ function runtsOf(): Runt[] {
   return runts;
 }
 
+/**
+ * Runs in the page, as source, under the same constraint as `overflowOf`. The
+ * text nodes that stand side by side in one element, with nothing but a
+ * comment between them, are read as one text: a component writes
+ * `in {seconds} s` as three of them. The number's last character and the
+ * unit's first are measured, and stand on different lines where their middles
+ * are further apart than half the number's height.
+ */
+function splitUnitsOf(): Split[] {
+  const runs: Text[][] = [];
+  const texts = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = texts.nextNode(); node !== null; node = texts.nextNode()) {
+    const text = node as Text;
+    let before = text.previousSibling;
+    while (before !== null && before.nodeType === Node.COMMENT_NODE) {
+      before = before.previousSibling;
+    }
+    const run = runs.at(-1);
+    if (run !== undefined && before !== null && before === run.at(-1)) {
+      run.push(text);
+    } else {
+      runs.push([text]);
+    }
+  }
+  const splits: Split[] = [];
+  const range = document.createRange();
+  for (const run of runs) {
+    const holder = run[0]?.parentElement ?? null;
+    if (holder === null) continue;
+    if (holder.closest("details:not([open]) > :not(summary)") !== null) continue;
+    // Code is shown as written, so it is not ours to keep together.
+    if (holder.closest("pre, code") !== null) continue;
+    const style = getComputedStyle(holder);
+    if (style.visibility !== "visible") continue;
+    if (style.overflow === "hidden") {
+      const box = holder.getBoundingClientRect();
+      if (box.width <= 1 || box.height <= 1) continue;
+    }
+    const value = run.map((text) => text.data).join("");
+    for (const found of value.matchAll(
+      /(?<![\p{L}\p{N}_.,])\d(?:[\d.,]*\d)?(\s+)(?:ms|s|min|h|d|[Ss]econds?|[Mm]inutes?|[Hh]ours?|[Dd]ays?|[Ww]eeks?|[Mm]onths?|[Yy]ears?|USDC|USD|IDR|TB|GB|MB|KB|bytes|mm|cm|kg|g|ml)(?![\p{L}\p{N}_])/gu,
+    )) {
+      const space = found[0].search(/\s/);
+      // The number's last character and the unit's first, as positions in the run.
+      const ends = [found.index + space - 1, found.index + space + (found[1] ?? " ").length];
+      const drawn: DOMRect[] = [];
+      for (const at of ends) {
+        let offset = at;
+        for (const text of run) {
+          if (offset < text.data.length) {
+            range.setStart(text, offset);
+            range.setEnd(text, offset + 1);
+            drawn.push(range.getBoundingClientRect());
+            break;
+          }
+          offset -= text.data.length;
+        }
+      }
+      const [number, unit] = drawn;
+      if (number === undefined || unit === undefined || number.width === 0 || unit.width === 0) {
+        continue;
+      }
+      const apart = Math.abs(unit.top + unit.bottom - number.top - number.bottom) / 2;
+      if (apart > number.height / 2) splits.push({ words: found[0].replace(/\s+/g, " ") });
+    }
+  }
+  return splits;
+}
+
 const drawnAt = async (page: Page, document: string, width: number, height: number) => {
   await page.setViewportSize({ width, height });
   await page.setContent(document, { waitUntil: "load" });
@@ -436,6 +520,7 @@ const overflows: string[] = [];
 const bands: string[] = [];
 const crampedButtons: string[] = [];
 const runts: string[] = [];
+const splitUnits: string[] = [];
 /** A violation once per state, with every width it was found at. */
 const violations = new Map<string, { widths: number[]; where: readonly string[] }>();
 const notices = new Map<string, Set<string>>();
@@ -471,6 +556,11 @@ try {
             `${id} at ${width} px leaves "${runt.alone}" alone on the last line of "${runt.words}"`,
           );
         }
+        for (const split of await page.evaluate(splitUnitsOf)) {
+          splitUnits.push(
+            `${id} at ${width} px breaks "${split.words}" between the number and its unit`,
+          );
+        }
         for (const violation of await axeOn(page, axe)) {
           const said = `${violation.rule} (${violation.impact}): ${violation.help}`;
           if (!FAILING.has(violation.impact)) {
@@ -496,6 +586,7 @@ const failures = [
   ...bands,
   ...crampedButtons,
   ...runts,
+  ...splitUnits,
   ...[...violations].map(([key, { widths, where }]) => {
     const [id = "", ...said] = key.split(" ");
     const at = widths.sort((one, other) => one - other).join(", ");
