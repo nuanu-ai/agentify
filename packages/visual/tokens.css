@@ -256,7 +256,8 @@ p {
 }
 
 /* 48px is a thumb-sized target; do not shrink it per page. Inside a table row
-   use .button-compact. */
+   use .button-compact. Where a narrow window wraps the words, the lines stay
+   centred and keep the inset above and below them that one line has. */
 .button {
   min-height: 48px;
   display: inline-flex;
@@ -265,9 +266,11 @@ p {
   gap: 8px;
   border: 0;
   border-radius: var(--radius-control);
-  padding: 0 22px;
+  padding: var(--space-control) 22px;
   cursor: pointer;
   font-weight: 600;
+  line-height: var(--leading-ui);
+  text-align: center;
   text-decoration: none;
   transition:
     background 150ms ease,
@@ -305,7 +308,7 @@ p {
    itself. */
 .button-compact {
   min-height: 36px;
-  padding: 0 14px;
+  padding: var(--space-snug) 14px;
   font-size: 0.875rem;
 }
 
