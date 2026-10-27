@@ -336,7 +336,7 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
           ref={banner}
         >
           <div className="consent-banner-copy">
-            <strong>Choose how {brand} measures this visit</strong>
+            <h2>Choose how {brand} measures this visit</h2>
             <p className="consent-copy">
               Optional analytics stay off unless you allow them. Read our{" "}
               <a href="/privacy">privacy notice</a>.
