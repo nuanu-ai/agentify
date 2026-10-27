@@ -8,8 +8,8 @@ verdict and a separate implementation record. The signed-response payment bug
 is repaired, weak assertions have concrete failure controls, and redundant
 proof and its unused production seams have been removed.
 
-The integrated runtime candidate is `f1a93bbb00b33568312552ebfd2668ac9e9c6a49`.
-It incorporates main `a1fbdf1b61e966e392e9dc3a7983bd1a4a28e8fc`, including the
+The complete local validation ran on `f1a93bbb00b33568312552ebfd2668ac9e9c6a49`.
+That revision incorporates main `a1fbdf1b61e966e392e9dc3a7983bd1a4a28e8fc`, including the
 new worker-admission, purchase-recovery, commission and cursor contracts.
 Independent reviewers compared both parents with the combined result.
 
@@ -133,6 +133,15 @@ weakened. Logs retain both attempts. Biome reports 12 existing warnings and an
 informational diagnostic; the gallery reports moderate/minor accessibility
 observations below its failure threshold. Those results are not a claim that
 every UI concern is resolved.
+
+CI also exposed two clean-build dependencies that local generated output hid.
+The standalone documentation image now installs the SDK dependency closure
+needed by its direct SDK-source imports. Its actual Linux image build fails
+before the repair and passes afterward, with generated documentation checked
+in a network-disabled container. The gateway runner uses observability's
+existing source export, consistently with the other gateway/app entry points;
+all five affected command tests fail with compiled observability absent before
+the repair and pass afterward. These follow-ups leave assertions intact.
 
 No live payment, facilitator, merchant API, release or deployment was performed.
 Native request-option proof is not a live TLS handshake. Targeted mutations

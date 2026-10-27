@@ -39,7 +39,7 @@ import {
   paidAfterClosure,
   transition,
 } from "@agentify/core";
-import { createLogger } from "@agentify/observability";
+import { createLogger } from "@agentify/observability/source";
 import {
   type Delivery,
   localityOf,
