@@ -18,7 +18,7 @@ import type {
   SellerNameRequest,
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
-import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
+import { PurchaseRequestSchema, WorkerPollRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Caller, Gateway, OffSale, PurchaseAttempt } from "../app/gateway.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
@@ -180,8 +180,13 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     },
 
     poll_worker: {
+      // Older workers print only the refusal's sentence, so the missing
+      // contract's update instruction must be in it rather than only its fields.
+      checksItsOwnBody: true,
       serve: async (call) => {
-        const asked = call.body as WorkerPollRequest;
+        const held = hold(WorkerPollRequestSchema, call.body);
+        if (!held.ok) return refusedWith(call.response, bodyRefused(held.problems));
+        const asked = held.value as WorkerPollRequest;
         // The draw stops when the worker's connection closes before an answer;
         // otherwise the poll would take an event, which is sent once, off the
         // stream for nobody. A close between the draw and the answer still
@@ -214,7 +219,7 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
             asked.wait_seconds === undefined
               ? gateway.runtime.config.worker.pollWaitMs
               : asked.wait_seconds * 1_000,
-            { gone: gone.signal, keyId: callersKey(call) },
+            { gone: gone.signal, keyId: callersKey(call), contractVersion: asked.contract_version },
           ),
         };
       },

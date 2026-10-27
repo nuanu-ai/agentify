@@ -813,7 +813,7 @@ export interface Store {
   noteKeyUse(id: string, at: number, userAgent: string | null): Promise<void>;
 
   /**
-   * Records that one of this merchant's processes polled their stream at this
+   * Records that one of this merchant's processes speaking this build's contract polled their stream at this
    * instant. The mark never goes backwards, since two gateway processes write
    * it from two clocks without serialising, and it outlives a restart: a
    * restarted gateway that knew of no poll would refuse every sale
@@ -822,7 +822,7 @@ export interface Store {
    */
   noteContact(merchantId: string, at: number): Promise<void>;
 
-  /** The latest poll recorded for this merchant, or null where none ever was. */
+  /** The latest poll speaking this build's contract, or null where none was confirmed. */
   lastContact(merchantId: string): Promise<number | null>;
 
   /**

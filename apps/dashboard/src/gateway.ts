@@ -43,6 +43,7 @@ import { failureNamed } from "@agentify/gateway/failure-named";
 import {
   API_ROUTES,
   type CardInput,
+  CONTRACT_VERSION,
   type Delivery,
   EvmAddressSchema,
   type HandlerAnswer,
@@ -882,7 +883,10 @@ export const gatewayFor = (
       }),
     pollWorker: (waitSeconds) =>
       call("drawing the stream", async () => {
-        const asked = sent(API_ROUTES.poll_worker, { wait_seconds: waitSeconds });
+        const asked = sent(API_ROUTES.poll_worker, {
+          contract_version: CONTRACT_VERSION,
+          wait_seconds: waitSeconds,
+        });
         if (!asked.ok) return asked.refused;
         return answered(
           API_ROUTES.poll_worker,

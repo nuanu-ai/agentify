@@ -137,12 +137,17 @@ export const OrderListQuerySchema = z
   });
 
 /**
- * What a worker asks of one poll. Neither field has a ceiling here: how long
+ * What a worker asks of one poll. Neither limit has a ceiling here: how long
  * the gateway holds a request and how many envelopes it returns are the
  * gateway's own limits, applied whatever is asked.
  */
 export const WorkerPollRequestSchema = z
   .strictObject({
+    /** The contract this worker can read, checked before any work is drawn. */
+    contract_version: z
+      .string({ error: "name contract_version; update the SDK before starting this worker" })
+      .regex(/\S/, "a worker names the contract version it understands"),
+
     /**
      * How long the gateway may hold the request open waiting for something to
      * arrive. Zero means a drain: answer with whatever is queued now and come
@@ -159,7 +164,7 @@ export const WorkerPollRequestSchema = z
   })
   .meta({
     description:
-      "What a worker asks of one poll. Both fields may be left out, and then the gateway's own defaults apply. Neither carries a ceiling here, because a ceiling on a wait or on a batch would be a policy number and the policy is the gateway's: it answers with its own window and its own batch size whatever is asked for.",
+      "What a worker asks of one poll. contract_version is required and names the contract the worker understands; the SDK supplies it automatically. A different version is answered with the gateway's version and no envelopes, without drawing work or marking the worker connected. A missing version is refused with words asking for an SDK update. wait_seconds and max may be left out, and then the gateway's own defaults apply. Neither limit carries a ceiling here, because the policy is the gateway's: it answers with its own window and its own batch size whatever is asked for.",
   });
 
 /**

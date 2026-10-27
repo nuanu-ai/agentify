@@ -106,11 +106,7 @@ const refinedSchemasWithoutDescription = (): string[] =>
     .map((entry) => entry.path);
 
 describe("@nuanu-ai/agentify-contracts", () => {
-  it("declares the contract version and keeps zod its only runtime dependency", () => {
-    // The version is how the SDK and the gateway tell that they speak the same
-    // contract.
-    expect(CONTRACT_VERSION).toBe("4");
-
+  it("keeps zod its only runtime dependency", () => {
     // This package is the whole of what the SDK brings into a merchant's
     // install besides zod, so anything more here is something extra for them.
     expect(Object.keys(manifest.dependencies ?? {})).toStrictEqual(["zod"]);

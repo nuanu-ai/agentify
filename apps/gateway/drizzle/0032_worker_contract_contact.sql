@@ -1,0 +1,1 @@
+ALTER TABLE "merchant_contact" ADD COLUMN "contract_version" text;

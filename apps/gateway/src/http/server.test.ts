@@ -3,7 +3,12 @@ import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { telemetry } from "@agentify/observability/source";
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
-import { API_ROUTES, ERROR_CODES, mountableRoutes } from "@nuanu-ai/agentify-contracts";
+import {
+  API_ROUTES,
+  CONTRACT_VERSION,
+  ERROR_CODES,
+  mountableRoutes,
+} from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -1581,7 +1586,7 @@ describe("the worker's calls over HTTP", () => {
     const abandoned = fetch(`${served.url}/v0/worker/poll`, {
       method: "POST",
       headers: { ...asMerchant, "content-type": "application/json" },
-      body: JSON.stringify({ wait_seconds: 20 }),
+      body: JSON.stringify({ contract_version: CONTRACT_VERSION, wait_seconds: 20 }),
       signal: leaving.signal,
     }).catch(() => "left");
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1594,7 +1599,7 @@ describe("the worker's calls over HTTP", () => {
     await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
 
     const next = await served.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 0 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
       headers: asMerchant,
     });
     const { envelopes } = next.body as { envelopes: { payload: { id: string } }[] };
@@ -1618,7 +1623,7 @@ describe("the worker's calls over HTTP", () => {
     const kept = await harnessed.addKey(harnessed.merchant.id);
 
     const holding = served.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 20 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 20 },
       headers: asMerchant,
     });
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1634,7 +1639,7 @@ describe("the worker's calls over HTTP", () => {
 
     expect((await holding).body).toMatchObject({ envelopes: [] });
     const next = await served.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 0 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
       headers: { authorization: `Bearer ${kept}` },
     });
     const { envelopes } = next.body as { envelopes: { payload: { id: string } }[] };
@@ -1651,7 +1656,7 @@ describe("the worker's calls over HTTP", () => {
     await harnessed.gateway.sellThrough(harnessed.merchant.id, "woocommerce");
 
     const refused = await served.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 0 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
       headers: asMerchant,
     });
 
@@ -1664,7 +1669,7 @@ describe("the worker's calls over HTTP", () => {
 
     await harnessed.gateway.sellThrough(harnessed.merchant.id, "api");
     const working = await served.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 0 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
       headers: asMerchant,
     });
     expect(working.status).toBe(200);
@@ -1684,7 +1689,7 @@ describe("the worker's calls over HTTP", () => {
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
     const drawn = await served.call("POST", "/v0/worker/poll", {
-      body: { wait_seconds: 0 },
+      body: { contract_version: CONTRACT_VERSION, wait_seconds: 0 },
       headers: asMerchant,
     });
     expect(drawn.status).toBe(200);
@@ -1692,7 +1697,7 @@ describe("the worker's calls over HTTP", () => {
       envelopes: { kind: string; payload: { id: string } }[];
       contract_version: string;
     };
-    expect(contract_version).toBe("4");
+    expect(contract_version).toBe(CONTRACT_VERSION);
     expect(envelopes.map((envelope) => envelope.kind)).toStrictEqual(["order"]);
 
     const answered = await served.call(`POST`, `/v0/orders/${orderId}/answer`, {
@@ -1729,7 +1734,7 @@ describe("the worker's calls over HTTP", () => {
     const sizes: number[] = [];
     for (const _ of [0, 1, 2, 3]) {
       const drawn = await served.call("POST", "/v0/worker/poll", {
-        body: { wait_seconds: 0, max: 1_000 },
+        body: { contract_version: CONTRACT_VERSION, wait_seconds: 0, max: 1_000 },
         headers: asMerchant,
       });
       sizes.push((drawn.body as { envelopes: unknown[] }).envelopes.length);
