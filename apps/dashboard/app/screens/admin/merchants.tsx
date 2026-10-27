@@ -211,7 +211,7 @@ function Check({
     <li className={held ? undefined : "missing"}>
       <span className="mark">{held ? <Tick /> : null}</span>
       <div className="what">
-        <b>{title}</b>
+        <h3>{title}</h3>
         {children}
       </div>
       <span className={held ? "badge badge-pass" : "badge badge-notice"}>{badge}</span>

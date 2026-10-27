@@ -123,7 +123,7 @@ function Waiting({
 }: Readonly<{ pending: NonNullable<WalletView["pending"]>; saved: string | null }>) {
   return (
     <div className={`${styles.notice} ${styles.warn}`}>
-      <p className={styles.noticeHead}>Your payout wallet is changing</p>
+      <h3 className={styles.noticeHead}>Your payout wallet is changing</h3>
       <p>
         From <Moment at={pending.from} />, your share of each sale goes to{" "}
         <Address address={pending.wallet} />.
@@ -161,7 +161,7 @@ function Notice({ notice }: Readonly<{ notice: WalletNoticeView }>) {
   if (notice.kind === "cancelled") {
     return (
       <div className={`${styles.notice} ${styles.done}`}>
-        <p className={styles.noticeHead}>Change cancelled</p>
+        <h3 className={styles.noticeHead}>Change cancelled</h3>
         <p>
           Your share still goes to <Address address={notice.paid} />. Every other session on your
           account was signed out.
@@ -171,7 +171,7 @@ function Notice({ notice }: Readonly<{ notice: WalletNoticeView }>) {
   }
   return (
     <div className={`${styles.notice} ${styles.warn}`}>
-      <p className={styles.noticeHead}>Too late to cancel</p>
+      <h3 className={styles.noticeHead}>Too late to cancel</h3>
       <p>
         {notice.at === null ? (
           "Your share now goes to "
