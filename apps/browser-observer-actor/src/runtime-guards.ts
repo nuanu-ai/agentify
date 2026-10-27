@@ -14,7 +14,7 @@ export const PASSIVE_BROWSER_ARGS = [
   "--webrtc-ip-handling-policy=disable_non_proxied_udp",
 ] as const;
 
-export const BLOCKED_ACTIVE_NETWORK_GLOBALS = [
+const BLOCKED_ACTIVE_NETWORK_GLOBALS = [
   "RTCPeerConnection",
   "webkitRTCPeerConnection",
   "WebTransport",
