@@ -47,7 +47,11 @@
   letter-spacing: var(--tracking-display);
   line-height: var(--leading-display);
 }
-.hero h1 > span {
+/* A line of a title (`Lines`), wrapped and balanced on its own. */
+.line {
+  display: block;
+}
+.hero h1 > .accent {
   color: var(--accent);
 }
 .heroDescription {
@@ -176,7 +180,7 @@
   margin-bottom: var(--gap-heading);
   font-size: var(--text-headline);
 }
-.marketCopy h2 span {
+.marketCopy h2 .accent {
   color: var(--shop-mint);
 }
 .marketCopy > p {
@@ -406,7 +410,7 @@
 .settlement h2 {
   margin: var(--space-card) 0 var(--gap-heading);
 }
-.settlement h2 span {
+.settlement h2 .accent {
   color: var(--accent);
 }
 .settlementGrid > div > p:not(.eyebrow) {
