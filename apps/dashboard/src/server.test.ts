@@ -12,13 +12,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
-import {
-  type Gateway,
-  type MerchantKey,
-  merchantPayout,
-  payoutSplitFor,
-  setPayoutWallet,
-} from "@agentify/gateway";
+import { type Gateway, type MerchantKey, merchantPayout, payoutSplitFor } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -3331,16 +3325,12 @@ describe("the wallet a merchant's share is paid out to", () => {
       dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
     });
     const { harnessed } = running;
-    const network = harnessed.runtime.config.payoutSplit;
     const earlier = (await harnessed.gateway.payoutSplitsOf(harnessed.merchant.id)).inForce;
     const other = await harnessed.gateway.registerMerchant();
-    await setPayoutWallet(
-      harnessed.runtime.store,
-      network,
-      other,
-      "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
-      harnessed.runtime.clock(),
-    );
+    await harnessed.gateway.setPayoutWallet(other, "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359", {
+      kind: "signed_in",
+      email: PERSON,
+    });
     const theirs = (await harnessed.gateway.payoutSplitsOf(other)).inForce;
     await running.browser.signIn();
     // The test channel applies a change at once, so the first wallet's
@@ -3374,11 +3364,16 @@ describe("the wallet a merchant's share is paid out to", () => {
     });
     const { harnessed } = running;
     const network = harnessed.runtime.config.payoutSplit;
-    await setPayoutWallet(
-      harnessed.runtime.store,
-      network,
-      harnessed.merchant.id,
-      network.multicall3,
+    const merchant = await harnessed.store.merchantById(harnessed.merchant.id);
+    if (merchant === null) throw new Error("the merchant was not recorded");
+    await harnessed.store.setPayoutWallet(
+      merchant.id,
+      merchant.payoutWallet,
+      {
+        address: network.multicall3,
+        split: payoutSplitFor(network, merchant.id, network.multicall3),
+        pending: null,
+      },
       harnessed.runtime.clock(),
     );
     await running.browser.signIn();

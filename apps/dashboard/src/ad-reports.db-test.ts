@@ -19,7 +19,6 @@ import {
   PostgresStore,
   randomIds,
   ScriptedFacilitator,
-  setPayoutWallet,
   widestChallengeOn,
 } from "@agentify/gateway";
 import { testConfig } from "@agentify/gateway/testing";
@@ -821,13 +820,13 @@ if (databaseUrl === null) {
     const made = await store.addMerchant({ id: `mch_report_${merchants}`, name }, clock);
     if (made === null) throw new Error("the merchant was not made");
     await store.setServiceName(made.id, name, clock);
-    await setPayoutWallet(
-      store,
-      gatewayConfig.payoutSplit,
+    const wallet = await gateway.setPayoutWallet(
       made.id,
       `0x${merchants.toString(16).padStart(40, "0")}`,
-      clock,
+      { kind: "signed_in", email: "owner@example.com" },
     );
+    if (typeof wallet === "string" || "refused" in wallet)
+      throw new Error("merchant wallet was refused");
     if (integration === "woocommerce") await store.switchIntegration(made.id, "woocommerce");
     return made.id;
   };
