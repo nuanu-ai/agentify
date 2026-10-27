@@ -223,17 +223,14 @@ export type QuoteSource = (typeof QUOTE_SOURCES)[number];
  * reason this system cannot read; neither says which of the others would
  * help.
  */
-export const PAYMENT_VERIFICATION_FAILURES = [
-  "signature",
-  "insufficient_funds",
-  "price_stale",
-  "amount_not_payable",
-  "wallet_refused",
-  "unexplained",
-  "unrecognised",
-] as const;
-
-export type PaymentVerificationFailure = (typeof PAYMENT_VERIFICATION_FAILURES)[number];
+export type PaymentVerificationFailure =
+  | "signature"
+  | "insufficient_funds"
+  | "price_stale"
+  | "amount_not_payable"
+  | "wallet_refused"
+  | "unexplained"
+  | "unrecognised";
 
 /**
  * The refusal codes the platform reads the same way everywhere. The set is
