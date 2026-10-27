@@ -43,10 +43,12 @@ const rowsOf = async (tx: ReadOnlyTransaction, query: SQL): Promise<Row[]> =>
   (await tx.execute(query)).rows as Row[];
 
 /**
- * A moment as milliseconds since the epoch, which the driver hands back as a
- * number; it hands a timestamp back as text in a spelling of its own.
+ * A moment as whole milliseconds since the epoch, which the driver hands back
+ * as a number; it hands a timestamp back as text in a spelling of its own.
+ * Whole, because a row the database's own clock wrote holds microseconds,
+ * which the memory reader and a cursor in an address cannot.
  */
-const ms = (moment: string): SQL => sql.raw(`(extract(epoch from ${moment}) * 1000)::float8`);
+const ms = (moment: string): SQL => sql.raw(`floor(extract(epoch from ${moment}) * 1000)::float8`);
 
 const instantOf = (value: unknown): number => Number(value);
 const instantOrNull = (value: unknown): number | null => (value === null ? null : instantOf(value));

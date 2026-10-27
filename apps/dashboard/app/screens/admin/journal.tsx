@@ -258,7 +258,7 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
         </ListEmpty>
       ) : view.lines.length === 0 ? (
         <ListEmpty>
-          {view.from !== null ? (
+          {view.from !== null && view.total > 0 ? (
             <>
               {"after" in view.from ? "No older rows." : "No newer rows."}{" "}
               <Link to={addressOf(view.kind, view.query, null)}>Show the newest rows</Link>

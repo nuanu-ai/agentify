@@ -41,7 +41,14 @@ const markIn = (text: string, keys: number): Mark | null => {
     : null;
 };
 
-const markText = (mark: Mark): string => [...mark.key, mark.id].join(".");
+/**
+ * A place as an address writes it, or null where a key is no whole number
+ * within reach: its dot would be read back as the start of the identifier.
+ */
+const markText = (mark: Mark): string | null =>
+  mark.key.every((one) => Number.isSafeInteger(one) && Math.abs(one) <= FURTHEST)
+    ? [...mark.key, mark.id].join(".")
+    : null;
 
 /**
  * A value named once, as an address names it; named twice it is nobody's
@@ -71,11 +78,15 @@ export const fromIn = (query: URLSearchParams, keys: number): From => {
   return null;
 };
 
-/** Writes where a page stands into an address's fields. */
+/**
+ * Writes where a page stands into an address's fields; a place no address can
+ * carry is left out, so the address reads as the first page.
+ */
 export const writeFrom = (fields: URLSearchParams, from: From): void => {
   if (from === null) return;
-  if ("after" in from) fields.set("after", markText(from.after));
-  else fields.set("before", markText(from.before));
+  const [name, mark] = "after" in from ? ["after", from.after] : ["before", from.before];
+  const text = markText(mark);
+  if (text !== null) fields.set(name, text);
 };
 
 /** Two places in the order a list sorted from the least holds them. */
