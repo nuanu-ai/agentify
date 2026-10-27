@@ -8,6 +8,7 @@
  */
 
 import "./styles.css";
+import { keepUnits } from "@agentify/ui/units";
 import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
@@ -698,10 +699,11 @@ const refusalIn = (answer: Answer<never>): Answer<never> & { ok: false } => {
 /** What the dashboard says when the gateway does not answer a call in time. */
 const LATE = refusalIn(lateAnswer(ANSWER_WITHIN_MS));
 
+/** Its words as the server half sends them to the page, a number kept with its unit. */
 const LATE_PROBLEM = (() => {
   const outcome = problemOf(LATE);
   if (outcome.kind !== "problem") throw new Error("an unanswered call was not drawn as a problem");
-  return outcome.problem;
+  return { ...outcome.problem, said: keepUnits(outcome.problem.said) };
 })();
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
