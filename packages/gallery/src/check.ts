@@ -71,8 +71,9 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import type { AxeResults, RunOptions } from "axe-core";
 import { chromium, type Page } from "playwright";
-// By its path: the package's React peers belong to the surfaces, and the
-// gallery draws each with the surface's own.
+// By its path: the workspace's peer dependencies are strict, so depending on
+// the package would make its React peers the gallery's own, while the gallery
+// draws each surface with that surface's React.
 import { numberThenUnit } from "../../ui/src/units.js";
 
 const GALLERY = fileURLToPath(new URL("../dist/index.html", import.meta.url));
