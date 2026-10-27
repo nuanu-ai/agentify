@@ -4,11 +4,14 @@
  * and decides nothing beyond those documents, so every claim on a screen traces
  * to a field in one; the React pages under `app/` only draw them. Where a
  * screen would like to say more than the API supports, it says the weaker
- * thing; `words.ts` carries those cases.
+ * thing; `words.ts` carries those cases. A view keeps each number on one line
+ * with its unit, in a product's title as in an amount, by a no-break space, so
+ * it is for drawing and nothing else, and a search compares its words as typed.
  */
 
 import { percentOf } from "@agentify/core/published";
 import type { Integration } from "@agentify/gateway";
+import { asTyped, keepUnits, withUnit } from "@agentify/ui/units";
 import {
   API_ROUTES,
   expandPath,
@@ -77,7 +80,7 @@ export interface Rest {
 
 // --- cards -------------------------------------------------------------------
 
-/** A span of seconds in the largest whole unit that says it exactly. */
+/** A span of seconds in the largest whole unit that says it exactly, kept on one line. */
 export const spanOf = (seconds: number): string => {
   const [count, unit] =
     seconds % 86_400 === 0
@@ -87,7 +90,7 @@ export const spanOf = (seconds: number): string => {
         : seconds % 60 === 0
           ? [seconds / 60, "minute"]
           : [seconds, "second"];
-  return `${count} ${unit}${count === 1 ? "" : "s"}`;
+  return withUnit(count, `${unit}${count === 1 ? "" : "s"}`);
 };
 
 /**
@@ -259,7 +262,7 @@ export const cardsView = (
     return {
       id: entry.id,
       off: state !== CARD_WORDS.onSale,
-      title: entry.card.title,
+      title: keepUnits(entry.card.title),
       priceAsked: entry.card.price_check !== undefined,
       buy: buyingAddress(origin, entry),
       itemId: entry.card.merchant_item_id,
@@ -297,7 +300,7 @@ export const cardsView = (
       matches: (row, words) =>
         byCode
           ? row.itemId.toLocaleLowerCase() === words
-          : row.title.toLocaleLowerCase().includes(words) ||
+          : asTyped(row.title).toLocaleLowerCase().includes(words) ||
             row.itemId.toLocaleLowerCase().includes(words),
       noMatch: (q, within) => {
         const which = within === null ? "No product" : `No product ${within.toLocaleLowerCase()}`;
@@ -623,7 +626,7 @@ const orderSearch = (words: string): ((row: OrderRow) => boolean) => {
   const short = parts.length === 2 && head + tail !== "";
   return (row) => {
     if (
-      row.product.toLocaleLowerCase().includes(words) ||
+      asTyped(row.product).toLocaleLowerCase().includes(words) ||
       row.itemId.toLocaleLowerCase().includes(words)
     ) {
       return true;
@@ -668,7 +671,7 @@ const inTheShopOf = (paid: string, shop: ShopTotal | undefined): string | null =
   const { inTheShop, rate } = converted;
   return (
     `${money({ amount: shop.total, currency: inTheShop.currency })} in your shop, paid as` +
-    ` ${paid} USDC at your rate of ${rate.rate} ${inTheShop.currency} per US dollar, set` +
+    ` ${withUnit(paid, "USDC")} at your rate of ${withUnit(rate.rate, inTheShop.currency)} per US dollar, set` +
     ` ${moment(rate.setAt)}`
   );
 };
@@ -735,7 +738,7 @@ export const ordersView = (
   transactionPage: string | null = null,
 ): OrdersView => {
   const titles = new Map(
-    cards.cards.map((entry) => [entry.card.merchant_item_id, entry.card.title]),
+    cards.cards.map((entry) => [entry.card.merchant_item_id, keepUnits(entry.card.title)]),
   );
   const reopened = paidAfterClosureIn(open);
   const needing = (order: OrderList["orders"][number]) => needsYou(order.status) || reopened(order);
@@ -761,7 +764,7 @@ export const ordersView = (
         : {
             ...(order.merchant_closure.message === undefined
               ? {}
-              : { message: order.merchant_closure.message }),
+              : { message: keepUnits(order.merchant_closure.message) }),
           },
     closing: reopened(order) ? "again" : closable(order) ? "first" : null,
     shopTotal:
@@ -1108,7 +1111,7 @@ const shareIn = (
   if (terms === undefined) return null;
   const { merchant } = sharesOf(price, terms);
   const fee = percentOf(terms.commissionAllocation, terms.totalAllocation);
-  return `${merchant.replace(/^≈ /, "about ")}, after Agentify's ${fee}`;
+  return keepUnits(`${merchant.replace(/^≈ /, "about ")}, after Agentify's ${fee}`);
 };
 
 // --- receipts ----------------------------------------------------------------
@@ -1149,7 +1152,7 @@ export const receiptsView = (
   paidInto: PaidIntoSplits = {},
   query: URLSearchParams = new URLSearchParams(),
 ): ReceiptsView => {
-  const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
+  const titles = new Map(cards.cards.map((entry) => [entry.id, keepUnits(entry.card.title)]));
   // The latest payment first, whatever order the gateway lists them in.
   const marks = new Map(
     receipts.receipts.map((one) => [one.id, { key: [momentKey(one.paid_at)], id: one.id }]),

@@ -6,7 +6,7 @@ import {
   createConsentSnapshot,
   readCurrentConsent,
 } from "@agentify/analytics/browser";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -203,6 +203,25 @@ describe("consent persistence", () => {
       marketing_email: false,
       dataset_reuse: false,
     });
+  });
+});
+
+describe("the banner", () => {
+  beforeEach(() => {
+    Object.assign(globalThis, { React });
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    window.localStorage.clear();
+  });
+
+  it("names what it asks in a heading a screen reader can move to", () => {
+    render(<ConsentBanner brand="Agentify" />);
+    const banner = screen.getByRole("complementary", { name: "Privacy choices" });
+
+    expect(within(banner).getByRole("heading", { level: 2 })).toBeTruthy();
   });
 });
 

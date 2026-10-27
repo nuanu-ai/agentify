@@ -3,7 +3,8 @@
 /**
  * What a scene promises the surface that writes it: a state whose page asks
  * the site for something the scene does not answer is not drawn, and the
- * refusal names the request. Drawing a real surface's scenes is held by that
+ * refusal names the request; a page that watches what comes into view is
+ * drawn, with nothing in view. Drawing a real surface's scenes is held by that
  * surface's own gallery check.
  */
 

@@ -8,6 +8,7 @@
  */
 
 import "./styles.css";
+import { keepUnits } from "@agentify/ui/units";
 import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
@@ -100,7 +101,7 @@ import {
   wooImportView,
   wooShopView,
 } from "../src/woo-views.js";
-import { SITE_IN_SETTINGS } from "../src/words.js";
+import { money, SITE_IN_SETTINGS } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Gated, Trouble } from "./answer.js";
 import { shortened } from "./components/copy.js";
@@ -698,10 +699,11 @@ const refusalIn = (answer: Answer<never>): Answer<never> & { ok: false } => {
 /** What the dashboard says when the gateway does not answer a call in time. */
 const LATE = refusalIn(lateAnswer(ANSWER_WITHIN_MS));
 
+/** Its words as the server half sends them to the page, a number kept with its unit. */
 const LATE_PROBLEM = (() => {
   const outcome = problemOf(LATE);
   if (outcome.kind !== "problem") throw new Error("an unanswered call was not drawn as a problem");
-  return outcome.problem;
+  return { ...outcome.problem, said: keepUnits(outcome.problem.said) };
 })();
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
@@ -1361,6 +1363,13 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
+/** Presses the signed-in address in the header's row, which opens the account's menu. */
+const openTheAccount = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-account > summary");
+  if (button === null) throw new Error("the page draws no account menu");
+  button.click();
+};
+
 /** Products as an operator who also sells sees it, with the door into the workspace in the header. */
 const operatorsCards = (told: Told): GalleryState =>
   at(told, {
@@ -1414,6 +1423,22 @@ const CARDS: GalleryState[] = [
     ),
     scene: {
       steps: [{ shows: "Products", does: openTheMenu }],
+      shows: "Sign out",
+    },
+  },
+  {
+    ...cards(
+      {
+        id: "dashboard-cards-account",
+        screen: "Products",
+        when: "A merchant on a computer presses their address at the end of the header's row.",
+        cause: "The account's menu opens under the address with Settings and Sign out.",
+      },
+      cardsView(CATALOGUE, ORIGIN.live),
+      "live",
+    ),
+    scene: {
+      steps: [{ shows: WHO, does: openTheAccount }],
       shows: "Sign out",
     },
   },
@@ -2978,7 +3003,7 @@ const RECOVERY_SALE = {
   orderId: idOf("ord", "Coffee & Brunch Gift Card recovery"),
   product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
-  amount: "25.00 USD",
+  amount: money({ amount: "25.00", currency: "USD" }),
 };
 
 /** Sales saved with no shop order yet, as the recovery page reads them. */

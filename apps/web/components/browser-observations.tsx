@@ -3,6 +3,7 @@ import type {
   BrowserObservationStatusResponse,
 } from "@agentify/scanner-contracts";
 import { Badge, type BadgeTone } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import { useEffect, useId, useState } from "react";
 import { ask, waitAfter } from "../lib/ask";
 import {
@@ -119,8 +120,9 @@ export function BrowserObservations({
       <section aria-labelledby={titleId}>
         <PanelHeader status="unavailable" titleId={titleId} />
         <p className={styles.notice}>
-          Browser observations are temporarily unavailable; the page asks again in {retryIn} s. The
-          18-check report is unaffected. This is not a failure of your site.
+          Browser observations are temporarily unavailable; the page asks again in{" "}
+          {withUnit(retryIn, "s")}. The 18-check report is unaffected. This is not a failure of your
+          site.
         </p>
       </section>
     );

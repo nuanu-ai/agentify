@@ -47,11 +47,10 @@ body {
   min-width: 240px;
 }
 
-/* The title takes its own line, or it runs into the sentence and the two read
-   as one. Beside the buttons the two lines take about the buttons' height, so
-   the bar does not grow. */
-.consent-banner-copy strong {
-  display: block;
+/* The title is a heading on a line of its own, or it runs into the sentence
+   and the two read as one. Beside the buttons the two lines take about the
+   buttons' height, so the bar does not grow. */
+.consent-banner-copy h2 {
   font-size: 0.9375rem;
 }
 

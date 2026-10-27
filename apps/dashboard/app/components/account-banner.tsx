@@ -90,7 +90,7 @@ export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[
         <path d="M12 8v5M12 16.5v.5" />
       </svg>
       <div>
-        <b className={styles.heading}>{heading}</b>
+        <h2 className={styles.heading}>{heading}</h2>
         {notes.length === 1 ? (
           notes.map((note) =>
             // A line that holds a form is no paragraph, which may hold none.

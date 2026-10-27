@@ -4,6 +4,7 @@ import {
   accountDataRequestSchema,
   accountUnsubscribeRequestSchema,
 } from "@agentify/scanner-contracts";
+import { asTyped } from "@agentify/ui/units";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -83,7 +84,7 @@ async function toldAfterAskingForACopy(): Promise<string> {
   const said = await screen.findByText((_content, element) =>
     Boolean(element?.classList.contains("message-answer") && element.textContent),
   );
-  return said.textContent ?? "";
+  return asTyped(said.textContent ?? "");
 }
 
 const signedIn = { status: 200, body: { status: "signed_in", email: OWNER, operator: false } };

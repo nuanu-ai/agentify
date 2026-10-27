@@ -442,6 +442,8 @@ describe("the search", () => {
     await page.keyboard.press("ArrowDown");
     expect(await input.getAttribute("aria-activedescendant")).toBe("search-result-1");
     expect(await page.locator("#search-result-1").getAttribute("aria-selected")).toBe("true");
+    // A result is one control: a link inside an option would be a control in a control.
+    expect(await page.locator('[role="option"] :is(a, button, input)').count()).toBe(0);
     await page.keyboard.press("Tab");
     expect(await input.evaluate((element) => element === document.activeElement)).toBe(true);
     await page.keyboard.press("Escape");

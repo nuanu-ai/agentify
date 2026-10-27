@@ -2,7 +2,7 @@
  * `pnpm gallery:check`: every state of every surface in the page
  * `pnpm gallery` wrote, each drawn in Chromium from that page's own markup,
  * stylesheets and fonts, composed by the gallery's own `frame.js` as its
- * frames are. It fails on five things.
+ * frames are. It fails on six things.
  *
  * At a small phone's, a phone's, a tablet's and a desktop's width (320, 390,
  * 768 and 1440 pixels), something on the page reaches past the window's right
@@ -23,17 +23,37 @@
  * state, the width and the band's height. A page taller than the window is
  * not measured here, since its footer ends where its content does.
  *
- * At any of the four, a button drawn as one, filled or with a border, has
- * its words closer than 4 pixels to its top or bottom edge or 8 to a side:
- * the words a narrow window wraps onto a second line press against the
- * button. A failure names the state, the width, the button's words and how
- * close they come.
+ * At any of the four, a button drawn as one, filled or with a border on its
+ * top and both sides, has its words closer than 4 pixels to its top or
+ * bottom edge or 8 to a side (a button, a link, a disclosure's summary or
+ * anything with the button role counts, whatever its class): the words a
+ * narrow window wraps onto a second line press against the button. A
+ * failure names the state, the width, the button's words and how close they
+ * come.
  *
- * At any of the four, a button drawn as one or a heading ends on a line of
- * one word less than half as wide as the line above it, where the last word
- * of that line would have fit beside it: "Turn product analytics / off". A
- * failure names the state, the width, the words and the one left alone.
+ * At any of the four, a button drawn as one, as above, or a heading of any
+ * level or with the heading role ends on a line of one word less than half
+ * as wide as the line above it, in the same block, where the last word of
+ * that line would have fit beside it: "Turn product analytics / off". A
+ * control whose words stand in blocks of their own, such as a card with a
+ * label over its title or a search result with its excerpt, is not read: its
+ * lines are not one label wrapped. A failure names the state, the width, the
+ * words and the one left alone. A title set in bold type rather than as a
+ * heading is not read either: it is a heading that should be marked as one.
  * Paragraphs are left to the browser's own rule, set in the shared tokens.
+ *
+ * At any of the four, a number and the unit after it are drawn with a space
+ * a line can break at between them, whether or not this width breaks it,
+ * since another width or a longer name would: "30 s", "4 min", "7 days",
+ * "5 GB", "8.00 USD", "115 × 180 cm", in our own words and in a merchant's
+ * product name alike. The units are the ones the surfaces join, read from the
+ * module they join them by. A number and its unit are read where they stand in
+ * one element's text, even across the pieces a component writes it in; set in
+ * two elements, "5 <strong>GB</strong>", they are not read. Text a closed
+ * disclosure holds, a hidden element, a box kept for a screen reader alone,
+ * a line that never wraps and code, which is shown as written, are not read
+ * either. A failure names the state, the widths it was drawn at and the
+ * words.
  *
  * At any of the four, axe rates a violation serious or critical. What it
  * rates moderate or minor is listed and passes.
@@ -51,9 +71,15 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import type { AxeResults, RunOptions } from "axe-core";
 import { chromium, type Page } from "playwright";
+// By its path: the workspace's peer dependencies are strict, so depending on
+// the package would make its React peers the gallery's own, while the gallery
+// draws each surface with that surface's React.
+import { numberThenUnit } from "../../ui/src/units.js";
 
 const GALLERY = fileURLToPath(new URL("../dist/index.html", import.meta.url));
 const FRAME = fileURLToPath(new URL("./frame.js", import.meta.url));
+/** The pairs the surfaces join, apart by whatever space a page's text holds between them. */
+const UNIT_AFTER_A_NUMBER = numberThenUnit(String.raw`\s+`);
 
 /**
  * The gallery's own devices, and the narrowest phone a page is still read on,
@@ -107,6 +133,10 @@ interface Cramped {
 interface Runt {
   readonly words: string;
   readonly alone: string;
+}
+
+interface Breakable {
+  readonly words: string;
 }
 
 interface Violation {
@@ -211,14 +241,20 @@ function footOf(): Foot {
  */
 function crampedOf(): Cramped[] {
   const cramped: Cramped[] = [];
-  for (const button of document.querySelectorAll(".button, button")) {
+  for (const button of document.querySelectorAll(".button, button, a, summary, [role=button]")) {
     const drawn = button.getBoundingClientRect();
     if (drawn.width === 0 || drawn.height === 0) continue;
     if (button.closest("details:not([open]) > :not(summary)") !== null) continue;
     const style = getComputedStyle(button);
     if (style.visibility !== "visible") continue;
     const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
-    if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
+    if (
+      !filled &&
+      [style.borderTopWidth, style.borderLeftWidth, style.borderRightWidth].some(
+        (width) => Number.parseFloat(width) === 0,
+      )
+    )
+      continue;
     let top = Number.POSITIVE_INFINITY;
     let bottom = Number.NEGATIVE_INFINITY;
     let left = Number.POSITIVE_INFINITY;
@@ -271,17 +307,34 @@ function crampedOf(): Cramped[] {
  */
 function runtsOf(): Runt[] {
   const runts: Runt[] = [];
-  for (const element of document.querySelectorAll(".button, button, h1, h2, h3")) {
+  for (const element of document.querySelectorAll(
+    ".button, button, a, summary, [role=button], h1, h2, h3, h4, h5, h6, [role=heading]",
+  )) {
     const drawn = element.getBoundingClientRect();
     if (drawn.width === 0 || drawn.height === 0) continue;
     if (element.closest("details:not([open]) > :not(summary)") !== null) continue;
     const style = getComputedStyle(element);
     if (style.visibility !== "visible") continue;
-    if (!/^h[1-3]$/i.test(element.tagName)) {
+    const heading = element.matches("h1, h2, h3, h4, h5, h6, [role=heading]");
+    if (!heading) {
       const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
-      if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
+      if (
+        !filled &&
+        [style.borderTopWidth, style.borderLeftWidth, style.borderRightWidth].some(
+          (width) => Number.parseFloat(width) === 0,
+        )
+      )
+        continue;
     }
-    type Word = { word: string; left: number; right: number; middle: number; height: number };
+    type Word = {
+      word: string;
+      left: number;
+      right: number;
+      middle: number;
+      height: number;
+      block: Element | null;
+      shown: boolean;
+    };
     const lines: Word[][] = [];
     const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const range = document.createRange();
@@ -290,6 +343,14 @@ function runtsOf(): Runt[] {
       if (holder !== null && getComputedStyle(holder).overflow === "hidden") {
         const box = holder.getBoundingClientRect();
         if (box.width <= 1 || box.height <= 1) continue;
+      }
+      let block = holder;
+      while (
+        block !== null &&
+        block !== element &&
+        /^(inline|contents)$/.test(getComputedStyle(block).display)
+      ) {
+        block = block.parentElement;
       }
       for (const found of (text.textContent ?? "").matchAll(/\S+/g)) {
         range.setStart(text, found.index);
@@ -302,6 +363,10 @@ function runtsOf(): Runt[] {
           right: box.right,
           middle: (box.top + box.bottom) / 2,
           height: box.height,
+          block,
+          // A glyph hidden from a screen reader, such as an arrow, is drawn
+          // beside a label rather than read as a block of its own.
+          shown: holder?.closest('[aria-hidden="true"]') === null,
         };
         const line = lines.at(-1);
         const on = line?.[0];
@@ -323,7 +388,16 @@ function runtsOf(): Runt[] {
     if (last === undefined || above === undefined || alone === undefined || moved === undefined) {
       continue;
     }
-    if (last.length !== 1) continue;
+    // A control whose words stand in blocks of their own is a card, not a
+    // button's label; its paragraphs are left to the browser as any other.
+    const blocks = new Set(
+      lines
+        .flat()
+        .filter((word) => word.shown)
+        .map((word) => word.block),
+    );
+    if (!heading && blocks.size > 1) continue;
+    if (last.length !== 1 || alone.block !== moved.block) continue;
     const lastWidth = alone.right - alone.left;
     const aboveWidth = moved.right - Math.min(...above.map((word) => word.left));
     if (lastWidth * 2 >= aboveWidth) continue;
@@ -342,6 +416,54 @@ function runtsOf(): Runt[] {
     });
   }
   return runts;
+}
+
+/**
+ * Runs in the page, as source, under the same constraint as `overflowOf`. The
+ * text nodes that stand side by side in one element, with nothing but a
+ * comment between them, are read as one text: a component writes
+ * `in {seconds} s` as three of them. A pair is found by `pattern`, the source
+ * of the expression the surfaces join pairs by, and is breakable where
+ * anything but a no-break space stands between the number and its unit.
+ */
+function breakableUnitsOf(pattern: string): Breakable[] {
+  const runs: Text[][] = [];
+  const texts = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = texts.nextNode(); node !== null; node = texts.nextNode()) {
+    const text = node as Text;
+    let before = text.previousSibling;
+    while (before !== null && before.nodeType === Node.COMMENT_NODE) {
+      before = before.previousSibling;
+    }
+    const run = runs.at(-1);
+    if (run !== undefined && before !== null && before === run.at(-1)) {
+      run.push(text);
+    } else {
+      runs.push([text]);
+    }
+  }
+  const breakable: Breakable[] = [];
+  for (const run of runs) {
+    const holder = run[0]?.parentElement ?? null;
+    if (holder === null) continue;
+    if (holder.closest("details:not([open]) > :not(summary)") !== null) continue;
+    // Code is shown as written, so it is not ours to keep together.
+    if (holder.closest("pre, code") !== null) continue;
+    if (!holder.checkVisibility({ visibilityProperty: true })) continue;
+    const style = getComputedStyle(holder);
+    if (style.getPropertyValue("text-wrap-mode") === "nowrap") continue;
+    if (style.overflow === "hidden") {
+      const box = holder.getBoundingClientRect();
+      if (box.width <= 1 || box.height <= 1) continue;
+    }
+    const value = run.map((text) => text.data).join("");
+    for (const found of value.matchAll(new RegExp(pattern, "gu"))) {
+      if ((found[2] ?? "").replaceAll("\u00a0", "") !== "") {
+        breakable.push({ words: found[0].replace(/\s+/g, " ") });
+      }
+    }
+  }
+  return breakable;
 }
 
 const drawnAt = async (page: Page, document: string, width: number, height: number) => {
@@ -385,6 +507,8 @@ const overflows: string[] = [];
 const bands: string[] = [];
 const crampedButtons: string[] = [];
 const runts: string[] = [];
+/** A breakable pair once per state, with every width it was drawn at. */
+const breakableUnits = new Map<string, number[]>();
 /** A violation once per state, with every width it was found at. */
 const violations = new Map<string, { widths: number[]; where: readonly string[] }>();
 const notices = new Map<string, Set<string>>();
@@ -420,6 +544,12 @@ try {
             `${id} at ${width} px leaves "${runt.alone}" alone on the last line of "${runt.words}"`,
           );
         }
+        for (const pair of await page.evaluate(breakableUnitsOf, UNIT_AFTER_A_NUMBER)) {
+          const key = `${id} ${pair.words}`;
+          const widths = breakableUnits.get(key) ?? [];
+          if (!widths.includes(width)) widths.push(width);
+          breakableUnits.set(key, widths);
+        }
         for (const violation of await axeOn(page, axe)) {
           const said = `${violation.rule} (${violation.impact}): ${violation.help}`;
           if (!FAILING.has(violation.impact)) {
@@ -445,6 +575,10 @@ const failures = [
   ...bands,
   ...crampedButtons,
   ...runts,
+  ...[...breakableUnits].map(([key, widths]) => {
+    const [id = "", ...words] = key.split(" ");
+    return `${id} at ${widths.sort((one, other) => one - other).join(", ")} px draws "${words.join(" ")}" with a space a line can break at between the number and its unit`;
+  }),
   ...[...violations].map(([key, { widths, where }]) => {
     const [id = "", ...said] = key.split(" ");
     const at = widths.sort((one, other) => one - other).join(", ");

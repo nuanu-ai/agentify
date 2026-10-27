@@ -405,11 +405,9 @@ form.inline {
   stroke-linecap: round;
 }
 
-.account-banner b {
-  display: block;
+.account-banner h2 {
   margin-bottom: var(--space-snug);
   color: color-mix(in srgb, var(--notice-ink) 80%, var(--fg));
-  font-weight: 600;
 }
 
 .account-banner a {

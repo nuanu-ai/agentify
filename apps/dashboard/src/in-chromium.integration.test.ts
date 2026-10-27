@@ -378,6 +378,21 @@ describe("a copy button once the page's script runs", () => {
   });
 });
 
+describe("a copy out of a page", () => {
+  it("carries the spaces a person types where the page keeps a number with its unit", async () => {
+    const page = await onTheCards();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+    const price = page.getByText(/^80\.00\sUSD$/).first();
+
+    await price.selectText();
+    await page.keyboard.press("ControlOrMeta+C");
+
+    expect(await price.textContent()).toBe("80.00\u00a0USD");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("80.00 USD");
+    await page.context().close();
+  });
+});
+
 describe("a click under the dashboard's prefix", () => {
   it("marks the section or filter chosen before its page arrives, and says the page is coming", async () => {
     const page = await onTheCards();

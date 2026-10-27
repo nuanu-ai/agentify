@@ -49,6 +49,14 @@ describe("public Markdown variants", () => {
     }
   });
 
+  it("writes a number and its unit with the ordinary space an agent reads, not the page's no-break one", () => {
+    process.env.APP_BASE_URL = "https://agentify.ad";
+    for (const path of KEPT_PAGE_PATHS) {
+      expect(getPublicPageMarkdown(path)).not.toContain("\u00a0");
+    }
+    expect(getPublicPageMarkdown("/privacy")).toMatch(/\d+ days/);
+  });
+
   it("keeps the merchant route and the way to the methodology in the agent variant", () => {
     process.env.APP_BASE_URL = "https://agentify.ad";
     const front = getPublicPageMarkdown("/");

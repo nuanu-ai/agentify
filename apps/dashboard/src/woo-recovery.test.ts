@@ -295,6 +295,36 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
     expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
   });
 
+  it("names the total it expected in the shop's own currency, kept beside the amount", async () => {
+    const converted: WooOrderFacts = {
+      ...FACTS,
+      converted: {
+        inTheShop: { amount: "0.01", currency: "EUR" },
+        rate: { version: 2, rate: "0.92", setAt: "2026-09-18T08:00:00.000Z" },
+      },
+    };
+    const shops = await setup("create_unknown", converted);
+    const test = parts(
+      shops,
+      {
+        inspectProduct: async () => ({
+          ok: true,
+          product: { ...PRODUCT, price: { amount: "0.01", currency: "EUR" } },
+        }),
+        readOrder: async () => ({ ok: true, order: shopOrder({ currency: "EUR", total: "0.05" }) }),
+      },
+      converted,
+    );
+
+    const outcome = await recoverWooOrderAs(
+      OWNER,
+      { orderId: "ord_1", wooOrderId: "13" },
+      test.value,
+    );
+
+    expect(outcome.ok ? "" : outcome.why).toContain("its total is not 0.01\u00a0EUR");
+  });
+
   it("keeps an unreadable exact shop order unresolved and allows the same check again", async () => {
     const shops = await setup("create_unknown");
     let available = false;
@@ -922,7 +952,7 @@ describe("merchant recovery pages", () => {
         orderId: "ord_1",
         product: "Agentify test download",
         shopOrigin: FACTS.shopOrigin,
-        amount: "0.01 USD",
+        amount: "0.01\u00a0USD",
         wooOrderId: "",
       },
     });

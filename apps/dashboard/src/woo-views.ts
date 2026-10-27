@@ -11,6 +11,7 @@
  */
 
 import type { Integration } from "@agentify/gateway";
+import { keepUnits, withUnit } from "@agentify/ui/units";
 import { type MomentView, momentView } from "./views.js";
 import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
@@ -69,7 +70,9 @@ export interface NoKeysYet {
 }
 
 const minutesAgo = (minutes: number): string =>
-  minutes < 1 ? "less than a minute ago" : `${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+  minutes < 1
+    ? "less than a minute ago"
+    : `${withUnit(minutes, minutes === 1 ? "minute" : "minutes")} ago`;
 
 /**
  * Two states because the move differs: inside the fifteen minutes, wait; past
@@ -89,7 +92,7 @@ export const noKeysYet = (state: ShopState): NoKeysYet | null => {
   if (state.kind === "unanswered") {
     return {
       what: "No keys came from your shop",
-      why: `No keys came from ${shopNameOf(state.shopUrl)} within ${GRANT_MINUTES} minutes, and we can't tell why. Connect again.`,
+      why: `No keys came from ${shopNameOf(state.shopUrl)} within ${withUnit(GRANT_MINUTES, "minutes")}, and we can't tell why. Connect again.`,
       waiting: false,
     };
   }
@@ -596,20 +599,26 @@ export const wooImportView = (
     toFix: [
       ...refused.map((one) => ({
         id: one.id,
-        title: one.title,
+        title: keepUnits(one.title),
         says: one.problems,
         fix: one.problems.includes(SITE_IN_SETTINGS) ? TO_SETTINGS : null,
       })),
       ...skipped
         .filter((one) => one.fixable)
-        .map((one) => ({ id: one.id, title: one.title, says: [one.why], fix: null })),
+        .map((one) => ({ id: one.id, title: keepUnits(one.title), says: [one.why], fix: null })),
     ],
     tooLong: refused.some((one) => one.tooLong === true),
-    unanswered: unanswered.map(({ id, title }) => ({ id, title })),
+    unanswered: unanswered.map(({ id, title }) => ({ id, title: keepUnits(title) })),
     notAttempted: outcomes
       .filter((one): one is NotAttempted => "notAttempted" in one)
-      .map(({ id, title }) => ({ id, title })),
-    unsupported: skipped.filter((one) => !one.fixable),
-    published: published.map((one) => ({ ...one, code: merchantItemIdFor(shopUrl, one.id) })),
+      .map(({ id, title }) => ({ id, title: keepUnits(title) })),
+    unsupported: skipped
+      .filter((one) => !one.fixable)
+      .map((one) => ({ ...one, title: keepUnits(one.title) })),
+    published: published.map((one) => ({
+      ...one,
+      title: keepUnits(one.title),
+      code: merchantItemIdFor(shopUrl, one.id),
+    })),
   };
 };

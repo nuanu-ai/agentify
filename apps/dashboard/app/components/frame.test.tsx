@@ -280,6 +280,15 @@ describe("the banner about the account", () => {
     expect(banner()).toBeNull();
   });
 
+  it("names what holds the account in a heading a screen reader can move to", async () => {
+    framed("orders", { account: accountOf({ ...LIVE, sellerName: null }) });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    expect(within(drawn).getByRole("heading", { level: 2 })).toBeTruthy();
+  });
+
   it.each([false, true])(
     "draws the account reasons and their actions, multiple=%s",
     async (multiple) => {

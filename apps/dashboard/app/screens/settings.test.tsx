@@ -18,6 +18,7 @@ import {
   payoutSplitNetworkOf,
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
+import { asTyped } from "@agentify/ui/units";
 import { checksummedAddressOf, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -343,6 +344,36 @@ afterEach(() => {
 });
 
 describe("the payout wallet on the settings screen", () => {
+  it.each([
+    ["a change that waits", { wallet: SHAPED, pending: WAITING }],
+    [
+      "a change cancelled",
+      {
+        wallet: SHAPED,
+        press: { kind: "wallet-notice", notice: { kind: "cancelled", paid: SHAPED } },
+      },
+    ],
+    [
+      "a cancel too late",
+      {
+        wallet: SHAPED,
+        press: {
+          kind: "wallet-notice",
+          notice: { kind: "landed", wallet: WAITING, at: null, before: SHAPED, askedBack: false },
+        },
+      },
+    ],
+  ] as const)("names %s in a heading at the level of the section's own", (_, looking) => {
+    // The notice stands first in its section, before the section's heading, so
+    // a lower heading would be filed under the section above it.
+    const headings = (html: string) => [...html.matchAll(/<h([1-6])[\s>]/g)].map((one) => one[1]);
+
+    expect(headings(walletPanel(looking))).toStrictEqual([
+      "2",
+      ...headings(walletPanel({ wallet: SHAPED })),
+    ]);
+  });
+
   it("shows a saved address whole, so a merchant can check it against their wallet", () => {
     const html = walletPanel({ wallet: SHAPED });
 
@@ -428,7 +459,7 @@ describe("the payout wallet on the settings screen", () => {
       },
     });
 
-    expect(asCopied(html.slice(0, html.indexOf("<h2")))).toContain(SHAPED);
+    expect(asCopied(html.slice(0, html.indexOf('<h2 id="payout-wallet"')))).toContain(SHAPED);
     expect(html).toContain('action="/products?selling=pause"');
   });
 
@@ -462,7 +493,7 @@ describe("a change of the payout wallet on its way", () => {
 
     const said = within(form).getByRole("status").textContent ?? "";
     expect(said).toMatch(/emailing everyone on your account/i);
-    expect(said).toMatch(/30 seconds/);
+    expect(said).toMatch(/30\sseconds/);
     expect(screen.getByRole("button", { name: "Change wallet" }).hasAttribute("disabled")).toBe(
       true,
     );
@@ -659,7 +690,7 @@ describe("the payout contract buyers pay into", () => {
 
   it("shows a waiting wallet whole, first in its section, with the press that cancels it", () => {
     const html = walletPanel({ mode: "live", wallet: W, pending: WAITING });
-    const first = html.slice(0, html.indexOf("<h2"));
+    const first = html.slice(0, html.indexOf('<h2 id="payout-wallet"'));
 
     expect(asCopied(first)).toContain(WAITING);
     expect(first).toContain('action="/settings/payout-wallet/cancel"');
@@ -1159,14 +1190,14 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await act(() => vi.advanceTimersByTimeAsync(1));
 
     expect(screen.queryByText(WALLET_WORDS.waitingAddress)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.connectUnanswered))).toBeTruthy();
     expect(coinbase.keys).toBe(false);
     expect(box().value).toBe("0x1234");
     await act(async () => {
       coinbase.held[0]?.accept();
     });
     expect(box().value).toBe("0x1234");
-    expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.connectUnanswered))).toBeTruthy();
   });
 
   it("takes the refusal of an earlier address off the box it fills, so it is not read out against the new one", async () => {
@@ -1268,9 +1299,9 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     const status = screen
       .getAllByRole("status")
-      .find((one) => one.textContent?.includes("12.34 USDC"));
+      .find((one) => /12\.34\sUSDC/.test(one.textContent ?? ""));
     expect(status).toBeDefined();
-    expect(status?.textContent).toMatch(/wallet accepted.*payout.*12\.34 USDC/i);
+    expect(status?.textContent).toMatch(/wallet accepted.*payout.*12\.34\sUSDC/i);
     expect(status?.textContent).toMatch(/once the network.*carries it out/i);
     expect(status?.textContent).not.toMatch(/has arrived|network confirmed/i);
     expect(coinbase.sent).toHaveLength(1);
@@ -1543,7 +1574,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull();
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.payoutUnanswered))).toBeTruthy();
     expect(coinbase.keys).toBe(false);
   });
 
@@ -1559,7 +1590,9 @@ describe("sending the payout from a Coinbase Wallet", () => {
       expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
       expect(
         screen.getByText(
-          answer === "acknowledge" ? WALLET_WORDS.payoutSent(SHOWN) : WALLET_WORDS.payoutUnanswered,
+          answer === "acknowledge"
+            ? WALLET_WORDS.payoutSent(SHOWN)
+            : asTyped(WALLET_WORDS.payoutUnanswered),
         ),
       ).toBeTruthy();
     },

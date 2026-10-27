@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+
 /**
  * Overview, Money and Health served over HTTP to an operator, as a browser
  * with no script reads them: every page says when its figures were read, and
@@ -7,6 +8,7 @@ import { createRequire } from "node:module";
  * nobody; nothing here reaches the network.
  */
 
+import { asTyped } from "@agentify/ui/units";
 import { decodeFunctionData, type Hex, parseAbi } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AdminServed, adminServed } from "../testing/admin.js";
@@ -59,7 +61,7 @@ describe("the figures' pages", () => {
     const page = documentOf(html);
     const tile = (label: string) =>
       [...page.querySelectorAll(".tile")].find(
-        (one) => one.querySelector(".label")?.textContent === label,
+        (one) => asTyped(one.querySelector(".label")?.textContent ?? "") === label,
       );
     expect(tile("Merchants selling")?.querySelector(".figure")?.textContent).toBe("1of 2");
     expect(tile("Orders · 7 days")?.querySelector(".figure")?.textContent).toBe("1");
@@ -67,7 +69,7 @@ describe("the figures' pages", () => {
     expect(page.querySelector(".op-asof .when")?.textContent).toBe("2026-10-24 09:00:00 UTC");
     const chart = page.querySelector('[aria-labelledby="sales-title"] svg');
     expect(chart).not.toBeNull();
-    expect(chart?.getAttribute("aria-label")).toMatch(/80.00 USD in all/);
+    expect(chart?.getAttribute("aria-label")).toMatch(/80\.00\sUSD in all/);
     expect(
       [...(chart?.querySelectorAll("rect") ?? [])].some(
         (bar) => Number(bar.getAttribute("height")) > 2,

@@ -508,13 +508,13 @@ describe("the chart of settled sales", () => {
     const onThatDay = chart.bars.filter((bar) => bar.label.startsWith("22 Oct"));
     expect(onThatDay).toHaveLength(2);
     const [lower, upper] = onThatDay;
-    expect(lower?.label).toMatch(/10.00 USD delivered/);
+    expect(lower?.label).toMatch(/10\.00\sUSD delivered/);
     expect(upper?.x).toBe(lower?.x);
     expect((upper?.y ?? 0) + (upper?.height ?? 0)).toBeCloseTo(lower?.y ?? -1, 1);
     expect(upper?.y).toBeLessThan(lower?.y ?? 0);
     expect(lower?.height).toBeGreaterThan(0);
     expect(upper?.height).toBeGreaterThan(0);
     expect((upper?.height ?? 0) / (lower?.height ?? 1)).toBeCloseTo(8 / 10, 2);
-    expect(onThatDay[1]?.label).toBe("22 Oct: 8.00 USD paid with no delivery recorded");
+    expect(onThatDay[1]?.label).toBe("22 Oct: 8.00\u00a0USD paid with no delivery recorded");
   });
 });

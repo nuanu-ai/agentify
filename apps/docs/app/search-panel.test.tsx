@@ -36,12 +36,12 @@ describe("a search result's excerpt", () => {
     expect(excerpt).toContain("<mark>courier</mark>");
     expect(excerpt.startsWith("Every order")).toBe(true);
     const late = drawn(TEXT, ["needed"]);
-    expect(late.startsWith("… ")).toBe(true);
-    expect(late.replace(/<[^>]+>/g, "")).toMatch(/^… \S/);
+    expect(late.startsWith("…\u00a0")).toBe(true);
+    expect(late.replace(/<[^>]+>/g, "")).toMatch(/^…\s\S/);
     const text = late
       .replace(/<[^>]+>/g, "")
-      .replace(/^… /, "")
-      .replace(/ …$/, "");
+      .replace(/^…\s/, "")
+      .replace(/\s…$/, "");
     const start = TEXT.indexOf(text);
     expect(start).toBeGreaterThanOrEqual(0);
     expect(start === 0 || /\s/.test(TEXT[start - 1] ?? "")).toBe(true);

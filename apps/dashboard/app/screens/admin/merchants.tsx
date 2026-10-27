@@ -7,6 +7,7 @@
  * value, ready to select.
  */
 
+import { withUnit } from "@agentify/ui/units";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type {
@@ -108,7 +109,7 @@ function Row({ row }: Readonly<{ row: MerchantListRow }>) {
         {row.cards}
       </div>
       <div className="cell cell-note num">
-        <span className="said-on-narrow">Last 30 days </span>
+        <span className="said-on-narrow">Last 30&nbsp;days </span>
         <span>{row.sales ?? "—"}</span>
         <span className="op-sub">
           {row.orders}
@@ -153,7 +154,7 @@ export function MerchantsScreen({ view }: Readonly<{ view: MerchantsView }>) {
                     <span>Integration</span>
                     <span>Missing</span>
                     <span className="num">On sale</span>
-                    <span className="num">30 days</span>
+                    <span className="num">30&nbsp;days</span>
                     <span>State</span>
                   </li>
                   {listing.rows.map((row) => (
@@ -187,8 +188,8 @@ function Sparkline({ days }: Readonly<{ days: readonly SellingDayView[] }>) {
   const points = amounts.map((amount, at) => `${x(at).toFixed(1)},${y(amount).toFixed(1)}`);
   const today = days.at(-1);
   const label = `Settled sales per day over ${days.length} days, at most ${
-    most === 0 ? "nothing" : `${days[amounts.indexOf(most)]?.amount} USD`
-  } a day, ${today === undefined || today.count === 0 ? "nothing" : `${today.amount} USD`} so far today`;
+    most === 0 ? "nothing" : withUnit(days[amounts.indexOf(most)]?.amount ?? "", "USD")
+  } a day, ${today === undefined || today.count === 0 ? "nothing" : withUnit(today.amount, "USD")} so far today`;
   return (
     <svg className="op-spark" viewBox="0 0 320 64" role="img" aria-label={label}>
       <polygon className="area" points={`4,58 ${points.join(" ")} 316,58`} />
@@ -211,7 +212,7 @@ function Check({
     <li className={held ? undefined : "missing"}>
       <span className="mark">{held ? <Tick /> : null}</span>
       <div className="what">
-        <b>{title}</b>
+        <h3>{title}</h3>
         {children}
       </div>
       <span className={held ? "badge badge-pass" : "badge badge-notice"}>{badge}</span>
@@ -551,7 +552,7 @@ export function MerchantScreen({ view }: Readonly<{ view: MerchantView }>) {
           <section className="op-panel" aria-labelledby="selling-title">
             <div className="op-panel-head">
               <h2 id="selling-title">Selling</h2>
-              <p>Last 30 days</p>
+              <p>Last 30&nbsp;days</p>
             </div>
             <div className="op-panel-body">
               <dl className="op-kv">

@@ -105,6 +105,21 @@ describe("the Merchants list", () => {
 });
 
 describe("a merchant's page", () => {
+  it("names each check of being ready to sell in a heading a screen reader can move to", async () => {
+    served = await adminServed({ channel: "live" });
+    const merchant = await served.harnessed.addMerchant("Coffee Roasters");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const { html } = await operator.get(`/admin/merchants/${merchant.id}`);
+    const checks = html.slice(
+      html.indexOf('<ul class="op-checks">'),
+      html.indexOf('id="integration-title"'),
+    );
+    const titled = checks.match(/class="what"/g)?.length ?? 0;
+
+    expect(titled).toBeGreaterThan(1);
+    expect(checks.match(/<h3[\s>]/g)?.length).toBe(titled);
+  });
+
   it("is not there for a merchant that does not exist", async () => {
     served = await adminServed();
     const operator = await served.signedIn(OPERATOR, { operator: true });

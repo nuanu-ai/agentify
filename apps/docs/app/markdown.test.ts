@@ -212,3 +212,29 @@ describe("a site value", () => {
     expect(() => withSiteValues("<p>{{nothing}}</p>")).toThrow(/\{\{nothing\}\}/);
   });
 });
+
+describe("a number and its unit", () => {
+  it("stand on one line in a page's prose, where its source wraps between them too", () => {
+    const html = parser().render("Each fetch waits 8 seconds; a card costs 5.00\nUSD.\n");
+
+    expect(html).toContain("8\u00a0seconds");
+    expect(html).toContain("5.00\u00a0USD");
+  });
+
+  it("are left as written in code, inline or in a block", () => {
+    const html = parser().render("Set `wait: 8 s` here.\n\n```\nwait 8 seconds\n```\n");
+
+    expect(html).toContain("<code>wait: 8 s</code>");
+    expect(html).toContain("wait 8 seconds");
+  });
+
+  it("keep their ordinary space in the Markdown a client that prefers it reads", async () => {
+    const scanner = PAGES.find((page) => page.file === "scanner/index.md");
+    if (scanner === undefined) throw new Error("no scanner page");
+    const copy = await markdownCopy(await sourceOf(scanner));
+
+    expect((await renderedPages()).get(scanner.path)?.html).toContain("8\u00a0seconds");
+    expect(copy).toContain("8 seconds");
+    expect(copy).not.toContain("\u00a0");
+  });
+});

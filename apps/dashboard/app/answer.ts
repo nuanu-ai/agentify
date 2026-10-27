@@ -5,6 +5,7 @@
  * way everywhere.
  */
 
+import { keepUnits } from "@agentify/ui/units";
 import {
   type DataStrategyResult,
   data,
@@ -307,7 +308,7 @@ export function answer<View>(outcome: Outcome<View>, { request, url, context }: 
   const trouble: Trouble = {
     kind: "problem",
     chrome,
-    said: outcome.problem.said,
+    said: keepUnits(outcome.problem.said),
     ...(outcome.problem.outcome === undefined ? {} : { outcome: outcome.problem.outcome }),
     ...(reads(request.method)
       ? { again: `${url.pathname}${url.search}` }

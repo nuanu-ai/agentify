@@ -385,6 +385,13 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
+/** Presses the signed-in address in the header's row, which opens the account's menu. */
+const openTheAccount = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-account > summary");
+  if (button === null) throw new Error("the page draws no account menu");
+  button.click();
+};
+
 const askForTheReport = (page: Document) => {
   typeInto(page, "email", WHO);
   tick(page, "site_is_mine");
@@ -653,6 +660,25 @@ const PUBLIC: GalleryState[] = [
     },
     { path: "/", loaded: { "routes/home": ownDataOf("routes/home.tsx") }, firstVisit: true },
   ),
+  at(
+    {
+      id: "scanner-front-page-preferences",
+      screen: "Front page",
+      when: "Somebody on a first visit presses Preferences in the banner.",
+      cause:
+        "The browser keeps no answer about measuring the visit, so the preferences open with every optional kind off.",
+    },
+    {
+      path: "/",
+      loaded: { "routes/home": ownDataOf("routes/home.tsx") },
+      firstVisit: true,
+      scene: {
+        answers: visitor(false),
+        steps: [{ shows: "Preferences", does: (page) => press(page, "Preferences") }],
+        shows: "Essential processing",
+      },
+    },
+  ),
   own(
     {
       id: "scanner-store-landing",
@@ -698,6 +724,23 @@ const PUBLIC: GalleryState[] = [
         answers: visitor(true),
         steps: [{ shows: "Privacy and data controls", does: openTheMenu }],
         shows: WHO,
+      },
+    },
+  ),
+  at(
+    {
+      id: "scanner-privacy-account",
+      screen: "Privacy",
+      when: "A signed-in visitor on a computer presses their address at the end of the header's row.",
+      cause: "The account's menu opens under the address with Settings and Sign out.",
+    },
+    {
+      path: "/privacy",
+      loaded: { "routes/privacy": getPublicEditorialPage("/privacy", SITE) },
+      scene: {
+        answers: visitor(true),
+        steps: [{ shows: WHO, does: openTheAccount }],
+        shows: "Sign out",
       },
     },
   ),

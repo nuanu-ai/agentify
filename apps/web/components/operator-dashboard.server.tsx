@@ -1,6 +1,7 @@
 import { percentReached } from "@agentify/scanner-contracts/browser";
 import { Badge, type BadgeTone, SurfaceNote } from "@agentify/ui";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
+import { withUnit } from "@agentify/ui/units";
 import { WorkspaceFrame } from "@agentify/ui/workspace";
 import type { ChannelView } from "@agentify/ui/workspace-view";
 import { dayIn, momentIn } from "@agentify/ui/zone";
@@ -82,15 +83,15 @@ const ratio = (value: number, denominator: number) =>
 const counted = (count: number, one: string, many: string) =>
   `${number.format(count)} ${count === 1 ? one : many}`;
 
-/** A span of time in the largest unit that keeps it readable. */
+/** A span of time in the largest unit that keeps it readable, kept on one line. */
 function span(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
-  if (whole < 90) return `${whole} s`;
+  if (whole < 90) return withUnit(whole, "s");
   const minutes = Math.round(whole / 60);
-  if (minutes < 90) return `${minutes} min`;
+  if (minutes < 90) return withUnit(minutes, "min");
   const hours = Math.round(minutes / 60);
-  if (hours < 48) return `${hours} h`;
-  return `${Math.round(hours / 24)} days`;
+  if (hours < 48) return withUnit(hours, "h");
+  return withUnit(Math.round(hours / 24), "days");
 }
 
 /** A scan's, a check's or a browser run's state, as a badge says it. */
@@ -181,7 +182,7 @@ function chartSummary(rows: readonly OperatorDay[]): string {
   return first && last
     ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${chartDay(new Date(`${first.day}T00:00:00Z`))} to today${
         outnumbered > 0
-          ? `; on ${counted(outnumbered, "day", "days")} scans outnumbered measured landing views`
+          ? `; on ${withUnit(number.format(outnumbered), outnumbered === 1 ? "day" : "days")} scans outnumbered measured landing views`
           : ""
       }`
     : "No days to draw";
@@ -346,7 +347,7 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
               : "Nothing queued"}
           </Fact>
           <Fact term="Scans stuck running">{stuck > 0 ? number.format(stuck) : "None"}</Fact>
-          <Fact term="Failed · 15 min">
+          <Fact term={"Failed · 15\u00a0min"}>
             {`${number.format(Number(signals.failed_15m))} of ${counted(Number(signals.accepted_15m), "scan", "scans")} accepted`}
           </Fact>
           <Fact
@@ -388,8 +389,8 @@ export function OperatorDashboard({
   return (
     <>
       <p className="op-asof">
-        Last 30 days · read {moment(new Date(data.generatedAt), zone)} · contact details and raw
-        evidence are not shown
+        Last 30&nbsp;days · read {moment(new Date(data.generatedAt), zone)} · contact details and
+        raw evidence are not shown
       </p>
 
       <div className="summary op-figures">
@@ -418,7 +419,7 @@ export function OperatorDashboard({
           figure={number.format(dataCopies.unconfirmed)}
           aside={
             dataCopies.unconfirmed > 0 && dataCopies.oldestAt !== null
-              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. None of five tries was confirmed by the mail service, or the copy was too large to email; each stays counted until a later copy to its address is sent, or for 30 days.`
+              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. None of five tries was confirmed by the mail service, or the copy was too large to email; each stays counted until a later copy to its address is sent, or for ${withUnit(30, "days")}.`
               : "Every copy asked for was sent or is still being tried."
           }
         />
@@ -513,7 +514,7 @@ export function OperatorDashboard({
                 {`${SCAN_LIMITS.perAddressHour} per rolling hour`}
               </Fact>
               <Fact term="Hard ceiling per site">{`${SCAN_LIMITS.perSiteDay} per UTC day`}</Fact>
-              <Fact term="Accepted requests · 24 h">
+              <Fact term={"Accepted requests · 24\u00a0h"}>
                 {number.format(overview.acceptedRequests24h)}
               </Fact>
               <Fact term="Verified challenges · rolling hour">
@@ -522,7 +523,7 @@ export function OperatorDashboard({
                   : "Not enforced"}
               </Fact>
               <Fact term="Browser spending today">
-                {`${usd.format(overview.browserUsageUsdToday)} USD; no cap shown: the worker does not report it`}
+                {`${withUnit(usd.format(overview.browserUsageUsdToday), "USD")}; no cap shown: the worker does not report it`}
               </Fact>
             </dl>
           </div>

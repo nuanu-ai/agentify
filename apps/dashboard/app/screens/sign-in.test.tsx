@@ -284,13 +284,13 @@ describe("the script that waits the wait out", () => {
 
   it("counts an hour's wait in minutes and drops to seconds near the end", () => {
     const page = alive({ wall: "hourly", seconds: 2_820 });
-    expect(page.button.textContent).toBe("Send another link in 47 min");
+    expect(page.button.textContent).toBe("Send another link in 47\u00a0min");
 
     page.pass(2_729_000);
-    expect(page.button.textContent).toBe("Send another link in 2 min");
+    expect(page.button.textContent).toBe("Send another link in 2\u00a0min");
 
     page.pass(1_000);
-    expect(page.button.textContent).toBe("Send another link in 90 s");
+    expect(page.button.textContent).toBe("Send another link in 90\u00a0s");
 
     page.pass(90_000);
     expect(page.button.disabled).toBe(false);

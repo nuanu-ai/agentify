@@ -6,6 +6,7 @@
  */
 
 import { Button, Field } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import type { DashboardDestination } from "../../src/dashboard-entry.js";
@@ -98,7 +99,7 @@ export function AskScreen({ chrome, view }: Readonly<{ chrome: Chrome; view: Ask
 const SECONDS_WORTH_WATCHING = 90;
 
 const counted = (amount: number, unit: string): string =>
-  `${amount} ${unit}${amount === 1 ? "" : "s"}`;
+  withUnit(amount, `${unit}${amount === 1 ? "" : "s"}`);
 
 /**
  * The words and the button show the same number and must round the same way,
@@ -141,7 +142,7 @@ function WaitingButton({
     <Button variant="secondary" disabled={left !== null} pending={pending} data-link-wait={seconds}>
       {left === null
         ? label
-        : `${label} in ${left > SECONDS_WORTH_WATCHING ? `${Math.ceil(left / 60)} min` : `${left} s`}`}
+        : `${label} in ${left > SECONDS_WORTH_WATCHING ? withUnit(Math.ceil(left / 60), "min") : withUnit(left, "s")}`}
     </Button>
   );
 }

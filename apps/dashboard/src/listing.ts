@@ -16,6 +16,7 @@
  * "nothing yet" are different claims.
  */
 
+import { asTyped } from "@agentify/ui/units";
 import { type From, fromIn, type Mark, once, rising, writeFrom } from "./cursor.js";
 
 /** The most rows a page draws. */
@@ -111,7 +112,7 @@ const Q_AT_MOST = 200;
 export const askedIn = (query: URLSearchParams, segments: readonly string[], keys = 1): Asked => {
   const show = once(query, "show");
   // By character, not by unit of the string, so no character is cut in half.
-  const typed = [...(once(query, "q") ?? "").trim()];
+  const typed = [...asTyped(once(query, "q") ?? "").trim()];
   return {
     q: typed.slice(0, Q_AT_MOST).join("").trim(),
     cut: typed.length > Q_AT_MOST,
