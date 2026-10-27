@@ -11,9 +11,9 @@
 import type { Receipt } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Identity } from "../identity.js";
+import type { Handover } from "../mail.js";
 import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
 import { readable } from "../testing/html.js";
-import { LOST_ANSWER } from "./words.js";
 
 const OPERATOR = "operator@example.com";
 const SECOND = "second@example.com";
@@ -95,15 +95,19 @@ describe("ending every session of an account", () => {
   it("signs the person out everywhere, keeps the account, and writes the row with its reason", async () => {
     const workspace = await serve();
     const operator = await workspace.signedIn(OPERATOR, { operator: true });
-    await workspace.signedIn(MERCHANT);
+    const first = await workspace.signedIn(MERCHANT);
+    const second = await workspace.signedIn(MERCHANT);
+    const unrelated = await workspace.signedIn(READER);
     const account = await idOf(workspace, MERCHANT);
-    expect(sessionsOf(workspace, account)).toBe(1);
+    expect(sessionsOf(workspace, account)).toBe(2);
 
     const pressed = await operator.post(`/admin/accounts/${account}/end-sessions`, asOperator);
 
     expect(pressed.status).toBe(200);
     expect(readable(pressed.html)).toContain(`Ended every session of ${MERCHANT}`);
     expect(sessionsOf(workspace, account)).toBe(0);
+    for (const old of [first, second]) expect((await old.get("/settings")).status).toBe(303);
+    expect((await unrelated.get("/settings")).status).toBe(200);
     expect(await workspace.identity.byEmail(MERCHANT)).not.toBeNull();
     expect(await rowsOf(workspace)).toStrictEqual([
       { action: "end_sessions", outcome: "done", reason: REASON },
@@ -192,36 +196,86 @@ describe("ending every session of an account", () => {
 
     const pressed = await operator.post(`/admin/accounts/${account}/end-sessions`, asOperator);
 
-    expect(readable(pressed.html)).toContain(LOST_ANSWER);
+    expect(readable(pressed.html)).toMatch(/answer.*lost.*(?:don't know|not known|unknown)/i);
+    expect(readable(pressed.html)).not.toMatch(/every session ended|ended every session/i);
   });
 });
 
 describe("the operator flag", () => {
-  it("grants the flag once every operator and the account were mailed, and writes the row", async () => {
-    const workspace = await serve();
-    const operator = await workspace.signedIn(OPERATOR, { operator: true });
-    await workspace.signedIn(SECOND, { operator: true });
-    await workspace.signedIn(MERCHANT);
-    const account = await idOf(workspace, MERCHANT);
-    const before = workspace.mails.length;
+  it.each(["accepted", "refused"] as const)(
+    "waits for every flag notice, final handover %s",
+    async (outcome) => {
+      let release!: (result: Handover) => void;
+      const pendingHandover = new Promise<Handover>((resolve) => {
+        release = resolve;
+      });
+      let reached!: () => void;
+      const lastHandover = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const accepted: string[] = [];
+      const workspace = await serve({
+        handOver: (message) => {
+          if (!message.subject.includes("operator")) return "accepted";
+          if (message.to === MERCHANT) {
+            reached();
+            return pendingHandover;
+          }
+          accepted.push(message.to);
+          return "accepted";
+        },
+      });
+      const operator = await workspace.signedIn(OPERATOR, { operator: true });
+      await workspace.signedIn(SECOND, { operator: true });
+      await workspace.signedIn(MERCHANT);
+      const account = await idOf(workspace, MERCHANT);
+      const before = workspace.mails.length;
 
-    const pressed = await operator.post(`/admin/accounts/${account}/grant-operator`, asOperator);
+      let answered = false;
+      const pressing = operator
+        .post(`/admin/accounts/${account}/grant-operator`, asOperator)
+        .then((answer) => {
+          answered = true;
+          return answer;
+        });
+      await lastHandover;
+      await new Promise((settled) => setImmediate(settled));
+      try {
+        expect(accepted.sort()).toStrictEqual([OPERATOR, SECOND].sort());
+        expect(answered).toBe(false);
+        expect(
+          workspace.rows.dashboard_accounts?.find((row) => row.id === account)?.operator,
+        ).not.toBe(true);
+        expect(await rowsOf(workspace)).toStrictEqual([]);
+      } finally {
+        release(outcome);
+      }
+      const pressed = await pressing;
+      if (outcome === "refused") {
+        expect(readable(pressed.html)).toMatch(/notice.*could not be sent/i);
+        expect((await workspace.identity.operatorAccount(account, new Date()))?.operator).toBe(
+          false,
+        );
+        expect((await rowsOf(workspace))[0]?.outcome).toBe("mail_not_handed");
+        return;
+      }
 
-    expect(readable(pressed.html)).toContain(`Made ${MERCHANT} an operator`);
-    expect(
-      workspace.mails
-        .slice(before)
-        .map((mail) => mail.to)
-        .sort(),
-    ).toStrictEqual([OPERATOR, MERCHANT, SECOND]);
-    expect(workspace.mails.at(-1)?.body).toContain(`signed in as ${OPERATOR}`);
-    expect((await workspace.identity.operatorAccount(account, new Date()))?.operator).toBe(true);
-    expect((await rowsOf(workspace))[0]).toStrictEqual({
-      action: "grant_operator",
-      outcome: "done",
-      reason: REASON,
-    });
-  });
+      expect(readable(pressed.html)).toContain(`Made ${MERCHANT} an operator`);
+      expect(
+        workspace.mails
+          .slice(before)
+          .map((mail) => mail.to)
+          .sort(),
+      ).toStrictEqual([OPERATOR, MERCHANT, SECOND]);
+      expect(workspace.mails.at(-1)?.body).toContain(`signed in as ${OPERATOR}`);
+      expect((await workspace.identity.operatorAccount(account, new Date()))?.operator).toBe(true);
+      expect((await rowsOf(workspace))[0]).toStrictEqual({
+        action: "grant_operator",
+        outcome: "done",
+        reason: REASON,
+      });
+    },
+  );
 
   it("leaves the flag as it was where the mail is not handed over, and says so", async () => {
     const workspace = await serve({
@@ -370,6 +424,8 @@ describe("the Journal", () => {
     await operator.post(`/admin/accounts/${second}/grant-operator`, asOperator);
 
     const all = readable((await operator.get("/admin/journal")).html);
+    expect(all).toContain(`Made ${SECOND} an operator`);
+    expect(all).toContain(`Ended every session of ${MERCHANT}`);
     expect(all.indexOf(`Made ${SECOND} an operator`)).toBeLessThan(
       all.indexOf(`Ended every session of ${MERCHANT}`),
     );
