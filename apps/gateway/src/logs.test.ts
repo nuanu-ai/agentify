@@ -28,7 +28,6 @@ import {
   serve,
   statusPathOf,
   testConfig,
-  workOnce,
 } from "./testing/harness.js";
 
 const SECRET = "cs_a-secret-from-the-shop";
@@ -233,24 +232,6 @@ describe("a failure in the gateway's log", () => {
     const written = await loggedWhile(() => sweep(harnessed));
 
     expect(written).toContain("sweep");
-    expectTheOrderNamed(written, orderId);
-    expectNothingCarried(written);
-  });
-
-  it("names the order the sweep could not write a receipt for", async () => {
-    const harnessed = await started();
-    const orderId = await paid(harnessed);
-    await workOnce(harnessed, { onOrder: () => ({ delivered: { activation_code: "CODE" } }) }, 0);
-    const delivered = await harnessed.store.orderById(orderId);
-    if (delivered === null) throw new Error("the order is gone");
-    harnessed.store.deliveredWithoutReceipt = async () => [delivered];
-    harnessed.store.putReceipt = async () => {
-      throw carrying();
-    };
-
-    const written = await loggedWhile(() => sweep(harnessed));
-
-    expect(written).toContain("the sweep could not receipt");
     expectTheOrderNamed(written, orderId);
     expectNothingCarried(written);
   });

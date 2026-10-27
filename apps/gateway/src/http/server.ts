@@ -57,7 +57,7 @@ export interface RouteCall {
   readonly response: Response;
 }
 
-export type RouteHandler = (call: RouteCall) => Promise<RouteAnswer>;
+type RouteHandler = (call: RouteCall) => Promise<RouteAnswer>;
 
 export interface MountedRoute {
   readonly serve: RouteHandler;
