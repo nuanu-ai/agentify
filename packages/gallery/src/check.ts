@@ -216,6 +216,7 @@ function crampedOf(): Cramped[] {
     if (drawn.width === 0 || drawn.height === 0) continue;
     if (button.closest("details:not([open]) > :not(summary)") !== null) continue;
     const style = getComputedStyle(button);
+    if (style.visibility !== "visible") continue;
     const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
     if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
     let top = Number.POSITIVE_INFINITY;
@@ -226,6 +227,9 @@ function crampedOf(): Cramped[] {
     const range = document.createRange();
     for (let text = words.nextNode(); text !== null; text = words.nextNode()) {
       if ((text.textContent ?? "").trim() === "") continue;
+      // Words kept for a screen reader alone sit in a box a pixel wide.
+      const holder = text.parentElement?.getBoundingClientRect();
+      if (holder !== undefined && (holder.width <= 1 || holder.height <= 1)) continue;
       range.selectNodeContents(text);
       for (const line of range.getClientRects()) {
         if (line.width === 0) continue;
@@ -267,6 +271,7 @@ function runtsOf(): Runt[] {
     if (drawn.width === 0 || drawn.height === 0) continue;
     if (element.closest("details:not([open]) > :not(summary)") !== null) continue;
     const style = getComputedStyle(element);
+    if (style.visibility !== "visible") continue;
     if (!/^h[1-3]$/i.test(element.tagName)) {
       const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
       if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
@@ -276,6 +281,8 @@ function runtsOf(): Runt[] {
     const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const range = document.createRange();
     for (let text = texts.nextNode(); text !== null; text = texts.nextNode()) {
+      const holder = text.parentElement?.getBoundingClientRect();
+      if (holder !== undefined && (holder.width <= 1 || holder.height <= 1)) continue;
       for (const found of (text.textContent ?? "").matchAll(/\S+/g)) {
         range.setStart(text, found.index);
         range.setEnd(text, found.index + found[0].length);
