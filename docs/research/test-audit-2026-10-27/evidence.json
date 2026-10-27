@@ -391,6 +391,7 @@
       "empty_filters": "pass",
       "script_errors": []
     },
-    "independent_review": "GPT-6.1 Sol high: exact counts, effective overrides, surviving keepers, all431 source hashes,424-file CSV,local links,HTML parity and evidence limits verified. No remaining delivery finding."
+    "independent_review": "GPT-6.1 Sol high: exact counts, effective overrides, surviving keepers, all431 source hashes,424-file CSV,local links,HTML parity and evidence limits verified. No remaining delivery finding.",
+    "artifact_storage": "External local working directory; full register, viewer and file inventory are not shipped in this repository."
   }
 }

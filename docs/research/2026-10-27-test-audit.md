@@ -7,10 +7,11 @@ recommendation to delete the test. Consolidation requires moving the named
 unique assertions before retiring their old declaration. The suite's size alone
 does not establish waste, and these counts are not execution-time savings.
 
-The [searchable per-test register](test-audit-2026-10-27/full-audit.html) contains
-every case, its source, verdict, reason, production owner and any keeper. It
-works as a local HTML file and can export a filtered selection. The same complete
-records are in [full-audit.jsonl](test-audit-2026-10-27/full-audit.jsonl).
+The per-test register is a local working artifact for implementing the audit
+decisions, stored outside the repository. Its HTML view provides search and
+filtered export; its JSONL records contain every case, source, verdict, reason,
+production owner and keeper. This report preserves the conclusions and
+reproducible evidence. Artifact hashes are recorded in the evidence file.
 
 The audited product revision is `77a9b578312e696826f378405c099f4996bcd703`.
 The report combines complete source review with five surviving targeted
@@ -38,8 +39,8 @@ declaration modules and five wrapper-only test files already included in the
 markers for an unavailable test database. Those markers receive N and do not
 inflate passing tests or deletion candidates. One AST false positive,
 `woo-recovery.test.ts:536` (`test.sold.map`), is excluded rather than counted as a
-test. [inspection.csv](test-audit-2026-10-27/inspection.csv) gives the file-level
-execution and inspection map; each file's source hash is in the full register.
+test. The external working register includes the file-level execution and
+inspection map and each file's source hash.
 
 | Decision | Declarations | Collected cases |
 | --- | ---: | ---: |
@@ -316,8 +317,8 @@ and test LOC delta remains zero.
 
 ## Delivery
 
-The installation, initial evidence and complete per-test register travel in
-separate commits on `agent/test-audit`, in PR #210. No merge, deployment,
-pruning or product repair is included. The initial sampled discovery report
-is replaced by this complete source audit; the original targeted experiments
-remain available with their precise limitations.
+PR #210 carries the skill installation, audit conclusions and reproducible
+evidence. The complete per-test register and file inventory are working
+materials stored outside the repository for subsequent repairs and pruning.
+No merge, deployment, pruning or product repair is included. The original
+targeted experiments remain available with their precise limitations.
