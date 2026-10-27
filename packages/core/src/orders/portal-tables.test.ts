@@ -1,36 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { REDELIVERY_MAX_ATTEMPTS } from "../published.js";
 import { deadlines } from "./deadlines.js";
 import { must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
 import type { Order } from "./model.js";
 import { endingReasonFor, outcomeFor } from "./outcome.js";
+import { nextRedelivery } from "./redelivery.js";
 
-/**
- * The portal's tables are the contract the merchant reads, so their rows are
- * test cases of this machine. Every row below is a scenario named by its own
- * first cell, and the guard at the bottom reads the portal back and fails if
- * the rows moved.
- *
- * A scenario asserts `outcomeFor`, the word the agent is handed, against the
- * sentence the row gives him. The state, the effects and the record are pinned
- * in `machine.test.ts` and not again here, so a failure says which promise
- * broke, the portal's or the machine's. Where a row promises something no
- * outcome can express, such as which event reaches the merchant's subscription
- * or whether a repeat under the same key is safe, the scenario checks that too.
- *
- * A row is pinned by its first cell only: a row added, removed or renamed on
- * the portal fails here until somebody decides which scenario it is. The rest
- * of the row is prose, checked as the machine fact it states, so a sentence
- * reworded without changing its meaning does not fail. Where a cell lists more
- * than the scenarios here name, such as the four ways an order comes to need
- * a refund, the rest is checked in `machine.test.ts` and not in this file.
- *
- * The parser is deliberately tiny: it finds a section by its heading, takes the
- * first table in it and returns its first column, or the words in backticks of
- * one named column. "How an order can end" promises the status each situation
- * reads, and every scenario there holds the machine's word to that column.
- */
+/** The machine is held to the actual displayed cells, including every status/event token and each clock's anchor. Transport recovery and wallet authorisation remain Gateway contracts. */
 
 const ORDERS_PAGE = readFileSync(
   new URL("../../../../apps/docs/orders.md", import.meta.url),
@@ -98,6 +76,44 @@ function wordsIn(page: string, heading: string, row: string, column: string): re
   return [...(cells[at] ?? "").matchAll(/`([a-z_.]+)`/g)].map((found) => found[1] ?? "");
 }
 
+function rowOf(page: string, heading: string, name: string | undefined): readonly string[] {
+  const row = tableOf(page, heading)
+    .slice(1)
+    .find((row) => row[0] === name);
+  if (row === undefined || row.some((cell) => cell.length === 0))
+    throw new Error(`missing complete ${heading} row ${name}`);
+  return row;
+}
+const limitRow = (index: number) => rowOf(ORDERS_PAGE, "Every time limit", TIME_LIMITS[index]);
+const failureRow = (index: number) =>
+  rowOf(FAILURES_PAGE, "Every failure, mode by mode", FAILURES[index]);
+const resultWords = (index: number) =>
+  wordsIn(ORDERS_PAGE, "Every time limit", TIME_LIMITS[index] ?? "", "When it runs out");
+function retryPromise(order: Order): void {
+  const first = must(order, { kind: "handler_undelivered", at: T0 + 4 });
+  expect(first.effects).toContainEqual({
+    kind: "redeliver_order",
+    attempt: order.dispatch.attempts + 1,
+    delayMs: order.policy.redelivery.baseDelayMs,
+  });
+  expect(order.policy.redelivery.maxAttempts).toBe(REDELIVERY_MAX_ATTEMPTS);
+  const policy = order.policy.redelivery;
+  const delays = [1, 2, 3].map((attempts) =>
+    nextRedelivery({ attempts, now: T0, deadlineAt: null, policy }),
+  );
+  expect(delays.map((retry) => (retry.retry ? retry.delayMs : null))).toEqual([
+    policy.baseDelayMs,
+    policy.baseDelayMs * policy.factor,
+    policy.baseDelayMs * policy.factor ** 2,
+  ]);
+  expect(
+    nextRedelivery({ attempts: REDELIVERY_MAX_ATTEMPTS, now: T0, deadlineAt: null, policy }).retry,
+  ).toBe(false);
+  expect(
+    nextRedelivery({ attempts: 1, now: T0, deadlineAt: T0 + policy.baseDelayMs, policy }).retry,
+  ).toBe(false);
+}
+
 function paidAsync(): Order {
   return walk(newOrder("async"), [
     { kind: "payment_verified", at: T0 + 1 },
@@ -147,6 +163,7 @@ function paidParcel(): Order {
 
 describe('apps/docs/orders.md, "How an order can end"', () => {
   it(`${ENDINGS[7]}: closure preserves payment and stops future fulfillment`, () => {
+    expect(tableRows(ORDERS_PAGE, "How an order can end")).toHaveLength(ENDINGS.length);
     const paid = reach("unfulfilled");
     const closed = must(paid, { kind: "close_called", at: T0 + 10 }).order;
     const unresolved = must(reach("fulfilled"), { kind: "close_called", at: T0 + 10 }).order;
@@ -306,6 +323,19 @@ const TIME_LIMITS = [
 
 describe('apps/docs/orders.md, "Every time limit"', () => {
   it(`${TIME_LIMITS[0]}: a synchronous card sells at its own price, the others are refused`, () => {
+    expect(tableRows(ORDERS_PAGE, "Every time limit")).toHaveLength(TIME_LIMITS.length);
+    const row = limitRow(0);
+    expect(row[2]).toBe("{{quote-response}}");
+    expect(row[3]).toMatch(/question.*asked/i);
+    expect(row[4]).toMatch(/synchronous.*own price/i);
+    expect(row[4]).toMatch(/refused before payment/i);
+    const waiting = newOrder("sync", { priceCheck: "merchant" });
+    expect(deadlines(waiting)).toEqual([
+      {
+        kind: "quote_response",
+        at: waiting.timestamps.createdAt + waiting.policy.deadlines.quoteResponseMs,
+      },
+    ]);
     const silent = (order: Order) => must(order, { kind: "quote_silent", at: T0 + 1 }).order;
     const sync = silent(newOrder("sync", { priceCheck: "merchant" }));
     const async = silent(newOrder("async", { priceCheck: "merchant" }));
@@ -318,23 +348,37 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
 
     expect(outcomeFor(sync)).toBe("in_progress");
     for (const refused of [async, parcel]) {
-      expect(outcomeFor(refused)).toBe("rejected");
+      expect(resultWords(0)).toEqual([outcomeFor(refused), endingReasonFor(refused)]);
       expect(endingReasonFor(refused)).toBe("price_check_unanswered");
     }
   });
 
   it(`${TIME_LIMITS[1]}: the price stops holding and the agent asks again`, () => {
+    expect(limitRow(1)[2]).toBe("{{quote-ttl}}");
+    expect(limitRow(1)[3]).toMatch(/your answer.*silence.*agent's request/i);
+    const quoted = newOrder("sync");
+    expect(deadlines(quoted)).toEqual([
+      {
+        kind: "quote_expiry",
+        at: (quoted.timestamps.quotedAt ?? NaN) + quoted.policy.deadlines.quoteTtlMs,
+      },
+    ]);
     const { order } = must(newOrder("sync"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "quote_expiry",
     });
 
-    expect(outcomeFor(order)).toBe("expired");
+    expect(resultWords(1)).toEqual([outcomeFor(order), endingReasonFor(order)]);
     expect(endingReasonFor(order)).toBe("price_expired");
   });
 
   it(`${TIME_LIMITS[2]}: the order comes again rather than closing`, () => {
+    const row = limitRow(2);
+    expect(row[2]).toBe("{{handler-answer}}");
+    expect(row[3]).toMatch(/handed to your process/i);
+    expect(row[4]).toMatch(/sent again.*{{redelivery-max-attempts}}.*deadline/i);
+    retryPromise(reach("dispatched"));
     // An answer that did not come back is not an answer, so the agent is not
     // told his purchase failed: it is still going, and the order goes back to
     // the merchant.
@@ -344,13 +388,23 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
   });
 
   it(`${TIME_LIMITS[3]}: nothing is charged, and late goods are not lost`, () => {
+    expect(limitRow(3)[2]).toBe("{{sync-response}}");
+    expect(limitRow(3)[3]).toMatch(/payment checked out/i);
+    expect(limitRow(3)[4]).toMatch(/nothing is charged.*same buyer.*pays.*unless.*closed/i);
+    const dispatched = reach("dispatched");
+    expect(deadlines(dispatched)).toEqual([
+      {
+        kind: "sync_response",
+        at: (dispatched.timestamps.paidAt ?? NaN) + dispatched.policy.deadlines.syncResponseMs,
+      },
+    ]);
     const closed = must(reach("dispatched"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "sync_response",
     }).order;
 
-    expect(outcomeFor(closed)).toBe("expired");
+    expect(resultWords(3)).toEqual([outcomeFor(closed), endingReasonFor(closed)]);
     expect(endingReasonFor(closed)).toBe("merchant_timed_out");
 
     // The second half of the row, and the one the agent is promised: goods
@@ -367,6 +421,16 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
   });
 
   it(`${TIME_LIMITS[4]}: nobody can say whether the buyer was charged`, () => {
+    expect(limitRow(4)[2]).toMatch(/{{settle-response}}.*{{settle-before-goods:number}}/);
+    expect(limitRow(4)[3]).toMatch(/charge is sent/i);
+    const settling = must(newOrder("async"), { kind: "payment_verified", at: T0 + 1 }).order;
+    expect(deadlines(settling)).toEqual([
+      {
+        kind: "settle_response",
+        at:
+          (settling.timestamps.settleStartedAt ?? NaN) + settling.policy.deadlines.settleResponseMs,
+      },
+    ]);
     const afterTheGoods = must(reach("fulfilled"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -377,28 +441,46 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
       { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
     ]);
 
-    expect(outcomeFor(afterTheGoods)).toBe("payment_unresolved");
-    expect(outcomeFor(beforeTheGoods)).toBe("payment_unresolved");
+    expect(resultWords(4)).toEqual([outcomeFor(afterTheGoods)]);
+    expect(resultWords(4)).toEqual([outcomeFor(beforeTheGoods)]);
   });
 
   it(`${TIME_LIMITS[5]}: the money is already the merchant's and the order is unfulfilled`, () => {
+    expect(limitRow(5)[2]).toMatch(/card names.*{{default-async-fulfillment}}/);
+    expect(limitRow(5)[3]).toMatch(/charge at purchase/i);
+    const paid = paidAsync();
+    expect(deadlines(paid)).toEqual([
+      {
+        kind: "async_fulfillment",
+        at: (paid.timestamps.paidAt ?? NaN) + paid.policy.deadlines.asyncFulfillmentMs,
+      },
+    ]);
     const { order } = must(paidAsync(), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
     });
 
-    expect(outcomeFor(order)).toBe("unfulfilled");
+    expect(resultWords(5)).toEqual([outcomeFor(order)]);
   });
 
   it(`${TIME_LIMITS[6]}: a parcel not shipped in time is unfulfilled as well`, () => {
+    expect(limitRow(6)[2]).toMatch(/`ship_within_seconds`.*at most thirty days/i);
+    expect(limitRow(6)[3]).toMatch(/charge at purchase/i);
+    const paid = paidParcel();
+    expect(deadlines(paid)).toEqual([
+      {
+        kind: "async_fulfillment",
+        at: (paid.timestamps.paidAt ?? NaN) + paid.policy.deadlines.asyncFulfillmentMs,
+      },
+    ]);
     const { order } = must(paidParcel(), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "async_fulfillment",
     });
 
-    expect(outcomeFor(order)).toBe("unfulfilled");
+    expect(resultWords(6)).toEqual([outcomeFor(order)]);
   });
 });
 
@@ -410,10 +492,11 @@ const EVENTS = [
 ] as const;
 
 /** The event the page says a situation arrives as, which the machine has to emit. */
-const sentAs = (event: (typeof EVENTS)[number]) => ({
-  kind: "emit_merchant_event",
-  event: wordsIn(ORDERS_PAGE, "Events on the same subscription", event, "`type`")[0],
-});
+const sentAs = (event: (typeof EVENTS)[number]) =>
+  wordsIn(ORDERS_PAGE, "Events on the same subscription", event, "`type`").map((type) => ({
+    kind: "emit_merchant_event",
+    event: type,
+  }));
 
 describe('apps/docs/orders.md, "Events on the same subscription"', () => {
   it(`${EVENTS[0]}: sent when the goods did not come in time`, () => {
@@ -423,13 +506,18 @@ describe('apps/docs/orders.md, "Events on the same subscription"', () => {
       deadline: "async_fulfillment",
     });
 
-    expect(effects).toContainEqual(sentAs(EVENTS[0]));
+    expect(tableRows(ORDERS_PAGE, "Events on the same subscription")).toHaveLength(EVENTS.length);
+    expect(effects.filter((effect) => effect.kind === "emit_merchant_event")).toEqual(
+      sentAs(EVENTS[0]),
+    );
   });
 
   it(`${EVENTS[1]}: sent when the goods went out and the money did not arrive`, () => {
     const { effects } = must(reach("fulfilled"), { kind: "payment_settle_failed", at: T0 + 5 });
 
-    expect(effects).toContainEqual(sentAs(EVENTS[1]));
+    expect(effects.filter((effect) => effect.kind === "emit_merchant_event")).toEqual(
+      sentAs(EVENTS[1]),
+    );
   });
 });
 
@@ -468,6 +556,22 @@ function priceCheckedParcel(): Order {
 
 describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
   it(`${FAILURES[0]}: the sale goes on where the money is still ahead of it`, () => {
+    expect(tableRows(FAILURES_PAGE, "Every failure, mode by mode")).toHaveLength(
+      FAILURES.length + AT_THE_DOOR.length,
+    );
+    const row = failureRow(0);
+    expect(row[1]).toMatch(/sale goes on.*card's price/i);
+    expect(row[2]).toMatch(/refused before payment.*no order/i);
+    expect(row[3]).toMatch(/asynchronous/i);
+    for (const [index, code] of [
+      [9, "seller_busy"],
+      [10, "seller_not_taking_orders"],
+      [11, "seller_not_fulfilling"],
+    ] as const) {
+      const cells = tableOf(FAILURES_PAGE, "Every failure, mode by mode")[index + 1];
+      expect(cells?.[1]).toContain(`\`${code}\``);
+      expect(cells?.[1]).toMatch(/before.*order exists/i);
+    }
     const silent = (order: Order) => must(order, { kind: "quote_silent", at: T0 + 1 }).order;
 
     // The synchronous sale goes on and the two that charge at purchase do
@@ -480,6 +584,10 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
   });
 
   it(`${FAILURES[1]}: what a refusal costs depends on whether the money moved`, () => {
+    const row = failureRow(1);
+    expect(row[1]).toMatch(/nothing was charged/i);
+    expect(row[2]).toContain("`unfulfilled`");
+    expect(row[3]).toMatch(/asynchronous/i);
     const inSync = must(reach("dispatched"), {
       kind: "handler_refused",
       at: T0 + 4,
@@ -494,10 +602,22 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
     }).order;
 
     expect(outcomeFor(inSync)).toBe("rejected");
-    expect(outcomeFor(afterTheCharge)).toBe("unfulfilled");
+    expect(row[2]).toContain(`\`${outcomeFor(afterTheCharge)}\``);
+    const parcel = must(paidParcel(), {
+      kind: "refuse_called",
+      at: T0 + 6,
+      code: "out_of_stock",
+      message: "none",
+    });
+    expect(outcomeFor(parcel.order)).toBe(outcomeFor(afterTheCharge));
+    expect(parcel.effects.some((effect) => effect.kind === "execute_payment")).toBe(false);
   });
 
   it(`${FAILURES[2]}: the order comes again rather than closing`, () => {
+    const row = failureRow(2);
+    expect(row[1]).toMatch(/pause.*grows.*{{redelivery-max-attempts}}.*deadline/i);
+    expect(row.slice(2, 4).every((cell) => /synchronous/.test(cell))).toBe(true);
+    retryPromise(reach("dispatched"));
     // An exception is not an answer, so the agent is not told his purchase
     // failed: it is still going, and the order goes back to the merchant.
     const { order } = must(reach("dispatched"), { kind: "handler_undelivered", at: T0 + 4 });
@@ -506,6 +626,16 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
   });
 
   it(`${FAILURES[3]}: silence ends the same way a refusal does, only on time`, () => {
+    const row = failureRow(3);
+    expect(row[1]).toMatch(/nothing was charged.*`expired`/i);
+    expect(row[2]).toContain("`unfulfilled`");
+    expect(row[3]).toContain("`unfulfilled`");
+    const parcel = must(paidParcel(), {
+      kind: "deadline_expired",
+      at: T0 + 999_999,
+      deadline: "async_fulfillment",
+    });
+    expect(row[3]).toContain(`\`${outcomeFor(parcel.order)}\``);
     const sync = must(reach("dispatched"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -522,6 +652,14 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
   });
 
   it(`${FAILURES[4]}: no second fulfillment and no second charge`, () => {
+    const row = failureRow(4);
+    expect(row[1]).toMatch(/result.*first/i);
+    expect(row[2]).toMatch(/synchronous/i);
+    expect(row[3]).toMatch(/same shipment/i);
+    const parcel = must(paidParcel(), { kind: "deliver_called", at: T0 + 6 });
+    const repeatedParcel = must(parcel.order, { kind: "deliver_called", at: T0 + 7 });
+    expect(repeatedParcel.order).toEqual(parcel.order);
+    expect(repeatedParcel.effects.every((effect) => effect.kind === "answer_merchant")).toBe(true);
     // The race the row is written for. A redelivery goes out while the first
     // handler is still working — the order is open, so the second hand-over is
     // taken and counted — and the two of them then answer the same order one
@@ -545,13 +683,40 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
   });
 
   it(`${FAILURES[5]}: the repeat gets what is already there`, () => {
+    const row = failureRow(5);
+    for (const cell of row.slice(1, 3)) {
+      expect(cell).toMatch(/signs a new payment.*same payment request.*same wallet/i);
+      expect(cell).toMatch(/no second charge/i);
+      expect(cell).toMatch(/without that request.*new purchase.*charged again/i);
+    }
+    expect(row[3]).toMatch(/asynchronous/i);
     const delivered = reach("delivered");
-    const { order } = must(delivered, { kind: "purchase_repeated", at: T0 + 99 });
+    const { order, effects } = must(delivered, { kind: "purchase_repeated", at: T0 + 99 });
 
     expect(outcomeFor(order)).toBe("delivered");
+    expect(effects).toEqual([]);
   });
 
   it(`${FAILURES[6]}: said in the price check, the buyer's money does not move`, () => {
+    const row = failureRow(6);
+    expect(row[1]).toMatch(/price check.*before payment.*delivery charges nothing/i);
+    expect(row[2]).toMatch(/price check.*before payment.*paid order unfulfilled/i);
+    expect(row[3]).toMatch(/asynchronous/i);
+    const refused = must(reach("dispatched"), {
+      kind: "handler_refused",
+      at: T0 + 4,
+      code: "out_of_stock",
+      message: "none",
+    });
+    expect(outcomeFor(refused.order)).toBe("rejected");
+    expect(refused.effects.some((effect) => effect.kind === "execute_payment")).toBe(false);
+    for (const paid of [paidAsync(), paidParcel()])
+      expect(
+        outcomeFor(
+          must(paid, { kind: "refuse_called", at: T0 + 6, code: "out_of_stock", message: "none" })
+            .order,
+        ),
+      ).toBe("unfulfilled");
     const { order } = must(newOrder("async", { priceCheck: "merchant" }), {
       kind: "quote_answered",
       at: T0 + 1,
@@ -562,12 +727,29 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
   });
 
   it(`${FAILURES[7]}: the buyer paid nothing, and a repeat that pays takes the goods`, () => {
+    const row = failureRow(7);
+    expect(row[1]).toMatch(
+      /no goods.*`delivered_unpaid`.*pays releases.*change your payout wallet.*refused/i,
+    );
+    expect(row[2]).toMatch(/cannot happen.*charge comes first/i);
+    expect(row[3]).toMatch(/cannot happen/i);
     const unpaid = must(reach("fulfilled"), { kind: "payment_settle_failed", at: T0 + 5 }).order;
 
     expect(outcomeFor(unpaid)).toBe("delivered_unpaid");
+    const repeated = must(unpaid, { kind: "purchase_repeated", at: T0 + 6 });
+    expect(repeated.effects.some((effect) => effect.kind === "release_goods_to_agent")).toBe(false);
+    const paying = must(repeated.order, { kind: "payment_verified", at: T0 + 7 });
+    const settled = must(paying.order, { kind: "payment_settled", at: T0 + 8 });
+    expect(outcomeFor(settled.order)).toBe("delivered");
+    expect(settled.effects).toContainEqual({ kind: "release_goods_to_agent" });
   });
 
   it(`${FAILURES[8]}: the word says nobody knows, before the goods and after them`, () => {
+    const row = failureRow(8);
+    expect(row[1]).toMatch(/`payment_unresolved`.*repeat purchase is refused/i);
+    expect(row[2]).toMatch(/`payment_unresolved`.*before it reaches you.*unfulfilled.*later/i);
+    expect(row[3]).toMatch(/asynchronous/i);
+    expect(row[4]).toMatch(/keeps checking.*no time promised/i);
     const afterTheGoods = must(reach("fulfilled"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
@@ -589,28 +771,3 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
 });
 
 // --- the guard --------------------------------------------------------------
-
-describe("the portal and this machine cannot drift apart quietly", () => {
-  it('has exactly the encoded rows in "How an order can end"', () => {
-    expect(tableRows(ORDERS_PAGE, "How an order can end")).toStrictEqual([
-      ...ENDINGS.slice(0, 6),
-      ENDINGS[7],
-      ENDINGS[6],
-    ]);
-  });
-
-  it('has exactly the encoded rows in "Every time limit"', () => {
-    expect(tableRows(ORDERS_PAGE, "Every time limit")).toStrictEqual([...TIME_LIMITS]);
-  });
-
-  it('has exactly the encoded rows in "Events on the same subscription"', () => {
-    expect(tableRows(ORDERS_PAGE, "Events on the same subscription")).toStrictEqual([...EVENTS]);
-  });
-
-  it('has exactly the encoded rows in "Every failure, mode by mode"', () => {
-    expect(tableRows(FAILURES_PAGE, "Every failure, mode by mode")).toStrictEqual([
-      ...FAILURES,
-      ...AT_THE_DOOR,
-    ]);
-  });
-});
