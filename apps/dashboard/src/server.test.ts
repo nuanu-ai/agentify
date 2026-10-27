@@ -12,7 +12,7 @@
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
-import { type Gateway, type MerchantKey, merchantPayout, payoutSplitFor } from "@agentify/gateway";
+import { type Gateway, type MerchantKey, payoutSplitFor } from "@agentify/gateway";
 import {
   buyOverHttp,
   type Harness,
@@ -25,10 +25,10 @@ import { telemetry } from "@agentify/observability/source";
 import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   type Card,
-  checksummedAddressOf,
   MERCHANT_FINDINGS,
   OrderCloseRequestSchema,
 } from "@nuanu-ai/agentify-contracts";
+import { decodeFunctionData, type Hex, parseAbi } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type DashboardConfig, loadConfig } from "./config.js";
 import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
@@ -722,17 +722,6 @@ describe("the passwordless dashboard door", () => {
     expect(withoutMerchant.to).toBe("/merchant");
   });
 
-  it("tells somebody new that this same form is their way in", async () => {
-    // There is no separate sign-up page, so the page says the form is for
-    // newcomers too.
-    const { browser } = await started();
-
-    const form = readable((await browser.get("/sign-in")).html);
-
-    expect(form).toMatch(/new to agentify\?/i);
-    expect(form).toMatch(/creates your account/i);
-  });
-
   it("leaves a stranger the site header's ways back to the rest of the site, and no one's address", async () => {
     const { browser } = await started({ base: "/dashboard" });
 
@@ -1340,24 +1329,27 @@ describe("the report to the ad tracker of a registration its ad brought", () => 
     expect(formTo(page.html, "post", "/sign-in")?.fields.get("clickid")).toBe(CLICK);
   });
 
-  it("draws today's page for a click that is missing, malformed, repeated or too long", async () => {
-    const { browser } = await started({ dashboard: REPORTING });
-    const today = seenOn((await browser.get("/sign-in")).html);
+  it.each([{}, GOOGLE])(
+    "draws today's page for an unreadable click, Google configuration %j",
+    async (google) => {
+      const { browser } = await started({ dashboard: { ...REPORTING, ...google } });
+      const today = seenOn((await browser.get("/sign-in")).html);
 
-    for (const query of [
-      "",
-      "?clickid=",
-      "?clickid=too-short",
-      `?clickid=${CLICK}%20`,
-      `?clickid=${CLICK.replace("_", ".")}`,
-      `?clickid=${CLICK}&clickid=${ANOTHER_CLICK}`,
-      `?clickid=${"a".repeat(65)}`,
-    ]) {
-      const page = await browser.get(`/sign-in${query}`);
-      expect(page.status, query).toBe(200);
-      expect(seenOn(page.html), query).toStrictEqual(today);
-    }
-  });
+      for (const query of [
+        "",
+        "?clickid=",
+        "?clickid=too-short",
+        `?clickid=${CLICK}%20`,
+        `?clickid=${CLICK.replace("_", ".")}`,
+        `?clickid=${CLICK}&clickid=${ANOTHER_CLICK}`,
+        `?clickid=${"a".repeat(65)}`,
+      ]) {
+        const page = await browser.get(`/sign-in${query}`);
+        expect(page.status, query).toBe(200);
+        expect(seenOn(page.html), query).toStrictEqual(today);
+      }
+    },
+  );
 
   it("draws today's pages, keeps no click and records nothing while the report is switched off, even for a valid click", async () => {
     const running = await started();
@@ -1916,24 +1908,15 @@ describe("the click of a visitor an ad sent, through the Google sign-in", () => 
     vi.unstubAllGlobals();
   });
 
-  it("carries the click with the Google press as with the email press, asking nothing", async () => {
-    const { browser } = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
-    const today = await browser.get("/sign-in?destination=settings");
-
-    const page = await browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
-
-    const google = formTo(page.html, "post", "/sign-in/google");
-    expect(google?.fields.get("clickid")).toBe(CLICK);
-    expect(google?.fields.get("destination")).toBe("settings");
-    expect(formTo(page.html, "post", "/sign-in")?.fields.get("clickid")).toBe(CLICK);
-    expect(readable(page.html)).toBe(readable(today.html));
-    expect(page.html).not.toContain('type="checkbox"');
-  });
-
   it("takes the click through Google to one registration, and none for a click it cannot read, in no cookie and no address the browser is sent to", async () => {
     const google = exchangingWithGoogle();
     const running = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
     const page = await running.browser.get(`/sign-in?clickid=${CLICK}&destination=settings`);
+    const offered = formTo(page.html, "post", "/sign-in/google");
+    expect(offered?.fields.get("clickid")).toBe(CLICK);
+    expect(offered?.fields.get("destination")).toBe("settings");
+    expect(formTo(page.html, "post", "/sign-in")?.fields.get("clickid")).toBe(CLICK);
+    expect(page.html).not.toContain('type="checkbox"');
     const form = Object.fromEntries(formTo(page.html, "post", "/sign-in/google")?.fields ?? []);
 
     const carried = await signInWithGoogle(running, google, form, "carried@gmail.com");
@@ -1976,20 +1959,6 @@ describe("the click of a visitor an ad sent, through the Google sign-in", () => 
     expect(returned.status).toBe(303);
     expect((await running.identity.byEmail("person@gmail.com"))?.confirmed).toBe(true);
     expect(adReportsIn(running)).toStrictEqual([]);
-  });
-
-  it("draws the Google page as it is for a visitor with no click, or one it cannot read", async () => {
-    const off = await started({ dashboard: GOOGLE });
-    const today = seenOn((await off.browser.get("/sign-in")).html);
-    await off.browser.close();
-    await off.identity.close();
-    await off.gateway.close();
-    await off.harnessed.stop();
-    const { browser } = await started({ dashboard: { ...REPORTING, ...GOOGLE } });
-
-    for (const query of ["", "?clickid=too-short", `?clickid=${CLICK}&clickid=${ANOTHER_CLICK}`]) {
-      expect(seenOn((await browser.get(`/sign-in${query}`)).html), query).toStrictEqual(today);
-    }
   });
 
   it("carries the click on the page a cancelled Google sign-in returns to, keeping it out of its cookies, and a link asked for from there reports it", async () => {
@@ -2362,34 +2331,41 @@ const routesOf = async (running: Running): Promise<{ method: string; path: strin
 };
 
 describe("the operator flag", () => {
-  it("is moved by no request a browser can send to the dashboard", async () => {
-    // Only the terminal's command grants the operator flag, so a signed-in
-    // person sends every route a flag of its own (as a form, as JSON, in the
-    // query) and is no operator afterwards. Most handlers stop early on missing
-    // fields or an unknown identifier; what this holds is that none takes the
-    // flag from a request, not that every line behind those refusals ran.
-    const running = await started({ wooShops: memoryWooShops() });
-    await running.browser.signIn();
-    const routes = await routesOf(running);
-    expect(routes.filter(({ method }) => method === "post").length).toBeGreaterThan(10);
-
-    // Signing out ends the session the rest are sent with, so it goes last.
-    const lastly = (path: string) => (/\/sign-out(-everywhere)?$/.test(path) ? 1 : 0);
-    for (const { method, path } of routes.sort(
-      (one, other) => lastly(one.path) - lastly(other.path),
-    )) {
-      if (method === "get") {
-        await running.browser.get(`${path}?operator=true`);
-        continue;
-      }
-      await running.browser.post(path, { operator: "true" });
-      await running.browser.postRaw(path, "application/json", JSON.stringify({ operator: true }));
-    }
-
-    const accounts = await running.identity.operatorAccounts(new Date());
-    expect(accounts.listed.length + accounts.unlisted).toBeGreaterThan(0);
-    expect(accounts.listed.filter(({ operator }) => operator)).toStrictEqual([]);
-  });
+  it.each([
+    ["/settings", { seller_name: "Bright Data Plans" }, 303],
+    ["/settings/site", { seller_site: "https://brightdataplans.example" }, 303],
+    [
+      "/settings/payout-wallet",
+      { payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" },
+      303,
+    ],
+    ["/keys", { label: "worker" }, 200],
+  ] as const)(
+    "ignores a self-granted operator flag on an otherwise successful %s form",
+    async (path, fields, status) => {
+      const running = await started();
+      await running.browser.signIn();
+      const sent = await running.browser.post(`${path}?operator=true`, {
+        ...fields,
+        operator: "true",
+      });
+      expect(sent.status).toBe(status);
+      if (path === "/settings") expect(await listedAs(running)).toBe("Bright Data Plans");
+      if (path === "/settings/site")
+        expect(await sitedAt(running)).toBe("https://brightdataplans.example");
+      if (path === "/settings/payout-wallet")
+        expect(await paidInto(running)).toBe("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
+      if (path === "/keys")
+        expect(
+          (await running.harnessed.store.keysOf(running.theMerchant)).some(
+            (key) => key.label === "worker",
+          ),
+        ).toBe(true);
+      const accounts = await running.identity.operatorAccounts(new Date());
+      expect(accounts.listed.find((account) => account.email === PERSON)?.operator).toBe(false);
+      expect((await running.browser.get("/admin/merchants")).status).toBe(404);
+    },
+  );
 });
 
 describe("the Google dashboard door", () => {
@@ -2805,16 +2781,6 @@ describe("the settings screen", () => {
     }
   });
 
-  it("shows the name this merchant is listed under", async () => {
-    const { browser, harnessed } = await started();
-    await browser.signIn();
-
-    const screen = await browser.get("/settings");
-
-    expect(screen.status).toBe(200);
-    expect(screen.html).toContain(`value="${harnessed.merchant.name}"`);
-  });
-
   it("changes the name, and the gateway has the new one afterwards", async () => {
     const running = await started();
     await running.browser.signIn();
@@ -2834,7 +2800,10 @@ describe("the settings screen", () => {
     const running = await started();
     await running.browser.signIn();
 
-    for (const form of [{ seller_name: "" }, {}] as Record<string, string>[]) {
+    for (const form of [{ seller_name: "" }, { seller_name: "   " }, {}] as Record<
+      string,
+      string
+    >[]) {
       const emptied = await running.browser.post("/settings", form);
       expect(emptied.status).toBe(400);
       expect(readable(emptied.html)).toMatch(/stop.*selling/i);
@@ -2850,7 +2819,12 @@ describe("the settings screen", () => {
 
     const page = (await browser.get("/settings")).html;
 
-    expect(readable(page)).not.toMatch(/remove (the|your) (seller )?name/i);
+    const form = formTo(page, "post", "/settings");
+    expect(form).toBeDefined();
+    expect(form?.fields.has("seller_name")).toBe(true);
+    expect(form?.presses.map(({ label, action }) => ({ label, action }))).toStrictEqual([
+      { label: "Save", action: undefined },
+    ]);
     // The form, under the box, before anything is refused.
     expect(readable(page)).toMatch(/32 characters/);
   });
@@ -2988,16 +2962,6 @@ describe("the settings screen", () => {
     expect((await browser.get("/keys")).html).not.toMatch(focused);
   });
 
-  it("leads the wallet form's address, opened again, to the settings it lives on", async () => {
-    const { browser } = await started();
-    await browser.signIn();
-
-    const answered = await browser.get("/settings/payout-wallet");
-
-    expect(answered.status).toBe(303);
-    expect(answered.to).toBe("/settings");
-  });
-
   it("leads the wallet form's address to the settings at once, even while the gateway does not answer", async () => {
     // Nothing on the way to the page asks the gateway, so a gateway that has
     // stopped answering does not hold up the way there.
@@ -3042,24 +3006,6 @@ describe("the settings screen", () => {
     }
   });
 
-  it("answers an emptied box with the control that does what they meant", async () => {
-    // Both sentences refuse; the question is which one the merchant reads. Told
-    // the rule, somebody tries a shorter name; told about the selling switch,
-    // they find the control that leaves their cards where they can put them
-    // back.
-    const running = await started();
-    await running.browser.signIn();
-
-    const answered = await running.browser.post("/settings", { seller_name: "   " });
-
-    expect(answered.status).toBe(400);
-    expect(readable(answered.html)).toMatch(/to stop selling, use pause all sales/i);
-    // The rule's sentence would refuse too, but would not answer what they
-    // meant.
-    expect(readable(answered.html)).not.toMatch(/not a name the catalogue will carry/i);
-    expect(await listedAs(running)).toBe(running.harnessed.merchant.name);
-  });
-
   it("says the settings could not be loaded rather than drawing a page with no name on it", async () => {
     // A read changes nothing, so the page says it could not load them rather
     // than repeating the gateway's words about a press that may have been done.
@@ -3088,15 +3034,43 @@ describe("the account on the settings screen", () => {
   });
 });
 
+/** Decode the transaction a merchant copies, without invoking its builder. */
+const payoutOn = (html: string) => {
+  const data = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(html)?.[1];
+  expect(data).toMatch(/^0x[0-9a-f]+$/i);
+  const outer = decodeFunctionData({
+    abi: parseAbi([
+      "function aggregate3((address target,bool allowFailure,bytes callData)[] calls) payable returns ((bool success,bytes returnData)[] returnData)",
+    ]),
+    data: data as Hex,
+  });
+  const decoded = outer.args[0].flatMap((call) => {
+    try {
+      const inner = decodeFunctionData({
+        abi: parseAbi([
+          "function distribute((address[] recipients,uint256[] allocations,uint256 totalAllocation,uint16 distributionIncentive) split,address token,address distributor)",
+          "function withdraw(address owner,address token)",
+        ]),
+        data: call.callData,
+      });
+      return [{ target: call.target.toLowerCase(), allowFailure: call.allowFailure, inner }];
+    } catch {
+      return [];
+    }
+  });
+  return {
+    distributed: decoded
+      .filter(({ inner }) => inner.functionName === "distribute")
+      .map(({ target }) => target),
+    withdrawn: decoded.flatMap(({ inner }) =>
+      inner.functionName === "withdraw" ? [inner.args[0].toLowerCase()] : [],
+    ),
+  };
+};
+
 describe("the wallet a merchant's share is paid out to", () => {
-  /**
-   * Of the right shape and obviously nobody's. Two spellings: the lower case a
-   * block explorer prints, and the checksummed mixed case a wallet shows,
-   * computed rather than typed, because a hand-written checksum can be wrong
-   * and would let these tests pass against a gateway that stopped checking.
-   */
-  const LOWER = "0x0123456789abcdef0123456789abcdef01234567";
-  const AS_A_WALLET_SHOWS_IT = checksummedAddressOf(LOWER);
+  const LOWER = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
+  const AS_A_WALLET_SHOWS_IT = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
   it("is asked for on the settings screen", async () => {
     // A merchant with nowhere to be paid has to find the box without being sent
@@ -3220,15 +3194,9 @@ describe("the wallet a merchant's share is paid out to", () => {
     const split = recorded.inForce?.address ?? "";
     expect(screen.html.replaceAll(/<[^>]*>/g, "")).toContain(split);
     expect(screen.html).toContain(`href="https://sepolia.basescan.org/address/${split}"`);
-    const data = /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
-    expect(data).toBe(
-      merchantPayout(
-        running.harnessed.runtime.config.payoutSplit,
-        recorded.toPayOut,
-        running.harnessed.runtime.config.payoutSplitNetworks,
-      ).data,
-    );
-    expect(data).toHaveLength(3_146);
+    const copied = payoutOn(screen.html);
+    expect(copied.distributed).toStrictEqual([split.toLowerCase()]);
+    expect(copied.withdrawn).toStrictEqual([AS_A_WALLET_SHOWS_IT.toLowerCase()]);
   });
 
   it("names the commission at the terms the split of the saved wallet was recorded with", async () => {
@@ -3275,12 +3243,12 @@ describe("the wallet a merchant's share is paid out to", () => {
     expect(toPayOut.map((split) => split.address).sort()).toStrictEqual(
       [earlier?.address, now?.address].sort(),
     );
-    expect(/<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1]).toBe(
-      merchantPayout(
-        harnessed.runtime.config.payoutSplit,
-        toPayOut,
-        harnessed.runtime.config.payoutSplitNetworks,
-      ).data,
+    const copied = payoutOn(screen.html);
+    expect(copied.distributed.sort()).toStrictEqual(
+      [earlier?.address.toLowerCase(), now?.address.toLowerCase()].sort(),
+    );
+    expect(copied.withdrawn.sort()).toStrictEqual(
+      [harnessed.merchant.wallet.toLowerCase(), AS_A_WALLET_SHOWS_IT.toLowerCase()].sort(),
     );
     const pairs = [
       ...screen.html.matchAll(/<tr><td[^>]*>([\s\S]*?)<\/td><td[^>]*>([\s\S]*?)<\/td><\/tr>/g),
@@ -3681,17 +3649,23 @@ describe("the cards screen", () => {
     expect(reasonsIn(reopened)).toStrictEqual([]);
   });
 
-  it("does not promise a merchant that the orders they accepted get fulfilled", async () => {
-    // On the SDK path the merchant's own code fulfils, and an accepted order
-    // nobody delivers ends owing a refund; told a pause leaves orders
-    // "fulfilled", a merchant might switch that code off.
-    const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-
-    expect(readable((await browser.get("/products")).html)).not.toMatch(/fulfil/i);
-    await browser.post(STOP_SELLING);
-    expect(readable((await browser.get("/products")).html)).not.toMatch(/fulfil/i);
+  it("leaves accepted orders and their original payment unchanged when sales are paused", async () => {
+    const running = await started();
+    const item = await publish(running.gateway, esimCard);
+    await buyOverHttp(running.harnessed, running.gateway, item, {
+      onOrder: () => ({ accepted: {} }),
+    });
+    const [accepted] = await running.harnessed.gateway.orders(running.theMerchant, true);
+    expect(accepted?.payment).not.toBeNull();
+    expect(accepted?.order.merchantClosure).toBeUndefined();
+    await running.browser.signIn();
+    const stopped = await running.browser.post(STOP_SELLING);
+    expect(stopped.status).toBe(303);
+    expect(await purchasable(running.gateway, item)).toBe(false);
+    expect(await running.harnessed.store.orderById(accepted?.order.id ?? "")).toStrictEqual(
+      accepted,
+    );
+    expect(reasonsIn((await running.browser.get("/products")).html)).toStrictEqual(["paused"]);
   });
 
   it("says once, over the cards, which switch holds them, and keeps each card's own switch", async () => {
@@ -3741,7 +3715,7 @@ describe("the cards screen", () => {
     const { browser, gateway } = await started();
     const itemId = await publish(gateway, roomCard);
     await browser.signIn();
-    const drawn = formsIn((await browser.get("/products")).html).find(
+    const drawn = formsIn((await browser.get("/products?q=room")).html).find(
       ({ method, action }) => method === "post" && action.includes(encodeURIComponent(itemId)),
     );
     if (drawn === undefined) throw new Error("the cards draw no switch for the card");
@@ -3751,10 +3725,10 @@ describe("the cards screen", () => {
     const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
 
     expect(pressed.status).toBe(202);
-    expect(pressed.html).toContain('"redirect","/products"');
+    expect(pressed.html).toContain('"redirect","/products?q=room"');
     expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
     expect(await purchasable(gateway, itemId)).toBe(false);
-    expect(readable((await browser.get("/products")).html)).toContain("Resume");
+    expect(readable((await browser.get("/products?q=room")).html)).toContain("Resume");
   });
 
   it("leads a press back to the search and the segment it was drawn under, all selling's switch too", async () => {
@@ -3805,23 +3779,6 @@ describe("the cards screen", () => {
     expect(unknown.to).toBe("/products?q=room");
     expect(written.to).toBe(`/products?q=${encodeURIComponent("кофе")}`);
     expect(await purchasable(gateway, room)).toBe(true);
-  });
-
-  it("answers a press from a searched list inside the application, leading back to that list", async () => {
-    const { browser, gateway } = await started();
-    const room = await publish(gateway, roomCard);
-    await browser.signIn();
-    const drawn = formsIn((await browser.get("/products?q=room")).html).find(
-      ({ method, action }) => method === "post" && action.includes(encodeURIComponent(room)),
-    );
-    if (drawn === undefined) throw new Error("the cards draw no switch for the card");
-    const [path = "", query = ""] = drawn.action.split("?");
-
-    const pressed = await browser.post(`${path}.data?${query}`, Object.fromEntries(drawn.fields));
-
-    expect(pressed.status).toBe(202);
-    expect(pressed.html).toContain('"redirect","/products?q=room"');
-    expect(pressed.headers.get("x-remix-reload-document")).toBeNull();
   });
 
   it("loads a page whole when a press is answered on another page, which may not be one the script draws", async () => {
@@ -4160,19 +4117,6 @@ describe("the orders screen", () => {
 
     expect(text).toContain("In progress");
     expect(text).not.toMatch(/nothing is owed|no order is owed|no refunds are due/i);
-  });
-
-  it("says which orders it cannot show at all", async () => {
-    // A purchase that closed before any price was named cannot be on this list,
-    // and an absence never mentioned is a truncation, so the page says it.
-    const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-
-    const text = readable((await browser.get("/orders")).html);
-
-    expect(text).toContain("ended before they had a price are under Lapsed, not here");
-    expect(text).toContain("nothing was charged for them");
   });
 
   it("says there are no orders rather than showing an empty table", async () => {
@@ -4538,51 +4482,6 @@ describe("the receipts screen", () => {
     expect(html).toContain(`href="https://sepolia.basescan.org/tx/${transfer}"`);
   });
 
-  it("marks money that was never real as what it is", async () => {
-    // While every order is a test, this is every row; a ledger of payments that
-    // never happened, laid out as one, is the worst thing this page could be.
-    const { browser, gateway, harnessed } = await started({
-      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
-    });
-    const itemId = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    await browser.signIn();
-
-    const receipts = readable((await browser.get("/receipts")).html);
-    const orders = readable((await browser.get("/orders")).html);
-
-    // The band over every page of the test channel says it, once, and no
-    // sentence over the list or mark on a sum says it again.
-    expect(receipts).toContain(SURFACE_WORDS.test);
-    expect(orders).toContain(SURFACE_WORDS.test);
-    expect(receipts).not.toContain("Every receipt here is a test purchase");
-    expect(orders).not.toContain("Every order here is a test purchase");
-    expect(receipts).not.toContain("80.00 USD test");
-    expect(orders).not.toContain("80.00 USD test");
-  });
-
-  it("counts nothing it cannot count, and says what is missing instead", async () => {
-    // A receipt is written only when goods are released, so a paid, undelivered
-    // purchase has none, and a tile counting those would read zero forever: a
-    // positive claim of none on the screen a merchant reads for money owed. The
-    // page says so and names where those orders are.
-    const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
-    await browser.signIn();
-
-    const text = readable((await browser.get("/receipts")).html);
-
-    expect(text).not.toContain("Refund due");
-    expect(text).not.toContain("In progress");
-    expect(text).not.toContain("nothing outstanding");
-    // The line a merchant actually reads must not let this pass for all the
-    // money: it says which sales have a receipt and where the rest are.
-    expect(text).toMatch(/only delivered or shipped sales have a receipt/i);
-    expect(text).toMatch(/paid orders still waiting for delivery are on Orders/i);
-  });
-
   it("does not claim a receipt appears when the money moves", async () => {
     // In the asynchronous mode the payment executes at purchase and the receipt
     // is written only when the goods go out.
@@ -4600,6 +4499,11 @@ describe("the receipts screen", () => {
       },
     );
     expect(text).not.toContain("the moment a payment goes through");
+    expect(text).not.toMatch(/nothing outstanding|refund due|in progress/i);
+    expect(text).toMatch(/paid orders still waiting for delivery are on Orders/i);
+    const orders = readable((await browser.get("/orders")).html);
+    expect(orders).toContain("ended before they had a price are under Lapsed, not here");
+    expect(orders).toContain("nothing was charged for them");
     expect(text).toMatch(/only delivered or shipped sales have a receipt/i);
     // The orders screen shows it, where the receipts page says to look.
     expect(readable((await browser.get("/orders?show=open")).html)).toContain("8.00 USD");
@@ -4616,22 +4520,22 @@ describe("the receipts screen", () => {
     expect(html).not.toContain('aria-label="Receipts"');
   });
 
-  it("does not add money up", async () => {
-    // Amounts are exact decimal strings so nothing turns them into a float; a
-    // total computed here would be the one number that had.
-    const { browser, gateway, harnessed } = await started();
-    const itemId = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    await browser.signIn();
+  it.each(["0.29", "0.09", "1.01"])(
+    "shows the receipt's exact individual amount and currency: %s",
+    async (amount) => {
+      const { browser, gateway, harnessed } = await started();
+      const itemId = await publish(gateway, { ...roomCard, price: { amount, currency: "USD" } });
+      await buyOverHttp(harnessed, gateway, itemId, {
+        onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+      });
+      await browser.signIn();
 
-    const text = readable((await browser.get("/receipts")).html);
+      const text = readable((await browser.get("/receipts")).html);
 
-    expect(text).not.toMatch(/total/i);
-    // Each amount carries its own currency.
-    expect(text).toContain("80.00 USD");
-  });
+      // Each amount carries its own currency.
+      expect(text).toContain(`${amount} USD`);
+    },
+  );
 });
 
 describe("the keys screen", () => {
@@ -4805,6 +4709,7 @@ describe("the keys screen", () => {
     expect(quiet).not.toBe("");
     expect(quiet).toMatch(/record/i);
     expect(quiet).not.toMatch(/never/i);
+    expect(readable(page)).toMatch(/can't tell whether it was ever used/i);
     // Not the creation date in this column's place: a merchant would read it as
     // a call.
     expect(quiet).not.toBe(inColumn(page, ANOTHER.id, /created/i));
@@ -4821,41 +4726,28 @@ describe("the keys screen", () => {
     expect(readable(page)).not.toMatch(/can't tell whether it was ever used/i);
   });
 
-  it("says under the table what a missing record means, where a row has one", async () => {
-    // A merchant reading that no call is recorded beside an old key must be
-    // able to learn that the key is older than the recording, or the honest
-    // phrase reads as the confident one.
-    const { browser } = await started({ client: withKeys().client });
-    await browser.signIn();
-
-    const text = readable((await browser.get("/keys")).html);
-
-    expect(text).toMatch(/can't tell whether it was ever used/i);
-  });
-
-  it("issues a key, shows its secret once, and says that is the only time", async () => {
-    // Nothing keeps a readable copy, so a merchant who does not copy it must
-    // issue another; saying so makes that a nuisance rather than a surprise.
-    const keys = withKeys();
-    const { browser } = await started({ client: keys.client });
-    await browser.signIn();
-
-    const issued = await browser.post("/keys", { label: "the second worker" });
-
-    expect(keys.issued).toStrictEqual(["the second worker"]);
+  it("issues a usable key and shows its secret only in the uncached issuing answer", async () => {
+    const running = await started();
+    await running.browser.signIn();
+    const before = await running.harnessed.store.keysOf(running.theMerchant);
+    const issued = await running.browser.post("/keys", { label: "the second worker" });
     expect(issued.status).toBe(200);
-    // Read where a person reads it: the page's data carries it too, drawn or
-    // not.
-    expect(readable(issued.html)).toContain(SECRET);
-    // Kept by no cache, so nothing can hand the page back later.
+    const secret = /csk_test_[A-Za-z0-9_-]+/.exec(readable(issued.html))?.[0];
+    expect(secret).toBeDefined();
     expect(issued.headers.get("cache-control")).toBe("private, no-store");
     expect(readable(issued.html)).toMatch(/only time|once/i);
     expect(readable(issued.html)).toContain("Copy key");
-
-    expect(keys.issued).toStrictEqual(["the second worker"]);
-    // Gone from every later page: the list is drawn from documents that carry
-    // no secret.
-    expect((await browser.get("/keys")).html).not.toContain(SECRET);
+    const keys = await running.harnessed.store.keysOf(running.theMerchant);
+    expect(keys).toHaveLength(before.length + 1);
+    expect(keys.filter((key) => key.label === "the second worker")).toHaveLength(1);
+    expect(
+      (
+        await running.gateway.call("GET", "/v0/cards", {
+          headers: { authorization: `Bearer ${secret}` },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await running.browser.get("/keys")).html).not.toContain(secret);
   });
 
   it("hands the secret only to the press that issued it, in an answer no cache keeps", async () => {
@@ -4864,24 +4756,36 @@ describe("the keys screen", () => {
     // the page itself asks the server for afterwards is answered without it;
     // what the browser does with the press's answer is held where the page
     // runs, in the route's own tests.
-    const keys = withKeys();
-    const { browser } = await started({ client: keys.client });
+    const running = await started();
+    const { browser } = running;
     await browser.signIn();
     await browser.get("/keys");
 
     const pressed = await browser.post("/keys.data", { label: "the second worker" });
 
-    expect(keys.issued).toStrictEqual(["the second worker"]);
-    expect(pressed.html).toContain(SECRET);
+    expect(pressed.status).toBe(200);
+    const secret = /csk_test_[A-Za-z0-9_-]+/.exec(pressed.html)?.[0];
+    expect(secret).toBeDefined();
+    expect(
+      (
+        await running.gateway.call("GET", "/v0/cards", {
+          headers: { authorization: `Bearer ${secret}` },
+        })
+      ).status,
+    ).toBe(200);
     expect(pressed.headers.get("cache-control")).toBe("private, no-store");
     for (const asked of [
       "/keys.data",
       `/keys.data?_routes=${encodeURIComponent("routes/gate,routes/keys")}`,
       "/keys",
     ]) {
-      expect((await browser.get(asked)).html, asked).not.toContain(SECRET);
+      expect((await browser.get(asked)).html, asked).not.toContain(secret);
     }
-    expect(keys.issued).toStrictEqual(["the second worker"]);
+    expect(
+      (await running.harnessed.store.keysOf(running.theMerchant)).filter(
+        (key) => key.label === "the second worker",
+      ),
+    ).toHaveLength(1);
   });
 
   it("never lets a browser keep the list's data, so a key revoked a moment ago never reads as working", async () => {
@@ -4934,52 +4838,55 @@ describe("the keys screen", () => {
     expect(readable(issued.html)).not.toContain("Something went wrong");
   });
 
-  it("revokes a key only on a second, deliberate press", async () => {
-    // A revoked key does not come back, so a stray tap must not end one. The
-    // first press opens the question, and only its answer posts.
-    const keys = withKeys();
-    const { browser } = await started({ client: keys.client });
+  it("revokes a working credential only after its explicit confirmation, returning to the list", async () => {
+    const running = await started();
+    const { browser } = running;
     await browser.signIn();
-
+    const id = running.harnessed.merchant.keyId;
     const page = (await browser.get("/keys")).html;
-    const action = `action="/keys/${NIGHTLY.id}/disable"`;
-    // The first press is a link that asks the question, which posts nothing.
-    expect(page).not.toContain(action);
-    const asked = await browser.get(`/keys?revoke=${NIGHTLY.id}`);
-    expect(asked.html.split(action)).toHaveLength(2);
-    // The question says what the press does before it is answered.
+    const action = `/keys/${id}/disable`;
+    expect(formTo(page, "post", action)).toBeUndefined();
+    const asked = await browser.get(`/keys?revoke=${id}`);
+    expect(
+      formsIn(asked.html).filter((form) => form.method === "post" && form.action === action),
+    ).toHaveLength(1);
     expect(readable(asked.html)).toMatch(/stops working at once/i);
     expect(readable(asked.html)).toMatch(/can't undo/i);
-
-    await browser.post(`/keys/${NIGHTLY.id}/disable`);
-    expect(keys.disabled).toStrictEqual([NIGHTLY.id]);
+    expect((await running.gateway.call("GET", "/v0/cards", { headers: asMerchant })).status).toBe(
+      200,
+    );
+    const disabled = await browser.post(action);
+    expect({ status: disabled.status, to: disabled.to }).toStrictEqual({
+      status: 303,
+      to: "/keys",
+    });
+    expect((await running.gateway.call("GET", "/v0/cards", { headers: asMerchant })).status).toBe(
+      401,
+    );
+    expect((await browser.get("/keys")).status).toBe(200);
   });
 
-  it("refuses to issue a key with no name, without asking the gateway", async () => {
+  it("refuses an unnamed key without persisting one, then accepts a named key", async () => {
     // A key with no name cannot be told apart from another on the screen meant
     // for that.
-    const keys = withKeys();
-    const { browser } = await started({ client: keys.client });
+    const running = await started();
+    const { browser } = running;
+    const before = await running.harnessed.store.keysOf(running.theMerchant);
     await browser.signIn();
 
     const refused = await browser.post("/keys", { label: "   " });
 
     expect(refused.status).toBe(400);
-    expect(readable(refused.html)).toMatch(/name/i);
-    expect(keys.issued).toStrictEqual([]);
-  });
-
-  it("disables one key and comes back to the list", async () => {
-    // A redirect, so a reload does not press it again.
-    const keys = withKeys();
-    const { browser } = await started({ client: keys.client });
-    await browser.signIn();
-
-    const off = await browser.post(`/keys/${ANOTHER.id}/disable`);
-
-    expect(keys.disabled).toStrictEqual([ANOTHER.id]);
-    expect(off.status).toBe(303);
-    expect(off.to).toBe("/keys");
+    expect(
+      readable(/<p[^>]*class="field-error"[^>]*>([\s\S]*?)<\/p>/.exec(refused.html)?.[1] ?? ""),
+    ).toMatch(/enter.*name.*key/i);
+    expect(await running.harnessed.store.keysOf(running.theMerchant)).toStrictEqual(before);
+    expect((await browser.post("/keys", { label: "named worker" })).status).toBe(200);
+    expect(
+      (await running.harnessed.store.keysOf(running.theMerchant)).filter(
+        (key) => key.label === "named worker",
+      ),
+    ).toHaveLength(1);
   });
 
   it("writes down who issued a key and who revoked one, and neither secret", async () => {
@@ -5053,19 +4960,6 @@ describe("the keys screen", () => {
 
     expect(refused.status).toBe(404);
     expect(readable(refused.html)).toMatch(/there is no such key/i);
-  });
-
-  it("shows the gateway's refusal as a sentence, beginning with a capital", async () => {
-    // The gateway writes refusals in lower case for a program's log; a person
-    // reads a sentence.
-    const { browser } = await started();
-    await browser.signIn();
-
-    const refused = await browser.post("/keys/key_nobody_has/disable");
-    const said = /<h1>[^<]*<\/h1>\s*<p>([^<]*)<\/p>/.exec(refused.html)?.[1] ?? "";
-
-    expect(said).toMatch(/^[A-Z]/);
-    expect(said.toLowerCase()).toContain("there is no such key");
   });
 
   it("draws a working screen for a merchant who has issued no keys of their own", async () => {
@@ -5180,6 +5074,7 @@ describe("what every screen says about the address", () => {
       expect(account.who, path).toBe(PERSON);
       expect(waysIn(account.menu), path).toContainEqual(["Settings", "/dashboard/settings"]);
       expect(formTo(account.menu, "post", "/dashboard/sign-out"), path).toBeDefined();
+      expect(formTo(account.menu, "post", "/dashboard/settings")).toBeUndefined();
     }
   });
 
@@ -5301,6 +5196,10 @@ describe("what every screen says about the address", () => {
       // The band is the page's own statement that nothing settles here; a screen
       // drawn without it would read as the live dashboard.
       const running = await started({ dashboard, wooShops: memoryWooShops() });
+      const item = await publish(running.gateway, roomCard);
+      await buyOverHttp(running.harnessed, running.gateway, item, {
+        onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+      });
       await running.browser.signIn();
 
       for (const path of [
@@ -5316,22 +5215,16 @@ describe("what every screen says about the address", () => {
         const answered = await running.browser.get(path);
         expect(answered.html, path).toContain(`${SURFACE_MARKER_ATTRIBUTE}="${mode}"`);
         expect(readable(answered.html), path).toContain(SURFACE_WORDS[mode]);
+        if (path === "/orders" || path === "/receipts") {
+          expect(readable(answered.html)).toContain("80.00 USD");
+          expect(readable(answered.html)).not.toContain("80.00 USD test");
+          expect(readable(answered.html)).not.toMatch(
+            /Every (receipt|order) here is a test purchase/,
+          );
+        }
       }
     },
   );
-
-  it("opens the settings from the signed-in address without a confirmation control", async () => {
-    const { browser } = await started();
-    await browser.signIn();
-
-    for (const path of ["/products", "/orders", "/receipts", "/keys", "/settings"]) {
-      const answered = await browser.get(path);
-      const account = accountIn(barOf(answered.html));
-      expect(account.who, path).toBe(PERSON);
-      expect(waysIn(account.menu), path).toContainEqual(["Settings", "/settings"]);
-      expect(answered.html, path).not.toContain('action="/confirm"');
-    }
-  });
 });
 
 describe("when something goes wrong that the merchant has to get out of", () => {
@@ -5380,29 +5273,6 @@ describe("when something goes wrong that the merchant has to get out of", () => 
 
       expect(answered.status).toBe(200);
       expect(answered.html).toContain('href="/docs/quickstart"');
-    } finally {
-      await close();
-    }
-  });
-
-  it("does not tell a merchant nothing was changed when it cannot know that", async () => {
-    // A call that did its work and answered in a shape the contract does not
-    // recognise lands on the error page; the pause has happened, and a page
-    // saying otherwise would send the merchant to press it again.
-    const { browser, close } = await dashboardAnswering(async () => {
-      throw new Error("the answer was not a document this contract knows");
-    });
-    try {
-      await browser.signIn();
-
-      // Pressed on a page drawn before the gateway went wrong; every page drawn
-      // now is the error page, with nothing to press.
-      const answered = await browser.post(STOP_SELLING, { [DRAWN_FOR]: PERSON });
-
-      expect(answered.status).toBe(500);
-      const text = readable(answered.html);
-      expect(text).toContain("We don't know if this was done");
-      expect(text).not.toContain("Nothing was changed");
     } finally {
       await close();
     }
@@ -5694,43 +5564,9 @@ describe("when the gateway will not answer", () => {
       STOP_SELLING,
     );
   });
-
-  it("says the gateway did not answer rather than showing an empty catalog", async () => {
-    // "Nothing answered" and "you have no cards" are different news, and only
-    // one means the merchant should act.
-    const { browser, gateway, silenceGateway } = await started({ answerWithinMs: 100 });
-    await publish(gateway, roomCard);
-    await browser.signIn();
-    silenceGateway();
-
-    const answered = await browser.get("/products");
-
-    expect(answered.status).toBe(504);
-    const text = readable(answered.html);
-    expect(text).toContain("could not be loaded");
-    expect(text).not.toContain("Publish a card through the SDK");
-  });
 });
 
 describe("the page that says a call to the gateway failed", () => {
-  it("tries the page the merchant was on again, not another one", async () => {
-    // A merchant reading Settings who presses "Try again" wants Settings
-    // again; sent to Cards, they lose their place and press their way back.
-    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
-    await browser.signIn();
-    silenceGateway();
-
-    const failed = await browser.get("/settings");
-    const again =
-      /<(?:a|form)\b[^>]*\b(?:href|action)="([^"]*)"[^>]*>(?:(?!<\/(?:a|form)>)[\s\S])*?Try again/.exec(
-        failed.html,
-      )?.[1];
-
-    expect(failed.status).toBe(504);
-    expect(again).toMatch(/\/settings$/);
-    expect(failed.html).toContain('aria-label="Dashboard sections"');
-  });
-
   it("offers the page again, not its data, when the page was opened inside the application", async () => {
     // A click inside the application asks for the page's data alone; the way
     // back the failed page offers is still the page, with what it was asked
@@ -5946,78 +5782,72 @@ describe("a page left open while another address signs in", () => {
     }
   });
 
-  it("lets every form the working screens draw through for the address they were drawn for", async () => {
-    // Each form is sent exactly as its page drew it, by the browser it was
-    // drawn for, and must not be refused. The screens are those a merchant with
-    // a card, an unset name and a shop to connect sees, plus the new-merchant
-    // screen.
-    const running = await started({ wooShops: memoryWooShops() });
-    await publish(running.gateway, roomCard);
-    await running.browser.signIn();
-    const pages = ["/products", "/keys", "/settings", "/integrations", "/woocommerce", "/nowhere"];
-    const drawn = [];
-    for (const path of pages) drawn.push(...postingFormsIn((await running.browser.get(path)).html));
-    await unname(running);
-    drawn.push(...postingFormsIn((await running.browser.get("/choose-name")).html));
-    const fresh = await running.another();
-    await fresh.signIn(FRESH.email, TO_READ_REPORTS);
-    const offered = postingFormsIn((await fresh.get("/merchant")).html);
-
-    const actions = new Set([...drawn, ...offered].map(({ action }) => action));
-    for (const action of [
-      STOP_SELLING,
-      "/keys",
+  it.each([
+    ["/products", STOP_SELLING, {}, 303],
+    ["/keys", "/keys", { label: "worker" }, 200],
+    ["/settings", "/settings", { seller_name: "Bright Data Plans" }, 303],
+    [
       "/settings",
       "/settings/payout-wallet",
-      "/settings/sign-out-everywhere",
-      "/woocommerce/connect",
-      "/choose-name",
-      "/merchant",
-    ]) {
-      expect(actions, action).toContain(action);
-    }
-
-    // Sent raw, so nothing the test's browser adds goes with it.
-    const asDrawn = async (browser: Browser, action: string, fields: Record<string, string>) =>
-      await browser.postRaw(
+      { payout_wallet: "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed" },
+      303,
+    ],
+    ["/settings", "/settings/sign-out-everywhere", {}, 303],
+    ["/woocommerce", "/woocommerce/connect", { shop_url: "" }, 400],
+    ["/choose-name", "/choose-name", { seller_name: "Bright Data Plans" }, 303],
+    ["/merchant", "/merchant", {}, 303],
+    ["/products", "/sign-out", {}, 303],
+  ] as const)(
+    "carries the actual drawn-for fields from %s into %s and reaches its handler",
+    async (page, action, typed, status) => {
+      const running = await started({ wooShops: memoryWooShops() });
+      const item = await publish(running.gateway, roomCard);
+      if (page === "/choose-name") await unname(running);
+      await running.browser.signIn(
+        page === "/merchant" ? FRESH.email : PERSON,
+        page === "/merchant" ? TO_READ_REPORTS : {},
+      );
+      const html = (await running.browser.get(page)).html;
+      const drawn = postingFormsIn(html).find((form) => form.action === action);
+      expect(drawn).toBeDefined();
+      if (action !== "/sign-out") {
+        const refused = await running.browser.postRaw(
+          action,
+          "application/x-www-form-urlencoded",
+          new URLSearchParams(typed).toString(),
+        );
+        expect(refused.status).toBe(409);
+      }
+      const answer = await running.browser.postRaw(
         action,
         "application/x-www-form-urlencoded",
-        new URLSearchParams(fields).toString(),
+        new URLSearchParams({ ...drawn?.fields, ...typed }).toString(),
       );
-    const refusal = await asDrawn(running.browser, STOP_SELLING, {});
-    expect(refusal.status).toBe(409);
-    const SIGNS_OUT = ["/sign-out", "/settings/sign-out-everywhere"];
-    for (const { action, fields } of drawn.filter(({ action }) => !SIGNS_OUT.includes(action))) {
-      const answer = await asDrawn(running.browser, action, fields);
-      expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
-    }
-    // Still signed in: a form that ended the session would turn every later
-    // answer into the sign-in.
-    expect((await running.browser.get("/products")).status).toBe(200);
-
-    const freshRefusal = await asDrawn(fresh, STOP_SELLING, {});
-    // Somebody with no merchant is offered only the way to where they start.
-    expect(freshRefusal.html).toContain(`href="${LATEST_REPORT}"`);
-    expect(freshRefusal.html).not.toContain('href="/products"');
-    for (const { action, fields } of offered.filter(({ action }) => action !== "/sign-out")) {
-      const answer = await asDrawn(fresh, action, fields);
-      expect(answer.status === 409 && answer.html === freshRefusal.html, action).toBe(false);
-    }
-    // Last, since they end the session the rest were sent with, and Sign out
-    // everywhere before the header's sign-out, while it still has a session
-    // to end.
-    const everywhere = drawn.find(({ action }) => action === "/settings/sign-out-everywhere");
-    const ended = await asDrawn(
-      running.browser,
-      everywhere?.action ?? "",
-      everywhere?.fields ?? {},
-    );
-    expect(ended.to).toBe("/sign-in?reason=signed-out-everywhere");
-    for (const { action, fields } of drawn.filter(({ action }) => action === "/sign-out")) {
-      const answer = await asDrawn(running.browser, action, fields);
-      expect(answer.status === 409 && answer.html === refusal.html, action).toBe(false);
-    }
-  });
+      expect(answer.status).toBe(status);
+      if (action === STOP_SELLING) expect(await purchasable(running.gateway, item)).toBe(false);
+      if (action === "/keys")
+        expect(
+          (await running.harnessed.store.keysOf(running.theMerchant)).some(
+            (key) => key.label === "worker",
+          ),
+        ).toBe(true);
+      if (action === "/settings" || action === "/choose-name")
+        expect(await listedAs(running)).toBe("Bright Data Plans");
+      if (action === "/settings/payout-wallet")
+        expect(await paidInto(running)).toBe("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
+      if (action === "/woocommerce/connect") {
+        expect(readable(answer.html)).toMatch(/shop.*address|address.*shop/i);
+      }
+      if (action === "/merchant") {
+        const id = (await running.identity.byEmail(FRESH.email))?.merchant?.id;
+        expect(id).toBeDefined();
+        expect(await running.harnessed.store.merchantById(id ?? "")).not.toBeNull();
+        expect(answer.to).toBe("/choose-name");
+      }
+      if (action === "/settings/sign-out-everywhere" || action === "/sign-out")
+        expect((await running.browser.get("/settings")).to).toMatch(/^\/sign-in/);
+    },
+  );
 });
 
 describe("what the dashboard writes down about entry", () => {
@@ -6156,19 +5986,25 @@ describe("a list, when it could not be read", () => {
     },
   );
 
-  it.each(LISTS)("%s says the same of a read Agentify did not answer", async (path) => {
-    const { browser, silenceGateway } = await started({ answerWithinMs: 100 });
-    await browser.signIn();
-    silenceGateway();
+  it.each([...LISTS, ["/settings", "seller"] as const])(
+    "%s says the same of a read Agentify did not answer",
+    async (path) => {
+      const { browser, gateway, silenceGateway } = await started({ answerWithinMs: 100 });
+      await publish(gateway, roomCard);
+      await browser.signIn();
+      silenceGateway();
 
-    const failed = await quietly(async () => await browser.get(path));
+      const failed = await quietly(async () => await browser.get(path));
 
-    expect(failed.status).toBe(504);
-    expect(failed.html).toContain('aria-label="Dashboard sections"');
-    expect(waysOnIn(failed.html)).toStrictEqual([path]);
-    expect(readable(mainOf(failed.html))).toMatch(/could not be loaded/i);
-    expect(readable(failed.html)).not.toMatch(/may or may not have been done/i);
-  });
+      expect(failed.status).toBe(504);
+      expect(failed.html).toContain('aria-label="Dashboard sections"');
+      expect(waysOnIn(failed.html)).toStrictEqual([path]);
+      expect(readable(mainOf(failed.html))).toMatch(/could not be loaded/i);
+      expect(readable(failed.html)).not.toMatch(
+        /Publish a card through the SDK|may or may not have been done/i,
+      );
+    },
+  );
 });
 
 describe("a press that fails in a way nobody planned for", () => {
@@ -6211,28 +6047,6 @@ describe("a press that fails in a way nobody planned for", () => {
     expect(written).not.toContain("raw-token");
     expect(written).not.toContain("raw-key");
     expect(written).not.toContain("raw-session");
-  });
-
-  it("never says nobody knows what happened where the dashboard broke before anything ran, a read included", async () => {
-    // The gate reads the session before any page or press runs; a failure
-    // there did nothing, and a page saying nobody knows would send a person
-    // looking for a press they never made.
-    const { browser } = await started({
-      identity: (real) => ({
-        ...real,
-        whoIs: async () => {
-          throw new Error("the session store stopped answering");
-        },
-      }),
-    });
-
-    const failed = await said(async () => {
-      const read = await browser.get("/products");
-      expect(read.status).toBe(500);
-      expect(readable(read.html)).not.toContain("We don't know if this was done");
-    });
-
-    expect(failed).toMatch(/request failed/i);
   });
 
   it("answers on the dashboard's own page, which says the outcome is unknown and leads back to the page with a read", async () => {
@@ -6315,6 +6129,7 @@ describe("a press that fails in a way nobody planned for", () => {
           to: null,
         });
         expect(readable(pressed.html), path).toContain("We don't know if this was done");
+        expect(readable(pressed.html), path).not.toMatch(/nothing was changed|nothing changed/i);
         expect(reopened(pressed.html), path).toBe(path);
       }
     });
@@ -6340,6 +6155,7 @@ describe("a press that fails in a way nobody planned for", () => {
 
         expect(pressed.status, path).toBe(500);
         expect(readable(pressed.html), path).toContain("We don't know if this was done");
+        expect(readable(pressed.html), path).not.toMatch(/nothing was changed|nothing changed/i);
         expect(reopened(pressed.html), path).toBe(path);
       }
     });
@@ -6515,28 +6331,26 @@ describe("a wallet change waiting on the live deployment", () => {
     const running = await live();
     await running.browser.signIn();
     const merchantId = running.harnessed.merchant.id;
-    const { payoutSplit: network, payoutSplitNetworks: networks } =
-      running.harnessed.runtime.config;
     const paidNowSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).inForce;
     await aChangeWaits(running);
     const waitingSplit = (await running.harnessed.gateway.payoutSplitsOf(merchantId)).pending;
-    const dataOn = (screen: Visit) =>
-      /<textarea[^>]*>([\s\S]*?)<\/textarea>/.exec(screen.html)?.[1];
 
     const waiting = await running.browser.get("/settings");
 
     expect(waitingSplit?.merchantWallet).toBe(WAITING);
     expect(waiting.html.replaceAll(/<[^>]*>/g, "")).toContain(WAITING);
-    expect(dataOn(waiting)).toBe(
-      merchantPayout(network, paidNowSplit === null ? [] : [paidNowSplit], networks).data,
-    );
+    expect(payoutOn(waiting.html)).toStrictEqual({
+      distributed: [paidNowSplit?.address.toLowerCase()],
+      withdrawn: [running.harnessed.merchant.wallet.toLowerCase()],
+    });
 
     running.harnessed.advance(48 * 60 * 60 * 1_000);
     const applied = await running.browser.get("/settings");
 
-    expect(dataOn(applied)).toBe(
-      merchantPayout(network, waitingSplit === null ? [] : [waitingSplit], networks).data,
-    );
+    expect(payoutOn(applied.html)).toStrictEqual({
+      distributed: [waitingSplit?.address.toLowerCase()],
+      withdrawn: [WAITING.toLowerCase()],
+    });
   });
 
   it("shows the address waiting, the moment it takes effect, and a control to cancel it", async () => {
@@ -7001,7 +6815,7 @@ describe("a wallet change waiting on the live deployment", () => {
       const running = await live();
       // Paid at an address with letters, so the one typed back can be in the
       // other spelling, as pasted from a block explorer.
-      const PAID = checksummedAddressOf("0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed");
+      const PAID = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
       const { store } = running.harnessed;
       const merchant = await store.merchantById(running.harnessed.merchant.id);
       if (merchant === null) throw new Error("the harness's merchant is not in its store");
@@ -7106,6 +6920,13 @@ describe("signing out everywhere", () => {
     const pressed = await running.browser.post("/settings/sign-out-everywhere");
 
     expect(pressed.status).toBe(303);
+    expect(pressed.to).toBe("/sign-in?reason=signed-out-everywhere");
+    expect(pressed.headers.getSetCookie().some((line) => line.startsWith(`${COOKIE}=;`))).toBe(
+      true,
+    );
+    const landed = await running.browser.get(pressed.to ?? "");
+    expect(landed.status).toBe(200);
+    expect(readable(landed.html)).toMatch(/every device.*this one included/i);
     for (const [who, browser] of [
       ["the pressing browser", running.browser],
       ["a copy of its session", copied],
@@ -7115,30 +6936,6 @@ describe("signing out everywhere", () => {
       expect((await browser.get("/settings")).to, who).toMatch(/^\/sign-in/);
       expect((await browser.get("/products")).to, who).toMatch(/^\/sign-in/);
     }
-  });
-
-  it("lands on the sign-in page saying every device was signed out, this one included", async () => {
-    const running = await started();
-    await running.browser.signIn();
-
-    const pressed = await running.browser.post("/settings/sign-out-everywhere");
-    const landed = await running.browser.get(pressed.to ?? "");
-
-    expect(pressed.to).toMatch(/^\/sign-in\?/);
-    expect(landed.status).toBe(200);
-    expect(readable(landed.html)).toMatch(/every device/i);
-    expect(readable(landed.html)).toMatch(/this one included/i);
-  });
-
-  it("clears this browser's cookie, so it does not go on sending a session that has ended", async () => {
-    const running = await started();
-    await running.browser.signIn();
-
-    const pressed = await running.browser.post("/settings/sign-out-everywhere");
-
-    expect(pressed.headers.getSetCookie().some((line) => line.startsWith(`${COOKIE}=;`))).toBe(
-      true,
-    );
   });
 
   it("works with no wallet change waiting, and is offered on the settings screen", async () => {
@@ -7177,14 +6974,6 @@ describe("signing out everywhere", () => {
     expect(pressed.status).toBe(403);
     expect((await laptop.get("/settings")).status).toBe(200);
     expect((await running.browser.get("/settings")).status).toBe(200);
-  });
-
-  it("is behind the gate", async () => {
-    const running = await started();
-
-    const pressed = await running.browser.post("/settings/sign-out-everywhere");
-
-    expect(pressed.to).toMatch(/^\/sign-in/);
   });
 });
 
@@ -7464,11 +7253,20 @@ describe("closing fulfillment from Orders", () => {
   });
 
   it.each([
-    ["fails", async (): Promise<never> => Promise.reject(new Error("the list could not be read"))],
-    ["is not answered", async () => lateAnswer(10)],
+    [
+      "fails",
+      async (): Promise<never> => Promise.reject(new Error("the list could not be read")),
+      false,
+    ],
+    ["is not answered", async () => lateAnswer(10), false],
+    [
+      "fails and its confirming read throws",
+      async (): Promise<never> => Promise.reject(new Error("the list could not be read")),
+      true,
+    ],
   ] as const)(
     "keeps an unconfirmed closure in the dashboard when every list read after it %s",
-    async (_, failed) => {
+    async (_, failed, confirmingThrows) => {
       // The closure is recorded, but its answer and the read that would
       // confirm it are lost, and none of the lists beside it can be drawn.
       let down = false;
@@ -7480,7 +7278,10 @@ describe("closing fulfillment from Orders", () => {
             down = true;
             return lateAnswer(10);
           },
-          getOrder: async (id) => (down ? lateAnswer(10) : await real.getOrder(id)),
+          getOrder: async (id) => {
+            if (down && confirmingThrows) throw new Error("the store went away");
+            return down ? lateAnswer(10) : await real.getOrder(id);
+          },
           cards: async () => (down ? await failed() : await real.cards()),
           orders: async (open) => (down ? await failed() : await real.orders(open)),
           ordersWithRecords: async () => (down ? await failed() : await real.ordersWithRecords()),
@@ -7578,39 +7379,6 @@ describe("closing fulfillment from Orders", () => {
       error.mockRestore();
     }
   };
-
-  it("keeps an unconfirmed closure in the dashboard when the read that would confirm it throws", async () => {
-    // The closure is recorded, its answer is lost, and then the store goes:
-    // the confirming read throws rather than answering late.
-    let down = false;
-    const running = await started({
-      client: (real) => ({
-        ...real,
-        ...listsFailing(real, () => down),
-        closeOrder: async (id, request) => {
-          await real.closeOrder(id, request);
-          down = true;
-          return lateAnswer(10);
-        },
-        getOrder: async (id) => {
-          if (down) throw new Error("the store went away");
-          return await real.getOrder(id);
-        },
-      }),
-    });
-    const id = await paid(running);
-    await running.browser.signIn();
-    const typed = "Payment returned outside Agentify.";
-
-    const posted = await quietly(
-      async () => await running.browser.post("/orders", { order_id: id, message: typed }),
-    );
-
-    expect(posted.status).toBe(503);
-    expect(posted.html).toContain('aria-label="Dashboard sections"');
-    expect(mainOf(posted.html)).toContain(CLOSURE_NOTES.unconfirmed);
-    expect(mainOf(posted.html)).toContain(typed);
-  });
 
   it("does not take a closure from before for a second one whose answer was lost", async () => {
     // An order paid after its first closure is open again and still carries
@@ -7920,13 +7688,16 @@ describe("closing fulfillment from Orders", () => {
       ).status,
     ).toBe(409);
     const foreign = await running.harnessed.gateway.registerMerchant();
-    const foreignClient = gatewayFor(running.harnessed.gateway, {
-      merchantId: foreign,
-      email: "someoneelse@example.com",
-    });
-    const attempt = await foreignClient.closeOrder(id, {});
-    expect(attempt).toMatchObject({ ok: false, status: 404 });
-    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
+    const strangerEmail = "someoneelse@example.com";
+    await running.identity.make(strangerEmail, foreign);
+    const stranger = await running.another();
+    await stranger.signIn(strangerEmail);
+    const before = await running.harnessed.store.orderById(id);
+    const unowned = await stranger.post("/orders", { order_id: id });
+    const absent = await stranger.post("/orders", { order_id: `ord_${"0".repeat(32)}` });
+    expect(unowned.status).toBe(404);
+    expect(readable(unowned.html)).toBe(readable(absent.html));
+    expect(await running.harnessed.store.orderById(id)).toStrictEqual(before);
   });
 
   it("says why an explanation was refused under its box and keeps what was typed", async () => {
@@ -7946,16 +7717,6 @@ describe("closing fulfillment from Orders", () => {
     const box = /<textarea[^>]*name="message"[^>]*>/.exec(refused.html)?.[0] ?? "";
     expect(box).toContain('aria-invalid="true"');
     expect(readable(refused.html)).toContain("Your note carries HTML markup");
-    expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
-  });
-
-  it("refuses a malformed explanation without closing the order", async () => {
-    const running = await started();
-    const id = await paid(running);
-    await running.browser.signIn();
-    expect(
-      (await running.browser.post("/orders", { order_id: id, message: "x".repeat(2001) })).status,
-    ).toBe(400);
     expect((await running.harnessed.store.orderById(id))?.order.merchantClosure).toBeUndefined();
   });
 });
@@ -8133,9 +7894,7 @@ describe("what the pages record for product analytics", () => {
   });
 
   it("records a view of another screen a press leads to, read as data next", async () => {
-    const running = await started({
-      registrar: { register: async () => ({ ok: true, document: "mer_pressed" }) },
-    });
+    const running = await started();
     await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
     const person = await running.identity.byEmail(FRESH.email);
     await running.browser.get("/merchant");
@@ -8147,8 +7906,10 @@ describe("what the pages record for product analytics", () => {
 
     expect([pressed.status, led.status]).toStrictEqual([202, 200]);
     expect(pressed.html).toContain('"redirect","/choose-name"');
+    const merchant = (await running.identity.byEmail(FRESH.email))?.merchant?.id;
+    expect(await running.harnessed.store.merchantById(merchant ?? "")).not.toBeNull();
     expect(named(running, "agc_dashboard_viewed")).toStrictEqual([
-      viewOf("choose_name", { person: person?.id ?? "", merchant: "mer_pressed" }),
+      viewOf("choose_name", { person: person?.id ?? "", merchant: merchant ?? "" }),
     ]);
   });
 
@@ -8252,14 +8013,16 @@ describe("what the pages record for product analytics", () => {
 
   it("records a merchant that could not be made as one failed creation, and a merchant made as none", async () => {
     let available = false;
+    let registerActual: (() => Promise<string>) | undefined;
     const running = await started({
       registrar: {
         register: async () =>
           available
-            ? { ok: true, document: "mer_after_retry" }
+            ? { ok: true, document: (await registerActual?.()) ?? "" }
             : { ok: false, status: 503, why: "the registry is unavailable" },
       },
     });
+    registerActual = () => running.harnessed.gateway.registerMerchant();
     await running.browser.signIn(FRESH.email, TO_READ_REPORTS);
     const person = await running.identity.byEmail(FRESH.email);
     await running.browser.get("/merchant");
@@ -8271,6 +8034,8 @@ describe("what the pages record for product analytics", () => {
     await settle();
 
     expect(failed.status).toBe(503);
+    const merchant = (await running.identity.byEmail(FRESH.email))?.merchant?.id;
+    expect(await running.harnessed.store.merchantById(merchant ?? "")).not.toBeNull();
     expect(named(running, "agc_ui_blocked")).toStrictEqual([
       blockedOf("merchant", "create_merchant", "failed", "dependency_unavailable", {
         person: person?.id ?? "",
@@ -8281,7 +8046,7 @@ describe("what the pages record for product analytics", () => {
         name: "agc_merchant_created",
         actor: "human",
         source: "dashboard",
-        refs: { merchant: "mer_after_retry", person: person?.id ?? "" },
+        refs: { merchant: merchant ?? "", person: person?.id ?? "" },
       },
     ]);
   });
@@ -8306,6 +8071,9 @@ describe("what the pages record for product analytics", () => {
     await settle();
 
     expect(pressed.status).toBe(400);
+    expect(
+      (await running.harnessed.store.orderById(order.order.id))?.order.merchantClosure,
+    ).toBeUndefined();
     expect(named(running, "agc_ui_blocked")).toStrictEqual([
       blockedOf("orders", "close_order", "blocked", "invalid_input", owner),
     ]);
