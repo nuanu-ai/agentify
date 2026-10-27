@@ -36,7 +36,8 @@ from another wallet, as described below.
 1. Open the Settings screen of your dashboard.
 2. Press Pay out with Coinbase Wallet. Coinbase's window opens and asks you to
    approve the transaction; nothing is sent until you do.
-3. Approve it. Your share reaches your wallet in that same transaction.
+3. Approve it. Your share reaches your wallet in that same transaction, and
+   our {{commission}} reaches us in it too.
 
 Once you approve it, Settings says that you asked Coinbase Wallet to send the
 payout and that it accepted, with the amount the page showed. That means the
