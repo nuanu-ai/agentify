@@ -87,7 +87,8 @@ export function excerptOf(text: string, terms: readonly string[]): ReactNode[] {
   const to = Math.min(text.length, Math.max(first, 0) + AROUND);
   const end =
     to === text.length ? to : text.indexOf(" ", to) === -1 ? text.length : text.indexOf(" ", to);
-  const window = `${from > 0 ? "… " : ""}${text.slice(from, end)}${end < text.length ? " …" : ""}`;
+  // The marks of a cut stay on the line of the word beside them.
+  const window = `${from > 0 ? "…\u00a0" : ""}${text.slice(from, end)}${end < text.length ? "\u00a0…" : ""}`;
   return window.split(pattern).map((part, at) =>
     // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one excerpt never move, so a part's place is its identity
     at % 2 === 1 ? <mark key={at}>{part}</mark> : part,

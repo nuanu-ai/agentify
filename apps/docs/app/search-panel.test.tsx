@@ -34,13 +34,13 @@ describe("a search result's excerpt", () => {
     expect(excerpt).toContain("<mark>courier</mark>");
     expect(excerpt.startsWith("Every order")).toBe(true);
     const late = drawn(TEXT, ["needed"]);
-    expect(late.startsWith("… ")).toBe(true);
-    expect(late.replace(/<[^>]+>/g, "")).toMatch(/^… \S/);
+    expect(late.startsWith("…\u00a0")).toBe(true);
+    expect(late.replace(/<[^>]+>/g, "")).toMatch(/^…\s\S/);
     expect(TEXT).toContain(
       late
         .replace(/<[^>]+>/g, "")
-        .replace(/^… /, "")
-        .replace(/ …$/, ""),
+        .replace(/^…\s/, "")
+        .replace(/\s…$/, ""),
     );
   });
 
