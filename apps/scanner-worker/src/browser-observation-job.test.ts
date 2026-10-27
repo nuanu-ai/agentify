@@ -171,16 +171,73 @@ describe("browser observation job", () => {
   it("starts, persists, validates and cleans a successful run", async () => {
     const { repo, state: repositoryState } = repositoryFake();
     const { provider: apify, state: providerState } = providerFake();
-    await expect(
-      processBrowserObservationJob(
-        {
-          observation_id: observation.id,
-          operation_id: observation.operationId,
-          attempt_no: 1,
+    let startArguments: Parameters<BrowserProviderClient["start"]> | undefined;
+    const start = apify.start;
+    apify.start = async (...args) => {
+      startArguments = args;
+      return await start(...args);
+    };
+    let completion: Parameters<BrowserObservationRepository["complete"]> | undefined;
+    let release!: () => void;
+    let entered!: () => void;
+    const committing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const complete = repo.complete;
+    repo.complete = async (...args) => {
+      completion = args;
+      entered();
+      await gate;
+      return await complete(...args);
+    };
+    let acknowledged = false;
+    const processing = processBrowserObservationJob(
+      { observation_id: observation.id, operation_id: observation.operationId, attempt_no: 1 },
+      { repository: repo, provider: apify, config },
+    ).then((result) => {
+      acknowledged = true;
+      return result;
+    });
+    await committing;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(acknowledged).toBe(false);
+    expect(repositoryState.completed).toBe(false);
+    expect(providerState.cleaned).toEqual([]);
+    expect(startArguments).toEqual([
+      "owner/actor",
+      "1.0.42",
+      {
+        schema_version: "browser-public-v2.0.0",
+        operation_id: observation.operationId,
+        target: {
+          canonical_url: "https://shop.example.com/products",
+          registrable_domain: "example.com",
+          segment: "store",
         },
-        { repository: repo, provider: apify, config },
-      ),
-    ).resolves.toBe("committed");
+        representative_urls: [],
+        policy: {
+          user_agent: "agentify-browser-observer/1.0 (+https://agentify.ad/scanner)",
+          methods: ["GET", "HEAD"],
+          use_proxy: false,
+          respect_robots: true,
+          crawl_purpose: "search",
+        },
+        limits: {
+          max_pages: 3,
+          max_requests_per_page: 80,
+          max_total_bytes: 8388608,
+          page_timeout_ms: 12000,
+          run_timeout_ms: 45000,
+        },
+      },
+      { timeoutSeconds: 60, maxRunUsd: 0.05 },
+    ]);
+    expect(completion?.slice(0, 3)).toEqual([observation.id, observation.leaseToken, output]);
+    release();
+    await expect(processing).resolves.toBe("committed");
     expect(repositoryState).toMatchObject({
       attachedRun: "run-1",
       completed: true,

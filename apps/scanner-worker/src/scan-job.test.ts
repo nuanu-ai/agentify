@@ -86,12 +86,33 @@ describe("scan job lifecycle", () => {
   it("upserts checks before terminal commit and only resolves after commit", async () => {
     const { repo, state } = repository();
     const runner = { run: async () => ({ ...evaluation, requestCount: 12 }) };
-    await expect(
-      processScanJob(job, {
-        repository: repo,
-        runner: runner as never,
-      }),
-    ).resolves.toBe("committed");
+    let release!: () => void;
+    let entered!: () => void;
+    const committing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const committed = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const commit = repo.commitTerminal;
+    repo.commitTerminal = async (input) => {
+      entered();
+      await committed;
+      return await commit(input);
+    };
+    let acknowledged = false;
+    const processing = processScanJob(job, { repository: repo, runner: runner as never }).then(
+      (result) => {
+        acknowledged = true;
+        return result;
+      },
+    );
+    await committing;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(acknowledged).toBe(false);
+    expect(state.terminal).toBeUndefined();
+    release();
+    await expect(processing).resolves.toBe("committed");
     expect(state.checks.get(check.id)).toEqual(check);
     expect(state.terminal).toMatchObject({
       scanId: job.scan_id,
@@ -197,10 +218,23 @@ describe("scan job lifecycle", () => {
     expect(state.heartbeatAt?.toISOString()).toBe(lastBeat);
   });
 
-  it("atomically requests a versioned browser row then best-effort enqueues it", async () => {
+  it("enqueues the versioned browser request only after terminal commit", async () => {
     const { repo, state } = repository();
     let queued: unknown;
-    await processScanJob(job, {
+    let release!: (result: "committed" | "already_terminal") => void;
+    let entered!: () => void;
+    const committing = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const commit = new Promise<"committed" | "already_terminal">((resolve) => {
+      release = resolve;
+    });
+    repo.commitTerminal = async (input) => {
+      state.terminal = input;
+      entered();
+      return await commit;
+    };
+    const processing = processScanJob(job, {
       repository: repo,
       runner: { run: async () => evaluation } as never,
       browserObservation: {
@@ -212,6 +246,11 @@ describe("scan job lifecycle", () => {
         },
       },
     });
+    await committing;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(queued).toBeUndefined();
+    release("committed");
+    await expect(processing).resolves.toBe("committed");
     expect(state.terminal?.browserObservation).toMatchObject({
       observationVersion: "browser-public-v2.0.0",
       actorId: "owner/agentify-browser-observer",
@@ -222,6 +261,27 @@ describe("scan job lifecycle", () => {
       operation_id: state.terminal?.browserObservation?.operationId,
       attempt_no: 1,
     });
+  });
+
+  it("does not enqueue a browser request when another worker already committed", async () => {
+    const { repo } = repository();
+    repo.commitTerminal = async () => "already_terminal";
+    let queued = false;
+    await expect(
+      processScanJob(job, {
+        repository: repo,
+        runner: { run: async () => evaluation } as never,
+        browserObservation: {
+          actorId: "owner/actor",
+          actorBuild: "1.0.42",
+          sampleRate: 1,
+          enqueue: async () => {
+            queued = true;
+          },
+        },
+      }),
+    ).resolves.toBe("skipped");
+    expect(queued).toBe(false);
   });
 
   it("still requests a browser observation when only another check went unassessed", async () => {
