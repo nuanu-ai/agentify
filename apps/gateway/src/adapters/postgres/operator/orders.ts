@@ -1,6 +1,6 @@
 /** The orders area's reads across merchants, on Postgres; each runs through `read`. */
 
-import { and, desc, eq, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, type SQL, sql } from "drizzle-orm";
 import { lookupOf } from "../../../ports/operator/lookup.js";
 import {
   type Found,
@@ -65,16 +65,29 @@ function filterOf(query: OrdersQuery): SQL | undefined {
   );
 }
 
-const madeBefore = (cursor: OrdersCursor): SQL =>
-  sql`(${orders.createdAt} < ${new Date(cursor.createdAt)} or (${orders.createdAt} = ${new Date(cursor.createdAt)} and ${ID_BYTES} < ${cursor.id}))`;
+/** Where an order stands from a cursor in the list, newest first, as one row comparison. */
+const PLACE = sql`(${orders.createdAt}, ${ID_BYTES})`;
+const placeOf = (cursor: OrdersCursor): SQL =>
+  sql`(${new Date(cursor.createdAt)}::timestamptz, ${cursor.id}::text collate "C")`;
+const olderThan = (cursor: OrdersCursor): SQL => sql`${PLACE} < ${placeOf(cursor)}`;
+const newerThan = (cursor: OrdersCursor): SQL => sql`${PLACE} > ${placeOf(cursor)}`;
+
+const cursorOf = (row: OperatorOrderRow): OrdersCursor => ({
+  createdAt: row.createdAt,
+  id: row.id,
+});
 
 const counted = (condition: SQL) => sql<number>`(count(*) filter (where ${condition}))::int`;
 
-/** The rows the condition names, each with its merchant and its card's title, newest first. */
+/**
+ * The rows the condition names, each with its merchant and its card's title,
+ * newest first, or oldest first where `oldestFirst`.
+ */
 async function rowsWhere(
   tx: ReadOnlyTransaction,
   condition: SQL | undefined,
   limit?: number,
+  oldestFirst = false,
 ): Promise<OperatorOrderRow[]> {
   const chosen = tx
     .select({
@@ -88,7 +101,11 @@ async function rowsWhere(
     .innerJoin(merchants, eq(merchants.id, orders.merchantId))
     .leftJoin(cards, eq(cards.id, orders.itemId))
     .where(condition)
-    .orderBy(desc(orders.createdAt), sql`${ID_BYTES} desc`);
+    .orderBy(
+      ...(oldestFirst
+        ? [asc(orders.createdAt), sql`${ID_BYTES} asc`]
+        : [desc(orders.createdAt), sql`${ID_BYTES} desc`]),
+    );
   const rows = await (limit === undefined ? chosen : chosen.limit(limit));
   return rows.map((row) =>
     orderRowOf(row.record, { id: row.id, name: row.name, serviceName: row.serviceName }, row.title),
@@ -127,7 +144,17 @@ export const postgresOperatorOrders = ({ read, network }: OperatorScope): Operat
       return await read(async (tx) => {
         const filter = filterOf(query);
         const shown = SHOWN[query.shown];
-        const cursor = query.before;
+        const from = query.from;
+        const back = from !== undefined && "before" in from;
+        const past =
+          from === undefined
+            ? undefined
+            : "after" in from
+              ? olderThan(from.after)
+              : newerThan(from.before);
+        // Going on, the orders short of the cursor precede the page; going
+        // back, the ones past it are the page and every order before it.
+        const ahead = past === undefined ? sql`false` : back ? past : sql`not (${past})`;
         const [count] = await tx
           .select({
             payment_unknown: counted(SHOWN.payment_unknown),
@@ -137,30 +164,27 @@ export const postgresOperatorOrders = ({ read, network }: OperatorScope): Operat
             ended: counted(ENDED),
             lapsed: counted(LAPSED),
             all: sql<number>`count(*)::int`,
-            newer: counted(
-              cursor === undefined ? sql`false` : sql`${shown} and not ${madeBefore(cursor)}`,
-            ),
+            ahead: counted(sql`${shown} and ${ahead}`),
           })
           .from(orders)
           .leftJoin(cards, eq(cards.id, orders.itemId))
           .where(filter);
         if (count === undefined) throw new Error("a count of the channel's orders came back empty");
-        const { newer, ...counts } = count;
-        const rows = await rowsWhere(
-          tx,
-          and(filter, shown, cursor === undefined ? undefined : madeBefore(cursor)),
-          ORDERS_PAGE + 1,
-        );
-        const page = rows.slice(0, ORDERS_PAGE);
+        const { ahead: aheadOf, ...counts } = count;
+        // One more than the page, to tell whether the list goes on past it.
+        const read = await rowsWhere(tx, and(filter, shown, past), ORDERS_PAGE + 1, back);
+        const page = read.slice(0, ORDERS_PAGE);
+        if (back) page.reverse();
+        const newer = back ? aheadOf - page.length : aheadOf;
+        const older = back ? counts[query.shown] - aheadOf > 0 : read.length > ORDERS_PAGE;
+        const first = page[0];
         const last = page.at(-1);
         return {
           counts,
           rows: page,
           newer,
-          earlier:
-            rows.length > ORDERS_PAGE && last !== undefined
-              ? { createdAt: last.createdAt, id: last.id }
-              : null,
+          previous: newer > 0 && first !== undefined ? cursorOf(first) : null,
+          next: older && last !== undefined ? cursorOf(last) : null,
           merchants: await merchantsWhere(
             tx,
             sql`exists (select 1 from ${orders} where ${orders.merchantId} = ${merchants.id})`,

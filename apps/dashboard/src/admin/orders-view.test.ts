@@ -127,7 +127,9 @@ describe("the orders list", () => {
       READ_AT,
     );
 
-    expect(view.segments.map((one) => one.to)).not.toContainEqual(expect.stringMatching(/after|before/));
+    expect(view.segments.map((one) => one.to)).not.toContainEqual(
+      expect.stringMatching(/after|before/),
+    );
     expect(view.segments[4]?.to).toBe("/admin/orders?segment=ended&q=esim&merchant=mch_a");
   });
 

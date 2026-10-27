@@ -56,6 +56,7 @@ export type {
   OrderStep,
   OrdersCursor,
   OrdersPage,
+  OrdersQuery,
   OrdersShown,
 } from "./ports/operator/orders.js";
 export type { Splits } from "./ports/operator/splits.js";

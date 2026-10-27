@@ -258,6 +258,9 @@ export const orders = pgTable(
     // A merchant's unfulfilled orders they answer for, counted at the birth
     // and the payment of every purchase of theirs and for the catalogue.
     index("orders_unserved_idx").on(table.merchantId).where(answeredFor(table.state, table.record)),
+    // Every merchant's orders a page at a time from a cursor, newest first or
+    // back, for the operator's list; identifiers compare by their bytes there.
+    index("orders_created_idx").on(table.createdAt, sql`${table.id} collate "C"`),
     // The order a buyer's key opens, and never two orders under one key.
     uniqueIndex("orders_buyer_key_unique").on(sql`(${table.record} ->> 'buyerKey')`),
   ],

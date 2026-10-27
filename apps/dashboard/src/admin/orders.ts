@@ -77,7 +77,7 @@ export function ordersFor(parts: AdminParts): OrdersPages {
           shown: asked.shown,
           ...(asked.q === "" ? {} : { search: asked.q }),
           ...(asked.merchantId === null ? {} : { merchantId: asked.merchantId }),
-          ...(asked.before === null ? {} : { before: asked.before }),
+          ...(asked.from === null ? {} : { from: asked.from }),
         });
       } catch {
         failed("orders");

@@ -163,6 +163,12 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
                 <Link to={result.clear}>Clear the search and the merchant</Link>
               </>
             )}
+            {result.newest === null ? null : (
+              <>
+                {" "}
+                <Link to={result.newest}>Show the newest orders</Link>
+              </>
+            )}
           </p>
         </ListEmpty>
       ) : (
@@ -207,8 +213,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersListView }>) {
           </div>
           <Pager
             range={result.cut}
-            previous={{ to: result.newest, words: "First page", beside: false }}
-            next={{ to: result.earlier, words: "Next" }}
+            previous={{ to: result.previous, words: "Previous" }}
+            next={{ to: result.next, words: "Next" }}
           />
         </>
       )}

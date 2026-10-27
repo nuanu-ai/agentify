@@ -17,6 +17,7 @@ import {
   operatorOrderOf,
   orderRowOf,
 } from "../../../ports/operator/orders-as-read.js";
+import { byBytes, pageIn } from "../../../ports/paging.js";
 import type { StoredMerchant, StoredOrder } from "../../../ports/store.js";
 import type { MemoryHoldings } from "../store.js";
 import type { MemoryScope } from "./index.js";
@@ -44,14 +45,16 @@ const transactionsOf = (record: StoredOrder): string[] =>
       : undefined,
   ].filter((hash): hash is string => hash !== undefined);
 
-/** Newest first, a tie in the moment broken by the identifier, as Postgres sorts them. */
-const newestFirst = (one: StoredOrder, other: StoredOrder): number =>
-  other.order.timestamps.createdAt - one.order.timestamps.createdAt ||
-  (other.order.id < one.order.id ? -1 : other.order.id > one.order.id ? 1 : 0);
+/** Where an order stands from a place in the list, newest first: below nought before it. */
+const placed = (record: StoredOrder, cursor: OrdersCursor): number =>
+  cursor.createdAt - record.order.timestamps.createdAt || byBytes(cursor.id, record.order.id);
 
-const before = (record: StoredOrder, cursor: OrdersCursor): boolean =>
-  record.order.timestamps.createdAt < cursor.createdAt ||
-  (record.order.timestamps.createdAt === cursor.createdAt && record.order.id < cursor.id);
+const newestFirst = (one: StoredOrder, other: StoredOrder): number => placed(one, cursorOf(other));
+
+const cursorOf = (record: StoredOrder): OrdersCursor => ({
+  createdAt: record.order.timestamps.createdAt,
+  id: record.order.id,
+});
 
 const byId = <T extends { readonly id: string }>(one: T, other: T): number =>
   one.id < other.id ? -1 : one.id > other.id ? 1 : 0;
@@ -81,18 +84,13 @@ export const memoryOperatorOrders = (scope: MemoryScope): OperatorOrders => {
         ]),
       ) as Record<OrdersShown, number>;
       const shown = matched.filter((record) => shownIn(record, query.shown)).sort(newestFirst);
-      const cursor = query.before;
-      const rest = cursor === undefined ? shown : shown.filter((record) => before(record, cursor));
-      const page = rest.slice(0, ORDERS_PAGE);
-      const last = page.at(-1);
+      const page = pageIn(shown, query.from, ORDERS_PAGE, placed);
       return {
         counts,
-        rows: page.map((record) => held.rowOf(record)),
-        newer: shown.length - rest.length,
-        earlier:
-          rest.length > ORDERS_PAGE && last !== undefined
-            ? { createdAt: last.order.timestamps.createdAt, id: last.order.id }
-            : null,
+        rows: page.rows.map((record) => held.rowOf(record)),
+        newer: page.newer,
+        previous: page.previous === null ? null : cursorOf(page.previous),
+        next: page.next === null ? null : cursorOf(page.next),
         merchants: held.merchants
           .filter((merchant) => held.orders.some((record) => record.merchantId === merchant.id))
           .map(merchantOf)
