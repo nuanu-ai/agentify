@@ -192,7 +192,8 @@ export const PAYOUT_NOTES = Object.freeze({
   noCoinbaseOnTest:
     "Coinbase Wallet can't send this payout on the test network, Base Sepolia, so send it from another wallet.",
   orAgentify: "If nobody sends it, Agentify's next payout does the same, on no fixed date.",
-  fromTheSender: "Sending this transaction costs only the network fee.",
+  paysBoth: (commission: string): string =>
+    `This one transaction pays your share and Agentify's ${commission} together, and sending it costs only the network fee.`,
   tooMany: (count: number): string =>
     `You have ${count} payout contracts, more than one transaction can carry. Agentify's next payout covers them all, on no fixed date.`,
   // Agentify's own payout refuses every contract the merchant's refuses, and
@@ -295,7 +296,7 @@ const payoutView = (
     toIs: PAYOUT_NOTES.multicall3,
     data: transaction.data,
     pays,
-    after: PAYOUT_NOTES.fromTheSender,
+    after: PAYOUT_NOTES.paysBoth(percentagesOf(splits.rate).commission),
     coinbase: coinbaseOn(walletChain, "payout"),
   };
 };

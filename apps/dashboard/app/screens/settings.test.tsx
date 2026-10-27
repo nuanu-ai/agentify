@@ -922,11 +922,12 @@ describe("what Getting paid says in each state", () => {
       .split(/(?<=\.)\s+/)
       .map((one) => one.trim())
       .filter((one) => one.endsWith("."));
-  const { brings, tooMany, sentOn, ...plain } = PAYOUT_NOTES;
+  const { brings, tooMany, sentOn, paysBoth, ...plain } = PAYOUT_NOTES;
   const NOTED = new Set([
     ...Object.values(plain).flatMap(sentencesOf),
     ...Object.values(sentOn).flatMap(sentencesOf),
     ...[1, 2].flatMap((count) => sentencesOf(tooMany(count))),
+    ...sentencesOf(paysBoth("0.1%")),
     // An amount is written as digits, which `sentencesOf` reads as `#`.
     ...["1.1 USDC", "1.1 test USDC"].flatMap((amount) =>
       [true, false].flatMap((one) => sentencesOf(brings(amount, one))),
