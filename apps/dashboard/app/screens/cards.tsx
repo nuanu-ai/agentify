@@ -75,7 +75,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
         <p>{empty.says}</p>
         <div className={styles.ways}>
           <a className="button button-primary" href="/docs/quickstart">
-            Publish a card through the SDK
+            Publish products through the SDK
           </a>
           {empty.ways.woo ? (
             <a className="button button-secondary" href={`${base}/woocommerce`}>

@@ -5718,7 +5718,7 @@ describe("when the gateway will not answer", () => {
     expect(answered.status).toBe(504);
     const text = readable(answered.html);
     expect(text).toContain("could not be loaded");
-    expect(text).not.toContain("Publish a card through the SDK");
+    expect(answered.html).not.toContain('href="/docs/quickstart"');
   });
 });
 

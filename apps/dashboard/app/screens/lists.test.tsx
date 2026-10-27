@@ -858,21 +858,19 @@ describe("a search over the cards", () => {
 
 describe("an empty catalogue", () => {
   const none = () =>
-    readable(
-      served(() => (
-        <CardsScreen
-          view={cardsView(
-            MerchantCardListSchema.parse({ selling: "open", cards: [] }),
-            "https://agentify.ad",
-            true,
-          )}
-          base=""
-        />
-      )),
-    );
+    served(() => (
+      <CardsScreen
+        view={cardsView(
+          MerchantCardListSchema.parse({ selling: "open", cards: [] }),
+          "https://agentify.ad",
+          true,
+        )}
+        base=""
+      />
+    ));
 
-  it("offers the ways to a first card to a merchant who sells", () => {
-    expect(none()).toContain("Publish a card through the SDK");
-    expect(none()).toContain("Connect a WooCommerce shop");
+  it("offers the ways to a first product to a merchant who sells: the SDK's guide and the shop's connection", () => {
+    expect(none()).toContain('href="/docs/quickstart"');
+    expect(none()).toContain('href="/woocommerce"');
   });
 });
