@@ -13,6 +13,8 @@
  * `statusReads`, the HTTP statuses the first reads of an order answer with
  * instead of reaching the gateway; `losePaidAnswer`, which lets a paid purchase
  * reach the gateway and then drops its answer as a broken connection would;
+ * `stopBeforePayment`, which drops the request before it reaches the gateway;
+ * `failDirectorySync`, which refuses the journal's directory flush;
  * and `challengeNetwork` with `challengeAsset`, which move a payment request
  * onto another chain and that chain's token.
  *
@@ -31,6 +33,7 @@ interface Faults {
   readonly challengeAsset?: string;
   readonly waitMs?: number;
   readonly stopBeforePayment?: boolean;
+  readonly failDirectorySync?: boolean;
 }
 
 const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
@@ -41,8 +44,24 @@ const QUICK_WAITS = `data:text/javascript,${encodeURIComponent(
   `export const setTimeout = (_ms, value) => new Promise((done) => globalThis.setTimeout(() => done(value), ${faults.waitMs ?? 1}));`,
 )}`;
 
+const REFUSED_DIRECTORY_SYNC = `data:text/javascript,${encodeURIComponent(`
+  export * from 'node:fs';
+  import { fsyncSync as flush, fstatSync } from 'node:fs';
+  export const fsyncSync = (fd) => {
+    if (fstatSync(fd).isDirectory()) throw new Error('disk refused directory sync');
+    flush(fd);
+  };
+`)}`;
+
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (
+      specifier === "node:fs" &&
+      faults.failDirectorySync &&
+      PROGRAM.test(context.parentURL ?? "")
+    ) {
+      return { url: REFUSED_DIRECTORY_SYNC, shortCircuit: true };
+    }
     if (specifier === "node:timers/promises" && PROGRAM.test(context.parentURL ?? "")) {
       return { url: QUICK_WAITS, shortCircuit: true };
     }

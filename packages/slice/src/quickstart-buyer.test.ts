@@ -13,8 +13,8 @@
  * Each test holds one promise the page makes to the person running it: a
  * purchase ends in the goods or in plain words and a non-zero exit, the
  * order's address is kept in a file and never printed, a failed read is not
- * an order's state, and the buyer signs once, only on the channel's chain and
- * only up to the card's price.
+ * an order's state, and a restart resumes the saved purchase. Each run signs
+ * at most once, only on the channel's chain and up to the saved price limit.
  */
 
 import { spawn } from "node:child_process";
@@ -92,6 +92,7 @@ interface Faults {
   readonly challengeAsset?: string;
   readonly waitMs?: number;
   readonly stopBeforePayment?: boolean;
+  readonly failDirectorySync?: boolean;
 }
 
 interface Run {
@@ -167,10 +168,14 @@ describe("the quickstart's test buyer", () => {
         .flatMap(([name, value]) => (value === null ? [] : [`${name}=${value}`]))
         .join("\n"),
     );
-    const child = spawn(process.execPath, ["--import", FAULTS, "--env-file=.env", "buyer.mts", file], {
-      cwd: directory,
-      env: { BUYER_FAULTS: JSON.stringify(faults) },
-    });
+    const child = spawn(
+      process.execPath,
+      ["--import", FAULTS, "--env-file=.env", "buyer.mts", file],
+      {
+        cwd: directory,
+        env: { BUYER_FAULTS: JSON.stringify(faults) },
+      },
+    );
     let printed = "";
     child.stdout.on("data", (chunk) => {
       printed += chunk;
@@ -273,7 +278,7 @@ describe("the quickstart's test buyer", () => {
 
     expect(unread.code, unread.printed).not.toBe(0);
     expect(unread.printed).toContain("503");
-    expect(unread.printed).toContain(ADDRESSES);
+    expect(unread.printed).toContain(PURCHASE);
     expect(readsIn(unread.printed)).toBe(0);
     const statusUrl = keptAddress();
     expect(statusUrl, unread.printed).toBeDefined();
@@ -349,6 +354,33 @@ describe("the quickstart's test buyer", () => {
     expect(stopped.code, stopped.printed).not.toBe(0);
     expect(facilitator.verifies).toHaveLength(0);
     expect(facilitator.settles).toHaveLength(0);
+  });
+
+  it("pays nothing if it cannot persist the purchase's directory entry", async () => {
+    const stopped = await run(AT_ONCE, { failDirectorySync: true });
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(facilitator.verifies).toHaveLength(0);
+    expect(facilitator.settles).toHaveLength(0);
+    const resumed = await run(AT_ONCE, { failDirectorySync: true });
+    expect(resumed.code, resumed.printed).not.toBe(0);
+    expect(facilitator.settles).toHaveLength(0);
+  });
+
+  it("does not treat a command-line option as permission to buy", async () => {
+    const stopped = await run(AT_ONCE, {}, {}, "--help");
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(await merchant.orders.list()).toHaveLength(0);
+    expect(facilitator.settles).toHaveLength(0);
+  });
+
+  it("does not charge two concurrent runs using the same purchase file twice", async () => {
+    const results = await Promise.all([run(AT_ONCE), run(AT_ONCE)]);
+    expect(
+      results.some((result) => result.code === 0),
+      JSON.stringify(results),
+    ).toBe(true);
+    expect(facilitator.settles).toHaveLength(1);
+    expect(keptAddress()).toBeDefined();
   });
 
   it("refuses a damaged purchase file before opening or paying an order", async () => {
