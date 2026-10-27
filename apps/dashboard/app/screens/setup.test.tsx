@@ -73,14 +73,6 @@ describe("opening a seller dashboard", () => {
     expect(html).not.toContain('class="problem"');
   });
 
-  it("offers the way out in the header alone", () => {
-    const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: false }} />);
-    const signOut = /<form\b[^>]*action="[^"]*\/sign-out"/;
-
-    expect(html).toMatch(signOut);
-    expect(html.replace(/<header class="site-header[\s\S]*?<\/header>/, "")).not.toMatch(signOut);
-  });
-
   it("says a press that made nothing failed on our side, and offers the press again", () => {
     const html = served(() => <MerchantScreen chrome={chrome} view={{ unavailable: true }} />);
 

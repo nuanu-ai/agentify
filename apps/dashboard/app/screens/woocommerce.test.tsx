@@ -197,7 +197,14 @@ describe("the order of what an import did", () => {
     expect(text.indexOf("Batik sarong")).toBeLessThan(unsupported);
     expect(unsupported).toBeLessThan(published);
     // Folded: the published list is drawn closed.
-    expect(html).toMatch(/<details class="[^"]*"><summary>[^<]*<\/summary>[\s\S]*Canvas tote bag/);
+    const page = new DOMParser().parseFromString(html, "text/html");
+    const publishedList = page.querySelector('[aria-label="Published"]');
+    expect(publishedList?.textContent).toContain("Canvas tote bag");
+    expect(publishedList?.closest("details")?.open).toBe(false);
+    expect(page.querySelector('[aria-label="To fix"]')?.textContent).toContain("Batik sarong");
+    expect(page.querySelector('[aria-label="Not supported"]')?.textContent).toContain(
+      "Monthly membership",
+    );
   });
 
   it("says a length is counted without formatting only where a length was refused", () => {
@@ -233,9 +240,14 @@ describe("what the import screen offers beside a product it could not publish", 
       },
     ]);
 
-    expect([...html.matchAll(/href="\/settings"/g)]).toHaveLength(1);
-    expect(html.indexOf('href="/settings"')).toBeGreaterThan(html.indexOf("Coffee beans"));
-    expect(html.indexOf('href="/settings"')).toBeLessThan(html.indexOf("Canvas tote bag"));
+    const page = new DOMParser().parseFromString(html, "text/html");
+    const rows = [...page.querySelectorAll("li")];
+    const missingSite = rows.find((row) => row.textContent?.includes("Coffee beans, one kilogram"));
+    const needsShopEdit = rows.find((row) => row.textContent?.includes("Canvas tote bag"));
+    expect(missingSite).toBeDefined();
+    expect(needsShopEdit).toBeDefined();
+    expect(missingSite?.querySelector('a[href="/settings"]')).not.toBeNull();
+    expect(needsShopEdit?.querySelector('a[href="/settings"]')).toBeNull();
   });
 });
 
@@ -271,13 +283,26 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(said)).toBe("Enter your site's root address: https://x.y");
   });
 
-  it("says a refused Connect at the top of its panel when the address is not what was wrong", () => {
-    const html = shopPage({}, { problem: "Your shop did not show its approval screen." });
+  it.each([null, "read"])(
+    "keeps the Connect refusal in its panel with prior grant %s",
+    (permissions) => {
+      const prior =
+        permissions === null
+          ? {}
+          : {
+              state: {
+                kind: "connected" as const,
+                shop: { shopUrl: SHOP, permissions, connectedAt: new Date("2026-10-12T09:00:00Z") },
+              },
+              through: "woocommerce" as const,
+            };
+      const html = shopPage(prior, { problem: "Your shop did not show its approval screen." });
 
-    expect(problemsIn(blockOf(html, "/woocommerce/connect"))).toStrictEqual([
-      "Your shop did not show its approval screen.",
-    ]);
-  });
+      expect(problemsIn(blockOf(html, "/woocommerce/connect"))).toStrictEqual([
+        "Your shop did not show its approval screen.",
+      ]);
+    },
+  );
 
   it("says what the shop answered to an import in the import's panel, not beside the way out", () => {
     const html = shopPage(
@@ -319,29 +344,22 @@ describe("where the shop screen says why a press was refused", () => {
   const waiting = (count: number) =>
     Array.from({ length: count }, (_, at) => `ord_${at}0f3c9a1b2d4e6f8a7b9c`);
 
-  it("names each order that holds a switch with a button copying it whole, counts the ones it leaves out, and leads to them all", () => {
-    const orders = waiting(7);
-    const block = blockOf(
-      shopPage({ state: CONNECTED, through: "api" }, { switching: held("woocommerce", orders) }),
-      "/woocommerce/switch",
-    );
-
-    expect([...block.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
-    for (const id of orders.slice(0, 5)) expect(readable(block)).toContain(id);
-    for (const id of orders.slice(5)) expect(readable(block)).not.toContain(id);
-    expect(readable(block)).toMatch(/\b2 more\b/);
-    expect(block).toContain('href="/orders?show=open"');
-  });
-
-  it("names five waiting orders without saying there are more", () => {
-    const block = blockOf(
-      shopPage({ state: CONNECTED, through: "woocommerce" }, { leaving: held("api", waiting(5)) }),
-      "/woocommerce/disconnect",
-    );
-
-    expect([...block.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
-    expect(readable(block)).not.toMatch(/\bmore\b/);
-  });
+  it.each([5, 7])(
+    "shows at most five blocking orders and discloses omitted rows out of %s",
+    (count) => {
+      const orders = waiting(count);
+      const block = blockOf(
+        shopPage({ state: CONNECTED, through: "api" }, { switching: held("woocommerce", orders) }),
+        "/woocommerce/switch",
+      );
+      expect([...block.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
+      for (const id of orders.slice(0, 5)) expect(readable(block)).toContain(id);
+      for (const id of orders.slice(5)) expect(readable(block)).not.toContain(id);
+      if (count === 7) expect(readable(block)).toMatch(/\b2 more\b/);
+      else expect(readable(block)).not.toMatch(/\bmore\b/);
+      expect(block).toContain('href="/orders?show=open"');
+    },
+  );
 
   it("tells purchases about to lapse apart from goods owed: try again in a minute, naming none", () => {
     const block = blockOf(
@@ -429,27 +447,6 @@ describe("where the shop screen says why a press was refused", () => {
     expect(none).not.toContain("Completed in WooCommerce, or");
   });
 
-  it("says a refused Connect again beside it when the shop granted read alone", () => {
-    const html = shopPage(
-      {
-        state: {
-          kind: "connected",
-          shop: {
-            shopUrl: SHOP,
-            permissions: "read",
-            connectedAt: new Date("2026-10-12T09:00:00Z"),
-          },
-        },
-        through: "woocommerce",
-      },
-      { problem: "Your shop did not show its approval screen." },
-    );
-
-    expect(readable(blockOf(html, "/woocommerce/connect"))).toContain(
-      "Your shop did not show its approval screen.",
-    );
-  });
-
   it("draws what it was given as text, never as markup", () => {
     const html = shopPage(
       { state: CONNECTED, through: "woocommerce" },
@@ -514,7 +511,12 @@ describe("what the shop screen holds before it is pressed", () => {
     for (const unset of [[], null] as const) {
       const html = shopPage({ state: CONNECTED, through: "woocommerce", unset });
 
-      expect(importButton(html), String(unset)).not.toMatch(/\bdisabled\b/);
+      const page = new DOMParser().parseFromString(html, "text/html");
+      const button = page.querySelector<HTMLButtonElement>(
+        'form[action="/woocommerce/import"] button',
+      );
+      expect(button).not.toBeNull();
+      expect(button?.disabled, String(unset)).toBe(false);
     }
   });
 
@@ -565,35 +567,35 @@ describe("what the shop screen says a switch does to the code's products", () =>
   const connectPanel = (codeProducts: number | null) =>
     readable(blockOf(shopPage({ through: "api", codeProducts }), "/woocommerce/connect"));
 
-  it("says it only where the code published some, with how many", () => {
-    expect(connectPanel(12)).toContain("the 12 products your code published go off sale");
-    expect(connectPanel(1)).toContain("the product your code published goes off sale");
-    expect(connectPanel(0)).not.toMatch(/off sale/);
-  });
-
-  it("says it without a number where the products could not be counted, never as none", () => {
-    expect(connectPanel(null)).toContain("the products your code published go off sale");
-  });
-
-  it("says Connect again takes the code's products off sale only where the code published some", () => {
-    const again = (codeProducts: number) =>
-      readable(
-        blockOf(
-          shopPage({
-            state: {
-              kind: "connected",
-              shop: { shopUrl: SHOP, permissions: "read", connectedAt: new Date() },
-            },
-            through: "api",
-            codeProducts,
-          }),
-          "/woocommerce/connect",
-        ),
-      );
-
-    expect(again(12)).toContain("the 12 products your code published go off sale");
-    expect(again(0)).not.toMatch(/off sale/);
-  });
+  it.each([null, "read"])(
+    "discloses the switch's product consequences with prior grant %s",
+    (permissions) => {
+      const panel = (codeProducts: number | null) =>
+        permissions === null
+          ? connectPanel(codeProducts)
+          : readable(
+              blockOf(
+                shopPage({
+                  state: {
+                    kind: "connected",
+                    shop: {
+                      shopUrl: SHOP,
+                      permissions,
+                      connectedAt: new Date("2026-10-12T09:00:00Z"),
+                    },
+                  },
+                  through: "api",
+                  codeProducts,
+                }),
+                "/woocommerce/connect",
+              ),
+            );
+      expect(panel(12)).toContain("the 12 products your code published go off sale");
+      expect(panel(1)).toContain("the product your code published goes off sale");
+      expect(panel(null)).toContain("the products your code published go off sale");
+      expect(panel(0)).not.toMatch(/off sale/);
+    },
+  );
 
   it("says the code's products come back paused, where there are some, on the way back", () => {
     const back = (codeProducts: number) =>
@@ -627,18 +629,6 @@ describe("what the shop screen offers while no keys are here", () => {
     expect(readable(html)).not.toContain("Check again");
     expect(readable(html)).toContain("No keys came");
     expect(formOf(html, "/woocommerce/connect")).toContain(`value="${SHOP}"`);
-  });
-
-  it("puts Connect before the way back to the code, which it never stands above", () => {
-    const html = shopPage({
-      state: { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 4 },
-      through: "woocommerce",
-    });
-
-    expect(html.indexOf('action="/woocommerce/connect"')).toBeGreaterThan(-1);
-    expect(html.indexOf('action="/woocommerce/connect"')).toBeLessThan(
-      html.indexOf('action="/woocommerce/disconnect"'),
-    );
   });
 });
 

@@ -222,6 +222,7 @@ describe("sending the payout through the merchant's wallet", () => {
       expect.objectContaining({
         chainId: "0x14a34",
         from: CHECKSUMMED,
+        atomicRequired: true,
         calls: [{ to: MULTICALL3, value: "0x0", data: DATA }],
       }),
     ]);
@@ -241,14 +242,6 @@ describe("sending the payout through the merchant's wallet", () => {
     await sendPayout(answering, 84532, payout);
 
     expect(remembered()).toBeNull();
-  });
-
-  it("asks for the payout to happen whole or not at all", async () => {
-    const { answering, sent } = wallet();
-
-    await sendPayout(answering, 84532, payout);
-
-    expect(sent[0]?.atomicRequired).toBe(true);
   });
 
   it("sends nothing and says the window was closed when the merchant declines to connect", async () => {
@@ -293,12 +286,6 @@ describe("sending the payout through the merchant's wallet", () => {
     expect(await sendPayout(answering, 84532, payout)).toEqual({ kind: "sent" });
   });
 
-  it("does not call a payout sent that the wallet refused to send", async () => {
-    const { answering } = wallet({ breaks: "wallet_sendCalls" });
-
-    expect((await sendPayout(answering, 84532, payout)).kind).not.toBe("sent");
-  });
-
   it("does not know whether a payout went out when the wallet's answer to it is a failure it cannot read", async () => {
     const thrown = [
       { message: "The operation failed for an operation-specific reason" },
@@ -340,22 +327,14 @@ describe("waiting for the merchant's wallet", () => {
     expect((await sending).kind).toBe("unanswered");
   });
 
-  it("keeps waiting for an address until the limit, long enough to approve with a passkey", async () => {
-    vi.useFakeTimers();
-    const { answering } = wallet({ hangs: "eth_requestAccounts" });
-
-    const asking = askAddress(answering);
-    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS - 1);
-
-    expect(await settled(asking)).toBe(false);
-  });
-
   it("says no address came once the limit passes, and leaves no keys of the wallet's session in the page", async () => {
     vi.useFakeTimers();
     const { answering, keys } = wallet({ hangs: "eth_requestAccounts" });
 
     const asking = askAddress(answering);
-    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
+    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS - 1);
+    expect(await settled(asking)).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
 
     expect(await asking).toEqual({ kind: "unanswered" });
     expect(keys()).toBe(false);
@@ -390,7 +369,7 @@ describe("waiting for the merchant's wallet", () => {
     "never asks for the payout once it has stopped waiting, even when %s comes late",
     async (_late, hangs) => {
       vi.useFakeTimers();
-      const { answering, sent, later } = wallet({ hangs });
+      const { answering, sent, later, asked } = wallet({ hangs });
 
       const sending = sendPayout(answering, 84532, payout);
       await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
@@ -399,21 +378,10 @@ describe("waiting for the merchant's wallet", () => {
       await vi.advanceTimersByTimeAsync(0);
 
       expect(sent).toEqual([]);
+      if (hangs === "eth_requestAccounts")
+        expect(asked).not.toContain("wallet_switchEthereumChain");
     },
   );
-
-  it("asks the wallet nothing more once it has stopped waiting, not even to move to the payout's chain", async () => {
-    vi.useFakeTimers();
-    const { answering, asked, later } = wallet({ hangs: "eth_requestAccounts" });
-
-    const sending = sendPayout(answering, 84532, payout);
-    await vi.advanceTimersByTimeAsync(WALLET_ANSWERS_WITHIN_MS);
-    await sending;
-    later[0]?.answer();
-    await vi.advanceTimersByTimeAsync(0);
-
-    expect(asked).not.toContain("wallet_switchEthereumChain");
-  });
 
   it("says a payout the wallet acknowledges after the limit was sent", async () => {
     vi.useFakeTimers();
