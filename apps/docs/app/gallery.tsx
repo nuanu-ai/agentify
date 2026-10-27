@@ -63,10 +63,10 @@ const loadedAt = (path: string) =>
   Page.loader({ params: { "*": path.slice(1) } } as unknown as LoaderFunctionArgs);
 
 /**
- * As a visitor who has answered the consent banner sees the page: the scanner's
- * gallery draws the banner itself, the same one on every page of the origin.
+ * As a visitor who has answered the consent banner sees the page, since the
+ * banner would cover its foot; on a first visit the banner is up over it.
  */
-const drawnAt = async (path: string) => {
+const drawnAt = async (path: string, firstVisit = false) => {
   const loaded = await loadedAt(path);
   return () => {
     const Stub = createRoutesStub(TREE);
@@ -76,7 +76,7 @@ const drawnAt = async (path: string) => {
           initialEntries={[path]}
           hydrationData={{ loaderData: { root: { served: SERVED }, front: loaded, page: loaded } }}
         />
-        <BannerAnswered />
+        {firstVisit ? null : <BannerAnswered />}
       </>
     );
   };
@@ -122,6 +122,15 @@ export const gallery: GallerySurface = {
   lang: "en",
   states: [
     ...pages,
+    {
+      id: "docs-front-first-visit",
+      screen: FRONT,
+      address: docsAddress("/"),
+      when: "Somebody opens the documentation for the first time, or after clearing what their browser keeps.",
+      cause:
+        "The browser keeps no answer about measuring the visit, so the banner over the page asks for one.",
+      draw: await drawnAt("/", true),
+    },
     {
       id: "docs-front-privacy-choices",
       screen: FRONT,
