@@ -134,11 +134,22 @@ function Tile({
   );
 }
 
-function Fact({ term, children }: Readonly<{ term: string; children: ReactNode }>) {
+/**
+ * One line of a fact list. A `state` badge sits in a slot of one width, so the
+ * dots of a list stand on one vertical line; what follows it goes under it.
+ */
+function Fact({
+  term,
+  state,
+  children,
+}: Readonly<{ term: string; state?: ReactNode; children?: ReactNode }>) {
   return (
     <div>
       <dt>{term}</dt>
-      <dd>{children}</dd>
+      <dd>
+        {state === undefined ? null : <span className="badge-slot">{state}</span>}
+        {children}
+      </dd>
     </div>
   );
 }
@@ -299,30 +310,36 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
       </div>
       <div className="op-panel-body">
         <dl className="op-dl">
-          <Fact term="Last heartbeat">
-            {heartbeatAge === null ? (
-              <Badge tone="fail">None recorded</Badge>
-            ) : (
-              <Badge
-                tone={worker.heartbeatFresh ? "pass" : "fail"}
-              >{`${span(heartbeatAge)} ago`}</Badge>
+          <Fact
+            term="Last heartbeat"
+            state={
+              heartbeatAge === null ? (
+                <Badge tone="fail">None recorded</Badge>
+              ) : (
+                <Badge
+                  tone={worker.heartbeatFresh ? "pass" : "fail"}
+                >{`${span(heartbeatAge)} ago`}</Badge>
+              )
+            }
+          />
+          <Fact
+            term="Ready to take scans"
+            state={
+              worker.ready ? <Badge tone="pass">Ready</Badge> : <Badge tone="fail">Not ready</Badge>
+            }
+          >
+            {worker.ready ? null : (
+              <span className="op-sub">{notReadyBecause(heartbeat, worker)}</span>
             )}
           </Fact>
-          <Fact term="Ready to take scans">
-            {worker.ready ? (
-              <Badge tone="pass">Ready</Badge>
-            ) : (
-              <>
-                <Badge tone="fail">Not ready</Badge>{" "}
-                <span className="op-sub">{notReadyBecause(heartbeat, worker)}</span>
-              </>
-            )}
-          </Fact>
-          <Fact term="Scan capacity">
-            <Badge tone={health.scannerCapacity ? "pass" : "fail"}>
-              {health.scannerCapacity ? "Keeping up" : "Not keeping up"}
-            </Badge>
-          </Fact>
+          <Fact
+            term="Scan capacity"
+            state={
+              <Badge tone={health.scannerCapacity ? "pass" : "fail"}>
+                {health.scannerCapacity ? "Keeping up" : "Not keeping up"}
+              </Badge>
+            }
+          />
           <Fact term="Oldest queued scan">
             {queued > 0
               ? `${span(Number(signals.queue_age_seconds))}, ${counted(queued, "scan", "scans")} queued`
@@ -332,10 +349,14 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
           <Fact term="Failed · 15 min">
             {`${number.format(Number(signals.failed_15m))} of ${counted(Number(signals.accepted_15m), "scan", "scans")} accepted`}
           </Fact>
-          <Fact term="Analytics outbox">
-            <Badge tone={health.analyticsOutbox ? "pass" : "fail"}>
-              {health.analyticsOutbox ? "Delivering" : deadLetters > 0 ? "Failing" : "Overdue"}
-            </Badge>{" "}
+          <Fact
+            term="Analytics outbox"
+            state={
+              <Badge tone={health.analyticsOutbox ? "pass" : "fail"}>
+                {health.analyticsOutbox ? "Delivering" : deadLetters > 0 ? "Failing" : "Overdue"}
+              </Badge>
+            }
+          >
             <span className="op-sub">
               {`${deadLetters > 0 ? `${counted(deadLetters, "event", "events")} given up` : "No event given up"}; ${
                 pending > 0
@@ -450,15 +471,18 @@ export function OperatorDashboard({
                   </span>
                 </div>
                 <dl className="op-dl">
-                  <Fact term="Substantive initial HTML">
-                    <State status={selfScan.substantiveHtmlStatus} none="Not assessed" />
-                  </Fact>
-                  <Fact term="ChatGPT-User and Claude-User compatibility">
-                    <State status={selfScan.agentUserAgentStatus} none="Not assessed" />
-                  </Fact>
-                  <Fact term="Passive browser observation">
-                    <State status={selfScan.browserStatus} none="Not sampled" />
-                  </Fact>
+                  <Fact
+                    term="Substantive initial HTML"
+                    state={<State status={selfScan.substantiveHtmlStatus} none="Not assessed" />}
+                  />
+                  <Fact
+                    term="ChatGPT-User and Claude-User compatibility"
+                    state={<State status={selfScan.agentUserAgentStatus} none="Not assessed" />}
+                  />
+                  <Fact
+                    term="Passive browser observation"
+                    state={<State status={selfScan.browserStatus} none="Not sampled" />}
+                  />
                 </dl>
               </>
             ) : (
