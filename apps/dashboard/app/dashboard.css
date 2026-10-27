@@ -7,15 +7,6 @@
  * file; nothing here declares them.
  */
 
-/* Text runs the full width of its block: no balanced or "pretty" early line
-   breaks inherited from the shared tokens. */
-h1,
-h2,
-h3,
-p {
-  text-wrap: wrap;
-}
-
 /* Form controls do not inherit the page's face on their own, and the shared base
    does not set it. */
 button,

@@ -257,7 +257,8 @@ p {
 
 /* 48px is a thumb-sized target; do not shrink it per page. Inside a table row
    use .button-compact. Where a narrow window wraps the words, the lines stay
-   centred and keep the inset above and below them that one line has. */
+   centred, keep the inset above and below them that one line has, and share
+   the words evenly, so no word is left alone on the last line. */
 .button {
   min-height: 48px;
   display: inline-flex;
@@ -271,6 +272,7 @@ p {
   font-weight: 600;
   line-height: var(--leading-ui);
   text-align: center;
+  text-wrap: balance;
   text-decoration: none;
   transition:
     background 150ms ease,
