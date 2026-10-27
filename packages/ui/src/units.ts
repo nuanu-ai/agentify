@@ -48,16 +48,20 @@ const UNITS = [
 ];
 
 /**
- * A number that is not the tail of a word or of a longer number, one ordinary
- * space, and a unit that is a whole word: "5 mines" holds no unit.
+ * A number that is not the tail of a word or of a longer number, `space`, and
+ * a unit that is a whole word, as the source of a regular expression with the
+ * `u` flag: "5 mines" holds no unit. Its groups are the number, the space and
+ * the unit. The gallery's check reads a page's text by it, so the units it
+ * measures are the ones joined here.
  */
-const NUMBER_THEN_UNIT = new RegExp(
-  String.raw`(?<![\p{L}\p{N}_.,])(\d(?:[\d.,]*\d)?) (?=(?:${UNITS.join("|")})(?![\p{L}\p{N}_]))`,
-  "gu",
-);
+export const numberThenUnit = (space: string): string =>
+  String.raw`(?<![\p{L}\p{N}_.,])(\d(?:[\d.,]*\d)?)(${space})(${UNITS.join("|")})(?![\p{L}\p{N}_])`;
+
+const NUMBER_THEN_UNIT = new RegExp(numberThenUnit(" "), "gu");
 
 /** `text` with the space between each number and the unit after it made a no-break space. */
-export const keepUnits = (text: string): string => text.replace(NUMBER_THEN_UNIT, `$1${NO_BREAK}`);
+export const keepUnits = (text: string): string =>
+  text.replace(NUMBER_THEN_UNIT, `$1${NO_BREAK}$3`);
 
 /** A number and a unit the caller knows to be one, such as a shop's currency, joined as `keepUnits` joins them. */
 export const withUnit = (number: string | number, unit: string): string =>

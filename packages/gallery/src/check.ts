@@ -69,9 +69,14 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 import type { AxeResults, RunOptions } from "axe-core";
 import { chromium, type Page } from "playwright";
+// By its path: the package's React peers belong to the surfaces, and the
+// gallery draws each with the surface's own.
+import { numberThenUnit } from "../../ui/src/units.js";
 
 const GALLERY = fileURLToPath(new URL("../dist/index.html", import.meta.url));
 const FRAME = fileURLToPath(new URL("./frame.js", import.meta.url));
+/** The pairs the surfaces join, apart by whatever space a page's text holds between them. */
+const UNIT_AFTER_A_NUMBER = numberThenUnit(String.raw`\s+`);
 
 /**
  * The gallery's own devices, and the narrowest phone a page is still read on,
@@ -414,11 +419,12 @@ function runtsOf(): Runt[] {
  * Runs in the page, as source, under the same constraint as `overflowOf`. The
  * text nodes that stand side by side in one element, with nothing but a
  * comment between them, are read as one text: a component writes
- * `in {seconds} s` as three of them. The number's last character and the
- * unit's first are measured, and stand on different lines where their middles
- * are further apart than half the number's height.
+ * `in {seconds} s` as three of them. A pair is found by `pattern`, the
+ * source of the expression the surfaces join pairs by; the number's last
+ * character and the unit's first are measured, and stand on different lines
+ * where their middles are further apart than half the number's height.
  */
-function splitUnitsOf(): Split[] {
+function splitUnitsOf(pattern: string): Split[] {
   const runs: Text[][] = [];
   const texts = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   for (let node = texts.nextNode(); node !== null; node = texts.nextNode()) {
@@ -449,12 +455,10 @@ function splitUnitsOf(): Split[] {
       if (box.width <= 1 || box.height <= 1) continue;
     }
     const value = run.map((text) => text.data).join("");
-    for (const found of value.matchAll(
-      /(?<![\p{L}\p{N}_.,])\d(?:[\d.,]*\d)?(\s+)(?:ms|s|min|h|d|[Ss]econds?|[Mm]inutes?|[Hh]ours?|[Dd]ays?|[Ww]eeks?|[Mm]onths?|[Yy]ears?|USDC|USD|IDR|TB|GB|MB|KB|bytes|mm|cm|kg|g|ml)(?![\p{L}\p{N}_])/gu,
-    )) {
-      const space = found[0].search(/\s/);
+    for (const found of value.matchAll(new RegExp(pattern, "gu"))) {
+      const [, digits = "", space = ""] = found;
       // The number's last character and the unit's first, as positions in the run.
-      const ends = [found.index + space - 1, found.index + space + (found[1] ?? " ").length];
+      const ends = [found.index + digits.length - 1, found.index + digits.length + space.length];
       const drawn: DOMRect[] = [];
       for (const at of ends) {
         let offset = at;
@@ -556,7 +560,7 @@ try {
             `${id} at ${width} px leaves "${runt.alone}" alone on the last line of "${runt.words}"`,
           );
         }
-        for (const split of await page.evaluate(splitUnitsOf)) {
+        for (const split of await page.evaluate(splitUnitsOf, UNIT_AFTER_A_NUMBER)) {
           splitUnits.push(
             `${id} at ${width} px breaks "${split.words}" between the number and its unit`,
           );
