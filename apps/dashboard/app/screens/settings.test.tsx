@@ -472,7 +472,7 @@ describe("the payout wallet on the settings screen", () => {
       },
     });
 
-    expect(asCopied(html.slice(0, html.indexOf("<h2")))).toContain(SHAPED);
+    expect(asCopied(html.slice(0, html.indexOf('<h2 id="payout-wallet"')))).toContain(SHAPED);
     expect(html).toContain('action="/products?selling=pause"');
   });
 
@@ -703,7 +703,7 @@ describe("the payout contract buyers pay into", () => {
 
   it("shows a waiting wallet whole, first in its section, with the press that cancels it", () => {
     const html = walletPanel({ mode: "live", wallet: W, pending: WAITING });
-    const first = html.slice(0, html.indexOf("<h2"));
+    const first = html.slice(0, html.indexOf('<h2 id="payout-wallet"'));
 
     expect(asCopied(first)).toContain(WAITING);
     expect(first).toContain('action="/settings/payout-wallet/cancel"');
