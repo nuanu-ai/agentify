@@ -174,7 +174,7 @@ input {
 
 .search-results a:hover,
 .search-results a:focus-visible,
-.search-results [aria-selected="true"] a {
+.search-results a[aria-selected="true"] {
   background: var(--accent-soft);
 }
 

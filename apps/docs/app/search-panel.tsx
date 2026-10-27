@@ -168,29 +168,26 @@ export default function SearchPanel({ onClose }: Close) {
         onKeyDown={onInputKey}
       />
       <div className="search-results" id="search-results" role="listbox" aria-label="Results">
+        {/* Each result is the link itself, so no control stands inside another. */}
         {results.map((hit, at) => (
-          <div
+          <Link
             key={hit.id}
             id={`search-result-${at}`}
             role="option"
-            tabIndex={-1}
             aria-selected={at === active}
+            to={inside(hit.id)}
+            onClick={() => {
+              focusWithin(hit.id);
+              onClose(false);
+            }}
+            tabIndex={-1}
           >
-            <Link
-              to={inside(hit.id)}
-              onClick={() => {
-                focusWithin(hit.id);
-                onClose(false);
-              }}
-              tabIndex={-1}
-            >
-              {hit.titles.length > 0 ? (
-                <span className="search-path">{hit.titles.join(" › ")}</span>
-              ) : null}
-              <span className="search-title">{hit.title}</span>
-              <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
-            </Link>
-          </div>
+            {hit.titles.length > 0 ? (
+              <span className="search-path">{hit.titles.join(" › ")}</span>
+            ) : null}
+            <span className="search-title">{hit.title}</span>
+            <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
+          </Link>
         ))}
       </div>
       <p className="search-none" role="status">
