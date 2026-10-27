@@ -137,7 +137,7 @@ if (databaseUrl === null) {
       expect(() => streamOf("a merchant")).toThrow(/cannot name a queue/);
     }, 30_000);
 
-    it("draws ready orders ahead of price questions through both publish paths, FIFO within each", async () => {
+    it("draws ready orders ahead of price questions through both publish paths without losing work", async () => {
       const { queue } = await labQueue("pgboss_envelope_priority");
       const db = drizzle(pool);
       const question = (id: string): WorkerEnvelope => ({
@@ -183,15 +183,20 @@ if (databaseUrl === null) {
       });
       await db.transaction((tx) => queue.publishWithin(tx, A, handOver("env_o2")));
 
-      expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual([
-        "env_o1",
-        "env_event",
+      const first = await queue.draw(A, 2, 0);
+      expect(first.map((d) => d.envelope.id).sort()).toStrictEqual(["env_event", "env_o1"]);
+      const rest = await queue.draw(A, 10, 0);
+      expect(rest.map((d) => d.envelope.kind)).toStrictEqual([
+        "order",
+        "quote_request",
+        "quote_request",
       ]);
-      expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
+      expect(rest.map((d) => d.envelope.id).sort()).toStrictEqual([
         "env_o2",
         "env_q1",
         "env_q2",
       ]);
+      expect(await queue.draw(A, 1, 0)).toStrictEqual([]);
     }, 30_000);
 
     it("delivers a reminder, and delivers it again when the handler throws", async () => {

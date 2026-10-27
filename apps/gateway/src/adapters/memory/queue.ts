@@ -224,6 +224,9 @@ export class MemoryQueue implements Queue {
 
   #take(merchantId: string, max: number): DrawnEnvelope[] {
     const stream = this.#streamOf(merchantId);
+    stream.ready.sort(
+      (a, b) => Number(a.kind === "quote_request") - Number(b.kind === "quote_request"),
+    );
     const drawn = stream.ready.splice(0, Math.max(max, 0));
     return drawn.map((envelope) => {
       this.#handles += 1;

@@ -112,6 +112,7 @@ export class PgBossQueue implements Queue {
     const sent = await this.#boss.send(stream, envelope as unknown as object, {
       // Retries are the order machine's to decide, so the queue keeps none.
       retryLimit: 0,
+      priority: envelope.kind === "quote_request" ? 0 : 1,
       ...(afterMs === undefined || afterMs <= 0
         ? {}
         : { startAfter: new Date(Date.now() + afterMs) }),
@@ -146,6 +147,7 @@ export class PgBossQueue implements Queue {
     const stream = await this.#stream(merchantId);
     const sent = await this.#boss.send(stream, envelope as unknown as object, {
       retryLimit: 0,
+      priority: envelope.kind === "quote_request" ? 0 : 1,
       ...(afterMs === undefined || afterMs <= 0
         ? {}
         : { startAfter: new Date(Date.now() + afterMs) }),
@@ -420,6 +422,11 @@ export class PgBossQueue implements Queue {
     const jobs = await this.#boss.fetch<WorkerEnvelope>(stream, {
       batchSize: Math.max(max, 1),
     });
+    // pg-boss selects by priority, but UPDATE RETURNING does not order the
+    // selected batch. Keep orders ahead of questions in the returned batch too.
+    jobs.sort(
+      (a, b) => Number(a.data.kind === "quote_request") - Number(b.data.kind === "quote_request"),
+    );
     return jobs.map((job) => ({ envelope: job.data, handle: job.id }));
   }
 
