@@ -3723,6 +3723,7 @@ describe("a shop priced in another currency than US dollars", () => {
 
       const said = readable(saved.html);
       expect(said).toContain("Rate saved: 18,000 IDR per US dollar");
+      expect(saved.html).toContain("18,000\u00a0IDR per US dollar");
       expect(said).toContain("your shop sells in EUR");
       expect(await pricesOnSale(running)).toEqual([]);
     });
