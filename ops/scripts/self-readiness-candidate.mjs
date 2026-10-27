@@ -125,8 +125,15 @@ const decodeHeading = (value) =>
     .replace(/\s+/g, " ")
     .trim();
 
+// A page's own headings, the ones its Markdown carries. The site's frame around
+// the page, such as the consent banner's heading, is not the page's content and
+// stays out of the Markdown, so only what <main> holds is read.
 const headingsFromHtml = (html) =>
-  [...html.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi)].map((match) => decodeHeading(match[1]));
+  [
+    ...(/<main\b[^>]*>([\s\S]*?)<\/main>/i.exec(html)?.[1] ?? "").matchAll(
+      /<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/gi,
+    ),
+  ].map((match) => decodeHeading(match[1]));
 
 const assertHeaderToken = (artifact, header, token, label) => {
   const value = artifact.headers[header] ?? "";
