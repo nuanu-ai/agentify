@@ -73,5 +73,4 @@ describe("deciding whether to deliver an order again", () => {
     expect(onTheDot).toStrictEqual({ retry: false, reason: "past_deadline" });
     expect(justInside).toStrictEqual({ retry: true, attempt: 2, delayMs: 1_000 });
   });
-
 });
