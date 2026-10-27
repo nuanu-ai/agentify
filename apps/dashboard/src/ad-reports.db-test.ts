@@ -1148,6 +1148,7 @@ if (databaseUrl === null) {
       clock = firstCardAt + DAY;
       const { post, received } = tracker(200);
 
+      const loggedBefore = told.length;
       expect(await report(post)).toBe(false);
 
       expect(received).toStrictEqual([]);
@@ -1159,8 +1160,9 @@ if (databaseUrl === null) {
         event_at: new Date(firstCardAt),
         settled_at: new Date(clock),
       });
-      expect(told).toHaveLength(1);
-      expect(told[0]).toMatch(/given up/);
+      const reported = told.slice(loggedBefore);
+      expect(reported).toHaveLength(1);
+      expect(reported[0]).toMatch(/given up/);
     });
 
     it("dates the store report, and so its day of tries, by the first publication, not a republish's, and the card keeps that time", async () => {
