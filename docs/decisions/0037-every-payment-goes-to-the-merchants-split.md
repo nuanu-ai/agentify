@@ -56,8 +56,12 @@ recorded as ADR-0038 says.
 
 A payout is a transaction anybody may send, the merchant included, for gas
 alone: a batch through Multicall3 `0xcA11bde05977b3631167028862bE2a173976CA11`
-that creates each split with no code yet, distributes its USDC and withdraws the
-merchant's share, for at most twenty splits. A merchant's covers the split of
+that creates each split with no code yet, distributes its USDC, withdraws the
+merchant's share and last the commission wallet's, for at most twenty splits.
+The product owner judged a second transaction for the commission unacceptable
+(2026-10-27), so the merchant's own payout pays Agentify too; that withdrawal
+may fail alone, and a frozen or empty commission balance never holds back the
+merchant's share. A merchant's covers the split of
 their wallet in force and every split an order of theirs was paid to; the
 operator's covers every split recorded on the network, in parts of twenty,
 since any of them may hold money, at the price of gas for those that hold

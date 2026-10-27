@@ -533,9 +533,12 @@ from the revision `current` names.
 ## Collecting the commission
 
 Agentify's commission ([Money](https://agentify.ad/docs/money#what-we-take))
-stays credited to its commission wallet in the shared 0xSplits warehouse until
-somebody pays the splits out; nothing does that on a timer. The
-operator's workspace shows the payout on its Money page, under the splits, at
+arrives with every merchant's payout: the transaction a merchant sends from
+Settings withdraws their share and then the commission wallet's whole credit in
+the 0xSplits warehouse, so the commission reaches the Safe with no transaction
+of ours. What waits in a split nobody pays out stays there, and nothing pays
+it out on a timer; that is what the operator's payout is for. The operator's
+workspace shows it on its Money page, under the splits, at
 `/dashboard/admin/money`: for every split recorded on the channel's network,
 the transactions that create each split if it has no code yet, distribute it,
 withdraw each merchant's share to their wallet and, last in each, withdraw the
@@ -551,7 +554,7 @@ own wallets in the same transaction. On TEST the same page, on the test
 channel's workspace, shows Base Sepolia transactions whose commission goes to
 the test channel's wallet. A
 payout costs gas whether or not a split holds anything, so it is worth sending
-when the commission credited covers it (`docs/research/47-commission-in-the-product.md`,
+when what waits in the splits covers it (`docs/research/47-commission-in-the-product.md`,
 «Выплата вручную»).
 
 ## Backups
