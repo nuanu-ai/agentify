@@ -42,19 +42,12 @@ import { readRefusal } from "./refusal-codes.js";
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
   readonly #edge: PaymentEdge;
-  readonly #now: () => number;
   readonly reconcile?: (request: PaymentRecoveryRequest) => Promise<PaymentRecoveryOutcome>;
 
-  constructor(
-    client: FacilitatorClient,
-    edge: PaymentEdge,
-    recovery?: Eip3009Recovery,
-    now = Date.now,
-  ) {
+  constructor(client: FacilitatorClient, edge: PaymentEdge, recovery?: Eip3009Recovery) {
     this.#client = client;
     this.#edge = edge;
     if (recovery) this.reconcile = (request) => recovery.reconcile(request);
-    this.#now = now;
   }
 
   async verify(charge: Charge): Promise<VerifyOutcome> {
@@ -87,7 +80,7 @@ export class X402Facilitator implements Facilitator {
     let authorization: ReturnType<typeof authorizationOf>;
     try {
       authorization = authorizationOf(payload, requirements);
-      const now = BigInt(Math.floor(this.#now() / 1000));
+      const now = BigInt(Math.floor(Date.now() / 1000));
       const expires = BigInt(authorization.validBefore);
       const asked = requirements.maxTimeoutSeconds;
       // Signing again fixes both cases, and the offer still stands: answering
@@ -117,7 +110,7 @@ export class X402Facilitator implements Facilitator {
     // lands after this moment, give or take the clocks.
     const recovery: PaymentRecoveryContext = {
       ...authorization,
-      notBefore: String(Math.floor(this.#now() / 1000) - CLOCK_SKEW_SECONDS),
+      notBefore: String(Math.floor(Date.now() / 1000) - CLOCK_SKEW_SECONDS),
     };
 
     let answered: VerifyResponse;

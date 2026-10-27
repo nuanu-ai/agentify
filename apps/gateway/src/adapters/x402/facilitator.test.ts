@@ -15,7 +15,7 @@ import {
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PaymentEdge } from "../../http/x402.js";
 import type { Charge } from "../../ports/facilitator.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../../split/networks.js";
@@ -27,6 +27,12 @@ import { type ChainReader, Eip3009Recovery } from "./recovery.js";
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 const PAYER = "0x0000000000000000000000000000000000000002";
 const NOW_SECONDS = 1_800_000_000;
+beforeEach(() => {
+  vi.spyOn(Date, "now").mockReturnValue(NOW_SECONDS * 1000);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 const signed = (payTo = PAY_TO) => ({
   signature: `0x${"a".repeat(130)}`,
   authorization: {
@@ -53,7 +59,7 @@ const chain: ChainReader = {
 };
 const recovery = new Eip3009Recovery(() => chain);
 const facilitatorFor = (client: FacilitatorClient, paymentEdge: PaymentEdge, evidence = recovery) =>
-  new X402Facilitator(client, paymentEdge, evidence, () => NOW_SECONDS * 1000);
+  new X402Facilitator(client, paymentEdge, evidence);
 
 const edge = new PaymentEdge({
   payment: {
@@ -380,7 +386,7 @@ describe("verifying a payment", () => {
     };
     try {
       const client = new Answering();
-      const facilitator = new X402Facilitator(client, edge, undefined, () => NOW_SECONDS * 1000);
+      const facilitator = new X402Facilitator(client, edge, undefined);
       expect(await facilitator.verify(charge(honest()))).toMatchObject({
         verified: true,
         recovery: { notBefore: String(NOW_SECONDS - 30) },
@@ -398,7 +404,6 @@ describe("verifying a payment", () => {
       new Answering({ settle: new Error("settlement reply was lost") }),
       edge,
       undefined,
-      () => NOW_SECONDS * 1000,
     );
     expect(await facilitator.verify(charge(honest()))).toMatchObject({
       verified: true,

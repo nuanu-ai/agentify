@@ -1,8 +1,14 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { encodePaymentSignatureHeader } from "@x402/core/http";
-import { encodeAbiParameters, encodeEventTopics, numberToHex, parseAbi } from "viem";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  encodeAbiParameters,
+  encodeEventTopics,
+  encodeFunctionData,
+  numberToHex,
+  parseAbi,
+} from "viem";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PaymentEdge } from "../../http/x402.js";
 import { type PaymentRecoveryContext, RecoveryFailure } from "../../ports/facilitator.js";
 import { X402Facilitator } from "./facilitator.js";
@@ -165,7 +171,8 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       },
       getSupported: async () => ({ kinds: [], extensions: [], signers: {} }),
     };
-    const first = new X402Facilitator(client, edge, undefined, () => 1_000_000);
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const first = new X402Facilitator(client, edge);
     const accepted = await first.verify(charge);
     expect(accepted).toMatchObject({ verified: true, recovery: { notBefore: "970" } });
     expect(await first.settle(charge)).toMatchObject({ settled: "unknown" });
@@ -310,6 +317,7 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     "different nonce",
     "intervening log",
     "non-adjacent log index",
+    "intervening full entry with a distinct log index",
     "duplicate use",
     "wrong receipt hash",
   ])("keeps %s evidence unknown", async (fault) => {
@@ -351,6 +359,8 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
         }) as string[],
       };
     if (fault === "intervening log") logs.splice(1, 0, { ...event("Transfer", 5), address: PAYER });
+    if (fault === "intervening full entry with a distinct log index")
+      logs.splice(1, 0, { ...event("Transfer", 99), address: PAYER });
     if (fault === "non-adjacent log index") logs[1] = event("Transfer", 6);
     if (fault === "duplicate use") logs.push(event("AuthorizationUsed", 6));
     if (fault === "wrong receipt hash") chain.receiptValue.transactionHash = `0x${"d".repeat(64)}`;
@@ -429,29 +439,25 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       transaction: TX,
     });
   });
-
-  it("requires the next full receipt entry as well as the next log index", async () => {
-    const chain = new Chain();
-    chain.receiptValue = {
-      ...chain.receiptValue,
-      logs: [
-        event("AuthorizationUsed", 4),
-        { ...event("Transfer", 99), address: PAYER },
-        event("Transfer", 5),
-      ],
-    };
-    expect(await new Eip3009Recovery(() => chain).reconcile({ context: CONTEXT })).toMatchObject({
-      settled: "unknown",
-    });
-  });
 });
 
 /**
  * The chain above, served over JSON-RPC on this machine the way a public Base
  * endpoint serves it: log queries are refused, as Base mainnet's refuses them.
  */
-async function serve(chain: Chain, status = 200): Promise<{ url: string; asked: string[] }> {
+async function serve(
+  chain: Chain,
+  status = 200,
+): Promise<{ url: string; asked: string[]; authorizations: unknown[][] }> {
   const asked: string[] = [];
+  const authorizations: unknown[][] = [];
+  const expectedAuthorization = encodeFunctionData({
+    abi: parseAbi([
+      "function authorizationState(address authorizer, bytes32 nonce) view returns (bool)",
+    ]),
+    functionName: "authorizationState",
+    args: [PAYER, NONCE],
+  });
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => {
@@ -500,6 +506,17 @@ async function serve(chain: Chain, status = 200): Promise<{ url: string; asked: 
           });
         }
         case "eth_call": {
+          authorizations.push(params);
+          const [call, block] = params;
+          if (
+            call.to?.toLowerCase() !== ASSET.toLowerCase() ||
+            call.data !== expectedAuthorization ||
+            !/^0x[0-9a-f]+$/i.test(block) ||
+            BigInt(block) > chain.finalized
+          )
+            return reply({
+              error: { code: -32602, message: "not this saved authorization at a finalized block" },
+            });
           const used = await chain.authorizationState(null, at(params[1]));
           return reply({ result: `0x${(used ? "1" : "0").padStart(64, "0")}` });
         }
@@ -516,11 +533,16 @@ async function serve(chain: Chain, status = 200): Promise<{ url: string; asked: 
   await new Promise<void>((resolve) => server.once("listening", resolve));
   servers.push(server);
   const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}/v2/provider-key-123?key=provider-key-456`, asked };
+  return {
+    url: `http://127.0.0.1:${port}/v2/provider-key-123?key=provider-key-456`,
+    asked,
+    authorizations,
+  };
 }
 
 const servers: Server[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))),
   );
@@ -533,7 +555,7 @@ describe("recovering through a JSON-RPC endpoint", () => {
 
   it("finds a transfer through an endpoint that refuses log queries", async () => {
     const chain = new Chain();
-    const { url, asked } = await serve(chain);
+    const { url, asked, authorizations } = await serve(chain);
     const { recovery } = await recoveryOn("eip155:84532", url);
     expect(await recovery?.reconcile({ context: CONTEXT })).toStrictEqual({
       settled: true,
@@ -541,6 +563,20 @@ describe("recovering through a JSON-RPC endpoint", () => {
       executedAt: 1_000_000,
     });
     expect(asked).not.toContain("eth_getLogs");
+    expect(authorizations.length).toBeGreaterThan(0);
+    expect(authorizations[0]).toEqual([
+      {
+        to: ASSET,
+        data: encodeFunctionData({
+          abi: parseAbi([
+            "function authorizationState(address authorizer, bytes32 nonce) view returns (bool)",
+          ]),
+          functionName: "authorizationState",
+          args: [PAYER, NONCE],
+        }),
+      },
+      numberToHex(chain.finalized),
+    ]);
   });
 
   it("says at start-up and on every poll that the endpoint serves another chain, and how to fix it", async () => {
