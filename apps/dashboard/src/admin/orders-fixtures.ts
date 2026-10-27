@@ -63,7 +63,8 @@ export const aPage = (change: Partial<OrdersPage> = {}): OrdersPage => ({
   counts: counts(),
   rows: [],
   newer: 0,
-  earlier: null,
+  previous: null,
+  next: null,
   merchants: [EXAMPLE_MERCHANT],
   ...change,
 });
