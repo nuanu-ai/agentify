@@ -69,7 +69,6 @@ import {
   payoutSplitFor,
   payoutSplitNetworkOf,
   randomIds,
-  setPayoutWallet,
   systemClock,
 } from "@agentify/gateway";
 import type { CardInput } from "@nuanu-ai/agentify-contracts";
@@ -313,7 +312,10 @@ async function main(): Promise<void> {
     const merchantId = randomIds("mch");
     await store.addMerchant({ id: merchantId, name: "the split smoke's test merchant" }, now);
     await store.setServiceName(merchantId, "Agentify split smoke", now);
-    await setPayoutWallet(store, booted.config.payoutSplit, merchantId, merchantWallet, now);
+    await booted.gateway.setPayoutWallet(merchantId, merchantWallet, {
+      kind: "signed_in",
+      email: "owner@example.com",
+    });
     const { secret } = await issueKey(
       store,
       randomIds,

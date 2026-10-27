@@ -15,7 +15,7 @@ import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { MemoryQueue } from "./adapters/memory/queue.js";
 import { MemoryStore } from "./adapters/memory/store.js";
 import { Gateway } from "./app/gateway.js";
-import { keyDigest, setPayoutWallet, setServiceName } from "./app/merchants.js";
+import { keyDigest, setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { widestChallengeOn } from "./http/x402.js";
@@ -53,7 +53,6 @@ async function aGatewayOnAPort() {
   // Without the name or the payout address the first publish would be refused.
   await store.addMerchant({ id: "mch_the_walk", name: "The merchant of this walk" }, Date.now());
   await setServiceName(store, "mch_the_walk", "The walk's own shop", Date.now());
-  await setPayoutWallet(store, config.payoutSplit, "mch_the_walk", THE_WALKS_WALLET, Date.now());
   await store.addKey(
     {
       id: "mk_the_walk",
@@ -76,6 +75,10 @@ async function aGatewayOnAPort() {
     widestChallenge: widestChallengeOn(config),
   });
   await gateway.start();
+  await gateway.setPayoutWallet("mch_the_walk", THE_WALKS_WALLET, {
+    kind: "signed_in",
+    email: "owner@example.com",
+  });
 
   // Bound to the address it is called at: a wildcard bind can share its port
   // number with another process's server on 127.0.0.1, which then gets the calls.

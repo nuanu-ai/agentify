@@ -29,7 +29,6 @@ import { Pool } from "pg";
 import { PgBoss } from "pg-boss";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Gateway } from "../../app/gateway.js";
-import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
 import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
@@ -238,13 +237,10 @@ if (databaseUrl === null) {
       await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
       // Outside the sandbox a card is on sale only if its merchant has a wallet,
       // and this config names a real facilitator.
-      await setPayoutWallet(
-        store,
-        testConfig().payoutSplit,
-        A,
-        "0x0000000000000000000000000000000000000001",
-        now,
-      );
+      await gateway.setPayoutWallet(A, "0x0000000000000000000000000000000000000001", {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
       // And a name, because a payment request names its seller; without one
       // nothing is on sale.
       await store.setServiceName(A, "The merchant of this suite", now);

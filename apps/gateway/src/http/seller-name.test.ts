@@ -13,7 +13,6 @@
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
-import { setServiceName } from "../app/merchants.js";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import { type Harness, harness, type Served, serve, statusPathOf } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
@@ -474,7 +473,7 @@ const soldUnderNoName = async (
   await setSellerName(served, key, "A name that was pulled");
   const itemId = await publish(served, key, cardFor(merchantItemId, "A room"));
 
-  await setServiceName(harnessed.store, merchantId, null, harnessed.now());
+  await harnessed.store.setServiceName(merchantId, null, harnessed.now());
   return { itemId, key, merchantId };
 };
 

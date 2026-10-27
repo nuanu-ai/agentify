@@ -183,6 +183,24 @@ describe("what this gateway checks before it sends a document", () => {
   });
 
   it("sends the documents it writes as they stand", () => {
+    const parcel = publicCardOf(
+      CardSchema.parse({
+        merchant_item_id: "beans-1kg",
+        title: "Coffee beans, one kilogram",
+        description: "Roasted in Bali this week and sent by courier.",
+        price: { amount: "18.00", currency: "USD" },
+        fulfillment: "ship",
+        ship_within_seconds: 172_800,
+        price_check: "handler",
+      }),
+      {
+        id: "itm_beans",
+        purchase_url: "https://agentify.ad/x402/itm_beans/purchase",
+        as_of: "2026-10-09T09:00:00.000Z",
+        seller: { name: "A roastery", site: "https://roastery.example" },
+      },
+    );
+    expect(sendable(CatalogPageSchema, { items: [parcel] })).toBe(true);
     expect(sendable(CatalogPageSchema, page)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, status)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, collected)).toBe(true);

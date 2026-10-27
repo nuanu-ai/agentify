@@ -27,13 +27,7 @@ import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { paymentChainOn } from "../adapters/x402/payment-chain.js";
 import { Gateway } from "../app/gateway.js";
-import {
-  grantLiveApproval,
-  issueKey,
-  keyDigest,
-  setPayoutWallet,
-  setServiceName,
-} from "../app/merchants.js";
+import { grantLiveApproval, issueKey, keyDigest, setServiceName } from "../app/merchants.js";
 import type { Runtime } from "../app/runtime.js";
 import { type GatewayConfig, loadConfig } from "../config.js";
 import { buildApp } from "../http/server.js";
@@ -189,7 +183,13 @@ export async function harness(
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
     const wallet = aSeededWallet();
-    await setPayoutWallet(store, config.payoutSplit, made.id, wallet, now);
+    // Notifications observed by a test begin after this fixture is ready.
+    const announcedBeforeSeed = announcer.announced.length;
+    await gateway.setPayoutWallet(made.id, wallet, {
+      kind: "signed_in",
+      email: "owner@example.com",
+    });
+    announcer.announced.splice(announcedBeforeSeed);
     // A live gateway sells only for approved merchants. Approval is granted
     // here rather than defaulted, so merchants made any other way stay
     // unapproved.

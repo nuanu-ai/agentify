@@ -27,7 +27,7 @@ import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { X402Facilitator } from "../adapters/x402/facilitator.js";
 import { Gateway } from "../app/gateway.js";
-import { setPayoutWallet, setServiceName } from "../app/merchants.js";
+import { setServiceName } from "../app/merchants.js";
 import { nobodyAnnounces } from "../ports/announcer.js";
 import { randomIds } from "../ports/clock.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
@@ -225,7 +225,10 @@ async function aGatewayPayingThrough(
   };
   await store.addMerchant({ id: merchant.id, name: merchant.name }, clock());
   await setServiceName(store, merchant.id, merchant.name, clock());
-  await setPayoutWallet(store, config.payoutSplit, merchant.id, merchant.wallet, clock());
+  await gateway.setPayoutWallet(merchant.id, merchant.wallet, {
+    kind: "signed_in",
+    email: "owner@example.com",
+  });
   // As though their worker had just polled: nothing is sold for a seller
   // whose process is silent.
   await store.noteContact(merchant.id, clock());
@@ -737,13 +740,10 @@ async function deliveredThenTheWalletMoved() {
     order_id: string;
     status_url: string;
   };
-  await setPayoutWallet(
-    shop.store,
-    shop.config.payoutSplit,
-    shop.merchant.id,
-    MOVED_TO,
-    shop.now(),
-  );
+  await shop.gateway.setPayoutWallet(shop.merchant.id, MOVED_TO, {
+    kind: "signed_in",
+    email: "owner@example.com",
+  });
   const paidTo = payToIn(challenge);
   expect(network.charged).toStrictEqual([paidTo]);
   expect(await paidNowFor(shop.served, itemId)).not.toBe(paidTo);
@@ -889,13 +889,10 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
       );
       const orderId = (paid.body as { order_id: string }).order_id;
       await reaching(shop, orderId, "expired");
-      await setPayoutWallet(
-        shop.store,
-        shop.config.payoutSplit,
-        shop.merchant.id,
-        MOVED_TO,
-        shop.now(),
-      );
+      await shop.gateway.setPayoutWallet(shop.merchant.id, MOVED_TO, {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
       await shop.gateway.answerOrder(shop.merchant.id, orderId, {
         delivered: { access_code: "SESAME" },
       });
@@ -963,13 +960,10 @@ describe("a payment presented to get back a paid order", () => {
         );
         const paidTo = (await harnessed.store.orderById(orderId))?.payTo;
         if (moved) {
-          await setPayoutWallet(
-            harnessed.store,
-            harnessed.runtime.config.payoutSplit,
-            harnessed.merchant.id,
-            MOVED_TO,
-            harnessed.now(),
-          );
+          await harnessed.gateway.setPayoutWallet(harnessed.merchant.id, MOVED_TO, {
+            kind: "signed_in",
+            email: "owner@example.com",
+          });
         }
         const claim = harnessed.store.claimPayment.bind(harnessed.store);
         const checked = new Promise<void>((resolve) => {
@@ -1421,13 +1415,10 @@ describe("goods made for a purchase whose charge did not go through", () => {
     const sale = await deliveredUnpaid();
     try {
       expect(sale.reason?.message).toMatch(/changed where they are paid/i);
-      await setPayoutWallet(
-        sale.shop.store,
-        sale.shop.config.payoutSplit,
-        sale.shop.merchant.id,
-        MOVED_TO,
-        sale.shop.now(),
-      );
+      await sale.shop.gateway.setPayoutWallet(sale.shop.merchant.id, MOVED_TO, {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
 
       const again = await present(
         sale.shop.served,

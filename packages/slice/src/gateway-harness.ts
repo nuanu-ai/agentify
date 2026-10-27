@@ -32,7 +32,6 @@ import {
   randomIds,
   SEEDED_MERCHANT,
   seedSandboxKey,
-  setPayoutWallet,
   systemClock,
   widestChallengeOn,
 } from "@agentify/gateway";
@@ -225,13 +224,10 @@ export async function bootGateway(
     // gateway rather than to the merchants selling on it; writing it onto a
     // merchant there would pay their sales to the operator.
     if (config.payment.payTo !== null) {
-      await setPayoutWallet(
-        store,
-        config.payoutSplit,
-        SEEDED_MERCHANT.id,
-        config.payment.payTo,
-        systemClock(),
-      );
+      await gateway.setPayoutWallet(SEEDED_MERCHANT.id, config.payment.payTo, {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
     }
 
     server.on("request", buildApp(gateway));
