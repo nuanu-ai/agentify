@@ -335,9 +335,9 @@ you closed fulfillment, and Agentify confirms no refund.
 `deliver`, `refuse`, `accept` and `close` hand their failures back rather
 than throwing them, unless the client was built with no address: `ok` is
 false, and one `error` beside it carries a code to branch on, a sentence a
-person can read, and `retryable`. Ten codes are promised to mean one thing
-each — seven sent by us, and three the tools produce when no answer they could
-read came back. The set is open beyond those ten, so a case nobody anticipated
+person can read, and `retryable`. {{Order-call-codes}} codes are promised to mean one thing
+each — {{gateway-order-call-codes}} sent by us, and {{tool-order-call-codes}} the tools produce when no answer they could
+read came back. The set is open beyond those {{order-call-codes}}, so a case nobody anticipated
 reaches you in its own words.
 
 | Code | When it arrives | Repeating could change it |

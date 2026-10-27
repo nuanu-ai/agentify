@@ -1,3 +1,11 @@
+import { readFileSync } from "node:fs";
+import { inWords } from "@agentify/core/published";
+import { ORDER_CALL_ERROR_CODES } from "@nuanu-ai/agentify-contracts";
+import {
+  ANSWER_NOT_UNDERSTOOD,
+  CALL_DID_NOT_REACH_US,
+  OUTCOME_UNKNOWN,
+} from "../../../packages/sdk/src/client.js";
 /**
  * What a writer is promised when a page names a number the build writes in:
  * it reaches the reader spelled the way the sentence around it needs, and a
@@ -6,7 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { writtenIn } from "./build-values.js";
+import { withBuildValues, writtenIn } from "./build-values.js";
 
 const VALUES = {
   "price-holds": { ms: 30_000, unit: "second" },
@@ -125,4 +133,20 @@ describe("the build stops", () => {
       /^orders\.md: \{\{nothing\}\}/,
     );
   });
+});
+
+it("renders the orders page code counts from the gateway and SDK vocabularies", () => {
+  const source = readFileSync(new URL("../orders.md", import.meta.url), "utf8");
+  const paragraph = source.split(/\n\s*\n/).find((part) => part.includes("{{Order-call-codes}}"));
+  expect(paragraph, "the actual orders page must state its code counts").toBeDefined();
+  const tools = [ANSWER_NOT_UNDERSTOOD, CALL_DID_NOT_REACH_US, OUTCOME_UNKNOWN];
+  for (const [token, count] of [
+    ["order-call-codes", ORDER_CALL_ERROR_CODES.length + tools.length],
+    ["gateway-order-call-codes", ORDER_CALL_ERROR_CODES.length],
+    ["tool-order-call-codes", tools.length],
+  ] as const) {
+    expect(withBuildValues(`{{${token}}}`)).toBe(inWords(count));
+    expect(withBuildValues(paragraph ?? "").toLowerCase()).toContain(inWords(count));
+  }
+  expect(withBuildValues(paragraph ?? "")).not.toContain("{{");
 });
