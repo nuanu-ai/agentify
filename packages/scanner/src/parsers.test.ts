@@ -628,12 +628,19 @@ describe("a robots.txt as large as the fetch admits", () => {
     for (const body of [
       `User-agent: *\n${"Allow: *aaaaab\n".repeat(30_000)}Disallow: /\n`,
       `User-agent: *\n${"Disallow: /x\n".repeat(10_000)}${"Allow: *b\n".repeat(8_000)}`,
-      `User-agent: *\n${"Allow: *b\n".repeat(8_000)}Disallow: /x${"*".repeat(2_000)}\n`,
     ]) {
       const decision = decide(body, `/${"a".repeat(1_500)}`);
       expect(decision.allowed).toBeUndefined();
       expect(decision.ms).toBeLessThan(budgetMs);
     }
+    const path = `/${"a".repeat(4_000)}`;
+    const shortRules = `User-agent: *\n${"Allow: *b\n".repeat(1_000)}`;
+    expect(decide(shortRules, path).allowed).toBe(true);
+    const withLongRule = `${shortRules}Disallow: /x${"*".repeat(250_000)}\n`;
+    expect(Buffer.byteLength(withLongRule)).toBeLessThan(fetchCap);
+    const limited = decide(withLongRule, path);
+    expect(limited.allowed).toBeUndefined();
+    expect(limited.ms).toBeLessThan(budgetMs);
   });
 
   it("is decided for every page of the largest real set of wildcard rules measured", () => {
