@@ -22,6 +22,7 @@ import {
   journalLimitOf,
   settledPress,
 } from "../../ports/journal.js";
+import { pageIn } from "../../ports/paging.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
   type AnalyticsOf,
@@ -620,14 +621,18 @@ export class MemoryStore implements Store {
 
   async journal(query: JournalQuery): Promise<JournalPage> {
     const matching = this.#journal.filter((row) => answersQuery(row, query)).reverse();
-    const before = query.before;
-    const from = before === undefined ? matching : matching.filter((row) => row.sequence < before);
-    const rows = from.slice(0, journalLimitOf(query));
-    const last = rows.at(-1);
+    const page = pageIn(
+      matching,
+      query.from,
+      journalLimitOf(query),
+      (row, sequence) => sequence - row.sequence,
+    );
     return {
-      rows,
+      rows: page.rows,
       total: matching.length,
-      next: last !== undefined && from.length > rows.length ? last.sequence : null,
+      newer: page.newer,
+      previous: page.previous?.sequence ?? null,
+      next: page.next?.sequence ?? null,
     };
   }
 

@@ -374,7 +374,7 @@ describe("the Journal", () => {
       all.indexOf(`Ended every session of ${MERCHANT}`),
     );
     expect(all).toContain(OPERATOR);
-    expect(all).toContain("2 of 2 shown");
+    expect(all).toContain("Showing 1–2 of 2");
 
     const sessions = readable((await operator.get("/admin/journal?kind=sessions")).html);
     expect(sessions).toContain(`Ended every session of ${MERCHANT}`);
@@ -407,7 +407,7 @@ describe("the Journal", () => {
     const rowsIn = (html: string) => readable(html).match(/Row \d{2}/g) ?? [];
     const way = (html: string, rel: "prev" | "next") => {
       const link = new RegExp(
-        `<a class="pager-step ${rel}" href="[^"]*(/admin/journal[^"]*)"`,
+        `<a class="pager-step ${rel}"[^>]*href="[^"]*(/admin/journal[^"]*)"`,
       ).exec(html);
       return link?.[1]?.replaceAll("&amp;", "&") ?? null;
     };

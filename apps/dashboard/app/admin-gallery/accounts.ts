@@ -180,7 +180,9 @@ const journalOf = (fields: Partial<JournalView>): JournalView => ({
   unsearched: null,
   lines: LINES,
   total: LINES.length,
-  before: null,
+  newer: 0,
+  from: null,
+  previous: null,
   next: null,
   ...fields,
 });

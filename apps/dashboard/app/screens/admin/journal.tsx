@@ -10,7 +10,7 @@
 
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
-import type { JournalLineView, JournalView } from "../../../src/admin/accounts.js";
+import type { JournalFrom, JournalLineView, JournalView } from "../../../src/admin/accounts.js";
 import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
 import { shortened } from "../../components/copy.js";
 import { ListEmpty } from "../../components/list.js";
@@ -190,11 +190,12 @@ const KIND_LABELS: Readonly<Record<JournalView["kind"], string>> = {
   forgotten: "Forgotten accounts",
 };
 
-const addressOf = (kind: JournalView["kind"], q: string, before: number | null): string => {
+const addressOf = (kind: JournalView["kind"], q: string, from: JournalFrom | null): string => {
   const query = new URLSearchParams();
   if (kind !== "all") query.set("kind", kind);
   if (q !== "") query.set("q", q);
-  if (before !== null) query.set("before", String(before));
+  if (from !== null && "after" in from) query.set("after", String(from.after));
+  if (from !== null && "before" in from) query.set("before", String(from.before));
   const search = query.toString();
   return search === "" ? "/admin/journal" : `/admin/journal?${search}`;
 };
@@ -257,41 +258,49 @@ export function JournalScreen({ view }: Readonly<{ view: JournalView }>) {
         </ListEmpty>
       ) : view.lines.length === 0 ? (
         <ListEmpty>
-          {view.before !== null
-            ? "No older rows."
-            : view.query !== "" || view.kind !== "all"
-              ? view.query === ""
-                ? "No action of this kind here."
-                : view.searchedAs === "merchant"
-                  ? `No row is about the merchant ${view.query}.`
-                  : view.searchedAs === "address"
-                    ? `No row is about the account at ${view.query}.`
-                    : `No row is about an account with the ID “${view.query}”.`
-              : "No administrative action here yet."}
+          {view.from !== null ? (
+            <>
+              {"after" in view.from ? "No older rows." : "No newer rows."}{" "}
+              <Link to={addressOf(view.kind, view.query, null)}>Show the newest rows</Link>
+            </>
+          ) : view.query !== "" || view.kind !== "all" ? (
+            view.query === "" ? (
+              "No action of this kind here."
+            ) : view.searchedAs === "merchant" ? (
+              `No row is about the merchant ${view.query}.`
+            ) : view.searchedAs === "address" ? (
+              `No row is about the account at ${view.query}.`
+            ) : (
+              `No row is about an account with the ID “${view.query}”.`
+            )
+          ) : (
+            "No administrative action here yet."
+          )}
         </ListEmpty>
       ) : (
-        <JournalList lines={view.lines} label="Administrative actions" />
-      )}
-      {view.unsearched !== null ? null : (
-        <Pager
-          range={
-            <>
-              {`${view.lines.length} of ${view.total} shown, newest first${
-                view.before === null ? "" : ", older than the page before"
-              } · read `}
-              <Moment at={view.readAt} />
-            </>
-          }
-          previous={{
-            to: view.before === null ? null : addressOf(view.kind, view.query, null),
-            words: "First page",
-            beside: false,
-          }}
-          next={{
-            to: view.next === null ? null : addressOf(view.kind, view.query, view.next),
-            words: "Next",
-          }}
-        />
+        <>
+          <JournalList lines={view.lines} label="Administrative actions" />
+          <Pager
+            range={
+              <>
+                {`Showing ${view.newer + 1}–${view.newer + view.lines.length} of ${view.total}, newest first · read `}
+                <Moment at={view.readAt} />
+              </>
+            }
+            previous={{
+              to:
+                view.previous === null
+                  ? null
+                  : addressOf(view.kind, view.query, { before: view.previous }),
+              words: "Previous",
+            }}
+            next={{
+              to:
+                view.next === null ? null : addressOf(view.kind, view.query, { after: view.next }),
+              words: "Next",
+            }}
+          />
+        </>
       )}
     </>
   );
