@@ -2317,7 +2317,7 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     "/orders?show=lapsed",
-    { lapsed: { page: LAPSED, of: LAPSED.length } },
+    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
   ),
   orders(
     {
@@ -2332,7 +2332,7 @@ const ORDERS: GalleryState[] = [
       ["esimEurope", "in_progress"],
     ]),
     `/orders?${new URLSearchParams({ show: "lapsed", details: LAPSED[2]?.id ?? "" })}`,
-    { lapsed: { page: LAPSED, of: LAPSED.length } },
+    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
   ),
   orders(
     {

@@ -19,7 +19,7 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import type { WrittenOrderStatus } from "../../app/written.js";
 import type { PageFrom } from "../paging.js";
-import { lapsedAttempt, type StoredOrder } from "../store.js";
+import { lapsedAttempt, type OrderPlace, type StoredOrder } from "../store.js";
 
 export interface OperatorOrders {
   /**
@@ -62,12 +62,6 @@ export type OrderSegment = (typeof ORDER_SEGMENTS)[number];
 
 export type OrdersShown = OrderSegment | "all";
 
-/** A place in the list: the moment an order was made, and its identifier, which breaks a tie. */
-export interface OrdersCursor {
-  readonly createdAt: number;
-  readonly id: string;
-}
-
 export interface OrdersQuery {
   readonly shown: OrdersShown;
   /**
@@ -78,7 +72,7 @@ export interface OrdersQuery {
   readonly search?: string;
   readonly merchantId?: string;
   /** Where the page stands; the newest page where absent. */
-  readonly from?: PageFrom<OrdersCursor>;
+  readonly from?: PageFrom<OrderPlace>;
 }
 
 export interface OrdersPage {
@@ -89,9 +83,9 @@ export interface OrdersPage {
   /** How many orders of the segment shown are newer than the page: the rows before it. */
   readonly newer: number;
   /** The page's first order, where newer ones precede it: the cursor the newer page ends before. */
-  readonly previous: OrdersCursor | null;
+  readonly previous: OrderPlace | null;
   /** The page's last order, where older ones follow it: the cursor the older page starts after. */
-  readonly next: OrdersCursor | null;
+  readonly next: OrderPlace | null;
   /** The merchants that have any order on the channel, for the filter, by identifier. */
   readonly merchants: readonly OrderMerchant[];
 }

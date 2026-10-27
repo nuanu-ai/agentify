@@ -340,6 +340,9 @@ export function describeOperatorMerchants(
         expect(list).toStrictEqual({
           rows: [],
           total: 0,
+          newer: 0,
+          previous: null,
+          next: null,
           segments: { all: 0, waiting: 0, selling: 0, paused: 0, setting_up: 0 },
         });
       });
@@ -350,6 +353,9 @@ export function describeOperatorMerchants(
         expect(await merchants.list({ ...LIVE, limit: 50 })).toStrictEqual({
           rows: [],
           total: 0,
+          newer: 0,
+          previous: null,
+          next: null,
           segments: { all: 0, waiting: 0, selling: 0, paused: 0, setting_up: 0 },
         });
       });

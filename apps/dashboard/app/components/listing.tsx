@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Form, Link } from "react-router";
-import type { CutView, Listing, PageLink } from "../../src/listing.js";
+import type { CutView, Listing } from "../../src/listing.js";
 import { useGoingTo } from "./going-to.js";
 import { ListEmpty } from "./list.js";
 
@@ -129,50 +129,22 @@ const Step = ({ step, rel }: Readonly<{ step: PageStep; rel: "prev" | "next" }>)
 
 /**
  * Under a list cut short, on one line where it fits: which rows of how many,
- * then the steps back and on, with the pages between them where the list can
- * name them; a list with nowhere to go says only the range. Every way is a
- * link the server answers, so it works before the page's script and can be
- * opened in a tab of its own.
+ * then Previous and Next, each in grey where the list ends that way; a list
+ * with nowhere to go says only the range. Every way is a link the server
+ * answers, so it works before the page's script and can be opened in a tab of
+ * its own.
  */
 export function Pager({
   range,
   previous,
   next,
-  pages = [],
-}: Readonly<{
-  range: ReactNode;
-  previous: PageStep;
-  next: PageStep;
-  pages?: readonly PageLink[];
-}>) {
+}: Readonly<{ range: ReactNode; previous: PageStep; next: PageStep }>) {
   return (
     <nav className="cut pager" aria-label="Pages">
       <span className="pager-range">{range}</span>
-      {previous.to === null && next.to === null && pages.length === 0 ? null : (
+      {previous.to === null && next.to === null ? null : (
         <span className="pager-ways">
           <Step step={previous} rel="prev" />
-          {pages.map((one, at) =>
-            "gap" in one ? (
-              // biome-ignore lint/suspicious/noArrayIndexKey: a gap has no page of its own and the list never reorders
-              <span key={`gap ${at}`} className="pager-gap" aria-hidden="true">
-                …
-              </span>
-            ) : one.to === null ? (
-              <span key={one.page} className="pager-page" aria-current="page">
-                {one.page}
-              </span>
-            ) : (
-              <Link
-                key={one.page}
-                className="pager-page"
-                to={one.to}
-                prefetch="intent"
-                aria-label={`Page ${one.page}`}
-              >
-                {one.page}
-              </Link>
-            ),
-          )}
           <Step step={next} rel="next" />
         </span>
       )}
@@ -188,7 +160,6 @@ export function CutNote({ cut }: Readonly<{ cut: CutView | null }>) {
       range={`Showing ${cut.from}–${cut.to} of ${cut.of}`}
       previous={{ to: cut.previous, words: "Previous" }}
       next={{ to: cut.next, words: "Next" }}
-      pages={cut.pages}
     />
   );
 }

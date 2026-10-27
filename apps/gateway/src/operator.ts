@@ -42,6 +42,8 @@ export { lookupOf } from "./ports/operator/lookup.js";
 export {
   MERCHANT_SEGMENTS,
   type MerchantList,
+  type MerchantListQuery,
+  type MerchantPlace,
   type MerchantRecord,
   type MerchantRow,
   type MerchantSegment,
@@ -54,9 +56,9 @@ export type {
   OrderMerchant,
   OrderSegment,
   OrderStep,
-  OrdersCursor,
   OrdersPage,
   OrdersQuery,
   OrdersShown,
 } from "./ports/operator/orders.js";
 export type { Splits } from "./ports/operator/splits.js";
+export type { OrderPlace } from "./ports/store.js";

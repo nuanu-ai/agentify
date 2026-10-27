@@ -258,9 +258,11 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
 
   it("says a receipt's shares the same way", () => {
     const receipts: ReceiptList = ReceiptListSchema.parse({
+      // Paid a second apart, the first the latest.
       receipts: SHARES.map(([price], at) => ({
         ...receipt(`rcp_${at}`),
         price: { ...receipt(`rcp_${at}`).price, amount: price },
+        paid_at: new Date(Date.parse("2026-08-26T10:20:03Z") - at * 1_000).toISOString(),
       })),
     });
     const paidInto = Object.fromEntries(receipts.receipts.map((one) => [one.order_id, SPLIT]));
@@ -308,9 +310,10 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
       <OrdersScreen view={ordersView(cards, orders, orders, undefined, {}, { ord_split: SPLIT })} />
     ));
 
-    expect(openedIn(html)[0]).toContain("Your share");
-    expect(openedIn(html)[1]).not.toContain("Your share");
-    expect(openedIn(html)[1]).not.toContain("Agentify");
+    // Priced in the same moment, they are listed by their IDs, the greatest first.
+    expect(openedIn(html)[1]).toContain("Your share");
+    expect(openedIn(html)[0]).not.toContain("Your share");
+    expect(openedIn(html)[0]).not.toContain("Agentify");
   });
 });
 
@@ -638,9 +641,11 @@ describe("a search over the cards", () => {
   const many = (count: number) =>
     MerchantCardListSchema.parse({
       selling: "open",
+      // Published a minute apart, the first one first.
       cards: Array.from({ length: count }, (_, at) => ({
         ...entry,
         id: `itm_${at}`,
+        as_of: new Date(Date.parse("2026-10-01T09:00:00Z") + at * 60_000).toISOString(),
         card: { ...entry.card, merchant_item_id: `room-${at}`, title: `Room ${at}` },
       })),
     });

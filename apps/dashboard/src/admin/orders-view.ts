@@ -12,9 +12,9 @@ import type {
   OperatorOrder,
   OperatorOrderRow,
   OrderMerchant,
+  OrderPlace,
   OrderSegment,
   OrderStep,
-  OrdersCursor,
   OrdersPage,
   OrdersQuery,
   OrdersShown,
@@ -96,7 +96,7 @@ const ordersFromOf = (from: From): OrdersFrom | null => {
   return "after" in from ? { after: cursor } : { before: cursor };
 };
 
-const markOf = (cursor: OrdersCursor): Mark => ({ key: [cursor.createdAt], id: cursor.id });
+const markOf = (cursor: OrderPlace): Mark => ({ key: [cursor.createdAt], id: cursor.id });
 
 const fromOf = (from: OrdersFrom | null): From =>
   from === null

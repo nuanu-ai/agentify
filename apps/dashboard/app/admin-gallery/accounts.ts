@@ -81,9 +81,12 @@ const listOf = (rows: readonly AccountRowView[], query: string): AccountsListVie
     asked: askedIn(
       new URLSearchParams(query),
       ACCOUNTS_SEGMENTS.map((one) => one.key),
+      2,
     ),
     path: "/admin/accounts",
     segments: ACCOUNTS_SEGMENTS,
+    // In the order the rows above are written, which is the list's.
+    markOf: (one) => ({ key: [rows.length - rows.indexOf(one), 0], id: one.id }),
     matches: (one, words) => one.email.includes(words),
     noMatch: (q) =>
       `No listed account matches “${q}”. An address that only signed in is found by the whole address.`,

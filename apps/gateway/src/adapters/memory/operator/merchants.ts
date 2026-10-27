@@ -9,10 +9,11 @@ import {
   type MerchantCard,
   type MerchantList,
   type MerchantListQuery,
+  type MerchantPlace,
   type MerchantRecord,
   type MerchantRow,
   merchantLimitOf,
-  merchantOffsetOf,
+  merchantPlaceOf,
   type OperatorMerchants,
   type OrderWorthALook,
   SELLING_DAYS,
@@ -24,6 +25,7 @@ import {
 } from "../../../ports/operator/merchants.js";
 import { type Tally, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
+import { byBytes, pageIn } from "../../../ports/paging.js";
 import { lapsedAttempt, type StoredMerchant } from "../../../ports/store.js";
 import type { MemoryHoldings } from "../store.js";
 import { type SettledSale, settledSales } from "./figures-standing.js";
@@ -105,14 +107,18 @@ function factsOf(
   return { row, wallet, cards, onSale, keys, inDays, orders, from };
 }
 
-/** The list's order: who waits for the operator, then the latest sale, then the newest merchant. */
-function listed(one: MerchantRow, other: MerchantRow): number {
-  const waits = (row: MerchantRow) => (row.segment === "waiting" ? 0 : 1);
+/**
+ * Where a row stands from a place in the list, below nought before it: who
+ * waits for the operator first, then the latest sale, then the newest
+ * merchant, then the identifier, each from the most.
+ */
+function placed(row: MerchantRow, place: MerchantPlace): number {
+  const at = merchantPlaceOf(row);
   return (
-    waits(one) - waits(other) ||
-    (other.lastSaleAt ?? Number.NEGATIVE_INFINITY) - (one.lastSaleAt ?? Number.NEGATIVE_INFINITY) ||
-    other.createdAt - one.createdAt ||
-    (one.id < other.id ? -1 : one.id > other.id ? 1 : 0)
+    Number(place.waiting) - Number(at.waiting) ||
+    (place.lastSaleAt ?? -1) - (at.lastSaleAt ?? -1) ||
+    place.createdAt - at.createdAt ||
+    byBytes(place.id, at.id)
   );
 }
 
@@ -145,11 +151,18 @@ export const memoryOperatorMerchants = (scope: MemoryScope): OperatorMerchants =
     ]) as MerchantList["segments"];
     const inSegment =
       query.segment === undefined ? found : found.filter((row) => row.segment === query.segment);
+    const page = pageIn(
+      [...inSegment].sort((one, other) => placed(one, merchantPlaceOf(other))),
+      query.from,
+      merchantLimitOf(query),
+      placed,
+    );
     return {
-      rows: [...inSegment]
-        .sort(listed)
-        .slice(merchantOffsetOf(query), merchantOffsetOf(query) + merchantLimitOf(query)),
+      rows: page.rows,
       total: inSegment.length,
+      newer: page.newer,
+      previous: page.previous === null ? null : merchantPlaceOf(page.previous),
+      next: page.next === null ? null : merchantPlaceOf(page.next),
       segments,
     };
   },

@@ -530,6 +530,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       const asked = askedIn(
         query,
         ACCOUNTS_SEGMENTS.map((one) => one.key),
+        2,
       );
       const summaries = [...listing.listed];
       if (asked.q.includes("@")) {
@@ -541,10 +542,13 @@ export function accountsFor(parts: AdminParts): AccountsPages {
           if (found !== null) summaries.push(found);
         }
       }
-      summaries.sort(
-        (one, other) =>
-          (other.newestSession?.getTime() ?? 0) - (one.newestSession?.getTime() ?? 0) ||
-          one.email.localeCompare(other.email),
+      // The newest sign-in first, then the newest account among those with no
+      // open session.
+      const marks = new Map(
+        summaries.map((one) => [
+          one.id,
+          { key: [one.newestSession?.getTime() ?? -1, one.createdAt.getTime()], id: one.id },
+        ]),
       );
       const named = await namesOf(
         summaries.flatMap((one) => (one.merchantId === null ? [] : [one.merchantId])),
@@ -558,6 +562,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
             asked,
             path: "/admin/accounts",
             segments: ACCOUNTS_SEGMENTS,
+            markOf: (row) => marks.get(row.id) ?? { key: [-1, -1], id: row.id },
             matches: (row, words) =>
               row.email.includes(words) ||
               (row.merchant !== null &&

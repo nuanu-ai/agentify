@@ -8,7 +8,6 @@ import {
   ORDER_SEGMENTS,
   ORDERS_PAGE,
   type OrderMerchant,
-  type OrdersCursor,
   type OrdersShown,
   segmentOf,
 } from "../../../ports/operator/orders.js";
@@ -18,7 +17,7 @@ import {
   orderRowOf,
 } from "../../../ports/operator/orders-as-read.js";
 import { byBytes, pageIn } from "../../../ports/paging.js";
-import type { StoredMerchant, StoredOrder } from "../../../ports/store.js";
+import type { OrderPlace, StoredMerchant, StoredOrder } from "../../../ports/store.js";
 import type { MemoryHoldings } from "../store.js";
 import type { MemoryScope } from "./index.js";
 
@@ -46,12 +45,12 @@ const transactionsOf = (record: StoredOrder): string[] =>
   ].filter((hash): hash is string => hash !== undefined);
 
 /** Where an order stands from a place in the list, newest first: below nought before it. */
-const placed = (record: StoredOrder, cursor: OrdersCursor): number =>
+const placed = (record: StoredOrder, cursor: OrderPlace): number =>
   cursor.createdAt - record.order.timestamps.createdAt || byBytes(cursor.id, record.order.id);
 
 const newestFirst = (one: StoredOrder, other: StoredOrder): number => placed(one, cursorOf(other));
 
-const cursorOf = (record: StoredOrder): OrdersCursor => ({
+const cursorOf = (record: StoredOrder): OrderPlace => ({
   createdAt: record.order.timestamps.createdAt,
   id: record.order.id,
 });

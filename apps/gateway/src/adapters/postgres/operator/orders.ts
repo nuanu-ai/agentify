@@ -8,11 +8,11 @@ import {
   type OperatorOrders,
   ORDERS_PAGE,
   type OrderMerchant,
-  type OrdersCursor,
   type OrdersQuery,
   type OrdersShown,
 } from "../../../ports/operator/orders.js";
 import { operatorOrderOf, orderRowOf } from "../../../ports/operator/orders-as-read.js";
+import type { OrderPlace } from "../../../ports/store.js";
 import { cards, merchants, orders, payoutSplits, receipts } from "../schema.js";
 import {
   DELIVERED_NOT_PAID,
@@ -67,12 +67,12 @@ function filterOf(query: OrdersQuery): SQL | undefined {
 
 /** Where an order stands from a cursor in the list, newest first, as one row comparison. */
 const PLACE = sql`(${orders.createdAt}, ${ID_BYTES})`;
-const placeOf = (cursor: OrdersCursor): SQL =>
+const placeOf = (cursor: OrderPlace): SQL =>
   sql`(${new Date(cursor.createdAt)}::timestamptz, ${cursor.id}::text collate "C")`;
-const olderThan = (cursor: OrdersCursor): SQL => sql`${PLACE} < ${placeOf(cursor)}`;
-const newerThan = (cursor: OrdersCursor): SQL => sql`${PLACE} > ${placeOf(cursor)}`;
+const olderThan = (cursor: OrderPlace): SQL => sql`${PLACE} < ${placeOf(cursor)}`;
+const newerThan = (cursor: OrderPlace): SQL => sql`${PLACE} > ${placeOf(cursor)}`;
 
-const cursorOf = (row: OperatorOrderRow): OrdersCursor => ({
+const cursorOf = (row: OperatorOrderRow): OrderPlace => ({
   createdAt: row.createdAt,
   id: row.id,
 });

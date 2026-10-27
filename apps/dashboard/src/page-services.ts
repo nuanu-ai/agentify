@@ -1076,7 +1076,7 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       gateway.ordersWithRecords(),
       gateway.orders(true),
       gateway.paidIntoSplits(),
-      lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage),
+      lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage.from),
     ]);
     if (!cards.ok) return problemOf(cards);
     if (!read.ok) return problemOf(read);
@@ -1109,7 +1109,13 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       paidInto.document,
       typeof lapsed.document === "number"
         ? { page: null, of: lapsed.document }
-        : { page: lapsed.document.attempts, of: lapsed.document.of },
+        : {
+            page: lapsed.document.attempts,
+            of: lapsed.document.of,
+            newer: lapsed.document.newer,
+            previous: lapsed.document.previous,
+            next: lapsed.document.next,
+          },
       shopTotals,
       connector,
       new Set(

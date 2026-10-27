@@ -22,7 +22,7 @@ import {
   journalLimitOf,
   settledPress,
 } from "../../ports/journal.js";
-import { pageIn } from "../../ports/paging.js";
+import { byBytes, type PageFrom, pageIn } from "../../ports/paging.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
   type AnalyticsOf,
@@ -33,12 +33,14 @@ import {
   type ClaimHolder,
   type Integration,
   type IntegrationSwitch,
+  type LapsedPage,
   lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
+  type OrderPlace,
   type PaymentClaim,
   type PayoutWalletRead,
   type PayoutWalletWrite,
@@ -880,16 +882,29 @@ export class MemoryStore implements Store {
 
   async lapsedAttempts(
     merchantId: string,
-    page: { readonly offset: number; readonly limit: number },
-  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    page: { readonly limit: number; readonly from?: PageFrom<OrderPlace> },
+  ): Promise<LapsedPage> {
+    const placeOf = (record: StoredOrder): OrderPlace => ({
+      createdAt: record.order.timestamps.createdAt,
+      id: record.order.id,
+    });
+    // Newest first: below nought for an attempt before the place.
+    const placed = (record: StoredOrder, place: OrderPlace) =>
+      place.createdAt - record.order.timestamps.createdAt || byBytes(place.id, record.order.id);
     const lapsed = [...this.#orders.values()]
       .filter((record) => record.merchantId === merchantId && lapsedAttempt(record))
-      .sort(
-        (one, other) =>
-          other.order.timestamps.createdAt - one.order.timestamps.createdAt ||
-          (one.order.id < other.order.id ? 1 : -1),
-      );
-    return { orders: lapsed.slice(page.offset, page.offset + page.limit), of: lapsed.length };
+      .sort((one, other) => placed(one, placeOf(other)));
+    if (page.limit === 0) {
+      return { orders: [], of: lapsed.length, newer: 0, previous: null, next: null };
+    }
+    const cut = pageIn(lapsed, page.from, page.limit, placed);
+    return {
+      orders: cut.rows,
+      of: lapsed.length,
+      newer: cut.newer,
+      previous: cut.previous === null ? null : placeOf(cut.previous),
+      next: cut.next === null ? null : placeOf(cut.next),
+    };
   }
 
   async withOrder<T>(

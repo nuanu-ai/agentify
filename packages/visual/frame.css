@@ -711,10 +711,10 @@
 }
 
 /*
- * The pager: the range read first, then the steps and the pages at the end of
- * the line, under the list's right edge. Each way is a 36px target, the page
- * shown is filled, and a step with nowhere to go stays in its place in grey,
- * so the row does not shift from page to page.
+ * The pager: the range read first, then Previous and Next at the end of the
+ * line, under the list's right edge. Each step is a 36px target, and a step
+ * with nowhere to go stays in its place in grey, so the row does not shift
+ * from page to page.
  */
 .pager {
   justify-content: space-between;
@@ -730,9 +730,7 @@
   gap: var(--space-snug);
 }
 
-.pager-step,
-.pager-page,
-.pager-gap {
+.pager-step {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -743,8 +741,7 @@
   color: var(--fg-2);
 }
 
-.pager a.pager-step,
-.pager a.pager-page {
+.pager a.pager-step {
   font-weight: 500;
 }
 
@@ -754,20 +751,8 @@
   text-decoration: none;
 }
 
-.pager-page[aria-current="page"] {
-  background: var(--raised);
-  color: var(--fg);
-  font-weight: 600;
-}
-
 .pager-step[aria-disabled="true"] {
   color: var(--na);
-}
-
-.pager-gap {
-  min-width: 20px;
-  padding: 0;
-  color: var(--muted);
 }
 
 .pager-step.prev::before,
@@ -789,17 +774,12 @@
   transform: rotate(-135deg);
 }
 
-/* On a phone the steps stand at the two ends of their own line with the page
-   shown between them; the range over them says how far the list goes. */
+/* On a phone the steps stand at the two ends of their own line; the range
+   over them says how far the list goes. */
 @media (max-width: 560px) {
   .pager-ways {
     width: 100%;
     justify-content: space-between;
-  }
-
-  .pager-page:not([aria-current]),
-  .pager-gap {
-    display: none;
   }
 }
 

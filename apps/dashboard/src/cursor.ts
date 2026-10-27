@@ -17,7 +17,9 @@ export interface Mark {
 /** Where a page stands; null for the first page. */
 export type From = Readonly<{ after: Mark }> | Readonly<{ before: Mark }> | null;
 
-const ID = /^[A-Za-z0-9_-]{1,128}$/;
+/** An identifier as a cursor carries it: any printable text, dots included, within a bound. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it refuses
+const ID = /^[^\u0000-\u001f\u007f]{1,256}$/;
 
 const WHOLE = /^-?\d{1,16}$/;
 
@@ -25,13 +27,15 @@ const WHOLE = /^-?\d{1,16}$/;
 const FURTHEST = 8.64e15;
 
 /**
- * A place as an address writes it, for a list sorted by `keys` numbers; null
- * where the text is no such place, so that the address reads as the first page.
+ * A place as an address writes it, for a list sorted by `keys` numbers: that
+ * many whole numbers, then the identifier, which may hold dots of its own.
+ * Null where the text is no such place, so that the address reads as the
+ * first page.
  */
 const markIn = (text: string, keys: number): Mark | null => {
   const parts = text.split(".");
-  const id = parts.at(-1) ?? "";
-  const key = parts.slice(0, -1).map((part) => (WHOLE.test(part) ? Number(part) : Number.NaN));
+  const key = parts.slice(0, keys).map((part) => (WHOLE.test(part) ? Number(part) : Number.NaN));
+  const id = parts.slice(keys).join(".");
   return key.length === keys && ID.test(id) && key.every((one) => Math.abs(one) <= FURTHEST)
     ? { key, id }
     : null;
@@ -39,8 +43,11 @@ const markIn = (text: string, keys: number): Mark | null => {
 
 const markText = (mark: Mark): string => [...mark.key, mark.id].join(".");
 
-/** A value the address names once; named twice it is nobody's choice. */
-const once = (query: URLSearchParams, name: string): string | null => {
+/**
+ * A value named once, as an address names it; named twice it is nobody's
+ * choice, and is read as not named at all.
+ */
+export const once = (query: URLSearchParams, name: string): string | null => {
   const values = query.getAll(name);
   return values.length === 1 ? (values[0] ?? null) : null;
 };
@@ -69,4 +76,13 @@ export const writeFrom = (fields: URLSearchParams, from: From): void => {
   if (from === null) return;
   if ("after" in from) fields.set("after", markText(from.after));
   else fields.set("before", markText(from.before));
+};
+
+/** Two places in the order a list sorted from the least holds them. */
+export const rising = (one: Mark, other: Mark): number => {
+  for (const [at, number] of one.key.entries()) {
+    const difference = number - (other.key[at] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return one.id < other.id ? -1 : one.id > other.id ? 1 : 0;
 };

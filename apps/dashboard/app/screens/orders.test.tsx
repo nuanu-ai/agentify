@@ -141,11 +141,12 @@ describe("searching the orders", () => {
   });
 
   it("finds every order either half of a short form belongs to", () => {
-    expect(searched("ord_17ff")).toStrictEqual([FIRST, SAME_HEAD]);
-    expect(searched("17ff")).toStrictEqual([FIRST, SAME_HEAD]);
-    expect(searched("7de3")).toStrictEqual([FIRST, SAME_TAIL]);
-    expect(searched("ord_17ff…")).toStrictEqual([FIRST, SAME_HEAD]);
-    expect(searched("…7de3")).toStrictEqual([FIRST, SAME_TAIL]);
+    // Priced in the same moment, they are listed by their IDs, the greatest first.
+    expect(searched("ord_17ff")).toStrictEqual([SAME_HEAD, FIRST]);
+    expect(searched("17ff")).toStrictEqual([SAME_HEAD, FIRST]);
+    expect(searched("7de3")).toStrictEqual([SAME_TAIL, FIRST]);
+    expect(searched("ord_17ff…")).toStrictEqual([SAME_HEAD, FIRST]);
+    expect(searched("…7de3")).toStrictEqual([SAME_TAIL, FIRST]);
   });
 
   it("finds an order by its short form pasted with words or marks around it", () => {
@@ -431,12 +432,18 @@ describe("a long run of orders told in full", () => {
       })),
     );
 
+  /**
+   * An order's identifier as a row shows it, not as the cursor a row's form
+   * carries back writes it after a moment and a dot.
+   */
+  const AN_ID = /(?<!\.)ord_[0-9a-f]{32}/g;
+
   /** The ids of the rows drawn in the group the list is labelled with, in order. */
   const toldIn = (html: string, label: string): readonly string[] => {
     const group = new RegExp(`<ul class="list" aria-label="${label}"[^>]*>([\\s\\S]*?)</ul>`).exec(
       html,
     );
-    return [...(group?.[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+    return [...(group?.[1] ?? "").matchAll(AN_ID)]
       .map((id) => id[0])
       .filter((id, at, all) => all.indexOf(id) === at);
   };
@@ -468,7 +475,7 @@ describe("a long run of orders told in full", () => {
   /** The ids drawn in each list on the page, list after list, each once in its list. */
   const listedIn = (html: string): readonly string[] =>
     [...html.matchAll(/<ul class="list"[^>]*>([\s\S]*?)<\/ul>/g)].flatMap((list) =>
-      [...(list[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+      [...(list[1] ?? "").matchAll(AN_ID)]
         .map((id) => id[0])
         .filter((id, at, all) => all.indexOf(id) === at),
     );

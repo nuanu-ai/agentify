@@ -133,9 +133,10 @@ describe("a list cut short", () => {
     for (const address of [
       "after=yesterday",
       "after=600",
-      "after=600.t_0060.x",
-      "after=600.6.t_0060",
+      "after=600.",
+      "after=t_0060.600",
       "after=99999999999999999.t_0060",
+      "after=600.t_%00",
       "after=600.t_0060&after=700.t_0070",
       "after=600.t_0060&before=700.t_0070",
     ]) {
