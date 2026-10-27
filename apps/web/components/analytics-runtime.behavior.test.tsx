@@ -6,7 +6,7 @@ import {
   createConsentSnapshot,
 } from "@agentify/analytics/browser";
 import { type BrowserAnalyticsConfig, CONSENT_CHANGED_EVENT } from "@agentify/consent";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/landing-announcement";
 import { onSite } from "../testing/on-site";
@@ -24,10 +24,11 @@ afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   document.body.innerHTML = "";
+  window.history.replaceState({}, "", "/");
 });
 
 describe("a visit before and after the visitor's choice", () => {
-  it("records the landing and its campaign once the visitor allows measurement on the page they landed on", async () => {
+  it("records the consented landing and campaign, reusing the server event identity", async () => {
     // Nothing of a visit is recorded before a choice, so the first page a
     // visitor allows measurement on would otherwise be the one page whose
     // landing and campaign are never recorded.
@@ -35,10 +36,15 @@ describe("a visit before and after the visitor's choice", () => {
     landing.setAttribute(LANDING_SEGMENT_ATTRIBUTE, "store");
     landing.setAttribute(LANDING_VARIANT_ATTRIBUTE, "store-v1");
     document.body.append(landing);
-    const asked: string[] = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    window.history.replaceState({}, "", "/store?utm_source=merchant&utm_campaign=autumn");
+    const asked: { path: string; method: string; body: Record<string, unknown> }[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const path = new URL(String(input), "http://localhost").pathname;
-      asked.push(path);
+      asked.push({
+        path,
+        method: init?.method ?? "GET",
+        body: JSON.parse(String(init?.body ?? "{}")),
+      });
       return path === "/api/v1/events"
         ? new Response(
             JSON.stringify({
@@ -53,7 +59,9 @@ describe("a visit before and after the visitor's choice", () => {
     });
 
     render(onSite(<AnalyticsRuntime config={config} />));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(asked).toEqual([]);
 
     const allowed = createConsentSnapshot({
@@ -64,6 +72,31 @@ describe("a visit before and after the visitor's choice", () => {
     localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(allowed));
     window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: allowed }));
 
-    await waitFor(() => expect(asked).toEqual(["/api/v1/attribution", "/api/v1/events"]));
+    await waitFor(() => expect(asked).toHaveLength(2));
+    expect(asked[0]).toEqual({
+      path: "/api/v1/attribution",
+      method: "POST",
+      body: {
+        segment: "store",
+        landing_variant: "store-v1",
+        touch: { utm_source: "merchant", utm_campaign: "autumn" },
+      },
+    });
+    expect(asked[1]).toMatchObject({
+      path: "/api/v1/events",
+      method: "POST",
+      body: { name: "landing_view", segment: "store", landing_variant: "store-v1", properties: {} },
+    });
+    window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: allowed }));
+    await waitFor(() => expect(asked).toHaveLength(3));
+    expect(asked[2]).toMatchObject({
+      path: "/api/v1/events",
+      body: {
+        event_id: "01990000-0000-7000-8000-000000000001",
+        name: "landing_view",
+        segment: "store",
+        landing_variant: "store-v1",
+      },
+    });
   });
 });

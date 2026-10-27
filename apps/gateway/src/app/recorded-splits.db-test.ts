@@ -14,13 +14,16 @@
  * harness starts its gateway before it seeds anybody.
  */
 
-import { deadlines } from "@agentify/core";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { PgBoss } from "pg-boss";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RecordingAnnouncer } from "../adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
-import { MemoryQueue } from "../adapters/memory/queue.js";
-import { MemoryStore } from "../adapters/memory/store.js";
+import { PgBossQueue } from "../adapters/pgboss/queue.js";
+import { connect, PostgresStore } from "../adapters/postgres/store.js";
 import { loadConfig } from "../config.js";
 import { widestChallengeOn } from "../http/x402.js";
 import type { PayoutWalletRead } from "../ports/store.js";
@@ -32,9 +35,9 @@ import {
   payoutSplitNetworkOf,
 } from "../split/networks.js";
 import { type PayoutSplit, payoutSplitFor, splitParametersOf } from "../split/parameters.js";
-import { countedIds, loggedWhile } from "../testing/harness.js";
+import { testDatabaseUrl } from "../testing/database.js";
+import { countedIds, loggedWhile, serve } from "../testing/harness.js";
 import { anOrder } from "../testing/store-contract.js";
-import { describeWalletSpelling } from "../testing/wallet-spelling.js";
 import { Gateway } from "./gateway.js";
 import { setServiceName } from "./merchants.js";
 
@@ -70,7 +73,24 @@ const card: Card = {
   fulfillment: "sync",
 };
 
+const databaseUrl = testDatabaseUrl();
+const connected = connect(databaseUrl);
+const queueSchema = "pgboss_recorded_splits";
 let running: Gateway | null = null;
+beforeAll(async () => {
+  await migrate(connected.db, {
+    migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), "../../drizzle"),
+  });
+});
+beforeEach(async () => {
+  await connected.pool.query(
+    "truncate table cards, orders, receipts, payment_claims, merchant_keys, merchant_contact, merchants, payout_splits, commerce_analytics_events, operator_journal",
+  );
+  await connected.pool.query(`drop schema if exists ${queueSchema} cascade`);
+});
+afterAll(async () => {
+  await connected.pool.end();
+});
 
 afterEach(async () => {
   await running?.stop();
@@ -82,21 +102,20 @@ afterEach(async () => {
  * it, opened for the deployment's network.
  */
 const aDatabase = (network = "eip155:84532") => {
-  const queue = new MemoryQueue();
-  const store = new MemoryStore(network, countedIds(), () => NOW, queue.envelopes());
+  const queue = PgBossQueue.over(
+    new PgBoss({ connectionString: databaseUrl, schema: queueSchema }),
+    { pollIntervalMs: 50, reminders: { attempts: 3, retryDelayMs: 1_000 } },
+  );
+  const store = PostgresStore.over(connected.db, network, countedIds(), queue.envelopes());
   return { store, queue };
 };
 
-/** A gateway over that database under this table, made and not started. */
+/** A gateway over that database under the deployment configuration, made and not started. */
 const aGatewayOver = (
   database: ReturnType<typeof aDatabase>,
-  table: PayoutSplitNetworks = T1,
   environment: Record<string, string> = {},
 ) => {
-  const config = loadConfig(
-    { DATABASE_URL: "postgres://agentify@localhost:5432/agentify", ...environment },
-    table,
-  );
+  const config = loadConfig({ DATABASE_URL: databaseUrl, ...environment });
   const facilitator = new ScriptedFacilitator();
   const announcer = new RecordingAnnouncer();
   const gateway = new Gateway({
@@ -143,11 +162,21 @@ const paidUnder = async (
 };
 
 /** A wallet written without its split: the merchant's columns and no row. */
-const paidWithoutASplit = (
-  database: ReturnType<typeof aDatabase>,
+const paidWithoutASplit = async (
+  _database: ReturnType<typeof aDatabase>,
   merchantId: string,
   wallet: PayoutWalletRead,
-) => database.store.writeWalletWithoutSplit(merchantId, wallet);
+) => {
+  await connected.pool.query(
+    `update merchants set payout_wallet=$2, pending_payout_wallet=$3, pending_payout_wallet_from=$4 where id=$1`,
+    [
+      merchantId,
+      wallet.address,
+      wallet.pending?.address ?? null,
+      wallet.pending === null ? null : new Date(wallet.pending.takesEffectAt),
+    ],
+  );
+};
 
 /** Why the start was refused, or a failure saying it started. */
 const refusalOf = async (gateway: Gateway): Promise<string> => {
@@ -158,31 +187,6 @@ const refusalOf = async (gateway: Gateway): Promise<string> => {
   }
   throw new Error("the gateway started, and refusing to start is what this is about");
 };
-
-/**
- * An order waiting on a deadline, and a reminder for it put on the queue now.
- * Whether the order is still waiting afterwards says whether anything took the
- * reminder off the queue.
- */
-const aReminderWaiting = async (
-  database: ReturnType<typeof aDatabase>,
-  gateway: Gateway,
-  merchantId: string,
-) => {
-  const stored = await database.store.publishCard(merchantId, card, NOW);
-  const offered = await gateway.beginPurchase(stored.id, {});
-  if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-  const orderId = offered.order.order.id;
-  const due = deadlines(offered.order.order).find((deadline) => deadline.kind === "quote_expiry");
-  if (due === undefined) throw new Error("the order waits on no price that can lapse");
-  return {
-    remind: () =>
-      database.queue.remind({ kind: "deadline", deadline: due.kind, at: due.at, orderId }, 0),
-    stateNow: async () => (await database.store.orderById(orderId))?.order.state,
-  };
-};
-
-const aTick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 describe("a start on a registry that agrees with the code", () => {
   it("starts on an empty registry", async () => {
@@ -195,7 +199,21 @@ describe("a start on a registry that agrees with the code", () => {
   it("starts where every split of a wallet in force or waiting is the one the code makes", async () => {
     const database = aDatabase();
     await aMerchant(database, "mch_one");
-    await paidUnder(database, "mch_one", W);
+    const active = await paidUnder(database, "mch_one", W);
+    await database.store.setPayoutWallet(
+      "mch_one",
+      { address: W, pending: null },
+      {
+        address: W,
+        split: active,
+        pending: {
+          address: P,
+          split: payoutSplitFor(T1_TEST, "mch_one", P),
+          takesEffectAt: NOW + 60_000,
+        },
+      },
+      NOW,
+    );
 
     await expect(aGatewayOver(database).gateway.start()).resolves.toBeUndefined();
   });
@@ -214,30 +232,29 @@ describe("a start where the code's payout split changed since the registry was w
       // holding money. The refusal is what makes such an edit loud.
       const database = aDatabase();
       await aMerchant(database, "mch_one");
-      await paidUnder(database, "mch_one", W);
+      const historical = await paidUnder(database, "mch_one", W, table);
       // A wallet the backfill would give a split, which must not be written
       // under constants the start is about to refuse.
       await aMerchant(database, "mch_two");
       await paidWithoutASplit(database, "mch_two", { address: P, pending: null });
-      const { gateway } = aGatewayOver(database, table);
-      const waiting = await aReminderWaiting(database, gateway, "mch_one");
+      const { gateway } = aGatewayOver(database);
 
       const refused = await refusalOf(gateway);
-      waiting.remind();
-      await aTick();
 
-      expect(refused).toMatch(/commission wallet or the rate/);
-      expect(refused).toMatch(/no way yet to move/);
+      expect(refused).toContain(historical.address);
       expect(refused).toContain("eip155:84532");
-      expect(refused).toMatch(/\b1 recorded split\b/);
       expect(await database.store.networksWithPayoutSplits()).toStrictEqual(["eip155:84532"]);
       expect(
-        await database.store.payoutSplitAt(
-          payoutSplitFor(payoutSplitNetworkOf(table, "eip155:84532"), "mch_one", W).address,
-        ),
+        await database.store.payoutSplitAt(payoutSplitFor(T1_TEST, "mch_one", W).address),
       ).toBeNull();
       expect((await database.store.merchantById("mch_two"))?.payoutWallet.split).toBeNull();
-      expect(await waiting.stateNow()).toBe("quoted");
+      expect(
+        (
+          await connected.pool.query("select nspname from pg_namespace where nspname=$1", [
+            queueSchema,
+          ])
+        ).rows,
+      ).toEqual([]);
     },
   );
 
@@ -246,13 +263,16 @@ describe("a start where the code's payout split changed since the registry was w
     // wallet twice, so the code makes none, and the recorded one is not what
     // it makes.
     const database = aDatabase();
-    const theirs = DISTRIBUTOR;
+    const theirs = T1_TEST.commissionWallet;
     await aMerchant(database, "mch_one");
-    await paidUnder(database, "mch_one", theirs);
+    const historical = await paidUnder(
+      database,
+      "mch_one",
+      theirs,
+      editedTo({ commissionWallet: DISTRIBUTOR }),
+    );
 
-    expect(
-      await refusalOf(aGatewayOver(database, editedTo({ commissionWallet: theirs })).gateway),
-    ).toMatch(/commission wallet or the rate/);
+    expect(await refusalOf(aGatewayOver(database).gateway)).toContain(historical.address);
   });
 
   it("refuses where a waiting wallet's split disagrees, too", async () => {
@@ -266,18 +286,18 @@ describe("a start where the code's payout split changed since the registry was w
       { address: null, pending: null },
       {
         address: W,
-        split: payoutSplitFor(payoutSplitNetworkOf(edited, "eip155:84532"), "mch_one", W),
+        split: payoutSplitFor(T1_TEST, "mch_one", W),
         pending: {
           address: P,
           takesEffectAt: NOW + 60_000,
-          split: payoutSplitFor(T1_TEST, "mch_one", P),
+          split: payoutSplitFor(payoutSplitNetworkOf(edited, "eip155:84532"), "mch_one", P),
         },
       },
       NOW,
     );
 
-    expect(await refusalOf(aGatewayOver(database, edited).gateway)).toMatch(
-      /commission wallet or the rate/,
+    expect(await refusalOf(aGatewayOver(database).gateway)).toContain(
+      payoutSplitFor(payoutSplitNetworkOf(edited, "eip155:84532"), "mch_one", P).address,
     );
   });
 });
@@ -300,7 +320,7 @@ describe("a start where the code no longer derives a recorded split from its own
     const refused = await refusalOf(aGatewayOver(database).gateway);
 
     expect(refused).toContain(forged.address);
-    expect(refused).toMatch(/no longer/);
+    expect(await database.store.networksWithPayoutSplits()).toEqual(["eip155:84532"]);
   });
 
   it("refuses a split whose salt is not the one the merchant and the network give, naming it", async () => {
@@ -327,7 +347,7 @@ describe("a start where the code no longer derives a recorded split from its own
     const refused = await refusalOf(aGatewayOver(database).gateway);
 
     expect(refused).toContain(resalted.address);
-    expect(refused).toMatch(/no longer/);
+    expect(await database.store.networksWithPayoutSplits()).toEqual(["eip155:84532"]);
   });
 });
 
@@ -337,10 +357,8 @@ describe("a refusal to start on a laptop's sandbox", () => {
   const disagreeing = async (environment: Record<string, string>) => {
     const database = aDatabase();
     await aMerchant(database, "mch_one");
-    await paidUnder(database, "mch_one", W);
-    return refusalOf(
-      aGatewayOver(database, editedTo({ commissionWallet: DISTRIBUTOR }), environment).gateway,
-    );
+    await paidUnder(database, "mch_one", W, editedTo({ commissionWallet: DISTRIBUTOR }));
+    return refusalOf(aGatewayOver(database, environment).gateway);
   };
 
   it("says the sandbox's database can be dropped", async () => {
@@ -365,7 +383,7 @@ describe("a start on a database whose splits belong to another network", () => {
     await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", W)], NOW);
     await paidWithoutASplit(database, "mch_one", { address: W, pending: null });
 
-    const refused = await refusalOf(aGatewayOver(database, T1, LIVE).gateway);
+    const refused = await refusalOf(aGatewayOver(database, LIVE).gateway);
 
     expect(refused).toContain("eip155:84532");
     expect(refused).toMatch(/eip155:8453\b/);
@@ -378,7 +396,7 @@ describe("a start on a database whose splits belong to another network", () => {
     await aMerchant(database, "mch_one");
     await database.store.recordPayoutSplits([payoutSplitFor(T1_TEST, "mch_one", OTHER)], NOW);
 
-    expect(await refusalOf(aGatewayOver(database, T1, LIVE).gateway)).toContain("eip155:84532");
+    expect(await refusalOf(aGatewayOver(database, LIVE).gateway)).toContain("eip155:84532");
   });
 });
 
@@ -391,18 +409,6 @@ describe("a start on a store that reads splits on another network than its payou
     await aMerchant(database, "mch_one");
 
     const refused = await refusalOf(aGatewayOver(database).gateway);
-
-    expect(refused).toContain("eip155:8453");
-    expect(refused).toContain("eip155:84532");
-  });
-
-  it("refuses where the payout split's own network is not the one its table files it under", async () => {
-    // The store is opened for the network payments are taken on, and the
-    // split is made for the network its entry names; the two must agree.
-    const database = aDatabase();
-    const misfiled = editedTo({ network: "eip155:8453" });
-
-    const refused = await refusalOf(aGatewayOver(database, misfiled).gateway);
 
     expect(refused).toContain("eip155:8453");
     expect(refused).toContain("eip155:84532");
@@ -464,7 +470,6 @@ describe("a start that finds wallets with no split recorded", () => {
         at: merchant.payoutWallet.pending?.takesEffectAt ?? null,
       })),
     );
-    expect(logged).toMatch(/recorded 3 payout splits/);
     // One line per row, with every parameter needed to enter it again after a
     // restore from a copy older than the row.
     const lines = [...logged.matchAll(/payout split recorded: (\{.*\})/g)].map((line) =>
@@ -491,11 +496,27 @@ describe("a start that finds wallets with no split recorded", () => {
   it("records nothing on a second start, and writes nothing to the journal", async () => {
     const database = await withoutTheirSplits();
     await aGatewayOver(database).gateway.start();
+    const before = await database.store.merchants();
+    const rows = await connected.pool.query("select * from payout_splits order by address");
     await running?.stop();
 
     const logged = await loggedWhile(() => aGatewayOver(database).gateway.start());
 
-    expect(logged).not.toMatch(/payout split/);
+    expect(
+      logged.split("\n").flatMap((line) => {
+        const index = line.indexOf("{");
+        if (index < 0) return [];
+        try {
+          return [JSON.parse(line.slice(index))];
+        } catch {
+          return [];
+        }
+      }),
+    ).toEqual([]);
+    expect(await database.store.merchants()).toEqual(before);
+    expect(
+      (await connected.pool.query("select * from payout_splits order by address")).rows,
+    ).toEqual(rows.rows);
   });
 
   it("names, from then on, the split it recorded, and checks a payment against it", async () => {
@@ -588,7 +609,7 @@ describe("a start that finds a wallet with no split that the wallet rule refuses
     const base = payoutSplitNetworkOf(T1, "eip155:8453");
     await aMerchant(database, "mch_refused");
     await paidWithoutASplit(database, "mch_refused", { address: base.multicall3, pending: null });
-    const { gateway, announcer } = aGatewayOver(database, T1, LIVE);
+    const { gateway, announcer } = aGatewayOver(database, LIVE);
     await gateway.start();
 
     const answered = await gateway.setPayoutWallet("mch_refused", P, {
@@ -670,17 +691,14 @@ describe("the address a payment is asked for", () => {
     // no recorded parameters, and money paid to it could never be paid out.
     const database = aDatabase();
     await aMerchant(database, "mch_one");
-    const recorded = await paidUnder(database, "mch_one", W);
     const edited = editedTo({ commissionWallet: DISTRIBUTOR });
-    // Not started: the start would refuse this registry, and the edge must
-    // hold on its own.
-    const { gateway, facilitator } = aGatewayOver(database, edited);
+    const { gateway, facilitator } = aGatewayOver(database);
+    await gateway.start();
+    const recorded = await paidUnder(database, "mch_one", W, edited);
     const stored = await database.store.publishCard("mch_one", card, NOW);
 
     expect((await gateway.paidResource(stored.id))?.payTo).toBe(recorded.address);
-    expect(
-      payoutSplitFor(payoutSplitNetworkOf(edited, "eip155:84532"), "mch_one", W).address,
-    ).not.toBe(recorded.address);
+    expect(payoutSplitFor(T1_TEST, "mch_one", W).address).not.toBe(recorded.address);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
@@ -688,14 +706,55 @@ describe("the address a payment is asked for", () => {
   });
 });
 
-describeWalletSpelling(
-  "a wallet stored in another spelling than its split, in memory",
-  async (network) => {
-    const store = new MemoryStore(network, countedIds(), () => NOW);
-    return {
-      store,
-      writeWalletWithoutSplit: (merchantId, wallet) =>
-        store.writeWalletWithoutSplit(merchantId, wallet),
-    };
-  },
-);
+describe("a restored wallet whose recorded split is missing", () => {
+  it.each(["https://x402.org/facilitator", "sandbox:scripted"])(
+    "refuses HTTP sales with no challenge or order on %s",
+    async (FACILITATOR_URL) => {
+      const database = aDatabase();
+      await aMerchant(database, "mch_missing");
+      const { gateway } = aGatewayOver(database, { FACILITATOR_URL });
+      await gateway.start();
+      // A restore after startup can reintroduce columns without the registry row.
+      await paidWithoutASplit(database, "mch_missing", { address: W, pending: null });
+      const held = await database.store.publishCard("mch_missing", card, NOW);
+      const key = await gateway.issueMerchantKey("mch_missing", "worker", {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
+      const served = await serve({ gateway });
+      try {
+        const logged = await loggedWhile(async () => {
+          for (const method of ["GET", "POST"] as const) {
+            const response = await served.call(
+              method,
+              `/x402/${held.id}/purchase`,
+              method === "POST" ? { body: { params: {} } } : {},
+            );
+            expect(response.status).toBe(409);
+            expect(response.body).toMatchObject({ error: { code: "not_selling" } });
+            expect(response.headers.get("payment-required")).toBeNull();
+          }
+        });
+        expect(await gateway.orders("mch_missing", undefined)).toEqual([]);
+        expect(logged).toContain("mch_missing");
+        expect(logged).toMatch(/no payout split/);
+        if (FACILITATOR_URL !== "sandbox:scripted") {
+          const publication = await served.call("POST", "/v0/catalog/publish", {
+            headers: { authorization: `Bearer ${key.secret}` },
+            body: { ...card, merchant_item_id: "another" },
+          });
+          expect(publication.status).toBe(422);
+          expect(publication.body).toMatchObject({
+            error: {
+              problems: expect.arrayContaining([
+                expect.objectContaining({ code: "no_payout_wallet" }),
+              ]),
+            },
+          });
+        }
+      } finally {
+        await served.close();
+      }
+    },
+  );
+});

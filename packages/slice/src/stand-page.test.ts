@@ -1,3 +1,6 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+// @vitest-environment jsdom
 /**
  * Two promises the page makes in its own markup. The one claim on these pages
  * that is about money: the stand signs real payments, the only thing here that
@@ -50,49 +53,32 @@ const connected = (keyEnvironment: PageState["keyEnvironment"]): string =>
 
 describe("the page a connected operator reads", () => {
   it("warns that a purchase spends real money, and only for a live key", () => {
-    expect(connected("live")).toContain("real money");
-    expect(connected("test")).not.toContain("real money");
-    expect(connected(null)).not.toContain("real money");
+    expect(notice(connected("live")).textContent).toMatch(/real money/i);
+    expect(notice(connected("test")).textContent).toMatch(/test.*(?:USDC|money|fund)/i);
+    expect(notice(connected("test")).textContent).not.toMatch(/real money/i);
+    expect(notice(connected(null)).textContent).not.toMatch(/real money/i);
   });
 
   it("says it cannot tell, rather than picking a side, for a key naming neither", () => {
     const page = connected(null);
 
-    expect(page).toContain("cannot say whether money on this gateway is real");
+    expect(notice(page).textContent).toMatch(/(?:cannot|unknown|uncertain|not know).*money/i);
     // "I do not know" has to stay distinguishable from "I know there is none":
     // a page that quietly borrowed the test wording would tell an operator
     // their payments are pretend on a gateway nobody has vouched for.
-    expect(page).not.toContain("test funds");
+    expect(notice(page).textContent).not.toMatch(/test funds|live key|test key/i);
   });
 });
 
-/** Undoes the page's escaping of one attribute value. */
-const unescaped = (value: string): string =>
-  value
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&");
-
-/** What each form on a page posts in its hidden fields, one record per form. */
-const hiddenFieldsOfEachForm = (page: string): Record<string, string>[] =>
-  page
-    .split("<form")
-    .slice(1)
-    .map((form) =>
-      Object.fromEntries(
-        [
-          ...form
-            .slice(0, form.indexOf("</form>"))
-            .matchAll(/<input type="hidden" name="([^"]*)" value="([^"]*)">/g),
-        ].map(([, name = "", value = ""]) => [unescaped(name), unescaped(value)]),
-      ),
-    );
-
-/** Where each paused row on a page says its order stands, in the order drawn. */
-const whereEachPausedRowSays = (page: string): string[] =>
-  [...page.matchAll(/<tr data-paused="([^"]*)"/g)].map(([, where = ""]) => where);
+const documentOf = (html: string): Document => new DOMParser().parseFromString(html, "text/html");
+const notice = (html: string): HTMLElement => {
+  const element = documentOf(html).querySelector<HTMLElement>(".surface");
+  expect(element).not.toBeNull();
+  if (element === null) throw new Error("the connected environment has no visible notice");
+  expect(element.closest("[hidden], [aria-hidden=true]")).toBeNull();
+  expect(element.style.display).not.toBe("none");
+  return element;
+};
 
 describe("a paused order on the Orders tab", () => {
   it("is drawn with a Release form that posts its own identifier back", () => {
@@ -106,11 +92,18 @@ describe("a paused order on the Orders tab", () => {
       paused: [{ id, merchantItemId: "the-item-ordered", phase: "answer_ready", since: 0 }],
     });
 
-    const releasing = hiddenFieldsOfEachForm(page).filter(
-      (fields) => fields.action === "release_pause",
+    const forms = [...documentOf(page).querySelectorAll("form")].filter(
+      (form) => new FormData(form).get("action") === "release_pause",
     );
-
-    expect(releasing).toEqual([{ action: "release_pause", order_id: id }]);
+    expect(forms).toHaveLength(1);
+    const form = forms[0];
+    if (form === undefined) throw new Error("no release form");
+    expect(form.method).toBe("post");
+    expect(form.getAttribute("action")).toBeNull();
+    expect(Object.fromEntries(new FormData(form).entries())).toEqual({
+      action: "release_pause",
+      order_id: id,
+    });
   });
 
   it("says the point it is paused at, and whether its answer is on disk yet", () => {
@@ -122,11 +115,21 @@ describe("a paused order on the Orders tab", () => {
       { id: "paused-with-its-answer", merchantItemId: "the-item", phase: "answer_ready", since: 0 },
     ];
     const rowsOnAStandKeeping = (records: string | null): string[] =>
-      whereEachPausedRowSays(
-        renderPage({ ...A_CONNECTED_PAGE, tab: "orders", paused, stand: { pid: 4242, records } }),
-      );
+      [
+        ...documentOf(
+          renderPage({ ...A_CONNECTED_PAGE, tab: "orders", paused, stand: { pid: 4242, records } }),
+        ).querySelectorAll("tr"),
+      ]
+        .filter((row) => row.querySelector('input[value="release_pause"]') !== null)
+        .map((row) => row.cells[1]?.textContent?.trim() ?? "");
 
-    expect(rowsOnAStandKeeping(null)).toEqual(["arrival", "answer_ready"]);
-    expect(rowsOnAStandKeeping("/tmp/stand-records")).toEqual(["arrival", "answer_recorded"]);
+    expect(rowsOnAStandKeeping(null)).toEqual([
+      "arrived, nothing done yet",
+      "answer ready, not sent",
+    ]);
+    expect(rowsOnAStandKeeping("/tmp/stand-records")).toEqual([
+      "arrived, nothing done yet",
+      "answer recorded, not sent",
+    ]);
   });
 });

@@ -1840,7 +1840,7 @@ export class Gateway {
     // anyone from loading a seller's shop with price questions for purchases
     // nobody pays; while somebody holds that many open, the seller's sales
     // through Agentify wait, though their shop does not.
-    const born = await this.runner.create(record, created.effects, at, {
+    const born = await this.runner.create(record, created.effects, {
       through: stored.integration,
       waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
     });

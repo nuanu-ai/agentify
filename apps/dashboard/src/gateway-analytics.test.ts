@@ -47,6 +47,7 @@ describe("the dashboard's calls on the gateway, as analytics records them", () =
 
     const recorded: AnalyticsEvent[] = open.store.recordedAnalytics.map(({ event }) => event);
     expect(recorded.map((event) => [event.name, event.actor, event.source])).toStrictEqual([
+      ["agc_setup_result", "human", "dashboard"],
       ["agc_card_publish_result", "human", "dashboard"],
       ["agc_selling_changed", "human", "dashboard"],
       ["agc_selling_changed", "human", "dashboard"],

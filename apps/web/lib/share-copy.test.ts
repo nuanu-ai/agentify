@@ -51,8 +51,15 @@ describe("shareCopy", () => {
   });
 
   it("includes the score in the subline for scored levels", () => {
-    const copy = shareCopy(snap({ level: "invisible", score: 12 }));
-    expect(copy.subline).toContain("12");
+    for (const [level, score] of [
+      ["invisible", 12],
+      ["readable", 46],
+      ["callable_ready", 63],
+      ["ahead_of_market", 82],
+    ] as const) {
+      const copy = shareCopy(snap({ level, score }));
+      expect(copy.subline, level).toMatch(new RegExp(`^${score}/100\\b`));
+    }
   });
 
   it("never uses a forbidden promise or certification claim", () => {

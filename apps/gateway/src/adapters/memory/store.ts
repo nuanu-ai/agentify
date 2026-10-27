@@ -341,19 +341,6 @@ export class MemoryStore implements Store {
     return written;
   }
 
-  /**
-   * Writes a merchant's wallet columns and no split. Only tests call this, to
-   * hold what a start finds where a wallet was written without its split;
-   * everything else writes a wallet through `setPayoutWallet`, with its split.
-   */
-  async writeWalletWithoutSplit(id: string, wallet: PayoutWalletRead): Promise<void> {
-    const row = this.#merchants.get(id);
-    if (row === undefined) {
-      throw new Error(`there is no merchant ${id} to write a wallet for`);
-    }
-    row.payoutWallet = wallet;
-  }
-
   // --- the payout splits ----------------------------------------------------
 
   async recordPayoutSplits(
@@ -528,11 +515,6 @@ export class MemoryStore implements Store {
     return [...this.#keys.values()]
       .filter((key) => key.merchantId === merchantId)
       .sort((one, other) => one.createdAt - other.createdAt || (one.id < other.id ? -1 : 1));
-  }
-
-  async disableKey(id: string, at: number): Promise<StoredKey | null> {
-    const found = this.#keys.get(id);
-    return found === undefined ? null : this.#revoke(found, at);
   }
 
   async disableKeyOf(
@@ -1135,10 +1117,6 @@ export class MemoryStore implements Store {
       merchantId: held?.merchantId ?? merchantId,
       receipt: Object.freeze({ ...receipt }),
     });
-  }
-
-  async receiptForOrder(orderId: string): Promise<Receipt | null> {
-    return this.#receipts.get(orderId)?.receipt ?? null;
   }
 
   async receipts(merchantId: string): Promise<readonly Receipt[]> {

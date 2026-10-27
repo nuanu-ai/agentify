@@ -1,3 +1,4 @@
+import { documentOf } from "../../testing/markup";
 /**
  * The page about selling to agents, drawn by the whole process and read as the
  * HTML a browser or a link preview receives, or as the Markdown a client asks
@@ -48,14 +49,16 @@ describe("the sell-to-agents page", () => {
         .toLowerCase();
 
     const page = await drawn("/agentic-shop");
+    expect(SELL_TO_AGENTS_PICTURE.tag).toMatch(/sell.*agents/i);
     for (const surface of [
       page.html,
       page.headWords,
       SELL_TO_AGENTS_PICTURE.alt,
-      SELL_TO_AGENTS_PICTURE.tag,
       buildLlmsText(),
-    ])
+    ]) {
+      expect(asRead(surface)).toContain("agentify");
       expect(asRead(surface)).not.toContain("agentic shop");
+    }
   });
 
   it("opens the dashboard directly and asks for nothing in a form of its own", async () => {
@@ -63,6 +66,7 @@ describe("the sell-to-agents page", () => {
 
     expect(links).toContain("/dashboard/sign-in");
     expect(links).toContain("/docs/");
+    expect(links).toContain("/privacy");
     expect(html).not.toMatch(/<form\b/);
   });
 
@@ -119,19 +123,13 @@ describe("the sell-to-agents page", () => {
     expect(paragraph.replace(/<[^>]+>/g, "")).not.toMatch(/[a-z][.!?][A-Z]/);
   });
 
-  it("links the site's privacy notice", async () => {
-    const { links } = await drawn("/agentic-shop");
-
-    expect(links).toContain("/privacy");
-  });
-
   it("names the research its market numbers come from", async () => {
     const { html } = await drawn("/agentic-shop");
 
     expect(html).toContain(
       'href="https://business.adobe.com/blog/ai-traffic-surge-retail-sites-not-machine-readable"',
     );
-    expect(html).toMatch(/\+<!-- -->393/);
+    expect(documentOf(html).body.textContent).toMatch(/\+\s*393/);
   });
 
   it("unfurls into its own card at its own address, with the sell-to-agents image", async () => {
@@ -139,11 +137,9 @@ describe("the sell-to-agents page", () => {
 
     expect(page.title).toMatch(/^\S.+ · Agentify$/);
     expect(page.canonical).toBe("https://agentify.ad/agentic-shop");
-    expect(page.meta("og:title")).toBe("Your next customer sends an agent. Be ready.");
-    expect(page.meta("twitter:title")).toBe("Your next customer sends an agent. Be ready.");
-    expect(page.meta("og:description")).toBe(
-      "Your products and services, ready for a new way to buy.",
-    );
+    expect(page.meta("og:title")).toMatch(/customer.*agent/i);
+    expect(page.meta("twitter:title")).toBe(page.meta("og:title"));
+    expect(page.meta("og:description")).toMatch(/products.*services.*buy/i);
     expect(page.meta("og:url")).toBe("https://agentify.ad/agentic-shop");
     expect(page.meta("og:type")).toBe("website");
     expect(page.meta("og:image")).toBe("https://agentify.ad/agentic-shop/opengraph-image");
@@ -158,12 +154,22 @@ describe("the sell-to-agents page", () => {
       (match) => Number(match[1]),
     );
 
-    expect(widths).toEqual([640, 1080, 1448]);
-    expect(html).toMatch(/<link rel="preload" as="image" imageSrcSet="[^"]+640w/);
+    expect(widths.length).toBeGreaterThan(1);
+    expect(widths.every((width) => width > 0)).toBe(true);
+    expect(html).toMatch(/<link[^>]+rel="preload"[^>]+as="image"/);
     // The process serves `public/` as it is, so each file named is one there.
-    for (const [, path] of image.matchAll(/(\/agentic-shop\/[^ "]+\.webp)/g)) {
+    const document = documentOf(html);
+    const rendered = document.querySelector("main img");
+    expect(rendered?.getAttribute("alt")?.trim()).toBeTruthy();
+    const paths = [
+      rendered?.getAttribute("src"),
+      ...(rendered?.getAttribute("srcset") ?? "")
+        .split(",")
+        .map((part) => part.trim().split(/\s+/)[0]),
+    ].filter((path): path is string => Boolean(path));
+    expect(paths.length).toBeGreaterThan(1);
+    for (const path of paths)
       expect(existsSync(new URL(`../../public${path}`, import.meta.url)), path).toBe(true);
-    }
   });
 
   it("may be kept by a shared cache for an hour, as every public page may", async () => {

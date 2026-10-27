@@ -36,9 +36,11 @@ describe("the head of a result", () => {
   });
 
   it("says what callable-ready does not mean wherever that level is drawn", () => {
-    expect(head({ level: "callable_ready", score: 63 })).toContain(
-      "Agentify did not invoke tools or verify authenticated actions.",
-    );
+    const callable = head({ level: "callable_ready", score: 63 })
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ");
+    expect(callable).toMatch(/public discovery metadata/i);
+    expect(callable).toMatch(/did not invoke tools or verify authenticated actions/i);
     expect(head()).not.toContain("did not invoke tools");
   });
 

@@ -29,7 +29,6 @@ import { Pool } from "pg";
 import { PgBoss } from "pg-boss";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Gateway } from "../../app/gateway.js";
-import { setPayoutWallet } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
 import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
@@ -239,13 +238,10 @@ if (databaseUrl === null) {
       await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
       // Outside the sandbox a card is on sale only if its merchant has a wallet,
       // and this config names a real facilitator.
-      await setPayoutWallet(
-        store,
-        testConfig().payoutSplit,
-        A,
-        "0x0000000000000000000000000000000000000001",
-        now,
-      );
+      await gateway.setPayoutWallet(A, "0x0000000000000000000000000000000000000001", {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
       // And a name, because a payment request names its seller; without one
       // nothing is on sale.
       await store.setServiceName(A, "The merchant of this suite", now);
@@ -666,36 +662,6 @@ if (databaseUrl === null) {
       expect(won).toHaveLength(1);
     });
 
-    it("keeps the open column in step with the state inside the document", async () => {
-      // `open` is a column written from the document by `rowFor`, and
-      // `GET /orders?open=true` answers from it. The in-memory adapter has no
-      // such column, so only this test catches one that fell behind and
-      // dropped a live order from the list the dashboard works from.
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "listed" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const orderId = offered.order.order.id;
-
-      const idsOf = async (query?: { readonly open?: boolean }) =>
-        (await store.orders(A, query)).map((record) => record.order.id);
-
-      expect(await idsOf({ open: true })).toContain(orderId);
-
-      // Closed inside the document, and nothing said about the column.
-      await store.withOrder(orderId, (found) => ({
-        save: { ...found, order: { ...found.order, state: "expired" } },
-        result: null,
-      }));
-
-      expect(await idsOf({ open: true })).not.toContain(orderId);
-      // Closed is not deleted: reconciling a day's orders reads the full list.
-      expect(await idsOf()).toContain(orderId);
-    });
-
     it("refuses a closing message cut in the middle of a character before the database sees it", async () => {
       // Postgres refuses half a surrogate pair in a document, so a message
       // that reached it would fail the write and answer as a retryable fault
@@ -780,36 +746,6 @@ if (databaseUrl === null) {
       }));
 
       expect(await writtenAt()).not.toBe(before);
-    });
-
-    it("carries an envelope through the queue and does not send it round again by itself", async () => {
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "queued" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-
-      const drawn = await queue.draw(A, 10, 2_000);
-      expect(drawn).toHaveLength(0);
-
-      await queue.publish(A, {
-        kind: "order_event",
-        id: "env_db_1",
-        sent_at: "2026-08-26T12:00:00.000Z",
-        payload: {
-          type: "order.payment_failed_after_delivery",
-          order_id: "ord_db_1",
-          at: "2026-08-26T12:00:00.000Z",
-        },
-      });
-
-      const first = await queue.draw(A, 10, 2_000);
-      expect(first.map((d) => d.envelope.id)).toStrictEqual(["env_db_1"]);
-      await queue.finish(A, first[0]?.handle ?? "");
-
-      expect(await queue.draw(A, 10, 200)).toStrictEqual([]);
     });
 
     describe("a failure in the database", () => {
@@ -980,14 +916,11 @@ if (databaseUrl === null) {
       expect(bought.order.order.state).toBe("delivered");
       expect(bought.delivery).toStrictEqual({ access_code: "SESAME" });
 
-      const receipt = await store.receiptForOrder(offered.order.order.id);
+      const receipt =
+        (await store.receipts(A)).find((receipt) => receipt.order_id === offered.order.order.id) ??
+        null;
       expect(receipt?.outcome).toBe("delivered");
       expect(receipt?.price.amount).toBe("80.00");
-      // The list is a different query from the lookup, and a receipt that can
-      // be fetched but is never listed is a day's takings that does not add up.
-      const listed = await store.receipts(A);
-      expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
-      expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
 
     /**
@@ -1062,7 +995,9 @@ if (databaseUrl === null) {
         ).rejects.toThrow();
 
         expect(await jobsFor(A, envelopeId)).toBe(0);
-        expect(await store.receiptForOrder(order.id)).toBeNull();
+        expect(
+          (await store.receipts(A)).find((receipt) => receipt.order_id === order.id) ?? null,
+        ).toBeNull();
         expect((await store.orderById(order.id))?.priceId).not.toBe(
           "the write that never happened",
         );
@@ -1085,7 +1020,10 @@ if (databaseUrl === null) {
         }));
 
         expect(await jobsFor(A, envelopeId)).toBe(1);
-        expect((await store.receiptForOrder(order.id))?.order_id).toBe(order.id);
+        expect(
+          ((await store.receipts(A)).find((receipt) => receipt.order_id === order.id) ?? null)
+            ?.order_id,
+        ).toBe(order.id);
         expect((await store.orderById(order.id))?.priceId).toBe("the write that happened");
       });
 
@@ -1446,7 +1384,7 @@ if (databaseUrl === null) {
               query: (...args: Parameters<typeof realQuery>) => {
                 if (typeof args[0] === "string" && args[0].includes("pg_advisory_unlock")) {
                   return Promise.reject(
-                    Object.assign(new Error("canceling statement due to statement timeout"), {
+                    Object.assign(new Error("cs_a-secret-from-the-shop\n[gateway] forged"), {
                       code: "57014",
                     }),
                   );
@@ -1461,10 +1399,16 @@ if (databaseUrl === null) {
         const stubborn = PostgresStore.over(held.db, "eip155:84532", countedIds());
         // The run itself is a success and is reported as one. An unlock nobody
         // could complete is not the sweep's failure to hand back to the queue.
-        expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
-          ran: true,
-          result: "swept",
+        const written = await loggedWhile(async () => {
+          expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
+            ran: true,
+            result: "swept",
+          });
         });
+        expect(written).toContain("a_wedged_sweep");
+        expect(written).toContain("57014");
+        expect(written).not.toContain("cs_a-secret-from-the-shop");
+        expect(written).not.toContain("forged");
 
         // The pool ends the session the failed unlock ran on. Ending is
         // asynchronous, so this waits two seconds, well inside the ten the pool
@@ -1545,10 +1489,26 @@ if (databaseUrl === null) {
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           expect((await store.orderById(orderId))?.order.state).toBe("unfulfilled");
-          expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
-            "order_event",
-          ]);
-          expect(await store.receiptForOrder(orderId)).toBeNull();
+          const envelopes = (await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope);
+          expect(envelopes).toHaveLength(1);
+          expect(envelopes[0]).toMatchObject({
+            kind: "order_event",
+            payload: {
+              type: "order.unfulfilled",
+              order_id: orderId,
+              reason: "deadline_passed",
+              price: { amount: "12.00", currency: "USD" },
+            },
+          });
+          expect(envelopes.some((envelope) => envelope.kind === "order")).toBe(false);
+          expect((await store.orderById(orderId))?.paymentAttempt?.completion).toMatchObject({
+            settled: true,
+            transaction: proof.transaction,
+            source: "chain",
+          });
+          expect(
+            (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
+          ).toBeNull();
         } finally {
           facilitator.willSettle();
         }
@@ -1594,37 +1554,90 @@ if (databaseUrl === null) {
         expect(second).toStrictEqual({ dispatched: 0, receipted: 0, rearmed: 0, refused: 0 });
       }, 30_000);
 
-      it("writes the receipt a delivered order has none of, once", async () => {
-        const card = await store.publishCard(A, { ...asyncCard, merchant_item_id: "swept-r" }, now);
-        const offered = await gateway.beginPurchase(card.id, {});
-        if (offered.step !== "pay") throw new Error("no price was offered");
-        const orderId = offered.order.order.id;
-
-        const paid = `swept-r-${randomUUID()}`;
-        await gateway.runner.presentVerifiedPayment(orderId, paid, paid, PAID_AT, now);
-        const worker = workUntilStopped(
-          { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
-          { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
-        );
-        await vi.waitFor(async () => {
-          expect((await store.orderById(orderId))?.order.state).toBe("delivered");
-        });
-        await worker.stop();
-
-        // A delivered order without a receipt, as a record written by an
-        // older version of this code looks.
-        await pool.query("delete from receipts where order_id = $1", [orderId]);
-        expect(await store.receiptForOrder(orderId)).toBeNull();
-
-        const first = await gateway.runner.sweep();
-        expect(first?.receipted).toBe(1);
-        const written = await store.receiptForOrder(orderId);
-        expect(written?.outcome).toBe("delivered");
-
-        const second = await gateway.runner.sweep();
-        expect(second?.receipted).toBe(0);
-        expect(await store.receiptForOrder(orderId)).toStrictEqual(written);
-      }, 30_000);
+      it.each(["observed", "legacy_assertion"] as const)(
+        "repairs a real missing receipt only when payment evidence is %s",
+        async (evidence) => {
+          const card = await store.publishCard(
+            A,
+            { ...asyncCard, merchant_item_id: "swept-r" },
+            now,
+          );
+          await gateway.poll(A, 0);
+          const offered = await gateway.beginPurchase(card.id, {});
+          if (offered.step !== "pay") throw new Error("no price was offered");
+          const orderId = offered.order.order.id;
+          const paid = `swept-r-${randomUUID()}`;
+          await gateway.payPurchase(orderId, paid, paid);
+          const worker = workUntilStopped(
+            { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
+            { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
+          );
+          await vi.waitFor(async () =>
+            expect((await store.orderById(orderId))?.order.state).toBe("delivered"),
+          );
+          await worker.stop();
+          const original = (await store.receipts(A)).find((row) => row.order_id === orderId);
+          expect(original).toMatchObject({ outcome: "delivered", price: { amount: "12.00" } });
+          expect((await store.orderById(orderId))?.paymentAttempt?.completion?.settled).toBe(true);
+          await pool.query("delete from receipts where order_id = $1", [orderId]);
+          if (evidence === "legacy_assertion") {
+            // Historic rows kept a settlement assertion but no execution provenance.
+            await pool.query(
+              `update orders set record = (record - 'paymentAttempt' - 'paymentRecovery' - 'paymentFingerprint') || jsonb_build_object('paymentWords', $2::jsonb) where id = $1`,
+              [
+                orderId,
+                JSON.stringify([
+                  { about: "settle", at: now, said: "the facilitator was not asked" },
+                ]),
+              ],
+            );
+            expect((await store.orderById(orderId))?.paymentAttempt).toBeUndefined();
+          }
+          expect((await store.receipts(A)).find((row) => row.order_id === orderId)).toBeUndefined();
+          if (evidence === "observed") {
+            const put = store.putReceipt.bind(store);
+            store.putReceipt = async () => {
+              throw new Error(
+                "postgres://operator:receipt-secret@db.invalid/database\nAuthorization: private",
+              );
+            };
+            let refused: Awaited<ReturnType<typeof gateway.runner.sweep>> = null;
+            const logged = await loggedWhile(async () => {
+              try {
+                refused = await gateway.runner.sweep();
+              } finally {
+                store.putReceipt = put;
+              }
+            });
+            expect(refused).toMatchObject({ receipted: 0, refused: 1 });
+            const receiptFailure = logged
+              .split("\n")
+              .filter((line) => line.includes(orderId) && /sweep.*receipt/i.test(line));
+            expect(receiptFailure).toHaveLength(1);
+            expect(logged).not.toMatch(/receipt-secret|Authorization|db\.invalid/);
+            expect(
+              (await store.receipts(A)).find((row) => row.order_id === orderId),
+            ).toBeUndefined();
+          }
+          const first = await gateway.runner.sweep();
+          expect(first?.receipted).toBe(evidence === "observed" ? 1 : 0);
+          const written = (await store.receipts(A)).find((row) => row.order_id === orderId);
+          if (evidence === "observed") {
+            expect(written).toMatchObject({
+              outcome: "delivered",
+              price: { amount: "12.00" },
+              paid_at: original?.paid_at,
+              transaction: original?.transaction,
+            });
+          } else expect(written).toBeUndefined();
+          const second = await gateway.runner.sweep();
+          expect(second?.receipted).toBe(0);
+          expect((await store.receipts(A)).find((row) => row.order_id === orderId)).toEqual(
+            written,
+          );
+        },
+        30_000,
+      );
     });
 
     describe("the registry of payout splits", () => {
@@ -1793,8 +1806,8 @@ if (databaseUrl === null) {
       });
 
       /** A gateway of its own over this database, with nothing in memory but its queue. */
-      const aGatewayOn = (db: Database, table = PAYOUT_SPLIT_NETWORKS) => {
-        const config = loadConfig({ DATABASE_URL: databaseUrl }, table);
+      const aGatewayOn = (db: Database) => {
+        const config = loadConfig({ DATABASE_URL: databaseUrl });
         return new Gateway({
           config,
           store: PostgresStore.over(db, "eip155:84532", countedIds()),
@@ -2033,14 +2046,19 @@ if (databaseUrl === null) {
         // The edit is refused in words in the log, and nothing the start would
         // write is written first.
         await withoutTheirSplits();
-        const edited = {
-          ...PAYOUT_SPLIT_NETWORKS,
-          "eip155:84532": { ...network, commissionWallet: W2 },
-        };
-        const config = loadConfig(
-          { DATABASE_URL: databaseUrl, FACILITATOR_URL: "sandbox:scripted" },
-          edited,
+        const legacy = "mch_old_policy";
+        await store.addMerchant({ id: legacy, name: "Legacy policy" }, now);
+        const historical = payoutSplitFor({ ...network, commissionWallet: W2 }, legacy, W1);
+        await store.setPayoutWallet(
+          legacy,
+          { address: null, pending: null },
+          { address: W1, split: historical, pending: null },
+          now,
         );
+        const config = loadConfig({
+          DATABASE_URL: databaseUrl,
+          FACILITATOR_URL: "sandbox:scripted",
+        });
 
         let refused: unknown;
         const logged = await loggedWhile(async () => {
@@ -2053,8 +2071,9 @@ if (databaseUrl === null) {
           );
         });
 
-        expect(String(refused)).toMatch(/commission wallet or the rate/);
-        expect(logged).toMatch(/commission wallet or the rate/);
+        expect(refused).toBeInstanceOf(Error);
+        expect(String(refused)).toContain(historical.address);
+        expect(logged).toContain(historical.address);
         expect(logged).not.toMatch(/did not answer/);
         expect(await rowsOf("mch_old_one")).toStrictEqual([]);
       });

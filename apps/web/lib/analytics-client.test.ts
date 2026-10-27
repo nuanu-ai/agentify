@@ -5,27 +5,9 @@ import {
   createBrowserEventId,
   createClientOwnedEventId,
   dispatchConsentedBrowserEvent,
-  recordThenDeliverWithConsent,
 } from "./analytics-client.js";
 
 describe("browser analytics dedup", () => {
-  it("records canonical business state before consent without loading destinations", async () => {
-    const state = { recorded: false, delivered: false };
-    await expect(
-      recordThenDeliverWithConsent({
-        consent: undefined,
-        recordBusinessEvent: async () => {
-          state.recorded = true;
-          return { eventId: "business-event" };
-        },
-        deliverToBrowserDestinations: async () => {
-          state.delivered = true;
-        },
-      }),
-    ).resolves.toEqual({ eventId: "business-event" });
-    expect(state).toEqual({ recorded: true, delivered: false });
-  });
-
   it("creates UUIDv7 event IDs for client-owned triggers", () => {
     expect(createBrowserEventId(1_700_000_000_000)).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -59,7 +41,7 @@ describe("browser analytics dedup", () => {
     expect(delivered).toEqual({ posthog: false, meta: false });
   });
 
-  it("deduplicates per destination only after successful delivery", async () => {
+  it("stores each destination once-key only after its asynchronous sender completes", async () => {
     const consent = createConsentSnapshot({
       policyVersion: "v1",
       decisions: { product_analytics: true, ads_measurement: true },
@@ -67,6 +49,8 @@ describe("browser analytics dedup", () => {
     });
     const values = new Map<string, string>();
     const deliveries = { posthog: 0, meta: 0 };
+    const posthog = Promise.withResolvers<void>();
+    const meta = Promise.withResolvers<void>();
     const input = {
       eventId: createBrowserEventId(),
       onceKey: "result:session:scan",
@@ -77,12 +61,22 @@ describe("browser analytics dedup", () => {
       },
       sendPosthog: () => {
         deliveries.posthog += 1;
+        return posthog.promise;
       },
       sendMetaPixel: () => {
         deliveries.meta += 1;
+        return meta.promise;
       },
     };
-    await dispatchConsentedBrowserEvent(input);
+    const pending = dispatchConsentedBrowserEvent(input);
+    expect(values.size).toBe(0);
+    posthog.resolve();
+    await posthog.promise;
+    expect([...values.entries()]).toEqual([
+      ["agentify.analytics.once.posthog.result:session:scan", input.eventId],
+    ]);
+    meta.resolve();
+    await expect(pending).resolves.toEqual({ posthog: true, meta: true });
     await dispatchConsentedBrowserEvent(input);
     expect(deliveries).toEqual({ posthog: 1, meta: 1 });
     expect(values.size).toBe(2);
@@ -104,7 +98,8 @@ describe("browser analytics dedup", () => {
         getItem: (key: string) => values.get(key) ?? null,
         setItem: (key: string, value: string) => values.set(key, value),
       },
-      sendPosthog: () => {
+      sendPosthog: async () => {
+        await Promise.resolve();
         deliveries.posthog += 1;
         if (deliveries.posthog === 1) {
           throw new Error("posthog_unavailable");

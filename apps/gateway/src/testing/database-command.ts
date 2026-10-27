@@ -5,11 +5,7 @@
  * test.
  */
 
-import {
-  noDatabaseHere,
-  readyDatabase,
-  testDatabaseUrl,
-} from "./apps/gateway/src/testing/database.js";
+import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "./database.js";
 
 export async function setup(): Promise<void> {
   const url = testDatabaseUrl();

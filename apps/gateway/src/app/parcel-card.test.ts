@@ -3,13 +3,7 @@
  * on every channel alike.
  */
 
-import {
-  type Card,
-  CardSchema,
-  CatalogPageSchema,
-  publicCardOf,
-  type ShipTo,
-} from "@nuanu-ai/agentify-contracts";
+import { type Card, CardSchema, type ShipTo } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buyOverHttp,
@@ -20,7 +14,6 @@ import {
   testConfig,
 } from "../testing/harness.js";
 import { policyFor } from "./runtime.js";
-import { checksBeforeSending } from "./written.js";
 
 const parcelCard: Card = CardSchema.parse({
   merchant_item_id: "beans-1kg",
@@ -148,7 +141,7 @@ describe("a card for a parcel", () => {
     expect(bought.body).toMatchObject({ payment_status: "paid", test: false, shipment: null });
   });
 
-  it("holds its orders to the time to ship, counted from the charge", () => {
+  it("converts the declared shipping window to the order policy duration", () => {
     expect(policyFor(parcelCard, testConfig()).deadlines.asyncFulfillmentMs).toBe(172_800_000);
   });
 
@@ -156,20 +149,5 @@ describe("a card for a parcel", () => {
     const config = testConfig({ SETTLE_RESPONSE_MS: "2000", SETTLE_BEFORE_GOODS_MS: "15000" });
 
     expect(policyFor(parcelCard, config).deadlines.settleResponseMs).toBe(15_000);
-  });
-
-  it("is a card this gateway can show an agent, once it may", () => {
-    const shown = publicCardOf(parcelCard, {
-      id: "itm_beans",
-      purchase_url: "https://agentify.ad/x402/itm_beans/purchase",
-      as_of: "2026-10-09T09:00:00.000Z",
-      seller: { name: "A roastery", site: "https://roastery.example" },
-    });
-
-    expect(
-      checksBeforeSending(CatalogPageSchema).every(
-        (check) => check.safeParse({ items: [shown] }).success,
-      ),
-    ).toBe(true);
   });
 });

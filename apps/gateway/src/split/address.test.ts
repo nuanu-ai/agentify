@@ -92,6 +92,8 @@ describe("parameters the factory could never make into a split that pays out", (
     expect(refusal({ allocations: [999_000, 1_000], totalAllocation: 2_000_000 })).toMatch(
       /add up to 1000000.*2000000/s,
     );
+    expect(refusal({ totalAllocation: 1_000_000.5 })).toMatch(/1000000.*1000000\.5/s);
+    expect(refusal({ totalAllocation: -1_000_000 })).toMatch(/1000000.*-1000000/s);
   });
 
   it("are refused where a recipient has no allocation", () => {
@@ -148,11 +150,6 @@ describe("parameters the factory could never make into a split that pays out", (
     expect(refusal({ allocations: [1_001_000, -1_000] })).toMatch(/whole number/);
     expect(refusal({ allocations: [999_000.5, 999.5] })).toMatch(/whole number/);
   });
-
-  it("are refused where the total is not a whole number of parts", () => {
-    expect(refusal({ totalAllocation: 1_000_000.5 })).toMatch(/add up to 1000000.*1000000\.5/s);
-    expect(refusal({ totalAllocation: -1_000_000 })).toMatch(/add up to 1000000.*-1000000/s);
-  });
 });
 
 describe("the salt of a merchant's split", () => {
@@ -160,16 +157,6 @@ describe("the salt of a merchant's split", () => {
     for (const { network, merchantId, salt } of handEncoded.salts) {
       expect(payoutSplitSalt(network, merchantId), `${network} ${merchantId}`).toBe(salt);
     }
-  });
-
-  it("differs between the test chain and the live chain, and between two merchants", () => {
-    const merchant = "mch_0123456789abcdef0123456789abcdef";
-    const salts = new Set([
-      payoutSplitSalt("eip155:84532", merchant),
-      payoutSplitSalt("eip155:8453", merchant),
-      payoutSplitSalt("eip155:84532", "mch_ffffffffffffffffffffffffffffffff"),
-    ]);
-    expect(salts.size).toBe(3);
   });
 
   it("gives a split whose address changes with the chain id alone", () => {

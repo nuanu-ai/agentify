@@ -34,12 +34,6 @@ afterEach(() => {
 });
 
 describe("an identifier with its copy button", () => {
-  it("shows the prefix, the first four and the last four with a visible ellipsis", () => {
-    render(<Ident value={ORDER} what="order ID" />);
-
-    expect(screen.getByText("ord_17ff…7de3")).toBeTruthy();
-  });
-
   it("opens to the whole value at a tap, with no script on the page", () => {
     // A touch screen never shows a title, so the short form is a disclosure
     // the browser opens by itself; the whole value is what it holds.

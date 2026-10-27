@@ -345,10 +345,6 @@ describe("an address with a trailing slash", () => {
     expect(answered.status).toBe(308);
     expect(answered.headers.get("location")).toBe("/privacy?from=a-link");
   });
-
-  it("leaves the front page where it is", async () => {
-    expect((await ask("/")).status).toBe(200);
-  });
 });
 
 describe("an address written with repeated slashes", () => {

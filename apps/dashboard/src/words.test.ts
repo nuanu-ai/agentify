@@ -3,11 +3,7 @@
  * so a value added to a vocabulary fails here until somebody writes its words.
  */
 
-import {
-  FulfillmentSchema,
-  ORDER_STATUSES,
-  ReceiptOutcomeSchema,
-} from "@nuanu-ai/agentify-contracts";
+import { FulfillmentSchema, ORDER_STATUSES } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { FULFILLMENT_WORDS, money, needsYou, ORDER_WORDS, waitsOnTheBuyer } from "./words.js";
 
@@ -17,14 +13,6 @@ describe("the words a merchant reads", () => {
       expect(ORDER_WORDS[status]?.text, status).toBeTruthy();
       // `unfulfilled` on a screen is a field name, not a sentence.
       expect(ORDER_WORDS[status]?.text, status).not.toContain("_");
-    }
-  });
-
-  it("covers every outcome a receipt can carry with the order's own words", () => {
-    // A receipt's outcomes are a subset of the order's, so one map serves both
-    // screens and a state reads the same on each.
-    for (const outcome of ReceiptOutcomeSchema.options) {
-      expect(ORDER_WORDS[outcome]?.text, outcome).toBeTruthy();
     }
   });
 

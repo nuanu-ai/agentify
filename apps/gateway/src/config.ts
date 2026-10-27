@@ -554,10 +554,8 @@ const PLACEHOLDER_REFUSED: Readonly<Record<NotAPayoutWallet, string>> = {
  * to run a network the code has no commission wallet for yet; nothing in the
  * environment reaches it.
  */
-export function loadConfig(
-  environment: Record<string, string | undefined>,
-  payoutSplitNetworks: PayoutSplitNetworks = PAYOUT_SPLIT_NETWORKS,
-): GatewayConfig {
+export function loadConfig(environment: Record<string, string | undefined>): GatewayConfig {
+  const payoutSplitNetworks = PAYOUT_SPLIT_NETWORKS;
   const parsed = environmentSchema.safeParse(environment);
 
   if (!parsed.success) {

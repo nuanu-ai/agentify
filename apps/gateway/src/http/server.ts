@@ -57,7 +57,7 @@ export interface RouteCall {
   readonly response: Response;
 }
 
-export type RouteHandler = (call: RouteCall) => Promise<RouteAnswer>;
+type RouteHandler = (call: RouteCall) => Promise<RouteAnswer>;
 
 export interface MountedRoute {
   readonly serve: RouteHandler;
@@ -78,14 +78,8 @@ export interface MountedRoute {
 /** The most a request body may be. A card with a large schema is still small. */
 const BODY_LIMIT = "256kb";
 
-/**
- * The whole surface, on an express app. Only tests pass `routes`; a deployment
- * mounts the contract's own list.
- */
-export function buildApp(
-  gateway: Gateway,
-  routes: readonly [RouteName, RouteDefinition][] = mountableRoutes(),
-): Express {
+/** The deployed HTTP surface, mounted directly from the public contract. */
+export function buildApp(gateway: Gateway): Express {
   const app = express();
   app.use((request, response, next) => {
     telemetry.observeHttp("gateway", request, response, () =>
@@ -112,14 +106,7 @@ export function buildApp(
     response.redirect(302, "/x402/catalog");
   });
 
-  for (const [name, route] of routes) {
-    // The contract's list already leaves these out; this guards against a
-    // caller passing one in by name.
-    if (route.auth === "undecided") {
-      throw new Error(
-        `the contract leaves ${name}'s door undecided, so this gateway will not serve it at ${route.method} ${route.path}`,
-      );
-    }
+  for (const [name, route] of mountableRoutes()) {
     const handler = handlers[name];
     if (handler === undefined) {
       throw new Error(

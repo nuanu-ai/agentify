@@ -68,7 +68,7 @@ describe("commerce operational observations", () => {
     expect(value(samples, "agentify_commerce_oldest_overdue_age_seconds")).toBe(10);
   });
 
-  it("counts unique retained orders in the recent creation cohort, not attempts", () => {
+  it("counts retained orders in the recent creation cohort without exposing identifiers", () => {
     const order = reach("delivered");
     const samples = sample([
       { ...order, id: "ord_recent", timestamps: { ...order.timestamps, createdAt: now - 60_000 } },

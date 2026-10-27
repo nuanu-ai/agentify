@@ -84,14 +84,20 @@ describe("the application release tag", () => {
     }
   });
 
-  it("refuses prereleases instead of deriving an unsafe npm channel", () => {
-    for (const version of ["0.2.0-rc.3", "0.2.0-latest.1", "0.2.0-1"]) {
-      const result = refuse("app-v1", version);
-
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toContain("not a stable semantic version");
-    }
-  });
+  it.each(["0.2.0-rc.3", "0.2.0-latest.1", "0.2.0-1"])(
+    "refuses prerelease %s independently in either published package",
+    (version) => {
+      for (const [sdk, contracts, name] of [
+        [version, "0.1.0", "SDK"],
+        ["0.1.0", version, "contracts"],
+      ] as const) {
+        const result = refuse("app-v1", sdk, contracts);
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(`${name} version ${version}`);
+        expect(result.stderr).toContain("not a stable semantic version");
+      }
+    },
+  );
 
   it("refuses manifests that still say unreleased", () => {
     for (const [sdk, contracts] of [

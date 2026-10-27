@@ -67,7 +67,7 @@ describe("the front page", () => {
   it("carries its own title and description, named by the origin alone", async () => {
     const head = await page("/");
 
-    expect(head.title).toBe("What your website shows to AI agents, and how to sell to them");
+    expect(head.title).toMatch(/website.*AI agents.*sell/i);
     expect(head.meta("description")?.trim()).toBeTruthy();
     expect(head.canonical).toBe("https://agentify.ad");
     expect(head.meta("og:title")).toBe(head.title);

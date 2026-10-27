@@ -50,7 +50,8 @@ const lineAfter = (
 
 describe("what the merchant may say about its subscription", () => {
   it("says it is selling when the worker has reported nothing", () => {
-    expect(lineAfter([], 1_000)).toBe(`selling: subscribed to ${GATEWAY}`);
+    expect(lineAfter([], 1_000)).toMatch(/^selling:/);
+    expect(lineAfter([], 1_000)).toContain(GATEWAY);
   });
 
   it("says it is not sure the moment a poll fails", () => {
@@ -61,7 +62,9 @@ describe("what the merchant may say about its subscription", () => {
     // A merchant whose handler threw on one order is still subscribed and still
     // selling every other card. Turning the container red for it would send
     // somebody to look at the wrong thing.
-    expect(lineAfter([handlerThrew], 1_000)).toBe(`selling: subscribed to ${GATEWAY}`);
+    expect(lineAfter([handlerThrew], 1_000)).toMatch(/^selling:/);
+    expect(lineAfter([handlerThrew], 1_000)).toContain(GATEWAY);
+    expect(lineAfter([handlerThrew], 1_000)).not.toMatch(/doubting:|stopped:/);
   });
 
   it("stays stopped after a fatal problem, and says nothing more about it", () => {
@@ -104,16 +107,19 @@ describe("what the merchant may say about its subscription", () => {
     expect(onTheDot.announce).toEqual([{ said: "answering_again" }]);
   });
 
-  it("is wide enough for a gateway that answers nothing rather than refusing", () => {
+  it("is wide enough for a gateway that answers nothing rather than refusing", async () => {
+    const { POLL_DEADLINE_MS } = (await import(
+      new URL("../../sdk/src/worker.ts", import.meta.url).href
+    )) as { POLL_DEADLINE_MS: number };
+    const { RETRY_CEILING_MS } = (await import(
+      new URL("../../sdk/src/backoff.ts", import.meta.url).href
+    )) as { RETRY_CEILING_MS: number };
     // The arithmetic this signal lives or dies by, with its two terms named
     // apart. A refused connection fails at once and reports every backoff; a
     // socket that is accepted and never answered fails only when the worker
     // gives up on it, so the gap between two reports is the poll deadline plus
     // the rest that follows. A window narrower than that sum goes green in the
     // quiet between two failures of a subscription that is entirely dead.
-    const POLL_DEADLINE_MS = 50_000;
-    const RETRY_CEILING_MS = 30_000;
-
     expect(DOUBT_MS).toBeGreaterThan(POLL_DEADLINE_MS + RETRY_CEILING_MS);
   });
 

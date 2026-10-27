@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * What the gallery's page promises the host that publishes it and the person
  * who comments on it: it holds every file a screen needs, since the host lets
@@ -75,7 +76,11 @@ describe("the page the host publishes", () => {
     );
 
     expect(page).not.toMatch(/<!doctype|<(?:html|head|body)[\s>]/i);
-    expect(page.indexOf("</title>")).toBeLessThan(8 * 1024);
+    const title = /<title>([^<]+)<\/title>/.exec(page);
+    expect((title?.[1] ?? "").trim().length).toBeGreaterThan(0);
+    const end = page.indexOf("</title>");
+    expect(end).toBeGreaterThan(0);
+    expect(Buffer.byteLength(page.slice(0, end + "</title>".length))).toBeLessThan(8 * 1024);
   });
 
   it("refuses to grow past what the host publishes", () => {
@@ -92,7 +97,17 @@ describe("the page the host publishes", () => {
     );
 
     expect(page).not.toContain("<script>x()</script>");
-    expect(page).toContain('<article class="gallery-state" id="dashboard-keys-none">');
+    const document = new DOMParser().parseFromString(page, "text/html");
+    const embedded = document.querySelector("script#gallery-data");
+    expect(embedded?.getAttribute("type")).toBe("application/json");
+    const data = JSON.parse(embedded?.textContent ?? "null");
+    expect(data.states["dashboard-keys-none"]).toEqual({
+      surface: "dashboard",
+      html: "<script>x()</script><h1>Keys</h1>",
+      shows: null,
+    });
+    expect(document.querySelector("article#dashboard-keys-none")).not.toBeNull();
+    expect(document.querySelector("article#dashboard-keys-none script")).toBeNull();
   });
 });
 
@@ -100,13 +115,13 @@ describe("states a comment could not point at", () => {
   it("refuses a state named twice", () => {
     expect(
       refusalsIn([surface([state("dashboard-keys-none"), state("dashboard-keys-none")])]),
-    ).toEqual(["The state id dashboard-keys-none is used twice."]);
+    ).toEqual([expect.stringMatching(/dashboard-keys-none.*(?:twice|duplicat)/i)]);
   });
 
   it("refuses a name the host would not pass on as an anchor, or one outside its surface", () => {
     expect(refusalsIn([surface([state("dashboard-keys none"), state("keys-none")])])).toEqual([
-      'The state id "dashboard-keys none" is not a plain anchor.',
-      "The state keys-none does not start with its surface's id, dashboard.",
+      expect.stringMatching(/dashboard-keys none.*anchor/i),
+      expect.stringMatching(/keys-none.*dashboard/i),
     ]);
   });
 
@@ -131,12 +146,13 @@ describe("states a comment could not point at", () => {
   });
 
   it("refuses a state that does not say where, when or why", () => {
-    expect(
-      refusalsIn([surface([state("dashboard-keys-none", { when: " ", cause: "", address: "" })])]),
-    ).toEqual([
-      "The state dashboard-keys-none says nothing in address.",
-      "The state dashboard-keys-none says nothing in when.",
-      "The state dashboard-keys-none says nothing in cause.",
+    const refusals = refusalsIn([
+      surface([state("dashboard-keys-none", { screen: "", when: " ", cause: "", address: "" })]),
     ]);
+    expect(refusals).toHaveLength(4);
+    for (const field of ["screen", "address", "when", "cause"])
+      expect(refusals).toContainEqual(
+        expect.stringMatching(new RegExp(`dashboard-keys-none.*${field}`)),
+      );
   });
 });

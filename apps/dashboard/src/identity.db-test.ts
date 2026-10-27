@@ -365,31 +365,6 @@ if (databaseUrl === null) {
         return { identity, start, google };
       }
 
-      it("serializes independent first Google callbacks for the same person", async () => {
-        const { identity, start, google } = setupGoogle();
-        const first = await start();
-        const second = await start();
-        const opened = await Promise.all([
-          identity.finishGoogle(first.query, first.cookie),
-          identity.finishGoogle(second.query, second.cookie),
-        ]);
-        expect(opened[0]).toMatchObject({ status: "opened" });
-        expect(opened[1]).toMatchObject({ status: "opened" });
-        if (opened[0]?.status !== "opened" || opened[1]?.status !== "opened")
-          throw new Error("both callbacks should open");
-        expect(opened[0].person.id).toBe(opened[1].person.id);
-        expect(
-          (await pool.query("select count(*)::int as n from dashboard_accounts")).rows[0],
-        ).toEqual({ n: 1 });
-        expect(
-          (await pool.query("select count(*)::int as n from dashboard_sessions")).rows[0],
-        ).toEqual({ n: 2 });
-        const stored = (await pool.query("select * from dashboard_credentials")).rows;
-        expect(stored).toHaveLength(1);
-        for (const token of google.issuedTokens)
-          expect(JSON.stringify(stored)).not.toContain(token);
-      });
-
       it("holds the scanner's email lock before creating a Google person or session", async () => {
         const { identity, start } = setupGoogle();
         const flow = await start();
@@ -478,100 +453,6 @@ if (databaseUrl === null) {
       await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
     });
 
-    it("serializes two independent first links for one new person", async () => {
-      const messages: Message[] = [];
-      const one = identityOn(messages);
-      const two = identityOn(messages);
-      await one.requestLink("person@example.com", "default", ONE_CLIENT);
-      await rewindLinkSends();
-      await two.requestLink("person@example.com", "settings", ONE_CLIENT);
-      await pool.query(`
-        create function slow_dashboard_person() returns trigger language plpgsql as $$
-        begin perform pg_sleep(0.05); return new; end $$
-      `);
-      await pool.query(`
-        create trigger slow_dashboard_person before insert on dashboard_accounts
-        for each row execute function slow_dashboard_person()
-      `);
-
-      const [first, second] = await Promise.all([
-        one.openLink(tokenIn(messages[0] as Message)),
-        two.openLink(tokenIn(messages[1] as Message)),
-      ]);
-
-      expect(first).toMatchObject({ status: "opened", destination: "default" });
-      expect(second).toMatchObject({ status: "opened", destination: "settings" });
-      if (first.status !== "opened" || second.status !== "opened") {
-        throw new Error("both independent dashboard links should open");
-      }
-      expect(second.person.id).toBe(first.person.id);
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
-      ).toStrictEqual({ count: 1 });
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
-      ).toStrictEqual({ count: 2 });
-    });
-
-    it("refuses the second of two presses of one link at once, rather than failing it", async () => {
-      // The second press finds the link before the first spends it, then waits
-      // on the address's lock; by the time the component looks again the link is
-      // spent, and that is a refusal like any other.
-      const messages: Message[] = [];
-      const one = identityOn(messages);
-      const two = identityOn(messages);
-      await one.requestLink("person@example.com", "default", ONE_CLIENT);
-      const token = tokenIn(messages[0] as Message);
-      await pool.query(`
-        create function slow_dashboard_person() returns trigger language plpgsql as $$
-        begin perform pg_sleep(0.05); return new; end $$
-      `);
-      await pool.query(`
-        create trigger slow_dashboard_person before insert on dashboard_accounts
-        for each row execute function slow_dashboard_person()
-      `);
-
-      const [first, second] = await Promise.all([one.openLink(token), two.openLink(token)]);
-
-      expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
-      ).toStrictEqual({ count: 1 });
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
-      ).toStrictEqual({ count: 1 });
-    });
-
-    it("rolls token consumption and person creation back when session creation fails", async () => {
-      const messages: Message[] = [];
-      const identity = identityOn(messages);
-      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
-      const token = tokenIn(messages[0] as Message);
-      await pool.query(`
-        create function fail_dashboard_session() returns trigger language plpgsql as $$
-        begin raise exception 'injected session failure'; end $$
-      `);
-      await pool.query(`
-        create trigger fail_dashboard_session before insert on dashboard_sessions
-        for each row execute function fail_dashboard_session()
-      `);
-
-      await expect(identity.openLink(token)).rejects.toThrow(/insert into "dashboard_sessions"/i);
-
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_accounts")).rows[0],
-      ).toStrictEqual({ count: 0 });
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
-      ).toStrictEqual({ count: 0 });
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_verifications")).rows[0],
-      ).toStrictEqual({ count: 1 });
-      await pool.query("drop trigger fail_dashboard_session on dashboard_sessions");
-      await pool.query("drop function fail_dashboard_session()");
-      await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
-    });
-
     it("rolls the hashed token and rate event back when delivery is refused", async () => {
       const messages: Message[] = [];
       const identity = identityOn(messages, "refused");
@@ -649,27 +530,6 @@ if (databaseUrl === null) {
       expect(
         (await pool.query<{ id: string }>("select id from dashboard_verifications")).rows,
       ).toStrictEqual([{ id: "younger" }]);
-    });
-
-    it("keeps a seeded merchant unconfirmed until that mailbox consumes a link", async () => {
-      const messages: Message[] = [];
-      const identity = identityOn(messages);
-      const seeded = await identity.make("person@example.com", MERCHANT);
-
-      expect(seeded).toMatchObject({ confirmed: false, merchant: { id: MERCHANT } });
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_credentials")).rows[0],
-      ).toStrictEqual({ count: 0 });
-      expect(
-        (await pool.query("select count(*)::int as count from dashboard_sessions")).rows[0],
-      ).toStrictEqual({ count: 0 });
-
-      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
-      const opened = await identity.openLink(tokenIn(messages[0] as Message));
-      expect(opened).toMatchObject({
-        status: "opened",
-        person: { id: seeded?.id, confirmed: true, merchant: { id: MERCHANT } },
-      });
     });
 
     it("serializes competing attachment retries and sees the committed session first", async () => {
@@ -1103,6 +963,15 @@ if (databaseUrl === null) {
     ).rows;
   }
 
+  const storeReports = async (): Promise<Record<string, unknown>[]> =>
+    (
+      await pool.query(
+        `select account_id, click_id, state, attempts, next_attempt_at, last_outcome, created_at,
+                  event_at, settled_at
+             from dashboard_ad_reports where event = 'store_connected' order by account_id`,
+      )
+    ).rows;
+
   /**
    * Each new account waits a moment before it is written, so two transactions
    * that would both make one overlap.
@@ -1157,6 +1026,19 @@ if (databaseUrl === null) {
         },
       ]);
       // Due at once: nothing about a new registration is worth waiting for.
+      expect(await storeReports()).toStrictEqual([
+        {
+          account_id: opened.person.id,
+          click_id: CLICK,
+          state: "waiting",
+          attempts: 0,
+          next_attempt_at: null,
+          last_outcome: null,
+          created_at: stored[0]?.created_at,
+          event_at: null,
+          settled_at: null,
+        },
+      ]);
       const due = new Date(stored[0]?.next_attempt_at as Date).getTime();
       expect(due).toBeGreaterThanOrEqual(pressedAt);
       expect(due).toBeLessThanOrEqual(Date.now());
@@ -1178,10 +1060,13 @@ if (databaseUrl === null) {
     it("leaves no registration when the link was asked for without a click", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", ONE_CLIENT);
+      await identity.requestLink("person@example.com", "settings", ONE_CLIENT);
 
+      const stored = (await pool.query("select value from dashboard_verifications")).rows[0];
+      expect(JSON.parse(String(stored?.value))).not.toHaveProperty("clickId");
       await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
         status: "opened",
+        destination: "settings",
       });
 
       expect(await countIn("dashboard_accounts")).toBe(1);
@@ -1212,6 +1097,9 @@ if (databaseUrl === null) {
       const identity = reportingOn(messages);
       const made = await identity.make("person@example.com", MERCHANT);
       if (made === null) throw new Error("the account was not made");
+      expect(made).toMatchObject({ confirmed: false, merchant: { id: MERCHANT } });
+      expect(await countIn("dashboard_credentials")).toBe(0);
+      expect(await countIn("dashboard_sessions")).toBe(0);
       await identity.requestLink("person@example.com", "default", {
         ...ONE_CLIENT,
         clickId: CLICK,
@@ -1326,6 +1214,7 @@ if (databaseUrl === null) {
 
       expect([first.status, second.status].sort()).toStrictEqual(["opened", "refused"]);
       expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await countIn("dashboard_sessions")).toBe(1);
       expect(await registrations()).toMatchObject([{ click_id: CLICK }]);
       expect(await countIn("dashboard_ad_reports")).toBe(2);
     });
@@ -1350,7 +1239,10 @@ if (databaseUrl === null) {
       if (first.status !== "opened" || second.status !== "opened") {
         throw new Error("both links should open");
       }
+      expect(first.destination).toBe("default");
+      expect(second.destination).toBe("settings");
       expect(second.person.id).toBe(first.person.id);
+      expect(await countIn("dashboard_sessions")).toBe(2);
       expect(await countIn("dashboard_accounts")).toBe(1);
       const stored = await registrations();
       expect(stored).toHaveLength(1);
@@ -1404,27 +1296,10 @@ if (databaseUrl === null) {
       expect(await registrations()).toMatchObject([
         { account_id: bystander.person.id, click_id: ANOTHER_CLICK },
       ]);
-      expect(await countIn("dashboard_ad_reports")).toBe(2);
-    });
-
-    it("still opens a link stored in the shape without a click, and writes no registration", async () => {
-      const messages: Message[] = [];
-      const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "settings", {
-        ...ONE_CLIENT,
-        clickId: CLICK,
-      });
-      await pool.query("update dashboard_verifications set value = $1", [
-        JSON.stringify({ email: "person@example.com", destination: "settings", request: null }),
+      expect((await pool.query("select account_id from dashboard_ad_reports")).rows).toStrictEqual([
+        { account_id: bystander.person.id },
+        { account_id: bystander.person.id },
       ]);
-
-      await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
-        status: "opened",
-        destination: "settings",
-      });
-
-      expect(await countIn("dashboard_accounts")).toBe(1);
-      expect(await registrations()).toStrictEqual([]);
     });
 
     it("opens nothing and writes nothing for a stored click outside the closed set", async () => {
@@ -1596,75 +1471,6 @@ if (databaseUrl === null) {
       await migrateEverything();
     });
 
-    const storeReports = async (): Promise<Record<string, unknown>[]> =>
-      (
-        await pool.query(
-          `select account_id, click_id, state, attempts, next_attempt_at, last_outcome, created_at,
-                  event_at, settled_at
-             from dashboard_ad_reports where event = 'store_connected' order by account_id`,
-        )
-      ).rows;
-
-    it("leaves the store report waiting with its own copy of the click beside the registration, dated by the same sign-in, with only the registration report switched on", async () => {
-      const messages: Message[] = [];
-      const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", {
-        ...ONE_CLIENT,
-        clickId: CLICK,
-      });
-
-      const opened = await identity.openLink(tokenIn(messages[0] as Message));
-
-      if (opened.status !== "opened") throw new Error("the link did not open");
-      const [registration] = await registrations();
-      expect(await storeReports()).toStrictEqual([
-        {
-          account_id: opened.person.id,
-          click_id: CLICK,
-          state: "waiting",
-          attempts: 0,
-          next_attempt_at: null,
-          last_outcome: null,
-          created_at: registration?.created_at,
-          event_at: null,
-          settled_at: null,
-        },
-      ]);
-      expect(registration).toMatchObject({ click_id: CLICK, state: "pending" });
-    });
-
-    it("leaves a store report waiting for a Google sign-in from an ad that makes a new address's account", async () => {
-      const google = googleExchange();
-      vi.stubGlobal("fetch", google.fetch);
-      try {
-        const identity = identityFor(
-          {
-            ...config({
-              REGISTRATION_POSTBACK_ENABLED: "true",
-              REGISTRATION_POSTBACK_KEY: ["qa", "synthetic", "postback", "key"].join("-"),
-              REGISTRATION_POSTBACK_URL: "http://127.0.0.1:4010/postback",
-            }),
-            google: { clientId: "offline-client", clientSecret: "offline-secret" },
-          },
-          { pool, postman: async () => "accepted" },
-        );
-        const began = await identity.startGoogle("settings", CLICK);
-        if (began.status !== "redirect") throw new Error("Google must start");
-
-        const opened = await identity.finishGoogle(
-          google.authorize(began.location, {}),
-          cookieHeader(began.setCookies),
-        );
-
-        if (opened.status !== "opened") throw new Error("the Google sign-in did not open");
-        expect(await storeReports()).toMatchObject([
-          { account_id: opened.person.id, click_id: CLICK, state: "waiting", event_at: null },
-        ]);
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    });
-
     it("leaves neither report when the store report cannot be written, and the link still opens", async () => {
       const messages: Message[] = [];
       const identity = reportingOn(messages);
@@ -1693,27 +1499,6 @@ if (databaseUrl === null) {
       await pool.query("drop function fail_store_report()");
       await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
       expect(await countIn("dashboard_ad_reports")).toBe(2);
-    });
-
-    it("removes both reports with an account deleted for privacy", async () => {
-      const messages: Message[] = [];
-      const identity = reportingOn(messages);
-      await identity.requestLink("person@example.com", "default", {
-        ...ONE_CLIENT,
-        clickId: CLICK,
-      });
-      await identity.openLink(tokenIn(messages[0] as Message));
-      expect(await countIn("dashboard_ad_reports")).toBe(2);
-
-      await expect(
-        identity.deleteUnattachedPerson({
-          operation: "delete",
-          operation_id: OPERATION,
-          email: "person@example.com",
-        }),
-      ).resolves.toStrictEqual({ status: "deleted" });
-
-      expect(await countIn("dashboard_ad_reports")).toBe(0);
     });
   });
 
@@ -1825,7 +1610,7 @@ if (databaseUrl === null) {
           cookie: cookieHeader(began.setCookies),
         };
       };
-      return { identity, start };
+      return { identity, start, google };
     }
 
     it("leaves one pending registration holding the click, and nothing else of the sign-in, when the Google sign-in makes a new address's account", async () => {
@@ -1847,6 +1632,19 @@ if (databaseUrl === null) {
           last_outcome: null,
           created_at: expect.any(Date),
           event_at: expect.any(Date),
+          settled_at: null,
+        },
+      ]);
+      expect(await storeReports()).toStrictEqual([
+        {
+          account_id: opened.person.id,
+          click_id: CLICK,
+          state: "waiting",
+          attempts: 0,
+          next_attempt_at: null,
+          last_outcome: null,
+          created_at: stored[0]?.created_at,
+          event_at: null,
           settled_at: null,
         },
       ]);
@@ -1873,7 +1671,7 @@ if (databaseUrl === null) {
     });
 
     it("makes one account and one registration when two Google callbacks with clicks for one new person race", async () => {
-      const { identity, start } = reportingGoogle();
+      const { identity, start, google } = reportingGoogle();
       const first = await start(CLICK);
       const second = await start(ANOTHER_CLICK);
       await slowAccountInserts();
@@ -1884,7 +1682,15 @@ if (databaseUrl === null) {
       ]);
 
       expect(opened.map((one) => one.status)).toStrictEqual(["opened", "opened"]);
+      if (opened[0]?.status !== "opened" || opened[1]?.status !== "opened")
+        throw new Error("both callbacks should open");
+      expect(opened[0].person.id).toBe(opened[1].person.id);
       expect(await countIn("dashboard_accounts")).toBe(1);
+      expect(await countIn("dashboard_sessions")).toBe(2);
+      const credentials = (await pool.query("select * from dashboard_credentials")).rows;
+      expect(credentials).toHaveLength(1);
+      for (const token of google.issuedTokens)
+        expect(JSON.stringify(credentials)).not.toContain(token);
       const stored = await registrations();
       expect(stored).toHaveLength(1);
       expect([CLICK, ANOTHER_CLICK]).toContain(stored[0]?.click_id);

@@ -46,10 +46,12 @@ function siteWith({
   /** What the route answers a request for a copy with. */
   copy?: unknown;
 }) {
+  const requests: { address: string; body: unknown }[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     const address = String(input);
     if (address.endsWith("/api/v2/session")) return json(visitor.status, visitor.body);
     const sent = JSON.parse(String(init?.body ?? "null")) as unknown;
+    requests.push({ address, body: sent });
     const unsubscribe = address.endsWith("/unsubscribe");
     const parsed = (
       unsubscribe ? accountUnsubscribeRequestSchema : accountDataRequestSchema
@@ -67,6 +69,7 @@ function siteWith({
       ? json(200, copy)
       : json(200, { status: "requested", type: "deletion" });
   });
+  return requests;
 }
 
 /**
@@ -93,15 +96,21 @@ afterEach(() => {
 
 describe("the account requests on the site's own pages", () => {
   it("keeps the irreversible deletion off the primary button until it is confirmed", async () => {
-    siteWith({ visitor: signedIn });
+    const requests = siteWith({ visitor: signedIn });
     render(<AccountActions mode="data" privacyEmail={PRIVACY} />);
 
     const asked = await screen.findByRole("button", { name: "Delete my data" });
     expect(asked.classList.contains("button-primary")).toBe(false);
     await userEvent.click(asked);
-    expect(
-      screen.getByRole("button", { name: "Confirm deletion" }).classList.contains("button-primary"),
-    ).toBe(true);
+    expect(requests).toEqual([]);
+    expect(screen.getByText(/anonymizes your data for good/i)).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm deletion" }));
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      address: "/api/v1/account/data-request",
+      body: { type: "deletion", signed_in_as: OWNER },
+    });
+    expect(await screen.findByText(/Deletion was requested/i)).toBeTruthy();
   });
 
   it("say which address they act for, and send it with the press", async () => {

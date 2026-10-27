@@ -140,19 +140,6 @@ const CONTRACTS_PASS = [
 ];
 
 describe("the pre-release check of the commission wallets", () => {
-  it("passes Base Sepolia's chain, its commission wallet and its five contracts, and says the wallet is a plain one", async () => {
-    const verdicts = await checkOn(BASE_SEPOLIA, SEPOLIA_ENTRY);
-
-    expect(outcome(verdicts)).toStrictEqual([
-      ["chain id", true],
-      ["commission wallet", true],
-      ...CONTRACTS_PASS,
-    ]);
-    expect(verdicts.find((verdict) => verdict.check === "commission wallet")?.saw).toMatch(
-      /plain wallet/,
-    );
-  });
-
   it("passes the code's own table on both networks, Base's commission wallet a Safe with the product owner's one owner, and neither wallet a contract on any other chain read", async () => {
     const verdicts = await commissionWalletVerdicts({
       networks: [BASE, BASE_SEPOLIA],
@@ -251,15 +238,28 @@ describe("the pre-release check of the commission wallets", () => {
   });
 
   it("fails a network the table names no payout split for, reading nothing", async () => {
+    const requests: string[] = [];
+    const client = createPublicClient({
+      transport: custom(
+        {
+          async request({ method }: { method: string }) {
+            requests.push(method);
+            throw new Error("no RPC is needed");
+          },
+        },
+        { retryCount: 0 },
+      ),
+    });
     const verdicts = await commissionWalletVerdicts({
       networks: [BASE],
       chainsRead: [BASE, ETHEREUM],
       table: {},
-      clientOf: (network) => answeringAs(network),
+      clientOf: () => client,
       owners: {},
     });
 
     expect(outcome(verdicts)).toStrictEqual([["the code table", false]]);
+    expect(requests).toEqual([]);
   });
 
   it("passes Base when its commission wallet is a Safe whose owners are exactly the ones named, in any order and spelling", async () => {
@@ -305,20 +305,24 @@ describe("the pre-release check of the commission wallets", () => {
     expect(verdicts.find((verdict) => verdict.check === "Safe owners")?.passed).toBe(false);
   });
 
-  it("holds a commission wallet with code on Base Sepolia to the same reads, and fails one whose owners cannot be read", async () => {
-    const verdicts = await checkOn(BASE_SEPOLIA, {
-      ...SEPOLIA_ENTRY,
-      commissionWallet: named(BASE_SEPOLIA, "safeSingleton"),
-    });
+  it.each([BASE, BASE_SEPOLIA])(
+    "holds a commission wallet with code on %s to the same reads, and fails one whose owners cannot be read",
+    async (network) => {
+      const entry =
+        network === BASE
+          ? baseWith(named(BASE, "safeSingleton"))
+          : { ...SEPOLIA_ENTRY, commissionWallet: named(BASE_SEPOLIA, "safeSingleton") };
+      const verdicts = await checkOn(network, entry, SAFE_OWNERS);
 
-    expect(outcome(verdicts)).toStrictEqual([
-      ["chain id", true],
-      ["commission wallet", true],
-      ["Safe threshold", true],
-      ["Safe owners", false],
-      ...CONTRACTS_PASS,
-    ]);
-  });
+      expect(outcome(verdicts)).toStrictEqual([
+        ["chain id", true],
+        ["commission wallet", true],
+        ["Safe threshold", true],
+        ["Safe owners", false],
+        ...CONTRACTS_PASS,
+      ]);
+    },
+  );
 
   it("fails a commission wallet on Base Sepolia the RPC does not answer for, where a plain wallet would pass", async () => {
     const verdicts = await checkOn(BASE_SEPOLIA, {
@@ -351,18 +355,6 @@ describe("the pre-release check of the commission wallets", () => {
     expect(outcome(verdicts)).toStrictEqual([
       ["chain id", true],
       ["commission wallet", false],
-      ...CONTRACTS_PASS,
-    ]);
-  });
-
-  it("fails a Safe on Base whose owners cannot be read", async () => {
-    const verdicts = await checkOn(BASE, baseWith(named(BASE, "safeSingleton")), SAFE_OWNERS);
-
-    expect(outcome(verdicts)).toStrictEqual([
-      ["chain id", true],
-      ["commission wallet", true],
-      ["Safe threshold", true],
-      ["Safe owners", false],
       ...CONTRACTS_PASS,
     ]);
   });

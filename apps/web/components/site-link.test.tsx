@@ -155,7 +155,7 @@ describe("a link while the pointer rests on it", () => {
     leave("Terms");
     await aMoment(200);
 
-    expect(stylesAhead()).toEqual([]);
+    expect(fetchedAhead()).toEqual([]);
   });
 
   it("asks what the build says of the page each time the pointer rests on it", async () => {

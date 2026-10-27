@@ -34,15 +34,10 @@ export function analyzeAcceptedResponses(results) {
 
 export async function pollAcceptedScans(
   scans,
-  {
-    fetchStatus,
-    intervalMs,
-    timeoutMs,
-    maxConsecutiveErrors = 3,
-    now = () => performance.now(),
-    sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
-  },
+  { fetchStatus, intervalMs, timeoutMs, maxConsecutiveErrors = 3 },
 ) {
+  const now = () => performance.now();
+  const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
   const runningIds = new Set();
   let observedMaxRunning = 0;
 

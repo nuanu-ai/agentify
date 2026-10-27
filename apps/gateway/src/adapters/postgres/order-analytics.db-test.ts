@@ -12,9 +12,10 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnalyticsEvent, OrderCreated } from "../../analytics/index.js";
+import { OrderRunner } from "../../app/runner.js";
 import type { Birth, StoredOrder } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
-import { countedIds, loggedWhile } from "../../testing/harness.js";
+import { buyOverHttp, countedIds, harness, loggedWhile, serve } from "../../testing/harness.js";
 import { anOrder } from "../../testing/store-contract.js";
 import { connect, PostgresStore } from "./store.js";
 
@@ -221,50 +222,68 @@ if (databaseUrl === null) {
       expect(said).not.toContain("ord_1");
     });
 
-    it("still commits a settled payment, and the order is paid", async () => {
-      const charging: StoredOrder = {
-        ...anOrderOf("ord_1"),
-        order: { ...anOrderOf("ord_1").order, state: "fulfilled", payment: "settling" },
-        paymentAttempt: { id: "pay_attempt_1", startedAt: 5_000, completion: null },
-      };
-      await store.addOrder(charging);
-      const paid: AnalyticsEvent = {
-        name: "agc_payment_result",
-        actor: "system",
-        source: "gateway",
-        refs: { order: "ord_1", merchant: MERCHANT, attempt: "pay_attempt_1" },
-        fields: { payment_state: "paid", money_mode: "test", network: "base_sepolia" },
-      };
-
-      const said = await awayWhile(async () => {
-        await store.withOrder(
-          "ord_1",
-          (found) => ({
-            save: {
-              ...found,
-              order: { ...found.order, state: "delivered", payment: "settled" },
-              paymentAttempt: {
-                id: "pay_attempt_1",
-                startedAt: 5_000,
-                completion: {
-                  settled: true,
-                  transaction: "0xsettled",
-                  executedAt: 6_000,
-                  source: "chain",
-                },
-              },
-            },
-            result: 1,
-          }),
-          undefined,
-          () => [{ event: paid, at: 6_000 }],
+    it("completes an actual unresolved payment and writes its receipt while the analytics outbox is unavailable", async () => {
+      const running = await harness({ SETTLE_RESPONSE_MS: "40" });
+      const served = await serve(running);
+      try {
+        const published = await running.gateway.publishCard(running.merchant.id, {
+          merchant_item_id: "recoverable",
+          title: "Held goods",
+          description: "Goods released after payment confirmation",
+          price: { amount: "5.00", currency: "USD" },
+          result: { code: { type: "string" } },
+          fulfillment: "sync",
+        });
+        if (!published.ok) throw new Error("the card was refused");
+        running.facilitator.willSettle({
+          settled: "unknown",
+          reason: "connection ended before the reply",
+        });
+        await buyOverHttp(running, served, published.id, {
+          onOrder: () => ({ delivered: { code: "PAID-GOODS" } }),
+        });
+        const [submitted] = await running.gateway.orders(running.merchant.id, undefined);
+        if (!submitted?.paymentAttempt) throw new Error("no actual payment attempt was submitted");
+        expect(submitted.order.payment).toBe("outcome_unknown");
+        // Restore the genuine unresolved purchase into this database, then run its completion owner.
+        await store.addMerchant(
+          { id: running.merchant.id, name: "Restored merchant" },
+          running.now(),
         );
-      });
-
-      const after = await store.orderById("ord_1");
-      expect(after?.order.payment).toBe("settled");
-      expect(after?.paymentAttempt?.completion?.settled).toBe(true);
-      expect(said).toMatch(/analytics event could not be recorded/);
+        await store.addOrder(submitted);
+        const runner = new OrderRunner({ ...running.runtime, store });
+        const attemptId = submitted.paymentAttempt.id;
+        const transaction = `0x${"ab".repeat(32)}`;
+        const said = await awayWhile(async () => {
+          await runner.completePaymentAttempt(
+            submitted.order.id,
+            attemptId,
+            {
+              settled: true,
+              transaction,
+              executedAt: running.now(),
+            },
+            "chain",
+          );
+        });
+        const after = await store.orderById(submitted.order.id);
+        expect(after).toMatchObject({
+          order: { state: "delivered", payment: "settled" },
+          delivery: { code: "PAID-GOODS" },
+          paymentAttempt: { completion: { settled: true, transaction, source: "chain" } },
+        });
+        expect(await store.receipts(running.merchant.id)).toMatchObject([
+          {
+            order_id: submitted.order.id,
+            outcome: "delivered",
+            price: { amount: "5.00", currency: "USD" },
+          },
+        ]);
+        expect(said).toMatch(/analytics.*recorded/);
+      } finally {
+        await served.close();
+        await running.stop();
+      }
     });
   });
 }

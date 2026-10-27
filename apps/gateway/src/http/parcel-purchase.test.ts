@@ -279,9 +279,15 @@ describe("buying a parcel", () => {
       return { status: answered.status, code: (answered.body as Refused).error.code };
     };
 
-    expect(await tried({ ...address, line_one: "Jl. Pantai Nyanyi" })).toStrictEqual(
-      await tried(address),
-    );
+    const before = await harnessed.store.orders(harnessed.merchant.id);
+    expect(await tried({ ...address, line_one: "Jl. Pantai Nyanyi" })).toStrictEqual({
+      status: 409,
+      code: "payment_not_verified",
+    });
+    expect(await tried(address)).toStrictEqual({ status: 409, code: "payment_not_verified" });
+    expect(harnessed.facilitator.verifies).toHaveLength(2);
+    expect(harnessed.facilitator.settles).toStrictEqual([]);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual(before);
   });
 
   it("does not tell a payer who is not the parcel's buyer whether an address is the one paid for", async () => {
@@ -389,13 +395,9 @@ describe("buying a parcel", () => {
       challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
     ).accepts[0];
     if (accepted === undefined) throw new Error("no payment was offered");
-    const payment = encodePaymentSignatureHeader({
-      x402Version: 2,
-      accepted,
-      payload: {
-        signature: "0xused-public-signature",
-        authorization: { from: `0x${"a".repeat(40)}`, nonce: "0x01" },
-      },
+    const payment = await signedPayment(aWallet("parcel public authorization buyer"), accepted, {
+      nonce: "01",
+      validBefore: harnessed.now() + 60_000,
     });
     const present = (shipTo: ShipTo) =>
       served.call("POST", `/x402/${itemId}/purchase`, {
@@ -598,9 +600,21 @@ describe("once the address is gone, nothing puts it back", () => {
       return deciding(id, change, scope);
     });
 
-    await harnessed.gateway.poll(harnessed.merchant.id, 0);
-
-    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(true);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toStrictEqual([]);
+      expect(first).toBe(false);
+      expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(true);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const redrawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+      expect(redrawn.envelopes).toHaveLength(1);
+      expect(redrawn.envelopes[0]).toMatchObject({
+        kind: "order",
+        payload: { id: orderId, ship_to: address },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is not sent again by a sweep that read the order before it was taken on", async () => {
@@ -805,7 +819,13 @@ describe("the shipment", () => {
       shipped_at: new Date(harnessed.now()).toISOString(),
     });
     expect((await theOrder(served)).status).toBe("shipped");
-    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("shipped");
+    expect(
+      (
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null
+      )?.outcome,
+    ).toBe("shipped");
   });
 
   it("tells the agent the time to ship by once the order is paid, and that nothing has shipped", async () => {
@@ -836,7 +856,23 @@ describe("the shipment", () => {
         harnessed.facilitator.willSettle({ settled: false, reason: "the charge was refused" });
       }
       const body = { params: {}, ship_to: address };
-      const paid = await pricedThenPaid(harnessed, served, itemId, { priced: body, paid: body });
+      const worker = workUntilStopped(harnessed, { onQuote: () => priced });
+      const offered = await served.call("POST", `/x402/${itemId}/purchase`, { body });
+      await worker.stop();
+      expect(offered.status).toBe(402);
+      const requirements = decodePaymentRequiredHeader(
+        offered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+      ).accepts[0];
+      if (!requirements) throw new Error("no price offered");
+      const buyer = aWallet("parcel repeat buyer");
+      const initial = await signedPayment(buyer, requirements, {
+        nonce: "01",
+        validBefore: harnessed.now() + 60_000,
+      });
+      const paid = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body,
+        headers: { [PAYMENT_SIGNATURE_HEADER]: initial },
+      });
       expect(paid.status).toBe(status === "rejected" ? 409 : 200);
       const orderId = (paid.body as { order_id: string }).order_id;
       const payment = harnessed.facilitator.settles[0]?.payment;
@@ -860,11 +896,22 @@ describe("the shipment", () => {
       const beforeRepeat = await statusOf(served, orderId);
       expect(beforeRepeat.status).toBe(status);
       if (status === "shipped") expect(beforeRepeat.shipment).toMatchObject(shipment);
-      const receipt = await harnessed.store.receiptForOrder(orderId);
+      const receipt =
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null;
 
       const repeated = await served.call("POST", `/x402/${itemId}/purchase`, {
         body,
-        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+        headers: {
+          [PAYMENT_SIGNATURE_HEADER]:
+            status === "rejected"
+              ? payment
+              : await signedPayment(buyer, requirements, {
+                  nonce: "02",
+                  validBefore: harnessed.now() + 60_000,
+                }),
+        },
       });
 
       expect(repeated.status).toBe(httpStatus);
@@ -879,7 +926,11 @@ describe("the shipment", () => {
       }
       expect(harnessed.facilitator.settles).toHaveLength(1);
       expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
-      expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(receipt);
+      expect(
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null,
+      ).toStrictEqual(receipt);
     },
   );
 

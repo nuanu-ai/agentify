@@ -57,13 +57,11 @@ export const dispatchConsentedBrowserEvent = async (input: {
 };
 
 export async function recordThenDeliverWithConsent<T>(input: {
-  consent?: ConsentSnapshot;
+  consent: ConsentSnapshot;
   recordBusinessEvent: () => Promise<T>;
   deliverToBrowserDestinations: (recorded: T, consent: ConsentSnapshot) => Promise<void>;
 }): Promise<T> {
   const recorded = await input.recordBusinessEvent();
-  if (input.consent) {
-    await input.deliverToBrowserDestinations(recorded, input.consent);
-  }
+  await input.deliverToBrowserDestinations(recorded, input.consent);
   return recorded;
 }

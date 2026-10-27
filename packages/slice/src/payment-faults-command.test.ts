@@ -7,13 +7,13 @@
  */
 
 import { request as httpRequest } from "node:http";
+import { createClient } from "@nuanu-ai/agentify";
 import { AgentOrderStatusSchema } from "@nuanu-ai/agentify-contracts";
 import { generatePrivateKey } from "viem/accounts";
 import { afterEach, describe, expect, it } from "vitest";
 import { type Buyer, makeBuyer } from "./buyer.js";
-import { RENTED_NUMBER } from "./cards.js";
+import { goodsFor, RENTED_NUMBER, RENTED_NUMBER_LIVE_PRICE } from "./cards.js";
 import { bootGateway, sliceEnv } from "./gateway-harness.js";
-import { startMerchant } from "./merchant.js";
 import { runPaymentFaults } from "./payment-faults-command.js";
 import { realFacilitator } from "./smoke.js";
 
@@ -44,12 +44,20 @@ const stage = async (argv: readonly string[], env: Record<string, string> = {}) 
     sliceEnv({ FACILITATOR_URL: `http://127.0.0.1:${faults.port}`, ...env }),
   );
   running.push(() => booted.stop());
-  const merchant = startMerchant(booted.baseUrl, booted.merchantKey);
+  const merchant = createClient({ baseUrl: booted.baseUrl, apiKey: booted.merchantKey });
+  const issued: string[] = [];
+  merchant.on("order", (order) => {
+    issued.push(order.id);
+    return order.delivered(goodsFor(order.merchant_item_id, order.params, Date.now()));
+  });
+  merchant.on("quote", (question) =>
+    question.available(RENTED_NUMBER_LIVE_PRICE, new Date().toISOString()),
+  );
   await merchant.start();
   running.push(() => merchant.stop());
-  await merchant.publishCatalog();
+  await merchant.catalog.publish(RENTED_NUMBER);
   const buyer = makeBuyer({ baseUrl: booted.baseUrl, privateKey: TEST_BUYER_KEY, maxUsd: 50 });
-  return { log: faults.log, buyer };
+  return { log: faults.log, buyer, issued };
 };
 
 const buyRentedNumber = async (buyer: Buyer) => {
@@ -75,8 +83,7 @@ describe("the payment fault control, as the gateway's own x402 adapter reads it"
   }, 20_000);
 
   it("refuses only the nth verification, before the goods are made or any charge is asked", async () => {
-    const { log, buyer } = await stage(["--fault", "verify-refused", "--nth", "2"]);
-
+    const { log, buyer, issued } = await stage(["--fault", "verify-refused", "--nth", "2"]);
     const first = await buyRentedNumber(buyer);
     const second = await buyRentedNumber(buyer);
     const third = await buyRentedNumber(buyer);
@@ -86,6 +93,10 @@ describe("the payment fault control, as the gateway's own x402 adapter reads it"
     expect(second.body).toMatchObject({ error: { code: "payment_not_verified" } });
     expect(AgentOrderStatusSchema.parse(third.body).status).toBe("delivered");
     expect(settleLines(log)).toHaveLength(2);
+    expect(issued).toEqual([
+      AgentOrderStatusSchema.parse(first.body).order_id,
+      AgentOrderStatusSchema.parse(third.body).order_id,
+    ]);
   }, 20_000);
 
   it("fails the settle definitely: the gateway holds the goods and the order reads not paid", async () => {

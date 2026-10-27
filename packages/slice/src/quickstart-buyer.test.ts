@@ -466,18 +466,26 @@ describe("the quickstart's test buyer", () => {
   });
 
   it.each([
-    ["no wallet key", { BUYER_PRIVATE_KEY: null }],
-    ["no card", { ITEM_ID: null }],
-    ["no channel", { AGENTIFY_URL: null }],
-    ["a channel that does not answer", { AGENTIFY_URL: "http://127.0.0.1:9" }],
-  ])("stops in plain words, without a stack trace, given %s", async (_what, env) => {
-    const stopped = await run(AT_ONCE, {}, env);
+    ["no wallet key", { BUYER_PRIVATE_KEY: null }, /BUYER_PRIVATE_KEY/],
+    ["no card", { ITEM_ID: null }, /ITEM_ID/],
+    ["no channel", { AGENTIFY_URL: null }, /AGENTIFY_URL/],
+    [
+      "a channel that does not answer",
+      { AGENTIFY_URL: "http://127.0.0.1:9" },
+      /reach|connect|answer|channel/i,
+    ],
+  ] as const)(
+    "stops in plain words, without a stack trace, given %s",
+    async (_what, env, guidance) => {
+      const stopped = await run(AT_ONCE, {}, env);
 
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(stopped.printed).not.toMatch(/^\s+at /m);
-    expect(stopped.printed).not.toContain("undefined");
-    expect(keptAddress()).toBeUndefined();
-  });
+      expect(stopped.code, stopped.printed).not.toBe(0);
+      expect(stopped.printed).not.toMatch(/^\s+at /m);
+      expect(stopped.printed).not.toContain("undefined");
+      expect(stopped.printed).toMatch(guidance);
+      expect(keptAddress()).toBeUndefined();
+    },
+  );
 
   it("is installed at the release of the x402 client and viem it is tested with", () => {
     // The page's install line would otherwise take whatever npm has today,

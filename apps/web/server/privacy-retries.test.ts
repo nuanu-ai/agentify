@@ -30,11 +30,15 @@ describe("the retry of pending privacy requests", () => {
 
     const retries = startPrivacyRetries(CONFIGURED, asked.retry);
     expect(asked.times()).toBe(1);
-    vi.advanceTimersByTime(PRIVACY_RETRY_INTERVAL_MS * 2);
+    vi.advanceTimersByTime(29_999);
+    expect(asked.times()).toBe(1);
+    vi.advanceTimersByTime(1);
+    expect(asked.times()).toBe(2);
+    vi.advanceTimersByTime(30_000);
     expect(asked.times()).toBe(3);
 
     retries.stop();
-    vi.advanceTimersByTime(PRIVACY_RETRY_INTERVAL_MS);
+    vi.advanceTimersByTime(30_000);
     expect(asked.times()).toBe(3);
   });
 

@@ -296,11 +296,12 @@ describe("what the identity records for product analytics", () => {
     expect(recorded()).toStrictEqual([refusal("google", "verify", "blocked", "identity_mismatch")]);
   });
 
-  it("records a Google sign-in that could not be started, and one Google did not answer, as failures", async () => {
+  it("records the current failure classification for a locally refused start and an unanswered Google exchange", async () => {
     const { identity, google, startGoogle, recorded, settled } = setup();
     const flow = await startGoogle();
     google.goOffline();
 
+    // Local invalid-click refusal and provider failure currently share this classification.
     const started = await identity.startGoogle("default", "not a click identifier");
     const finished = await identity.finishGoogle(flow.query, flow.cookie);
     await settled(2);

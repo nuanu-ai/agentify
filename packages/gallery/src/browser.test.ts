@@ -8,22 +8,24 @@
  * surface's own gallery check.
  */
 
-import type { ReactElement } from "react";
+import { act, createElement, useEffect, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
 import { type BrowserReact, drawnInBrowser } from "./browser.js";
 import type { GalleryState } from "./index.js";
 
-/** A page that asks the site who is visiting as soon as it is drawn, and shows nothing else. */
-const asking: BrowserReact = {
-  act: async (work) => await work(),
-  createRoot: (container) => ({
-    render: () => {
-      container.textContent = "Signed in";
-      void fetch("/api/v2/session").catch(() => undefined);
-    },
-    unmount: () => undefined,
-  }),
-};
+/** The drawn state itself asks for, then renders, its session answer. */
+function Session() {
+  const [name, setName] = useState("Loading");
+  useEffect(() => {
+    void fetch("/api/v2/session")
+      .then((answer) => answer.json())
+      .then((answer: { name: string }) => setName(answer.name))
+      .catch(() => setName("Session unavailable"));
+  }, []);
+  return createElement("p", null, name);
+}
+const asking: BrowserReact = { act, createRoot };
 
 const state: GalleryState = {
   id: "surface-signed-in",
@@ -31,13 +33,13 @@ const state: GalleryState = {
   address: "/",
   when: "A person who is signed in opens the page.",
   cause: "The page asks the site who is visiting.",
-  draw: () => null as unknown as ReactElement,
+  draw: () => createElement(Session),
 };
 
 describe("a state drawn in the browser", () => {
   it("is drawn once its page shows the scene's words and every request it made was answered", async () => {
     const scene = {
-      answers: { "GET /api/v2/session": { status: 200, body: {} } },
+      answers: { "GET /api/v2/session": { status: 200, body: { name: "Signed in" } } },
       shows: "Signed in",
     };
 

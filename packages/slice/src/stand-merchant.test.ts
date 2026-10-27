@@ -442,6 +442,7 @@ const handingGateway = async (): Promise<{
   answers: Posted[];
   /** Every delivery received, counted as it arrives and before it is answered. */
   deliveries: Posted[];
+  calls: { orderId: string; call: string }[];
   /** Leaves every delivery unanswered from now until the returned call lets them through. */
   holdDeliveries: () => () => void;
   close: () => Promise<void>;
@@ -450,6 +451,7 @@ const handingGateway = async (): Promise<{
   const queued: WorkerEnvelope[] = [];
   const answers: Posted[] = [];
   const deliveries: Posted[] = [];
+  const calls: { orderId: string; call: string }[] = [];
   let envelopes = 0;
   let deliveriesHeld: Promise<void> = Promise.resolve();
   let letDeliveriesThrough = (): void => {};
@@ -479,6 +481,7 @@ const handingGateway = async (): Promise<{
       orderId: decodeURIComponent(encodedId ?? ""),
       body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
     };
+    calls.push({ orderId: posted.orderId, call: call ?? "" });
     if (call === "answer") answers.push(posted);
     if (call === "deliver") {
       deliveries.push(posted);
@@ -507,6 +510,7 @@ const handingGateway = async (): Promise<{
     },
     answers,
     deliveries,
+    calls,
     holdDeliveries: () => {
       deliveriesHeld = new Promise((resolve) => {
         letDeliveriesThrough = resolve;
@@ -865,6 +869,9 @@ describe("an order paused with its answer ready", () => {
     stand.releasePaused(ORDER_ID);
     await waitUntil(() => gateway.deliveries.length === 1);
     expect(gateway.answers.map((one) => one.body)).toEqual([{ accepted: {} }]);
+    expect(
+      gateway.calls.filter((call) => call.orderId === ORDER_ID).map((call) => call.call),
+    ).toEqual(["answer", "deliver"]);
   });
 });
 
@@ -1033,28 +1040,46 @@ describe("disconnecting while an order is paused", () => {
     expect(handlerFailedOn(feed, ORDER_ID)).toBe(true);
   });
 
-  it("returns when the next order of a batch reaches a pause while it waits on a delivery", async () => {
-    // The promise: a disconnect never waits on a pause nobody can release. It
-    // does wait for a delivery already on its way, and meanwhile the worker
-    // goes on to the next order of the batch it was handed; that order has to
-    // give up at once rather than pause behind the disconnect.
+  it("gives up on a batch order reaching its pause after disconnect starts", async () => {
     const gateway = await handingGateway();
     shutting.push(gateway.close);
-    const stand = makeStandMerchant(makeFeed());
+    const feed = makeFeed();
+    const records = keepRecordsIn(await recordsDirectory(), 8702);
+    const second = "the-next-order-in-the-same-batch";
+    let release = () => {};
+    let entered = false;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const stand = makeStandMerchant(feed, {
+      records: {
+        ...records,
+        async arrived(order) {
+          await records.arrived(order);
+          if (order.id === second) {
+            entered = true;
+            await gate;
+          }
+        },
+      },
+    });
     merchant = stand;
     const letDeliveriesThrough = await connectedWithADeliveryInFlight(stand, gateway);
-
     stand.pause.at = "arrival";
-    gateway.hand(anOrder(), anOrder("the-next-order-in-the-same-batch"));
-    await waitUntil(() => stand.paused.has(ORDER_ID));
+    gateway.hand(anOrder(), anOrder(second));
+    await waitUntil(() => stand.paused.has(ORDER_ID) && entered);
     const disconnecting = stand.disconnect();
-    await settle();
-    letDeliveriesThrough();
-
+    release();
+    try {
+      await waitUntil(() => handlerFailedOn(feed, second));
+      expect(stand.paused.has(second)).toBe(false);
+      expect(gateway.calls.filter((call) => call.orderId === second)).toEqual([]);
+    } finally {
+      letDeliveriesThrough();
+    }
     await within(5_000, disconnecting);
     expect(stand.paused.size).toBe(0);
   });
-
   it("keeps the record of an order paused with its answer ready, and answers nothing", async () => {
     // The promise: an effect already made is not undone by a disconnect, and
     // the answer nobody released is not sent. The repeat that follows finds

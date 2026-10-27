@@ -22,16 +22,17 @@ const copies = await Promise.all(
 );
 
 describe("a page's Markdown", () => {
-  it.each(copies)(
-    "writes out whole every example $page.file includes",
-    async ({ source, copy }) => {
-      for (const line of source.split("\n")) {
-        const named = includeOf(line.trim());
-        if (named === undefined) continue;
-        expect(copy).toContain((await readFile(includedFile(named), "utf8")).trim());
-      }
-    },
-  );
+  it.each(
+    copies.filter(({ source }) =>
+      source.split("\n").some((line) => includeOf(line.trim()) !== undefined),
+    ),
+  )("writes out whole every example $page.file includes", async ({ source, copy }) => {
+    for (const line of source.split("\n")) {
+      const named = includeOf(line.trim());
+      if (named === undefined) continue;
+      expect(copy).toContain((await readFile(includedFile(named), "utf8")).trim());
+    }
+  });
 
   it.each(copies)("$page.file keeps none of the syntax only this pipeline reads", ({ copy }) => {
     const lines = copy.split("\n");
@@ -49,9 +50,11 @@ describe("a page's Markdown", () => {
 
     expect(identity).toContain(`agentify-scanner/1.0 (+${valueTemplate("origin")}/scanner)`);
     expect(identity).toContain(`(mailto:${valueTemplate("abuse-email")})`);
-    expect(identity.indexOf(unlessTemplate("identity-confirmed"))).toBeLessThan(
-      identity.indexOf("The final legal identity is not published yet."),
-    );
-    expect(identity).toContain(UNLESS_END);
+    const opener = identity.indexOf(unlessTemplate("identity-confirmed"));
+    const disclaimer = identity.indexOf("The final legal identity is not published yet.");
+    const closer = identity.indexOf(UNLESS_END);
+    expect(opener).toBeGreaterThanOrEqual(0);
+    expect(disclaimer).toBeGreaterThan(opener);
+    expect(closer).toBeGreaterThan(disclaimer);
   });
 });

@@ -1,6 +1,7 @@
 export * from "./checks.js";
 export * from "./engine.js";
 export * from "./findings.js";
+export { readHtml } from "./html.js";
 export * from "./ip.js";
 export * from "./model.js";
 export * from "./parsers.js";

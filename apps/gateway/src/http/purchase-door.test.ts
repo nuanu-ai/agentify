@@ -184,27 +184,45 @@ describe("purchases waiting for payment", () => {
     },
   );
 
-  it("let a purchase through again once one of the fifty has lapsed unpaid", async () => {
+  it("let a purchase through again once exactly one of fifty has lapsed unpaid", async () => {
     const { harnessed, served } = await started();
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
-    const [first] = await harnessed.store.orders(merchantId);
-    if (first === undefined) throw new Error("no purchase was waiting");
-
-    harnessed.advance(31_000);
-    await harnessed.gateway.runner.apply(first.order.id, {
-      kind: "deadline_expired",
-      at: harnessed.now(),
-      deadline: "quote_expiry",
-    });
     const worker = workUntilStopped(harnessed, { onQuote: () => priced });
-    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-    });
-    await worker.stop();
-
-    expect(answered.status).toBe(402);
+    try {
+      let firstId = "";
+      for (let n = 0; n < 50; n++) {
+        expect(
+          (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
+        ).toBe(402);
+        if (n === 0) {
+          firstId = (await harnessed.store.orders(merchantId))[0]?.order.id ?? "";
+          harnessed.advance(1_000);
+        }
+      }
+      harnessed.advance(29_001);
+      await harnessed.gateway.runner.apply(firstId, {
+        kind: "deadline_expired",
+        at: harnessed.now(),
+        deadline: "quote_expiry",
+      });
+      const stillHeld = (await harnessed.store.orders(merchantId)).filter(
+        (row) => row.order.id !== firstId,
+      );
+      expect(stillHeld).toHaveLength(49);
+      for (const row of stillHeld) {
+        expect(row.order.state).toBe("quoted");
+        expect((row.order.timestamps.quotedAt ?? 0) + 30_000).toBeGreaterThan(harnessed.now());
+      }
+      expect(
+        (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
+      ).toBe(402);
+      expect(
+        (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
+      ).toBe(429);
+    } finally {
+      await worker.stop();
+    }
   });
 
   it("hold no place once their prices have run out, while the reminders that close them have not fired", async () => {

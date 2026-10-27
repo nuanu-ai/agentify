@@ -11,7 +11,7 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { keyDigest } from "../app/merchants.js";
-import { type Harness, harness, type Served, serve } from "../testing/harness.js";
+import { type Harness, harness, loggedWhile, type Served, serve } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -444,12 +444,6 @@ describe("what a presented value's prefix says", () => {
     expect(await opensTheDoor(served, legacy)).toBe(false);
   });
 
-  it("lets this environment's own key through to the lookup", async () => {
-    const { harnessed, served } = await started();
-
-    expect(await opensTheDoor(served, harnessed.merchant.key)).toBe(true);
-  });
-
   it("lets a live gateway's own key through, which is the same rule the other way", async () => {
     // Every HTTP test leans on the harness key matching the gateway's
     // environment. A live harness handing out a `csk_test_` key would be
@@ -607,21 +601,19 @@ describe("the mark a call leaves on the key it was made with", () => {
     // A mark that cannot be written must not fail the purchase behind it, and
     // must be logged, or the column goes stale with nothing saying why.
     const { served, harnessed } = await started();
-    const said = vi.spyOn(console, "error").mockImplementation(() => {});
     harnessed.store.noteKeyUse = async () => {
-      throw new Error("the database would not take it");
+      throw Object.assign(new Error("the database would not take it"), { code: "08006" });
     };
 
-    const answered = await served.call("GET", "/v0/cards", {
-      headers: bearer(harnessed.merchant.key),
+    const said = await loggedWhile(async () => {
+      const answered = await served.call("GET", "/v0/cards", {
+        headers: bearer(harnessed.merchant.key),
+      });
+      expect(answered.status).toBe(200);
     });
-
-    expect(answered.status).toBe(200);
-    // The line names the key and what was not written, in one line of its own.
-    expect(said).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `the last use of the key ${harnessed.merchant.keyId} was not written down`,
-      ),
-    );
+    expect(said).toContain(harnessed.merchant.keyId);
+    expect(said).toContain("08006");
+    expect(said).not.toContain("the database would not take it");
+    expect(said).toMatch(/last use.*not written/i);
   });
 });

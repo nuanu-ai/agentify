@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 /**
  * The promise to a merchant: the words an agent reads on a card (the title,
  * the description, each declared field's title) are refused at publication
@@ -8,13 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  CardSchema,
-  MerchantCardSchema,
-  notPlainTextIn,
-  PublicCardSchema,
-  publicCardOf,
-} from "./index.js";
+import { CardSchema, MerchantCardSchema, PublicCardSchema, publicCardOf } from "./index.js";
 
 const card = {
   merchant_item_id: "coffee-brunch",
@@ -219,13 +214,6 @@ describe("a card's own words are plain text", () => {
     expect(finding).toContain("U+000A");
   });
 
-  it("quotes a long fragment without splitting a character in two", () => {
-    const long = `<a title="x${"🎉".repeat(30)}">`;
-    const [finding] = findingsAt({ ...card, description: long }, "description");
-
-    expect(finding).not.toMatch(/\\ud83c/i);
-  });
-
   it("lets a description run to several lines, and holds a title to one", () => {
     // A description may run to paragraphs, separated by line feeds; a title,
     // and a field's title, is one line.
@@ -289,17 +277,18 @@ describe("a card's own words are plain text", () => {
     expect(findings.map((finding) => finding.path)).toContain("title");
   });
 
-  it("shortens a long fragment and says that it did", () => {
-    const long = `<a href="https://example.com/${"x".repeat(200)}">the shop</a>`;
-    const [finding] = findingsAt({ ...card, description: long }, "description");
-
-    expect(finding).toContain("cut short");
-    expect(finding?.length).toBeLessThan(400);
+  it.each([
+    `<a href="https://example.com/${"x".repeat(200)}">the shop</a>`,
+    `<a title="x${"🎉".repeat(30)}">`,
+  ])("shortens a long fragment without splitting a character: %s", (description) => {
+    const findings = findingsAt({ ...card, description }, "description");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toContain("cut short");
+    expect(findings[0]?.length).toBeLessThan(400);
+    expect(findings[0]).not.toMatch(/\\ud83c/i);
   });
 
-  it("takes no longer on words built to be slow than on ordinary ones", () => {
-    // The rule runs in the gateway's own process on a body of up to a quarter
-    // of a megabyte, and a pattern made to backtrack would stall every sale.
+  it("finishes quarter-megabyte hostile text checks in an isolated process", () => {
     const hostile = [
       `<a${" a".repeat(100_000)}`,
       "<a ".repeat(70_000),
@@ -319,10 +308,21 @@ describe("a card's own words are plain text", () => {
       `<a${' "x"'.repeat(20)}`,
       `<a${" 'x'".repeat(20)}`,
     ];
-    const started = performance.now();
-    for (const text of hostile) findingsOf({ ...card, title: text, description: text });
-
-    expect(performance.now() - started).toBeLessThan(1_000);
+    const script = `
+      import { notPlainTextIn } from ${JSON.stringify(new URL("./plain-text.ts", import.meta.url).href)};
+      const inputs = ${JSON.stringify(hostile)};
+      if (notPlainTextIn("Ordinary merchant description", "several lines").length !== 0) process.exit(2);
+      if (notPlainTextIn("<b>Sale</b>", "one line").length !== 1) process.exit(3);
+      for (const input of inputs) notPlainTextIn(input, "one line");
+      process.stdout.write(String(inputs.length));
+    `;
+    expect(
+      execFileSync(process.execPath, ["--input-type=module"], {
+        input: script,
+        encoding: "utf8",
+        timeout: 4_000,
+      }),
+    ).toBe(String(hostile.length));
   });
 });
 
@@ -365,26 +365,5 @@ describe("a card stored before the rule", () => {
     // The negative control for the two above: the same card through the door.
     expect(findingsAt(stored, "title")).toHaveLength(1);
     expect(findingsAt(stored, "description").length).toBeGreaterThan(0);
-  });
-});
-
-describe("the rule, for a connector that turns a shop's pages into cards", () => {
-  // A shop connector asks this same rule whether its HTML-to-text conversion
-  // succeeded, so there is one definition of plain text.
-  it("finds nothing in plain text", () => {
-    expect(notPlainTextIn("Coffee & brunch, 5 < 10", "one line")).toStrictEqual([]);
-    expect(notPlainTextIn("Two\nlines", "several lines")).toStrictEqual([]);
-  });
-
-  it("names what it found, one kind at a time", () => {
-    const found = notPlainTextIn("Adds a <header> block &amp; more", "one line");
-
-    expect(found).toHaveLength(2);
-    expect(found.join(" ")).toContain('"<header>"');
-    expect(found.join(" ")).toContain('"&amp;"');
-  });
-
-  it("holds one line to one line", () => {
-    expect(notPlainTextIn("Two\nlines", "one line")).toHaveLength(1);
   });
 });

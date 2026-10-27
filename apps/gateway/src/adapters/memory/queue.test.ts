@@ -125,7 +125,11 @@ describe("MemoryQueue delivery", () => {
     await queue.publish(A, envelope("env_1"));
     await queue.publish(A, envelope("env_1"));
 
-    const [first, second] = await queue.draw(A, 10, 0);
+    const drawn = await queue.draw(A, 10, 0);
+    expect(drawn).toHaveLength(2);
+    const [first, second] = drawn;
+    expect(first?.handle).toEqual(expect.stringMatching(/.+/));
+    expect(second?.handle).toEqual(expect.stringMatching(/.+/));
     expect(first?.handle).not.toBe(second?.handle);
   });
 

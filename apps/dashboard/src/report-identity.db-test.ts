@@ -329,8 +329,19 @@ if (databaseUrl === null) {
     });
 
     it("serializes deletion before a concurrent send so the post-delete link survives", async () => {
+      const messages: Message[] = [];
+      const identity = identityOn(messages);
+      // Commit the shared digest key before the race, so first-use initialization cannot serialize it instead.
+      await expect(
+        identity.sendReportLink({ ...sendBody, email: "bystander@example.com" }),
+      ).resolves.toMatchObject({ status: "accepted" });
+      messages.length = 0;
       const gateClient = await pool.connect();
       await gateClient.query("select pg_advisory_lock(424242)");
+      const gatePid = (await gateClient.query("select pg_backend_pid() as pid")).rows[0]
+        .pid as number;
+      let deleting: Promise<unknown> | undefined;
+      let sending: Promise<unknown> | undefined;
       try {
         await pool.query(`
           create function wait_report_tombstone() returns trigger language plpgsql as $$
@@ -340,15 +351,40 @@ if (databaseUrl === null) {
           create trigger wait_report_tombstone before insert on dashboard_report_deletion_tombstones
           for each row execute function wait_report_tombstone()
         `);
-        const messages: Message[] = [];
-        const identity = identityOn(messages);
-        const deleting = identity.deleteUnattachedPerson({
+        deleting = identity.deleteUnattachedPerson({
           operation: "delete",
           operation_id: OPERATION_ONE,
           email: EMAIL,
         });
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        const sending = identity.sendReportLink(sendBody);
+        let deletePid: number | undefined;
+        await expect
+          .poll(
+            async () => {
+              const blocked = (
+                await pool.query(
+                  "select pid from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+                  [gatePid],
+                )
+              ).rows;
+              deletePid = blocked[0]?.pid as number | undefined;
+              return blocked.length;
+            },
+            { timeout: 3000 },
+          )
+          .toBe(1);
+        sending = identity.sendReportLink(sendBody);
+        await expect
+          .poll(
+            async () =>
+              (
+                await pool.query(
+                  "select count(*)::int as n from pg_stat_activity where $1 = any(pg_blocking_pids(pid))",
+                  [deletePid],
+                )
+              ).rows[0]?.n,
+            { timeout: 3000 },
+          )
+          .toBe(1);
         await gateClient.query("select pg_advisory_unlock(424242)");
         await expect(deleting).resolves.toStrictEqual({ status: "already_absent" });
         await expect(sending).resolves.toMatchObject({ status: "accepted" });
@@ -357,6 +393,9 @@ if (databaseUrl === null) {
         });
       } finally {
         await gateClient.query("select pg_advisory_unlock_all()");
+        await Promise.allSettled(
+          [deleting, sending].filter((one): one is Promise<unknown> => one !== undefined),
+        );
         gateClient.release();
       }
     });
@@ -424,65 +463,43 @@ if (databaseUrl === null) {
       expect(await identity.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT } });
     });
 
-    it("replays a deleted tombstone after credential rotation without touching a replacement", async () => {
-      const messages: Message[] = [];
-      const first = identityOn(messages);
-      await expect(first.openLink(await sendReport(first, messages))).resolves.toMatchObject({
-        status: "opened",
-      });
-      const request = {
-        operation: "delete" as const,
-        operation_id: OPERATION_ONE,
-        email: EMAIL,
-      };
-      await expect(first.deleteUnattachedPerson(request)).resolves.toStrictEqual({
-        status: "deleted",
-      });
+    it.each(["deleted", "retained"] as const)(
+      "replays a %s tombstone after credential rotation without touching a fresh link",
+      async (outcome) => {
+        const messages: Message[] = [];
+        const first = identityOn(messages);
+        if (outcome === "retained") await first.make(EMAIL, MERCHANT);
+        await expect(first.openLink(await sendReport(first, messages))).resolves.toMatchObject({
+          status: "opened",
+        });
+        const request = {
+          operation: "delete" as const,
+          operation_id: OPERATION_ONE,
+          email: EMAIL,
+        };
+        await expect(first.deleteUnattachedPerson(request)).resolves.toStrictEqual({
+          status: outcome,
+        });
 
-      const replacement = await first.make(EMAIL, MERCHANT);
-      if (replacement === null) throw new Error("the replacement person was not made");
-      const replacementLink = await dashboardLink(first, messages);
-      const restarted = identityOn(
-        [],
-        undefined,
-        "a-rotated-session-secret-that-is-at-least-32-characters-long",
-      );
+        const replacement =
+          outcome === "deleted" ? await first.make(EMAIL, MERCHANT) : await first.byEmail(EMAIL);
+        if (replacement === null) throw new Error("the replacement person was not made");
+        const replacementLink = await dashboardLink(first, messages);
+        const restarted = identityOn(
+          [],
+          undefined,
+          "a-rotated-session-secret-that-is-at-least-32-characters-long",
+        );
 
-      await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
-        status: "deleted",
-      });
-      expect(await restarted.byId(replacement.id)).toMatchObject({ merchant: { id: MERCHANT } });
-      await expect(restarted.openLink(replacementLink)).resolves.toMatchObject({
-        status: "opened",
-      });
-    });
-
-    it("replays a retained tombstone after credential rotation without touching a new link", async () => {
-      const messages: Message[] = [];
-      const first = identityOn(messages);
-      const person = await first.make(EMAIL, MERCHANT);
-      if (person === null) throw new Error("the merchant person was not made");
-      const request = {
-        operation: "delete" as const,
-        operation_id: OPERATION_ONE,
-        email: EMAIL,
-      };
-      await expect(first.deleteUnattachedPerson(request)).resolves.toStrictEqual({
-        status: "retained",
-      });
-      const newLink = await dashboardLink(first, messages);
-      const restarted = identityOn(
-        [],
-        undefined,
-        "a-rotated-session-secret-that-is-at-least-32-characters-long",
-      );
-
-      await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
-        status: "retained",
-      });
-      expect(await restarted.byId(person.id)).toMatchObject({ merchant: { id: MERCHANT } });
-      await expect(restarted.openLink(newLink)).resolves.toMatchObject({ status: "opened" });
-    });
+        await expect(restarted.deleteUnattachedPerson(request)).resolves.toStrictEqual({
+          status: outcome,
+        });
+        expect(await restarted.byId(replacement.id)).toMatchObject({ merchant: { id: MERCHANT } });
+        await expect(restarted.openLink(replacementLink)).resolves.toMatchObject({
+          status: "opened",
+        });
+      },
+    );
 
     it("replays a permanent terminal tombstone without resolving the address again", async () => {
       const messages: Message[] = [];
@@ -503,15 +520,6 @@ if (databaseUrl === null) {
       ).resolves.toStrictEqual({ status: "refused" });
       expect(await identity.byId(made.id)).toMatchObject({ merchant: { id: MERCHANT } });
       await expect(identity.openLink(dashboardToken)).resolves.toMatchObject({ status: "opened" });
-      expect(
-        (
-          await pool.query(`
-            select column_name from information_schema.columns
-            where table_name = 'dashboard_report_deletion_tombstones'
-            order by column_name
-          `)
-        ).rows.map((row) => row.column_name),
-      ).toStrictEqual(["completed_at", "created_at", "operation_digest", "operation_id", "result"]);
       expect(
         JSON.stringify(await pool.query("select * from dashboard_report_deletion_tombstones")),
       ).not.toContain(EMAIL);

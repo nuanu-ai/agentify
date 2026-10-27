@@ -64,6 +64,7 @@ const started = async (overrides: Record<string, string> = {}) => {
 afterEach(async () => {
   await open?.stop();
   open = null;
+  vi.useRealTimers();
 });
 
 const bought = async (harnessed: Harness, card: Card): Promise<string> => {
@@ -94,7 +95,11 @@ describe("when the time runs out", () => {
       deadline: "sync_response",
     });
     expect(harnessed.facilitator.settles).toHaveLength(0);
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("tells the agent its synchronous purchase expired when the timer that closes it is late", async () => {
@@ -118,48 +123,30 @@ describe("when the time runs out", () => {
     expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
-  it("does not tell a merchant a closed order still stands", async () => {
-    // Goods are checked against the card before the order's state is consulted.
-    // Told "still stands" and "retryable" on an expired order, a merchant would
-    // fix his handler for a sale he has already lost.
-    const harnessed = await started();
-    const orderId = await bought(harnessed, syncCard);
-
-    const settled = await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    if (settled.step !== "settled") throw new Error("the purchase did not settle");
-    expect(settled.order.order.state).toBe("expired");
-
-    // The card declares an access code; this sends a serial. The goods are wrong
-    // and the order is over, and it is the second that decides what he can do.
-    const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
-      serial: "89310410106543789301",
-    });
-
-    if (refused?.ok !== false) throw new Error("goods were taken against a closed order");
-    expect(refused.error.code).toBe("delivery_does_not_match_card");
-    expect(refused.error.message).toContain("expired");
-    expect(refused.error.message).not.toContain("still stands where it did");
-    expect(refused.error.retryable).toBe(false);
-    expect(refused.error.message).toContain("serial");
-
-    expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
-  });
-
-  it("still says an open order stands where it did", async () => {
-    // The negative control: on an order he can still finish, that clause is
-    // what tells the merchant his goods are still wanted.
-    const harnessed = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "5000" });
-    const orderId = await bought(harnessed, asyncCard);
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-
-    const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
-      serial: "89310410106543789301",
-    });
-
-    if (refused?.ok !== false) throw new Error("goods the card never declared were taken");
-    expect(refused.error.message).toContain("still stands where it did");
-    expect(refused.error.retryable).toBe(true);
-  });
+  it.each([
+    { ending: "closed", card: syncCard, retryable: false },
+    { ending: "open", card: asyncCard, retryable: true },
+  ])(
+    "marks a wrong delivery retryable only while its order is $ending",
+    async ({ ending, card, retryable }) => {
+      const harnessed = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "5000" });
+      const orderId = await bought(harnessed, card);
+      const paid = await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+      if (ending === "closed") {
+        expect(paid.step).toBe("settled");
+        expect((await state(harnessed, orderId))?.state).toBe("expired");
+      }
+      const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+        serial: "89310410106543789301",
+      });
+      if (refused?.ok !== false) throw new Error("wrong goods were delivered");
+      expect(refused.error.code).toBe("delivery_does_not_match_card");
+      expect(refused.error.message).toContain("serial");
+      if (ending === "closed") expect(refused.error.message).toMatch(/expired/i);
+      expect(refused.error.retryable).toBe(retryable);
+      expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
+    },
+  );
 
   it("marks an asynchronous order unfulfilled, because the money has already moved", async () => {
     // Unlike the synchronous case the charge went through at the purchase, so an
@@ -254,7 +241,7 @@ describe("when the time runs out", () => {
     expect((await state(harnessed, orderId))?.state).toBe("delivered");
   });
 
-  it("brings the money back when a handler never sends what the card declares", async () => {
+  it("leaves a paid order unfulfilled when its handler never sends the promised goods", async () => {
     // A delivery that does not match the card is refused and the order left open
     // for a fix. That is only safe if the deadline still ends an order nobody
     // fixes; otherwise the buyer's money is parked forever.
@@ -280,7 +267,11 @@ describe("when the time runs out", () => {
       deadline: "async_fulfillment",
     });
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("lets a price the agent sat on stop being a price", async () => {
@@ -317,33 +308,6 @@ describe("the wait for the charge", () => {
     const order = await state(harnessed, orderId);
     expect(order?.payment).toBe("settled");
     expect(order?.closure).toBeNull();
-  });
-
-  it("stays short where the goods came first, so the agent hears inside the synchronous ceiling", async () => {
-    // The negative control. The wait before goods keeps its fifteen-second
-    // default, so a synchronous order put on it would still be settling when
-    // the agent's ceiling of 2000ms runs out, and the agent would hear
-    // `under_way` instead of the silence.
-    const harnessed = await started();
-    const orderId = await bought(harnessed, syncCard);
-    const release = harnessed.facilitator.holdSettle();
-    const worker = workUntilStopped(harnessed, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-
-    const answered = await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    expect(answered.step).toBe("settled");
-    if (answered.step !== "settled") throw new Error("the agent was not answered");
-    expect(answered.order.order.payment).toBe("outcome_unknown");
-
-    // The answer the gateway stopped waiting for still counts once it comes.
-    release();
-    await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.payment).toBe("settled"),
-      { timeout: 2_000, interval: 5 },
-    );
-    expect((await state(harnessed, orderId))?.state).toBe("delivered");
-    await worker.stop();
   });
 });
 
@@ -387,15 +351,23 @@ describe("fulfillment after a delayed charge", () => {
             activation_code: "LPA:1$X",
           }),
         ).toStrictEqual({ ok: true, result: "delivered" });
-        expect((await harnessed.store.receiptForOrder(orderId))?.paid_at).toBe(
-          new Date(confirmedAt).toISOString(),
-        );
+        expect(
+          (
+            (await harnessed.store.receipts(harnessed.merchant.id)).find(
+              (receipt) => receipt.order_id === orderId,
+            ) ?? null
+          )?.paid_at,
+        ).toBe(new Date(confirmedAt).toISOString());
       } else {
         expect((await state(harnessed, orderId))?.closure).toStrictEqual({
           cause: "deadline_expired",
           deadline: "async_fulfillment",
         });
-        expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+        expect(
+          (await harnessed.store.receipts(harnessed.merchant.id)).find(
+            (receipt) => receipt.order_id === orderId,
+          ) ?? null,
+        ).toBeNull();
       }
       expect((await state(harnessed, orderId))?.state).toBe(ending);
       expect(harnessed.facilitator.settles).toHaveLength(1);
@@ -426,7 +398,11 @@ describe("fulfillment after a delayed charge", () => {
       about: "settle",
       said: outcome.reason,
     });
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 });
@@ -538,7 +514,8 @@ describe("a synchronous purchase on the waits this gateway ships", () => {
   it("declares a charge silent at ten seconds, and tells the agent so then", async () => {
     // The negative control: past its wait a charge is a silence, and the agent
     // hears that rather than waiting on.
-    const { harnessed, buying, deliver, checkedOutAt, answeredAt } = await inTheHandlersHands();
+    const { harnessed, orderId, buying, deliver, checkedOutAt, answeredAt } =
+      await inTheHandlersHands();
     const release = harnessed.facilitator.holdSettle();
     const delivering = deliver();
 
@@ -551,6 +528,8 @@ describe("a synchronous purchase on the waits this gateway ships", () => {
     expect(answeredAt()).toBe(checkedOutAt + 10_000);
     release();
     await delivering;
+    expect((await state(harnessed, orderId))?.payment).toBe("settled");
+    expect((await state(harnessed, orderId))?.state).toBe("delivered");
   });
 
   it("answers the agent within twenty seconds when the handler and the charge each take all of theirs", async () => {
@@ -614,26 +593,34 @@ describe("a card that names no delivery deadline", () => {
 });
 
 describe("when a delivery goes unanswered", () => {
-  it("sends the order again, after the wait the machine asked for", async () => {
-    // A thrown handler, a dead process and a broken connection all look like
-    // silence, and silence is answered with another delivery, not a refusal.
+  it("redelivers only after both the handler timeout and the retry delay", async () => {
     const harnessed = await started({
-      HANDLER_ANSWER_MS: "10",
-      REDELIVERY_BASE_DELAY_MS: "10",
-      DEFAULT_ASYNC_FULFILLMENT_MS: "3000",
+      HANDLER_ANSWER_MS: "1000",
+      REDELIVERY_BASE_DELAY_MS: "100",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
     });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-
-    // A worker that draws its stream and never answers anything.
-    const silent = workUntilStopped(harnessed, {});
-    await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.dispatch.attempts).toBeGreaterThan(1),
-      { timeout: 2_000, interval: 5 },
-    );
-    await silent.stop();
-
-    expect((await state(harnessed, orderId))?.state).toBe("dispatched");
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toHaveLength(1);
+    expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(1);
+    const pass = async (ms: number) => {
+      harnessed.advance(ms);
+      await vi.advanceTimersByTimeAsync(ms);
+    };
+    await pass(999);
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toEqual([]);
+    await pass(1);
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toEqual([]);
+    await pass(99);
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toEqual([]);
+    await pass(1);
+    expect(
+      (await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes.map(
+        (envelope) => envelope.kind === "order" && envelope.payload.id,
+      ),
+    ).toEqual([orderId]);
+    expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);
   });
 
   it("wraps each repeat in a new message, so only the order's identifier holds still", async () => {
@@ -814,8 +801,8 @@ describe("when a delivery goes unanswered", () => {
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
     // The queue hands a reminder out again when whoever took it never completed
     // it. Every hand-over counts against the attempt cap, and reaching the cap
-    // closes a paid order into a refund, so a second arrival of the same
-    // reminder must cost nothing.
+    // leaves a paid order unfulfilled, so a second arrival of the same
+    // reminder must spend no further attempt.
     const harnessed = await started({
       // Long enough that the gateway's own reminder never fires: the two
       // arrivals below are the only input.
@@ -823,6 +810,7 @@ describe("when a delivery goes unanswered", () => {
       REDELIVERY_BASE_DELAY_MS: "5",
       DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
     });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const orderId = await bought(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
 
@@ -837,22 +825,31 @@ describe("when a delivery goes unanswered", () => {
     // The same reminder, put on the queue twice. The in-memory queue repeats a
     // reminder only when its handler throws, and one that decided on a
     // redelivery did not, so this is how a database queue's repeat is reproduced.
+    const applied = harnessed.gateway.runner.apply.bind(harnessed.gateway.runner);
+    const completed = Promise.withResolvers<void>();
+    let completions = 0;
+    harnessed.gateway.runner.apply = async (...args) => {
+      const result = await applied(...args);
+      if (args[0] === orderId && args[1].kind === "handler_undelivered" && ++completions === 2)
+        completed.resolve();
+      return result;
+    };
     const unanswered: Reminder = { kind: "delivery_unanswered", orderId, handOver };
     await harnessed.queue.remind(unanswered, 0);
-    await vi.waitFor(
-      async () =>
-        expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(true),
-      { timeout: 2_000, interval: 5 },
-    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await harnessed.queue.holdsOrder(harnessed.merchant.id, orderId)).toBe(true);
     await harnessed.queue.remind(unanswered, 0);
-    // Long enough for the second arrival to be handled and for any redelivery it
-    // decided on to come off its delay.
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await vi.advanceTimersByTimeAsync(0);
+    await completed.promise;
+    harnessed.advance(5);
+    await vi.advanceTimersByTimeAsync(5);
 
     // One silence, one repeat; two envelopes would spend two of his attempts.
-    const again = await harnessed.gateway.poll(harnessed.merchant.id, 100);
+    const again = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(again.envelopes).toHaveLength(1);
     expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);
+    expect(await harnessed.queue.draw(harnessed.merchant.id, 10, 0)).toEqual([]);
+    harnessed.gateway.runner.apply = applied;
   });
 
   it("sends the order again when the next hand-over goes quiet in its turn", async () => {

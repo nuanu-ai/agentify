@@ -10,11 +10,11 @@
 import { CHECK_DEFINITIONS, type ReportResponse } from "@agentify/scanner-contracts";
 import { prerender } from "react-dom/static";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import { ReportLocked } from "../../components/report-locked";
 import { ReportPage } from "../../components/report-page";
 import { barIn } from "../../testing/bar";
 import { visitTo } from "../../testing/loader-args";
+import { documentOf } from "../../testing/markup";
 import { onSite } from "../../testing/on-site";
 
 const SCAN = "0190f4c5-0000-7000-8000-00000000c001";
@@ -45,7 +45,7 @@ const report: ReportResponse = {
   score: 46,
   coverage: 0.78,
   level: "readable",
-  benchmark: { sample_size: 42, average_score: 51.4 },
+  benchmark: { sample_size: 42, average_score: 55.4 },
   scanned_at: "2026-10-13T23:30:00.000Z",
   checks: CHECK_DEFINITIONS.map((check) => ({
     id: check.id,
@@ -60,7 +60,8 @@ const report: ReportResponse = {
             : "pass",
     summary_code: check.id === 6 ? "vertical_jsonld_missing" : null,
     user_impact_code: null,
-    fix_code: check.id === 6 ? "publish_vertical_jsonld" : null,
+    fix_code:
+      check.id === 6 ? "publish_vertical_jsonld" : check.id === 9 ? "publish_mcp_card" : null,
     robots: check.id === 9 ? "disallowed" : null,
     evidence: (check.id === 6 ? { detected_types: ["Organization", "WebSite"] } : {}) as Record<
       string,
@@ -134,27 +135,52 @@ describe("a report's page", () => {
       { kind: "stranger" },
       /^<a[^>]*href="\/dashboard\/sign-in\?destination=reports"/,
     ],
-  ] as const)("leaves %s, and offers no other way", async (_, locked, way) => {
+  ] as const)("offers %s while keeping report data private", async (_, locked, way) => {
     world.page = locked;
 
     const panel =
       /<section class="message-panel">([\s\S]*?)<\/section>/.exec(await drawn())?.[1] ?? "";
-    // Each locked state has one way on, and it is the panel's only control.
+    // Each locked state offers its applicable way on.
     const controls = panel.match(/<(?:a|form|button)\b[^>]*>/g) ?? [];
 
-    expect(controls.filter((tag) => !tag.startsWith("<button"))).toHaveLength(1);
-    expect(controls[0]).toMatch(way);
+    expect(controls.some((control) => way.test(control))).toBe(true);
+    expect(panel).not.toContain("All 18 checks");
+    expect(panel).not.toContain('role="meter"');
   });
 
   it("shows its owner the level, the score on the scan page's scale, the coverage and the segment's average", async () => {
-    const page = await drawn();
+    const browserObservation = {
+      version: "browser-public-v2.0.0",
+      status: "partial",
+      non_scoring: true,
+      pages_assessed: 1,
+      findings: [
+        {
+          id: "accessibility_structure",
+          status: "partial",
+          summary_code: "unnamed_controls_found",
+          user_impact_code: "agents_cannot_identify_controls",
+          remediation_code: "name_interactive_controls",
+          evidence: { unnamed_control_count: 3 },
+        },
+      ],
+      updated_at: "2026-10-13T23:30:00.000Z",
+    };
+    for (const observation of [undefined, browserObservation]) {
+      world.page.browserObservation = observation;
+      const page = await drawn();
+      if (observation) {
+        expect(page).toContain("Accessibility structure");
+        expect(page).toContain("Does not change the score");
+      }
 
-    expect(page).toMatch(/<h1[^>]*>Readable<\/h1>/);
-    expect(page).toContain("46<small>/100</small>");
-    expect(page).toMatch(/<div[^>]*aria-valuenow="46"[^>]*role="meter"/);
-    expect(page).toContain("Coverage 78%");
-    expect(page).toContain("Segment average 51 from 42 scans");
-    expect(page).toContain("not a certification");
+      expect(page).toMatch(/<h1[^>]*>Readable<\/h1>/);
+      expect(page).toContain("46<small>/100</small>");
+      expect(page).toMatch(/<div[^>]*aria-valuenow="46"[^>]*role="meter"/);
+      expect(page).toContain("Coverage 78%");
+      expect(page).toContain("Segment average 55 from 42 scans");
+      expect(page).toContain("not a certification");
+    }
   });
 
   it("names the day its scan was made, in UTC as the scan page and the public link name it", async () => {
@@ -181,12 +207,9 @@ describe("a report's page", () => {
     expect(opened).toHaveLength(1);
     expect(opened[0]).toContain(">06<");
     expect(opened[0]).toContain("Business-specific structured data");
-    expect(page).toContain(
-      "No business-specific structured-data type was found for this scan segment.",
-    );
-    expect(page).toContain(
-      "<strong>Fix:</strong> Add the appropriate business-specific JSON-LD type",
-    );
+    const openText = documentOf(opened[0] ?? "").body.textContent;
+    expect(openText).toMatch(/no business-specific structured-data type.*found/i);
+    expect(openText).toMatch(/fix:.*add.*business-specific JSON-LD type/i);
     expect(page).toContain("Detected Types");
     expect(page).toContain("Organization, WebSite");
     for (const group of ["Discovery", "Content", "Agent access", "Commerce", "Informational"]) {
@@ -199,6 +222,15 @@ describe("a report's page", () => {
 
     expect(page).toContain("Not assessed: your robots.txt keeps the scanner out");
     expect(page).toContain('data-robots-notice="disallowed"');
+    const document = documentOf(page);
+    const row = [...document.querySelectorAll("details")].find((detail) =>
+      detail.querySelector("summary")?.textContent?.trim().startsWith("09"),
+    );
+    expect(row?.textContent).toMatch(/not assessed/i);
+    expect(row?.textContent).toMatch(/no defect.*inferred/i);
+    expect(row?.querySelector("summary")?.textContent).toMatch(/unavailable/i);
+    expect(row?.querySelector("summary")?.textContent).not.toMatch(/fail/i);
+    expect(row?.textContent).not.toMatch(/fix:/i);
   });
 
   it.each([
@@ -211,6 +243,20 @@ describe("a report's page", () => {
 
       const page = await drawn();
 
+      const document = documentOf(page);
+      for (const check of report.checks) {
+        const number = String(check.id).padStart(2, "0");
+        const row = [...document.querySelectorAll("details")].find((detail) =>
+          detail.querySelector("summary")?.textContent?.trim().startsWith(number),
+        );
+        expect(row, number).toBeDefined();
+        const copy = [...(row?.querySelectorAll("button") ?? [])].find((button) =>
+          /Copy this fix/.test(button.textContent ?? ""),
+        );
+        expect(Boolean(copy), number).toBe(
+          enabled === "true" && (check.id === 6 || check.id === 7),
+        );
+      }
       expect(page.match(/Copy this fix/g) ?? []).toHaveLength(offered);
     },
   );

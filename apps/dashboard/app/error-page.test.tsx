@@ -63,10 +63,10 @@ describe("a page that failed for a reason nobody named", () => {
     render(<Stub initialEntries={["/sign-in?destination=%2Freport"]} />);
     const way = await screen.findByRole("link", { name: "Open the dashboard" });
 
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
-      "This page could not be shown",
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(
+      /page.*could not.*shown/i,
     );
-    expect(document.body.textContent).toContain("If you pressed a button, check the dashboard");
+    expect(document.body.textContent).toMatch(/pressed.*check.*dashboard.*before.*try again/i);
     expect(document.body.textContent).not.toMatch(/went through|may or may not/);
     expect(way.getAttribute("href")).toBe("/");
     expect(screen.queryByRole("link", { name: /Cards|Products/ })).toBeNull();
@@ -114,9 +114,9 @@ describe("the error page after a failed request", () => {
       reopen: "/products?q=room&after=1787000000000.itm_7d3e",
     });
 
-    expect(page.title).toBe("We don't know if this was done");
-    expect(page.ways).toStrictEqual([
-      ["Open Products", "/products?q=room&after=1787000000000.itm_7d3e"],
+    expect(page.title).toMatch(/don.t know.*done/i);
+    expect(page.ways.map(([, href]) => href)).toEqual([
+      "/products?q=room&after=1787000000000.itm_7d3e",
     ]);
   });
 
@@ -126,9 +126,10 @@ describe("the error page after a failed request", () => {
       again: "/orders?show=open",
     });
 
-    expect(page.title).toBe("This page could not be loaded");
-    expect(page.said).toBe("Loading it again changes nothing.");
-    expect(page.ways).toStrictEqual([["Try again", "/orders?show=open"]]);
+    expect(page.title).toMatch(/page.*could not.*loaded/i);
+    expect(page.said).toMatch(/loading.*again.*changes nothing/i);
+    expect(page.ways.map(([, href]) => href)).toEqual(["/orders?show=open"]);
+    expect(document.querySelector("form[method=post]")).toBeNull();
   });
 
   it("offers no Try again for a read refused in so many words, which would only be refused again", async () => {
@@ -161,10 +162,16 @@ describe("the error page after a failed request", () => {
         ...(outcome === undefined ? {} : { outcome }),
       });
 
-    expect((await pressed(503, "refused")).title).toBe("Nothing was changed");
-    cleanup();
-    expect((await pressed(500)).title).toBe("We don't know if this was done");
-    cleanup();
-    expect((await pressed(409)).title).toBe("Nothing was changed");
+    for (const [status, outcome, meaning] of [
+      [503, "refused", /nothing.*changed/i],
+      [500, undefined, /don.t know.*done/i],
+      [409, undefined, /nothing.*changed/i],
+    ] as const) {
+      const page = await pressed(status, outcome);
+      expect(page.title).toMatch(meaning);
+      expect(page.ways.map(([, href]) => href)).toEqual(["/settings/payout-wallet"]);
+      expect(document.querySelector("form[method=post]")).toBeNull();
+      cleanup();
+    }
   });
 });

@@ -19,9 +19,10 @@ const EVERY_TYPE: ParamSpec = {
 
 describe("filling a card's declarations", () => {
   it("produces a delivery the delivery check accepts", () => {
-    expect(() =>
-      paramSpecToValidator(EVERY_TYPE, "delivery").parse(filledFrom(EVERY_TYPE)),
-    ).not.toThrow();
+    const goods = filledFrom(EVERY_TYPE);
+    expect(() => paramSpecToValidator(EVERY_TYPE, "delivery").parse(goods)).not.toThrow();
+    expect(goods.activation_code).toEqual(expect.any(String));
+    expect(String(goods.activation_code).length).toBeGreaterThan(0);
   });
 
   it("produces purchase parameters the purchase check accepts", () => {
@@ -30,24 +31,9 @@ describe("filling a card's declarations", () => {
       area_code: { type: "string" },
     };
 
-    expect(() => paramSpecToValidator(params, "purchase").parse(filledFrom(params))).not.toThrow();
-  });
-
-  it("gives a declared string something, because an empty one is nothing arriving under a name", () => {
-    expect(filledFrom({ code: { type: "string" } }).code).not.toBe("");
-  });
-
-  it("answers every declared field, not only the required ones", () => {
-    const params: ParamSpec = {
-      email: { type: "string", required: true },
-      note: { type: "string" },
-    };
-
-    expect(Object.keys(filledFrom(params))).toEqual(["email", "note"]);
-  });
-
-  it("invents no field the card never declared", () => {
-    expect(Object.keys(filledFrom(EVERY_TYPE))).toEqual(Object.keys(EVERY_TYPE));
+    const goods = filledFrom(params);
+    expect(() => paramSpecToValidator(params, "purchase").parse(goods)).not.toThrow();
+    expect(Object.keys(goods)).toEqual(["email", "area_code"]);
   });
 
   it("fills nothing where a card declared nothing", () => {

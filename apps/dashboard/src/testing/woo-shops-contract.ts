@@ -147,6 +147,7 @@ export const wooShopsContract = (
           startedAt: NOW,
           expiresAt: LATER,
         });
+        expect(await shops.grantFor(accounts.other)).toBeNull();
         await shops.beginGrant({
           token: "other",
           accountId: accounts.other,
@@ -166,7 +167,10 @@ export const wooShopsContract = (
 
         expect(await shops.connectFromGrant("first", keys, NOW)).toBeNull();
         expect(await shops.connectionOf(accounts.one)).toBeNull();
-        expect((await shops.grantFor(accounts.one))?.token).toBe("second");
+        expect(await shops.grantFor(accounts.one)).toMatchObject({
+          token: "second",
+          shopUrl: "https://second.example.com",
+        });
         expect((await shops.grantFor(accounts.other))?.token).toBe("other");
       });
     });
@@ -188,61 +192,6 @@ export const wooShopsContract = (
 
         expect(waiting?.shopUrl).toBe("https://shop.example.com");
         expect(waiting?.startedAt.toISOString()).toBe(NOW.toISOString());
-      });
-    });
-
-    it("keeps one account's Connect out of another's", async () => {
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          currency: null,
-          startedAt: NOW,
-          expiresAt: MUCH_LATER,
-        });
-
-        expect(await shops.grantFor(accounts.other)).toBeNull();
-      });
-    });
-
-    it("hands back the Connect a merchant pressed last, not the one before it", async () => {
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "first",
-          accountId: accounts.one,
-          shopUrl: "https://first.example.com",
-          currency: null,
-          startedAt: NOW,
-          expiresAt: LATER,
-        });
-        await shops.beginGrant({
-          token: "second",
-          accountId: accounts.one,
-          shopUrl: "https://second.example.com",
-          currency: null,
-          startedAt: LATER,
-          expiresAt: MUCH_LATER,
-        });
-
-        expect((await shops.grantFor(accounts.one))?.shopUrl).toBe("https://second.example.com");
-      });
-    });
-
-    it("still hands back a Connect whose time is up, because that is the case worth saying", async () => {
-      // Not filtered here: an expired Connect with no keys is exactly the one a
-      // merchant needs a sentence about, and the screen reads the clock.
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          currency: null,
-          startedAt: NOW,
-          expiresAt: LATER,
-        });
-
-        expect(await shops.grantFor(accounts.one)).not.toBeNull();
       });
     });
   });
@@ -644,6 +593,15 @@ export const wooShopsContract = (
           paid: { amount: "13.89", currency: "USD" },
           rate: { version: first.version, currency: "IDR", rate: "18000", setAt: NOW },
         });
+        await shops.recordQuote(
+          accounts.one,
+          "prc_mixed",
+          FACTS.merchantItemId,
+          { ...sale, inTheShop: { amount: "14.50", currency: "EUR" } },
+          MUCH_LATER,
+          NOW,
+        );
+        expect(await shops.quotedSale(accounts.one, "prc_mixed", FACTS.merchantItemId)).toBeNull();
         // A second answer to the same question at another amount or rate is
         // a price no order could be held to.
         for (const other of [
@@ -837,6 +795,13 @@ export const wooShopsContract = (
           NOW,
         );
 
+        // A placed download is not a parcel to follow, even on this same account.
+        await shops.claimOrder(accounts.one, "ord_download", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_download",
+          { id: "13", number: "13", permission: PERMISSION, total: "25.00" },
+          NOW,
+        );
         // Where and when it was sold decide whether it is still read: in the
         // shop connected now, and not for ever.
         expect(await shops.parcelsToFollow(accounts.one)).toEqual([

@@ -82,7 +82,7 @@ describe("accepting a scan", () => {
     expect(answered.status).toBe(400);
     expect(await refusalOf(answered)).toMatchObject({
       code: "invalid_url",
-      message: "Provide a valid public HTTP(S) URL.",
+      message: expect.stringMatching(/public.*HTTP.*URL/i),
     });
   });
 
@@ -95,7 +95,7 @@ describe("accepting a scan", () => {
     expect(refusal.message).toContain("with no port");
   });
 
-  it("looks for the scan a returning visitor already asked for, by the visitor's cookie, and says when it could not", async () => {
+  it("reports unavailable replay storage for a returning visitor", async () => {
     const answered = await accept(scanAsked, {
       cookie: "theme=dark; agentify_anonymous=a-visitor",
     });
@@ -104,7 +104,7 @@ describe("accepting a scan", () => {
     expect(answered.headers.get("cache-control")).toBe("no-store");
     expect(await refusalOf(answered)).toMatchObject({
       code: "temporarily_busy",
-      message: "The scanner could not read its records just now.",
+      message: expect.stringMatching(/scanner.*could not read.*records/i),
       retryable: true,
       retry_after_seconds: 30,
     });

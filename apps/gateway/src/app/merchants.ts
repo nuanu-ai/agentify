@@ -20,8 +20,6 @@ import { z } from "zod";
 import type { Ids } from "../ports/clock.js";
 import type { JournalPress } from "../ports/journal.js";
 import type { AnalyticsOf, Store, StoredKey, StoredMerchant } from "../ports/store.js";
-import type { PayoutSplitNetwork } from "../split/networks.js";
-import { payoutSplitFor } from "../split/parameters.js";
 
 const KEY_BYTES = 32;
 
@@ -66,7 +64,7 @@ export const NewKeyLabelSchema = z
   );
 
 /**
- * Sets or clears the name a merchant is listed under in a discovery catalog.
+ * Sets the name a merchant is listed under in a discovery catalog.
  * Null where there is no such merchant. Throws on a name the catalog would not
  * carry: a catalog silently drops what it cannot render, so the refusal has to
  * be here.
@@ -74,14 +72,11 @@ export const NewKeyLabelSchema = z
 export async function setServiceName(
   store: Store,
   merchantId: string,
-  serviceName: string | null,
+  serviceName: string,
   at: number,
   analytics?: AnalyticsOf<StoredMerchant>,
 ): Promise<StoredMerchant | null> {
-  if (serviceName !== null) {
-    // Throws with the schema's own words, which name the rule and the number.
-    ServiceNameSchema.parse(serviceName);
-  }
+  ServiceNameSchema.parse(serviceName);
   return store.setServiceName(merchantId, serviceName, at, analytics);
 }
 
@@ -115,40 +110,6 @@ export function payoutWalletFrom(payoutWallet: string): string {
   // Throws with the schema's own words, which say what is wrong with the
   // address and what the two spellings of one are.
   return checksummedAddressOf(EvmAddressSchema.parse(payoutWallet));
-}
-
-/**
- * Sets a merchant's payout address at once, with no wait and no announcement,
- * and records its split on this network with it. Null where there is no such
- * merchant. Only test and seed harnesses may call this: a merchant's own
- * change goes through `Gateway#setPayoutWallet`, which refuses an address a
- * share could not come back from, and waits and announces where the money is
- * real.
- */
-export async function setPayoutWallet(
-  store: Store,
-  network: PayoutSplitNetwork,
-  merchantId: string,
-  payoutWallet: string,
-  at: number,
-): Promise<StoredMerchant | null> {
-  const address = payoutWalletFrom(payoutWallet);
-  const split = payoutSplitFor(network, merchantId, address);
-  for (;;) {
-    const merchant = await store.merchantById(merchantId);
-    if (merchant === null) {
-      return null;
-    }
-    const written = await store.setPayoutWallet(
-      merchantId,
-      merchant.payoutWallet,
-      { address, split, pending: null },
-      at,
-    );
-    if (written !== "moved") {
-      return written?.merchant ?? null;
-    }
-  }
 }
 
 export interface LiveApprovalChange {
@@ -227,7 +188,7 @@ export async function issueKey(
  * name buyers see. It says how the merchant came to exist rather than reading
  * like a name somebody chose.
  */
-export const REGISTERED_MERCHANT_NAME = "made in the dashboard";
+const REGISTERED_MERCHANT_NAME = "made in the dashboard";
 
 /**
  * Makes a merchant under a generated identifier, with no keys and no name for
@@ -254,7 +215,7 @@ export const SEEDED_MERCHANT = { id: "the_merchant", name: "The pilot merchant" 
  * not read like a real seller. On a live chain there is none, which keeps a
  * seeded merchant off sale until a person names it.
  */
-export function seededServiceNameFor(mode: SurfaceMode): string | null {
+function seededServiceNameFor(mode: SurfaceMode): string | null {
   switch (mode) {
     case "sandbox":
       return "Agentify sandbox";

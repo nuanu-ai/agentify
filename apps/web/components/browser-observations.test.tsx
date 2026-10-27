@@ -43,6 +43,9 @@ describe("BrowserObservations", () => {
         surface="report"
       />,
     );
+    expect(markup).toContain("Browser check");
+    expect(markup).toContain("Accessibility structure");
+    expect(markup).toContain("Does not change the score");
     expect(markup).not.toContain("/100");
   });
 
@@ -76,6 +79,10 @@ describe("BrowserObservations", () => {
       />,
     );
     expect(markup).toContain('role="status"');
+    expect(markup).toContain("Queued");
+    expect(markup).toMatch(/step runs after the report/i);
+    expect(markup).toContain("Browser check");
+    expect(markup).toContain("Does not change the score");
     expect(markup).not.toContain("/100");
   });
 
@@ -86,8 +93,21 @@ describe("BrowserObservations", () => {
 
   it("does not expose evidence or fixes in the scan teaser", () => {
     const markup = renderToStaticMarkup(
-      <BrowserObservations initialData={observation()} scanId="scan-1" surface="scan" />,
+      <BrowserObservations
+        fixPrompts={{ accessibility_structure: "Private prompt witness" }}
+        initialData={observation({
+          findings: observation().findings.map((finding) => ({
+            ...finding,
+            evidence: { private_sample: "Private evidence witness" },
+          })),
+        })}
+        scanId="scan-1"
+        surface="scan"
+      />,
     );
+    expect(markup).toContain("Accessibility structure");
+    expect(markup).not.toContain("Private prompt witness");
+    expect(markup).not.toContain("Private evidence witness");
     expect(markup).not.toContain("Unnamed control count");
     expect(markup).not.toContain("Copy this fix");
   });

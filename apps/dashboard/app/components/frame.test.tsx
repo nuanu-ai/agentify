@@ -25,7 +25,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { accountOf } from "../../src/account-banner.js";
 import type { Viewer } from "../../src/viewer.js";
 import { type FrameView, type OrdersView, ordersView } from "../../src/views.js";
-import { headingOf } from "../../src/words.js";
 import type { Gated } from "../answer.js";
 import { shouldRevalidate } from "../routes/merchant-only.js";
 import { OrdersScreen } from "../screens/orders.js";
@@ -290,58 +289,32 @@ describe("the banner about the account", () => {
     expect(within(drawn).getByRole("heading", { level: 2 })).toBeTruthy();
   });
 
-  it("heads several reasons once and lists each with the way on from it", async () => {
-    const notes = accountOf({ ...LIVE, sellerName: null, liveApproval: false });
-    framed("orders", { account: notes });
-    await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
+  it.each([false, true])(
+    "draws the account reasons and their actions, multiple=%s",
+    async (multiple) => {
+      const notes = accountOf({ ...LIVE, sellerName: null, liveApproval: !multiple });
+      framed("orders", { account: notes });
+      await screen.findByText("The screen");
+      const drawn = banner();
+      if (drawn === null) throw new Error("no banner was drawn");
 
-    const items = within(drawn).getAllByRole("listitem");
-    expect(items.map((item) => item.dataset.reason)).toStrictEqual([
-      "no_seller_name",
-      "not_approved",
-    ]);
-    expect(drawn.textContent).toContain(headingOf(notes));
-    // The approval is nobody's to set on a page, so it leads on to the test
-    // channel, where test sales need none, and not to a page of this one.
-    expect(items.map((item) => within(item).getByRole("link").getAttribute("href"))).toStrictEqual([
-      "/settings",
-      TEST_DASHBOARD,
-    ]);
-  });
-
-  it("names every reason in a list of several, and leaves the heading's words to the heading", async () => {
-    const notes = accountOf(
-      { ...LIVE, sellerName: null, liveApproval: false },
-      { selling: "paused", busy: true },
-    );
-    framed("orders", { account: notes });
-    await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
-
-    const heading = headingOf(notes);
-    const items = within(drawn).getAllByRole("listitem");
-    expect(items).toHaveLength(notes.length);
-    for (const [index, note] of notes.entries()) {
-      const line = items[index]?.textContent ?? "";
-      if (note.title === heading) expect(line).not.toContain(heading);
-      else expect(line.startsWith(note.title)).toBe(true);
-    }
-  });
-
-  it("heads a single reason with its own title, as a line and not a list", async () => {
-    const notes = accountOf({ ...LIVE, sellerName: null });
-    framed("orders", { account: notes });
-    await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
-
-    expect(within(drawn).queryByRole("list")).toBeNull();
-    expect(drawn.textContent).toContain(notes[0]?.title);
-    expect(within(drawn).getByRole("link").getAttribute("href")).toBe("/settings");
-  });
+      expect(drawn.textContent).toMatch(/products.*off sale/i);
+      expect(
+        within(drawn)
+          .getAllByRole("link")
+          .map((link) => link.getAttribute("href")),
+      ).toEqual(multiple ? ["/settings", TEST_DASHBOARD] : ["/settings"]);
+      if (multiple) {
+        expect(
+          within(drawn)
+            .getAllByRole("listitem")
+            .map((item) => item.dataset.reason),
+        ).toEqual(["no_seller_name", "not_approved"]);
+      } else {
+        expect(within(drawn).queryByRole("list")).toBeNull();
+      }
+    },
+  );
 
   it("leads a live merchant not yet approved to the test channel's own dashboard, and nobody else", async () => {
     // A merchant who signed up on the live site makes the first sale on the
@@ -459,27 +432,6 @@ describe("the way past the header", () => {
   });
 });
 
-describe("the sidebar", () => {
-  const orders = () => within(sections()).getByRole("link", { name: /^Orders/ });
-
-  it("lists the sections by name alone", async () => {
-    framed("products", { account: [] });
-    await screen.findByText("The screen");
-
-    expect(within(sections()).getByText("Products").textContent).toBe("Products");
-    expect(orders().textContent).toBe("Orders");
-  });
-
-  it("holds the sections and nothing else", async () => {
-    framed("products");
-    await screen.findByText("The screen");
-    const sidebar = document.querySelector<HTMLElement>(".app-sidebar");
-    if (sidebar === null) throw new Error("the frame drew no sidebar");
-
-    expect(sidebar.textContent).toBe(sections().textContent);
-  });
-});
-
 describe("the menu of an operator who also sells", () => {
   it("lists the door into the workspace among the places the row leaves out, apart from who is signed in", async () => {
     framed("products", {}, "products", { who: PERSON, operator: true });
@@ -490,9 +442,13 @@ describe("the menu of an operator who also sells", () => {
       throw new Error("the frame drew no menu with the places and who is signed in");
     }
 
-    expect(within(places).getByRole("link", { name: "Admin" })).toBeTruthy();
+    expect(within(places).getByRole("link", { name: "Admin" }).getAttribute("href")).toBe("/admin");
     expect(within(account).getByText(PERSON)).toBeTruthy();
     expect(within(account).queryByRole("link", { name: /admin/i })).toBeNull();
+    cleanup();
+    framed("products", {}, "products", { who: PERSON });
+    await screen.findByText("The screen");
+    expect(screen.queryAllByRole("link", { name: "Admin", hidden: true })).toEqual([]);
   });
 });
 

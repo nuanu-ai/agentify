@@ -3,9 +3,8 @@
  * `pnpm --filter @agentify/docs build` by the shared check in
  * `@agentify/ui/budget`: the brotli-compressed script a page loads on its
  * first visit, with what it loads later, the search, printed beside it. Each
- * file is fetched through the stand-in for Caddy's `/docs` block, which reads
- * the cache lifetime of the assets from the Caddyfile, so the header checked
- * is the one the Caddyfile promises.
+ * file is fetched through the deployed Caddyfile in its pinned Docker image,
+ * so the cache header and byte encoding are the ones Caddy actually serves.
  */
 
 import { fileURLToPath, pathToFileURL } from "node:url";

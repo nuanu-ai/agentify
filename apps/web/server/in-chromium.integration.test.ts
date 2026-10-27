@@ -146,6 +146,7 @@ describe("a page in Chromium", () => {
     "/agentic-shop",
     "/data-request",
     "/email/unsubscribe",
+    "/sell",
   ])("comes alive without a complaint: %s", async (path) => {
     const { page, complaints } = await visit(path);
     await page.evaluate(() => {
@@ -160,6 +161,36 @@ describe("a page in Chromium", () => {
     await page.locator("h1").first().waitFor();
     expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
     expect(complaints).toEqual([]);
+    await page.context().close();
+  });
+});
+
+describe("composed public page styles", () => {
+  it("draws readable form controls with visible borders and valid surface colours", async () => {
+    const { page } = await visit("/");
+    const input = page.getByRole("textbox", { name: "Website URL" }).first();
+    const style = await input.evaluate((element) => {
+      const control = getComputedStyle(element);
+      const field = element.parentElement;
+      if (!field) throw new Error("The URL input has no visible container");
+      const surface = getComputedStyle(field);
+      const root = getComputedStyle(document.documentElement);
+      return {
+        border: surface.borderTopWidth,
+        borderStyle: surface.borderTopStyle,
+        borderColor: surface.borderTopColor,
+        color: control.color,
+        background: surface.backgroundColor,
+        foregroundToken: root.getPropertyValue("--fg").trim(),
+        lineToken: root.getPropertyValue("--line-strong").trim(),
+      };
+    });
+    expect(Number.parseFloat(style.border)).toBeGreaterThan(0);
+    expect(style.borderStyle).not.toBe("none");
+    expect(style.borderColor).not.toMatch(/rgba\([^)]*,\s*0\)/);
+    expect(style.foregroundToken).not.toBe("");
+    expect(style.lineToken).not.toBe("");
+    expect(style.color).not.toBe(style.background);
     await page.context().close();
   });
 });
@@ -276,23 +307,8 @@ describe("the sell-to-agents page", () => {
       from: new URL(element.currentSrc).pathname,
     }));
     expect(shown.width).toBeGreaterThan(0);
-    expect(shown.from).toMatch(/^\/agentic-shop\/merchant-still-life-\d+\.webp$/);
-    await page.context().close();
-  });
-});
-
-describe("the merchant landing", () => {
-  it("comes alive without a complaint and goes home without a reload", async () => {
-    const { page, complaints } = await visit("/sell");
-    await page.evaluate(() => {
-      (window as Window & { stayed?: boolean }).stayed = true;
-    });
-
-    await page.locator("header a.brand").click();
-    await page.waitForURL(`${origin}/`);
-    await page.locator("h1").first().waitFor();
-    expect(await page.evaluate(() => (window as Window & { stayed?: boolean }).stayed)).toBe(true);
-    expect(complaints).toEqual([]);
+    expect(await image.getAttribute("alt")).toMatch(/merchant|business|store|shop/i);
+    expect(shown.from).toMatch(/^\//);
     await page.context().close();
   });
 });
@@ -451,7 +467,7 @@ type CardFrame = Readonly<{
 
 /**
  * Has the page note, at every frame it draws, what the scan's card shows: the
- * badge's word, the heading under it, the words that say the scan's state is
+ * completion word (in its badge or result status line), the heading under it, the words that say the scan's state is
  * still being read, and a list of the scan's steps with every one of them
  * done. Only a change is noted.
  */
@@ -463,7 +479,9 @@ const watchCardFrames = (page: Page) =>
       const card = document.querySelector("main section");
       if (card !== null) {
         const frame = {
-          badge: card.querySelector("header [class*=badge]")?.textContent?.trim() ?? "",
+          badge:
+            card.querySelector("header [class*=badge]")?.textContent?.trim() ??
+            (card.querySelector("p")?.textContent?.includes("Scan complete") ? "Complete" : ""),
           heading: card.querySelector("h1")?.textContent ?? null,
           reading: card.textContent?.includes("Reading the scan state") === true,
           stepsDone:
@@ -512,7 +530,15 @@ describe("a scan in Chromium", () => {
     expect(await page.locator("main section header").textContent()).not.toMatch(/complete/i);
     await page.getByLabel("Email").waitFor();
 
+    await page.waitForFunction(() =>
+      (
+        window as Window & { cardFrames?: { badge: string; heading: string | null }[] }
+      ).cardFrames?.some((frame) => frame.badge === "Complete" && frame.heading === "Readable"),
+    );
     const frames = await cardFrames(page);
+    expect(frames.some((frame) => frame.badge === "Complete" && frame.heading === "Readable")).toBe(
+      true,
+    );
     expect(
       frames.filter((frame) => frame.badge === "Complete" && frame.heading !== "Readable"),
     ).toEqual([]);
@@ -568,16 +594,20 @@ describe("a scan in Chromium", () => {
 
   it("says why a scan ended without a result in the frame its badge first says so", async () => {
     const { page } = await answered(FAILED);
-    await page.route("**/assets/scan-failed-*.js", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      await route.continue();
-    });
     await watchCardFrames(page);
 
     await page.goto(`${origin}/scan/${SCAN_ID}?segment=owner#access_token=${SCAN_TOKEN}`);
     await page.getByText("No reliable diagnostic was produced").waitFor();
 
+    await page.waitForFunction(() =>
+      (
+        window as Window & { cardFrames?: { badge: string; heading: string | null }[] }
+      ).cardFrames?.some((frame) => frame.badge === "No result" && frame.heading !== null),
+    );
     const frames = await cardFrames(page);
+    expect(frames.some((frame) => frame.badge === "No result" && frame.heading !== null)).toBe(
+      true,
+    );
     expect(frames.filter((frame) => frame.badge === "No result" && frame.heading === null)).toEqual(
       [],
     );

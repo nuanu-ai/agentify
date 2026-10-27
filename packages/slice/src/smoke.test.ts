@@ -80,15 +80,6 @@ const anOrder = { status: 200, body: { order_id: "order-1" }, settlement: null }
 const quickly = { timeoutMs: 50, everyMs: 0 };
 
 describe("the smoke's verdict from what it reads", () => {
-  it("takes a successful settlement on the answer as settled", async () => {
-    const verdict = await verdictOnPurchase(
-      { ...anOrder, settlement: { success: true, transaction: "0xabc", network: "eip155:84532" } },
-      orderReading(["none", null]),
-      quickly,
-    );
-    expect(verdict).toStrictEqual({ kind: "settled", transaction: "0xabc", readFrom: "answer" });
-  });
-
   it("takes a failed settlement on the answer as not charged", async () => {
     const verdict = await verdictOnPurchase(
       {

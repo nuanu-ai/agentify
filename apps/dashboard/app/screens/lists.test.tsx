@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The lists of orders, receipts and cards as the server draws them. The views
  * are pure functions of the gateway's documents, and the documents here are
@@ -5,6 +6,7 @@
  */
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
+import { asTyped } from "@agentify/ui/units";
 import type { OrderList, ReceiptList } from "@nuanu-ai/agentify-contracts";
 import {
   MerchantCardListSchema,
@@ -125,6 +127,8 @@ const amountsIn = (html: string): string[] =>
   );
 
 /** What each row opens to. */
+const documentOf = (html: string) => new DOMParser().parseFromString(html, "text/html");
+
 const openedIn = (html: string): string[] =>
   [...html.matchAll(/<div class="more-body">([\s\S]*?)<\/div><\/details>/g)].map((opened) =>
     readable(opened[1] ?? ""),
@@ -169,6 +173,8 @@ describe("the receipts of sales that went out", () => {
     const text = readable(receiptsPage(receipts));
     const at = (id: string) => text.indexOf(id);
 
+    for (const id of ["rcp_new", "rcp_mid", "rcp_old"])
+      expect(at(id), id).toBeGreaterThanOrEqual(0);
     expect(at("rcp_new")).toBeLessThan(at("rcp_mid"));
     expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
   });
@@ -196,30 +202,75 @@ describe("a row that opens to its details", () => {
   // Two purchases of one product in the same second share a title, a day and
   // a time; read out by those alone, the two presses could not be told apart.
   it.each([
-    [
-      "orders",
-      () =>
-        ordersPage(
-          OrderListSchema.parse({
-            orders: [order("ord_0a1b2c3d4e5f6a7b"), order("ord_9f8e7d6c5b4a3f2e")],
-          }),
-        ),
-    ],
-    [
-      "receipts",
-      () =>
-        receiptsPage(
-          ReceiptListSchema.parse({
-            receipts: [receipt("rcp_0a1b2c3d4e5f6a7b"), receipt("rcp_9f8e7d6c5b4a3f2e")],
-          }),
-        ),
-    ],
-  ])("names apart two %s of one product made in the same second", (_list, page) => {
-    const names = [...page().matchAll(/<summary aria-label="([^"]*)"/g)].map((found) => found[1]);
-
-    expect(names).toHaveLength(2);
-    expect(new Set(names).size).toBe(2);
-  });
+    ["orders", false],
+    ["orders", true],
+    ["receipts", false],
+    ["receipts", true],
+  ] as const)(
+    "names purchases by title, day, time and ID: %s, different day %s",
+    (kind, differentDay) => {
+      const ids =
+        kind === "orders"
+          ? ["ord_0a1b2c3d4e5f6a7b", "ord_9f8e7d6c5b4a3f2e"]
+          : ["rcp_0a1b2c3d4e5f6a7b", "rcp_9f8e7d6c5b4a3f2e"];
+      const first = ids[0] ?? "";
+      const second = ids[1] ?? "";
+      const html =
+        kind === "orders"
+          ? ordersPage(
+              OrderListSchema.parse({
+                orders: [
+                  { ...order(first), status: "unfulfilled" },
+                  {
+                    ...order(second),
+                    price: {
+                      ...order(second).price,
+                      at: differentDay ? "2026-08-25T10:20:00Z" : "2026-08-26T10:20:00Z",
+                    },
+                  },
+                ],
+              }),
+            )
+          : receiptsPage(
+              ReceiptListSchema.parse({
+                receipts: [
+                  receipt(first),
+                  {
+                    ...receipt(second),
+                    paid_at: differentDay ? "2026-08-25T10:20:03Z" : "2026-08-26T10:20:03Z",
+                  },
+                ],
+              }),
+            );
+      const page = documentOf(html);
+      const names = [...page.querySelectorAll("details.row-more > summary")].map(
+        (one) => one.getAttribute("aria-label") ?? "",
+      );
+      expect(names).toHaveLength(2);
+      for (const [id, day, short] of [
+        [first, "26 August 2026", `${kind === "orders" ? "ord" : "rcp"}_0a1b…6a7b`],
+        [
+          second,
+          differentDay ? "25 August 2026" : "26 August 2026",
+          `${kind === "orders" ? "ord" : "rcp"}_9f8e…3f2e`,
+        ],
+      ]) {
+        const name = names.find((name) => name.includes(short ?? ""));
+        expect(name).toBeDefined();
+        expect(name).toContain("A room for the night");
+        expect(name).toContain(day);
+        expect(name).toContain(kind === "orders" ? "10:20:00" : "10:20:03");
+        const rows = [...page.querySelectorAll(`[id="details-${id}"]`)];
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows)
+          expect(
+            row.matches("details")
+              ? row.querySelector(":scope > summary")
+              : row.querySelector("details > summary"),
+          ).not.toBeNull();
+      }
+    },
+  );
 });
 
 describe("the shares of a sale paid into the merchant's payout split", () => {
@@ -272,9 +323,14 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     ));
 
     expect(amountsIn(html)).toStrictEqual(SHARES.map(([price]) => `${price} USD`));
-    for (const [at, opened] of openedIn(html).entries()) {
-      const [, merchant] = SHARES[at] ?? [];
-      expect(opened).toContain(`Your share ${merchant}, after Agentify's 0.1%`);
+    const page = documentOf(html);
+    expect(page.querySelectorAll("details.row-more")).toHaveLength(7);
+    for (const [at, [, merchant]] of SHARES.entries()) {
+      const row = page.getElementById(`details-rcp_${at}`);
+      expect(row, `rcp_${at}`).not.toBeNull();
+      expect(asTyped(row?.querySelector(".more-body")?.textContent ?? "")).toContain(
+        `Your share${merchant}, after Agentify's 0.1%`,
+      );
     }
   });
 
@@ -449,7 +505,7 @@ describe("an order delivered and not paid", () => {
   it("leaves to the merchant whether to revoke what they delivered or to wait", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("Whether to revoke what you delivered or wait is up to you");
+    expect(text).toMatch(/revoke.*delivered.*wait.*up to you/i);
     expect(text).not.toMatch(/nothing for you to do/i);
   });
 
@@ -792,8 +848,14 @@ describe("an empty catalogue", () => {
       />
     ));
 
-  it("offers the ways to a first product to a merchant who sells: the SDK's guide and the shop's connection", () => {
-    expect(none()).toContain('href="/docs/quickstart"');
-    expect(none()).toContain('href="/woocommerce"');
+  it("offers the ways to a first card to a merchant who sells", () => {
+    const page = documentOf(none());
+    const links = [...page.querySelectorAll("a")];
+    expect(links.find((link) => /SDK/.test(link.textContent ?? ""))?.getAttribute("href")).toBe(
+      "/docs/quickstart",
+    );
+    expect(
+      links.find((link) => /WooCommerce/.test(link.textContent ?? ""))?.getAttribute("href"),
+    ).toBe("/woocommerce");
   });
 });

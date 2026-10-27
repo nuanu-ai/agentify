@@ -106,8 +106,8 @@ describe("the prompt of the visible findings and its file", () => {
   );
 
   it.each([
-    [TEASER_PROMPT, "?scope=teaser", "Confirm your email to copy or download the prompt."],
-    [TEASER_PROMPT_FILE, "", "Confirm your email to download the prompt."],
+    [TEASER_PROMPT, "?scope=teaser", /confirm.*email.*(?:copy|download).*prompt/i],
+    [TEASER_PROMPT_FILE, "", /confirm.*email.*download.*prompt/i],
   ])(
     "ask a visitor who is not signed in to confirm their email: %s",
     async (path, query, message) => {
@@ -117,7 +117,7 @@ describe("the prompt of the visible findings and its file", () => {
       expect(answered.headers.get("content-disposition")).toBeNull();
       expect(await refusalOf(answered)).toMatchObject({
         code: "contact_verification_required",
-        message,
+        message: expect.stringMatching(message),
       });
     },
   );

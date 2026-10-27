@@ -10,9 +10,11 @@ import { excerptOf } from "./search-panel.js";
 /** The excerpt as text, a marked word written `<mark>word</mark>`. */
 const drawn = (text: string, terms: readonly string[]): string =>
   excerptOf(text, terms)
-    .map((part: ReactNode) =>
-      isValidElement<{ children: string }>(part) ? `<mark>${part.props.children}</mark>` : part,
-    )
+    .map((part: ReactNode) => {
+      if (!isValidElement<{ children: string }>(part)) return part;
+      expect(part.type).toBe("mark");
+      return `<mark>${part.props.children}</mark>`;
+    })
     .join("");
 
 const TEXT =
@@ -36,12 +38,15 @@ describe("a search result's excerpt", () => {
     const late = drawn(TEXT, ["needed"]);
     expect(late.startsWith("…\u00a0")).toBe(true);
     expect(late.replace(/<[^>]+>/g, "")).toMatch(/^…\s\S/);
-    expect(TEXT).toContain(
-      late
-        .replace(/<[^>]+>/g, "")
-        .replace(/^…\s/, "")
-        .replace(/\s…$/, ""),
-    );
+    const text = late
+      .replace(/<[^>]+>/g, "")
+      .replace(/^…\s/, "")
+      .replace(/\s…$/, "");
+    const start = TEXT.indexOf(text);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(start === 0 || /\s/.test(TEXT[start - 1] ?? "")).toBe(true);
+    const end = start + text.length;
+    expect(end === TEXT.length || /\s/.test(TEXT[end] ?? "")).toBe(true);
   });
 
   it("shows the start of the text when the match was in a heading", () => {

@@ -26,7 +26,6 @@ export {
   NewKeyLabelSchema,
   SEEDED_MERCHANT,
   seedSandboxKey,
-  setPayoutWallet,
   withdrawLiveApproval,
 } from "./app/merchants.js";
 export type { Runtime } from "./app/runtime.js";

@@ -15,7 +15,7 @@ import { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnalyticsEvent } from "../../analytics/events.js";
 import { Gateway } from "../../app/gateway.js";
-import { grantLiveApproval, setPayoutWallet, setServiceName } from "../../app/merchants.js";
+import { grantLiveApproval, setServiceName } from "../../app/merchants.js";
 import type { Runtime } from "../../app/runtime.js";
 import { widestChallengeOn } from "../../http/x402.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
@@ -110,7 +110,8 @@ if (databaseUrl === null) {
     now += 60_000;
     await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
     await setServiceName(store, A, "The merchant of this suite", now);
-    await setPayoutWallet(store, config.payoutSplit, A, A_WALLET, now);
+    await gateway.setPayoutWallet(A, A_WALLET, { kind: "signed_in", email: "owner@example.com" });
+    await pool.query("truncate commerce_analytics_events");
   });
 
   const recorded = async () =>

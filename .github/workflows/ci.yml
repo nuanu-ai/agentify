@@ -203,7 +203,7 @@ jobs:
       - run: pnpm scanner:test:browser
 
       # Builds the documentation and checks, in the same Chromium and through
-      # a stand-in for the Caddyfile's /docs block, that the channel's notice
+      # the pinned Caddy image and deployed Caddyfile, that the channel's notice
       # outlives a move between pages, that a click on a fetched link asks for
       # nothing more, that the search and the outline work, that a phone
       # reaches the pages and the sections, and that old addresses lead on.

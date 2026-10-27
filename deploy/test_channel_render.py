@@ -150,12 +150,22 @@ class ChannelRender(unittest.TestCase):
             for extra in ({}, SITE):
                 with self.subTest(channel=channel, named=bool(extra)):
                     services = self.render(channel, extra)["services"]
+                    expected = {
+                        "AGENTIFY_PUBLIC_ORIGIN": CHANNELS[channel]["AGENTIFY_PUBLIC_ORIGIN"],
+                        "ABUSE_EMAIL": "abuse@agentify.ad",
+                        "LEGAL_OPERATOR": "Operator identity pending confirmation",
+                        "LEGAL_IDENTITY_CONFIRMED": "false",
+                        "ANALYTICS_RUNTIME_ENV": "local",
+                        "POSTHOG_BROWSER_KEY": "", "POSTHOG_BROWSER_HOST": "", "META_PIXEL_ID": "",
+                        "POSTHOG_DESTINATION_ENV": "production" if channel == "production" else "local",
+                        "META_DESTINATION_ENV": "production" if channel == "production" else "local",
+                        **extra,
+                    }
+                    if channel == "test":
+                        expected["ANALYTICS_RUNTIME_ENV"] = "test"
                     for caddy, scanner in SHARED.items():
-                        self.assertEqual(
-                            services["web"]["environment"].get(caddy),
-                            services["scanner"]["environment"].get(scanner),
-                            caddy,
-                        )
+                        self.assertEqual(services["web"]["environment"].get(caddy), expected[caddy], caddy)
+                        self.assertEqual(services["scanner"]["environment"].get(scanner), expected[caddy], scanner)
 
     def test_the_scanner_names_the_channel_as_the_edge_does(self):
         # The scanner opens llms.txt with the channel it is served on, and the

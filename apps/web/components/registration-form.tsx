@@ -11,17 +11,15 @@ import styles from "./registration-form.module.css";
 type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error" | "stale";
 
 /** The wait is the server's to name; the button never counts down a guess of its own. */
-export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
+function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
   if (state === "sending" || state === "opening") return "Sending…";
   if (resendWait > 0) return `Try again in ${waitLabel(resendWait)}`;
   if (state === "sent") return "Resend secure link";
   return "Email me a secure link";
 }
 
-export function sentConfirmationCopy(email: string) {
+function sentConfirmationCopy(email: string) {
   const followUp = "Open it in this browser to unlock the prompt and report.";
-  if (!email)
-    return `If the address can receive mail, a secure confirmation link has been sent. ${followUp}`;
   return `We sent a secure link to ${email} (if the address can receive mail). ${followUp}`;
 }
 

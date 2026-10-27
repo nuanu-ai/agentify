@@ -571,11 +571,33 @@ export function describeOperatorFigures(
         await store.setServiceName(B, "Only named", NOW - 9 * DAY);
         await ready(store, C);
 
+        for (const [id, createdAt] of [
+          ["mch_z", NOW - 6 * DAY],
+          ["mch_y", NOW - 6 * DAY],
+          ["mch_d", NOW - 2 * DAY],
+        ] as const) {
+          await store.addMerchant({ id, name: id }, createdAt);
+          await store.setServiceName(id, id, createdAt);
+          await store.setPayoutWallet(
+            id,
+            { address: null, pending: null },
+            { address: W1, split: splitOf(id, W1), pending: null },
+            createdAt,
+          );
+        }
         const read = await reader.figures.waitingForAdmission(LIVE);
+        expect(read.merchants.map((merchant) => merchant.merchantId)).toStrictEqual([
+          "mch_y",
+          "mch_z",
+          A,
+          "mch_d",
+        ]);
 
         expect(without(read)).toStrictEqual({
-          of: 1,
+          of: 4,
           merchants: [
+            expect.objectContaining({ merchantId: "mch_y", createdAt: NOW - 6 * DAY }),
+            expect.objectContaining({ merchantId: "mch_z", createdAt: NOW - 6 * DAY }),
             {
               merchantId: A,
               name: "Example Roasters",
@@ -586,9 +608,10 @@ export function describeOperatorFigures(
               lastContact: NOW - 3 * 60_000,
               cardsPublished: 1,
             },
+            expect.objectContaining({ merchantId: "mch_d", createdAt: NOW - 2 * DAY }),
           ],
         });
-        expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(1);
+        expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(4);
       });
 
       it("wait for nobody on a channel that admits nobody", async () => {

@@ -223,17 +223,14 @@ export type QuoteSource = (typeof QUOTE_SOURCES)[number];
  * reason this system cannot read; neither says which of the others would
  * help.
  */
-export const PAYMENT_VERIFICATION_FAILURES = [
-  "signature",
-  "insufficient_funds",
-  "price_stale",
-  "amount_not_payable",
-  "wallet_refused",
-  "unexplained",
-  "unrecognised",
-] as const;
-
-export type PaymentVerificationFailure = (typeof PAYMENT_VERIFICATION_FAILURES)[number];
+export type PaymentVerificationFailure =
+  | "signature"
+  | "insufficient_funds"
+  | "price_stale"
+  | "amount_not_payable"
+  | "wallet_refused"
+  | "unexplained"
+  | "unrecognised";
 
 /**
  * The refusal codes the platform reads the same way everywhere. The set is
@@ -453,11 +450,6 @@ export type OrderEvent =
   | { readonly kind: "quote_answered"; readonly at: number; readonly available: false }
   | { readonly kind: "quote_silent"; readonly at: number }
   | { readonly kind: "payment_verified"; readonly at: number }
-  | {
-      readonly kind: "payment_verification_failed";
-      readonly at: number;
-      readonly reason: PaymentVerificationFailure;
-    }
   | { readonly kind: "payment_settled"; readonly at: number }
   | { readonly kind: "payment_settle_failed"; readonly at: number }
   | { readonly kind: "purchase_repeated"; readonly at: number }
@@ -492,7 +484,6 @@ const EVENT_KIND_INDEX: Record<OrderEventKind, true> = {
   quote_answered: true,
   quote_silent: true,
   payment_verified: true,
-  payment_verification_failed: true,
   payment_settled: true,
   payment_settle_failed: true,
   purchase_repeated: true,

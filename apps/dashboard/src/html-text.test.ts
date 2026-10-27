@@ -85,16 +85,16 @@ describe("a shop's HTML as plain text", () => {
   it("drops a hidden block whole even when its tag quotes a bracket", () => {
     expect(textOf('<style title="<">p{color:red}</style><p>Real.</p>')).toBe("Real.");
     expect(textOf('<script data-x="<">alert(1)</script><p>Real.</p>')).toBe("Real.");
-    expect(textOf("<template data-x='a<b'><p>Hidden</p></template><p>Shown.</p>")).toBe("Shown.");
+    for (const html of [
+      "<template data-x='a<b'><p>Hidden</p></template><p>Shown.</p>",
+      "<template><p>Not shown.</p></template><p>Shown.</p>",
+    ])
+      expect(textOf(html)).toBe("Shown.");
   });
 
   it("reads an empty comment the way a browser does", () => {
     expect(textOf("A<!-->B")).toBe("AB");
     expect(textOf("A<!--->B")).toBe("AB");
-  });
-
-  it("drops a template, which a browser keeps out of the page", () => {
-    expect(textOf("<template><p>Not shown.</p></template><p>Shown.</p>")).toBe("Shown.");
   });
 
   it("never hands on a control character, however the shop wrote it", () => {
@@ -136,9 +136,9 @@ describe("a shop's HTML as plain text", () => {
 
     expect(tag.plain).toBe(false);
     expect(tag.text).toBe("Adds a <header> block to the theme.");
-    expect(tag.plain ? [] : tag.found).toStrictEqual(
-      notPlainTextIn("Adds a <header> block to the theme.", "one line"),
-    );
+    expect(tag.plain ? [] : tag.found).toEqual([
+      expect.stringMatching(/HTML markup.*"<header>".*character 8/),
+    ]);
     expect(reference.plain).toBe(false);
     expect(reference.plain ? "" : reference.found.join(" ")).toContain('"&#038;"');
   });

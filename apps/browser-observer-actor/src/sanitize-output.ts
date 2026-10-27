@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import {
   type BrowserObservationOutputV1,
   browserObservationOutputV1Schema,
@@ -25,6 +26,7 @@ const inspectValue = (value: unknown, key = ""): void => {
     if (
       URL_LIKE.test(value) ||
       IPV4_LIKE.test(value) ||
+      value.split(/[\s,;()[\]{}<>"'=]+/).some((token) => isIP(token) !== 0) ||
       INSTRUCTION_LIKE.test(value) ||
       value.includes("?")
     ) {

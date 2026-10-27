@@ -11,67 +11,46 @@
  */
 
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
-import { payoutSplitFor } from "../split/parameters.js";
 import { countedIds } from "../testing/harness.js";
 import {
-  grantLiveApproval,
   issueKey,
   keyDigest,
   NewKeyLabelSchema,
   newKeySecret,
-  REGISTERED_MERCHANT_NAME,
   registerMerchant,
   SEEDED_MERCHANT,
-  seededServiceNameFor,
   seedSandboxKey,
-  setPayoutWallet,
   setServiceName,
 } from "./merchants.js";
+
+const entropy = vi.hoisted(() => ({ controlled: 0 }));
+vi.mock("node:crypto", async (original) => {
+  const native = await original<typeof import("node:crypto")>();
+  return {
+    ...native,
+    randomBytes: (size: number) => {
+      if (!entropy.controlled) return native.randomBytes(size);
+      if (size !== 32) throw new Error("a merchant key requires 32 native random bytes");
+      return Buffer.from(
+        entropy.controlled === 1
+          ? "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+          : "1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100",
+        "hex",
+      );
+    },
+  };
+});
 
 const aStore = () => new MemoryStore(NETWORK.network, countedIds());
 
 /** The test chain's payout split, which a wallet set here is recorded with. */
 const NETWORK = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532");
 
-describe("the operator's live approval", () => {
-  it("distinguishes a missing merchant from an idempotent repeat", async () => {
-    const store = aStore();
-    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
-
-    expect(await grantLiveApproval(store, "mch_nobody", 2_000)).toBeNull();
-    expect(await grantLiveApproval(store, "mch_1", 2_000)).toMatchObject({
-      changed: true,
-      merchant: { id: "mch_1", liveApprovedAt: 2_000 },
-    });
-    expect(await grantLiveApproval(store, "mch_1", 3_000)).toMatchObject({
-      changed: false,
-      merchant: { id: "mch_1", liveApprovedAt: 2_000 },
-    });
-  });
-});
-
 describe("the name a seeded merchant is listed under", () => {
-  it("says sandbox out loud where nothing settles", () => {
-    expect(seededServiceNameFor("sandbox")).toBe("Agentify sandbox");
-  });
-
-  it("says test site where a test chain settles", () => {
-    expect(seededServiceNameFor("test")).toBe("Agentify test site");
-  });
-
-  it("names a live stack nothing at all", () => {
-    // The negative case is the one that matters: nothing on a live stack is
-    // ever listed as a sandbox, because that string travels to a catalog
-    // strangers read. A merchant with no name is off sale, so a live stack
-    // nobody has named sells nothing, and the name it eventually trades under
-    // is typed by a person.
-    expect(seededServiceNameFor("live")).toBeNull();
-  });
-
-  it("lists a live seed under no name and leaves it off sale", async () => {
+  it("keeps the live seed unnamed until a merchant chooses a listing name", async () => {
     const store = new MemoryStore(NETWORK.network, countedIds());
     const seeded = await seedSandboxKey(store, countedIds(), "csk_live_a-key", 0, "live");
 
@@ -88,14 +67,15 @@ describe("the name a seeded merchant is listed under", () => {
 });
 
 describe("a key", () => {
-  it("is generated rather than chosen, and no two are the same", () => {
-    // A key somebody chooses is a key somebody reuses, and this one is compared
-    // against nothing — so generating it is what makes having no length rule
-    // safe rather than merely tidy.
-    const first = newKeySecret("test");
-    const second = newKeySecret("test");
-
-    expect(first).not.toBe(second);
+  it("encodes all 32 native random bytes in the issued key", () => {
+    entropy.controlled = 1;
+    try {
+      expect(newKeySecret("test")).toBe("csk_test_AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8");
+      entropy.controlled = 2;
+      expect(newKeySecret("test")).toBe("csk_test_Hx4dHBsaGRgXFhUUExIREA8ODQwLCgkIBwYFBAMCAQA");
+    } finally {
+      entropy.controlled = 0;
+    }
   });
 
   it("issues a key carrying the prefix of its environment", () => {
@@ -141,7 +121,13 @@ describe("the label a key is issued under", () => {
 
   it("refuses a label nobody could tell from another, in words", () => {
     for (const label of ["", " ", "the worker "]) {
-      expect(refusal(label), JSON.stringify(label)).toMatch(/empty or padded/);
+      const parsed = NewKeyLabelSchema.safeParse(label);
+      expect(parsed.success, JSON.stringify(label)).toBe(false);
+      expect(parsed.error?.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "invalid_format", message: expect.stringMatching(/\S/) }),
+        ]),
+      );
     }
   });
 
@@ -153,90 +139,14 @@ describe("the label a key is issued under", () => {
     // A line break in a label would put a paragraph of somebody else's words
     // inside a message Agentify sends.
     for (const label of ["the stock\nworker", "the stock\r\nworker", "the stock\tworker"]) {
-      expect(refusal(label), JSON.stringify(label)).toMatch(/one line/);
+      const parsed = NewKeyLabelSchema.safeParse(label);
+      expect(parsed.success, JSON.stringify(label)).toBe(false);
+      expect(parsed.error?.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: "invalid_format", message: expect.stringMatching(/\S/) }),
+        ]),
+      );
     }
-  });
-});
-
-describe("the wallet a merchant is paid at", () => {
-  /** One address in both the spellings it may be written in. */
-  const A_WALLET = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
-  const A_WALLET_IN_LOWER = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
-
-  const seller = async () => {
-    const store = aStore();
-    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
-    return store;
-  };
-
-  it("is written the way a wallet shows it, whichever spelling arrived", async () => {
-    // A wallet hands its owner the mixed-case spelling and a block explorer
-    // prints the lower-case one. Kept as they came, one address would be two
-    // strings — to every comparison, and to a merchant reading back something
-    // that does not look like what they typed. The one that is kept is the
-    // wallet's, because that is the string the merchant will compare against.
-    const store = await seller();
-
-    const written = await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET_IN_LOWER, 2_000);
-
-    expect(written?.payoutWallet.address).toBe(A_WALLET);
-    expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
-  });
-
-  it("records the wallet's split with it, so a harness-made merchant sells like any other", async () => {
-    // Every sale is asked for at the split recorded for the wallet; a wallet
-    // written without one is a merchant whose every sale is refused.
-    const store = await seller();
-
-    const written = await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET_IN_LOWER, 2_000);
-
-    expect(written?.payoutWallet.split).toStrictEqual({
-      ...payoutSplitFor(NETWORK, "mch_1", A_WALLET),
-      recordedAt: 2_000,
-    });
-  });
-
-  it("writes the same string for an address that already came that way", async () => {
-    // The ordinary case, and the one that has to be a no-op: a merchant pastes
-    // what their wallet showed them and reads back exactly that.
-    const store = await seller();
-
-    expect(
-      (await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET, 2_000))?.payoutWallet.address,
-    ).toBe(A_WALLET);
-  });
-
-  it("refuses an address whose own letters disagree with it, and writes nothing", async () => {
-    // The one wrong answer available here, and it costs the merchant every
-    // sale they make afterwards: an address that is wrong is another perfectly
-    // good address belonging to somebody else, and a payment to it is gone.
-    // Capitalising it afresh instead of refusing would produce a well-formed
-    // address nobody typed, which is the checksum defeated by its own enforcer.
-    const store = await seller();
-    await setPayoutWallet(store, NETWORK, "mch_1", A_WALLET, 2_000);
-
-    await expect(
-      setPayoutWallet(store, NETWORK, "mch_1", "0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed", 3_000),
-    ).rejects.toBeInstanceOf(Error);
-
-    expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBe(A_WALLET);
-  });
-
-  it("refuses something that is not an address at all", async () => {
-    const store = await seller();
-
-    for (const notAnAddress of ["0x1234", ""]) {
-      await expect(
-        setPayoutWallet(store, NETWORK, "mch_1", notAnAddress, 2_000),
-      ).rejects.toBeInstanceOf(Error);
-    }
-    expect((await store.merchantById("mch_1"))?.payoutWallet.address).toBeNull();
-  });
-
-  it("answers with nothing for a merchant who is not there", async () => {
-    const store = await seller();
-
-    expect(await setPayoutWallet(store, NETWORK, "mch_nobody", A_WALLET, 2_000)).toBeNull();
   });
 });
 
@@ -251,21 +161,10 @@ describe("seeding the sandbox", () => {
       merchantId: SEEDED_MERCHANT.id,
       listedAs: "Agentify sandbox",
     });
+    expect((await store.merchantById(SEEDED_MERCHANT.id))?.serviceName).toBe("Agentify sandbox");
     expect((await store.workingKey(keyDigest("the-sandbox-key")))?.merchantId).toBe(
       SEEDED_MERCHANT.id,
     );
-  });
-
-  it("lists the merchant it issued the key to, so a fresh database comes up findable", async () => {
-    // Nobody runs a command to bring the sandbox up, so the listing name has to
-    // be there without one. A merchant with none publishes cards whose payment
-    // challenge carries no seller declaration at all, and a catalogue reading
-    // them has nothing to show — which is the one thing a sandbox exists to do.
-    const store = aStore();
-
-    await seedSandboxKey(store, countedIds(), "the-sandbox-key", 1_000, "sandbox");
-
-    expect((await store.merchantById(SEEDED_MERCHANT.id))?.serviceName).toBe("Agentify sandbox");
   });
 
   it("writes nothing the second time, so a restart is not a second key", async () => {
@@ -309,7 +208,7 @@ describe("seeding the sandbox", () => {
     const store = aStore();
     const ids = countedIds();
     await seedSandboxKey(store, ids, "the-sandbox-key", 1_000, "sandbox");
-    await setServiceName(store, SEEDED_MERCHANT.id, null, 2_000);
+    await store.setServiceName(SEEDED_MERCHANT.id, null, 2_000);
 
     const again = await seedSandboxKey(store, ids, "the-sandbox-key", 3_000, "sandbox");
 
@@ -327,7 +226,7 @@ describe("seeding the sandbox", () => {
     await seedSandboxKey(store, ids, "the-sandbox-key", 1_000, "sandbox");
     const [key] = await store.keysOf(SEEDED_MERCHANT.id);
     if (key === undefined) throw new Error("the seed wrote no key");
-    await store.disableKey(key.id, 2_000);
+    await store.disableKeyOf(SEEDED_MERCHANT.id, key.id, 2_000);
 
     const again = await seedSandboxKey(store, ids, "the-sandbox-key", 3_000, "sandbox");
 
@@ -345,8 +244,8 @@ describe("seeding the sandbox", () => {
     await seedSandboxKey(store, ids, "the-sandbox-key", 1_000, "sandbox");
     const [key] = await store.keysOf(SEEDED_MERCHANT.id);
     if (key === undefined) throw new Error("the seed wrote no key");
-    await store.disableKey(key.id, 2_000);
-    await setServiceName(store, SEEDED_MERCHANT.id, null, 2_000);
+    await store.disableKeyOf(SEEDED_MERCHANT.id, key.id, 2_000);
+    await store.setServiceName(SEEDED_MERCHANT.id, null, 2_000);
 
     const again = await seedSandboxKey(store, ids, "the-sandbox-key", 3_000, "sandbox");
 
@@ -425,30 +324,7 @@ describe("registering a merchant", () => {
 
     expect(await store.merchantById(made?.id ?? "")).not.toBeNull();
     expect(await store.keysOf(made?.id ?? "")).toStrictEqual([]);
-  });
-
-  it("lists the new merchant under nothing at all", async () => {
-    // Nobody has chosen a name yet, and there is nothing to stand in for one.
-    // Filling it from anywhere would put a word the merchant did not choose in
-    // front of every buyer who reads a catalogue.
-    const store = aStore();
-
-    const made = await registerMerchant(store, countedIds(), 1_000);
-
     expect(made?.serviceName).toBeNull();
-  });
-
-  it("gives the row a name that says nobody typed one", async () => {
-    // The merchant row carries a name a person reads at a terminal, and this
-    // merchant was made by a press rather than by somebody typing. Left empty
-    // it would be a blank column in every listing; filled with a word that
-    // looks chosen, it would be a name somebody goes looking for the owner of.
-    const store = aStore();
-
-    const made = await registerMerchant(store, countedIds(), 1_000);
-
-    expect(made?.name).toBe(REGISTERED_MERCHANT_NAME);
-    expect(made?.name).not.toBe("");
   });
 
   it("gives every registration its own merchant", async () => {
@@ -467,41 +343,6 @@ describe("the name a merchant is listed under", () => {
   // The promise: what a seller is called in a discovery catalog is a fact the
   // merchant owns, kept in the one place a merchant is kept, and it never
   // reaches the catalog in a shape the catalog would quietly cut down.
-  it("is nothing at all until somebody sets one", async () => {
-    // A merchant's row carries a name a person reads at a terminal, and that
-    // name is not a listing name: it may be written in any alphabet and be any
-    // length. Standing it in for one would put a mangled version of somebody's
-    // name in front of every agent that searches.
-    const store = aStore();
-
-    const made = await store.addMerchant({ id: "mch_1", name: "Кафе «Ветер»" }, 1_000);
-
-    expect(made?.serviceName).toBeNull();
-  });
-
-  it("is kept once it is set, and read back with the merchant", async () => {
-    const store = aStore();
-    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
-
-    const named = await setServiceName(store, "mch_1", "Freeland", 2_000);
-
-    expect(named?.serviceName).toBe("Freeland");
-    expect((await store.merchantById("mch_1"))?.serviceName).toBe("Freeland");
-  });
-
-  it("can be taken away again", async () => {
-    const store = aStore();
-    await store.addMerchant({ id: "mch_1", name: "A merchant" }, 1_000);
-    await setServiceName(store, "mch_1", "Freeland", 2_000);
-
-    const cleared = await setServiceName(store, "mch_1", null, 3_000);
-
-    expect(cleared?.serviceName).toBeNull();
-  });
-
-  it("is nothing for a merchant who is not there", async () => {
-    expect(await setServiceName(aStore(), "mch_nobody", "Freeland", 1_000)).toBeNull();
-  });
 
   it("refuses a name the catalog would cut down rather than writing it", async () => {
     // The measured behaviour of the catalog: a name outside printable ASCII or

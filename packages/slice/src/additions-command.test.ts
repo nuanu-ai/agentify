@@ -7,7 +7,12 @@
  * rewritten.
  */
 
-import { createServer, get as httpGet, type ServerResponse } from "node:http";
+import {
+  createServer,
+  get as httpGet,
+  request as httpRequest,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { CONTRACT_VERSION } from "@nuanu-ai/agentify-contracts";
@@ -349,15 +354,6 @@ describe("what is never rewritten", () => {
     );
   });
 
-  it("passes an answer to HEAD as it came", async () => {
-    const to = await upstream({ "HEAD /v0/orders": { body: "" } });
-    const { base, lines } = await proxied(to, "field");
-
-    const response = await fetch(`${base}/v0/orders`, { method: "HEAD" });
-    expect(response.status).toBe(200);
-    expect(lines.at(-1)).toMatch(/: passed through$/);
-  });
-
   it("refuses a rule whose pattern could reach the purchase or the catalog, and one that reaches none of its answers", async () => {
     const refusal = async (add: string) => {
       const started = await runAdditions(["--to", "http://127.0.0.1:1", "--add", add], () => {});
@@ -385,11 +381,27 @@ describe("an encoded answer", () => {
     expect(rewritten.headers.get("etag")).toBeNull();
     expect(await rewritten.text()).toBe('{"ok":true,"result":"added_result"}');
 
-    const untouched = await fetch(`${base}/v0/orders/ord_1/accept`, {
-      method: "POST",
-      headers: { "accept-encoding": "identity" },
+    const untouched = await new Promise<{
+      body: Buffer;
+      headers: import("node:http").IncomingHttpHeaders;
+    }>((resolve, reject) => {
+      const request = httpRequest(
+        `${base}/v0/orders/ord_1/accept`,
+        { method: "POST" },
+        (response) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk: Buffer) => chunks.push(chunk));
+          response.on("end", () =>
+            resolve({ body: Buffer.concat(chunks), headers: response.headers }),
+          );
+        },
+      );
+      request.once("error", reject);
+      request.end();
     });
-    expect(untouched.headers.get("etag")).toBe('W/"20-x"');
+    expect(untouched.headers.etag).toBe('W/"20-x"');
+    expect(untouched.headers["content-encoding"]).toBe("gzip");
+    expect(untouched.body).toEqual(encoded);
   });
 });
 

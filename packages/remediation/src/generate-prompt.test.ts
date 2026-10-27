@@ -88,9 +88,23 @@ describe("generateRemediationPrompt", () => {
           status: "partial",
           labelCode: "robots_and_crawl_policy",
         },
+        { id: "fail-control", source: "canonical-http", status: "fail", labelCode: "sitemap" },
+        // A JavaScript/JSON caller can supply statuses outside the TypeScript union.
+        {
+          id: "pass-control",
+          source: "canonical-http",
+          status: "pass" as never,
+          labelCode: "llms_txt",
+        },
+        {
+          id: "unavailable-control",
+          source: "canonical-http",
+          status: "unavailable" as never,
+          labelCode: "mcp_server_card",
+        },
       ],
     });
-    expect(output.includedFindings).toEqual(["canonical-http:1"]);
+    expect(output.includedFindings).toEqual(["canonical-http:1", "canonical-http:fail-control"]);
   });
 
   describe("for a reader who has the file alone", () => {

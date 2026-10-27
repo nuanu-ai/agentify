@@ -14,13 +14,12 @@ describe("whose rule a refused seller name broke", () => {
     expect(whatIsWrongWithTheName("Tea & Co")).toBeNull();
   });
 
-  it("names the payment network for a character its listing does not carry", () => {
-    expect(whatIsWrongWithTheName("Freeland — eSIM & VPN")).toMatch(NETWORK);
-  });
-
-  it("names the payment network for a name past its length", () => {
-    expect(whatIsWrongWithTheName("x".repeat(33))).toMatch(NETWORK);
-  });
+  it.each(["Freeland — eSIM & VPN", "x".repeat(33)])(
+    "attributes a refused listing name to the payment network: %s",
+    (name) => {
+      expect(whatIsWrongWithTheName(name)).toMatch(NETWORK);
+    },
+  );
 
   it("does not lend the network's name to the plain-text rule, which is ours", () => {
     for (const name of ["<b>Tea</b>", "Tea &amp; Co"]) {
@@ -40,7 +39,11 @@ describe("a refused shop's site", () => {
   });
 
   it("offers no domain a person would not recognise, as one written in another script", () => {
-    expect(whatIsWrongWithTheSite("https://магазин.рф/")).not.toMatch(/xn--/);
+    const refusal = whatIsWrongWithTheSite("https://магазин.рф/");
+    expect(refusal).not.toBeNull();
+    expect(refusal).toMatch(/not saved/i);
+    expect(refusal).toMatch(/https:\/\/ and your domain only/i);
+    expect(refusal).not.toMatch(/xn--/);
   });
 
   it("says the rule where no domain can be taken from what was typed", () => {
