@@ -2,10 +2,11 @@
  * `pnpm gallery:check`: every state of every surface in the page
  * `pnpm gallery` wrote, each drawn in Chromium from that page's own markup,
  * stylesheets and fonts, composed by the gallery's own `frame.js` as its
- * frames are. It fails on three things.
+ * frames are. It fails on four things.
  *
- * At a phone's, a tablet's and a desktop's width (390, 768 and 1440 pixels),
- * something on the page reaches past the window's right edge. An element
+ * At a small phone's, a phone's, a tablet's and a desktop's width (320, 390,
+ * 768 and 1440 pixels), something on the page reaches past the window's right
+ * edge. An element
  * counts only as far as it shows: whatever a box below the page scrolls or
  * clips (`overflow-x` other than `visible`) is measured by that box, so a wide
  * table the product scrolls inside its own box passes and the box itself must
@@ -14,7 +15,7 @@
  * window's edge is the same defect as content it lets scroll. A failure names
  * the state, the width and the outermost elements that reach past the edge.
  *
- * At any of the three, a page that draws a `footer` and fits the window ends
+ * At any of the four, a page that draws a `footer` and fits the window ends
  * that footer more than a pixel above the window's bottom edge, leaving an
  * empty band under it. The footer measured is the one drawn lowest, and the
  * window's bottom is taken less the room the body keeps clear under its
@@ -22,12 +23,18 @@
  * state, the width and the band's height. A page taller than the window is
  * not measured here, since its footer ends where its content does.
  *
- * At any of the three, axe rates a violation serious or critical. What it
+ * At any of the four, a button drawn as one, filled or with a border, has
+ * its words closer than 4 pixels to its top or bottom edge or 8 to a side:
+ * the words a narrow window wraps onto a second line press against the
+ * button. A failure names the state, the width, the button's words and how
+ * close they come.
+ *
+ * At any of the four, axe rates a violation serious or critical. What it
  * rates moderate or minor is listed and passes.
  *
  * Animations end at once, so each page is measured as it rests. Left alone:
  * how a state looks, which the person reading the gallery judges; the widths
- * between the three; what a press, a hover or a focus would change beyond the
+ * between the four; what a press, a hover or a focus would change beyond the
  * state drawn; and the left edge, which a page written left to right never
  * scrolls to.
  */
@@ -42,8 +49,12 @@ import { chromium, type Page } from "playwright";
 const GALLERY = fileURLToPath(new URL("../dist/index.html", import.meta.url));
 const FRAME = fileURLToPath(new URL("./frame.js", import.meta.url));
 
-/** The gallery's own devices. */
+/**
+ * The gallery's own devices, and the narrowest phone a page is still read on,
+ * where words wrap that 390 keeps on one line.
+ */
 const WIDTHS = [
+  { width: 320, height: 568 },
   { width: 390, height: 844 },
   { width: 768, height: 1024 },
   { width: 1440, height: 900 },
@@ -78,6 +89,13 @@ interface Foot {
   readonly floor: number;
   /** Where the lowest footer ends, or `null` on a page that draws none. */
   readonly bottom: number | null;
+}
+
+interface Cramped {
+  readonly words: string;
+  readonly above: number;
+  readonly below: number;
+  readonly side: number;
 }
 
 interface Violation {
@@ -175,6 +193,53 @@ function footOf(): Foot {
   };
 }
 
+/**
+ * Runs in the page, as source, under the same constraint as `overflowOf`. A
+ * button's words are measured by the boxes of their lines, so the room counted
+ * is the room left between the glyphs and the button's edge.
+ */
+function crampedOf(): Cramped[] {
+  const cramped: Cramped[] = [];
+  for (const button of document.querySelectorAll(".button, button")) {
+    const drawn = button.getBoundingClientRect();
+    if (drawn.width === 0 || drawn.height === 0) continue;
+    if (button.closest("details:not([open]) > :not(summary)") !== null) continue;
+    const style = getComputedStyle(button);
+    const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
+    if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
+    let top = Number.POSITIVE_INFINITY;
+    let bottom = Number.NEGATIVE_INFINITY;
+    let left = Number.POSITIVE_INFINITY;
+    let right = Number.NEGATIVE_INFINITY;
+    const words = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let text = words.nextNode(); text !== null; text = words.nextNode()) {
+      if ((text.textContent ?? "").trim() === "") continue;
+      range.selectNodeContents(text);
+      for (const line of range.getClientRects()) {
+        if (line.width === 0) continue;
+        top = Math.min(top, line.top);
+        bottom = Math.max(bottom, line.bottom);
+        left = Math.min(left, line.left);
+        right = Math.max(right, line.right);
+      }
+    }
+    if (top === Number.POSITIVE_INFINITY) continue;
+    const above = top - drawn.top;
+    const below = drawn.bottom - bottom;
+    const side = Math.min(left - drawn.left, drawn.right - right);
+    if (above < 4 || below < 4 || side < 8) {
+      cramped.push({
+        words: (button.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40),
+        above: Math.round(above),
+        below: Math.round(below),
+        side: Math.round(side),
+      });
+    }
+  }
+  return cramped;
+}
+
 const drawnAt = async (page: Page, document: string, width: number, height: number) => {
   await page.setViewportSize({ width, height });
   await page.setContent(document, { waitUntil: "load" });
@@ -214,6 +279,7 @@ const work = Object.entries(gallery.states).flatMap(([id, state]) => {
 
 const overflows: string[] = [];
 const bands: string[] = [];
+const crampedButtons: string[] = [];
 /** A violation once per state, with every width it was found at. */
 const violations = new Map<string, { widths: number[]; where: readonly string[] }>();
 const notices = new Map<string, Set<string>>();
@@ -239,6 +305,11 @@ try {
             `${id} at ${width} px ends its footer ${Math.round(foot.floor - foot.bottom)} px above the bottom of the ${foot.window} px window it fits in`,
           );
         }
+        for (const button of await page.evaluate(crampedOf)) {
+          crampedButtons.push(
+            `${id} at ${width} px draws the button "${button.words}" with its words ${button.above} px under its top, ${button.below} px over its bottom and ${button.side} px from a side`,
+          );
+        }
         for (const violation of await axeOn(page, axe)) {
           const said = `${violation.rule} (${violation.impact}): ${violation.help}`;
           if (!FAILING.has(violation.impact)) {
@@ -262,6 +333,7 @@ try {
 const failures = [
   ...overflows,
   ...bands,
+  ...crampedButtons,
   ...[...violations].map(([key, { widths, where }]) => {
     const [id = "", ...said] = key.split(" ");
     const at = widths.sort((one, other) => one - other).join(", ");
