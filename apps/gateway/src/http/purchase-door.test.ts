@@ -1099,7 +1099,10 @@ interface Standing {
  */
 const neverPolled = async (harnessed: Harness): Promise<string> => {
   const merchantId = await harnessed.gateway.registerMerchant();
-  await harnessed.gateway.setSellerName(merchantId, { seller_name: "A shop never heard from" });
+  await harnessed.gateway.setSellerName(merchantId, {
+    seller_name: "A shop never heard from",
+    seller_site: "https://shop.example",
+  });
   await harnessed.gateway.setPayoutWallet(merchantId, aWallet("their payout").address, {
     kind: "signed_in",
     email: "owner@example.com",

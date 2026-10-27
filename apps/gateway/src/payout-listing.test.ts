@@ -103,6 +103,7 @@ const aMerchantPaidAt = async (
 ): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
+  await database.store.setSellerSite(id, "https://shop.example", NOW);
   await database.store.noteContact(id, NOW);
   await database.store.setPayoutWallet(
     id,

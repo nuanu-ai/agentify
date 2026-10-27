@@ -35,7 +35,7 @@ const cardFor = (merchantItemId: string, title: string): Card => ({
 let open: { harnessed: Harness; served: Served } | null = null;
 
 const started = async (overrides: Record<string, string> = {}) => {
-  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
+  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO, ...overrides }, { sellerSite: null });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;

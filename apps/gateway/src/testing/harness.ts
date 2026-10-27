@@ -32,6 +32,7 @@ import {
   issueKey,
   keyDigest,
   setPayoutWallet,
+  setSellerSite,
   setServiceName,
 } from "../app/merchants.js";
 import type { Runtime } from "../app/runtime.js";
@@ -135,6 +136,8 @@ export async function harness(
     readonly ids?: Ids;
     /** What the chain says a payout would bring; none is asked by default. */
     readonly payoutCheck?: PayoutCheck;
+    /** Seeded merchants have a site unless a missing-site case requests null. */
+    readonly sellerSite?: string | null;
   } = {},
 ): Promise<Harness> {
   // Moves only on `advance`, so deadlines are arithmetic to check by eye. The
@@ -188,6 +191,9 @@ export async function harness(
     // about that moves the clock past the guard.
     await store.noteContact(made.id, now);
     await setServiceName(store, made.id, name, now);
+    if (options.sellerSite !== null) {
+      await setSellerSite(store, made.id, options.sellerSite ?? "https://shop.example", now);
+    }
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
     const wallet = aSeededWallet();

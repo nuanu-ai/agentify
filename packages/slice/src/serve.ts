@@ -160,6 +160,14 @@ const sayWhatIsKnown = (): void => {
   }
 };
 
+// This process owns the local fixture merchant and its shop setting.
+const site = await fetch(new URL("/v0/seller-name", baseUrl), {
+  method: "POST",
+  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ seller_site: "https://shop.example" }),
+});
+if (!site.ok) throw new Error(`the fixture merchant's site was refused: HTTP ${site.status}`);
+
 await merchant.start();
 await merchant.publishCatalog();
 console.log(`[merchant] subscribed to ${baseUrl}, two cards published`);

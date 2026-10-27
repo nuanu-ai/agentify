@@ -91,7 +91,7 @@ export const waitsOnTheBuyer = (status: OrderStatus): boolean => status === "del
 
 /**
  * The gateway's own codes, less the operator's approval, which nobody sets in
- * Settings, and less the shop's site, which is asked only of a parcel's card.
+ * Settings, and less the shop's site, which async and parcel cards require.
  * Which of them is required on which channel is the gateway's rule
  * (`readinessOf` in the core), never a screen's.
  */

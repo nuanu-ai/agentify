@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 
 async function started() {
-  const harnessed = await harness();
+  const harnessed = await harness({}, { sellerSite: null });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -114,18 +114,29 @@ describe("a site for purchases paid before delivery", () => {
     });
   });
 
-  it.each(["GET", "POST"] as const)(
-    "refuses an existing card on %s until its seller gives a site",
-    async (method) => {
+  it.each([
+    ["GET", "api"],
+    ["POST", "api"],
+    ["GET", "woocommerce"],
+    ["POST", "woocommerce"],
+  ] as const)(
+    "refuses an existing card on %s through %s until its seller gives a site",
+    async (method, through) => {
       const { harnessed: h, served } = await started();
+      if (through === "woocommerce") {
+        await h.gateway.sellThrough(h.merchant.id, through);
+        await h.store.setSelling(h.merchant.id, "open");
+      }
       const stored = await h.store.publishCard(
         h.merchant.id,
         { ...CARD, price_check: "handler" },
         h.now(),
+        through,
       );
       let questions = 0;
       workers.push(
         workUntilStopped(h, {
+          through,
           onQuote: () => {
             questions += 1;
             return { available: true, price: CARD.price, as_of: new Date(h.now()).toISOString() };

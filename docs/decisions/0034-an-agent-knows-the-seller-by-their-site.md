@@ -1,9 +1,8 @@
 # 0034. An agent knows who sells by a name and the shop's own site
 
 Date: 2026-09-28
-Status: accepted (the product owner, 2026-09-28). Built 2026-10-07; the
-finding `no_seller_site` came with the parcel cards it is about (ADR-0033) on
-2026-10-09.
+Status: accepted (the product owner, 2026-09-28); the site requirement for
+asynchronous purchases is approved on 2026-10-27.
 
 ## Context
 
@@ -28,9 +27,14 @@ catalog and on the status of every order, as a `seller` object of `name` and
 check them; `site` is `null` where the merchant has given none. The name keeps
 its rule of at most 32 characters of printable ASCII, and this decision holds
 it to the plain-text rule of ADR-0017 as well. How to reach the shop, its
-terms and its returns are for the agent to read on the site. A card that ships
-is not published without a site: the refusal is a finding, `no_seller_site`,
-beside `no_seller_name`, naming where to set it. Nothing else about the
+terms and its returns are for the agent to read on the site. An asynchronous
+or parcel card, paid before delivery, requires a site to be published. The
+refusal is a finding, `no_seller_site`, naming where to set it. Such a card
+without a site leaves the catalogue and refuses a new purchase before an order
+is opened or a price is asked, and a previously quoted order is refused before
+its first payment is verified. Supplying a site restores eligibility without
+republishing. Already accepted payments, paid recovery and fulfillment
+continue. A synchronous card may sell without a site. Nothing else about the
 merchant is kept for the agent. The storefront's documents gaining these
 fields is what ADR-0006 §5 allows.
 
@@ -49,4 +53,6 @@ the shop (the site already says it, and text written for agents is a way to
 hand them instructions); a full address with a path or a query (the same free
 text by another name); nothing (an agent with a lost parcel would have nowhere
 to go); verifying the site now (a mechanism before anybody has asked for it,
-where marking the word costs nothing).
+where marking the word costs nothing); a separate machine-readable refund and
+remedy policy now (the existing site lets the buyer read the merchant's terms
+without another public schema; a missing policy stays unknown).

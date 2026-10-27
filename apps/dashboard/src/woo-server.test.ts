@@ -183,9 +183,10 @@ interface Standing {
   readonly channel?: Channel;
   /**
    * A merchant just registered through the gateway rather than the harness's
-   * ready seller: no wallet, and a seller name only where asked.
+   * ready seller: no wallet, with a name and site only where asked.
    */
   readonly fresh?: "named" | "unnamed";
+  readonly sellerSite?: string | null;
   /** The prefix the dashboard is mounted under; none where a test does not say. */
   readonly base?: string;
 }
@@ -208,7 +209,7 @@ const LIVE_GATEWAY_ONLY = {
 const registered = async (application: Gateway, named: boolean): Promise<string> => {
   const made = await application.registerMerchant();
   if (named) {
-    await application.setSellerName(made, { seller_name: "Their own shop" });
+    await application.setSellerName(made, { seller_name: "Their own shop", seller_site: SHOP });
   }
   return made;
 };
@@ -226,10 +227,10 @@ const SILENT_FOR_MS = 50;
 
 const started = async (standing: Standing = {}): Promise<Running> => {
   const channel = standing.channel ?? "sandbox";
-  const harnessed = await harness({
-    ...CHANNELS[channel],
-    ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}),
-  });
+  const harnessed = await harness(
+    { ...CHANNELS[channel], ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}) },
+    { sellerSite: standing.sellerSite },
+  );
   const gateway = await serve(harnessed);
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
@@ -916,6 +917,7 @@ describe("importing the catalogue", () => {
     // site is where a buyer asks about a parcel that did not come. The import
     // says so and never fills the site in for the merchant.
     const running = await started({
+      sellerSite: null,
       catalogue: async () => ({
         ok: true,
         products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
@@ -956,6 +958,7 @@ describe("importing the catalogue", () => {
     // The gateway's words name an API call; the person who pressed Import sets
     // the site in Settings.
     const running = await started({
+      sellerSite: null,
       catalogue: async () => ({
         ok: true,
         products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
@@ -3073,6 +3076,19 @@ describe("the analytics of a shop's connection and its imports", () => {
       }),
       inspectProduct: parcelsAndDownloads,
     });
+    // A prior API card owns this product identifier, so importing it is refused.
+    await running.harnessed.store.publishCard(
+      running.harnessed.merchant.id,
+      {
+        merchant_item_id: merchantItemIdFor(SHOP, "12"),
+        title: "Coffee beans",
+        description: "Coffee beans sold through the merchant's code",
+        price: { amount: "25.00", currency: "USD" },
+        fulfillment: "sync",
+        result: { access_code: { type: "string" } },
+      },
+      running.harnessed.now(),
+    );
     await connectedFor(running);
 
     await running.post("/woocommerce/import");
@@ -3094,7 +3110,9 @@ describe("the analytics of a shop's connection and its imports", () => {
         },
       },
     ]);
-    const [published] = await running.harnessed.store.cards(merchant);
+    const published = (await running.harnessed.store.cards(merchant)).find(
+      (stored) => stored.integration === "woocommerce",
+    );
     expect(publications(running)).toStrictEqual([
       {
         name: "agc_card_publish_result",
@@ -3111,7 +3129,7 @@ describe("the analytics of a shop's connection and its imports", () => {
         fields: {
           integration: "woocommerce",
           outcome: "blocked",
-          reason_code: "seller_site_missing",
+          reason_code: "integration_mismatch",
         },
       },
     ]);
@@ -3144,6 +3162,7 @@ describe("the analytics of a shop's connection and its imports", () => {
 
   it("records an import with every card refused as blocked by the first card's reason", async () => {
     const running = await started({
+      sellerSite: null,
       catalogue: async () => ({
         ok: true,
         products: [aProduct({ id: 12, virtual: false, downloadable: false, downloads: [] })],

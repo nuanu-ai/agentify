@@ -249,6 +249,7 @@ if (databaseUrl === null) {
       // And a name, because a payment request names its seller; without one
       // nothing is on sale.
       await store.setServiceName(A, "The merchant of this suite", now);
+      await store.setSellerSite(A, "https://shop.example", now);
     };
     beforeEach(theMerchantOfThisSuite);
 

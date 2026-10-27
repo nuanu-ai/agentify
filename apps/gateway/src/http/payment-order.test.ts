@@ -225,6 +225,7 @@ async function aGatewayPayingThrough(
   };
   await store.addMerchant({ id: merchant.id, name: merchant.name }, clock());
   await setServiceName(store, merchant.id, merchant.name, clock());
+  await store.setSellerSite(merchant.id, "https://shop.example", clock());
   await setPayoutWallet(store, config.payoutSplit, merchant.id, merchant.wallet, clock());
   // As though their worker had just polled: nothing is sold for a seller
   // whose process is silent.

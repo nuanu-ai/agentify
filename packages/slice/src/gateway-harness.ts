@@ -212,6 +212,7 @@ export async function bootGateway(
       );
     }
     await seedSandboxKey(store, randomIds, merchantKey, systemClock(), config.surfaceMode);
+    await store.setSellerSite(SEEDED_MERCHANT.id, "https://shop.example", systemClock());
 
     // And where that merchant is paid, which is the address this slice was
     // configured with. The two are one thing here and only here: this harness

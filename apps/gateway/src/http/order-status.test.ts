@@ -577,7 +577,7 @@ describe("what the answer carries", () => {
     ]);
     expect((answered.body as { seller: unknown }).seller).toStrictEqual({
       name: "Not the harness's own seller",
-      site: null,
+      site: "https://shop.example",
     });
     // The name is there in `seller` and nowhere else; which merchant account
     // it is, what they call the product, and which card it came from are all
@@ -729,7 +729,7 @@ describe("the goods as the merchant wrote them", () => {
       // Only this field tells a test order from a real one; every other field
       // reads the same whether the charge was real or not.
       test: true,
-      seller: { name: "The merchant", site: null },
+      seller: { name: "The merchant", site: "https://shop.example" },
     });
   });
 });

@@ -51,8 +51,8 @@ const parcelFor = (merchantItemId: string): Card => ({
 
 let open: { harnessed: Harness; served: Served } | null = null;
 
-const started = async (overrides: Record<string, string> = TEST) => {
-  const harnessed = await harness(overrides);
+const started = async (overrides: Record<string, string> = TEST, sellerSite?: string | null) => {
+  const harnessed = await harness(overrides, { sellerSite });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -168,7 +168,7 @@ describe("the result of publishing a card", () => {
   });
 
   it("names each refusal by what stands in the card's way", async () => {
-    const { harnessed } = await started();
+    const { harnessed } = await started(TEST, null);
     const named = await harnessed.gateway.registerMerchant();
     await harnessed.gateway.setSellerName(named, { seller_name: "A shop with no wallet" });
     const merchant = harnessed.merchant.id;
