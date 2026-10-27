@@ -1030,7 +1030,9 @@ describe("the protected product check", () => {
       ]);
       expect(first.every((read) => read.ok && read.product.price.amount === "20.00")).toBe(true);
       expect(stand.asked.filter((call) => /\/products\/28$/.test(call.url))).toHaveLength(1);
-      const settings = stand.asked.filter((call) => call.url.includes("/settings/")).length;
+      const settings = stand.asked.filter((call) =>
+        /\/settings\/[^/]+\/woocommerce_/.test(call.url),
+      ).length;
       price = "21.00";
       expect(await inspectProductInTheShop(keys, item, fetch)).toMatchObject({
         ok: true,
@@ -1044,14 +1046,14 @@ describe("the protected product check", () => {
         ok: true,
         product: { price: { amount: "21.00" } },
       });
-      expect(stand.asked.filter((call) => call.url.includes("/settings/"))).toHaveLength(
-        settings * 2,
-      );
+      expect(
+        stand.asked.filter((call) => /\/settings\/[^/]+\/woocommerce_/.test(call.url)),
+      ).toHaveLength(settings * 2);
       clock.mockReturnValue(1_800_000_181_000);
       await runtime.inspectForQuote(item);
-      expect(stand.asked.filter((call) => call.url.includes("/settings/"))).toHaveLength(
-        settings * 3,
-      );
+      expect(
+        stand.asked.filter((call) => /\/settings\/[^/]+\/woocommerce_/.test(call.url)),
+      ).toHaveLength(settings * 3);
     } finally {
       clock.mockRestore();
     }
@@ -2275,17 +2277,59 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     shipping_rates: [aPackage(rates)],
     ...overrides,
   });
+  const emptyCart = () => cart([], { items: [], needs_shipping: false, shipping_rates: [] });
   const shopWithRates = (answered: () => { status: number; body: unknown }) =>
     shopAnswering((asked) => {
       if (asked.method === "GET" && asked.url === "/wp-json/wc/store/v1/cart") {
-        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
       }
+      if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
       if (asked.url === "/wp-json/wc/store/v1/cart/add-item") {
         return { status: 201, body: cart([]) };
       }
       return answered();
     });
   const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
+
+  it("renews an observed empty cart after its shop-declared token expiry", async () => {
+    let time = 1_800_000_000_000;
+    let sessions = 0;
+    const contents = new Map<string, boolean>();
+    stand = await shopAnswering((asked) => {
+      let token = asked.cartToken;
+      if (token === undefined) {
+        sessions += 1;
+        token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 172800 })).toString("base64url")}.signature`;
+        contents.set(token, false);
+      } else if (
+        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
+          1000 <=
+        time
+      ) {
+        return { status: 401, body: { code: "invalid_cart_token" } };
+      }
+      if (asked.url.endsWith("/add-item")) contents.set(token, true);
+      if (asked.url.endsWith("/remove-item")) contents.set(token, false);
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: contents.get(token) ? cart([rate()]) : emptyCart(),
+        headers: { "Cart-Token": token },
+      };
+    });
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    try {
+      const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      time += 172_801_000;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(2);
+      expect([...contents.values()]).toStrictEqual([false, false]);
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
 
   it("reuses one exclusive cart across complete locality replacements and leaves it empty after each question", async () => {
     let sessions = 0;
@@ -2375,6 +2419,8 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       "GET /wp-json/wc/store/v1/cart",
       "POST /wp-json/wc/store/v1/cart/add-item",
       "POST /wp-json/wc/store/v1/cart/update-customer",
+      "POST /wp-json/wc/store/v1/cart/remove-item",
+      "GET /wp-json/wc/store/v1/cart",
     ]);
     expect(JSON.parse(stand.asked[1]?.body ?? "")).toStrictEqual({ id: 28, quantity: 1 });
     expect(JSON.parse(stand.asked[2]?.body ?? "")).toStrictEqual({
@@ -2542,8 +2588,9 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     ] as const) {
       stand = await shopAnswering((asked) => {
         if (asked.method === "GET") {
-          return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+          return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
         }
+        if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
         if (asked.url.endsWith("/add-item")) return addItem ?? { status: 201, body: cart([]) };
         return placed ?? { status: 200, body: cart([rate()]) };
       });
@@ -2595,7 +2642,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         stand = await shopAnswering((asked) => {
           if (asked.url === step) return failure;
           if (asked.method === "GET") {
-            return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+            return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
           }
           if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
           return { status: 200, body: cart([rate()]) };
@@ -2771,9 +2818,10 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const lines = [{ name: "PPN", rate: "11%" }];
     stand = await shopAnswering((asked) => {
       if (asked.method === "GET") {
-        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
       }
       if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
       if (asked.url.endsWith("/select-shipping-rate")) {
         return {
           status: 200,
@@ -2824,9 +2872,10 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const lines = [{ name: "PPN", rate: "11%" }];
     stand = await shopAnswering((asked) => {
       if (asked.method === "GET") {
-        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
       }
       if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
       if (asked.url.endsWith("/select-shipping-rate")) {
         return {
           status: 200,
