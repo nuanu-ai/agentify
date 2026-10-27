@@ -174,6 +174,35 @@
       "tests": 14,
       "purpose": "Restored-source verification after all mutations.",
       "runtime": "Node v24.22.1"
+    },
+    {
+      "command": "pnpm build",
+      "exit_code": 0,
+      "portal_examples_rendered": 7,
+      "runtime": "Node v24.22.1",
+      "purpose": "Full-audit inventory preparation; all production build targets and portal render binding passed."
+    },
+    {
+      "command": "pnpm exec vitest run --project unit packages/slice/src/bootstrap-command.test.ts --maxWorkers=1",
+      "exit_code": 0,
+      "files": 1,
+      "tests": 61,
+      "duration_seconds": 0.431,
+      "runtime": "Node v24.22.1",
+      "purpose": "Existing owner suite remains green despite separately reproduced signed-request transport-loss defect."
+    },
+    {
+      "command": "pnpm check",
+      "exit_code": 0,
+      "files_checked": 1318,
+      "warnings": 21,
+      "info": 1,
+      "note": "No fixes applied; existing CSS warnings. Large standalone audit HTML is also separately checked through Chromium."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "purpose": "Final audit artifact whitespace validation."
     }
   ],
   "initial_runtime": "v24.21.0",
@@ -181,5 +210,187 @@
     "url": "https://nodejs.org/dist/v24.22.1/node-v24.22.1-darwin-arm64.tar.xz",
     "checksums": "https://nodejs.org/dist/v24.22.1/SHASUMS256.txt",
     "sha256": "654ba79de6155647e22321932b45f2a1ccb705976cc337c9b8e278beb085a628"
+  },
+  "additional_experiment": {
+    "script": "bootstrap-loss.mjs",
+    "result": "bootstrap-loss.json",
+    "command": "packages/slice/node_modules/.bin/tsx docs/research/test-audit-2026-10-27/bootstrap-loss.mjs",
+    "runtime": "Node v24.22.1",
+    "expected": "Signed request loss remains unreachable/unresolved; unsigned loss remains client_refused.",
+    "observed": "Both classified client_refused; actual signed request witnessed in intercepted fetch. Existing61 owner tests pass.",
+    "external_requests": 0,
+    "source_mutations": 0
+  },
+  "full_audit": {
+    "source_commit": "77a9b578312e696826f378405c099f4996bcd703",
+    "audit_date": "2026-10-27",
+    "tracked_test_files": 424,
+    "shared_declaration_files": 7,
+    "files_reviewed": 431,
+    "declarations": 6310,
+    "active_declarations": 6286,
+    "environment_markers": 24,
+    "cases": 8445,
+    "case_verdicts": {
+      "R": 6642,
+      "F": 857,
+      "D": 603,
+      "C": 343
+    },
+    "declaration_verdicts": {
+      "F": 622,
+      "R": 5150,
+      "C": 307,
+      "D": 207,
+      "N": 24
+    },
+    "runner_counts": {
+      "unit": 7380,
+      "db": 573,
+      "integration": 317,
+      "node_test": 14,
+      "python_unittest": 161
+    },
+    "local_passed_cases": 8128,
+    "integration_collected_not_run_locally": 317,
+    "case_overrides": 117,
+    "false_positive_excluded": "apps/dashboard/src/woo-recovery.test.ts:536",
+    "method": "Full source inspection of every declaration and its assertions, nested rows, production owner and caller/overlap context; runtime names joined to declaration decisions. Verdicts are engineering recommendations, not per-test mutation scores. Five targeted mutations survived and one negative control was killed; all sources restored. See evidence.json.",
+    "verdicts": {
+      "R": "Retain: independent useful proof at this boundary.",
+      "F": "Repair: consumer promise is needed but present proof is weak, coupled or incomplete. Keep until replaced.",
+      "C": "Consolidate: move named unique cases/assertions into the cited keeper before retiring this declaration.",
+      "D": "Delete candidate: no distinct useful proof or obsolete test-only path. Honor explicit dependencies before removal.",
+      "N": "Diagnostic environment marker, not active product proof."
+    },
+    "lanes": {
+      "contracts": {
+        "R": 460,
+        "D": 54,
+        "F": 13,
+        "C": 25
+      },
+      "core": {
+        "R": 235,
+        "C": 23,
+        "D": 21,
+        "F": 32
+      },
+      "dashboard_admin": {
+        "R": 117,
+        "F": 15,
+        "D": 4,
+        "N": 2,
+        "C": 3
+      },
+      "dashboard_http": {
+        "R": 391,
+        "C": 36,
+        "F": 24,
+        "D": 9
+      },
+      "dashboard_identity": {
+        "R": 450,
+        "C": 35,
+        "F": 23,
+        "D": 11,
+        "N": 10
+      },
+      "dashboard_ui": {
+        "D": 19,
+        "R": 311,
+        "C": 33,
+        "F": 32
+      },
+      "docs_deploy": {
+        "R": 238,
+        "D": 6,
+        "F": 27,
+        "C": 1
+      },
+      "gateway_app": {
+        "R": 226,
+        "F": 96,
+        "C": 28,
+        "D": 9
+      },
+      "gateway_http": {
+        "F": 32,
+        "R": 382,
+        "D": 10,
+        "C": 21
+      },
+      "gateway_runtime": {
+        "R": 161,
+        "C": 20,
+        "N": 1,
+        "F": 61,
+        "D": 9
+      },
+      "gateway_storage_rpc": {
+        "R": 406,
+        "F": 53,
+        "N": 10,
+        "D": 9,
+        "C": 26
+      },
+      "purchase_tools": {
+        "R": 269,
+        "D": 7,
+        "F": 23,
+        "C": 8
+      },
+      "scanner_engine": {
+        "R": 329,
+        "F": 37,
+        "C": 13,
+        "D": 6
+      },
+      "sdk": {
+        "R": 164,
+        "C": 8,
+        "D": 8,
+        "F": 12
+      },
+      "shared_packages": {
+        "F": 17,
+        "R": 139,
+        "C": 3
+      },
+      "web_server": {
+        "R": 231,
+        "F": 46,
+        "D": 4,
+        "C": 2
+      },
+      "web_ui": {
+        "R": 274,
+        "D": 14,
+        "F": 62,
+        "C": 5
+      },
+      "woo_commerce": {
+        "R": 367,
+        "C": 17,
+        "D": 7,
+        "F": 17,
+        "N": 1
+      }
+    },
+    "register": "full-audit.jsonl",
+    "register_sha256": "92b7ceb866cb7fe6f4bfffa1d8de87d7dcce9d4d153e68a521fa132f01994946",
+    "viewer": "full-audit.html",
+    "viewer_sha256": "db9e72fc435816ce0bded50d14ba7a19a57df4a081f0fcf89164b0ad6bdb2d20",
+    "validation": {
+      "loaded_cases": 8445,
+      "rendered_page_size": 50,
+      "filter_F": 857,
+      "source_link": "immutable revision correct",
+      "export": "one selected F row",
+      "environment_markers": 24,
+      "empty_filters": "pass",
+      "script_errors": []
+    },
+    "independent_review": "GPT-6.1 Sol high: exact counts, effective overrides, surviving keepers, all431 source hashes,424-file CSV,local links,HTML parity and evidence limits verified. No remaining delivery finding."
   }
 }

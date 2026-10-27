@@ -1,51 +1,95 @@
 # Agentify test quality audit
 
-The audit identifies five test weaknesses confirmed by surviving mutations and
-one ineffective payment-secret exclusion check established from source. The
-useful next step is to strengthen these existing tests. The evidence does not
-support a broad deletion campaign, a product acceptance verdict, or a claim that
-the production code currently contains the deliberately introduced defects.
+Every collected test case now has an individual decision: 6,642 retain,
+857 repair, 343 consolidate and 603 delete candidates out of
+8,445 cases. A repair decision preserves a needed consumer promise; it is not a
+recommendation to delete the test. Consolidation requires moving the named
+unique assertions before retiring their old declaration. The suite's size alone
+does not establish waste, and these counts are not execution-time savings.
+
+The [searchable per-test register](test-audit-2026-10-27/full-audit.html) contains
+every case, its source, verdict, reason, production owner and any keeper. It
+works as a local HTML file and can export a filtered selection. The same complete
+records are in [full-audit.jsonl](test-audit-2026-10-27/full-audit.jsonl).
 
 The audited product revision is `77a9b578312e696826f378405c099f4996bcd703`.
-Discovery and experiments took place on 27 October 2026 in an isolated worktree.
-The permanent changes install the audit skill and record these findings;
-production code and tests are unchanged. Each temporary mutation was restored
-byte for byte before the next experiment.
+The report combines complete source review with five surviving targeted
+mutations, one killed mutation control, and a separately reproduced defect in
+the bootstrap purchase command's handling of a lost signed response. It is not
+a whole-suite mutation score or product acceptance. Production code and test
+files are unchanged; temporary mutations were restored byte for byte.
 
 ## Scope and method
 
 The [installed skill](../../.agents/skills/test-audit/SKILL.md) is adapted from
-Peter Steinberger and OpenClaw contributors' `test-audit` at upstream revision
-`3195fba90643c3897c538f2f6891c405331bee9c`. The original value and retention
-criteria remain; Agentify commands replace unavailable OpenClaw tooling. The
-package includes its MIT license and campaign guide. Codex discovers the
-project's `.agents/skills/test-audit`, Claude has a symlink to the same package,
-and `AGENTS.md` directs test work to it.
+Peter Steinberger and OpenClaw contributors' `test-audit` at revision
+`3195fba90643c3897c538f2f6891c405331bee9c`, with its license and campaign guide.
+Agentify commands and authority rules replace OpenClaw-specific tooling.
+`.agents/skills/test-audit` is the project skill; `.claude/skills/test-audit` points
+to the same package, and `AGENTS.md` routes test work to it. Its junk-pattern
+checklist explicitly includes self-comparisons, derived expected values,
+implementation assertions, copied inventories, test-only seams and mocks that
+supply the behavior being asserted.
 
-Three GPT-6.1 Sol agents used xhigh effort for independent owner-based discovery.
-A Sol high reviewer challenged the findings and their claimed proof boundaries;
-a Sol medium reviewer checked the skill integration. The parent examined
-documentation and deployment tests and executed the mutations. Discovery read
-tests, production owners, callers, overlapping proof, relevant dependency code,
-history and CI routing for the reported candidates.
+The inventory reconciles 424 tracked test files (150,942 lines), seven shared
+declaration modules and five wrapper-only test files already included in the
+424. All 431 relevant files have complete source-inspection records. There are
+6,310 declarations: 6,286 register active cases and 24 are conditional diagnostic
+markers for an unavailable test database. Those markers receive N and do not
+inflate passing tests or deletion candidates. One AST false positive,
+`woo-recovery.test.ts:536` (`test.sold.map`), is excluded rather than counted as a
+test. [inspection.csv](test-audit-2026-10-27/inspection.csv) gives the file-level
+execution and inspection map; each file's source hash is in the full register.
 
-The inventory contains 424 tracked test files with 150,942 lines. It excludes
-test-support modules, fixtures and configuration from that line count. There
-were 125 complete test-file reads, 28 partial reads and 271 files receiving only
-inventory or pattern discovery. A complete test-file read is not a verdict on
-every declaration or its whole dependency graph. The exact depth and execution
-lane of every file is in [inspection.csv](test-audit-2026-10-27/inspection.csv).
+| Decision | Declarations | Collected cases |
+| --- | ---: | ---: |
+| Retain (R) | 5,150 | 6,642 |
+| Repair (F) | 622 | 857 |
+| Consolidate (C) | 307 | 343 |
+| Delete candidate (D) | 207 | 603 |
+| Environment marker (N) | 24 | 0 |
+| Total | 6,310 | 8,445 |
 
-| Owner group | Test files | Complete reads | Partial reads |
-| --- | ---: | ---: | ---: |
-| Gateway, core, public contracts, SDK and purchase tools | 160 | 35 | 11 |
-| Dashboard, combined application, shared UI, gallery and consent | 112 | 30 | 8 |
-| Scanner, web, worker, browser actor and supporting packages | 134 | 48 | 6 |
-| Documentation, deployment and operations scripts | 18 | 12 | 3 |
+All declarations, their assertion bodies and nested table/loop inputs were read
+with their production owners, callers and overlapping proof. Runner collection
+supplies exact expanded names: 7,380 unit, 573 database, 317 integration, 14 Node
+operations and 161 Python cases. Shared contract declarations map to each actual
+memory/PostgreSQL invocation. There are zero unmapped cases and zero unreviewed
+declarations. Mixed parameter tables have 117 explicit runner-row
+overrides; loops inside one runner case remain described inside that declaration,
+not invented as extra test runs. A passing baseline is independent of a quality
+verdict: a passing F test can still miss the regression it names.
 
-This is broad discovery with selected deep inspection, not the per-declaration
-pruning campaign described in the upstream `CAMPAIGN.md`. No deletion savings
-or whole-repository mutation score is claimed.
+GPT-6.1 Sol agents used xhigh for broad owner audits and full-suite analysis;
+the earlier independent findings reviewer used high, and the skill integration
+reviewer used medium. The parent completed documentation, deployment, shared
+packages, operator surfaces and the web lanes, reconciled the inventories and
+ran the adversarial experiments. A separate bounded adverse review checked 38
+C/D decisions and their actual keeper assertions; it is a second check, not the
+basis for the exhaustive first pass. Review corrections preserve all database
+selection safety cases and repair a mistaken keeper for two-wallet derivation.
+A final Sol high reviewer independently verifies the complete register, source
+hashes, effective decisions, keeper references, report links and viewer parity.
+
+## A real defect concealed by a preclassified test outcome
+
+`packages/slice/src/bootstrap-command.test.ts:320` supplies
+`{ kind: "unreachable" }` directly and verifies the resulting unknown-payment
+message. The production network boundary in `bootstrap-command.ts:1091–1111`
+records a signed request only after `await fetch(request)` returns. If that
+signed exchange throws, the catch at lines 1196–1214 sees no recorded signed leg
+and returns `client_refused`, which the command reports as no charge.
+
+The [offline experiment](test-audit-2026-10-27/bootstrap-loss.mjs) exercised the
+actual x402 wrapper and local signing with the public devnet key already in the
+existing test fixture. Every fetch was intercepted; there were zero external
+requests, no payment and no source mutation. Its
+[recorded output](test-audit-2026-10-27/bootstrap-loss.json) shows both controls:
+unsigned transport loss correctly returns `client_refused`; after observing a
+signed request, transport loss incorrectly returns the same refusal and says
+nothing was charged. The expected second result is `unreachable`/unresolved.
+All 61 existing tests in that owner file still pass. This establishes a defect
+in the diagnostic command, not an observed live loss of funds. The audit records the needed repair; it does not change payment code.
 
 ## Findings requiring stronger proof
 
@@ -179,7 +223,7 @@ rediscovery of its full caller set and preservation of the named contract.
   existing `shops.quotedSale` port. Normal startup uses only the latter. Move
   controlled quote faults onto that existing port and keep real recorded quotes
   for successful fulfillment cases. Currency, binding identity and recovery
-  proof must remain; the whole large worker suite was not read in this audit.
+  proof must remain; the full worker suite is now individually classified in the register.
 - `analytics-client.test.ts:12` exercises optional absent consent in
   `recordThenDeliverWithConsent`, while its sole production caller always
   supplies a snapshot and the runtime returns before loading delivery without
@@ -205,45 +249,75 @@ Money, closure, recovery, SSRF, consent, browser accessibility, actor output
 privacy and dependency-backed deployment compatibility have separate contracts.
 
 The browser `pattern` checker, Apify metadata and pg-boss schema checks were
-retained as independent platform contracts. Canonical-copy relationship tests
-were retained after history showed they replaced brittle prose pinning and
-caught removal of the actual headline lookup. The database test helper's
+retained as independent platform contracts. Canonical-copy tests protect a needed headline/fallback promise, but their
+current relational or subject-derived oracles are classified F. They need
+independent expectations; moving away from full prose pinning did not by itself
+make those checks sufficient. The database test helper's
 refusal of deployment databases protects operator data despite being test
-support. A repository-wide CSS token declaration check establishes only that
-a name is declared somewhere, not that a page loads the right stylesheet;
-that limitation alone is not a justified deletion.
+support. The full register distinguishes stylesheet inventory from actual browser layout,
+accessible controls and loaded-resource behavior; each decision names the
+specific consumer promise or its absence.
+
+## Removal dependencies and priorities
+
+Start with incorrect money/identity claims and ineffective security negatives,
+including the demonstrated bootstrap outcome, payment nonce lookup, WooCommerce
+TLS name and data-copy secret sentinel. Repairing these changes what a green
+suite means. The per-test register identifies the remaining weak cases across
+startup, HTTP, storage, browser behavior, analytics and scanner policy.
+
+Consolidation and deletion decisions are conditional where the register says
+so. Populated migration fixtures must first cross the real 0007–0013 sequence;
+an empty-database migration keeper does not prove an old credential was renamed.
+Test-only unscoped key revocation must be replaced with the actual scoped store
+operation while preserving the cross-process race. Database target selection,
+precedence and password redaction protect the operator running `pnpm test:db`;
+they are F/C at the real command boundary, not disposable helper self-tests.
+
+The register is a decision proposal, not a ready-to-delete list. R means a
+credible distinct regression is covered by the inspected assertions; it does
+not certify that every conceivable mutation is killed. Removing a test after
+its source changes requires rechecking its keeper and relevant owner suite.
+No target deletion count, coverage percentage or estimated runtime reduction
+is used to decide whether a test matters.
 
 ## Executed checks and limits
 
-The [evidence record](test-audit-2026-10-27/evidence.json) contains exact commands,
-mutation substitutions, source hashes, exit codes and test counts. Five
-targeted mutations survived; the entrypoint short-secret control was killed at
-the intended assertion. These are selected adversarial checks, not a random
-sample from which a mutation score can be estimated.
+The [evidence record](test-audit-2026-10-27/evidence.json) contains exact baseline
+commands, source hashes and mutation substitutions. The unmodified pinned
+Node 24.22.1/pnpm 11.12.0 baseline passed 7,380 unit tests, 14 operations tests,
+573 database tests, 147 deployment Python tests and 14 network-configuration
+Python tests: 8,128 in total. The database run used a fresh disposable PostgreSQL
+container matching CI's image digest, subsequently removed. Mutated owners were
+verified again after byte-for-byte restoration.
 
-The unmodified baseline passes 7,380 unit tests in 380 files, 14 operations
-tests, 573 database tests in 26 files, 147 deployment tests and 14 network
-configuration tests. Database execution uses a fresh disposable PostgreSQL
-container matching CI's image digest; its temporary data and container are
-removed after execution. All mutated owners are checked again after restoration.
+`pnpm build` also passed, including the portal's seven actual example/program
+render checks. Unit/database/integration collection was reconciled with source
+locations; the 317 integration cases were collected and source-reviewed, not
+executed locally during this audit. CI and Images were green at audit head
+`78b2587d055ad0b2ee8944132c2a2c4e11498cb6` (CI run 40465957954, Images run
+40465867008), including their browser lanes; that does not turn source review
+into a local integration run or establish live merchant/payment acceptance.
 
-The first local run used Node 24.21.0, a different version from `.nvmrc`.
-Baseline checks and mutation evidence are repeated on the pinned Node 24.22.1
-with pnpm 11.12.0; the local runtime archive is checked against the official
-SHA-256 list and does not replace the system installation.
+Five selected mutations survived and the short-secret control was killed.
+There was no mutation campaign over all 8,445 cases. Live merchant APIs,
+facilitator/chain smoke and deployment activation were not run. No spending,
+production database access or deployment-tag movement occurred. The first local
+baseline used Node 24.21.0; reported baseline/mutation results were repeated on
+the pinned runtime, whose official archive checksum is recorded in evidence.
 
-The eleven TypeScript integration files, browser/gallery lanes, scanner-specific
-integration and migration commands, production builds, live merchant APIs,
-facilitator and chain smoke were not executed for this audit. Passing local
-tests does not establish product acceptance or live payment correctness.
-No broad typecheck or dead-code run is required by the documentation-only diff;
-both are necessary when a subsequent cleanup removes production seams.
+The full register is validated for unique declaration/case IDs, complete file
+coverage, nonempty decisions, resolvable keepers and exact runner totals. The
+HTML viewer is checked for loading, filtering, source links and export. The
+repository check also passes (`pnpm check`: 1,318 files, 21 existing warnings
+and one informational diagnostic), and `git diff --check` passes. The only
+permanent changes are skill instructions and audit artifacts; production
+and test LOC delta remains zero.
 
 ## Delivery
 
-The skill installation and audit travel together on `agent/test-audit` in
-separate commits. No deployment tag moves, no merge and no test pruning are
-part of this task. The production and test LOC delta is zero; new lines are
-skill instructions, license and audit evidence. The independent reviews found
-no actionable installation defect and accepted the five mutation-backed gaps
-with the later-lane qualifications stated above.
+The installation, initial evidence and complete per-test register travel in
+separate commits on `agent/test-audit`, in PR #210. No merge, deployment,
+pruning or product repair is included. The initial sampled discovery report
+is replaced by this complete source audit; the original targeted experiments
+remain available with their precise limitations.
