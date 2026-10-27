@@ -264,6 +264,24 @@ if (databaseUrl === null) {
       now = Date.parse("2026-08-26T12:00:00.000Z");
     });
 
+    it("keeps a product off sale until a worker confirms this contract, even with a recent contact from an older gateway", async () => {
+      const card = await store.publishCard(A, syncCard, now);
+      await pool.query("insert into merchant_contact (merchant_id, polled_at) values ($1, $2)", [
+        A,
+        new Date(now + 5_000),
+      ]);
+
+      expect(await store.lastContact(A)).toBeNull();
+      expect(
+        (await store.catalogEntries()).find((entry) => entry.card.id === card.id)?.lastContact,
+      ).toBeNull();
+      expect((await gateway.catalog()).items.map((item) => item.id)).not.toContain(card.id);
+
+      await store.noteContact(A, now);
+      expect(await store.lastContact(A)).toBe(now);
+      expect((await gateway.catalog()).items.map((item) => item.id)).toContain(card.id);
+    });
+
     it("records the first live grant without moving the merchant update time", async () => {
       const before = await pool.query<{ updated_at: Date }>(
         "select updated_at from merchants where id = $1",

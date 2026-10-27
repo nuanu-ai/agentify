@@ -1334,7 +1334,10 @@ describe("what the worker asks of a poll", () => {
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) === 1, "the first poll");
 
     // The literal, not the sender's constant, which could not fail.
-    expect(gateway.callsTo("poll_worker")[0]?.body).toStrictEqual({ wait_seconds: 25 });
+    expect(gateway.callsTo("poll_worker")[0]?.body).toStrictEqual({
+      contract_version: contractVersion,
+      wait_seconds: 25,
+    });
     expect(POLL_WAIT_SECONDS).toBe(25);
   });
 });
