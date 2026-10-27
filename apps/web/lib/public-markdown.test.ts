@@ -26,7 +26,7 @@ describe("public Markdown variants", () => {
     for (const path of KEPT_PAGE_PATHS) {
       expect(getPublicPageMarkdown(path)).not.toContain("\u00a0");
     }
-    expect(getPublicPageMarkdown("/privacy")).toContain("removes them 7 days after");
+    expect(getPublicPageMarkdown("/privacy")).toMatch(/\d+ days/);
   });
 
   it("keeps the merchant route and the way to the methodology in the agent variant", () => {

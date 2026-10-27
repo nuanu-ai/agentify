@@ -18,7 +18,7 @@ import {
   payoutSplitNetworkOf,
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
-import { asTyped, withUnit } from "@agentify/ui/units";
+import { asTyped } from "@agentify/ui/units";
 import { checksummedAddressOf, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -964,7 +964,7 @@ describe("what Getting paid says in each state", () => {
     ...[1, 2].flatMap((count) => sentencesOf(tooMany(count))),
     ...sentencesOf(paysBoth("0.1%")),
     // An amount is written as digits, which `sentencesOf` reads as `#`.
-    ...[withUnit("1.1", "USDC"), withUnit("1.1", "test USDC")].flatMap((amount) =>
+    ...["1.1\u00a0USDC", "1.1\u00a0test USDC"].flatMap((amount) =>
       [true, false].flatMap((one) => sentencesOf(brings(amount, one))),
     ),
   ]);
