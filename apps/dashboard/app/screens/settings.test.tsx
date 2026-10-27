@@ -343,12 +343,34 @@ afterEach(() => {
 });
 
 describe("the payout wallet on the settings screen", () => {
-  it("names a waiting wallet change in a heading of its own", () => {
-    const headings = (html: string) => html.match(/<h[1-6][\s>]/g)?.length ?? 0;
+  it.each([
+    ["a change that waits", { wallet: SHAPED, pending: WAITING }],
+    [
+      "a change cancelled",
+      {
+        wallet: SHAPED,
+        press: { kind: "wallet-notice", notice: { kind: "cancelled", paid: SHAPED } },
+      },
+    ],
+    [
+      "a cancel too late",
+      {
+        wallet: SHAPED,
+        press: {
+          kind: "wallet-notice",
+          notice: { kind: "landed", wallet: WAITING, at: null, before: SHAPED, askedBack: false },
+        },
+      },
+    ],
+  ] as const)("names %s in a heading at the level of the section's own", (_, looking) => {
+    // The notice stands first in its section, before the section's heading, so
+    // a lower heading would be filed under the section above it.
+    const headings = (html: string) => [...html.matchAll(/<h([1-6])[\s>]/g)].map((one) => one[1]);
 
-    expect(headings(walletPanel({ wallet: SHAPED, pending: WAITING }))).toBe(
-      headings(walletPanel({ wallet: SHAPED })) + 1,
-    );
+    expect(headings(walletPanel(looking))).toStrictEqual([
+      "2",
+      ...headings(walletPanel({ wallet: SHAPED })),
+    ]);
   });
 
   it("shows a saved address whole, so a merchant can check it against their wallet", () => {

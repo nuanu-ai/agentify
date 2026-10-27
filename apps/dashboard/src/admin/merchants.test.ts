@@ -117,11 +117,14 @@ describe("a merchant's page", () => {
     const merchant = await served.harnessed.addMerchant("Coffee Roasters");
     const operator = await served.signedIn(OPERATOR, { operator: true });
     const { html } = await operator.get(`/admin/merchants/${merchant.id}`);
-    const checks = /<ul class="op-checks">([\s\S]*?)<\/ul>/.exec(html)?.[1] ?? "";
-    const items = checks.split("<li").slice(1);
+    const checks = html.slice(
+      html.indexOf('<ul class="op-checks">'),
+      html.indexOf('id="integration-title"'),
+    );
+    const titled = checks.match(/class="what"/g)?.length ?? 0;
 
-    expect(items.length).toBeGreaterThan(1);
-    for (const item of items) expect(item).toMatch(/<h3[\s>]/);
+    expect(titled).toBeGreaterThan(1);
+    expect(checks.match(/<h3[\s>]/g)?.length).toBe(titled);
   });
 
   it("is not there for a merchant that does not exist", async () => {
