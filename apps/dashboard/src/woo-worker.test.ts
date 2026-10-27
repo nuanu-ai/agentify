@@ -25,7 +25,9 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 import { cardsFromTheShop, merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
+import type { QuotedSale } from "./woo-quoted-sale.js";
 import type { WooRequest } from "./woo-request.js";
+import * as wooTransport from "./woo-request.js";
 import {
   createTheOrderInTheShop,
   createTheParcelInTheShop,
@@ -42,26 +44,55 @@ import {
   type SoldItem,
   shippingRatesInTheShop,
 } from "./woo-shop.js";
+import { memoryWooShops, type WooConnection, type WooShops } from "./woo-shops.js";
 import {
-  memoryWooShops,
-  type QuoteBinding,
-  type WooConnection,
-  type WooShops,
-} from "./woo-shops.js";
-import {
-  type Filling,
   filledAsPaid,
-  fillFromTheShop,
+  fillFromTheShop as fillPaidOrder,
   followShipments,
+  type Filling as ProductionFilling,
   quoteFromTheShop,
   startWooWorker,
   turnOnce,
 } from "./woo-worker.js";
 
+/** Fixture facts echoed by the gateway on an authenticated paid merchant order. */
+type Filling = ProductionFilling & { readonly offered?: QuotedSale | null };
+const referenceFor = (sale: QuotedSale): string =>
+  Buffer.from(
+    JSON.stringify([
+      sale.fingerprint,
+      sale.inTheShop.amount,
+      sale.inTheShop.currency,
+      sale.paid.amount,
+      ...(sale.rate === null
+        ? []
+        : [sale.rate.version, sale.rate.rate, sale.rate.setAt.toISOString()]),
+    ]),
+  ).toString("base64url");
+const fillFromTheShop = (
+  order: Order,
+  connection: WooConnection,
+  email: string,
+  filling: Filling,
+  split: Parameters<typeof fillPaidOrder>[4],
+) =>
+  fillPaidOrder(
+    filling.offered === undefined
+      ? order
+      : {
+          ...order,
+          quote_reference: filling.offered === null ? undefined : referenceFor(filling.offered),
+        },
+    connection,
+    email,
+    filling,
+    split,
+  );
+
 const showing = (product: EligibleWooProduct): ProductInspection => ({ ok: true, product });
 
 /** A price bound as a dollar shop's is: the shop held to what the buyer is to pay. */
-const boundAt = (fingerprint: string, amount = "25.00"): QuoteBinding => ({
+const boundAt = (fingerprint: string, amount = "25.00"): QuotedSale => ({
   fingerprint,
   inTheShop: { amount, currency: "USD" },
   paid: { amount, currency: "USD" },
@@ -136,6 +167,7 @@ const anOrder = (overrides: Partial<Order> = {}): Order => ({
     as_of: "2026-09-14T12:00:00.000Z",
   },
   price_id: "prc_1",
+  quote_reference: referenceFor(boundAt("accepted-download-fingerprint")),
   test: true,
   ...overrides,
 });
@@ -241,7 +273,6 @@ const filling = (
       fingerprint: "accepted-download-fingerprint",
       tax: { mode: "off" as const },
     }),
-  quotedSale: async () => boundAt("accepted-download-fingerprint"),
 });
 
 describe("one paid order, in the merchant's own shop", () => {
@@ -320,7 +351,7 @@ describe("one paid order, in the merchant's own shop", () => {
       MERCHANT_EMAIL,
       {
         ...filling(memoryWooShops(), (keys, sold) => createTheOrderInTheShop(keys, sold, inBali)),
-        quotedSale: async () => boundAt("accepted-download-fingerprint", "1.00"),
+        offered: boundAt("accepted-download-fingerprint", "1.00"),
         inspectProduct: async () =>
           showing({
             kind: "download",
@@ -476,7 +507,7 @@ describe("one paid order, in the merchant's own shop", () => {
             inspectProduct: async () =>
               showing({ ...download, price: { amount: "30.00", currency: "USD" } }),
           },
-          { quotedSale: async () => boundAt("an-earlier-download") },
+          { offered: boundAt("an-earlier-download") },
           {
             inspectProduct: async (): Promise<ProductInspection> => ({
               ok: false,
@@ -684,7 +715,7 @@ describe("one paid order, in the merchant's own shop", () => {
       MERCHANT_EMAIL,
       {
         ...filling(shops, shop.place),
-        quotedSale: async () => boundAt("quoted-download-fingerprint"),
+        offered: boundAt("quoted-download-fingerprint"),
         inspectProduct: async () =>
           showing({
             kind: "download",
@@ -859,7 +890,6 @@ describe("the whole way through, against a real gateway", () => {
             fingerprint: "accepted-download-fingerprint",
             tax: { mode: "off" as const },
           }),
-        quotedSale: async () => boundAt("accepted-download-fingerprint"),
       };
       const connected: WooConnection = { ...connection(), shopUrl: shop.url };
 
@@ -874,6 +904,7 @@ describe("the whole way through, against a real gateway", () => {
         },
         onQuote: async () => ({
           available: true,
+          quote_reference: referenceFor(boundAt("accepted-download-fingerprint")),
           price: { amount: "25.00", currency: "USD" },
           as_of: "2026-09-14T12:00:00.000Z",
         }),
@@ -943,7 +974,6 @@ describe("the whole way through, against a real gateway", () => {
           fingerprint: "accepted-download-fingerprint",
           tax: { mode: "off" as const },
         }),
-      quotedSale: async () => boundAt("accepted-download-fingerprint"),
     };
     const connected: WooConnection = { ...connection(), shopUrl: shop.url };
 
@@ -960,6 +990,7 @@ describe("the whole way through, against a real gateway", () => {
       },
       onQuote: async () => ({
         available: true,
+        quote_reference: referenceFor(boundAt("accepted-download-fingerprint")),
         price: { amount: "25.00", currency: "USD" },
         as_of: "2026-09-14T12:00:00.000Z",
       }),
@@ -1021,7 +1052,6 @@ describe("the whole way through, against a real gateway", () => {
           fingerprint: "accepted-download-fingerprint",
           tax: { mode: "off" as const },
         }),
-      quotedSale: async () => boundAt("accepted-download-fingerprint"),
     };
 
     const first = await fillFromTheShop(anOrder(), connected, MERCHANT_EMAIL, parts, NO_SPLIT);
@@ -1246,11 +1276,16 @@ describe("a price question off the merchant's stream", () => {
   it("returns the product and money facts in its opaque reference", async () => {
     const shops = memoryWooShops();
     const answer = await answering(shops, inTheShop);
-    expect(answer).toMatchObject({ available: true, price: { amount: "25.00", currency: "USD" }, as_of: NOW });
-    if (answer?.available !== true || answer.quote_reference === undefined) throw new Error("No quoted sale reference");
-    expect(JSON.parse(Buffer.from(answer.quote_reference, "base64url").toString("utf8"))).toStrictEqual([
-      "accepted-download-fingerprint", "25.00", "USD", "25.00",
-    ]);
+    expect(answer).toMatchObject({
+      available: true,
+      price: { amount: "25.00", currency: "USD" },
+      as_of: NOW,
+    });
+    if (answer?.available !== true || answer.quote_reference === undefined)
+      throw new Error("No quoted sale reference");
+    expect(
+      JSON.parse(Buffer.from(answer.quote_reference, "base64url").toString("utf8")),
+    ).toStrictEqual(["accepted-download-fingerprint", "25.00", "USD", "25.00"]);
   });
 
   it("answers a download from a shop whose prices hold their tax at the price as entered", async () => {
@@ -1262,6 +1297,7 @@ describe("a price question off the merchant's stream", () => {
       ),
     ).toStrictEqual({
       available: true,
+      quote_reference: expect.stringMatching(/^[A-Za-z0-9_-]{1,512}$/),
       price: { amount: "25.00", currency: "USD" },
       as_of: NOW,
     });
@@ -1271,9 +1307,6 @@ describe("a price question off the merchant's stream", () => {
     const shops = memoryWooShops();
 
     expect(await answering(shops, null)).toStrictEqual({ available: false, as_of: NOW });
-    expect(
-      (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
-    ).toBeNull();
   });
 
   for (const { title, atTheOrder, delivered } of [
@@ -1308,7 +1341,18 @@ describe("a price question off the merchant's stream", () => {
           ok: true as const,
           document: { envelopes: [turns.shift()].filter((envelope) => envelope !== undefined) },
         }),
-        answerQuote: async () => ({ ok: true as const, document: { used: true } }),
+        answerQuote: async (
+          _priceId: string,
+          answer: { available: boolean; quote_reference?: string },
+        ) => {
+          const next = turns[0];
+          if (next?.kind === "order")
+            turns[0] = {
+              ...next,
+              payload: { ...next.payload, quote_reference: answer.quote_reference },
+            };
+          return { ok: true as const, document: { used: true } };
+        },
         paidInto: async () => ({ ok: true as const, document: NO_SPLIT }),
         answerOrder: async (_orderId: string, answer: unknown) => {
           answered = answer;
@@ -1375,34 +1419,7 @@ describe("a price question off the merchant's stream", () => {
       );
 
       expect(said, what).toBeNull();
-      expect(
-        (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
-      ).toBeNull();
     }
-  });
-
-  it("names no price when that price was already bound to another product", async () => {
-    // The order comes back held to the first answer, so a price for a changed
-    // download is a price no order could be filled against.
-    const shops = memoryWooShops();
-    await shops.recordQuote(
-      "acc_1",
-      "prc_1",
-      question.merchant_item_id,
-      {
-        fingerprint: "an-earlier-download",
-        inTheShop: { amount: "25.00", currency: "USD" },
-        paid: { amount: "25.00", currency: "USD" },
-        rateVersion: null,
-      },
-      new Date(question.expires_at),
-      new Date(NOW),
-    );
-
-    expect(await answering(shops, inTheShop)).toStrictEqual({ available: false, as_of: NOW });
-    expect(
-      (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
-    ).toBe("an-earlier-download");
   });
 });
 
@@ -1503,14 +1520,11 @@ describe("a parcel's price question", () => {
 
     expect(answer).toStrictEqual({
       available: true,
+      quote_reference: expect.stringMatching(/^[A-Za-z0-9_-]{1,512}$/),
       price: { amount: "25.00", currency: "USD" },
       as_of: NOW,
     });
     expect(asked).toStrictEqual(place);
-    expect(
-      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
-        null,
-    ).toBe("accepted-parcel-fingerprint");
   });
 
   it("adds the rate to the goods in cents, not in floating point", async () => {
@@ -1540,10 +1554,6 @@ describe("a parcel's price question", () => {
         available: false,
         as_of: NOW,
       });
-      expect(
-        (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
-          null,
-      ).toBeNull();
     }
   });
 
@@ -1598,10 +1608,6 @@ describe("a parcel's price question", () => {
     });
 
     expect(answer).toStrictEqual({ available: false, as_of: NOW });
-    expect(
-      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
-        null,
-    ).toBeNull();
   });
 
   it("names no price where a shop calculating no tax shows a rate carrying tax", async () => {
@@ -1664,14 +1670,11 @@ describe("a parcel's price question", () => {
 
     expect(await answering(memoryWooShops(), fromTheCart(1))).toMatchObject({
       available: true,
+      quote_reference: expect.stringMatching(/^[A-Za-z0-9_-]{1,512}$/),
       price: { amount: "25.00" },
     });
     // Not the seller's "not available": the cart said nothing about this parcel.
     expect(await answering(shops, fromTheCart(2))).toBeNull();
-    expect(
-      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
-        null,
-    ).toBeNull();
   });
 
   it("names no price where the shop's own cart refuses the line", async () => {
@@ -1690,10 +1693,6 @@ describe("a parcel's price question", () => {
     );
 
     expect(answer).toStrictEqual({ available: false, as_of: NOW });
-    expect(
-      (await shops.quotedSale("acc_1", "prc_parcel", question.merchant_item_id))?.fingerprint ??
-        null,
-    ).toBeNull();
   });
 
   it("says nothing when the shop's cart could not answer just now", async () => {
@@ -1731,6 +1730,7 @@ describe("a parcel's paid order", () => {
         as_of: "2026-09-14T12:00:00.000Z",
       },
       price_id: "prc_parcel",
+      quote_reference: referenceFor(boundAt("accepted-parcel-fingerprint")),
       ship_to: ADDRESS,
       ...overrides,
     });
@@ -1784,7 +1784,6 @@ describe("a parcel's paid order", () => {
     placeParcel: place,
     inspectProduct: async () => THE_TOTE,
     shippingRates: async () => TODAY,
-    quotedSale: async () => boundAt("accepted-parcel-fingerprint"),
     ...overrides,
   });
 
@@ -1855,7 +1854,7 @@ describe("a parcel's paid order", () => {
       connection(),
       MERCHANT_EMAIL,
       parcelParts(memoryWooShops(), shop.place, {
-        quotedSale: async () => boundAt("accepted-parcel-fingerprint", "32.00"),
+        offered: boundAt("accepted-parcel-fingerprint", "32.00"),
       }),
       NO_SPLIT,
     );
@@ -1931,7 +1930,7 @@ describe("a parcel's paid order", () => {
 
   it("refuses an order whose product changed since its price, and posts nothing", async () => {
     for (const changed of [
-      { quotedSale: async () => boundAt("an-earlier-parcel") },
+      { offered: boundAt("an-earlier-parcel") },
       { inspectProduct: async () => RULED_OUT },
       {
         inspectProduct: async (): Promise<ProductInspection> => ({
@@ -2027,7 +2026,7 @@ describe("a parcel's paid order", () => {
     const changed = new Set<string | undefined>();
     for (const overrides of [
       { inspectProduct: async () => RULED_OUT },
-      { quotedSale: async () => boundAt("an-earlier-parcel") },
+      { offered: boundAt("an-earlier-parcel") },
       {
         inspectProduct: async (): Promise<ProductInspection> =>
           showing({
@@ -2394,13 +2393,11 @@ describe("a parcel from a shop that calculates tax", () => {
 
     expect(await quoted(shop.filling, SEATTLE)).toStrictEqual({
       available: true,
+      quote_reference: expect.stringMatching(/^[A-Za-z0-9_-]{1,512}$/),
       price: { amount: "28.74", currency: "USD" },
       as_of: NOW,
     });
     expect(shop.asked).toStrictEqual(["Seattle"]);
-    expect((await shop.shops.quotedSale("acc_1", "prc_parcel", item))?.fingerprint ?? null).toBe(
-      "accepted-parcel-fingerprint",
-    );
   });
 
   it("prices an inclusive shop's parcel at its cart's whole price where the place is taxed as the shop's own address", async () => {
@@ -2408,6 +2405,7 @@ describe("a parcel from a shop that calculates tax", () => {
 
     expect(await quoted(shop.filling, JAKARTA)).toStrictEqual({
       available: true,
+      quote_reference: expect.stringMatching(/^[A-Za-z0-9_-]{1,512}$/),
       price: { amount: "25.55", currency: "USD" },
       as_of: NOW,
     });
@@ -2427,10 +2425,6 @@ describe("a parcel from a shop that calculates tax", () => {
         available: false,
         as_of: NOW,
       });
-      expect(
-        (await shop.shops.quotedSale("acc_1", "prc_parcel", item))?.fingerprint ?? null,
-        place.city,
-      ).toBeNull();
     }
   });
 
@@ -2536,9 +2530,6 @@ describe("a parcel from a shop that calculates tax", () => {
     };
 
     expect(await quoted(filling, JAKARTA)).toBeNull();
-    expect(
-      (await shop.shops.quotedSale("acc_1", "prc_parcel", item))?.fingerprint ?? null,
-    ).toBeNull();
   });
 
   const ADDRESS_IN = (place: ShipToLocality) => ({
@@ -2575,7 +2566,7 @@ describe("a parcel from a shop that calculates tax", () => {
       {
         ...filling,
         placeParcel: shop.place,
-        quotedSale: async () => boundAt("accepted-parcel-fingerprint", order.price.amount),
+        offered: boundAt("accepted-parcel-fingerprint", order.price.amount),
       },
       NO_SPLIT,
     );
@@ -3607,7 +3598,7 @@ describe("a shop whose Number of decimals changed after the quote", () => {
     placeOrder: (keys: ShopKeys, sold: SoldItem) => createTheOrderInTheShop(keys, sold, fetch),
     inspectProduct: (connected: WooConnection, merchantItemId: string) =>
       inspectProductInTheShop(connected, merchantItemId, fetch),
-    quotedSale: async () => (quotedFingerprint === null ? null : boundAt(quotedFingerprint)),
+    offered: quotedFingerprint === null ? null : boundAt(quotedFingerprint),
   });
 
   it("refuses the sale before any order is posted to the shop", async () => {
@@ -3948,6 +3939,111 @@ describe("bounded work within one connected shop", () => {
     orderKey: `wc_${id}`,
     downloadId: "dl_guide",
     total: "25.00",
+  });
+
+  it("waits for a timed-out quote's cart cleanup before shutdown completes", async () => {
+    const removing = Promise.withResolvers<void>();
+    const finishRemoval = Promise.withResolvers<void>();
+    let held = false;
+    const cart = () => ({
+      items: held ? [{ key: "line-28", id: 28, quantity: 1 }] : [],
+      errors: [],
+      needs_shipping: held,
+      shipping_rates: held
+        ? [
+            {
+              items: [{ key: "line-28", quantity: 1 }],
+              shipping_rates: [
+                {
+                  method_id: "flat_rate",
+                  instance_id: 3,
+                  name: "Standard",
+                  price: "500",
+                  taxes: "0",
+                  currency_code: "USD",
+                  currency_minor_unit: 2,
+                },
+              ],
+            },
+          ]
+        : [],
+    });
+    const request = vi.spyOn(wooTransport, "wooRequest").mockImplementation(async (url) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/add-item")) held = true;
+      if (path.endsWith("/remove-item")) {
+        removing.resolve();
+        await finishRemoval.promise;
+        held = false;
+      }
+      return Response.json(cart(), { headers: { "Cart-Token": "one-owned-cart" } });
+    });
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    let pending = true;
+    const gateway = {
+      pollWorker: async () => {
+        const envelopes = pending
+          ? [
+              {
+                kind: "quote_request",
+                id: "env-price",
+                sent_at: new Date().toISOString(),
+                payload: {
+                  merchant_item_id: merchantItemIdFor(connection().shopUrl, "28"),
+                  price_id: "prc-cart",
+                  purpose: "purchase",
+                  expires_at: new Date(Date.now() + 60_000).toISOString(),
+                  ship_to: { country: "ID", city: "Jakarta" },
+                },
+              },
+            ]
+          : [];
+        pending = false;
+        return { ok: true, document: { envelopes } };
+      },
+    };
+    const worker = startWooWorker({
+      shops,
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => gateway as never,
+      betweenTurnsMs: 5,
+      waitSeconds: 0,
+      quoteWithinMs: 1,
+      inspectProduct: async () =>
+        showing({
+          kind: "parcel",
+          productId: "28",
+          price: { amount: "20.00", currency: "USD" },
+          fingerprint: "accepted-parcel-fingerprint",
+          tax: { mode: "off" },
+        }),
+    });
+    let stopping: Promise<void> | undefined;
+    try {
+      await removing.promise;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      let stopped = false;
+      stopping = worker.stop().then(() => {
+        stopped = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(stopped).toBe(false);
+      expect(held).toBe(true);
+    } finally {
+      finishRemoval.resolve();
+      await (stopping ?? worker.stop());
+      request.mockRestore();
+    }
+    expect(held).toBe(false);
   });
 
   it("answers the next purchase and price while one shop creation is held open", async () => {
