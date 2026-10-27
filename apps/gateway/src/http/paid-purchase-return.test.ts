@@ -104,7 +104,7 @@ async function aPaidSale(
     return { requirements: theirs, orderId: (bought.body as { order_id: string }).order_id };
   };
 
-  return { harnessed, requirements, fresh, present, paying, orderId, anotherOrder, anotherSale };
+  return { harnessed, requirements, fresh, present, paying, paid, orderId, anotherOrder, anotherSale };
 }
 
 /**
@@ -130,6 +130,26 @@ const codeOf = (body: unknown): string | undefined =>
   (body as { error?: { code?: string } }).error?.code;
 
 describe("a purchase already paid for", () => {
+  it.each(["sync", "async"] as const)(
+    "keeps %s purchase and recovery replies out of caches",
+    async (fulfillment) => {
+      const sale = await aPaidSale({ ...card, fulfillment }, { delivers: fulfillment === "sync" });
+      const recovered = await sale.present(
+        await signedPayment(BUYER, sale.requirements, sale.fresh("0x02")),
+      );
+
+      for (const answered of [sale.paid, recovered]) {
+        expect(answered.status).toBe(200);
+        expect(answered.body).toMatchObject({
+          order_id: sale.orderId,
+          status_url: expect.any(String),
+        });
+        expect(answered.headers.get("cache-control")).toBe("no-store");
+      }
+      expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
+    },
+  );
+
   it("comes back to its payer's fresh signature while the chain endpoint does not answer", async () => {
     // The claims decide whether an authorization was taken; the chain is only
     // a second guard, and its silence must not send the buyer to the payment
