@@ -73,6 +73,8 @@ owner's to decide, and until then is a limit a parcel sells with.
 | How the scanner's limits stated on its documentation page are held equal to the worker's literals, which no test compares | engineering | — |
 | How the release preflight's fixtures, snapshots of `docker compose config` taken by hand, are kept in step with `compose.yaml`; their synthetic encryption key also decodes to 33 bytes where the scanner needs 32 | engineering | — |
 | A test path for the idempotency of `verify`, which no route can reach without a live payment | engineering | — |
+| How a flood of purchase requests for one merchant is kept from slowing every other merchant's sales through the one database pool they share: an unpaid request reads the card and the merchant before any limit can refuse it | architect | `87-unpaid-price-questions.md` |
+| How a flood of signed payments for one merchant is kept from using up the payment facilitator's rate limit, which every merchant's payments share through one key: which of our own checks come before the facilitator is called, and how many of its calls one merchant may hold at once | architect | `87-unpaid-price-questions.md` |
 | Whether the Bazaar's crawler accepts a card at a real listing; its validator accepts the declaration on both methods | a real listing | `26-discovery-method-on-get.md`, ADR-0012 |
 | How the Bazaar indexes a card whose `payTo` is a merchant's split; only a payment for a real card on production shows it | a real listing | `47-commission-in-the-product.md` |
 | Whether the Bazaar indexes a payment settled on the testnet or only on mainnet; `pnpm smoke:bootstrap` measures it, from a place allowed to hold the facilitator's credentials | engineering, by a measurement | `04-spike-bazaar-listing.md` |
