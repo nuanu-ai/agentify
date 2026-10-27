@@ -660,6 +660,25 @@ const PUBLIC: GalleryState[] = [
     },
     { path: "/", loaded: { "routes/home": ownDataOf("routes/home.tsx") }, firstVisit: true },
   ),
+  at(
+    {
+      id: "scanner-front-page-preferences",
+      screen: "Front page",
+      when: "Somebody on a first visit presses Preferences in the banner.",
+      cause:
+        "The browser keeps no answer about measuring the visit, so the preferences open with every optional kind off.",
+    },
+    {
+      path: "/",
+      loaded: { "routes/home": ownDataOf("routes/home.tsx") },
+      firstVisit: true,
+      scene: {
+        answers: visitor(false),
+        steps: [{ shows: "Preferences", does: (page) => press(page, "Preferences") }],
+        shows: "Essential processing",
+      },
+    },
+  ),
   own(
     {
       id: "scanner-store-landing",

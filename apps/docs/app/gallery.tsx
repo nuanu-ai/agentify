@@ -2,10 +2,17 @@
  * The documentation's pages for the gallery (`pnpm gallery`): every page, and
  * the page for an address it has no page at, each drawn through the route
  * tree `routes.ts` declares, in the body every page is drawn in, with the data
- * the build's own loaders give it, as the live channel's Caddy serves it.
- * Nothing here runs on the site.
+ * the build's own loaders give it, as the live channel's Caddy serves it. The
+ * privacy choices, which only a press opens over a page, are drawn with a
+ * scene: what the tab's browser keeps and what the site answers the page's
+ * requests with. Nothing here runs on the site.
  */
 
+import {
+  CONSENT_POLICY_VERSION,
+  CONSENT_STORAGE_KEY,
+  createConsentSnapshot,
+} from "@agentify/analytics/browser";
 import { BannerAnswered } from "@agentify/consent";
 import type { GalleryState, GallerySurface } from "@agentify/gallery";
 import { DOCS_PAGES, docsAddress } from "@agentify/ui/docs";
@@ -75,6 +82,29 @@ const drawnAt = async (path: string) => {
   };
 };
 
+/** Who is visiting, which every page's header asks the site: nobody signed in. */
+const SIGNED_OUT = { "GET /api/v2/session": { status: 200, body: { status: "signed_out" } } };
+
+/** A visitor's answer to the banner as their browser keeps it: essential processing only. */
+const ESSENTIAL_ONLY = JSON.stringify(
+  createConsentSnapshot({
+    policyVersion: CONSENT_POLICY_VERSION,
+    decisions: {},
+    source: "banner",
+    capturedAt: new Date("2026-10-20T09:00:00Z"),
+  }),
+);
+
+/** The screen the front page's states are named under, as the contents call it. */
+const FRONT = DOCS_PAGES.find((page) => page.path === "/")?.label;
+if (FRONT === undefined) throw new Error("the documentation lists no front page");
+
+const press = (page: Document, selector: string) => {
+  const button = page.querySelector<HTMLElement>(selector);
+  if (button === null) throw new Error(`the page draws no ${selector}`);
+  button.click();
+};
+
 const pages: GalleryState[] = await Promise.all(
   DOCS_PAGES.map(async (page) => ({
     id: `docs${page.path === "/" ? "-front" : page.path.replaceAll("/", "-")}`,
@@ -92,6 +122,23 @@ export const gallery: GallerySurface = {
   lang: "en",
   states: [
     ...pages,
+    {
+      id: "docs-front-privacy-choices",
+      screen: FRONT,
+      address: docsAddress("/"),
+      when: "A reader who answered the banner presses Privacy choices in the footer.",
+      cause:
+        "The browser keeps their answer, essential processing only, so the preferences open on it.",
+      draw: await drawnAt("/"),
+      scene: {
+        local: { [CONSENT_STORAGE_KEY]: ESSENTIAL_ONLY },
+        answers: SIGNED_OUT,
+        steps: [
+          { shows: "Privacy choices", does: (page) => press(page, "footer button.foot-action") },
+        ],
+        shows: "Essential processing",
+      },
+    },
     {
       id: "docs-missing",
       screen: "Page not found",
