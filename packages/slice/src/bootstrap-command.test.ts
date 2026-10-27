@@ -23,10 +23,8 @@ import {
   atomicOf,
   type CatalogCard,
   type Challenge,
-  couldEverBeListed,
   DISCOVERY_PAGE_SIZE,
   dollarsOf,
-  isSelfSend,
   type Outside,
   overTheNetwork,
   type PurchaseOutcome,
@@ -95,6 +93,7 @@ function aRun(options: {
   const bought: string[] = [];
   const said: string[] = [];
   const slept: number[] = [];
+  const discoveryRequests: number[] = [];
   let walk = 0;
   let clock = 0;
 
@@ -111,6 +110,7 @@ function aRun(options: {
       return options.purchases?.(itemId) ?? settled();
     },
     discoveryPage: async (offset) => {
+      discoveryRequests.push(offset);
       const shown = options.walks?.[Math.min(walk, (options.walks?.length ?? 1) - 1)] ?? [];
       return offset === 0
         ? { total: shown.length, resources: shown }
@@ -128,7 +128,7 @@ function aRun(options: {
   const run = (argv: string[], extra: Record<string, string | undefined> = {}) =>
     runBootstrap(argv, env(extra), outside, (line) => said.push(line));
 
-  return { run, bought, slept, text: () => said.join("\n") };
+  return { run, bought, slept, discoveryRequests, text: () => said.join("\n") };
 }
 
 describe("the caps", () => {
@@ -201,24 +201,6 @@ describe("the caps", () => {
 });
 
 describe("what a paid call came to", () => {
-  it("reads a settlement with a chain transaction on it as a settle", () => {
-    const payment = whatBecameOfThePayment(settled(), BASE_SEPOLIA);
-
-    expect(payment.paid).toBe("settled");
-    expect(payment.paid === "settled" && payment.transaction).toBe(A_TRANSACTION);
-  });
-
-  it("does not read a settlement against nothing as a settle", () => {
-    // The sandbox answers a purchase exactly as a real gateway does — same
-    // status, same document, a receipt and all — and its facilitator hands back
-    // a counter rather than a hash. Reported as a settle, this would send
-    // somebody off to wait half an hour for a listing that was never coming.
-    const payment = whatBecameOfThePayment(settled({ transaction: "0xtx1" }), BASE_SEPOLIA);
-
-    expect(payment.paid).toBe("pretend");
-    expect(payment.paid === "pretend" && payment.why).toContain("settles against nothing");
-  });
-
   it("does not judge the shape of a transaction on a chain it has never seen", () => {
     // The hash of an EVM chain has one shape and this checks it, because that is
     // the only thing that tells a real settle from a pretend one. On a chain
@@ -233,42 +215,6 @@ describe("what a paid call came to", () => {
     // An empty transaction is not a transaction on any chain.
     expect(whatBecameOfThePayment(settled({ transaction: "  " }), somewhereElse).paid).toBe(
       "pretend",
-    );
-  });
-
-  it("reads the facilitator's own verdict out of the header when the purchase is refused", () => {
-    // The body of a 402 is always {} in version two, so a command that read the
-    // status alone would report "the gateway answered 402" and nothing more.
-    const payment = whatBecameOfThePayment(
-      {
-        kind: "answered",
-        status: 402,
-        body: {},
-        settlement: null,
-        facilitatorSaid: { heard: "verdict", error: "self_send_not_allowed" },
-      },
-      BASE_SEPOLIA,
-    );
-
-    expect(payment.paid).toBe("refused");
-    expect(payment.paid === "refused" && payment.why).toContain("self_send_not_allowed");
-  });
-
-  it("says a refusal never got as far as the facilitator when no header came back with it", () => {
-    const payment = whatBecameOfThePayment(
-      {
-        kind: "answered",
-        status: 500,
-        body: {},
-        settlement: null,
-        facilitatorSaid: { heard: "nothing" },
-      },
-      BASE_SEPOLIA,
-    );
-
-    expect(payment.paid).toBe("refused");
-    expect(payment.paid === "refused" && payment.why).toContain(
-      "never got as far as the facilitator",
     );
   });
 
@@ -302,32 +248,6 @@ describe("what a paid call came to", () => {
 
     expect(payment.paid).toBe("refused");
     expect(payment.paid === "refused" && payment.why).toContain("execution reverted");
-  });
-
-  it("reads the client's own refusal as a refusal rather than as a silence", () => {
-    // The payment wrapper throws for what it refuses itself — a spend control, a
-    // network it has no scheme for — and returns a quiet 402 for the server's
-    // refusal. Two doors, one meaning.
-    const payment = whatBecameOfThePayment(
-      { kind: "client_refused", why: "no payment requirements matched the spend controls" },
-      BASE_SEPOLIA,
-    );
-
-    expect(payment.paid).toBe("refused");
-    expect(payment.paid === "refused" && payment.why).toContain("spend controls");
-  });
-
-  it("will not call a call that never landed a refusal", () => {
-    // An agent told its purchase did not happen goes and buys the same thing
-    // elsewhere without looking at its wallet, and here nobody knows whether
-    // the money moved.
-    const payment = whatBecameOfThePayment(
-      { kind: "unreachable", why: "socket hang up" },
-      BASE_SEPOLIA,
-    );
-
-    expect(payment.paid).toBe("unresolved");
-    expect(payment.paid === "unresolved" && payment.why).toContain("not known here");
   });
 
   it("will not call payment_unresolved a settle or a refusal", () => {
@@ -399,30 +319,6 @@ describe("what a paid call came to", () => {
 });
 
 describe("the gates in front of a payment", () => {
-  it("refuses a resource no catalog could ever fetch", () => {
-    // The one thing a local sandbox says about itself on the wire. A gateway
-    // with no chain behind it warns in its own log and nowhere else, and the
-    // address it pins into every challenge is what is left.
-    const refused = couldEverBeListed(
-      aChallenge({ resourceUrl: "http://localhost:8080/x402/itm_1/purchase" }),
-    );
-
-    expect(refused.ok).toBe(false);
-    expect(refused.ok === false && refused.why).toContain("not an https address");
-  });
-
-  it("lets a public https resource through", () => {
-    expect(couldEverBeListed(aChallenge()).ok).toBe(true);
-  });
-
-  it("sees a self-send however the two addresses are spelled", () => {
-    // EIP-55 capitals are a checksum, not an identity: the facilitator refuses
-    // payer == payee whichever way either was typed.
-    expect(isSelfSend(ITS_ADDRESS, ITS_ADDRESS.toLowerCase())).toBe(true);
-    expect(isSelfSend(` ${ITS_ADDRESS.toUpperCase()} `, ITS_ADDRESS)).toBe(true);
-    expect(isSelfSend(A_MERCHANT, ITS_ADDRESS)).toBe(false);
-  });
-
   it("names the parameters a card asks for that the run cannot answer", () => {
     const card = aCard("itm_1", { email: { required: true }, area_code: { required: false } });
 
@@ -554,14 +450,17 @@ describe("a whole run", () => {
     expect(run.text()).toContain("after 4m00s");
   });
 
-  it("does not pay a merchant who is the buyer, and says why", async () => {
-    const run = aRun({ challenges: () => aChallenge({ payTo: ITS_ADDRESS }) });
+  it.each([ITS_ADDRESS, ITS_ADDRESS.toLowerCase(), ` ${ITS_ADDRESS.toUpperCase()} `])(
+    "does not pay a merchant who is the buyer (%s), and says why",
+    async (payTo) => {
+      const run = aRun({ challenges: () => aChallenge({ payTo }) });
 
-    expect(await run.run(["--confirm"])).toBe(1);
-    expect(run.bought).toStrictEqual([]);
-    expect(run.text()).toContain("self_send_not_allowed");
-    expect(run.text()).toContain("NOT ATTEMPTED");
-  });
+      expect(await run.run(["--confirm"])).toBe(1);
+      expect(run.bought).toStrictEqual([]);
+      expect(run.text()).toContain("self_send_not_allowed");
+      expect(run.text()).toContain("NOT ATTEMPTED");
+    },
+  );
 
   it("does not pay a gateway nothing could crawl, and does not call that a refusal", async () => {
     const run = aRun({
@@ -572,6 +471,7 @@ describe("a whole run", () => {
     expect(run.bought).toStrictEqual([]);
     expect(run.text()).toContain("NOT ATTEMPTED");
     expect(run.text()).not.toContain("REFUSED");
+    expect(run.text()).toContain("not an https address");
   });
 
   it("does not pay for a product priced above the cap", async () => {
@@ -645,7 +545,7 @@ describe("a whole run", () => {
     });
 
     expect(await run.run(["--confirm"])).toBe(1);
-    expect(run.slept).toStrictEqual([]);
+    expect(run.discoveryRequests).toStrictEqual([]);
     expect(run.text()).toContain("PURCHASE REFUSED");
     expect(run.text()).toContain("invalid_exact_evm_payload_authorization_value");
     expect(run.text()).toContain("spent this run: $0");
@@ -656,6 +556,7 @@ describe("a whole run", () => {
 
     expect(await run.run(["--confirm"])).toBe(1);
     expect(run.slept).toStrictEqual([]);
+    expect(run.text()).toContain("settles against nothing");
     expect(run.text()).toContain("spent this run: $0");
     expect(run.text()).not.toContain("SETTLED, NOT YET LISTED");
   });
@@ -733,13 +634,18 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       readonly status?: number;
       readonly body: string;
       readonly headers?: Readonly<Record<string, string | undefined>>;
-    },
+      readonly dropBody?: boolean;
+    } | null,
   ): Promise<string> => {
     asked = [];
     server = createServer((request, response) => {
       asked.push(request.url ?? "");
       const signed = request.headers["payment-signature"] !== undefined;
       const said = answer(request.url ?? "", signed);
+      if (said === null) {
+        request.socket.destroy();
+        return;
+      }
       response.setHeader("content-type", "application/json");
       for (const [name, value] of Object.entries(said.headers ?? {})) {
         if (value !== undefined) {
@@ -747,6 +653,12 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
         }
       }
       response.writeHead(said.status ?? 200);
+      if (said.dropBody) {
+        response.flushHeaders();
+        response.write(said.body);
+        setTimeout(() => response.destroy(), 10);
+        return;
+      }
       response.end(said.body);
     });
     await new Promise<void>((ready) => server?.listen(0, "127.0.0.1", ready));
@@ -937,7 +849,88 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
     );
 
     expect(outcome.kind).toBe("client_refused");
-    expect(whatBecameOfThePayment(outcome, BASE_SEPOLIA).paid).toBe("refused");
+    expect(whatBecameOfThePayment(outcome, BASE_SEPOLIA)).toMatchObject({
+      paid: "refused",
+      why: expect.stringContaining("spendControls.maxAmountPerPayment"),
+    });
+  });
+
+  it.each([
+    { loss: "unsigned response", signed: false, body: false, receipt: null, paid: "refused" },
+    { loss: "signed response", signed: true, body: false, receipt: null, paid: "unresolved" },
+    { loss: "signed body", signed: true, body: true, receipt: null, paid: "unresolved" },
+    {
+      loss: "signed body after settlement",
+      signed: true,
+      body: true,
+      receipt: true,
+      paid: "settled",
+    },
+    {
+      loss: "signed body after rejection",
+      signed: true,
+      body: true,
+      receipt: false,
+      paid: "refused",
+    },
+  ])("keeps the payment outcome honest after losing $loss", async (lost) => {
+    const signatures: boolean[] = [];
+    const base = await serving((_path, signed) => {
+      signatures.push(signed);
+      if (lost.signed && !signed) {
+        return { status: 402, body: "{}", headers: { "PAYMENT-REQUIRED": challengeHeader() } };
+      }
+      if (!lost.body) return null;
+      return {
+        status: lost.receipt === true ? 500 : 200,
+        body: '{"status":',
+        dropBody: true,
+        headers:
+          lost.receipt === null
+            ? {}
+            : {
+                "PAYMENT-RESPONSE": encodePaymentResponseHeader({
+                  success: lost.receipt,
+                  transaction: A_TRANSACTION,
+                  network: BASE_SEPOLIA,
+                }),
+              },
+      };
+    });
+
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const payment = whatBecameOfThePayment(outcome, BASE_SEPOLIA);
+
+    expect(signatures).toStrictEqual(lost.signed ? [false, true] : [false]);
+    expect(outcome.kind).toBe(
+      lost.receipt !== null ? "answered" : lost.signed ? "unreachable" : "client_refused",
+    );
+    expect(payment.paid).toBe(lost.paid);
+    if (payment.paid === "unresolved") {
+      expect(payment.why).toContain("not known here");
+      expect(payment.why).not.toContain("nothing was charged");
+    }
+    if (payment.paid === "settled") expect(payment.transaction).toBe(A_TRANSACTION);
+  });
+
+  it("keeps payment unknown when the signed request receives a server failure without a receipt", async () => {
+    let signedSeen = false;
+    const base = await serving((_path, signed) => {
+      signedSeen ||= signed;
+      return signed
+        ? { status: 500, body: "{}" }
+        : { status: 402, body: "{}", headers: { "PAYMENT-REQUIRED": challengeHeader() } };
+    });
+
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const payment = whatBecameOfThePayment(outcome, BASE_SEPOLIA);
+
+    expect(signedSeen).toBe(true);
+    expect(payment.paid).toBe("unresolved");
+    if (payment.paid === "unresolved") {
+      expect(payment.why).toContain("500");
+      expect(payment.why).not.toContain("never got as far as the facilitator");
+    }
   });
 
   it("reads one page of the discovery catalog at the offset it asked for", async () => {
