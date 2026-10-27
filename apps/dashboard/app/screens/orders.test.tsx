@@ -179,7 +179,7 @@ describe("searching the orders", () => {
 
     expect(named("30 days, 5 gb")).toStrictEqual([FIRST]);
     // The page keeps a number with its unit by a no-break space, which a copy carries.
-    expect(named("30 days, 5 GB")).toStrictEqual([FIRST]);
+    expect(named("30\u00a0days, 5\u00a0GB")).toStrictEqual([FIRST]);
   });
 
   describe("among IDs whose hidden middle holds a word a merchant might search for", () => {

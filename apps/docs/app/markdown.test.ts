@@ -213,8 +213,8 @@ describe("a number and its unit", () => {
   it("stand on one line in a page's prose, where its source wraps between them too", () => {
     const html = parser().render("Each fetch waits 8 seconds; a card costs 5.00\nUSD.\n");
 
-    expect(html).toContain("8 seconds");
-    expect(html).toContain("5.00 USD");
+    expect(html).toContain("8\u00a0seconds");
+    expect(html).toContain("5.00\u00a0USD");
   });
 
   it("are left as written in code, inline or in a block", () => {
@@ -229,8 +229,8 @@ describe("a number and its unit", () => {
     if (scanner === undefined) throw new Error("no scanner page");
     const copy = await markdownCopy(await sourceOf(scanner));
 
-    expect((await renderedPages()).get(scanner.path)?.html).toContain("8 seconds");
+    expect((await renderedPages()).get(scanner.path)?.html).toContain("8\u00a0seconds");
     expect(copy).toContain("8 seconds");
-    expect(copy).not.toContain(" ");
+    expect(copy).not.toContain("\u00a0");
   });
 });

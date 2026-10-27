@@ -7,7 +7,7 @@
  * ordinary space still find it.
  */
 
-const NO_BREAK = " ";
+const NO_BREAK = "\u00a0";
 
 /**
  * The units the site writes after a number and those merchants' product names

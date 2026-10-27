@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { asTyped, keepUnits, withUnit } from "./units.js";
 
-const NBSP = " ";
+const NBSP = "\u00a0";
 
 describe("a number and its unit as a page shows them", () => {
   it("are joined by a space a line does not break at", () => {
