@@ -169,6 +169,8 @@ accepted for execution (ADR-0028; the product owner, 2026-10-19).
   sessions, without a glossary and without git archaeology.
 
 ## Code
+- Before writing, changing, reviewing or auditing tests, read
+  `.agents/skills/test-audit/SKILL.md` and its Agentify proof policy.
 - TDD red→green. The hand-over ritual: a mutation self-check, a negative
   control, a run outside the fixtures, an adversarial review by a separate
   agent (three rounds at most; repeats of one class are a signal of a missing
