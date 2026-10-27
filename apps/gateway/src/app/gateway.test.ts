@@ -264,7 +264,10 @@ describe("a synchronous purchase", () => {
     expect(harnessed.facilitator.verifies).toHaveLength(1);
     expect(harnessed.facilitator.settles).toHaveLength(1);
 
-    const receipt = await harnessed.store.receiptForOrder(offered.order.order.id);
+    const receipt =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === offered.order.order.id,
+      ) ?? null;
     expect(receipt?.outcome).toBe("delivered");
     expect(receipt?.price.amount).toBe("80.00");
   });
@@ -384,7 +387,11 @@ describe("a synchronous purchase", () => {
     if (bought.step !== "settled") throw new Error("the purchase did not settle");
     expect(bought.order.order.state).toBe("failed");
     expect(harnessed.facilitator.settles).toHaveLength(0);
-    expect(await harnessed.store.receiptForOrder(offered.order.order.id)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === offered.order.order.id,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("takes nothing, and leaves the order open, when a payment does not check out", async () => {
@@ -518,8 +525,18 @@ describe("a synchronous purchase", () => {
     expect(closed?.order.state).toBe("delivered");
     expect(closed?.order.payment).toBe("settled");
     expect(closed?.settlement).toStrictEqual({ transaction: "0xreal" });
-    expect(await harnessed.store.receiptForOrder(orderId)).not.toBeNull();
-    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("delivered");
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).not.toBeNull();
+    expect(
+      (
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null
+      )?.outcome,
+    ).toBe("delivered");
   });
 });
 
@@ -543,7 +560,11 @@ describe("an asynchronous purchase", () => {
     if (bought.step !== "under_way") throw new Error("the agent was made to wait");
     expect(bought.order.order.state).toBe("paid");
     expect(bought.order.order.payment).toBe("settled");
-    expect(await harnessed.store.receiptForOrder(offered.order.order.id)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === offered.order.order.id,
+      ) ?? null,
+    ).toBeNull();
 
     const worked = await workOnce(harnessed, {
       onOrder: () => ({ accepted: {} }),
@@ -561,9 +582,13 @@ describe("an asynchronous purchase", () => {
 
     const closed = await harnessed.store.orderById(offered.order.order.id);
     expect(closed?.order.state).toBe("delivered");
-    expect((await harnessed.store.receiptForOrder(offered.order.order.id))?.outcome).toBe(
-      "delivered",
-    );
+    expect(
+      (
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === offered.order.order.id,
+        ) ?? null
+      )?.outcome,
+    ).toBe("delivered");
   });
 
   it("stamps the receipt with the moment the money moved, not the moment it was written", async () => {
@@ -582,7 +607,10 @@ describe("an asynchronous purchase", () => {
     harnessed.advance(6 * 60 * 60 * 1_000);
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, { activation_code: "A" });
 
-    const receipt = await harnessed.store.receiptForOrder(orderId);
+    const receipt =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     expect(receipt?.paid_at).toBe(new Date(whenTheMoneyMoved).toISOString());
   });
 
@@ -806,7 +834,11 @@ describe("an asynchronous purchase", () => {
     // No receipt, and that is a known gap: the receipt vocabulary has a word
     // for an order that owes money back, but receipts are written only when
     // goods are released, so this order has none to carry it.
-    expect(await harnessed.store.receiptForOrder(offered.order.order.id)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === offered.order.order.id,
+      ) ?? null,
+    ).toBeNull();
 
     const told = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     const events = told.envelopes.flatMap((e) => (e.kind === "order_event" ? [e.payload] : []));
@@ -865,7 +897,13 @@ describe("an asynchronous purchase", () => {
     const closed = await harnessed.store.orderById(orderId);
     expect(closed?.order.state).toBe("delivered");
     expect(closed?.order.closure).toBeNull();
-    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("delivered");
+    expect(
+      (
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null
+      )?.outcome,
+    ).toBe("delivered");
   });
 });
 
@@ -1007,7 +1045,11 @@ describe("the goods against the card that sold them", () => {
     const record = await harnessed.store.orderById(orderId);
     expect(record?.delivery).toBeNull();
     expect(record?.order.state).not.toBe("delivered");
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("names the first few misfits and counts the rest, rather than writing a paragraph", async () => {
@@ -1313,7 +1355,10 @@ describe("the goods against the card that sold them", () => {
       activation_code: "LPA:1$FIRST",
     });
     const delivered = await harnessed.store.orderById(orderId);
-    const receipt = await harnessed.store.receiptForOrder(orderId);
+    const receipt =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
 
     const again = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       delivered: { activation_code: "LPA:1$SECOND" },
@@ -1325,7 +1370,11 @@ describe("the goods against the card that sold them", () => {
     // Nothing else moved either — not the state, not the instants on it, and
     // not the receipt the buyer already holds.
     expect(kept?.order).toStrictEqual(delivered?.order);
-    expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(receipt);
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toStrictEqual(receipt);
   });
 });
 
@@ -1754,7 +1803,10 @@ describe("the price question", () => {
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
       activation_code: "A",
     });
-    const receipt = await harnessed.store.receiptForOrder(orderId);
+    const receipt =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     expect(receipt?.price.at).toBe(asTimestamp(struck));
     expect(receipt?.paid_at).toBe(asTimestamp(paid));
   });
@@ -2084,7 +2136,10 @@ describe("the price question", () => {
     expect(document.price.as_of).toBe(merchantPricedAt);
     expect(document.price.at).toBe(purchasedAt);
 
-    const receipt = await harnessed.store.receiptForOrder(orderId);
+    const receipt =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     expect(receipt?.price.as_of).toBe(merchantPricedAt);
     expect(receipt?.price.at).toBe(purchasedAt);
 
@@ -2119,7 +2174,10 @@ describe("the price question", () => {
     expect(document.price.as_of).toBe(publishedAt);
     expect(document.price.at).toBe(purchasedAt);
 
-    const receipt = await harnessed.store.receiptForOrder(orderId);
+    const receipt =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     expect(receipt?.price.as_of).toBe(publishedAt);
     expect(receipt?.price.at).toBe(purchasedAt);
 
@@ -2650,7 +2708,10 @@ describe("the test mark on an order and its receipt", () => {
 
     return {
       order: bought.order.order,
-      receipt: await harnessed.store.receiptForOrder(offered.order.order.id),
+      receipt:
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === offered.order.order.id,
+        ) ?? null,
     };
   };
 
@@ -2700,7 +2761,11 @@ describe("a poll on a key revoked before it was held", () => {
     // for its whole window on a key the merchant had just cut off.
     const harnessed = await started();
     const coded = await published(harnessed, asyncCard);
-    await harnessed.disableKey(harnessed.merchant.keyId);
+    await harnessed.store.disableKeyOf(
+      harnessed.merchant.id,
+      harnessed.merchant.keyId,
+      harnessed.now(),
+    );
 
     const held = harnessed.gateway.poll(harnessed.merchant.id, 2_000, {
       keyId: harnessed.merchant.keyId,
@@ -2723,7 +2788,11 @@ describe("a held poll whose key is revoked by another process", () => {
       keyId: harnessed.merchant.keyId,
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await harnessed.disableKey(harnessed.merchant.keyId);
+    await harnessed.store.disableKeyOf(
+      harnessed.merchant.id,
+      harnessed.merchant.keyId,
+      harnessed.now(),
+    );
     return { held };
   };
 
@@ -2760,7 +2829,11 @@ describe("a held poll whose key is revoked by another process", () => {
     const read = harnessed.store.keysOf.bind(harnessed.store);
     harnessed.store.keysOf = async (merchantId) => {
       const keys = await read(merchantId);
-      await harnessed.disableKey(harnessed.merchant.keyId);
+      await harnessed.store.disableKeyOf(
+        harnessed.merchant.id,
+        harnessed.merchant.keyId,
+        harnessed.now(),
+      );
       return keys;
     };
 
@@ -2829,7 +2902,11 @@ describe("a held poll whose key is revoked by another process", () => {
       const keys = await read(merchantId);
       if (revoked) return keys;
       revoked = true;
-      await harnessed.disableKey(harnessed.merchant.keyId);
+      await harnessed.store.disableKeyOf(
+        harnessed.merchant.id,
+        harnessed.merchant.keyId,
+        harnessed.now(),
+      );
       return answer(keys);
     };
   };
@@ -2984,7 +3061,11 @@ describe("a held poll whose key is revoked by another process", () => {
       reads += 1;
       if (reads > 1) throw new Error("the database went away");
       const keys = await read(merchantId);
-      await harnessed.disableKey(harnessed.merchant.keyId);
+      await harnessed.store.disableKeyOf(
+        harnessed.merchant.id,
+        harnessed.merchant.keyId,
+        harnessed.now(),
+      );
       return keys;
     };
 

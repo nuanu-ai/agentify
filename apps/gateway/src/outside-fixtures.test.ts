@@ -377,7 +377,11 @@ describe("a purchase from the outside", () => {
       expect((empty.body as { error: { message: string } }).error.message).toContain(
         "activation_code",
       );
-      expect(await gateway.store.receiptForOrder(orderId)).toBeNull();
+      expect(
+        (await gateway.store.receipts("mch_the_walk")).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null,
+      ).toBeNull();
 
       // And the order is still one of the merchant's open ones: he can fix his
       // handler and deliver, which is the whole reason that refusal is not an
@@ -420,7 +424,10 @@ describe("a purchase from the outside", () => {
       });
 
       // The receipt is written and the order is closed.
-      const receipt = await gateway.store.receiptForOrder(orderId);
+      const receipt =
+        (await gateway.store.receipts("mch_the_walk")).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null;
       expect(receipt).toMatchObject({
         order_id: orderId,
         outcome: "delivered",

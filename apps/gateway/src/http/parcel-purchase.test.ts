@@ -805,7 +805,13 @@ describe("the shipment", () => {
       shipped_at: new Date(harnessed.now()).toISOString(),
     });
     expect((await theOrder(served)).status).toBe("shipped");
-    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("shipped");
+    expect(
+      (
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null
+      )?.outcome,
+    ).toBe("shipped");
   });
 
   it("tells the agent the time to ship by once the order is paid, and that nothing has shipped", async () => {
@@ -860,7 +866,10 @@ describe("the shipment", () => {
       const beforeRepeat = await statusOf(served, orderId);
       expect(beforeRepeat.status).toBe(status);
       if (status === "shipped") expect(beforeRepeat.shipment).toMatchObject(shipment);
-      const receipt = await harnessed.store.receiptForOrder(orderId);
+      const receipt =
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null;
 
       const repeated = await served.call("POST", `/x402/${itemId}/purchase`, {
         body,
@@ -879,7 +888,11 @@ describe("the shipment", () => {
       }
       expect(harnessed.facilitator.settles).toHaveLength(1);
       expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
-      expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(receipt);
+      expect(
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null,
+      ).toStrictEqual(receipt);
     },
   );
 

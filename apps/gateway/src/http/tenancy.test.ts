@@ -456,7 +456,7 @@ describe("the merchant's door", () => {
     const working = await served.call("GET", "/v0/orders", { headers: keyOf(a) });
     expect(working.status).toBe(200);
 
-    await harnessed.disableKey(a.keyId);
+    await harnessed.store.disableKeyOf(a.id, a.keyId, harnessed.now());
 
     const refused = await served.call("GET", "/v0/orders", { headers: keyOf(a) });
     const never = await served.call("GET", "/v0/orders", {
@@ -474,7 +474,7 @@ describe("the merchant's door", () => {
     const a = await harnessed.addMerchant("Merchant A");
     const second = await harnessed.addKey(a.id, "a second key");
 
-    await harnessed.disableKey(a.keyId);
+    await harnessed.store.disableKeyOf(a.id, a.keyId, harnessed.now());
 
     expect(
       (await served.call("GET", "/v0/orders", { headers: { authorization: `Bearer ${second}` } }))

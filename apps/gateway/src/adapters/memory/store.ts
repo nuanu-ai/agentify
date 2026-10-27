@@ -527,11 +527,6 @@ export class MemoryStore implements Store {
       .sort((one, other) => one.createdAt - other.createdAt || (one.id < other.id ? -1 : 1));
   }
 
-  async disableKey(id: string, at: number): Promise<StoredKey | null> {
-    const found = this.#keys.get(id);
-    return found === undefined ? null : this.#revoke(found, at);
-  }
-
   async disableKeyOf(
     merchantId: string,
     id: string,
@@ -1115,10 +1110,6 @@ export class MemoryStore implements Store {
       merchantId: held?.merchantId ?? merchantId,
       receipt: Object.freeze({ ...receipt }),
     });
-  }
-
-  async receiptForOrder(orderId: string): Promise<Receipt | null> {
-    return this.#receipts.get(orderId)?.receipt ?? null;
   }
 
   async receipts(merchantId: string): Promise<readonly Receipt[]> {

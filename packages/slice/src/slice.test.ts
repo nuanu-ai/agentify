@@ -137,7 +137,9 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     // receipt lives — behind the merchant's own key — and it agrees about the
     // price the money moved at.
     const receipt = ReceiptSchema.parse(
-      await booted.gateway.runtime.store.receiptForOrder(answered.order_id),
+      (await booted.gateway.runtime.store.receipts("the_merchant")).find(
+        (receipt) => receipt.order_id === answered.order_id,
+      ) ?? null,
     );
     expect(receipt.outcome).toBe("delivered");
     expect(receipt.test).toBe(true);
@@ -212,7 +214,10 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The receipt now exists and says delivered, in test money, at the price
     // the money moved at.
-    const receipt = await booted.gateway.runtime.store.receiptForOrder(orderId);
+    const receipt =
+      (await booted.gateway.runtime.store.receipts("the_merchant")).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     const parsedReceipt = ReceiptSchema.parse(receipt);
     expect(parsedReceipt.outcome).toBe("delivered");
     expect(parsedReceipt.test).toBe(true);

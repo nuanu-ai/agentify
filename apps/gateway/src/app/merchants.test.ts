@@ -327,7 +327,7 @@ describe("seeding the sandbox", () => {
     await seedSandboxKey(store, ids, "the-sandbox-key", 1_000, "sandbox");
     const [key] = await store.keysOf(SEEDED_MERCHANT.id);
     if (key === undefined) throw new Error("the seed wrote no key");
-    await store.disableKey(key.id, 2_000);
+    await store.disableKeyOf(SEEDED_MERCHANT.id, key.id, 2_000);
 
     const again = await seedSandboxKey(store, ids, "the-sandbox-key", 3_000, "sandbox");
 
@@ -345,7 +345,7 @@ describe("seeding the sandbox", () => {
     await seedSandboxKey(store, ids, "the-sandbox-key", 1_000, "sandbox");
     const [key] = await store.keysOf(SEEDED_MERCHANT.id);
     if (key === undefined) throw new Error("the seed wrote no key");
-    await store.disableKey(key.id, 2_000);
+    await store.disableKeyOf(SEEDED_MERCHANT.id, key.id, 2_000);
     await setServiceName(store, SEEDED_MERCHANT.id, null, 2_000);
 
     const again = await seedSandboxKey(store, ids, "the-sandbox-key", 3_000, "sandbox");

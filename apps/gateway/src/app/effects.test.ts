@@ -169,15 +169,26 @@ describe("the sweep of what an order is still owed", () => {
       save: { ...found, order: deliveredWithMoneyIn(found.order) },
       result: null,
     }));
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
 
     await sweep(harnessed);
-    const written = await harnessed.store.receiptForOrder(orderId);
+    const written =
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     expect(written?.outcome).toBe("delivered");
     expect(written?.price.amount).toBe("80.00");
 
     await sweep(harnessed);
-    expect(await harnessed.store.receiptForOrder(orderId)).toStrictEqual(written);
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toStrictEqual(written);
   });
 
   it("leaves an assertion-only saved charge without a receipt", async () => {
@@ -197,7 +208,11 @@ describe("the sweep of what an order is still owed", () => {
     const repaired = await sweep(harnessed);
 
     expect(repaired.receipted).toBe(0);
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("starts the clock again on an open order whose deadline has passed", async () => {
@@ -400,7 +415,13 @@ describe("the sweep of what an order is still owed", () => {
     expect(after?.order.state).toBe("delivered");
     expect(after?.order.dispatch.attempts).toBe(1);
     expect(after?.delivery).toStrictEqual({ activation_code: "CODE" });
-    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("delivered");
+    expect(
+      (
+        (await harnessed.store.receipts(harnessed.merchant.id)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null
+      )?.outcome,
+    ).toBe("delivered");
   });
 });
 

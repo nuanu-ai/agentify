@@ -937,14 +937,11 @@ if (databaseUrl === null) {
       expect(bought.order.order.state).toBe("delivered");
       expect(bought.delivery).toStrictEqual({ access_code: "SESAME" });
 
-      const receipt = await store.receiptForOrder(offered.order.order.id);
+      const receipt =
+        (await store.receipts(A)).find((receipt) => receipt.order_id === offered.order.order.id) ??
+        null;
       expect(receipt?.outcome).toBe("delivered");
       expect(receipt?.price.amount).toBe("80.00");
-      // The list is a different query from the lookup, and a receipt that can
-      // be fetched but is never listed is a day's takings that does not add up.
-      const listed = await store.receipts(A);
-      expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
-      expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
 
     /**
@@ -1019,7 +1016,9 @@ if (databaseUrl === null) {
         ).rejects.toThrow();
 
         expect(await jobsFor(A, envelopeId)).toBe(0);
-        expect(await store.receiptForOrder(order.id)).toBeNull();
+        expect(
+          (await store.receipts(A)).find((receipt) => receipt.order_id === order.id) ?? null,
+        ).toBeNull();
         expect((await store.orderById(order.id))?.priceId).not.toBe(
           "the write that never happened",
         );
@@ -1042,7 +1041,10 @@ if (databaseUrl === null) {
         }));
 
         expect(await jobsFor(A, envelopeId)).toBe(1);
-        expect((await store.receiptForOrder(order.id))?.order_id).toBe(order.id);
+        expect(
+          ((await store.receipts(A)).find((receipt) => receipt.order_id === order.id) ?? null)
+            ?.order_id,
+        ).toBe(order.id);
         expect((await store.orderById(order.id))?.priceId).toBe("the write that happened");
       });
 
@@ -1505,7 +1507,9 @@ if (databaseUrl === null) {
           expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
             "order_event",
           ]);
-          expect(await store.receiptForOrder(orderId)).toBeNull();
+          expect(
+            (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
+          ).toBeNull();
         } finally {
           facilitator.willSettle();
         }
@@ -1571,16 +1575,21 @@ if (databaseUrl === null) {
         // A delivered order without a receipt, as a record written by an
         // older version of this code looks.
         await pool.query("delete from receipts where order_id = $1", [orderId]);
-        expect(await store.receiptForOrder(orderId)).toBeNull();
+        expect(
+          (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
+        ).toBeNull();
 
         const first = await gateway.runner.sweep();
         expect(first?.receipted).toBe(1);
-        const written = await store.receiptForOrder(orderId);
+        const written =
+          (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null;
         expect(written?.outcome).toBe("delivered");
 
         const second = await gateway.runner.sweep();
         expect(second?.receipted).toBe(0);
-        expect(await store.receiptForOrder(orderId)).toStrictEqual(written);
+        expect(
+          (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
+        ).toStrictEqual(written);
       }, 30_000);
     });
 

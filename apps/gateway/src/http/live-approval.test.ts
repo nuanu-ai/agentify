@@ -271,7 +271,13 @@ describe("an order accepted before operator approval existed", () => {
     if (bought.step !== "settled") throw new Error("the accepted order did not settle");
     expect(bought.order.order.state).toBe("delivered");
     expect(bought.delivery).toStrictEqual({ access_code: "SESAME" });
-    expect((await harnessed.store.receiptForOrder(orderId))?.outcome).toBe("delivered");
+    expect(
+      (
+        (await harnessed.store.receipts(merchantId)).find(
+          (receipt) => receipt.order_id === orderId,
+        ) ?? null
+      )?.outcome,
+    ).toBe("delivered");
     expect(harnessed.facilitator.verifies).toHaveLength(1);
     expect(harnessed.facilitator.settles).toHaveLength(1);
     expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
@@ -295,7 +301,11 @@ describe("an order accepted before operator approval existed", () => {
 
     expect(refused).toStrictEqual({ ok: true, result: "refused" });
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(merchantId)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
     expect(harnessed.facilitator.verifies).toHaveLength(1);
     expect(harnessed.facilitator.settles).toHaveLength(1);
     expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
@@ -360,7 +370,13 @@ describe("a live approval the operator withdraws", () => {
 
     expect(delivered.status, JSON.stringify(delivered.body)).toBe(200);
     expect((await harnessed.store.orderById(openOrder))?.order.state).toBe("delivered");
-    expect((await harnessed.store.receiptForOrder(openOrder))?.outcome).toBe("delivered");
+    expect(
+      (
+        (await harnessed.store.receipts(seller.merchantId)).find(
+          (receipt) => receipt.order_id === openOrder,
+        ) ?? null
+      )?.outcome,
+    ).toBe("delivered");
   });
 
   it.each([

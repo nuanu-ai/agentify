@@ -850,14 +850,6 @@ export interface Store {
   keysOf(merchantId: string): Promise<readonly StoredKey[]>;
 
   /**
-   * Stops one key working and returns it as it now stands, or null where there
-   * is no such key. A key already disabled keeps its first revocation instant.
-   * It names no merchant, which is safe only because nothing reachable from a
-   * request calls it; the dashboard calls {@link disableKeyOf}.
-   */
-  disableKey(id: string, at: number): Promise<StoredKey | null>;
-
-  /**
    * Stops one of this merchant's keys working and returns it as it now stands
    * with whether this call stopped it, or null where this merchant has no such
    * key. That null must stay the same
@@ -1181,13 +1173,6 @@ export interface Store {
 
   /** Writes down one merchant's receipt for one order. */
   putReceipt(merchantId: string, receipt: Receipt): Promise<void>;
-
-  /**
-   * The receipt for one order, whoever it belongs to. Only tests read a
-   * receipt this way. The read is not scoped to a merchant, so anything that
-   * serves its answer to a caller has to settle whose order it is first.
-   */
-  receiptForOrder(orderId: string): Promise<Receipt | null>;
 
   /** This merchant's receipts, and nobody else's. */
   receipts(merchantId: string): Promise<readonly Receipt[]>;

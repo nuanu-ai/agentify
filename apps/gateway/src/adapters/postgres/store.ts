@@ -641,16 +641,6 @@ export class PostgresStore implements Store {
     return rows.map(storedKeyOf);
   }
 
-  async disableKey(id: string, at: number): Promise<StoredKey | null> {
-    const [row] = await this.#db
-      .update(merchantKeys)
-      // The first revocation instant is kept; a second run must not move it.
-      .set({ disabledAt: revokedAt(at) })
-      .where(eq(merchantKeys.id, id))
-      .returning();
-    return row === undefined ? null : storedKeyOf(row);
-  }
-
   async disableKeyOf(
     merchantId: string,
     id: string,
@@ -1458,15 +1448,6 @@ export class PostgresStore implements Store {
       });
   }
 
-  async receiptForOrder(orderId: string): Promise<Receipt | null> {
-    const [row] = await this.#db
-      .select()
-      .from(receipts)
-      .where(eq(receipts.orderId, orderId))
-      .limit(1);
-    return row?.receipt ?? null;
-  }
-
   async receipts(merchantId: string): Promise<readonly Receipt[]> {
     const rows = await this.#db
       .select()
@@ -1724,12 +1705,6 @@ function storedMerchantOf(
     createdAt: row.createdAt.getTime(),
   };
 }
-
-/**
- * What a revocation writes into `disabled_at`: this instant, unless one is
- * already there, so a second revocation never moves the first instant.
- */
-const revokedAt = (at: number) => sql`coalesce(${merchantKeys.disabledAt}, ${new Date(at)})`;
 
 function storedKeyOf(row: {
   id: string;

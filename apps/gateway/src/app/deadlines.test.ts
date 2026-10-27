@@ -94,7 +94,11 @@ describe("when the time runs out", () => {
       deadline: "sync_response",
     });
     expect(harnessed.facilitator.settles).toHaveLength(0);
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("tells the agent its synchronous purchase expired when the timer that closes it is late", async () => {
@@ -280,7 +284,11 @@ describe("when the time runs out", () => {
       deadline: "async_fulfillment",
     });
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
   });
 
   it("lets a price the agent sat on stop being a price", async () => {
@@ -387,15 +395,23 @@ describe("fulfillment after a delayed charge", () => {
             activation_code: "LPA:1$X",
           }),
         ).toStrictEqual({ ok: true, result: "delivered" });
-        expect((await harnessed.store.receiptForOrder(orderId))?.paid_at).toBe(
-          new Date(confirmedAt).toISOString(),
-        );
+        expect(
+          (
+            (await harnessed.store.receipts(harnessed.merchant.id)).find(
+              (receipt) => receipt.order_id === orderId,
+            ) ?? null
+          )?.paid_at,
+        ).toBe(new Date(confirmedAt).toISOString());
       } else {
         expect((await state(harnessed, orderId))?.closure).toStrictEqual({
           cause: "deadline_expired",
           deadline: "async_fulfillment",
         });
-        expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+        expect(
+          (await harnessed.store.receipts(harnessed.merchant.id)).find(
+            (receipt) => receipt.order_id === orderId,
+          ) ?? null,
+        ).toBeNull();
       }
       expect((await state(harnessed, orderId))?.state).toBe(ending);
       expect(harnessed.facilitator.settles).toHaveLength(1);
@@ -426,7 +442,11 @@ describe("fulfillment after a delayed charge", () => {
       about: "settle",
       said: outcome.reason,
     });
-    expect(await harnessed.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null,
+    ).toBeNull();
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 });

@@ -95,7 +95,11 @@ describe("a purchase that lapsed unpaid", () => {
     expect(forgotten.status).toBe(unknown.status);
     expect(forgotten.body).toStrictEqual(unknown.body);
     expect((await served.call("GET", paidAt)).status).toBe(200);
-    expect(await harnessed.store.receiptForOrder(paid)).not.toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === paid,
+      ) ?? null,
+    ).not.toBeNull();
   });
 
   it("is kept until thirty days have passed since it ended", async () => {

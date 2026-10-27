@@ -362,7 +362,10 @@ describe("recovering a payment without another charge", () => {
       "chain",
     );
     expect((await h.store.orderById(orderId))?.order.state).toBe("unfulfilled");
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
     const envelopes = await drawEverything(h, h.merchant.id);
     expect(envelopes.map((envelope) => envelope.kind)).toEqual(["order_event"]);
     expect(envelopes[0]).toMatchObject({
@@ -442,7 +445,10 @@ describe("recovering a payment without another charge", () => {
       "chain",
     );
     expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
     release();
     await repeating;
     if (current === undefined) throw new Error("no fresh attempt");
@@ -489,7 +495,10 @@ describe("recovering a payment without another charge", () => {
     h.store.putReceipt = putReceipt;
     await h.gateway.runner.reconcilePayments();
     expect((await h.store.orderById(orderId))?.order.state).toBe("delivered");
-    expect(await h.store.receiptForOrder(orderId)).not.toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).not.toBeNull();
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
@@ -607,7 +616,10 @@ describe("recovering a payment without another charge", () => {
     expect((await h.store.orderById(orderId))?.order.payment).toBe("settling");
     expect((await h.store.orderById("ord_duplicate"))?.order.payment).toBe("settling");
     expect((await h.store.orderById(orderId))?.paymentAttempt).toBeUndefined();
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
   });
 
   it("keeps an immutable attempt before the network call, and commits only one racing success", async () => {
@@ -711,7 +723,10 @@ describe("recovering a payment without another charge", () => {
     expect(recovered?.order.state).toBe("delivered");
     expect(recovered?.delivery).toEqual({ activation_code: "KEPT-GOODS" });
     expect(recovered?.settlement).toBeNull();
-    expect(await h.store.receiptForOrder(orderId)).toMatchObject({
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toMatchObject({
       transaction: TRANSACTION,
       paid_at: new Date(executedAt).toISOString(),
     });
@@ -737,7 +752,10 @@ describe("recovering a payment without another charge", () => {
       completion: null,
     });
     expect((await h.store.orderById(orderId))?.order.payment).not.toBe("settle_failed");
-    expect(await h.store.receiptForOrder(orderId)).toBeNull();
+    expect(
+      (await h.store.receipts(h.merchant.id)).find((receipt) => receipt.order_id === orderId) ??
+        null,
+    ).toBeNull();
     expect(h.facilitator.settles).toHaveLength(1);
   });
 

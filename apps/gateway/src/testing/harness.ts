@@ -107,8 +107,6 @@ export interface Harness {
   readonly addMerchant: (name?: string) => Promise<SeededMerchant>;
   /** A second key for a merchant who already has one. The secret, once. */
   readonly addKey: (merchantId: string, label?: string) => Promise<string>;
-  /** Stops one key working, touching no other. */
-  readonly disableKey: (keyId: string) => Promise<void>;
   /**
    * The merchant a test gets without asking, for tests that need a seller but
    * are not about one. Tests about tenancy seed two of their own.
@@ -225,12 +223,7 @@ export async function harness(
       addMerchant: (name = `Merchant ${countedName()}`) => seed(name),
       addKey: async (merchantId, label = "another of the harness's") =>
         (await issueKey(store, ids, merchantId, label, now, config.environment)).secret,
-      disableKey: async (keyId) => {
-        const disabled = await store.disableKey(keyId, now);
-        if (disabled === null) {
-          throw new Error(`the harness was asked to disable ${keyId}, and there is no such key`);
-        }
-      },
+
       stop: () => gateway.stop(),
     };
   } catch (thrown) {
