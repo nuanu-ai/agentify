@@ -177,7 +177,7 @@ export const ACCOUNT_WORDS: Readonly<
   out_of_touch: {
     title: "Your products are off sale",
     says: "Your integration has not connected yet, so agents don't see your products and new purchases are refused until it does.",
-    fix: null,
+    fix: { to: "/docs/failures#your-integration-has-not-connected", words: "What to check" },
   },
   busy: {
     title: "New purchases are refused",

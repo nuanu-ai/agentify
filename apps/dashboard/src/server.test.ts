@@ -3488,6 +3488,18 @@ describe("the way out to the documentation", () => {
       expect(out?.[1]?.trim(), `${path} has no readable link to the documentation`).toBeTruthy();
     }
   });
+
+  it("leaves the mount point from the banner too, where a reason leads to what to check", async () => {
+    const { browser, gateway, harnessed } = await started({ base: "/dashboard" });
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    harnessed.advance(11 * 60_000);
+
+    const { html } = await browser.get("/dashboard/products");
+
+    expect(reasonsIn(html)).toStrictEqual(["out_of_touch"]);
+    expect(html).toContain('href="/docs/failures#your-integration-has-not-connected"');
+  });
 });
 
 describe("the cards screen", () => {

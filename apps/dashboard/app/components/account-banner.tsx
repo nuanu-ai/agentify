@@ -7,6 +7,12 @@ import styles from "./account-banner.module.css";
 import { Moment } from "./moment.js";
 import { PostForm } from "./post-form.js";
 
+/**
+ * A way to the documentation or to another site, which the dashboard's router
+ * would put under its own mount point.
+ */
+const offTheDashboard = (to: string): boolean => /^(\/docs\/|[a-z]+:)/.test(to);
+
 /** The page itself or one under it. */
 const isOn = (here: string, page: string): boolean => here === page || here.startsWith(`${page}/`);
 
@@ -51,9 +57,13 @@ function Reason({ note, here, back }: Readonly<{ note: AccountNote; here: string
       {note.fix === null || isOn(here, note.fix.to) ? null : (
         <>
           {" "}
-          <Link to={note.fix.to} prefetch="intent">
-            {note.fix.words}
-          </Link>
+          {offTheDashboard(note.fix.to) ? (
+            <a href={note.fix.to}>{note.fix.words}</a>
+          ) : (
+            <Link to={note.fix.to} prefetch="intent">
+              {note.fix.words}
+            </Link>
+          )}
           .
         </>
       )}
