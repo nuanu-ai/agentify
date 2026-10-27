@@ -1243,19 +1243,14 @@ describe("a price question off the merchant's stream", () => {
     return answer;
   };
 
-  it("answers with the shop's own price and binds the price to the product it read", async () => {
-    // An order paying this price is filled only against the download the agent
-    // was offered.
+  it("returns the product and money facts in its opaque reference", async () => {
     const shops = memoryWooShops();
-
-    expect(await answering(shops, inTheShop)).toStrictEqual({
-      available: true,
-      price: { amount: "25.00", currency: "USD" },
-      as_of: NOW,
-    });
-    expect(
-      (await shops.quotedSale("acc_1", "prc_1", question.merchant_item_id))?.fingerprint ?? null,
-    ).toBe("accepted-download-fingerprint");
+    const answer = await answering(shops, inTheShop);
+    expect(answer).toMatchObject({ available: true, price: { amount: "25.00", currency: "USD" }, as_of: NOW });
+    if (answer?.available !== true || answer.quote_reference === undefined) throw new Error("No quoted sale reference");
+    expect(JSON.parse(Buffer.from(answer.quote_reference, "base64url").toString("utf8"))).toStrictEqual([
+      "accepted-download-fingerprint", "25.00", "USD", "25.00",
+    ]);
   });
 
   it("answers a download from a shop whose prices hold their tax at the price as entered", async () => {

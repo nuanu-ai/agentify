@@ -137,7 +137,7 @@ if (databaseUrl === null) {
       expect(() => streamOf("a merchant")).toThrow(/cannot name a queue/);
     }, 30_000);
 
-    it("draws ready orders ahead of price questions through both publish paths without losing work", async () => {
+    it("keeps price questions out of the database and draws committed orders ahead of them", async () => {
       const { queue } = await labQueue("pgboss_envelope_priority");
       const db = drizzle(pool);
       const question = (id: string): WorkerEnvelope => ({
@@ -169,8 +169,13 @@ if (databaseUrl === null) {
         },
       });
       await queue.publish(A, question("env_q1"));
+      expect((await pool.query(
+        "select count(*)::int as count from pgboss_envelope_priority.job where data->>'kind' = 'quote_request'",
+      )).rows).toStrictEqual([{ count: 0 }]);
+      await expect(db.transaction((tx) => queue.publishWithin(tx, A, question("env_transaction"))))
+        .rejects.toThrow(/price questions/);
       await queue.publish(A, handOver("env_o1"));
-      await db.transaction((tx) => queue.publishWithin(tx, A, question("env_q2")));
+      await queue.publish(A, question("env_q2"));
       await queue.publish(A, {
         kind: "order_event",
         id: "env_event",
@@ -189,6 +194,13 @@ if (databaseUrl === null) {
       const rest = await queue.draw(A, 10, 0);
       expect(rest.map((d) => d.envelope.kind)).toStrictEqual(["quote_request", "quote_request"]);
       expect(rest.map((d) => d.envelope.id).sort()).toStrictEqual(["env_q1", "env_q2"]);
+      for (const drawn of rest) await queue.finish(A, drawn.handle);
+      await queue.publish(A, question("env_forgotten"));
+      await queue.forgetPrice(A, "prc_env_forgotten");
+      expect(await queue.draw(A, 1, 0)).toStrictEqual([]);
+      await queue.publish(A, question("env_stopped"));
+      await queue.stop();
+      await queue.startWriter();
       expect(await queue.draw(A, 1, 0)).toStrictEqual([]);
     }, 30_000);
 

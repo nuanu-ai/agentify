@@ -129,6 +129,32 @@ describe("MemoryQueue delivery", () => {
     ]);
   });
 
+  it("forgets an unanswered price question before a worker can draw it, including a delayed copy", async () => {
+    const queue = await started();
+    await queue.publish(A, question("env_ready", "prc_1"));
+    await queue.publish(A, question("env_delayed", "prc_1"), 1_000);
+    await queue.publish(A, question("env_other", "prc_2"));
+    await queue.publish(B, question("env_b", "prc_1"));
+
+    await queue.forgetPrice(A, "prc_1");
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_other"]);
+    expect((await queue.draw(B, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_b"]);
+  });
+
+  it("does not hand out old price questions after the queue stops and starts", async () => {
+    const queue = await started();
+    await queue.publish(A, question("env_ready", "prc_1"));
+    await queue.publish(A, question("env_delayed", "prc_2"), 1_000);
+
+    await queue.stop();
+    await queue.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(await queue.draw(A, 10, 0)).toStrictEqual([]);
+  });
+
   it("keeps a delayed envelope back until its time", async () => {
     // The order machine's redelivery carries a wait, and a queue that ignored
     // it would hammer a merchant who is already failing.
