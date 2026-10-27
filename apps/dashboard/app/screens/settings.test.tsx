@@ -777,14 +777,18 @@ describe("the payout instruction", () => {
     );
   });
 
-  it("says the one transaction pays Agentify's commission with the merchant's share, at the rate the screen names", () => {
+  it("says the one transaction pays Agentify's commission with the merchant's share, at the rate the screen names, outside the folded other-wallet steps", () => {
+    // On the live channel the Coinbase button sends the payout and the steps
+    // for another wallet stay folded, so the sentence must be outside them.
     for (const mode of ["test", "live"] as const) {
       const network = networkOf(mode);
       const commission = percent(network.commissionAllocation, network.totalAllocation);
-
-      expect(readable(settingsPage({ mode, wallet: W }))).toContain(
-        `pays your share and Agentify's ${commission} together`,
+      const unfolded = settingsPage({ mode, wallet: W }).replaceAll(
+        /<details[\s\S]*?<\/details>/g,
+        "",
       );
+
+      expect(readable(unfolded)).toContain(`pays your share and Agentify's ${commission} together`);
     }
   });
 
