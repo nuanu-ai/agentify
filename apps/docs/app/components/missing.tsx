@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Reading } from "./reading.js";
+import { Search, useSearchOpener } from "./search.js";
 
 /** The page drawn where a page could not be: the documentation may have changed since this tab opened, or the connection dropped. */
 export function Unavailable() {
@@ -30,18 +31,26 @@ export function Unavailable() {
  * The page for an address the documentation has no page at, in the panel the
  * scanner's and the dashboard's own such pages use. It stands outside the
  * reading layout, whose rules for an article's headings, paragraphs and links
- * would restyle the panel's.
+ * would restyle the panel's, so it offers the layout's search itself: a reader
+ * who followed a dead link is looking for a page.
  */
 export function Missing() {
+  const { searching, open, close } = useSearchOpener();
   return (
     <main className="message-page" id="main">
       <section className="message-panel">
         <h1>Page not found</h1>
         <p>There is no page at this address. It may have moved.</p>
-        <Link className="button button-primary" to="/">
-          Back to the documentation
-        </Link>
+        <div className="message-actions">
+          <Link className="button button-primary" to="/">
+            Back to the documentation
+          </Link>
+          <button type="button" className="button button-secondary" onClick={open}>
+            Search the documentation
+          </button>
+        </div>
       </section>
+      <Search open={searching} onOpen={open} onClose={close} />
     </main>
   );
 }

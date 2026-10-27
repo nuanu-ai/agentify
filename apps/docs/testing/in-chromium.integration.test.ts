@@ -854,6 +854,20 @@ describe("an address the documentation answered at before", () => {
     expect(await page.locator("h1").textContent()).toContain("Page not found");
     await context.close();
   });
+
+  it("offers the search on a page it never had, and the search finds a page it has", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${edge.origin}/docs/no-such-page`);
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: "Search the documentation" }).click();
+    await page.getByRole("combobox", { name: "Search the documentation" }).fill("tracking number");
+    const first = page.locator(".search-results a").first();
+    await first.waitFor();
+
+    expect(await first.getAttribute("href")).toMatch(/^\/docs\/[a-z-]+#/);
+    await context.close();
+  });
 });
 
 describe("the documentation's canonical addresses", () => {
