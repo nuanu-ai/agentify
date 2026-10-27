@@ -1252,7 +1252,9 @@ describe("the goods against the card that sold them", () => {
       delivered: { activation_code: "LPA:1$THIRD" },
     });
     expect(handlerRepeat).toEqual({ ok: true, result: "already_delivered" });
-    expect((await harnessed.store.orderById(orderId))?.order).toEqual(delivered?.order);
+    const afterHandlerRepeat = await harnessed.store.orderById(orderId);
+    expect(afterHandlerRepeat?.delivery).toEqual({ activation_code: "LPA:1$FIRST" });
+    expect(afterHandlerRepeat?.order).toEqual(delivered?.order);
     expect(
       (await harnessed.store.receipts(harnessed.merchant.id)).find(
         (row) => row.order_id === orderId,
@@ -1423,10 +1425,9 @@ describe("a refused payment's words, when the payment layer says a great deal", 
     const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
 
     if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
-    const beforeDiagnostic = bought.why.slice(
-      0,
-      bought.why.indexOf("ContractFunctionExecutionError"),
-    );
+    const diagnosticAt = bought.why.indexOf("transfer amount exceeds balance");
+    expect(diagnosticAt).toBeGreaterThanOrEqual(0);
+    const beforeDiagnostic = bought.why.slice(0, diagnosticAt);
     expect(beforeDiagnostic).toMatch(/charg(?:ed|e).*nothing|no.*charge/i);
     expect(beforeDiagnostic).toMatch(/fund.*wallet.*again/i);
     expect(harnessed.facilitator.settles).toHaveLength(0);
