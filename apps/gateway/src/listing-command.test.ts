@@ -16,6 +16,7 @@ import { encodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   type DoorAnswer,
+  listingCheckOf,
   overTheNetwork,
   type Reach,
   type ValidateAnswer,
@@ -80,7 +81,7 @@ function aRun(options: {
     },
   };
   const run = (...argv: string[]) => runListingCheck(argv, reach, (line) => said.push(line));
-  return { run, asked, knocked, text: () => said.join("\n") };
+  return { run, asked, knocked, reach, text: () => said.join("\n") };
 }
 
 const accepted: ValidateAnswer = {
@@ -104,9 +105,14 @@ describe("asking the catalog whether it would take our resources", () => {
       "POST https://agentify.example/x402/itm_1/purchase",
       "POST https://agentify.example/x402/itm_2/purchase",
     ]);
-    expect(run.text()).toContain(
-      "All 4 probes over the 2 products this catalog listed were accepted.",
-    );
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: true,
+      probes: 4,
+      refused: [],
+      unanswered: [],
+      unchecked: [],
+    });
   });
 
   it("asks about the products it was named rather than the whole catalog", async () => {
@@ -137,11 +143,16 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("refused");
-    expect(run.text()).toContain("1 of 2 probes were refused");
     // The endpoint's own words, whole. What it checks is theirs and changes
     // when they change it, so nothing here picks the answer apart.
     expect(run.text()).toContain("bazaar.schema");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      probes: 2,
+      refused: ["POST https://agentify.example/x402/itm_1/purchase"],
+      unanswered: [],
+    });
   });
 
   it("says nothing was proven when the endpoint could not be reached", async () => {
@@ -153,10 +164,13 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("no verdict");
-    expect(run.text()).toContain("1 of 2 probes got no verdict, so nothing is proven about them");
-    expect(run.text()).not.toContain("were accepted");
-    expect(run.text()).not.toContain("refused");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      probes: 2,
+      refused: [],
+      unanswered: [expect.stringContaining("ENOTFOUND")],
+    });
   });
 
   it("says nothing was proven when the endpoint answered something else", async () => {
@@ -165,8 +179,13 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("the endpoint answered 503");
-    expect(run.text()).not.toContain("were accepted");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      probes: 2,
+      refused: [],
+      unanswered: [expect.stringContaining("503")],
+    });
   });
 
   it("says nothing was proven when the answer carries no verdict it can read", async () => {
@@ -177,7 +196,12 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("no verdict");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [],
+      unanswered: [expect.any(String)],
+    });
   });
 
   it("does not read a truthy answer as a true one", async () => {
@@ -198,7 +222,13 @@ describe("asking the catalog whether it would take our resources", () => {
 
     expect(await run.run("https://agentify.example")).toBe(0);
     expect(run.knocked).toStrictEqual(["GET https://agentify.example/x402/itm_1/purchase"]);
-    expect(run.text()).toContain("All 2 probes");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: true,
+      probes: 2,
+      refused: [],
+      unanswered: [],
+    });
   });
 
   it("counts a door that answers an unpaid GET with anything but a price as a refusal", async () => {
@@ -211,8 +241,12 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("refused");
-    expect(run.text()).toContain("1 of 2 probes were refused");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [expect.stringContaining("200")],
+      unanswered: [],
+    });
   });
 
   it("counts a door whose challenge names GET as the purchase as a refusal", async () => {
@@ -225,7 +259,12 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("1 of 2 probes were refused");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [expect.stringMatching(/GET.*POST/)],
+      unanswered: [],
+    });
   });
 
   it("counts a challenge that names no purchase method at all as a refusal", async () => {
@@ -245,7 +284,12 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("1 of 2 probes were refused");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [expect.stringContaining("method")],
+      unanswered: [],
+    });
   });
 
   it("says nothing was proven when the door itself could not be reached", async () => {
@@ -257,9 +301,13 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("no verdict");
-    expect(run.text()).toContain("1 of 2 probes got no verdict");
     expect(run.text()).toContain("ECONNREFUSED");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [],
+      unanswered: [expect.stringContaining("ECONNREFUSED")],
+    });
   });
 
   it("counts a door whose challenge cannot be read as a refusal", async () => {
@@ -274,8 +322,12 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("1 of 2 probes were refused");
-    expect(run.text()).toContain("would not decode");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [expect.stringMatching(/PAYMENT-REQUIRED.*decode/)],
+      unanswered: [],
+    });
   });
 
   it("counts a door that priced nothing to read as a refusal", async () => {
@@ -285,8 +337,12 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("1 of 2 probes were refused");
-    expect(run.text()).toContain("set no PAYMENT-REQUIRED header");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      refused: [expect.stringContaining("PAYMENT-REQUIRED")],
+      unanswered: [],
+    });
   });
 
   it("keeps a refusal and a silence apart in the same run", async () => {
@@ -299,8 +355,13 @@ describe("asking the catalog whether it would take our resources", () => {
     });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("1 of 4 probes got no verdict");
-    expect(run.text()).toContain("1 of 4 probes were refused");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      probes: 4,
+      refused: ["POST https://agentify.example/x402/itm_1/purchase"],
+      unanswered: [expect.stringContaining("itm_2")],
+    });
   });
 
   it("reports an identifier it cannot build an address from, and keeps going", async () => {
@@ -314,7 +375,12 @@ describe("asking the catalog whether it would take our resources", () => {
 
     expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.asked).toStrictEqual(["POST https://agentify.example/x402/itm_2/purchase"]);
-    expect(run.text()).toContain("no address could be built");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "checked",
+      passed: false,
+      probes: 2,
+      resources: [{ itemId: ".", unbuildable: expect.any(String) }, { itemId: "itm_2" }],
+    });
   });
 
   it("reports an empty catalog as nothing checked rather than as nothing wrong", async () => {
@@ -324,8 +390,10 @@ describe("asking the catalog whether it would take our resources", () => {
     const run = aRun({ catalog: { items: [] } });
 
     expect(await run.run("https://agentify.example")).toBe(1);
-    expect(run.text()).toContain("nothing to check");
     expect(run.asked).toStrictEqual([]);
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "nothing_on_sale",
+    });
   });
 
   it("reports a catalog it could not read rather than checking nothing quietly", async () => {
@@ -333,7 +401,10 @@ describe("asking the catalog whether it would take our resources", () => {
 
     expect(await run.run("https://agentify.example")).toBe(1);
     expect(run.text()).toContain("ECONNREFUSED");
-    expect(run.text()).toContain("Nothing was checked.");
+    expect(await listingCheckOf("https://agentify.example", [], run.reach)).toMatchObject({
+      kind: "catalog_unreadable",
+      why: "connect ECONNREFUSED",
+    });
   });
 
   it("refuses a base address carrying a query or a fragment rather than probing it", async () => {
@@ -361,19 +432,14 @@ describe("asking the catalog whether it would take our resources", () => {
     // identical refusals and no explanation.
     const run = aRun({ answers: () => accepted });
 
-    await run.run("http://localhost:3000", "itm_1");
+    expect(await run.run("http://localhost:3000", "itm_1")).toBe(0);
 
-    expect(run.text()).toContain("not an https address");
+    expect(run.text()).toMatch(/https.*public|public.*https/i);
     // A warning and not a refusal: it still asks, and still reports what it got.
-    expect(run.asked).toHaveLength(1);
-  });
-
-  it("says nothing of the kind about an https address", async () => {
-    const run = aRun({ answers: () => accepted });
-
-    await run.run("https://agentify.example", "itm_1");
-
-    expect(run.text()).not.toContain("not an https address");
+    expect(run.asked).toStrictEqual(["POST http://localhost:3000/x402/itm_1/purchase"]);
+    const secure = aRun({ answers: () => accepted });
+    expect(await secure.run("https://agentify.example", "itm_1")).toBe(0);
+    expect(secure.asked).toStrictEqual(["POST https://agentify.example/x402/itm_1/purchase"]);
   });
 
   it("asks for an address rather than guessing at one", async () => {
@@ -453,12 +519,13 @@ describe("reading a running gateway over a real socket", () => {
   it("takes the identifiers out of a catalog it can read", async () => {
     const base = await serving({ body: JSON.stringify({ items: [card("itm_1")] }) });
 
-    const { text } = await run(base);
+    const { code, text } = await run(base);
 
     // The identifier came off the wire and reached the address a probe is
     // built from, which is the whole of what this way out is for.
     expect(text).toContain(`${base}/x402/itm_1/purchase`);
-    expect(text).not.toContain("could not be read");
+    expect(code).toBe(1);
+    expect(arrived).toStrictEqual(["GET /x402/catalog", "GET /x402/itm_1/purchase"]);
   });
 
   it("reads a catalog from a gateway newer than this checkout", async () => {
@@ -473,10 +540,11 @@ describe("reading a running gateway over a real socket", () => {
       }),
     });
 
-    const { text } = await run(base);
+    const { code, text } = await run(base);
 
     expect(text).toContain(`${base}/x402/itm_1/purchase`);
-    expect(text).not.toContain("could not be read");
+    expect(code).toBe(1);
+    expect(arrived).toStrictEqual(["GET /x402/catalog", "GET /x402/itm_1/purchase"]);
   });
 
   it("says what it could not read when something else answers instead", async () => {
@@ -487,8 +555,9 @@ describe("reading a running gateway over a real socket", () => {
     const { code, text } = await run(base);
 
     expect(code).toBe(1);
-    expect(text).toContain("could not be read");
-    expect(text).toContain("Nothing was checked.");
+    expect(text).toContain("items");
+    expect(arrived).toStrictEqual(["GET /x402/catalog"]);
+    await expect(overTheNetwork().catalog(base)).rejects.toThrow();
   });
 
   it("says so when the answer is not JSON at all", async () => {
@@ -497,7 +566,8 @@ describe("reading a running gateway over a real socket", () => {
     const { code, text } = await run(base);
 
     expect(code).toBe(1);
-    expect(text).toContain("could not be read");
+    expect(text).toMatch(/JSON|Unexpected token/i);
+    expect(arrived).toStrictEqual(["GET /x402/catalog"]);
   });
 
   it("names the status when the gateway refuses the catalog", async () => {
@@ -507,7 +577,7 @@ describe("reading a running gateway over a real socket", () => {
 
     expect(code).toBe(1);
     expect(text).toContain("503");
-    expect(text).toContain("Nothing was checked.");
+    expect(arrived).toStrictEqual(["GET /x402/catalog"]);
   });
 
   it("reads the door's own challenge off the wire", async () => {

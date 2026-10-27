@@ -330,7 +330,12 @@ describe("a purchase from the outside", () => {
         headers: { "payment-signature": payFor(challenged.headers.get("payment-required") ?? "") },
       });
       expect(bought.status).toBe(200);
-      const started = bought.body as { order_id: string; status: string; delivered: null };
+      const started = bought.body as {
+        order_id: string;
+        status: string;
+        delivered: null;
+        status_url: string;
+      };
       expect(started.status).toBe("in_progress");
       expect(started.delivered).toBeNull();
       expect(gateway.facilitator.settles).toHaveLength(1);
@@ -380,11 +385,11 @@ describe("a purchase from the outside", () => {
       expect((empty.body as { error: { message: string } }).error.message).toContain(
         "activation_code",
       );
-      expect(
-        (await gateway.store.receipts("mch_the_walk")).find(
-          (receipt) => receipt.order_id === orderId,
-        ) ?? null,
-      ).toBeNull();
+      const beforeReceipts = await gateway.call("GET", "/v0/receipts", {
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
+      expect(beforeReceipts.status).toBe(200);
+      expect((beforeReceipts.body as { receipts: unknown[] }).receipts).toStrictEqual([]);
 
       // And the order is still one of the merchant's open ones: he can fix his
       // handler and deliver, which is the whole reason that refusal is not an
@@ -422,15 +427,22 @@ describe("a purchase from the outside", () => {
       );
       expect(again.body).toStrictEqual({ ok: true, result: "already_delivered" });
       expect(gateway.facilitator.settles).toHaveLength(1);
-      expect((await gateway.store.orderById(orderId))?.delivery).toStrictEqual({
-        activation_code: "LPA:1$rsp.example$AB12",
+      const collected = await gateway.call("GET", new URL(started.status_url).pathname);
+      expect(collected.status).toBe(200);
+      expect(collected.body).toMatchObject({
+        order_id: orderId,
+        status: "delivered",
+        delivered: { activation_code: "LPA:1$rsp.example$AB12" },
       });
 
       // The receipt is written and the order is closed.
-      const receipt =
-        (await gateway.store.receipts("mch_the_walk")).find(
-          (receipt) => receipt.order_id === orderId,
-        ) ?? null;
+      const receiptList = await gateway.call("GET", "/v0/receipts", {
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
+      expect(receiptList.status).toBe(200);
+      const receipt = (receiptList.body as { receipts: { order_id: string }[] }).receipts.find(
+        (receipt) => receipt.order_id === orderId,
+      );
       expect(receipt).toMatchObject({
         order_id: orderId,
         outcome: "delivered",
