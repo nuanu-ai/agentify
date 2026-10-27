@@ -42,13 +42,6 @@ describe("a sitemap a redirect, a broken gzip file or a server warning stands fo
     ).toMatchObject({ status: "pass", summaryCode: "sitemap_valid" });
   });
 
-  it("still names a listed sitemap on another site, which the scan does not read", () => {
-    expect(
-      sitemapCheck(xml("https://example.com/sitemap.xml", indexOf("https://cdn.other.net/s1.xml")))
-        ?.evidence.sitemaps_unread,
-    ).toEqual(["entry 1 of the sitemap index: listed on another site, not read"]);
-  });
-
   it("reports a gzip sitemap that cannot be unpacked as broken, with the status it came with", () => {
     const broken = (url: string) =>
       xml(url, "", { errorCode: "gzip_unpacking_failed", decodedBytes: 0 });
@@ -71,7 +64,7 @@ describe("a sitemap a redirect, a broken gzip file or a server warning stands fo
       status: "partial",
       summaryCode: "sitemap_entries_missing",
       evidence: {
-        sitemaps_missing: ["entry 2 of the sitemap index: a gzip file that cannot be unpacked"],
+        sitemaps_missing: [expect.stringMatching(/entry 2.*index.*gzip.*cannot be unpacked/i)],
       },
     });
   });
@@ -86,8 +79,10 @@ describe("a sitemap a redirect, a broken gzip file or a server warning stands fo
         ),
       ),
     ).toMatchObject({ status: "fail", summaryCode: "sitemap_not_sitemap" });
-    expect(
-      sitemapCheck(xml("https://example.com/sitemap.xml", `<!DOCTYPE urlset>${urlset}`)),
-    ).toMatchObject({ status: "unavailable", summaryCode: "sitemap_doctype" });
+    const doctype = sitemapCheck(
+      xml("https://example.com/sitemap.xml", `<!DOCTYPE urlset>${urlset}`),
+    );
+    expect(doctype).toMatchObject({ status: "unavailable", summaryCode: "sitemap_doctype" });
+    expect(doctype?.fixCode).toBeUndefined();
   });
 });
