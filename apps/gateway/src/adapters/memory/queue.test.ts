@@ -14,6 +14,38 @@ const envelope = (id: string): WorkerEnvelope => ({
   },
 });
 
+/** An order envelope: what carries the whole address once a parcel is paid. */
+const handOver = (id: string, orderId: string): WorkerEnvelope => ({
+  kind: "order",
+  id,
+  sent_at: "2026-08-26T00:00:00.000Z",
+  payload: {
+    id: orderId,
+    merchant_item_id: "beans-1kg",
+    params: {},
+    price: {
+      amount: "21.00",
+      currency: "USD",
+      at: "2026-08-26T00:00:00.000Z",
+      as_of: "2026-08-26T00:00:00.000Z",
+    },
+    test: true,
+  },
+});
+
+/** A price question: what carries the place the parcel goes. */
+const question = (id: string, priceId: string): WorkerEnvelope => ({
+  kind: "quote_request",
+  id,
+  sent_at: "2026-08-26T00:00:00.000Z",
+  payload: {
+    merchant_item_id: "beans-1kg",
+    price_id: priceId,
+    purpose: "purchase",
+    expires_at: "2026-08-26T00:10:00.000Z",
+  },
+});
+
 /** Whose stream: there is one per merchant, so every call names one. */
 const A = "mch_a";
 const B = "mch_b";
@@ -76,6 +108,25 @@ describe("MemoryQueue delivery", () => {
 
     expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_1", "env_2"]);
     expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_3"]);
+  });
+
+  it("hands ready orders out before price questions, preserving arrival order within each", async () => {
+    const queue = await started();
+    await queue.publish(A, question("env_q1", "prc_1"));
+    await queue.publish(A, handOver("env_o1", "ord_1"));
+    await queue.publish(A, question("env_q2", "prc_2"));
+    await queue.publish(A, envelope("env_event"));
+    await queue.publish(A, handOver("env_o2", "ord_2"));
+
+    expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual([
+      "env_o1",
+      "env_event",
+    ]);
+    expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
+      "env_o2",
+      "env_q1",
+      "env_q2",
+    ]);
   });
 
   it("keeps a delayed envelope back until its time", async () => {
@@ -168,38 +219,6 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     vi.useRealTimers();
   });
 
-  /** An order envelope: what carries the whole address once a parcel is paid. */
-  const handOver = (id: string, orderId: string): WorkerEnvelope => ({
-    kind: "order",
-    id,
-    sent_at: "2026-08-26T00:00:00.000Z",
-    payload: {
-      id: orderId,
-      merchant_item_id: "beans-1kg",
-      params: {},
-      price: {
-        amount: "21.00",
-        currency: "USD",
-        at: "2026-08-26T00:00:00.000Z",
-        as_of: "2026-08-26T00:00:00.000Z",
-      },
-      test: true,
-    },
-  });
-
-  /** A price question: what carries the place the parcel goes. */
-  const question = (id: string, priceId: string): WorkerEnvelope => ({
-    kind: "quote_request",
-    id,
-    sent_at: "2026-08-26T00:00:00.000Z",
-    payload: {
-      merchant_item_id: "beans-1kg",
-      price_id: priceId,
-      purpose: "purchase",
-      expires_at: "2026-08-26T00:10:00.000Z",
-    },
-  });
-
   it("forgets an order's hand-overs and its price question wherever they wait, and nothing else", async () => {
     // Once the merchant has the address, no envelope carrying any of it may
     // still reach a worker, a hand-over waiting out a delay included. Events
@@ -217,8 +236,8 @@ describe("MemoryQueue letting go of a parcel's address", () => {
 
     expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
       "env_event",
-      "env_q2",
       "env_o2",
+      "env_q2",
     ]);
     expect(await queue.holdsOrder(A, "ord_1")).toBe(false);
   });

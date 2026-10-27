@@ -10,6 +10,7 @@
  */
 
 import type { WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { type Queue as LibraryQueueOptions, PgBoss } from "pg-boss";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -41,6 +42,7 @@ const SCHEMAS = [
   "pgboss_reminder_expiry",
   "pgboss_envelope_expiry",
   "pgboss_envelope_delay",
+  "pgboss_envelope_priority",
   "pgboss_envelope_left",
   "pgboss_every_day",
   "pgboss_every_minute",
@@ -133,6 +135,63 @@ if (databaseUrl === null) {
       // An identifier pg-boss would refuse is refused where the stream name is
       // built, not at that merchant's first sale.
       expect(() => streamOf("a merchant")).toThrow(/cannot name a queue/);
+    }, 30_000);
+
+    it("draws ready orders ahead of price questions through both publish paths, FIFO within each", async () => {
+      const { queue } = await labQueue("pgboss_envelope_priority");
+      const db = drizzle(pool);
+      const question = (id: string): WorkerEnvelope => ({
+        kind: "quote_request",
+        id,
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          merchant_item_id: "beans-1kg",
+          price_id: `prc_${id}`,
+          purpose: "purchase",
+          expires_at: "2026-08-26T12:00:05.000Z",
+        },
+      });
+      const handOver = (id: string): WorkerEnvelope => ({
+        kind: "order",
+        id,
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          id: `ord_${id}`,
+          merchant_item_id: "beans-1kg",
+          params: {},
+          price: {
+            amount: "21.00",
+            currency: "USD",
+            at: "2026-08-26T12:00:00.000Z",
+            as_of: "2026-08-26T12:00:00.000Z",
+          },
+          test: true,
+        },
+      });
+      await queue.publish(A, question("env_q1"));
+      await queue.publish(A, handOver("env_o1"));
+      await db.transaction((tx) => queue.publishWithin(tx, A, question("env_q2")));
+      await queue.publish(A, {
+        kind: "order_event",
+        id: "env_event",
+        sent_at: "2026-08-26T12:00:00.000Z",
+        payload: {
+          type: "order.payment_failed_after_delivery",
+          order_id: "ord_1",
+          at: "2026-08-26T12:00:00.000Z",
+        },
+      });
+      await db.transaction((tx) => queue.publishWithin(tx, A, handOver("env_o2")));
+
+      expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual([
+        "env_o1",
+        "env_event",
+      ]);
+      expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
+        "env_o2",
+        "env_q1",
+        "env_q2",
+      ]);
     }, 30_000);
 
     it("delivers a reminder, and delivers it again when the handler throws", async () => {
