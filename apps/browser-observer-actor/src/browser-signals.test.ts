@@ -243,6 +243,21 @@ describe("raw HTML signals on storefront markup", () => {
       expected: { canonical: "https://example.com/new" },
     },
     {
+      shape: "template metadata is dormant and cannot displace the page's metadata",
+      html: '<template><link rel="canonical" href="/template"><link rel="alternate" hreflang="de" href="/de"><script type="application/ld+json">{"price":"9"}</script></template><link rel="canonical" href="/page">',
+      expected: {
+        canonical: "https://example.com/page",
+        hreflangCount: 0,
+        jsonLdCount: 0,
+        priceCount: 0,
+      },
+    },
+    {
+      shape: "noscript metadata stays text when scripts are enabled",
+      html: '<noscript><link rel="canonical" href="/noscript"><script type="application/ld+json">{"price":"9"}</script></noscript><link rel="canonical" href="/page">',
+      expected: { canonical: "https://example.com/page", jsonLdCount: 0, priceCount: 0 },
+    },
+    {
       shape: "an alternate with a language counts, quoted or not",
       html: '<link rel="alternate stylesheet" hreflang="en" href="/en"><link rel=alternate hreflang=de href=/de><link rel="alternate" href="/no-lang">',
       expected: { hreflangCount: 2 },

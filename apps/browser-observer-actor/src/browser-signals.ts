@@ -146,8 +146,14 @@ export const extractRawMetadata = (html: string, baseUrl: string): MetadataSnaps
   let hreflangCount = 0;
   let linkCount = 0;
   const jsonLdValues: string[] = [];
+  const dormant: string[] = [];
   readHtml(html, {
     startTag: (tag) => {
+      if (tag.name === "template" || tag.name === "noscript") {
+        dormant.push(tag.name);
+        return;
+      }
+      if (dormant.length > 0) return;
       if (tag.name !== "link" || ++linkCount > 2_000) return;
       const rel = (tag.attributes.get("rel") ?? "").toLowerCase().split(/\s+/);
       if (rel.includes("alternate") && tag.attributes.get("hreflang")) hreflangCount += 1;
@@ -161,8 +167,12 @@ export const extractRawMetadata = (html: string, baseUrl: string): MetadataSnaps
         }
       }
     },
+    endTag: (name) => {
+      if (dormant.at(-1) === name) dormant.pop();
+    },
     content: (tag, text) => {
       if (
+        dormant.length === 0 &&
         tag.name === "script" &&
         tag.attributes.get("type")?.toLowerCase() === "application/ld+json" &&
         jsonLdValues.length < 50
