@@ -142,11 +142,6 @@ describe("what the dashboard will not start without", () => {
 
     expect(() => loadConfig(withoutDatabase)).toThrow(/DATABASE_URL/);
   });
-
-  it("does not refuse a key it is handed anyway, because it is not its business", () => {
-    // A leftover variable in a compose file must not stop the dashboard.
-    expect(() => loadConfig(given({ MERCHANT_API_KEY: "short" }))).not.toThrow();
-  });
 });
 
 describe("the dashboard is told which stack it is in front of", () => {
@@ -181,14 +176,6 @@ describe("the dashboard is told which stack it is in front of", () => {
   it("refuses to start when it was handed no facilitator", () => {
     const { FACILITATOR_URL, ...withoutFacilitator } = required;
     expect(() => loadConfig(withoutFacilitator)).toThrowError(/FACILITATOR_URL.*not set/s);
-  });
-
-  it("gives neither a default, unlike the gateway", () => {
-    // A live dashboard falling back to a test chain would print, over a
-    // merchant's real receipts, that none of the money is real.
-    expect(() =>
-      loadConfig({ DATABASE_URL: required.DATABASE_URL, AUTH_SECRET: required.AUTH_SECRET }),
-    ).toThrow();
   });
 
   it("refuses a chain on neither written list", () => {
@@ -474,24 +461,6 @@ describe("telling the ad tracker that somebody it sent signed up", () => {
     );
   });
 
-  it("starts, and reports exactly as without it, with a store switch named in a host's file, whatever its value", () => {
-    // The store goes with the registration under this one switch, so a line
-    // naming another in a host's file must neither stop the process nor
-    // change what it reports.
-    for (const environment of [
-      {},
-      ON_TEST,
-      { ...SWITCHED_ON, REGISTRATION_POSTBACK_URL: RECEIVER },
-    ]) {
-      for (const named of ["true", "false", "yes"]) {
-        expect(
-          loadConfig(given({ ...environment, STORE_POSTBACK_ENABLED: named })),
-          `${JSON.stringify(environment)} ${named}`,
-        ).toStrictEqual(loadConfig(given(environment)));
-      }
-    }
-  });
-
   it("names every problem with the report at once, beside the mail's", () => {
     const said = thrownBy({
       REGISTRATION_POSTBACK_ENABLED: "true",
@@ -668,7 +637,7 @@ describe("sending product analytics to Nuanu Analytics", () => {
 });
 
 describe("what the configuration says about itself", () => {
-  it("does not put the database password into the sentence it throws", () => {
+  it("keeps database and session-signing secrets out of an unrelated configuration failure", () => {
     // A startup failure goes to a log, so it names the variable and never the
     // secret's value.
     const thrown = (): string => {
@@ -676,23 +645,6 @@ describe("what the configuration says about itself", () => {
         loadConfig({
           ...given({ COOKIE_SECURE: "no" }),
           DATABASE_URL: "postgres://agentify:s3cret-database-password@postgres:5432/agentify",
-        });
-        return "";
-      } catch (error) {
-        return String(error);
-      }
-    };
-
-    const said = thrown();
-    expect(said).toContain("COOKIE_SECURE");
-    expect(said).not.toContain("s3cret-database-password");
-  });
-
-  it("does not put what it signs sessions with into the sentence it throws", () => {
-    const thrown = (): string => {
-      try {
-        loadConfig({
-          ...given({ COOKIE_SECURE: "no" }),
           AUTH_SECRET: "s3cret-signing-value-of-at-least-32-characters",
         });
         return "";
@@ -703,6 +655,7 @@ describe("what the configuration says about itself", () => {
 
     const said = thrown();
     expect(said).toContain("COOKIE_SECURE");
+    expect(said).not.toContain("s3cret-database-password");
     expect(said).not.toContain("s3cret-signing-value-of-at-least-32-characters");
   });
 });

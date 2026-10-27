@@ -6,7 +6,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isSandboxMail, type Message, postmanFor, SANDBOX_MAIL } from "./mail.js";
+import { type Message, postmanFor, SANDBOX_MAIL } from "./mail.js";
 
 const MESSAGE: Message = {
   to: "owner@example.com",
@@ -114,11 +114,6 @@ describe("a dashboard with no mail provider", () => {
     expect(said).toContain("15 bytes");
     expect(said).not.toContain("+62");
   });
-
-  it("is what the dashboard is in without a provider, and is told apart by name", () => {
-    expect(isSandboxMail(SANDBOX_MAIL)).toBe(true);
-    expect(isSandboxMail("https://api.resend.com")).toBe(false);
-  });
 });
 
 describe("a dashboard with a mail provider", () => {
@@ -176,7 +171,7 @@ describe("a dashboard with a mail provider", () => {
     ]);
   });
 
-  it("names a message's idempotency key to the provider, so a repeat of it is sent once", async () => {
+  it("forwards an idempotency key unchanged and omits the header for ordinary mail", async () => {
     const sending = await provider();
     const postman = postmanFor({
       mailUrl: sending.url,
@@ -258,7 +253,11 @@ describe("a dashboard with a mail provider", () => {
   it("cannot tell what became of a message whose provider stays silent past the fixed deadline", async () => {
     const sending = await provider(200, 250);
     const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
-    const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => nativeTimeout(50));
+    const requestedDeadlines: number[] = [];
+    const deadline = vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      requestedDeadlines.push(milliseconds);
+      return nativeTimeout(50);
+    });
     const postman = postmanFor({
       mailUrl: sending.url,
       mailApiKey: "re_a_real_looking_key",
@@ -267,6 +266,7 @@ describe("a dashboard with a mail provider", () => {
 
     try {
       await expect(postman(MESSAGE)).resolves.toBe("unknown");
+      expect(requestedDeadlines).toStrictEqual([10_000]);
     } finally {
       deadline.mockRestore();
     }

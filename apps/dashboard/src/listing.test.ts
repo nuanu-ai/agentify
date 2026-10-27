@@ -198,16 +198,13 @@ describe("a list that draws no row", () => {
 
 describe("a search longer than any name", () => {
   it("is matched and given back at its first 200 characters, and says it was cut", () => {
+    expect(listed(things(30), "q=lamp").search.cutAt).toBeNull();
     const long = `lamp${"x".repeat(296)}`;
     const shown = listed(things(30), `q=${long}`);
 
     expect(shown.search.q).toBe(long.slice(0, 200));
     expect(shown.search.cutAt).toBe(200);
     expect(shown.nothing?.says).toBe(`Nothing matches “${long.slice(0, 200)}”.`);
-  });
-
-  it("is not called cut when it fits", () => {
-    expect(listed(things(30), "q=lamp").search.cutAt).toBeNull();
   });
 
   it("cuts between characters, never inside one", () => {

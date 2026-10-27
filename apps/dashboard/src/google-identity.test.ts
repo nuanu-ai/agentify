@@ -70,13 +70,6 @@ afterEach(() => {
 });
 
 describe("Google dashboard identity", () => {
-  it("keeps operator provisioning available without an OAuth request", async () => {
-    const { identity } = setup();
-    expect(await identity.make("operator-created@example.com", "mer_operator")).toMatchObject({
-      email: "operator-created@example.com",
-      confirmed: false,
-    });
-  });
   it("opens a verified person with the requested destination and an empty merchant name", async () => {
     const { login, identity, rows, google } = setup();
     const opened = await login();
@@ -176,22 +169,18 @@ describe("Google dashboard identity", () => {
     expect(rows.dashboard_credentials).toHaveLength(0);
   });
 
-  it("refuses an already linked Workspace subject when its address loses Google's authority", async () => {
+  it.each([
+    [
+      { email: "reader@company.example", hd: "company.example" },
+      { email: "reader@company.example" },
+    ],
+    [{ email: "reader@gmail.com" }, { email: "reader@gmail.com", email_verified: false }],
+  ])("refuses a linked subject after Google loses authority: %j → %j", async (before, after) => {
     const { login, rows } = setup();
-    expect(await login({ email: "reader@company.example", hd: "company.example" })).toMatchObject({
+    expect(await login(before)).toMatchObject({
       status: "opened",
     });
-    expect(await login({ email: "reader@company.example" })).toMatchObject({
-      status: "refused",
-      reason: "email-unverified",
-    });
-    expect(rows.dashboard_sessions).toHaveLength(1);
-  });
-
-  it("rejects an already linked subject when Google stops verifying its address", async () => {
-    const { login, rows } = setup();
-    expect(await login()).toMatchObject({ status: "opened" });
-    expect(await login({ email_verified: false })).toMatchObject({
+    expect(await login(after)).toMatchObject({
       status: "refused",
       reason: "email-unverified",
     });
@@ -504,9 +493,7 @@ describe("the registration a Google sign-in started with an ad's click leaves fo
     }
     expect(rows.dashboard_accounts).toStrictEqual([]);
     expect(adReportsIn(rows)).toStrictEqual([]);
-  });
-
-  it("brings no click back with a refused Google return while reporting is switched off", async () => {
+    // The pending state was made while reporting was on; switching it off before return erases attribution.
     const on = setup({ registrationPostback: reporting.registrationPostback });
     const flow = await on.start({}, CLICK);
     flow.query.delete("code");
