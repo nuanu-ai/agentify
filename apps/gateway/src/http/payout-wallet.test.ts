@@ -31,7 +31,12 @@ import {
   serve,
   statusPathOf,
 } from "../testing/harness.js";
-import { PAYMENT_REQUIRED_HEADER, PAYMENT_RESPONSE_HEADER } from "./x402.js";
+import { aWallet, signedPayment } from "../testing/signed-payment.js";
+import {
+  PAYMENT_REQUIRED_HEADER,
+  PAYMENT_RESPONSE_HEADER,
+  PAYMENT_SIGNATURE_HEADER,
+} from "./x402.js";
 
 /** The address the gateway itself is configured with: the operator's, not a merchant's. */
 const CONFIGURED_PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -252,7 +257,10 @@ describe("the wallet a merchant is paid at", () => {
       payout_wallet: A_WALLET,
       pending: null,
     });
-    expect((await payoutWallet(served, second.key)).payout_wallet).not.toBe(A_WALLET);
+    expect(await payoutWallet(served, second.key)).toStrictEqual({
+      payout_wallet: second.wallet,
+      pending: null,
+    });
   });
 
   it("reads it with any key of the merchant's, and with no key not at all", async () => {
@@ -288,16 +296,8 @@ describe("publishing before a wallet has been set", () => {
     expect(said).toMatch(/dashboard/i);
     expect(said).toMatch(/settings/i);
     expect(said).not.toContain("/v0/payout-wallet");
-  });
-
-  it("writes nothing, so the card is not there afterwards", async () => {
-    const { served, harnessed } = await started();
-    const { key } = await fresh(harnessed);
-    await named(served, key, "Their own shop");
-
-    await publishing(served, key, cardFor("a-room", "A room"));
-
     const own = await served.call("GET", "/v0/cards", { headers: bearer(key) });
+    expect(own.status).toBe(200);
     expect((own.body as { cards: unknown[] }).cards).toStrictEqual([]);
   });
 
@@ -571,7 +571,10 @@ describe("a card whose merchant has nowhere to be paid", () => {
       cards: { id: string; selling: string }[];
     };
 
-    expect(own.cards.find((card) => card.id === itemId)?.selling).not.toBe("open");
+    expect(own.cards.find((card) => card.id === itemId)).toMatchObject({
+      id: itemId,
+      selling: "paused",
+    });
   });
 
   it("sells in the sandbox, where there is no money to send anywhere", async () => {
@@ -626,26 +629,43 @@ describe("a wallet that moves while a sale is in flight", () => {
     );
   });
 
-  it("asks about the payment against the address the challenge named", async () => {
-    // Between challenge and payment nothing is in flight, so verification uses
-    // the current address, and a payment made out to one the merchant has since
-    // left is refused before anything happens. The refusal itself is tested in
-    // `adapters/x402`; this pins which address verification carries.
+  it("checks an old signed challenge against the current payout destination before delivery", async () => {
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
-    expect(await payToInTheChallenge(served, itemId)).toBe(
+    const priced = await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } });
+    expect(priced.status).toBe(402);
+    const requirements = decodePaymentRequiredHeader(
+      priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    if (!requirements) throw new Error("the purchase offered no payment requirements");
+    expect(requirements.payTo).toBe(
       await recordedSplit(harnessed, harnessed.merchant.id, A_WALLET),
     );
-
+    const payment = await signedPayment(aWallet("payout change buyer"), requirements, {
+      nonce: "ab",
+      validBefore: harnessed.now() + 60_000,
+    });
     await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
-    await buyOverHttp(harnessed, served, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    harnessed.facilitator.willRefuseVerification(
+      "price_stale",
+      "signed for the previous destination",
+    );
+
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+      headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
     });
 
-    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(
-      await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
-    );
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ error: { code: "payment_not_verified" } });
+    expect(harnessed.facilitator.verifies).toHaveLength(1);
+    expect(harnessed.facilitator.verifies[0]).toMatchObject({
+      payment,
+      payTo: await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
+    });
+    expect(harnessed.facilitator.settles).toStrictEqual([]);
+    expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toStrictEqual([]);
   });
 });
 

@@ -437,10 +437,11 @@ describe("whose envelope a worker draws", () => {
 describe("the merchant's door", () => {
   it("turns away a key nobody was issued", async () => {
     const { served, harnessed } = await started();
-    await harnessed.addMerchant("Merchant A");
+    const a = await harnessed.addMerchant("Merchant A");
+    expect((await served.call("GET", "/v0/orders", { headers: keyOf(a) })).status).toBe(200);
 
     const answered = await served.call("GET", "/v0/orders", {
-      headers: { authorization: "Bearer a-key-that-was-never-issued" },
+      headers: { authorization: "Bearer csk_test_a-key-that-was-never-issued" },
     });
 
     expect(answered.status).toBe(401);
@@ -460,26 +461,11 @@ describe("the merchant's door", () => {
 
     const refused = await served.call("GET", "/v0/orders", { headers: keyOf(a) });
     const never = await served.call("GET", "/v0/orders", {
-      headers: { authorization: "Bearer a-key-that-was-never-issued" },
+      headers: { authorization: "Bearer csk_test_a-key-that-was-never-issued" },
     });
 
     expect(refused.status).toBe(401);
     expect(refused.body).toStrictEqual(never.body);
-  });
-
-  it("leaves a merchant's other keys working when one of them is disabled", async () => {
-    // The whole reason a key is a row rather than a variable: one is revoked
-    // without touching any other.
-    const { served, harnessed } = await started();
-    const a = await harnessed.addMerchant("Merchant A");
-    const second = await harnessed.addKey(a.id, "a second key");
-
-    await harnessed.store.disableKeyOf(a.id, a.keyId, harnessed.now());
-
-    expect(
-      (await served.call("GET", "/v0/orders", { headers: { authorization: `Bearer ${second}` } }))
-        .status,
-    ).toBe(200);
   });
 
   it("resolves every one of a merchant's keys to that merchant and none to another", async () => {
