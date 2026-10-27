@@ -365,6 +365,7 @@ try {
     ["/owner", "scanner"],
     ["/api/health", "scanner"],
     ["/dashboard", "dashboard"],
+    ["/dashboard.data", "dashboard"],
     ["/dashboard/sign-in", "dashboard"],
     ["/dashboard/healthz", "dashboard"],
     ["/v0", "gateway"],
