@@ -111,11 +111,13 @@ describe("the error page after a failed request", () => {
   it("names the screen a press on a filtered list came from, and leads back to the list as it was", async () => {
     const page = await failedWith("/products?q=room", 500, {
       kind: "unanswered",
-      reopen: "/products?q=room&page=2",
+      reopen: "/products?q=room&after=1787000000000.itm_7d3e",
     });
 
     expect(page.title).toBe("We don't know if this was done");
-    expect(page.ways).toStrictEqual([["Open Products", "/products?q=room&page=2"]]);
+    expect(page.ways).toStrictEqual([
+      ["Open Products", "/products?q=room&after=1787000000000.itm_7d3e"],
+    ]);
   });
 
   it("says a read that failed can be tried again, without naming a cause it cannot know", async () => {
