@@ -358,16 +358,21 @@
   background: color-mix(in srgb, var(--accent) 26%, var(--surface));
 }
 
-/* Facts in two columns, a label and its value, rules between rows. */
+/* Facts in two columns, a label and its value, rules between rows. The
+   values share one column at the right and start at its left edge, so their
+   first words, and the dots of the states among them, stand in one line
+   whatever their length. */
 .op-dl {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(55%);
+  column-gap: 16px;
   margin: 0;
 }
 
 .op-dl > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   padding: 11px 0;
   border-top: var(--hairline) solid var(--line-soft);
   font-size: var(--text-small);
@@ -384,7 +389,6 @@
 .op-dl dd {
   margin: 0;
   font-weight: 500;
-  text-align: right;
 }
 
 .op-score {
