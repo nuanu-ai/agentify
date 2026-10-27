@@ -144,6 +144,22 @@ describe("a list cut short", () => {
     }
   });
 
+  it("writes no cursor for a place that is no whole number, so the way leads to the first page rather than a wrong one", () => {
+    // A dot inside a key would be read back as the start of the identifier.
+    const shown = listingOf({
+      rows: things(120),
+      asked: askedIn(new URLSearchParams(), ["all"]),
+      path: "/things",
+      segments: [{ key: "all", label: "All", holds: () => true, none: "" }],
+      markOf: (row) => ({ key: [row.at + 0.671], id: row.id }),
+      matches: () => true,
+      noMatch: () => "",
+      showAll: "Show all things",
+    });
+
+    expect(shown.cut?.next).toBe("/things");
+  });
+
   it("leads on to the newer rows where the list is sorted from the oldest", () => {
     const all = things(120);
     const first = listed(all, "", true);

@@ -436,4 +436,19 @@ describe("the Journal", () => {
     const malformed = (await operator.get("/admin/journal?kind=sessions&after=yesterday")).html;
     expect(rowsIn(malformed).slice(0, 2)).toStrictEqual(["Row 57", "Row 56"]);
   });
+
+  it("says a kind holds no row, not that no row is older, whatever cursor the address carries", async () => {
+    const workspace = await serve();
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    await workspace.signedIn(MERCHANT);
+    await operator.post(
+      `/admin/accounts/${await idOf(workspace, MERCHANT)}/end-sessions`,
+      asOperator,
+    );
+
+    const keys = readable((await operator.get("/admin/journal?kind=keys&after=123")).html);
+
+    expect(keys).toContain("No action of this kind here.");
+    expect(keys).not.toContain("No older rows.");
+  });
 });
