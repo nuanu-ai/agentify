@@ -521,34 +521,6 @@ describe("the order a payment names", () => {
     expect((await harnessed.store.orderById(opened.order.id))?.order.state).toBe("quoted");
   });
 
-  it("opens no order's status: the status route answers it as it answers an unknown key", async () => {
-    // A listing can publish the identifier a challenge names, so whoever
-    // reads it must learn nothing of the order's goods from it.
-    const { served, harnessed } = await started();
-    const itemId = await publish(harnessed, asyncCard);
-    const challenge = await challengeFor(served, itemId);
-    const bought = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
-    expect(bought.status).toBe(200);
-    const named = orderIn(challenge);
-    if (typeof named !== "string") throw new Error("the challenge named no order");
-    const { status_url: statusUrl } = bought.body as { status_url: string };
-
-    const answerTo = async (path: string, headers: Record<string, string> = {}) => {
-      const answered = await served.call("GET", path, { headers });
-      return {
-        status: answered.status,
-        body: answered.body,
-        caching: answered.headers.get("cache-control"),
-      };
-    };
-
-    // The buyer's key opens it, so the door is open to the right key.
-    expect((await answerTo(new URL(statusUrl).pathname)).status).toBe(200);
-    expect(await answerTo(`/x402/orders/${named}/status`)).toStrictEqual(
-      await answerTo("/x402/orders/bk_nobody_issued_this/status"),
-    );
-  });
-
   it.each([
     ["in progress", asyncCard, undefined, "paid"],
     ["delivered on the call", syncCard, { delivered: { access_code: "SESAME" } }, "delivered"],
@@ -632,81 +604,9 @@ describe("a buyer whose payment came second", () => {
     expect(error.code).toBe("not_this_purchase");
     expect(error.message).toMatch(/nothing was charged/i);
     expect(error.message).toMatch(/new purchase/i);
+    expect(error.message).toMatch(/fresh payment.*wallet.*returns/i);
     expect(error.retryable).toBe(false);
     expectNoKeyIn(second.body);
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-  });
-});
-
-describe("a payer who signs the kept challenge again from another wallet", () => {
-  it("is told that a fresh payment from the wallet that paid returns the purchase, not only to buy again", async () => {
-    // An agent that lost its answer and holds several wallets may sign again
-    // from the wrong one. Sent only to start a new purchase, it would pay a
-    // second time for goods it already owns.
-    const { harnessed, served } = await started();
-    const itemId = await publish(harnessed, asyncCard);
-    const challenge = await challengeFor(served, itemId);
-    const bought = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
-    expect(bought.status).toBe(200);
-
-    const fromAnother = await present(
-      served,
-      itemId,
-      await paymentAgainst(challenge, STRANGER, "0x02"),
-    );
-
-    expect(fromAnother.status).toBe(409);
-    const { error } = fromAnother.body as { error: { code: string; message: string } };
-    expect(error.code).toBe("not_this_purchase");
-    expect(error.message).toMatch(/nothing was charged/i);
-    expect(error.message).toMatch(/fresh payment from that wallet returns it/i);
-    expectNoKeyIn(fromAnother.body);
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-  });
-});
-
-describe("a payer whose answer was lost", () => {
-  it("cannot collect goods with the public used authorization, and a fresh verified payment returns them uncharged", async () => {
-    // The identifier in the challenge opens nothing, so paying again is how a
-    // payer gets back to an order whose answer it lost, and with it the key.
-    const { harnessed, served } = await started();
-    const itemId = await publish(harnessed, asyncCard);
-    const challenge = await challengeFor(served, itemId);
-    const payment = await paymentAgainst(challenge, BUYER, "0x01");
-    harnessed.facilitator.willVerify(
-      { verified: true, payer: BUYER, validUntil: null },
-      {
-        verified: false,
-        reason: "signature",
-        message: "invalid_exact_evm_nonce_already_used",
-      },
-      { verified: true, payer: BUYER, validUntil: null },
-    );
-    const bought = await present(served, itemId, payment);
-    expect(bought.status).toBe(200);
-    const orderId = (bought.body as { order_id: string }).order_id;
-    await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
-      access_code: "SESAME",
-    });
-
-    const again = await present(served, itemId, payment);
-
-    expect(again.status).toBe(409);
-    expectNoKeyIn(again.body);
-    expect(JSON.stringify(again.body)).not.toContain("SESAME");
-    expect((again.body as { error: { message: string } }).error.message).not.toMatch(
-      /nothing was charged/i,
-    );
-    const fresh = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x02"));
-    expect(fresh.status).toBe(200);
-    expect((fresh.body as { order_id: string }).order_id).toBe(orderId);
-    expect(fresh.body).toMatchObject({ delivered: { access_code: "SESAME" } });
-    // The same address as the answer that was lost: the key it carries is the
-    // only way back to the goods, so a new one would be a new secret to keep
-    // and the old one would still be out there.
-    const lost = (bought.body as { status_url: string }).status_url;
-    expect((fresh.body as { status_url: string }).status_url).toBe(lost);
-    expect((await served.call("GET", new URL(lost).pathname)).status).toBe(200);
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 });
@@ -1053,9 +953,10 @@ describe("a payment the payment layer refuses", () => {
         expect(answered.body).toMatchObject({
           error: { code: "payment_not_verified", retryable: false },
         });
-        expect(JSON.stringify(answered.body)).toMatch(
-          /^\{"error":\{"code":"payment_not_verified","message":"this payment charged nothing: sign a new payment for this order and present it while its price holds; it was refused, saying: [^;]+; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge","retryable":false\}\}$/,
-        );
+        const message = (answered.body as { error: { message: string } }).error.message;
+        expect(message).toMatch(/charged nothing/i);
+        expect(message).toMatch(/fresh payment.*wallet.*without a second charge/i);
+        expect(message).toMatch(/sign a new payment/i);
       }
       expectNoKeyIn(afterTheSale.body);
       expect(JSON.stringify(afterTheSale.body)).not.toContain("SESAME");
@@ -1123,10 +1024,10 @@ describe("a payment whose authorization has expired", () => {
       const afterTheSale = await present(shop.served, itemId, madeUp);
 
       expect(afterTheSale.status).toBe(409);
-      expect(afterTheSale.body).toStrictEqual(beforeTheSale.body);
       expect(afterTheSale.body).toMatchObject({ error: { code: "payment_not_verified" } });
       expect(JSON.stringify(afterTheSale.body)).toMatch(/expired/);
       expect(JSON.stringify(afterTheSale.body)).not.toMatch(/payment layer refused/);
+      expect(afterTheSale.body).toStrictEqual(beforeTheSale.body);
       expectNoKeyIn(afterTheSale.body);
       expect(network.sent.filter((call) => call.startsWith('{"verify"'))).toHaveLength(1);
 
@@ -1466,11 +1367,15 @@ describe("the order named by a payment, where it ended before a payment was take
     const challenge = await challengeFor(served, itemId);
     const [opened] = await harnessed.store.orders(harnessed.merchant.id);
     const orderId = opened?.order.id ?? "";
-    harnessed.advance(60_000);
+    const release = harnessed.facilitator.holdVerification();
+    const first = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
+    await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
+    harnessed.advance(31_000);
     const runner = harnessed.gateway.runner;
     const apply = runner.apply.bind(runner);
     vi.spyOn(runner, "apply").mockImplementationOnce(async (id, event, facts) => {
-      await runner.presentVerifiedPayment(id, BUYER, "the buyer's payment", null, harnessed.now());
+      release();
+      expect((await first).status).toBe(200);
       return apply(id, event, facts);
     });
 

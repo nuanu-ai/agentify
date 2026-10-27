@@ -11,7 +11,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
 import { randomIds } from "../ports/clock.js";
-import { atomicUnits, CHALLENGE_REASONS, PaymentEdge, paymentFingerprint } from "./x402.js";
+import { atomicUnits, PaymentEdge, paymentFingerprint } from "./x402.js";
 
 describe("a price in the token's own units", () => {
   it("writes an exact amount, whatever the price looked like", async () => {
@@ -350,18 +350,17 @@ describe("one payment, one fingerprint", () => {
     }
   });
 
-  it("is a different payment on a different token", () => {
-    // A token records authorizationState[authorizer][nonce] in its own
-    // contract, so one payer and one nonce on two assets are two payments. The
-    // token comes from our configuration and never from the payment, or the
-    // agent would have its variation back.
+  it("separates authorizations by network alone and by asset alone", () => {
     const here = fingerprintOf(signed(authorised()));
-    const elsewhere = paymentFingerprint(signed(authorised()), {
-      network: "eip155:8453",
-      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-    });
-
-    expect(elsewhere).not.toBe(here);
+    expect(paymentFingerprint(signed(authorised()), { ...token, network: "eip155:8453" })).not.toBe(
+      here,
+    );
+    expect(
+      paymentFingerprint(signed(authorised()), {
+        ...token,
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      }),
+    ).not.toBe(here);
   });
 
   it("reads a payment that is not one without falling over", () => {
@@ -451,6 +450,13 @@ describe("the discovery declaration a challenge carries", () => {
     expect(challenge({ serviceName: null }).resource.url).toBe(
       "https://agentify.example/x402/itm_4d21bb/purchase",
     );
+    const encoded = edge().challengeFor({ amount: "80.00", currency: "USD" }, "ord_1", {
+      itemId: "itm_4d21bb",
+      card,
+      serviceName: null,
+      payTo: SELLERS_SPLIT,
+    });
+    expect(decodePaymentRequiredHeader(encoded).accepts[0]?.extra?.order_id).toBe("ord_1");
   });
 
   it("says who is selling and what the product is filed under", () => {
@@ -489,8 +495,8 @@ describe("the discovery declaration a challenge carries", () => {
     );
 
     expect(sanitizeResourceServiceMetadata(resource)).toStrictEqual({
-      serviceName: resource.serviceName,
-      tags: resource.tags,
+      serviceName: "n".repeat(32),
+      tags: ["a", "b", "c", "d", "e"].map((letter) => letter.repeat(32)),
     });
   });
 
@@ -546,21 +552,6 @@ describe("the discovery declaration a challenge carries", () => {
     };
 
     expect(twice()).toBe(twice());
-  });
-
-  it("still names the order it is for, by its identifier", () => {
-    // The identifier travels in `extra` beside the declaration; it is what a
-    // payment names its order by.
-    const forOrder = decodePaymentRequiredHeader(
-      edge().challengeFor({ amount: "5.00", currency: "USD" }, "ord_1", {
-        itemId: "itm_4d21bb",
-        card,
-        serviceName: null,
-        payTo: SELLERS_SPLIT,
-      }),
-    );
-
-    expect(forOrder.accepts[0]?.extra?.order_id).toBe("ord_1");
   });
 });
 
@@ -657,7 +648,14 @@ describe("a card's challenge at its widest", () => {
     expect(AmountSchema.safeParse(WIDEST_AMOUNT).success).toBe(true);
     expect(AmountSchema.safeParse(`9${WIDEST_AMOUNT}`).success).toBe(false);
     for (const card of cards) {
-      const answered = Object.values(CHALLENGE_REASONS).flatMap((why) =>
+      const answered = (
+        [
+          "payment required",
+          "this GET is not read for payment: the purchase is a POST with a JSON body",
+          "the payment could not be read, so here is a fresh price",
+          "the payment did not name an order this gateway is holding, so here is a fresh price",
+        ] as const
+      ).flatMap((why) =>
         [null, randomIds("ord")].map(
           (orderId) =>
             edge.challengeFor(
@@ -679,62 +677,7 @@ describe("a card's challenge at its widest", () => {
   });
 });
 
-describe("the shape a live validation once accepted", () => {
-  /**
-   * The schema half of a declaration the CDP validation endpoint once accepted
-   * for a POST resource whose paid address also answers GET, as ours does.
-   * Comparing shapes against it is not a validation; `pnpm smoke:listing`
-   * makes the live call. It is kept for one fact: the dialect is named once, at
-   * the root. The rest legitimately differs, since that body schema was written
-   * by hand and ours is rendered from the card.
-   */
-  const acceptedSchemaOnPost = {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    properties: {
-      input: {
-        additionalProperties: false,
-        properties: {
-          body: {
-            properties: {
-              country: { description: "ISO 3166-1 alpha-2 country code", type: "string" },
-            },
-            required: ["country"],
-          },
-          bodyType: { enum: ["json", "form-data", "text"], type: "string" },
-          method: { enum: ["POST"], type: "string" },
-          type: { const: "http", type: "string" },
-        },
-        required: ["type", "method", "bodyType", "body"],
-        type: "object",
-      },
-      output: {
-        properties: { example: { type: "object" }, type: { type: "string" } },
-        required: ["type"],
-        type: "object",
-      },
-    },
-    required: ["input"],
-    type: "object",
-  };
-
-  /** Every path through an object, with the leaves replaced by their types. */
-  const skeleton = (value: unknown, at = ""): string[] => {
-    if (Array.isArray(value)) {
-      return value.length === 0
-        ? [`${at}: []`]
-        : value.flatMap((held, index) => skeleton(held, `${at}[${index}]`));
-    }
-    if (typeof value === "object" && value !== null) {
-      const entries = Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1));
-      // An empty object is a fact about the shape and has no paths under it, so
-      // it is written out rather than vanishing.
-      return entries.length === 0
-        ? [`${at}: {}`]
-        : entries.flatMap(([name, held]) => skeleton(held, at === "" ? name : `${at}.${name}`));
-    }
-    return [`${at}: ${typeof value}`];
-  };
-
+describe("the declaration schema dialect", () => {
   const ourDeclaration = () => {
     const card = CardSchema.parse({
       merchant_item_id: "numbers-rent",
@@ -773,14 +716,18 @@ describe("the shape a live validation once accepted", () => {
     return declared;
   };
 
-  it("names the schema dialect where the accepted shape names it, and nowhere else", () => {
-    // The purchase body schema is rendered on its own and names its dialect;
-    // nested, that would be a second declaration where the accepted shape has
-    // none, so it is dropped.
-    const dialectsIn = (schema: unknown) =>
-      skeleton(schema).filter((path) => path.includes("$schema"));
-
-    expect(dialectsIn(ourDeclaration().schema)).toStrictEqual(["$schema: string"]);
-    expect(dialectsIn(acceptedSchemaOnPost)).toStrictEqual(dialectsIn(ourDeclaration().schema));
+  it("names the JSON schema dialect exactly once at the root", () => {
+    const schema = ourDeclaration().schema;
+    const paths: string[] = [];
+    const visit = (value: unknown, path: string): void => {
+      if (value === null || typeof value !== "object") return;
+      for (const [key, child] of Object.entries(value)) {
+        if (key === "$schema") paths.push(path);
+        visit(child, `${path}/${key}`);
+      }
+    };
+    visit(schema, "");
+    expect(paths).toStrictEqual([""]);
+    expect(schema).toMatchObject({ $schema: "https://json-schema.org/draft/2020-12/schema" });
   });
 });

@@ -104,7 +104,18 @@ async function aPaidSale(
     return { requirements: theirs, orderId: (bought.body as { order_id: string }).order_id };
   };
 
-  return { harnessed, requirements, fresh, present, paying, orderId, anotherOrder, anotherSale };
+  return {
+    harnessed,
+    served,
+    paid,
+    requirements,
+    fresh,
+    present,
+    paying,
+    orderId,
+    anotherOrder,
+    anotherSale,
+  };
 }
 
 /**
@@ -154,6 +165,14 @@ describe("a purchase already paid for", () => {
 
     expect(again.status, JSON.stringify(again.body)).toBe(200);
     expect(again.body).toMatchObject({
+      order_id: sale.orderId,
+      delivered: { access_code: "SESAME" },
+    });
+    const original = (sale.paid.body as { status_url: string }).status_url;
+    expect((again.body as { status_url: string }).status_url).toBe(original);
+    const collected = await sale.served.call("GET", new URL(original).pathname);
+    expect(collected.status).toBe(200);
+    expect(collected.body).toMatchObject({
       order_id: sale.orderId,
       delivered: { access_code: "SESAME" },
     });
