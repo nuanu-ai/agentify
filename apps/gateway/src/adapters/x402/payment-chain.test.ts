@@ -28,17 +28,30 @@ afterEach(async () => {
   running = null;
 });
 
-/** An endpoint serving `chainId` that answers every call to a contract with `call`. */
-async function anEndpoint(chainId: number, call: Answer): Promise<string> {
+type RpcQuestion = {
+  id: number;
+  method: string;
+  params?: [{ to?: string; data?: string }, string];
+};
+
+/** A loopback node with independent contract answers for the requested wire data. */
+async function anEndpoint(
+  chainId: number,
+  call: Answer | ((question: RpcQuestion) => Answer),
+): Promise<string> {
   running = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => {
       body += chunk;
     });
     request.on("end", () => {
-      const asked = JSON.parse(body) as { id: number; method: string };
+      const asked = JSON.parse(body) as RpcQuestion;
       const answer: Answer =
-        asked.method === "eth_chainId" ? { result: `0x${chainId.toString(16)}` } : call;
+        asked.method === "eth_chainId"
+          ? { result: `0x${chainId.toString(16)}` }
+          : typeof call === "function"
+            ? call(asked)
+            : call;
       if (answer === "unavailable") {
         response.statusCode = 503;
         response.end("Service Unavailable");
@@ -57,7 +70,29 @@ const reverted = { error: { code: 3, message: "execution reverted" } };
 
 describe("a contract wallet's signature on the chain", () => {
   it("is accepted where the chain accepts it", async () => {
-    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, accepted));
+    // ERC-6492 constructor arguments: signer, digest, bytes offset, length and signature.
+    const argumentsOnWire =
+      "0".repeat(24) +
+      WALLET.slice(2) +
+      DIGEST.slice(2) +
+      "0".repeat(62) +
+      "60" +
+      "0".repeat(62) +
+      "61" +
+      SIGNATURE.slice(2) +
+      "0".repeat(62);
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(84532, (asked) => {
+        const [transaction, block] = asked.params ?? [];
+        return asked.method === "eth_call" &&
+          block === "latest" &&
+          transaction?.to === undefined &&
+          transaction?.data?.endsWith(argumentsOnWire)
+          ? accepted
+          : { error: { code: -32602, message: "wrong signature query" } };
+      }),
+    );
 
     expect(await reader?.accepts(WALLET, DIGEST, SIGNATURE)).toBe(true);
   });
@@ -112,7 +147,20 @@ describe("whether an authorization was used, on the chain", () => {
     ["used", `0x${"0".repeat(63)}1`, true],
     ["unused", `0x${"0".repeat(64)}`, false],
   ])("is read as the token answers: %s", async (_what, result, used) => {
-    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, { result }));
+    // EIP-3009 authorizationState(address,bytes32), independently encoded on the wire.
+    const data = `0xe94a0102${"0".repeat(24)}${WALLET.slice(2)}${NONCE.slice(2)}`;
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(84532, (asked) => {
+        const [transaction, block] = asked.params ?? [];
+        return asked.method === "eth_call" &&
+          block === "latest" &&
+          transaction?.to?.toLowerCase() === USDC_ON_BASE_SEPOLIA.toLowerCase() &&
+          transaction.data === data
+          ? { result }
+          : { error: { code: -32602, message: "wrong authorization query" } };
+      }),
+    );
 
     expect(await reader?.used(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).toBe(used);
   });
