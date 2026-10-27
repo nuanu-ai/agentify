@@ -12,6 +12,7 @@ export {
   type JournalEntry,
   type JournalPage,
   type JournalPress,
+  type JournalQuery,
   JournalReasonSchema,
   type JournalRow,
   type JournalSubject,

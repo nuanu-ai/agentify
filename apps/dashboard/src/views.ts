@@ -7,10 +7,8 @@
  * thing; `words.ts` carries those cases.
  */
 
-import type { SurfaceMode } from "@agentify/core";
 import { percentOf } from "@agentify/core/published";
 import type { Integration } from "@agentify/gateway";
-import { SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   API_ROUTES,
   expandPath,
@@ -23,6 +21,7 @@ import {
 } from "@nuanu-ai/agentify-contracts";
 import type { AccountNote } from "./account-banner.js";
 import { RESUME_ALL_SELLING, STOP_ALL_SELLING } from "./control-labels.js";
+import { type From, type Mark, rising } from "./cursor.js";
 import type { OrderRecord, UnfulfilledCause } from "./gateway.js";
 import {
   askedIn,
@@ -35,7 +34,6 @@ import {
 } from "./listing.js";
 import { moment, withinDay } from "./moments.js";
 import { type SplitTerms, sharesOf } from "./shares.js";
-import type { Viewer } from "./viewer.js";
 import type { ShopTotal } from "./woo-shops.js";
 import {
   CARD_WORDS,
@@ -76,8 +74,6 @@ export interface Rest {
   readonly href: string;
   readonly words: string;
 }
-
-const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
 
 // --- cards -------------------------------------------------------------------
 
@@ -274,6 +270,11 @@ export const cardsView = (
     };
   });
   const asked = askedIn(query, CARD_SEGMENT_KEYS);
+  // The oldest published first, as the gateway lists them; a card republished
+  // moves to the end.
+  const marks = new Map(
+    cards.cards.map((entry) => [entry.id, { key: [momentKey(entry.as_of)], id: entry.id }]),
+  );
   // A card is found by its title or by a part of its product code, the two a
   // merchant knows it by, except that a search that is some card's whole
   // product code, as a link to one card writes it, finds that code alone:
@@ -291,6 +292,8 @@ export const cardsView = (
       asked,
       path: "/products",
       segments: CARD_SEGMENTS,
+      markOf: (row) => marks.get(row.id) ?? { key: [UNREAD_MOMENT], id: row.id },
+      oldestFirst: true,
       matches: (row, words) =>
         byCode
           ? row.itemId.toLocaleLowerCase() === words
@@ -367,11 +370,6 @@ interface OrderRow {
   /** The product's code: the row does not print it, and a search finds the order by it. */
   readonly itemId: string;
   readonly amount: string;
-  /**
-   * An unmarked sum for a test purchase is a payment that never happened, so
-   * a page that does not otherwise say which sums are tests marks each.
-   */
-  readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
   readonly share: string | null;
   readonly state: Word;
@@ -477,11 +475,6 @@ export interface OrdersView {
   /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
   readonly pressed: ClosurePressed | null;
   /**
-   * Said once over the orders where some are test purchases and no band over
-   * the page says the channel's payments are tests; null otherwise.
-   */
-  readonly testNote: string | null;
-  /**
    * The orders the address asked for, newest first and at most a page of
    * them: what was searched for, the segments with their counts, how much was
    * cut, and why none is drawn where the merchant has some.
@@ -513,10 +506,18 @@ export type PaidIntoSplits = Readonly<Record<string, SplitTerms>>;
  * other orders: the page the address asks for, read only where the address
  * asks for their segment and null elsewhere, and how many there are.
  */
-export interface LapsedAttempts {
-  readonly page: readonly LapsedAttempt[] | null;
-  readonly of: number;
-}
+export type LapsedAttempts =
+  | Readonly<{ page: null; of: number }>
+  | Readonly<{
+      page: readonly LapsedAttempt[];
+      of: number;
+      /** How many lapsed attempts are newer than the page. */
+      newer: number;
+      /** The place of the page's first attempt where newer ones precede it. */
+      previous: Mark | null;
+      /** The place of the page's last attempt where older ones follow it. */
+      next: Mark | null;
+    }>;
 
 /**
  * One purchase that lapsed unpaid: when it was asked for, and its price and
@@ -529,7 +530,6 @@ export interface LapsedAttempt {
   readonly price: { readonly amount: string; readonly currency: string } | null;
   readonly asked_at: string;
   readonly priced_at: string | null;
-  readonly test: boolean;
 }
 
 const NO_LAPSED: LapsedAttempts = { page: null, of: 0 };
@@ -578,15 +578,16 @@ const orderSegments = (
 };
 
 /**
- * The page of the purchases that lapsed unpaid the address asks for, or null
- * where it asks for another segment, beside which they are only counted.
+ * Where the page of the purchases that lapsed unpaid the address asks for
+ * stands, or null where it asks for another segment, beside which they are
+ * only counted.
  */
-export const lapsedPageIn = (query: URLSearchParams): number | null => {
+export const lapsedPageIn = (query: URLSearchParams): Readonly<{ from: From }> | null => {
   const asked = askedIn(
     query,
     orderSegments({ orders: [] }, new Set(), 0).map((one) => one.key),
   );
-  return asked.show === LAPSED ? asked.page : null;
+  return asked.show === LAPSED ? { from: asked.from } : null;
 };
 
 /** What stands between the two halves of an identifier shown short: its ellipsis, or dots typed for it. */
@@ -643,11 +644,23 @@ const orderSearch = (words: string): ((row: OrderRow) => boolean) => {
   };
 };
 
-/** When an order's price was set, to sort by; a moment that cannot be read goes last. */
-const setAt = (order: OrderList["orders"][number]): number => {
-  const at = Date.parse(order.price.at);
-  return Number.isNaN(at) ? Number.NEGATIVE_INFINITY : at;
+/** The earliest moment a date can hold, which a moment that cannot be read is sorted as. */
+const UNREAD_MOMENT = -8.64e15;
+
+/** A moment as the lists sort by it, to the millisecond. */
+const momentKey = (iso: string): number => {
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? UNREAD_MOMENT : at;
 };
+
+/**
+ * Where an order stands in the list: newest first by when its price was set,
+ * a tie broken by its identifier.
+ */
+const orderMark = (order: OrderList["orders"][number]): Mark => ({
+  key: [momentKey(order.price.at)],
+  id: order.id,
+});
 
 const inTheShopOf = (paid: string, shop: ShopTotal | undefined): string | null => {
   const converted = shop?.converted;
@@ -709,7 +722,6 @@ const factsOf = (kept: {
 };
 
 export const ordersView = (
-  mode: SurfaceMode,
   cards: MerchantCardList,
   orders: OrderList,
   open: OrderList,
@@ -732,7 +744,6 @@ export const ordersView = (
     product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
     itemId: order.merchant_item_id,
     amount: money(order.price),
-    test: order.test,
     share: shareIn(order.price, paidInto[order.id]),
     state: merchantOrderWord(order, reopened(order)),
     paymentUnresolved: order.payment_status === "unresolved",
@@ -781,8 +792,9 @@ export const ordersView = (
   // Newest first, whatever order the gateway lists them in, so the page a long
   // list opens on holds what just happened and a day's orders sit together.
   const listed = [...orders.orders]
-    .sort((one, other) => setAt(other) - setAt(one) || 0)
-    .map((order) => ({ order, row: rowOf(order) }));
+    .sort((one, other) => rising(orderMark(other), orderMark(one)))
+    .map((order) => ({ order, row: rowOf(order), mark: orderMark(order) }));
+  const marks = new Map(listed.map((one) => [one.row.id, one.mark]));
   const needed = new Set(orders.orders.filter(needing).map((order) => order.id));
   const typed = askedIn(
     query,
@@ -804,6 +816,7 @@ export const ordersView = (
     asked,
     path: "/orders",
     segments,
+    markOf: (row) => marks.get(row.id) ?? { key: [UNREAD_MOMENT], id: row.id },
     matches: finds,
     noMatch: (q, within) =>
       within === null
@@ -820,7 +833,6 @@ export const ordersView = (
           product: titles.get(attempt.merchant_item_id) ?? attempt.merchant_item_id,
           itemId: attempt.merchant_item_id,
           amount: attempt.price === null ? "No price" : money(attempt.price),
-          test: attempt.test,
           share: null,
           state: ORDER_WORDS[attempt.status],
           shopTotal: null,
@@ -845,6 +857,9 @@ export const ordersView = (
         listing: theirs,
         rows: lapsedRows,
         of: lapsed.of,
+        newer: lapsed.page === null ? 0 : lapsed.newer,
+        previous: lapsed.page === null ? null : lapsed.previous,
+        next: lapsed.page === null ? null : lapsed.next,
         asked,
         path: "/orders",
         first: segments[0]?.key ?? "",
@@ -880,7 +895,6 @@ export const ordersView = (
   return {
     none: orders.orders.length === 0 && lapsed.of === 0,
     pressed: null,
-    testNote: testOrders(onLapsed ? { orders: lapsed.page ?? [] } : orders, mode),
     lapsedApart:
       !onLapsed && asked.q !== "" && lapsed.of > 0
         ? {
@@ -998,25 +1012,6 @@ const REFUND: Rest = {
 const PAID_AFTER_CLOSURE =
   "The buyer's payment arrived after you closed this order, so they paid and nothing was delivered through Agentify. Close it again with a note that says what you did.";
 
-/**
- * Orders carry the test flag too, and their sums would otherwise be taken for
- * money that moved: each sum carries the mark, and the page says it once too.
- * Where the band over every page of the channel already says its payments are
- * tests, the page does not say it a second time.
- */
-const testOrders = (
-  orders: Readonly<{ orders: readonly Readonly<{ test: boolean }>[] }>,
-  mode: SurfaceMode,
-): string | null => {
-  const tests = orders.orders.filter((order) => order.test).length;
-  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
-    return null;
-  }
-  return tests === orders.orders.length
-    ? "Every order here is a test purchase: no real money moved."
-    : `${countOf(tests, "order")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}: no real money moved for ${tests === 1 ? "it" : "those"}.`;
-};
-
 /** Missing cause means unknown cause, rather than a guessed missed deadline. */
 const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
   refused: "Paid, but your integration refused the order, so nothing was delivered.",
@@ -1054,7 +1049,7 @@ const wayOn = (
 ): Readonly<{ why: string; rest: Rest | null }> => {
   if (order.status !== "unfulfilled") {
     return {
-      why: "Your integration delivered, but the payment failed, so the goods are held. The buyer can pay again for this same order, and if that payment settles the goods are released and the order closes; whether to revoke what you delivered or wait is yours to decide.",
+      why: "Your integration delivered, then the payment failed, so the buyer does not get the goods yet. This is rare and happens only with immediate delivery: the payment is checked before delivery and made after it, and the money can leave the buyer's wallet in between. If the buyer pays again for this same order and that payment goes through, the goods are released. Whether to revoke what you delivered or wait is up to you.",
       rest: {
         href: "/docs/orders#you-delivered-and-the-payment-did-not-execute",
         words: "What can still happen",
@@ -1124,7 +1119,6 @@ interface ReceiptRow {
   readonly needsYou: boolean;
   readonly product: string;
   readonly amount: string;
-  readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
   readonly share: string | null;
   readonly outcome: Word;
@@ -1139,8 +1133,6 @@ interface ReceiptRow {
 }
 
 export interface ReceiptsView {
-  /** Null when no receipt is a test purchase, or where the band over the page says so. */
-  readonly testWarning: string | null;
   /** The receipts the address asks for, the latest payment first, a page at a time. */
   readonly listing: Listing<ReceiptRow>;
 }
@@ -1151,7 +1143,6 @@ const ALL_RECEIPTS: readonly SegmentRule<ReceiptRow>[] = [
 ];
 
 export const receiptsView = (
-  viewer: Viewer,
   cards: MerchantCardList,
   receipts: ReceiptList,
   transactionPage: string | null = null,
@@ -1160,27 +1151,26 @@ export const receiptsView = (
 ): ReceiptsView => {
   const titles = new Map(cards.cards.map((entry) => [entry.id, entry.card.title]));
   // The latest payment first, whatever order the gateway lists them in.
-  const rows = [...receipts.receipts]
-    .sort((one, other) => Date.parse(other.paid_at) - Date.parse(one.paid_at))
-    .map(
-      (receipt): ReceiptRow => ({
-        id: receipt.id,
-        orderId: receipt.order_id,
-        needsYou: needsYou(receipt.outcome),
-        product: titles.get(receipt.item_id) ?? receipt.item_id,
-        amount: money(receipt.price),
-        test: receipt.test,
-        share: shareIn(receipt.price, paidInto[receipt.order_id]),
-        outcome: ORDER_WORDS[receipt.outcome],
-        paid: momentView(receipt.paid_at),
-        priceSet: momentView(receipt.price.at),
-        priceAsOf: momentView(receipt.price.as_of),
-        ...withinDay(receipt.paid_at),
-        transfer: transferOf(receipt.transaction, transactionPage),
-      }),
-    );
+  const marks = new Map(
+    receipts.receipts.map((one) => [one.id, { key: [momentKey(one.paid_at)], id: one.id }]),
+  );
+  const rows = receipts.receipts.map(
+    (receipt): ReceiptRow => ({
+      id: receipt.id,
+      orderId: receipt.order_id,
+      needsYou: needsYou(receipt.outcome),
+      product: titles.get(receipt.item_id) ?? receipt.item_id,
+      amount: money(receipt.price),
+      share: shareIn(receipt.price, paidInto[receipt.order_id]),
+      outcome: ORDER_WORDS[receipt.outcome],
+      paid: momentView(receipt.paid_at),
+      priceSet: momentView(receipt.price.at),
+      priceAsOf: momentView(receipt.price.as_of),
+      ...withinDay(receipt.paid_at),
+      transfer: transferOf(receipt.transaction, transactionPage),
+    }),
+  );
   return {
-    testWarning: testWarning(receipts, viewer.mode),
     listing: listingOf({
       rows,
       asked: {
@@ -1193,26 +1183,10 @@ export const receiptsView = (
       },
       path: "/receipts",
       segments: ALL_RECEIPTS,
+      markOf: (row) => marks.get(row.id) ?? { key: [UNREAD_MOMENT], id: row.id },
       matches: () => true,
       noMatch: () => "",
       showAll: "Show all receipts",
     }),
   };
-};
-
-/**
- * A mark per row tells two rows apart but does not stop a merchant reading a
- * page of them as takings, so where a row is a test the page says so once: in
- * the band over every page of a channel that has one, or else in a sentence.
- */
-const testWarning = (receipts: ReceiptList, mode: SurfaceMode): string | null => {
-  const tests = receipts.receipts.filter((receipt) => receipt.test).length;
-  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
-    return null;
-  }
-  const subject =
-    tests === receipts.receipts.length
-      ? "Every receipt here is a test purchase"
-      : `${countOf(tests, "receipt")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}`;
-  return `${subject}: no real money moved.`;
 };

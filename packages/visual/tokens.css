@@ -256,7 +256,9 @@ p {
 }
 
 /* 48px is a thumb-sized target; do not shrink it per page. Inside a table row
-   use .button-compact. */
+   use .button-compact. Where a narrow window wraps the words, the lines stay
+   centred, keep the inset above and below them that one line has, and share
+   the words evenly, so no word is left alone on the last line. */
 .button {
   min-height: 48px;
   display: inline-flex;
@@ -265,9 +267,12 @@ p {
   gap: 8px;
   border: 0;
   border-radius: var(--radius-control);
-  padding: 0 22px;
+  padding: var(--space-control) 22px;
   cursor: pointer;
   font-weight: 600;
+  line-height: var(--leading-ui);
+  text-align: center;
+  text-wrap: balance;
   text-decoration: none;
   transition:
     background 150ms ease,
@@ -305,7 +310,7 @@ p {
    itself. */
 .button-compact {
   min-height: 36px;
-  padding: 0 14px;
+  padding: var(--space-snug) 14px;
   font-size: 0.875rem;
 }
 
@@ -376,7 +381,7 @@ select.field-input {
    whoever types in it may make it taller. */
 textarea.field-input {
   padding: 12px 14px;
-  line-height: 1.5;
+  line-height: var(--leading-text);
   resize: vertical;
 }
 
@@ -1081,7 +1086,7 @@ textarea.field-input {
 .surface-words {
   margin: 0;
   padding-block: 10px;
-  font: 600 var(--text-label) / 1.5 var(--font-sans);
+  font: 600 var(--text-label) / var(--leading-ui) var(--font-sans);
 }
 
 .surface-words::before {

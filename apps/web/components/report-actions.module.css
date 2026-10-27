@@ -32,7 +32,7 @@
   flex: 1 1 calc(50% - 5px);
   border-radius: var(--radius-control);
   padding: 0 8px;
-  font: 600 0.875rem / 1.2 var(--font-sans);
+  font: 600 0.875rem / var(--leading-ui) var(--font-sans);
   white-space: nowrap;
 }
 

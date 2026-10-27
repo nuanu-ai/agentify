@@ -53,7 +53,7 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
   },
   {
     id: "dashboard-admin-not-an-operator",
-    screen: "There is no such page",
+    screen: "Page not found",
     when: "Somebody signed in without the operator flag opens any page of the workspace.",
     cause:
       "The workspace's layout reads the flag before any page runs and answers as the dashboard answers an address it does not have; an account with no merchant is sent to make one instead.",
@@ -109,7 +109,7 @@ export const WORKSPACE_STATES: readonly AdminGalleryState[] = [
   },
   {
     id: "dashboard-admin-no-such-page",
-    screen: "There is no such page",
+    screen: "Page not found",
     when: "An operator opens an address under the workspace that is none of its pages.",
     cause: "No page of the workspace matches the address.",
     path: "/admin/nothing-here",

@@ -29,6 +29,7 @@ import type {
   JournalQuery,
   JournalRow,
 } from "./journal.js";
+import type { PageFrom } from "./paging.js";
 import type { Reminder } from "./queue.js";
 
 export type PaymentCompletion =
@@ -176,6 +177,25 @@ export type Born = "written" | "switched_away" | "too_many_waiting";
 export type IntegrationSwitch =
   | { readonly switched: true; readonly sellingPaused: boolean }
   | { readonly switched: false; readonly waiting: readonly string[] };
+
+/** A place in a list of orders: when an order was made, and its identifier, which breaks a tie. */
+export interface OrderPlace {
+  readonly createdAt: number;
+  readonly id: string;
+}
+
+/**
+ * A page of a merchant's attempts that lapsed unpaid: how many there are in
+ * all and how many are newer than the page, and the places of its first
+ * attempt where newer ones precede it and of its last where older ones follow.
+ */
+export interface LapsedPage {
+  readonly orders: readonly StoredOrder[];
+  readonly of: number;
+  readonly newer: number;
+  readonly previous: OrderPlace | null;
+  readonly next: OrderPlace | null;
+}
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
 export interface StoredCard {
@@ -1069,13 +1089,14 @@ export interface Store {
 
   /**
    * One page of this merchant's attempts that lapsed unpaid, priced or not,
-   * the newest first, and how many such attempts they have in all. A `limit`
-   * of nothing reads only the count.
+   * the newest first, at most `limit` of them where `from` stands (the newest
+   * page where absent), and how many such attempts they have in all. A
+   * `limit` of nothing reads only the count.
    */
   lapsedAttempts(
     merchantId: string,
-    page: { readonly offset: number; readonly limit: number },
-  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }>;
+    page: { readonly limit: number; readonly from?: PageFrom<OrderPlace> },
+  ): Promise<LapsedPage>;
 
   /**
    * Every order still owed work or money, whoever it belongs to, for the

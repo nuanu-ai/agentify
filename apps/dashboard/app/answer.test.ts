@@ -23,10 +23,14 @@ const RELOAD = "x-remix-reload-document";
 
 describe("a redirect a press answers with", () => {
   it("stays inside the application back to the page it was made on, whatever its query", () => {
-    const back = sendTo("/products?q=room&page=2", new URL("http://dashboard.test/products"), "");
+    const back = sendTo(
+      "/products?q=room&after=1787000000000.itm_7d3e",
+      new URL("http://dashboard.test/products"),
+      "",
+    );
 
     expect(back.status).toBe(303);
-    expect(back.headers.get("location")).toBe("/products?q=room&page=2");
+    expect(back.headers.get("location")).toBe("/products?q=room&after=1787000000000.itm_7d3e");
     expect(back.headers.get(RELOAD)).toBeNull();
   });
 
@@ -97,7 +101,9 @@ describe("a request the page's script sent that failed on its way", () => {
 
   it("is a change nobody could confirm when it was a press, and leads back to the page it was pressed on, with its place in the list", async () => {
     vi.stubGlobal("window", {
-      location: new URL("http://dashboard.test/dashboard/products?q=room&page=2"),
+      location: new URL(
+        "http://dashboard.test/dashboard/products?q=room&after=1787000000000.itm_7d3e",
+      ),
     });
     const results = await around(
       asked("POST", "http://dashboard.test/dashboard/products?pause=itm_1"),
@@ -108,7 +114,7 @@ describe("a request the page's script sent that failed on its way", () => {
 
     expect(carried(results["routes/cards"])).toStrictEqual({
       kind: "unanswered",
-      reopen: "/dashboard/products?q=room&page=2",
+      reopen: "/dashboard/products?q=room&after=1787000000000.itm_7d3e",
     });
   });
 

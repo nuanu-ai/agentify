@@ -58,3 +58,10 @@ the fix preserves those facts, and the second review has no actionable finding.
 Live SDK installation, deployed upgrades, paid purchases and delivery on a
 remote merchant's service were not exercised. The release still needs its
 normal channel acceptance with matching merchant workers.
+
+Integration with main preserves its order index migration as 0032 and adds
+worker contact as 0033. The generated worker migration adds only
+`merchant_contact.contract_version`. The complete database suite passes 583
+tests in 26 files after the merge, and the offline suite passes 7,411 tests in
+380 files. A separate review confirms that current compatible contact and
+historical operator facts remain separate.

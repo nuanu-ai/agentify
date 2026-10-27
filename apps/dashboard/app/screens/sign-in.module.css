@@ -50,6 +50,16 @@ button.google img {
   margin-top: var(--space-control);
 }
 
+/* Two actions side by side are one group: it stands a control's distance
+   from the box above it, and its buttons take no margin of their own. */
+:global(.gate) .card :global(.field) ~ .actions {
+  margin-top: var(--space-control);
+}
+
+:global(.gate) .card .actions :global(.button) {
+  margin-top: 0;
+}
+
 :global(.gate) .card p.or,
 :global(.gate) .card p.or + form :global(.button) {
   margin-top: var(--gap-caption);

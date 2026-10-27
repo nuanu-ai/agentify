@@ -156,9 +156,23 @@ const ACCOUNTS: ReadonlyMap<string, readonly NamedAccount[]> = new Map(
   ]),
 );
 
+/** The first page of the list, leading on from its last row where more follow. */
 const listed = (rows: readonly MerchantRow[], total = rows.length): MerchantList => ({
   rows,
   total,
+  newer: 0,
+  previous: null,
+  next: (() => {
+    const last = rows.at(-1);
+    return last === undefined || rows.length === total
+      ? null
+      : {
+          waiting: last.segment === "waiting",
+          lastSaleAt: last.lastSaleAt,
+          createdAt: last.createdAt,
+          id: last.id,
+        };
+  })(),
   segments: {
     all: MERCHANTS_IN_ALL,
     waiting: 1,
@@ -187,7 +201,6 @@ const listState = (
         accounts: read.unread === true ? null : ACCOUNTS,
         accountsUnread: read.unread === true,
         accountsCut: false,
-        page: 1,
       }),
     },
   };
@@ -526,6 +539,9 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
             : {}),
         })),
         total: 4,
+        newer: 0,
+        previous: null,
+        next: null,
         segments: { all: 4, waiting: 0, selling: 2, setting_up: 2, paused: 0 },
       },
     },
@@ -542,6 +558,9 @@ export const MERCHANTS_STATES: readonly AdminGalleryState[] = [
       found: {
         rows: [],
         total: 0,
+        newer: 0,
+        previous: null,
+        next: null,
         segments: { all: 0, waiting: 0, selling: 0, setting_up: 0, paused: 0 },
       },
     },

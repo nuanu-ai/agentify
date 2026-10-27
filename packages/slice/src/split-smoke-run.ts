@@ -163,8 +163,8 @@ const sharesOf = (split: PayoutSplit) => ({
  * The run's five steps with what each leaves, worked out from the balances
  * read before it: two payments of `price`, each followed by the payout
  * screen's transaction, which creates the split the first time, distributes
- * it and withdraws the merchant's share; then the operator's, which also
- * withdraws the commission.
+ * it and withdraws the merchant's share and then the commission; then the
+ * operator's, which makes the same calls on what is left.
  */
 export function planRun(
   split: PayoutSplit,
@@ -179,9 +179,9 @@ export function planRun(
   const toCommission: Move = { kind: "withdraw", owner: split.commissionWallet };
   const script: readonly [string, PlannedStep["kind"], readonly Move[]][] = [
     ["the first payment", "payment", payment],
-    ["the first payout", "instruction", [distribute, toMerchant]],
+    ["the first payout", "instruction", [distribute, toMerchant, toCommission]],
     ["the second payment", "payment", payment],
-    ["the second payout", "instruction", [distribute, toMerchant]],
+    ["the second payout", "instruction", [distribute, toMerchant, toCommission]],
     ["the operator's payout", "operator", [distribute, toMerchant, toCommission]],
   ];
 

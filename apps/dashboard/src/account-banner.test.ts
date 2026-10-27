@@ -55,8 +55,12 @@ describe("the account banner", () => {
     expect(never?.reason).toBe("out_of_touch");
     expect(never?.says).not.toBe(since?.says);
     // Nothing is paused that the merchant has to resume: the first poll lets
-    // the next purchase through, so the banner offers no switch.
-    expect([since?.fix, never?.fix]).toStrictEqual([null, null]);
+    // the next purchase through, so the way on is what to check, in the
+    // documentation, and no switch on a page of the dashboard.
+    expect([since?.fix?.to, never?.fix?.to]).toStrictEqual([
+      "/docs/failures#your-integration-has-not-connected",
+      "/docs/failures#your-integration-has-not-connected",
+    ]);
   });
 
   it("names a merchant whose purchases waiting for payment fill the limit, with nothing to switch on", () => {

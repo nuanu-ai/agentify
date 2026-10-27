@@ -1,7 +1,7 @@
 /**
  * Loaded with `--import` into the process that runs the quickstart's buyer
- * program, so the program can meet a broken network without a line of it
- * changing. It does four things and nothing else.
+ * program to exercise network and storage failures without changing the
+ * program itself.
  *
  * It refuses every address that is not on this machine, so the program cannot
  * reach the real test channel from `pnpm test`.

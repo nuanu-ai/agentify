@@ -3024,7 +3024,7 @@ describe("the settings screen", () => {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
-      expect(readable(data.html), path).not.toContain("There is no such page");
+      expect(readable(data.html), path).not.toContain("Page not found");
     }
   });
 
@@ -3227,7 +3227,7 @@ describe("the wallet a merchant's share is paid out to", () => {
         running.harnessed.runtime.config.payoutSplitNetworks,
       ).data,
     );
-    expect(data).toHaveLength(3_146);
+    expect(data).toHaveLength(3_658);
   });
 
   it("names the commission at the terms the split of the saved wallet was recorded with", async () => {
@@ -3487,6 +3487,18 @@ describe("the way out to the documentation", () => {
       const out = /<a[^>]+href="\/docs\/"[^>]*>([^<]+)<\/a>/.exec(screen.html);
       expect(out?.[1]?.trim(), `${path} has no readable link to the documentation`).toBeTruthy();
     }
+  });
+
+  it("leaves the mount point from the banner too, where a reason leads to what to check", async () => {
+    const { browser, gateway, harnessed } = await started({ base: "/dashboard" });
+    await publish(gateway, esimCard);
+    await browser.signIn();
+    harnessed.advance(11 * 60_000);
+
+    const { html } = await browser.get("/dashboard/products");
+
+    expect(reasonsIn(html)).toStrictEqual(["out_of_touch"]);
+    expect(html).toContain('href="/docs/failures#your-integration-has-not-connected"');
   });
 });
 
@@ -3787,19 +3799,19 @@ describe("the cards screen", () => {
     const kept = await browser.post(switchOf(room, "pause"), {
       q: "room",
       show: "off-sale",
-      page: "3",
+      after: "1787000000000.item_7d3e",
     });
     const unknown = await browser.post(switchOf(room, "resume"), {
       q: " room ",
       show: "every",
-      page: "-1",
+      after: "page-3",
     });
     // A search in another script goes back as a browser writes it, since a
     // header carries no letter outside Latin-1.
     const written = await browser.post(switchOf(room, "pause"), { q: "кофе" });
     await browser.post(switchOf(room, "resume"));
 
-    expect(kept.to).toBe("/products?q=room&show=off-sale&page=3");
+    expect(kept.to).toBe("/products?q=room&show=off-sale&after=1787000000000.item_7d3e");
     expect(unknown.to).toBe("/products?q=room");
     expect(written.to).toBe(`/products?q=${encodeURIComponent("кофе")}`);
     expect(await purchasable(gateway, room)).toBe(true);
@@ -4285,11 +4297,11 @@ describe("the orders screen", () => {
     const { html } = await browser.get("/orders?show=open");
     const text = readable(html);
 
-    expect(text).toContain("the goods are held");
+    expect(html).toContain("#you-delivered-and-the-payment-did-not-execute");
     // Still open, with nothing owed by the merchant. What can still happen is
     // the portal's to explain, and the page links there. It must never suggest
     // the buyer start again, which would deliver twice.
-    expect(text).toContain("The buyer can pay again for this same order");
+    expect(text).toContain("the buyer pays again for this same order");
     expect(text).not.toContain("repeat purchase");
     // Nothing is owed by the merchant, so the order is not counted among
     // those that need them.
@@ -4534,31 +4546,6 @@ describe("the receipts screen", () => {
     const html = (await browser.get("/receipts")).html;
 
     expect(html).toContain(`href="https://sepolia.basescan.org/tx/${transfer}"`);
-  });
-
-  it("marks money that was never real as what it is", async () => {
-    // While every order is a test, this is every row; a ledger of payments that
-    // never happened, laid out as one, is the worst thing this page could be.
-    const { browser, gateway, harnessed } = await started({
-      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
-    });
-    const itemId = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    await browser.signIn();
-
-    const receipts = readable((await browser.get("/receipts")).html);
-    const orders = readable((await browser.get("/orders")).html);
-
-    // The band over every page of the test channel says it, once, and no
-    // sentence over the list or mark on a sum says it again.
-    expect(receipts).toContain(SURFACE_WORDS.test);
-    expect(orders).toContain(SURFACE_WORDS.test);
-    expect(receipts).not.toContain("Every receipt here is a test purchase");
-    expect(orders).not.toContain("Every order here is a test purchase");
-    expect(receipts).not.toContain("80.00 USD test");
-    expect(orders).not.toContain("80.00 USD test");
   });
 
   it("counts nothing it cannot count, and says what is missing instead", async () => {
@@ -5416,7 +5403,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const answered = await browser.get("/nowhere");
 
     expect(answered.status).toBe(404);
-    expect(readable(answered.html)).toContain("There is no such page");
+    expect(readable(answered.html)).toContain("Page not found");
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/products"[^>]*>Back to the dashboard<\/a>/);
@@ -5706,7 +5693,7 @@ describe("when the gateway will not answer", () => {
     expect(answered.status).toBe(504);
     const text = readable(answered.html);
     expect(text).toContain("could not be loaded");
-    expect(text).not.toContain("Publish a card through the SDK");
+    expect(answered.html).not.toContain('href="/docs/quickstart"');
   });
 });
 
@@ -7779,11 +7766,13 @@ describe("closing fulfillment from Orders", () => {
     const closed = await running.browser.post("/orders", {
       order_id: id,
       show: "needs",
-      page: "2",
+      before: "1787000000000.ord_7d3e",
     });
 
     expect(closed.status).toBe(303);
-    expect(closed.to).toBe(`/orders?show=needs&page=2&details=${id}#details-${id}`);
+    expect(closed.to).toBe(
+      `/orders?show=needs&before=1787000000000.ord_7d3e&details=${id}#details-${id}`,
+    );
   });
 
   it("rereads an unanswered write and shows the recorded closure", async () => {

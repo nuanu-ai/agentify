@@ -1,11 +1,10 @@
 # Sending a payout
 
 You hold the wallet your business is paid into, and you want what has
-accumulated in your payout contract now rather than when Agentify next
-collects its own share. A payout is one transaction on the Base network: it
-pays out every sale since the last payout, your share to your wallet and ours
-to our balance in the 0xSplits warehouse, and it costs only the network's
-fee. Why it works that way is on
+accumulated in your payout contract now rather than when Agentify next pays
+out every payout contract itself. A payout is one transaction on the Base
+network: it pays out every sale since the last payout, your share to your
+wallet and ours to our wallet, and it costs only the network's fee. Why it works that way is on
 [Money](/money#getting-paid-out).
 
 ## What Settings shows before you send it
@@ -37,7 +36,8 @@ from another wallet, as described below.
 1. Open the Settings screen of your dashboard.
 2. Press Pay out with Coinbase Wallet. Coinbase's window opens and asks you to
    approve the transaction; nothing is sent until you do.
-3. Approve it. Your share reaches your wallet in that same transaction.
+3. Approve it. Your share reaches your wallet in that same transaction, and
+   our {{commission}} reaches us in it too.
 
 Once you approve it, Settings says that you asked Coinbase Wallet to send the
 payout and that it accepted, with the amount the page showed. That means the

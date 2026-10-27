@@ -118,9 +118,7 @@ const THREE = ordersOf([
 
 /** The ids of the rows the address asks for, among these orders, all of them open. */
 const found = (address: string, orders = THREE, open = orders) =>
-  ordersView("live", CARDS, orders, open, new URLSearchParams(address)).listing.rows.map(
-    (row) => row.id,
-  );
+  ordersView(CARDS, orders, open, new URLSearchParams(address)).listing.rows.map((row) => row.id);
 
 const searched = (q: string) => found(new URLSearchParams({ q }).toString());
 
@@ -143,11 +141,12 @@ describe("searching the orders", () => {
   });
 
   it("finds every order either half of a short form belongs to", () => {
-    expect(searched("ord_17ff")).toStrictEqual([FIRST, SAME_HEAD]);
-    expect(searched("17ff")).toStrictEqual([FIRST, SAME_HEAD]);
-    expect(searched("7de3")).toStrictEqual([FIRST, SAME_TAIL]);
-    expect(searched("ord_17ff…")).toStrictEqual([FIRST, SAME_HEAD]);
-    expect(searched("…7de3")).toStrictEqual([FIRST, SAME_TAIL]);
+    // Priced in the same moment, they are listed by their IDs, the greatest first.
+    expect(searched("ord_17ff")).toStrictEqual([SAME_HEAD, FIRST]);
+    expect(searched("17ff")).toStrictEqual([SAME_HEAD, FIRST]);
+    expect(searched("7de3")).toStrictEqual([SAME_TAIL, FIRST]);
+    expect(searched("ord_17ff…")).toStrictEqual([SAME_HEAD, FIRST]);
+    expect(searched("…7de3")).toStrictEqual([SAME_TAIL, FIRST]);
   });
 
   it("finds an order by its short form pasted with words or marks around it", () => {
@@ -195,13 +194,7 @@ describe("searching the orders", () => {
     const pasted = `a${" ".repeat(198)}b`;
     const started = performance.now();
 
-    const { search } = ordersView(
-      "live",
-      CARDS,
-      many,
-      many,
-      new URLSearchParams({ q: pasted }),
-    ).listing;
+    const { search } = ordersView(CARDS, many, many, new URLSearchParams({ q: pasted })).listing;
 
     expect(performance.now() - started).toBeLessThan(1_000);
     expect(search).toMatchObject({ q: pasted, cutAt: null });
@@ -224,12 +217,12 @@ describe("searching the orders", () => {
     const missed = readable(
       served(() => (
         <OrdersScreen
-          view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
+          view={ordersView(CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
         />
       )),
     );
     const none = readable(
-      served(() => <OrdersScreen view={ordersView("live", CARDS, ordersOf([]), ordersOf([]))} />),
+      served(() => <OrdersScreen view={ordersView(CARDS, ordersOf([]), ordersOf([]))} />),
     );
 
     expect(missed).toContain("No order matches “router”.");
@@ -245,7 +238,7 @@ describe("searching the orders", () => {
       { id: SAME_TAIL, status: "unfulfilled" },
     ]);
 
-    const view = ordersView("live", CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
+    const view = ordersView(CARDS, owing, owing, new URLSearchParams({ q: FIRST }));
 
     expect(view.needsYou.rows.map((one) => one.id)).toStrictEqual([FIRST]);
   });
@@ -256,9 +249,7 @@ describe("the counts beside a search", () => {
   const toolsOf = (address: string): string =>
     /<div class="list-tools">([\s\S]*?)<section class="group">/.exec(
       served(() => (
-        <OrdersScreen
-          view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams(address))}
-        />
+        <OrdersScreen view={ordersView(CARDS, THREE, THREE, new URLSearchParams(address))} />
       )),
     )?.[1] ?? "";
   const linksIn = (html: string): readonly string[] =>
@@ -279,9 +270,7 @@ describe("the counts beside a search", () => {
 
   it("offer one way back where the search found nothing", () => {
     const page = served(() => (
-      <OrdersScreen
-        view={ordersView("live", CARDS, THREE, THREE, new URLSearchParams("q=unfulfilled"))}
-      />
+      <OrdersScreen view={ordersView(CARDS, THREE, THREE, new URLSearchParams("q=unfulfilled"))} />
     ));
 
     expect(linksIn(page).filter((href) => href === "/orders")).toHaveLength(1);
@@ -312,7 +301,6 @@ describe("a shop's order a cent from what the buyer paid", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
-            "live",
             CARDS,
             orders,
             orders,
@@ -350,14 +338,6 @@ describe("a shop's order a cent from what the buyer paid", () => {
   });
 });
 
-describe("an unfulfilled test purchase", () => {
-  it("marks the original amount as a test", () => {
-    const orders = ordersOf([{ id: FIRST, status: "unfulfilled", test: true }]);
-    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
-    expect(readable(html)).toContain("5.00 USD test");
-  });
-});
-
 describe("the open orders", () => {
   it("are the orders the gateway's open list holds, whatever their state says", () => {
     // Both read "In progress"; only the one the merchant was handed is open.
@@ -368,7 +348,7 @@ describe("the open orders", () => {
     ]);
     const open = ordersOf([{ id: FIRST, status: "in_progress" }]);
 
-    const view = ordersView("live", CARDS, all, open, new URLSearchParams("show=open"));
+    const view = ordersView(CARDS, all, open, new URLSearchParams("show=open"));
 
     expect(view.listing.rows.map((row) => row.id)).toStrictEqual([FIRST]);
     expect(view.listing.segments.map((one) => [one.label, one.count])).toStrictEqual([
@@ -382,7 +362,7 @@ describe("the open orders", () => {
     const text = readable(
       served(() => (
         <OrdersScreen
-          view={ordersView("live", CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
+          view={ordersView(CARDS, THREE, ordersOf([]), new URLSearchParams("show=open"))}
         />
       )),
     );
@@ -403,19 +383,22 @@ describe("a long list of orders", () => {
   );
 
   it("draws the newest fifty first and says which of how many", () => {
-    const view = ordersView("live", CARDS, many, many);
+    const view = ordersView(CARDS, many, many);
 
     expect(view.listing.rows[0]?.id).toBe(many.orders[119]?.id);
     expect(view.listing.rows).toHaveLength(50);
     expect(readable(served(() => <OrdersScreen view={view} />))).toContain("Showing 1–50 of 120");
   });
 
+  /** The address of the page Next leads to from the first. */
+  const second = () =>
+    new URL(ordersView(CARDS, many, many).listing.cut?.next ?? "", "https://agentify.ad")
+      .searchParams;
+
   it("puts each day's orders under one heading, the newest day first", () => {
     // The oldest sixty fall on the eleventh of October and the newest sixty on
     // the twelfth, so the second page holds the turn of the day.
-    const html = served(() => (
-      <OrdersScreen view={ordersView("live", CARDS, many, many, new URLSearchParams("page=2"))} />
-    ));
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, many, many, second())} />);
 
     const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
       (day) => day[1],
@@ -427,9 +410,7 @@ describe("a long list of orders", () => {
   it("puts them under the days of the viewer's calendar, the heading naming the zone each time is in", () => {
     // Every order here falls between 07:00 and 09:00 in Bali, on the twelfth.
     const html = inViewersZone("Asia/Makassar", () =>
-      served(() => (
-        <OrdersScreen view={ordersView("live", CARDS, many, many, new URLSearchParams("page=2"))} />
-      )),
+      served(() => <OrdersScreen view={ordersView(CARDS, many, many, second())} />),
     );
 
     const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
@@ -451,12 +432,18 @@ describe("a long run of orders told in full", () => {
       })),
     );
 
+  /**
+   * An order's identifier as a row shows it, not as the cursor a row's form
+   * carries back writes it after a moment and a dot.
+   */
+  const AN_ID = /(?<!\.)ord_[0-9a-f]{32}/g;
+
   /** The ids of the rows drawn in the group the list is labelled with, in order. */
   const toldIn = (html: string, label: string): readonly string[] => {
     const group = new RegExp(`<ul class="list" aria-label="${label}"[^>]*>([\\s\\S]*?)</ul>`).exec(
       html,
     );
-    return [...(group?.[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+    return [...(group?.[1] ?? "").matchAll(AN_ID)]
       .map((id) => id[0])
       .filter((id, at, all) => all.indexOf(id) === at);
   };
@@ -467,7 +454,7 @@ describe("a long run of orders told in full", () => {
   ])("draws the newest fifty orders %s and says which of how many", (status, title, label) => {
     const orders = sixtyOf(status);
 
-    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
 
     const told = toldIn(html, label);
     expect(told).toHaveLength(50);
@@ -479,7 +466,7 @@ describe("a long run of orders told in full", () => {
   it("says nothing of a cut where the group holds every order", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
 
-    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
 
     expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
     expect(readable(html)).not.toContain("Showing the newest");
@@ -488,7 +475,7 @@ describe("a long run of orders told in full", () => {
   /** The ids drawn in each list on the page, list after list, each once in its list. */
   const listedIn = (html: string): readonly string[] =>
     [...html.matchAll(/<ul class="list"[^>]*>([\s\S]*?)<\/ul>/g)].flatMap((list) =>
-      [...(list[1] ?? "").matchAll(/ord_[0-9a-f]{32}/g)]
+      [...(list[1] ?? "").matchAll(AN_ID)]
         .map((id) => id[0])
         .filter((id, at, all) => all.indexOf(id) === at),
     );
@@ -520,7 +507,7 @@ describe("a long run of orders told in full", () => {
     const orders = OrderListSchema.parse({
       orders: [...owing.orders, ...ordersOf([{ id: done }]).orders],
     });
-    const preview = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, owing)} />);
+    const preview = served(() => <OrdersScreen view={ordersView(CARDS, orders, owing)} />);
 
     const [way, ...more] = waysOnFrom(preview);
     expect(more).toStrictEqual([]);
@@ -528,7 +515,6 @@ describe("a long run of orders told in full", () => {
     let address: string | null = way ?? null;
     for (let pages = 0; address !== null && pages < 3; pages += 1) {
       const view = ordersView(
-        "live",
         CARDS,
         orders,
         owing,
@@ -556,11 +542,13 @@ describe("a long run of orders told in full", () => {
     const owing = sixtyOf("unfulfilled");
     const drawnAt = (address: string) =>
       served(() => (
-        <OrdersScreen
-          view={ordersView("live", CARDS, owing, owing, new URLSearchParams(address))}
-        />
+        <OrdersScreen view={ordersView(CARDS, owing, owing, new URLSearchParams(address))} />
       ));
-    const second = drawnAt("show=needs&page=2");
+    const next = new URL(
+      ordersView(CARDS, owing, owing, new URLSearchParams("show=needs")).listing.cut?.next ?? "",
+      "https://agentify.ad",
+    ).searchParams;
+    const second = drawnAt(next.toString());
     const [id = ""] = toldIn(second, "Orders that need you");
     const rowOf = (html: string) =>
       html.split("<li ").find((row) => row.includes(`name="order_id" value="${id}"`)) ?? "";
@@ -571,9 +559,9 @@ describe("a long run of orders told in full", () => {
     expect(row).toMatch(/<summary[^>]*aria-label="Close fulfillment for /);
     expect(row).not.toMatch(/<a [^>]*href="[^"]*details=/);
     expect(form?.fields.get("show")).toBe("needs");
-    expect(form?.fields.get("page")).toBe("2");
+    expect(form?.fields.get("after")).toBe(next.get("after"));
     // Named by the address, as the closure's answer names it, it is open.
-    expect(rowOf(drawnAt(`show=needs&page=2&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
+    expect(rowOf(drawnAt(`${next}&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
   });
 
   it("says once which of how many it shows where the list is the orders that need the merchant", () => {
@@ -581,9 +569,7 @@ describe("a long run of orders told in full", () => {
 
     const text = readable(
       served(() => (
-        <OrdersScreen
-          view={ordersView("live", CARDS, owing, owing, new URLSearchParams("show=needs"))}
-        />
+        <OrdersScreen view={ordersView(CARDS, owing, owing, new URLSearchParams("show=needs"))} />
       )),
     );
 
@@ -594,7 +580,7 @@ describe("a long run of orders told in full", () => {
   it("offers no other way on where Needs you already holds every order", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }, { id: SAME_HEAD }]);
 
-    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
 
     expect(waysOnFrom(html)).toStrictEqual([]);
   });
@@ -616,9 +602,7 @@ describe("merchant fulfillment closure", () => {
 
   it("keeps the original payment fact and attributes the explanation to the merchant", () => {
     const orders = closed("fulfillment_closed", "paid", "A refund was agreed <outside Agentify>.");
-    const html = served(() => (
-      <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
-    ));
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, ordersOf([]))} />);
     const text = readable(html);
 
     expect(text).toContain("Closed by you");
@@ -634,7 +618,7 @@ describe("merchant fulfillment closure", () => {
   it("shows closure without pretending an unresolved payment is known", () => {
     const orders = closed("payment_unresolved", "unresolved");
     const text = readable(
-      served(() => <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />),
+      served(() => <OrdersScreen view={ordersView(CARDS, orders, ordersOf([]))} />),
     );
 
     expect(text).toContain("Payment outcome unknown");
@@ -648,7 +632,7 @@ describe("merchant fulfillment closure", () => {
       orders: [{ ...THREE.orders[0], status: "fulfillment_closed", payment_status: "paid" }],
     });
     const text = readable(
-      served(() => <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />),
+      served(() => <OrdersScreen view={ordersView(CARDS, orders, ordersOf([]))} />),
     );
 
     expect(text).toContain("Fulfillment closed");
@@ -660,12 +644,8 @@ describe("merchant fulfillment closure", () => {
     // closes it again; one it no longer lists is settled.
     const orders = closed("fulfillment_closed", "paid", "Your payment did not go through.");
     const id = orders.orders[0]?.id ?? "";
-    const reopened = served(() => (
-      <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />
-    ));
-    const settled = served(() => (
-      <OrdersScreen view={ordersView("live", CARDS, orders, ordersOf([]))} />
-    ));
+    const reopened = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
+    const settled = served(() => <OrdersScreen view={ordersView(CARDS, orders, ordersOf([]))} />);
     const needs = (html: string) =>
       readable(
         /<section class="group">(?:(?!<\/section>)[\s\S])*?aria-label="Orders that need you"[\s\S]*?<\/section>/.exec(
@@ -713,7 +693,7 @@ describe("merchant fulfillment closure", () => {
         },
       ],
     });
-    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
 
     cases.forEach(([status, payment, offered], at) => {
       expect(
@@ -743,7 +723,7 @@ describe("a closure made from the Needs you list", () => {
   });
   const drawnAt = (address: string) =>
     served(() => (
-      <OrdersScreen view={ordersView("live", CARDS, orders, owing, new URLSearchParams(address))} />
+      <OrdersScreen view={ordersView(CARDS, orders, owing, new URLSearchParams(address))} />
     ));
   const leadsTo = (html: string, id: string) =>
     html.includes(`href="/orders?q=${id}&amp;details=${id}"`);
@@ -777,7 +757,7 @@ describe("an order's details", () => {
       { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
       { id: SAME_HEAD, status: "delivered", at: "2026-10-11T16:40:00Z" },
     ]);
-    const html = served(() => <OrdersScreen view={ordersView("live", CARDS, orders, orders)} />);
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
 
     expect(detailsOf(html, FIRST)).toContain("row-more");
     expect(detailsOf(html, SAME_HEAD)).toContain("row-more");
@@ -792,7 +772,7 @@ describe("an order's details", () => {
     // An order that ended before its closure arrived has nothing else to
     // read there, and the merchant must still see what became of the press.
     const orders = ordersOf([{ id: SAME_HEAD, status: "delivered" }]);
-    const view = ordersView("live", CARDS, orders, orders);
+    const view = ordersView(CARDS, orders, orders);
     const pressed = { id: SAME_HEAD, note: CLOSURE_NOTES.ended, refusal: null, typed: "" };
     const html = served(() => <OrdersScreen view={{ ...view, pressed }} />);
 
@@ -808,7 +788,7 @@ describe("an order's details", () => {
   it("are reached from Needs you without searching for an order already on the page", () => {
     const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }]);
     const opens = (address: string, open = orders) =>
-      ordersView("live", CARDS, orders, open, new URLSearchParams(address)).needsYou.rows[0]?.opens;
+      ordersView(CARDS, orders, open, new URLSearchParams(address)).needsYou.rows[0]?.opens;
 
     expect(opens("")).toStrictEqual({
       search: `?details=${FIRST}`,
@@ -850,7 +830,6 @@ describe("a closure recorded", () => {
 
     const said = orders.orders.map((order) => {
       const view = ordersView(
-        "live",
         CARDS,
         orders,
         open,
@@ -865,6 +844,13 @@ describe("a closure recorded", () => {
 });
 
 describe("the purchases that lapsed unpaid", () => {
+  /** Where an attempt stands in the list, by when it was asked for and its identifier. */
+  const markOf = (attempt: LapsedAttempt | undefined) => ({
+    key: [Date.parse(attempt?.asked_at ?? "")],
+    id: attempt?.id ?? "",
+  });
+  const placeOf = (attempt: LapsedAttempt | undefined) =>
+    `${markOf(attempt).key[0]}.${markOf(attempt).id}`;
   // As the gateway reads them apart: a page of them, newest first, and how
   // many there are in all.
   const page = (from: number): LapsedAttempt[] =>
@@ -875,34 +861,34 @@ describe("the purchases that lapsed unpaid", () => {
       price: { amount: "5.00", currency: "USD" },
       asked_at: new Date(Date.parse("2026-10-11T22:59:00Z") - (from + at) * 60_000).toISOString(),
       priced_at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
-      test: false,
     }));
 
   it("are listed under their own segment a page at a time, and in no other", () => {
     const second = page(50);
 
     const there = ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
-      new URLSearchParams("show=lapsed&page=2"),
+      new URLSearchParams(`show=lapsed&after=${placeOf(page(49)[0])}`),
       {},
       {},
-      { page: second, of: 120 },
+      {
+        page: second,
+        of: 120,
+        newer: 50,
+        previous: markOf(second[0]),
+        next: markOf(second.at(-1)),
+      },
     );
     const elsewhere = ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
       new URLSearchParams(),
       {},
       {},
-      {
-        page: null,
-        of: 120,
-      },
+      { page: null, of: 120 },
     );
 
     expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
@@ -912,8 +898,8 @@ describe("the purchases that lapsed unpaid", () => {
       from: 51,
       to: 100,
       of: 120,
-      previous: "/orders?show=lapsed",
-      next: "/orders?show=lapsed&page=3",
+      previous: `/orders?show=lapsed&before=${placeOf(second[0])}`,
+      next: `/orders?show=lapsed&after=${placeOf(second.at(-1))}`,
     });
     expect(there.listing.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
       ["All", 3, false],
@@ -937,17 +923,15 @@ describe("the purchases that lapsed unpaid", () => {
       price: null,
       asked_at: "2026-10-11T23:00:00Z",
       priced_at: null,
-      test: false,
     };
     const view = ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
       new URLSearchParams("show=lapsed"),
       {},
       {},
-      { page: [unpriced], of: 1 },
+      { page: [unpriced], of: 1, newer: 0, previous: null, next: null },
     );
 
     expect(view.listing.rows.map((row) => [row.id, row.amount])).toStrictEqual([
@@ -958,7 +942,6 @@ describe("the purchases that lapsed unpaid", () => {
 
   it("are said, beside a search, to be left out of it and kept under Lapsed", () => {
     const view = ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
@@ -975,7 +958,6 @@ describe("the purchases that lapsed unpaid", () => {
 
   it("are not offered beside a search, which reads only the other orders", () => {
     const view = ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
@@ -990,7 +972,6 @@ describe("the purchases that lapsed unpaid", () => {
 
   it("are a segment only where there is one, so a list without them reads as before", () => {
     const view = ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
@@ -1008,7 +989,6 @@ describe("the purchases that lapsed unpaid", () => {
 
   it("are orders, so a merchant with no other is not told there are none", () => {
     const view = ordersView(
-      "live",
       CARDS,
       ordersOf([]),
       ordersOf([]),
@@ -1030,14 +1010,13 @@ describe("an order's facts", () => {
 
   const lapsedPage = (attempts: LapsedAttempt[]) =>
     ordersView(
-      "live",
       CARDS,
       THREE,
       THREE,
       new URLSearchParams({ show: "lapsed", details: attempts[0]?.id ?? "" }),
       {},
       {},
-      { page: attempts, of: attempts.length },
+      { page: attempts, of: attempts.length, newer: 0, previous: null, next: null },
     );
 
   const UNPRICED: LapsedAttempt = {
@@ -1047,7 +1026,6 @@ describe("an order's facts", () => {
     price: null,
     asked_at: "2026-10-11T23:00:00Z",
     priced_at: null,
-    test: false,
   };
 
   it("say a purchase that ended before any price was set was not priced, and when it was asked for, never a price set", () => {
@@ -1108,7 +1086,6 @@ describe("an order's facts", () => {
     served(() => (
       <OrdersScreen
         view={ordersView(
-          "live",
           CARDS,
           UNFULFILLED,
           UNFULFILLED,
@@ -1143,7 +1120,6 @@ describe("an order's facts", () => {
     const html = served(() => (
       <OrdersScreen
         view={ordersView(
-          "live",
           CARDS,
           closedThenPaid,
           closedThenPaid,
@@ -1201,7 +1177,6 @@ describe("the way on for an unfulfilled order", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
-            "live",
             CARDS,
             unfulfilled,
             unfulfilled,
@@ -1310,7 +1285,6 @@ describe("the transaction that paid an order", () => {
     const html = served(() => (
       <OrdersScreen
         view={ordersView(
-          "live",
           CARDS,
           orders,
           orders,

@@ -25,20 +25,6 @@ import { Transfer } from "../components/transfer.js";
 import { Word } from "../components/word.js";
 import styles from "./orders.module.css";
 
-/**
- * A test sum on a page that does not say otherwise which of its sums are
- * tests would be proof of a payment that never happened, so there it carries
- * the mark; where the channel's band says every payment is a test, `test` is
- * false for all of them.
- */
-export const TestMark = ({ test }: Readonly<{ test: boolean }>) =>
-  test ? (
-    <>
-      {" "}
-      <span className="tag">test</span>
-    </>
-  ) : null;
-
 type Order = OrdersView["listing"]["rows"][number];
 
 /**
@@ -49,18 +35,14 @@ type Order = OrdersView["listing"]["rows"][number];
  */
 const Told = ({
   order,
-  marked,
   closure,
-}: Readonly<{ order: ToldOrders["rows"][number]; marked: boolean; closure?: ReactNode }>) => (
+}: Readonly<{ order: ToldOrders["rows"][number]; closure?: ReactNode }>) => (
   <li className={styles.told}>
     <div className={styles.state}>
       <Word word={order.state} />
     </div>
     <div className={styles.product}>{order.product}</div>
-    <div className={styles.amount}>
-      {order.amount}
-      <TestMark test={marked && order.test} />
-    </div>
+    <div className={styles.amount}>{order.amount}</div>
     <p className={styles.why}>
       {order.why}
       {order.stops ? (
@@ -88,12 +70,10 @@ const Told = ({
 const ToldRows = ({
   told,
   label,
-  marked,
   closing,
 }: Readonly<{
   told: ToldOrders;
   label: string;
-  marked: boolean;
   closing?: (order: ToldOrders["rows"][number]) => ReactNode;
 }>) => (
   <List label={label} columns="1fr">
@@ -101,7 +81,6 @@ const ToldRows = ({
       <Told
         key={order.id}
         order={order}
-        marked={marked}
         {...(closing === undefined ? {} : { closure: closing(order) })}
       />
     ))}
@@ -115,11 +94,10 @@ const ToldRows = ({
 const ToldList = ({
   told,
   label,
-  marked,
   all,
-}: Readonly<{ told: ToldOrders; label: string; marked: boolean; all?: string }>) => (
+}: Readonly<{ told: ToldOrders; label: string; all?: string }>) => (
   <>
-    <ToldRows told={told} label={label} marked={marked} />
+    <ToldRows told={told} label={label} />
     {told.rows.length === told.of ? null : (
       <p className="cut">
         <span>{`Showing the newest ${told.rows.length} of ${told.of}`}</span>
@@ -183,15 +161,12 @@ const CloseFulfillment = ({
 };
 
 /** What an order's line leaves out: its ID, its payment and the merchant's share of it, and what was closed. */
-const OrderFacts = ({ row, marked }: Readonly<{ row: Order; marked: boolean }>) => (
+const OrderFacts = ({ row }: Readonly<{ row: Order }>) => (
   <Facts>
     <Fact label="Order ID">
       <Ident value={row.id} what="order ID" whole />
     </Fact>
-    <Fact label="Payment">
-      {row.payment}
-      <TestMark test={marked && row.test} />
-    </Fact>
+    <Fact label="Payment">{row.payment}</Fact>
     {row.transfer.kind === "none" ? null : (
       <Fact label="Transfer">
         <Transfer transfer={row.transfer} />
@@ -227,12 +202,10 @@ const UNKNOWN_CLOSED =
 /** An order's opened part: its facts, then what became of a press on it and the closure. */
 const OrderDetails = ({
   row,
-  marked,
   pressed,
   place,
 }: Readonly<{
   row: Order;
-  marked: boolean;
   pressed: ClosurePressed | null;
   place: OrdersView["listing"]["place"];
 }>) => {
@@ -241,7 +214,7 @@ const OrderDetails = ({
   const told = said === null ? null : (said.note ?? (row.closing === null ? said.refusal : null));
   return (
     <div className={styles.details}>
-      <OrderFacts row={row} marked={marked} />
+      <OrderFacts row={row} />
       {row.why === null ? null : (
         <p className={styles.help}>
           {row.why}
@@ -284,7 +257,6 @@ const OrderDetails = ({
 /** Every order the address asks for, a row each, each opening to its details. */
 const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
   const { listing } = view;
-  const marked = view.testNote !== null;
   const here = listing.segments.find((one) => one.here);
   const title =
     here?.key === "open" ? "Open orders" : here?.key === "lapsed" ? "Lapsed unpaid" : "All orders";
@@ -317,19 +289,11 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
                         <Word word={row.state} />
                       </span>
                     </Cell>
-                    <Cell at="amount">
-                      {row.amount}
-                      <TestMark test={marked && row.test} />
-                    </Cell>
+                    <Cell at="amount">{row.amount}</Cell>
                   </>
                 }
               >
-                <OrderDetails
-                  row={row}
-                  marked={marked}
-                  pressed={view.pressed}
-                  place={listing.place}
-                />
+                <OrderDetails row={row} pressed={view.pressed} place={listing.place} />
               </DisclosedRow>
             </Fragment>
           ))}
@@ -355,12 +319,10 @@ const ORDER_COLUMNS = "7rem minmax(0, 1fr) 12.5rem 8.5rem 1rem";
  */
 const CloseInRow = ({
   row,
-  marked,
   pressed,
   place,
 }: Readonly<{
   row: Order;
-  marked: boolean;
   pressed: ClosurePressed | null;
   place: OrdersView["listing"]["place"];
 }>) => {
@@ -375,7 +337,7 @@ const CloseInRow = ({
       of={row.product}
       className={styles.opens}
     >
-      <OrderDetails row={row} marked={marked} pressed={pressed} place={place} />
+      <OrderDetails row={row} pressed={pressed} place={place} />
     </RowMore>
   );
 };
@@ -393,7 +355,6 @@ const closureHelp = (
  */
 export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const { listing } = view;
-  const marked = view.testNote !== null;
   const here = listing.segments.find((one) => one.here);
   const needs = listing.segments.find((one) => one.key === "needs");
   // The page's own links to an order search for its ID and open it; the
@@ -440,7 +401,6 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           .
         </p>
       )}
-      {view.testNote === null ? null : <p className="problem">{view.testNote}</p>}
       {view.closedElsewhere === null ? null : (
         <p className="quiet">
           {`Fulfillment closed for ${shortened(view.closedElsewhere.id)} · `}
@@ -465,14 +425,8 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
             <ToldRows
               told={view.needsYou}
               label="Orders that need you"
-              marked={marked}
               closing={(order) => (
-                <CloseInRow
-                  row={order}
-                  marked={marked}
-                  pressed={view.pressed}
-                  place={listing.place}
-                />
+                <CloseInRow row={order} pressed={view.pressed} place={listing.place} />
               )}
             />
           )}
@@ -485,18 +439,13 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
               <ToldList
                 told={view.needsYou}
                 label="Orders that need you"
-                marked={marked}
                 {...(needs === undefined ? {} : { all: needs.to })}
               />
             </Group>
           )}
           {view.waitsOnTheBuyer.of === 0 ? null : (
             <Group title="Waiting on the buyer" count={view.waitsOnTheBuyer.of}>
-              <ToldList
-                told={view.waitsOnTheBuyer}
-                label="Orders waiting on the buyer"
-                marked={marked}
-              />
+              <ToldList told={view.waitsOnTheBuyer} label="Orders waiting on the buyer" />
             </Group>
           )}
           <OrderList view={view} />

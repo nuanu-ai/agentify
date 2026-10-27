@@ -1,5 +1,5 @@
 {
-  "id": "352c9f95-1b32-4f40-81fd-da7bacddcafc",
+  "id": "bf30f868-11c3-4b0a-9374-1a2ea6373b89",
   "prevId": "239810c5-7084-4375-93f0-db849df36ead",
   "version": "7",
   "dialect": "postgresql",
@@ -314,12 +314,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
-        },
-        "contract_version": {
-          "name": "contract_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
@@ -900,6 +894,27 @@
           ],
           "isUnique": false,
           "where": "\"orders\".\"state\" = 'unfulfilled' and (\"orders\".\"record\" ->> 'answerable') = 'true'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "orders_created_idx": {
+          "name": "orders_created_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "\"id\" collate \"C\"",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

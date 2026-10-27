@@ -80,5 +80,5 @@
   padding: 12px;
   background: var(--bg);
   color: var(--fg);
-  font: 0.75rem / 1.5 var(--font-mono);
+  font: 0.75rem / var(--leading-text) var(--font-mono);
 }

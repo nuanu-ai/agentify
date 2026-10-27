@@ -113,12 +113,16 @@ export function ChooseNameScreen({
             {view.problem !== undefined && view.rule !== null ? (
               <p className="quiet">{view.rule}</p>
             ) : null}
-            <Button pending={pending} disabled={alive && typed.trim() === ""}>
-              Use this name
-            </Button>
+            <div className={`message-actions ${styles.actions}`}>
+              <Button pending={pending} disabled={alive && typed.trim() === ""}>
+                Use this name
+              </Button>
+              <a className="button button-secondary" href={`${chrome.base}/products`}>
+                Choose later
+              </a>
+            </div>
             <p className={`quiet ${styles.caption}`}>
-              <a href={`${chrome.base}/products`}>Choose later</a>. Nothing goes on sale until you
-              do.
+              Nothing goes on sale until you choose a name.
             </p>
           </>
         )}

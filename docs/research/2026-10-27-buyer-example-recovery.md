@@ -37,8 +37,11 @@ runs, separate files for separate purchases, storage refusal, damaged state,
 changed wallet/site/product, an unknown charge, an expired price and permissions
 on an existing file.
 
-The complete offline suite passes 7,398 tests in 380 files; the operations suite
-passes 14 tests. Type checking, formatting, dead-code checks, decision and
+After integrating main, the complete offline suite passes 7,411 tests in 380
+files; the operations suite passes 14 tests. The complete database suite passes
+583 tests in 26 files on a disposable PostgreSQL 17 instance. Both migrations
+apply in sequence: main's order index is 0032 and worker contact is 0033.
+Type checking, formatting, dead-code checks, decision and
 retired-claim checks pass. The portal build confirms that the rendered
 quickstart includes the program tested from disk.
 

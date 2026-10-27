@@ -68,7 +68,7 @@ describe("the Merchants list", () => {
     expect(text(answered.html)).toContain("Clear the search");
   });
 
-  it("leads past the first fifty merchants a page at a time, and draws the last for a page past it", async () => {
+  it("leads past the first fifty merchants by Next and back by Previous, and draws the last fifty for a cursor past the end", async () => {
     // An operator reaches every merchant a page at a time, not only by a search.
     served = await adminServed();
     for (let at = 0; at < 52; at += 1) {
@@ -76,20 +76,31 @@ describe("the Merchants list", () => {
     }
     const operator = await served.signedIn(OPERATOR, { operator: true });
     const shops = (html: string) => text(html).match(/Shop \d{2}/g) ?? [];
+    const way = (html: string, rel: "prev" | "next") =>
+      new RegExp(`<a class="pager-step ${rel}"[^>]*href="[^"]*(/admin/merchants[^"]*)"`)
+        .exec(html)?.[1]
+        ?.replaceAll("&amp;", "&") ?? null;
 
     const first = await operator.get("/admin/merchants");
-    const second = await operator.get("/admin/merchants?page=2");
-    const past = await operator.get("/admin/merchants?page=9");
-
     // The channel holds the operator's own merchant besides the shops.
     const of = Number(/Showing 1–50 of (\d+)/.exec(text(first.html))?.[1]);
     expect(of).toBeGreaterThan(50);
-    expect(first.html).toMatch(/href="[^"]*\/admin\/merchants\?page=2"/);
+    expect(way(first.html, "prev")).toBeNull();
+    const next = way(first.html, "next");
+    expect(next).toMatch(/^\/admin\/merchants\?after=[\d.-]+mch_[A-Za-z0-9_-]+$/);
+    const second = await operator.get(next ?? "");
     expect(text(second.html)).toContain(`Showing 51–${of} of ${of}`);
+    expect(way(second.html, "next")).toBeNull();
     expect([...shops(first.html), ...shops(second.html)].sort()).toStrictEqual(
       Array.from({ length: 52 }, (_, at) => `Shop ${String(at).padStart(2, "0")}`),
     );
-    expect(shops(past.html)).toStrictEqual(shops(second.html));
+    const back = await operator.get(way(second.html, "prev") ?? "");
+    expect(shops(back.html)).toStrictEqual(shops(first.html));
+
+    const past = await operator.get("/admin/merchants?after=0.-1.0.mch_none");
+    expect(text(past.html)).toContain(`Showing ${of - 49}–${of} of ${of}`);
+    const malformed = await operator.get("/admin/merchants?after=page-2");
+    expect(shops(malformed.html)).toStrictEqual(shops(first.html));
   });
 
   it("answers anybody without the operator flag as a page that is not there", async () => {
