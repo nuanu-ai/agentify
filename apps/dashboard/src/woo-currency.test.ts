@@ -112,11 +112,19 @@ describe("the shop's product, read from a shop priced in rupiah", () => {
     expect(read.ok === false && read.why).toMatch(/every customer.*changing.*prices/i);
   });
 
-  it("is refused from a dollar shop at no decimals, as it always was", async () => {
-    const read = await inspectProductInTheShop(KEYS, ITEM, aShopIn("USD", "0", "25"));
+  it.each(["0", "3"])(
+    "refuses a dollar shop at %s decimals and names the setting",
+    async (decimals) => {
+      const read = await inspectProductInTheShop(KEYS, ITEM, aShopIn("USD", decimals, "25"));
 
-    expect(read).toMatchObject({ ok: false, why: expect.stringContaining("Number of decimals") });
-  });
+      expect(read).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo: true,
+        why: expect.stringContaining("Number of decimals"),
+      });
+    },
+  );
 
   it("is another product once the shop's currency changes, at the same digits", async () => {
     const inRupiah = await inspectProductInTheShop(KEYS, ITEM, aShopIn("IDR", "0"));
