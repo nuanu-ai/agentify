@@ -1401,7 +1401,7 @@ if (databaseUrl === null) {
               query: (...args: Parameters<typeof realQuery>) => {
                 if (typeof args[0] === "string" && args[0].includes("pg_advisory_unlock")) {
                   return Promise.reject(
-                    Object.assign(new Error("canceling statement due to statement timeout"), {
+                    Object.assign(new Error("cs_a-secret-from-the-shop\n[gateway] forged"), {
                       code: "57014",
                     }),
                   );
@@ -1416,10 +1416,16 @@ if (databaseUrl === null) {
         const stubborn = PostgresStore.over(held.db, "eip155:84532", countedIds());
         // The run itself is a success and is reported as one. An unlock nobody
         // could complete is not the sweep's failure to hand back to the queue.
-        expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
-          ran: true,
-          result: "swept",
+        const written = await loggedWhile(async () => {
+          expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
+            ran: true,
+            result: "swept",
+          });
         });
+        expect(written).toContain("a_wedged_sweep");
+        expect(written).toContain("57014");
+        expect(written).not.toContain("cs_a-secret-from-the-shop");
+        expect(written).not.toContain("forged");
 
         // The pool ends the session the failed unlock ran on. Ending is
         // asynchronous, so this waits two seconds, well inside the ten the pool
