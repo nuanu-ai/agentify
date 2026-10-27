@@ -376,7 +376,7 @@ select.field-input {
    whoever types in it may make it taller. */
 textarea.field-input {
   padding: 12px 14px;
-  line-height: 1.5;
+  line-height: var(--leading-text);
   resize: vertical;
 }
 
@@ -1081,7 +1081,7 @@ textarea.field-input {
 .surface-words {
   margin: 0;
   padding-block: 10px;
-  font: 600 var(--text-label) / 1.5 var(--font-sans);
+  font: 600 var(--text-label) / var(--leading-ui) var(--font-sans);
 }
 
 .surface-words::before {

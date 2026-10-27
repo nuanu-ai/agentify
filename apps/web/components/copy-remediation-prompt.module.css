@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font: 600 0.875rem / 1.2 var(--font-sans);
+  font: 600 0.875rem / var(--leading-ui) var(--font-sans);
   cursor: pointer;
 }
 
@@ -90,5 +90,5 @@
   padding: 12px;
   background: var(--bg);
   color: var(--fg);
-  font: 0.75rem / 1.5 var(--font-mono);
+  font: 0.75rem / var(--leading-text) var(--font-mono);
 }

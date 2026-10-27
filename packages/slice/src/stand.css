@@ -13,7 +13,7 @@
 
 body {
   font-size: 14px;
-  line-height: 1.5;
+  line-height: var(--leading-text);
 }
 
 h1 {
@@ -760,7 +760,7 @@ pre {
   border-radius: var(--radius-card);
   font-family: var(--font-mono);
   font-size: 11.5px;
-  line-height: 1.5;
+  line-height: var(--leading-text);
   color: var(--muted);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -791,7 +791,7 @@ pre {
    is not told that reads the gaps as disorder. */
 .log > header .aside {
   font-size: 11.5px;
-  line-height: 1.45;
+  line-height: var(--leading-text);
   color: var(--muted);
 }
 

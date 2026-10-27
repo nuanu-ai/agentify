@@ -268,7 +268,7 @@ input {
   margin: 0;
   overflow-x: auto;
   padding: 20px;
-  font: 0.8125rem / 1.7 var(--font-mono);
+  font: 0.8125rem / var(--leading-text) var(--font-mono);
 }
 
 .doc pre code {

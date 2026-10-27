@@ -42,7 +42,7 @@
   color: var(--fg-2);
   font-size: 0.9375rem;
   font-weight: 400;
-  line-height: 1.45;
+  line-height: var(--leading-text);
 }
 /* In the words of the label, whatever the block around the form does to its
    own lines. */
@@ -65,13 +65,13 @@
 .check input {
   width: 18px;
   height: 18px;
-  margin: 1px 0 0;
+  margin: 3px 0 0;
   accent-color: var(--accent);
 }
 .form .hint {
   color: var(--muted);
   font-size: var(--text-label);
-  line-height: 1.45;
+  line-height: var(--leading-text);
 }
 .error {
   margin: 0;
