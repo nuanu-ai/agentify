@@ -49,11 +49,9 @@ describe.each([
 
     const document = documentOf(html);
     expect(document.querySelector("main")?.textContent).toMatch(/finding out.*signed in/i);
-    for (const button of document.querySelectorAll(
-      "main button, main [role=button], main input[type=submit]",
-    )) {
-      expect(button.textContent).not.toMatch(/unsubscribe|request data access|delete.*data/i);
-    }
+    expect(
+      document.querySelectorAll("main button, main [role=button], main input[type=submit]"),
+    ).toHaveLength(0);
   });
 });
 

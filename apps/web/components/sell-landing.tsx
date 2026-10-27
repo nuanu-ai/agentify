@@ -238,47 +238,45 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
             </section>
           </section>
 
-          {pricing.options.length > 0 ? (
-            <div className="pricing" id="pricing">
-              {pricing.options.map((tariff) => (
-                <section
-                  aria-labelledby={`pricing-${tariff.id}-title`}
-                  className="section"
-                  id={`pricing-${tariff.id}`}
-                  key={tariff.id}
-                >
-                  <div className="section-head">
-                    <p className="eyebrow">{pricing.eyebrow}</p>
-                    <h2 id={`pricing-${tariff.id}-title`}>{pricing.title}</h2>
+          <div className="pricing" id="pricing">
+            {pricing.options.map((tariff) => (
+              <section
+                aria-labelledby={`pricing-${tariff.id}-title`}
+                className="section"
+                id={`pricing-${tariff.id}`}
+                key={tariff.id}
+              >
+                <div className="section-head">
+                  <p className="eyebrow">{pricing.eyebrow}</p>
+                  <h2 id={`pricing-${tariff.id}-title`}>{pricing.title}</h2>
+                </div>
+                <div className="tariff__answer">
+                  <div className="tariff__offer">
+                    <h3>{tariff.name}</h3>
+                    <p className="tariff__price">{tariff.price}</p>
+                    {"per" in tariff ? <p className="tariff__per">{tariff.per}</p> : null}
+                    <p className="tariff__gist">{tariff.gist}</p>
+                    <ul className="tariff__terms">
+                      {tariff.terms.map((term) => (
+                        <li key={term}>{term}</li>
+                      ))}
+                    </ul>
+                    <a className="button button-primary" href={SIGN_IN}>
+                      {pricing.action}
+                    </a>
                   </div>
-                  <div className="tariff__answer">
-                    <div className="tariff__offer">
-                      <h3>{tariff.name}</h3>
-                      <p className="tariff__price">{tariff.price}</p>
-                      {"per" in tariff ? <p className="tariff__per">{tariff.per}</p> : null}
-                      <p className="tariff__gist">{tariff.gist}</p>
-                      <ul className="tariff__terms">
-                        {tariff.terms.map((term) => (
-                          <li key={term}>{term}</li>
-                        ))}
-                      </ul>
-                      <a className="button button-primary" href={SIGN_IN}>
-                        {pricing.action}
-                      </a>
-                    </div>
-                    <div className="tariff__includes">
-                      <p className="tariff__list-title">{pricing.includesTitle}</p>
-                      <ul>
-                        {tariff.includes.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
+                  <div className="tariff__includes">
+                    <p className="tariff__list-title">{pricing.includesTitle}</p>
+                    <ul>
+                      {tariff.includes.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
                   </div>
-                </section>
-              ))}
-            </div>
-          ) : null}
+                </div>
+              </section>
+            ))}
+          </div>
 
           <section aria-labelledby="dashboard" className="section dashboard-preview">
             <div className="dashboard-preview__copy">
