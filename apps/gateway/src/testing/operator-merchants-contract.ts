@@ -621,7 +621,13 @@ export function describeOperatorMerchants(
         });
         expect(record?.thirtyDays.orders).toBe(0);
         expect(record?.thirtyDays.settled).toStrictEqual(NO_SALES);
-        expect(record?.thirtyDays.days.every((day) => day.count === 0)).toBe(true);
+        expect(record?.thirtyDays.days).toStrictEqual(
+          Array.from({ length: 30 }, (_, day) => ({
+            day: new Date(Date.UTC(2026, 8, 24 + day)).toISOString().slice(0, 10),
+            amount: "0.00",
+            count: 0,
+          })),
+        );
       });
     });
   });

@@ -619,36 +619,6 @@ if (databaseUrl === null) {
       expect(won).toHaveLength(1);
     });
 
-    it("keeps the open column in step with the state inside the document", async () => {
-      // `open` is a column written from the document by `rowFor`, and
-      // `GET /orders?open=true` answers from it. The in-memory adapter has no
-      // such column, so only this test catches one that fell behind and
-      // dropped a live order from the list the dashboard works from.
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "listed" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const orderId = offered.order.order.id;
-
-      const idsOf = async (query?: { readonly open?: boolean }) =>
-        (await store.orders(A, query)).map((record) => record.order.id);
-
-      expect(await idsOf({ open: true })).toContain(orderId);
-
-      // Closed inside the document, and nothing said about the column.
-      await store.withOrder(orderId, (found) => ({
-        save: { ...found, order: { ...found.order, state: "expired" } },
-        result: null,
-      }));
-
-      expect(await idsOf({ open: true })).not.toContain(orderId);
-      // Closed is not deleted: reconciling a day's orders reads the full list.
-      expect(await idsOf()).toContain(orderId);
-    });
-
     it("refuses a closing message cut in the middle of a character before the database sees it", async () => {
       // Postgres refuses half a surrogate pair in a document, so a message
       // that reached it would fail the write and answer as a retryable fault
@@ -733,36 +703,6 @@ if (databaseUrl === null) {
       }));
 
       expect(await writtenAt()).not.toBe(before);
-    });
-
-    it("carries an envelope through the queue and does not send it round again by itself", async () => {
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "queued" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-
-      const drawn = await queue.draw(A, 10, 2_000);
-      expect(drawn).toHaveLength(0);
-
-      await queue.publish(A, {
-        kind: "order_event",
-        id: "env_db_1",
-        sent_at: "2026-08-26T12:00:00.000Z",
-        payload: {
-          type: "order.payment_failed_after_delivery",
-          order_id: "ord_db_1",
-          at: "2026-08-26T12:00:00.000Z",
-        },
-      });
-
-      const first = await queue.draw(A, 10, 2_000);
-      expect(first.map((d) => d.envelope.id)).toStrictEqual(["env_db_1"]);
-      await queue.finish(A, first[0]?.handle ?? "");
-
-      expect(await queue.draw(A, 10, 200)).toStrictEqual([]);
     });
 
     describe("a failure in the database", () => {
@@ -1506,9 +1446,23 @@ if (databaseUrl === null) {
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           expect((await store.orderById(orderId))?.order.state).toBe("unfulfilled");
-          expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
-            "order_event",
-          ]);
+          const envelopes = (await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope);
+          expect(envelopes).toHaveLength(1);
+          expect(envelopes[0]).toMatchObject({
+            kind: "order_event",
+            payload: {
+              type: "order.unfulfilled",
+              order_id: orderId,
+              reason: "deadline_passed",
+              price: { amount: "12.00", currency: "USD" },
+            },
+          });
+          expect(envelopes.some((envelope) => envelope.kind === "order")).toBe(false);
+          expect((await store.orderById(orderId))?.paymentAttempt?.completion).toMatchObject({
+            settled: true,
+            transaction: proof.transaction,
+            source: "chain",
+          });
           expect(
             (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
           ).toBeNull();

@@ -659,7 +659,9 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         await aChannel(store);
 
         for (const id of ["ord_delivered", "ord_held", "ord_unpaid", "ord_parcel", "ord_unknown"]) {
-          const read = JSON.stringify(await orders.order(id)).toLowerCase();
+          const record = await orders.order(id);
+          expect(record).toMatchObject({ id });
+          const read = JSON.stringify(record).toLowerCase();
           for (const secret of [
             "bk_secret_",
             "status_url",

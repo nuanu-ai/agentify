@@ -11,16 +11,12 @@ import { postgresOperatorAccounts } from "./accounts.js";
 import { postgresOperatorFigures } from "./figures.js";
 import { postgresOperatorMerchants } from "./merchants.js";
 import { postgresOperatorOrders } from "./orders.js";
-import { OPERATOR_STATEMENT_MS, readOnlyOn } from "./read-only.js";
+import { readOnlyOn } from "./read-only.js";
 import type { OperatorScope } from "./scope.js";
 import { postgresOperatorSplits } from "./splits.js";
 
-export function postgresOperatorReader(
-  db: NodePgDatabase,
-  network: string,
-  statementMs: number = OPERATOR_STATEMENT_MS,
-): OperatorReader {
-  const scope: OperatorScope = { read: readOnlyOn(db, statementMs), network };
+export function postgresOperatorReader(db: NodePgDatabase, network: string): OperatorReader {
+  const scope: OperatorScope = { read: readOnlyOn(db), network };
   return {
     merchants: failingWithoutValues(postgresOperatorMerchants(scope), "the operator's merchants"),
     orders: failingWithoutValues(postgresOperatorOrders(scope), "the operator's orders"),
