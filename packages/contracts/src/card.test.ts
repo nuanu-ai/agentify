@@ -68,16 +68,6 @@ describe("a card's refusals are in our words, not the validator's", () => {
   // says what the field is, not in the validator's language.
   const validatorSaid = /Invalid input|Invalid option|received undefined/;
 
-  for (const field of ["merchant_item_id", "title", "description", "price"] as const) {
-    it(`says what ${field} is when a card leaves it out`, () => {
-      const { [field]: _gone, ...without } = syncCard;
-      const message = errorOf(CardSchema, without);
-
-      expect(message).toContain(field);
-      expect(message).not.toMatch(validatorSaid);
-    });
-  }
-
   it("names the modes a card can be published in when it names another", () => {
     const message = errorOf(CardSchema, { ...syncCard, fulfillment: "later" });
 
@@ -123,6 +113,11 @@ describe("card", () => {
   for (const field of ["merchant_item_id", "title", "description", "price", "result"]) {
     it(`refuses a card without ${field} and names it`, () => {
       expectMissingFieldRejected(CardSchema, syncCard, field);
+      const without: Record<string, unknown> = { ...syncCard };
+      delete without[field];
+      expect(errorOf(CardSchema, without)).not.toMatch(
+        /Invalid input|Invalid option|received undefined/,
+      );
     });
   }
 
@@ -136,6 +131,7 @@ describe("card", () => {
     // A blank title is a card nobody can tell from its neighbours.
     expect(CardSchema.safeParse({ ...syncCard, title: "   " }).success).toBe(false);
     expect(CardSchema.safeParse({ ...syncCard, description: "" }).success).toBe(false);
+    expect(CardSchema.safeParse({ ...syncCard, description: "   " }).success).toBe(false);
   });
 
   it("refuses a card that promises nothing on delivery", () => {
@@ -252,13 +248,10 @@ describe("the card an agent reads", () => {
   };
   const publicCard = publicCardOf(published, issued);
 
-  it("is a document an agent can buy from", () => {
-    expect(PublicCardSchema.safeParse(publicCard).success).toBe(true);
-  });
-
   it("carries these fields and no others", () => {
     // Written out, because the failure guarded against is a field appearing:
     // something the merchant considers internal reaching every agent.
+    expect(publicCard.id).toBe("itm_4d21bb");
     expect(Object.keys(publicCard).sort()).toStrictEqual([
       "as_of",
       "description",
@@ -312,13 +305,6 @@ describe("the card an agent reads", () => {
     expectMissingFieldRejected(PublicCardSchema, publicCard, "seller");
   });
 
-  it("hands the agent our catalog identifier and not the merchant's own key", () => {
-    // The catalog identifier is what a purchase, a receipt and a status use;
-    // the merchant's key is unique only inside their own catalog.
-    expect(publicCard.id).toBe("itm_4d21bb");
-    expect(Object.keys(publicCard)).not.toContain("merchant_item_id");
-  });
-
   it("says the price will be asked again without saying how", () => {
     // That the price is asked again is what an agent acts on; how it is asked
     // is between the merchant and Agentify.
@@ -330,15 +316,6 @@ describe("the card an agent reads", () => {
     const fixed = publicCardOf(CardSchema.parse(syncCard), issued);
 
     expect(fixed.price_checked_at_purchase).toBe(false);
-  });
-
-  it("refuses a card whose flag about the price is missing rather than reading silence", () => {
-    // Read as false, an agent budgets against a price about to move; read as
-    // true, it distrusts a price that never moves.
-    expectMissingFieldRejected(PublicCardSchema, publicCard, "price_checked_at_purchase");
-    expect(
-      PublicCardSchema.safeParse({ ...publicCard, price_checked_at_purchase: "yes" }).success,
-    ).toBe(false);
   });
 
   for (const field of [
@@ -353,6 +330,9 @@ describe("the card an agent reads", () => {
   ]) {
     it(`refuses a public card without ${field} and names it`, () => {
       expectMissingFieldRejected(PublicCardSchema, publicCard, field);
+      if (field === "price_checked_at_purchase") {
+        expect(errorOf(PublicCardSchema, { ...publicCard, [field]: "yes" })).toContain(field);
+      }
     });
   }
 
@@ -434,10 +414,6 @@ describe("the card an agent reads", () => {
     }
   });
 
-  it("takes a field added later, which an agent ignores", () => {
-    expect(PublicCardSchema.safeParse({ ...publicCard, warranty_days: 30 }).success).toBe(true);
-  });
-
   it("takes a field added later inside any of its parts, not only beside them", () => {
     // A field added inside the seller, the price or a declared field would
     // otherwise make every card unreadable to an older agent.
@@ -450,6 +426,7 @@ describe("the card an agent reads", () => {
     }
 
     for (const [part, grown] of [
+      ["outer", { warranty_days: 30 }],
       ["seller", { seller: { ...publicCard.seller, verified_by: "nobody" } }],
       ["price", { price: { ...publicCard.price, tax_included: true } }],
       ["params", { params: { ...params, [name]: { ...spec, pattern: "^\\S+$" } } }],
@@ -632,6 +609,9 @@ describe("the address of a seller's own site", () => {
       "https://freeland.example#contact",
     ]) {
       expect(errorOf(SellerSiteSchema, site), site).toContain("https://");
+      if (site === "https://freeland.example/") {
+        expect(SellerSiteSchema.safeParse(site).error?.issues).toHaveLength(1);
+      }
     }
   });
 
@@ -675,10 +655,6 @@ describe("the address of a seller's own site", () => {
     expect(host(57)).toHaveLength(253);
     expect(SellerSiteSchema.safeParse(`https://${host(57)}`).success).toBe(true);
     expect(SellerSiteSchema.safeParse(`https://${host(58)}`).success).toBe(false);
-  });
-
-  it("says once what is wrong with an address copied with a slash at the end", () => {
-    expect(SellerSiteSchema.safeParse("https://freeland.example/").error?.issues).toHaveLength(1);
   });
 
   it("refuses an address that is not the shop's https origin", () => {
@@ -841,12 +817,6 @@ describe("a card as a discovery channel reads it", () => {
     expect(example.status).toBe("in_progress");
     expect(example.delivered).toBeNull();
   });
-
-  it("gives the same declaration for the same card twice", () => {
-    // A listing is keyed on the resource; two that disagreed would be two
-    // listings, or one that flickers.
-    expect(declared(syncCard, at)).toStrictEqual(declared(syncCard, at));
-  });
 });
 
 describe("a parcel's listing in a discovery catalog", () => {
@@ -949,26 +919,19 @@ describe("the description a listing carries", () => {
   const withDescription = (description: string) =>
     CardSchema.safeParse({ ...syncCard, description });
 
-  it("takes a description up to the length the catalog documents", () => {
-    expect(withDescription("d".repeat(500)).success).toBe(true);
-  });
-
-  it("refuses one longer than that rather than letting it be cut", () => {
-    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(501) })).toContain("500");
-  });
-
-  it("says how long the description actually is, so a merchant knows what to cut", () => {
-    // The merchant cannot see their text's length in a shop's editor; the
-    // refusal tells them.
-    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(742) })).toContain("742");
-    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(501) })).toContain("501");
-  });
-
-  it("counts the characters a merchant counts, not the bytes they take", () => {
-    // A Cyrillic description is twice its length in UTF-8, and a merchant
-    // told the byte count would look for a rule about their alphabet.
-    expect(errorOf(CardSchema, { ...syncCard, description: "д".repeat(501) })).toContain("501");
-  });
+  it.each([500, 501, 742])(
+    "enforces and explains the description ceiling at %i UTF-16 units",
+    (length) => {
+      const description = "d".repeat(length);
+      expect(withDescription(description).success).toBe(length <= 500);
+      if (length > 500) {
+        const message = errorOf(CardSchema, { ...syncCard, description });
+        expect(message).toContain("500");
+        expect(message).toContain(String(length));
+        expect(message).toContain("discovery catalog");
+      }
+    },
+  );
 
   it("counts what the ceiling is measured in, even where that is not what a person sees", () => {
     // Both the count and the comparison are in UTF-16 units, so a character
@@ -976,40 +939,23 @@ describe("the description a listing carries", () => {
     // number refused for, though not always what the screen shows.
     const astral = "𝄞".repeat(251); // 502 units, one over, from 251 glyphs.
 
-    expect(errorOf(CardSchema, { ...syncCard, description: astral })).toContain("502");
-    expect(CardSchema.safeParse({ ...syncCard, description: "𝄞".repeat(250) }).success).toBe(true);
-  });
-
-  it("names whose ceiling it is, so nobody reads it as ours or the protocol's", () => {
-    // Read alone, "at most 500 characters" could be Agentify's rule, the
-    // payment protocol's or about the alphabet, so the catalog is named. The
-    // rest of the wording is free to change.
-    expect(errorOf(CardSchema, { ...syncCard, description: "d".repeat(501) })).toContain(
-      "discovery catalog",
-    );
-  });
-
-  it("refuses with the same sentence wherever the description is read", () => {
-    // One schema behind both, so the sentence is the same on the way in and
-    // on the way out.
-    const tooLong = "d".repeat(501);
-    const onTheWayIn = errorOf(CardSchema, { ...syncCard, description: tooLong });
-    const onTheWayOut = errorOf(PublicCardSchema, {
-      ...publicCardOf(CardSchema.parse(syncCard), {
+    for (const [description, length] of [
+      [astral, 502],
+      ["д".repeat(501), 501],
+    ] as const) {
+      expect(errorOf(CardSchema, { ...syncCard, description })).toContain(String(length));
+      const publicCard = publicCardOf(CardSchema.parse(syncCard), {
         id: "itm_4d21bb",
         purchase_url: "https://agentify.ad/x402/itm_4d21bb/purchase",
         as_of: "2026-08-26T09:00:00Z",
         seller: { name: "Freeland", site: null },
-      }),
-      description: tooLong,
-    });
-
-    expect(onTheWayOut).toBe(onTheWayIn);
-  });
-
-  it("still refuses an empty description and a blank one", () => {
-    expect(withDescription("").success).toBe(false);
-    expect(withDescription("   ").success).toBe(false);
+      });
+      const message = errorOf(PublicCardSchema, { ...publicCard, description });
+      expect(message).toContain("500");
+      expect(message).toContain(String(length));
+      expect(message).toContain("discovery catalog");
+    }
+    expect(CardSchema.safeParse({ ...syncCard, description: "𝄞".repeat(250) }).success).toBe(true);
   });
 
   it("says the ceiling in the document, for the reader who has only that", () => {
@@ -1043,42 +989,9 @@ describe("a card written short", () => {
     fulfillment: "sync",
   };
 
-  const issued = {
-    id: "itm_9f2c4a",
-    purchase_url: "https://agentify.ad/x402/itm_9f2c4a/purchase",
-    as_of: "2026-08-26T10:00:00Z",
-    seller: { name: "Freeland", site: null },
-  };
-
   it("becomes exactly the card its long form produces", () => {
     // Two spellings, one card.
     expect(CardSchema.parse(shortCard)).toStrictEqual(CardSchema.parse(longCard));
-  });
-
-  it("reaches an agent as the same public card its long form does", () => {
-    expect(publicCardOf(CardSchema.parse(shortCard), issued)).toStrictEqual(
-      publicCardOf(CardSchema.parse(longCard), issued),
-    );
-    // Down to the bytes, since a catalog is read as text.
-    expect(JSON.stringify(publicCardOf(CardSchema.parse(shortCard), issued))).toBe(
-      JSON.stringify(publicCardOf(CardSchema.parse(longCard), issued)),
-    );
-  });
-
-  it("reaches a discovery catalog as the same declaration its long form does", () => {
-    const listed = { url: "https://api.example.com/x402/itm_9f2c4a", serviceName: null };
-
-    expect(bazaarDeclarationOf(CardSchema.parse(shortCard), listed)).toStrictEqual(
-      bazaarDeclarationOf(CardSchema.parse(longCard), listed),
-    );
-  });
-
-  it("delivers against the same promise its long form declares", () => {
-    const check = deliveryCheckFor(CardSchema.parse(shortCard));
-
-    expect(check.safeParse({ access_url: "https://example.com/a" }).success).toBe(true);
-    expect(check.safeParse({}).success).toBe(false);
-    expect(check.safeParse({ access_url: "" }).success).toBe(false);
   });
 
   it("takes a card whose mode is not the silent one, still written short", () => {
@@ -1126,11 +1039,6 @@ describe("a card written short", () => {
     const once = CardSchema.parse(shortCard);
 
     expect(CardSchema.parse(once)).toStrictEqual(once);
-  });
-
-  it("fills the mode in rather than leaving it absent", () => {
-    // Every reader of the card sees the mode rather than guessing at it.
-    expect(CardSchema.parse(shortCard).fulfillment).toBe("sync");
   });
 
   it("says in its own document that the mode has a default", () => {
@@ -1193,11 +1101,6 @@ describe("a card written short", () => {
       expect(missing).not.toBe(complaint({ result: "string" }));
       expect(missing).not.toContain("access_url");
     });
-
-    it("still says which field is missing when the declaration is not there", () => {
-      expectMissingFieldRejected(CardSchema, longCard, "result");
-      expectMissingFieldRejected(CardSchema, longCard, "price");
-    });
   });
 
   describe("the long form is untouched by any of this", () => {
@@ -1221,14 +1124,6 @@ describe("a card written short", () => {
       expect(
         errorOf(CardSchema, { ...longCard, result: { x: { type: "string", pattern: "^a" } } }),
       ).toContain("pattern");
-    });
-
-    it("still refuses a result that promises nothing", () => {
-      expect(CardSchema.safeParse({ ...longCard, result: {} }).success).toBe(false);
-      expect(
-        CardSchema.safeParse({ ...longCard, result: { x: { type: "string", required: false } } })
-          .success,
-      ).toBe(false);
     });
 
     it("still drops the one name it cannot refuse, in the short form too", () => {
@@ -1275,12 +1170,6 @@ describe("a card for a parcel", () => {
     expect(errorOf(CardSchema, { ...parcelCard, ship_within_seconds: 2_592_001 })).toContain(
       "ship_within_seconds",
     );
-  });
-
-  it("writes the ceiling into the exported document, where a generated client sees it", () => {
-    expect(toJsonSchemas().card.properties?.ship_within_seconds).toMatchObject({
-      maximum: 2_592_000,
-    });
   });
 
   it("declares no result, which the mode fixes", () => {

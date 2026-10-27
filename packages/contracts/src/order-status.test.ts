@@ -28,17 +28,20 @@ describe("the status an order can be in", () => {
     for (const status of ORDER_STATUSES) {
       expect(OrderStatusSchema.safeParse(status).success, status).toBe(true);
     }
-    for (const status of ["pending", "open", "paid", "IN_PROGRESS", "refund_due", "refunded", ""]) {
+    for (const status of [
+      "pending",
+      "open",
+      "paid",
+      "IN_PROGRESS",
+      "refund_due",
+      "refunded",
+      "",
+      "failed",
+      "accepted",
+      "dispatched",
+      "quoted",
+    ]) {
       expect(OrderStatusSchema.safeParse(status).success, JSON.stringify(status)).toBe(false);
-    }
-  });
-
-  it("refuses the machine's own words where they are finer than the buyer's", () => {
-    // `failed` and `accepted` are the state machine's states, folded into
-    // `rejected` and `in_progress` for an agent; refusing them here keeps a
-    // gateway from shipping the machine's word to a buyer.
-    for (const status of ["failed", "accepted", "dispatched", "quoted"]) {
-      expect(OrderStatusSchema.safeParse(status).success, status).toBe(false);
     }
   });
 });
