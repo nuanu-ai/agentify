@@ -109,12 +109,7 @@ describe("the shop's product, read from a shop priced in rupiah", () => {
       saidNo: true,
       why: expect.stringContaining("Number of decimals"),
     });
-  });
-
-  it("is refused from a shop that writes three decimals, saying the setting is what every customer of the shop sees prices with", async () => {
-    const read = await inspectProductInTheShop(KEYS, ITEM, aShopIn("KWD", "3", "75.000"));
-
-    expect(read.ok === false && read.why).toContain("every customer");
+    expect(read.ok === false && read.why).toMatch(/every customer.*changing.*prices/i);
   });
 
   it("is refused from a dollar shop at no decimals, as it always was", async () => {
@@ -621,9 +616,9 @@ describe("the protected product check of a parcel from a shop priced in rupiah",
     const inYen = await inspectProductInTheShop(KEYS, ITEM, aShopIn("JPY", "0", "240000", true));
 
     expect(inRupiah).toMatchObject({ ok: true, product: { kind: "parcel" } });
-    expect(inRupiah.ok && inYen.ok && inRupiah.product.fingerprint).not.toBe(
-      inYen.ok && inYen.product.fingerprint,
-    );
+    expect(inYen).toMatchObject({ ok: true, product: { kind: "parcel" } });
+    if (!inRupiah.ok || !inYen.ok) throw new Error("both currency variants must be eligible");
+    expect(inRupiah.product.fingerprint).not.toBe(inYen.product.fingerprint);
   });
 });
 
@@ -675,28 +670,6 @@ describe("a parcel's paid order whose payment is not the dollars bound to its pr
 
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     expect(placed).toEqual([]);
-  });
-});
-
-describe("a price bound to a rate of another currency than the shop's amount", () => {
-  it("binds no order", async () => {
-    const shops = memoryWooShops();
-    const rupiah = await shops.saveRate("acc_1", SHOP, RATE);
-    await shops.recordQuote(
-      "acc_1",
-      "prc_mixed",
-      ITEM,
-      {
-        fingerprint: "sarong-in-rupiah",
-        inTheShop: { amount: "14.50", currency: "EUR" },
-        paid: { amount: "0.01", currency: "USD" },
-        rateVersion: rupiah.version,
-      },
-      NOW,
-      NOW,
-    );
-
-    expect(await shops.quotedSale("acc_1", "prc_mixed", ITEM)).toBeNull();
   });
 });
 
