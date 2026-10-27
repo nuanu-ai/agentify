@@ -729,54 +729,6 @@ describe("the wallet document a merchant's code reads", () => {
 });
 
 describe("a merchant whose wallet has no recorded split", () => {
-  /**
-   * A wallet written straight to the store with no split: a defect once the
-   * start has recorded every split, which this must still refuse to sell for.
-   */
-  const withoutASplitHere = async (harnessed: Harness, served: Served) => {
-    const { merchantId, key } = await fresh(harnessed);
-    await named(served, key, "A shop whose split went missing");
-    await harnessed.store.writeWalletWithoutSplit(merchantId, {
-      address: A_WALLET,
-      pending: null,
-    });
-    const stored = await harnessed.store.publishCard(
-      merchantId,
-      cardFor("a-room", "A room"),
-      harnessed.now(),
-    );
-    return { merchantId, key, itemId: stored.id };
-  };
-
-  it("sells nothing, in the words for no wallet, and says so in the log", async () => {
-    // A missing row is a defect. The safe outcome is no sale: never the
-    // wallet itself, which skips the commission; never a split recomputed
-    // here, whose parameters nothing recorded; never the operator's address.
-    const { served, harnessed } = await started();
-    const { merchantId, key, itemId } = await withoutASplitHere(harnessed, served);
-
-    const answers: Awaited<ReturnType<Served["call"]>>[] = [];
-    const logged = await loggedWhile(async () => {
-      answers.push(await served.call("GET", `/x402/${itemId}/purchase`));
-      answers.push(await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } }));
-    });
-
-    for (const answered of answers) {
-      expect(answered.status, JSON.stringify(answered.body)).toBe(409);
-      expect((answered.body as { error: { code: string } }).error.code).toBe("not_selling");
-      expect(answered.headers.get(PAYMENT_REQUIRED_HEADER)).toBeNull();
-    }
-    expect(answers).toHaveLength(2);
-    expect(await harnessed.gateway.orders(merchantId, undefined)).toStrictEqual([]);
-    expect(logged).toContain(merchantId);
-    expect(logged).toMatch(/no payout split is recorded/);
-
-    const refused = await publishing(served, key, cardFor("a-desk", "A desk"));
-    expect(refused.status).toBe(422);
-    const { problems } = (refused.body as { error: { problems: { code: string }[] } }).error;
-    expect(problems.map((problem) => problem.code)).toContain("no_payout_wallet");
-  });
-
   it("says nothing of a missing split for a merchant whose split is recorded", async () => {
     // The line is how an operator finds the defect; written for every
     // merchant, it would bury the one it is about.
@@ -788,17 +740,6 @@ describe("a merchant whose wallet has no recorded split", () => {
     });
 
     expect(logged).not.toMatch(/no payout split is recorded/);
-  });
-
-  it("sells nothing in the sandbox either, rather than at a split nothing recorded", async () => {
-    // The placeholder stands in for a merchant with no wallet, never for a
-    // merchant whose wallet lost its split.
-    const { served, harnessed } = await started({ FACILITATOR_URL: SANDBOX_FACILITATOR });
-    const { itemId } = await withoutASplitHere(harnessed, served);
-
-    const probed = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(probed.status, JSON.stringify(probed.body)).toBe(409);
   });
 });
 

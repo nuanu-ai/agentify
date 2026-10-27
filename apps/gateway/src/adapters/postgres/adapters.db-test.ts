@@ -1759,8 +1759,8 @@ if (databaseUrl === null) {
       });
 
       /** A gateway of its own over this database, with nothing in memory but its queue. */
-      const aGatewayOn = (db: Database, table = PAYOUT_SPLIT_NETWORKS) => {
-        const config = loadConfig({ DATABASE_URL: databaseUrl }, table);
+      const aGatewayOn = (db: Database) => {
+        const config = loadConfig({ DATABASE_URL: databaseUrl });
         return new Gateway({
           config,
           store: PostgresStore.over(db, "eip155:84532", countedIds()),
@@ -1999,14 +1999,19 @@ if (databaseUrl === null) {
         // The edit is refused in words in the log, and nothing the start would
         // write is written first.
         await withoutTheirSplits();
-        const edited = {
-          ...PAYOUT_SPLIT_NETWORKS,
-          "eip155:84532": { ...network, commissionWallet: W2 },
-        };
-        const config = loadConfig(
-          { DATABASE_URL: databaseUrl, FACILITATOR_URL: "sandbox:scripted" },
-          edited,
+        const legacy = "mch_old_policy";
+        await store.addMerchant({ id: legacy, name: "Legacy policy" }, now);
+        const historical = payoutSplitFor({ ...network, commissionWallet: W2 }, legacy, W1);
+        await store.setPayoutWallet(
+          legacy,
+          { address: null, pending: null },
+          { address: W1, split: historical, pending: null },
+          now,
         );
+        const config = loadConfig({
+          DATABASE_URL: databaseUrl,
+          FACILITATOR_URL: "sandbox:scripted",
+        });
 
         let refused: unknown;
         const logged = await loggedWhile(async () => {
@@ -2019,8 +2024,9 @@ if (databaseUrl === null) {
           );
         });
 
-        expect(String(refused)).toMatch(/commission wallet or the rate/);
-        expect(logged).toMatch(/commission wallet or the rate/);
+        expect(refused).toBeInstanceOf(Error);
+        expect(String(refused)).toContain(historical.address);
+        expect(logged).toContain(historical.address);
         expect(logged).not.toMatch(/did not answer/);
         expect(await rowsOf("mch_old_one")).toStrictEqual([]);
       });

@@ -33,7 +33,7 @@ async function endpointOn(chainId: number): Promise<string> {
 }
 
 describe("starting the payment layer", () => {
-  it("starts with an RPC that serves another chain, says so, and keeps asking", async () => {
+  it("reports the wrong RPC chain at startup and retains a reconciliation capability", async () => {
     const config = loadConfig({
       DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
       FACILITATOR_URL: "https://x402.org/facilitator",
@@ -46,7 +46,7 @@ describe("starting the payment layer", () => {
         said.push(words.map(String).join(" "));
       });
     const facilitator = await paymentLayer(config, new PaymentEdge(config));
-    expect(facilitator.reconcile).toBeDefined();
+    expect(typeof facilitator.reconcile).toBe("function");
     expect(said.join("\n")).toMatch(/8453.*eip155:84532/);
   });
 });
@@ -66,14 +66,17 @@ describe("the first line of the log", () => {
     );
 
   it("says payments settle with test funds through a facilitator known to settle on a test chain", async () => {
-    for (const known of [CDP_FACILITATOR_URL, PUBLIC_X402_FACILITATOR_URL]) {
-      expect(await firstLineThrough(known), known).toMatch(/settle with test funds/);
-    }
-  });
-
-  it("knows a known facilitator written with a trailing slash, as the live chain's check does", async () => {
-    for (const known of [`${CDP_FACILITATOR_URL}/`, `${PUBLIC_X402_FACILITATOR_URL}//`]) {
-      expect(await firstLineThrough(known), known).toMatch(/settle with test funds/);
+    for (const known of [
+      CDP_FACILITATOR_URL,
+      PUBLIC_X402_FACILITATOR_URL,
+      `${CDP_FACILITATOR_URL}/`,
+      `${PUBLIC_X402_FACILITATOR_URL}//`,
+    ]) {
+      const said = await firstLineThrough(known);
+      expect(said).toContain(known);
+      expect(said).toContain("TEST");
+      expect(said).toContain("eip155:84532");
+      expect(said).toMatch(/settle.*test funds/);
     }
   });
 
@@ -84,7 +87,7 @@ describe("the first line of the log", () => {
     const said = await firstLineThrough(model);
 
     expect(said).toContain(model);
-    expect(said).not.toMatch(/settle with test funds/);
+    expect(said).toMatch(/not know.*settle/);
     expect(said).toContain("TEST");
   });
 });
