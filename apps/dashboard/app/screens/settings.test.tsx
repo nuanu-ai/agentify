@@ -734,7 +734,7 @@ describe("the payout instruction", () => {
     ).data;
 
     expect(dataIn(html)).toBe(built);
-    expect(dataIn(html)).toHaveLength(3_146);
+    expect(dataIn(html)).toHaveLength(3_658);
     expect(asCopied(html)).not.toMatch(ELIDED);
   });
 

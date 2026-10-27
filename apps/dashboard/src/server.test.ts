@@ -3227,7 +3227,7 @@ describe("the wallet a merchant's share is paid out to", () => {
         running.harnessed.runtime.config.payoutSplitNetworks,
       ).data,
     );
-    expect(data).toHaveLength(3_146);
+    expect(data).toHaveLength(3_658);
   });
 
   it("names the commission at the terms the split of the saved wallet was recorded with", async () => {

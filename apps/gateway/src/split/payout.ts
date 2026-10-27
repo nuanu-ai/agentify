@@ -7,8 +7,9 @@
  * Each is one zero-value call of Multicall3's `aggregate3`. Within it a split
  * is created first, since the factory hands back one that already exists,
  * then distributed, which credits each share in the warehouse; then each
- * wallet a split names is withdrawn once. Multicall3 runs every call as
- * itself, so nothing in the sending wallet can be touched.
+ * merchant wallet the splits name is withdrawn once, and last each commission
+ * wallet. Multicall3 runs every call as itself, so nothing in the sending
+ * wallet can be touched.
  */
 
 import { decodeFunctionResult, encodeFunctionData, type Hex } from "viem";
@@ -243,7 +244,6 @@ const eachOnce = (wallets: readonly string[]): readonly string[] => [
 function transactionOf(
   network: PayoutSplitNetwork,
   splits: readonly PayoutSplit[],
-  terms: { readonly withdrawCommission: boolean },
 ): PayoutTransaction {
   const calls: Call[] = [];
   for (const split of splits) {
@@ -269,16 +269,20 @@ function transactionOf(
     );
   }
   // The warehouse reverts a withdrawal at a balance of zero and to a wallet
-  // USDC refuses, and neither may undo the distributions before it.
+  // USDC refuses, and neither may undo the distributions before it. The
+  // commission is withdrawn in the merchant's own transaction so that paying
+  // Agentify takes no second transaction and no second fee, and it may fail
+  // alone because a frozen or empty commission balance must never keep the
+  // merchant from their share.
   const withdraw = (owner: string): Call => ({
     target: network.warehouse,
     allowFailure: true,
     callData: withdrawCall(owner, network.usdc),
   });
-  calls.push(...eachOnce(splits.map((split) => split.merchantWallet)).map(withdraw));
-  if (terms.withdrawCommission) {
-    calls.push(...eachOnce(splits.map((split) => split.commissionWallet)).map(withdraw));
-  }
+  calls.push(
+    ...eachOnce(splits.map((split) => split.merchantWallet)).map(withdraw),
+    ...eachOnce(splits.map((split) => split.commissionWallet)).map(withdraw),
+  );
 
   return {
     to: checkedAddress(network.multicall3, "Multicall3"),
@@ -304,10 +308,12 @@ const aggregate3Of = (calls: readonly Call[]): Hex =>
 /**
  * The one transaction that pays a merchant out of their splits on this
  * network, as their payout screen shows it: each split created and
- * distributed, then each of their wallets withdrawn once. A distribution or a
- * withdrawal may fail without undoing the rest, so a split Circle has blocked
- * does not stop the merchant's others; a creation may not. Agentify's share is
- * left credited in the warehouse, for the operator's payout to collect.
+ * distributed, then each of their wallets withdrawn once, and last each
+ * commission wallet the splits recorded, so one transaction pays the merchant
+ * and Agentify. A distribution or a withdrawal may fail without undoing the
+ * rest, so a split Circle has blocked does not stop the merchant's others and
+ * a commission that cannot be withdrawn does not stop the merchant's share; a
+ * creation may not fail.
  *
  * Built from the splits as recorded, never from the network's commission
  * wallet or rate today; the network gives only the contracts and the token,
@@ -333,7 +339,7 @@ export function merchantPayout(
     );
   }
   refuseUnlessPayable(network, splits, everyNetwork);
-  return transactionOf(network, splits, { withdrawCommission: false });
+  return transactionOf(network, splits);
 }
 
 /**
@@ -356,11 +362,7 @@ export function operatorPayouts(
   refuseUnlessPayable(network, splits, everyNetwork);
   const parts: PayoutTransaction[] = [];
   for (let start = 0; start < splits.length; start += SPLITS_PER_PAYOUT) {
-    parts.push(
-      transactionOf(network, splits.slice(start, start + SPLITS_PER_PAYOUT), {
-        withdrawCommission: true,
-      }),
-    );
+    parts.push(transactionOf(network, splits.slice(start, start + SPLITS_PER_PAYOUT)));
   }
   return parts;
 }
