@@ -154,6 +154,8 @@ describe("what this gateway checks before it sends a document", () => {
   for (const [name, route] of Object.entries(API_ROUTES)) {
     const document = route.response.document;
     it(`holds ${name} to a form shut at every depth`, () => {
+      for (const reader of [AgentOrderStatusSchema, CatalogPageSchema])
+        expect(openObjectsIn(asInput(reader), "$", [])).not.toEqual([]);
       const shut = checksBeforeSending(document).filter(
         (check) => openObjectsIn(asInput(check), "$", []).length === 0,
       );
@@ -173,13 +175,6 @@ describe("what this gateway checks before it sends a document", () => {
 
       expect(freeRecordsIn(asInput(closed), "$", [])).toStrictEqual([]);
     }
-  });
-
-  it("reads the storefront's documents open, so the check above is not the reader's", () => {
-    // The negative control: the forms an agent reads have open objects in
-    // them, and a walk that found none there would be finding nothing at all.
-    expect(openObjectsIn(asInput(AgentOrderStatusSchema), "$", [])).not.toStrictEqual([]);
-    expect(openObjectsIn(asInput(CatalogPageSchema), "$", [])).not.toStrictEqual([]);
   });
 
   it("sends the documents it writes as they stand", () => {
@@ -229,11 +224,15 @@ describe("what this gateway checks before it sends a document", () => {
   });
 
   it("says on every unfulfilled paid order why nothing was delivered, in the merchant event's words", () => {
-    // `unfulfilled` alone reads as a refund on its way. Why the money is owed
-    // goes with it every time, in the word the merchant's own event carries,
-    // and a word for an ending never stands in for one.
-    const owed = (code: string) => ({ code, message: "The seller owes you the price." });
-    const owing = { ...unrefused, status: "unfulfilled", reason: owed("deadline_passed") };
+    // A paid order with no delivery names why fulfillment failed; the reason
+    // uses the same category the merchant event carries.
+    const owed = (code: string) => ({ code, message: "The delivery deadline passed." });
+    const owing = {
+      ...unrefused,
+      status: "unfulfilled",
+      payment_status: "paid",
+      reason: owed("deadline_passed"),
+    };
 
     expect(sendable(AgentOrderStatusSchema, owing)).toBe(true);
     expect(sendable(AgentOrderStatusSchema, unrefused)).toBe(true);
@@ -272,6 +271,7 @@ describe("what this gateway checks before it sends a document", () => {
     const refusedAfterPaying = {
       ...status,
       status: "unfulfilled",
+      payment_status: "paid",
       reason: { code: "refused", message: "The seller refused after you paid." },
     };
 
@@ -316,8 +316,21 @@ describe("what this gateway checks before it sends a document", () => {
   it("refuses to send goods on an order whose status says there are none", () => {
     // The goods are the buyer's only once the status says delivered; on any
     // other word something in this field could only be a mistake.
-    for (const word of ["rejected", "in_progress", "unfulfilled", "delivered_unpaid"]) {
-      expect(sendable(AgentOrderStatusSchema, { ...collected, status: word }), word).toBe(false);
+    for (const [word, reason] of [
+      ["rejected", undefined],
+      ["in_progress", undefined],
+      ["unfulfilled", { code: "deadline_passed", message: "The delivery deadline passed." }],
+      [
+        "delivered_unpaid",
+        { code: "payment_not_settled", message: "The payment has not settled." },
+      ],
+    ] as const) {
+      const withoutGoods = { ...unrefused, status: word, ...(reason ? { reason } : {}) };
+      expect(sendable(AgentOrderStatusSchema, withoutGoods), `${word} without goods`).toBe(true);
+      expect(
+        sendable(AgentOrderStatusSchema, { ...withoutGoods, delivered: collected.delivered }),
+        word,
+      ).toBe(false);
     }
   });
 

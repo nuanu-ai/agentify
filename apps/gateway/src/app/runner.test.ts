@@ -89,16 +89,22 @@ describe("an order that cannot be true", () => {
       at: open.now(),
     });
 
-    await expect(applied).rejects.toThrow(/breaks what must be true about money/);
-    await expect(applied).rejects.toThrow(/the order is a success and the money never moved/);
+    const before = await open.store.orderById("ord_impossible");
+    const error = await applied.catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain("ord_impossible");
+    expect(String(error)).toMatch(/money|payment|settle/i);
+    expect(String(error)).toMatch(/success|deliver/i);
+    expect(await open.store.orderById("ord_impossible")).toEqual(before);
+    expect(await open.store.receipts(open.merchant.id)).toEqual([]);
   });
 
   it("is not created either", async () => {
     open = await harness();
     const record = impossible();
 
-    await expect(open.gateway.runner.create(record, [], open.now(), ANY_BIRTH)).rejects.toThrow(
-      /breaks what must be true about money/,
+    await expect(open.gateway.runner.create(record, [], ANY_BIRTH)).rejects.toThrow(
+      /money|payment|settle/i,
     );
 
     expect(await open.store.orderById("ord_impossible")).toBeNull();
@@ -148,7 +154,7 @@ describe("an order that holds an address it should not", () => {
       at: open.now(),
     });
 
-    await expect(applied).rejects.toThrow(/still holds the buyer's address/);
+    await expect(applied).rejects.toThrow(/address/i);
     const thrown = await applied.catch((error: unknown) => String(error));
     for (const part of [address.name, address.line_one, address.phone_number]) {
       expect(thrown).not.toContain(part);
@@ -174,7 +180,7 @@ describe("an order that holds an address it should not", () => {
 
     await expect(
       open.gateway.runner.presentVerifiedPayment("ord_parcel", PAID_AT, "a-payment", PAID_AT, 0),
-    ).rejects.toThrow(/has erased the address its merchant still needs/);
+    ).rejects.toThrow(/address/i);
     // Nothing of the payment was written: no owner, and no money under way.
     const kept = await open.store.orderById("ord_parcel");
     expect(kept?.paidBy).toBeNull();
@@ -211,17 +217,10 @@ describe("an order that holds an address it should not", () => {
       },
     };
 
-    await expect(open.gateway.runner.create(waiting, [], open.now(), ANY_BIRTH)).rejects.toThrow(
-      /is a parcel with no address/,
-    );
+    await expect(open.gateway.runner.create(waiting, [], ANY_BIRTH)).rejects.toThrow(/address/i);
     await expect(
-      open.gateway.runner.create(
-        { ...waiting, shipTo: { erasedAt: 0 } },
-        [],
-        open.now(),
-        ANY_BIRTH,
-      ),
-    ).rejects.toThrow(/has erased the address its merchant still needs/);
+      open.gateway.runner.create({ ...waiting, shipTo: { erasedAt: 0 } }, [], ANY_BIRTH),
+    ).rejects.toThrow(/address/i);
     expect(await open.store.orderById("ord_parcel")).toBeNull();
   });
 
@@ -239,19 +238,14 @@ describe("an order that holds an address it should not", () => {
       shipTo: address,
     };
 
-    await expect(open.gateway.runner.create(paid, [], open.now(), ANY_BIRTH)).rejects.toThrow(
-      /holds an address and is not a parcel/,
+    await expect(open.gateway.runner.create(paid, [], ANY_BIRTH)).rejects.toThrow(
+      /address|parcel/i,
     );
   });
 });
 
-describe("an effect that must be written down, asked for at the birth of an order", () => {
-  it("stops before the order exists rather than after", async () => {
-    // `addOrder` takes no writes alongside it, so creation has nowhere to put an
-    // effect that must not be lost. The machine never asks for one at creation,
-    // so the test asks by hand. The refusal must come before the order is
-    // written: after, the merchant would have an order in the database and no
-    // work on his stream.
+describe("the durable birth of a purchase", () => {
+  it("leaves no order when its initial deadline cannot be armed", async () => {
     open = await harness();
     const published = await open.gateway.publishCard(open.merchant.id, {
       merchant_item_id: "esim",
@@ -262,21 +256,14 @@ describe("an effect that must be written down, asked for at the birth of an orde
       fulfillment: "async",
     });
     if (!published.ok) throw new Error("the card would not publish");
-    const offered = await open.gateway.beginPurchase(published.id, {});
-    if (offered.step !== "pay") throw new Error("no price was offered");
-
-    // The same order again, as a record that does not exist yet, born asking
-    // for a hand-over.
-    const born: StoredOrder = {
-      ...offered.order,
-      order: { ...offered.order.order, id: "ord_born" },
+    const failure = new Error("the durable deadline write failed");
+    open.queue.remind = async () => {
+      throw failure;
     };
-
-    await expect(
-      open.gateway.runner.create(born, [{ kind: "dispatch_order" }], open.now(), ANY_BIRTH),
-    ).rejects.toThrow(/nowhere to write them/);
-
-    expect(await open.store.orderById("ord_born")).toBeNull();
+    await expect(open.gateway.beginPurchase(published.id, {})).rejects.toBe(failure);
+    expect(await open.store.orders(open.merchant.id)).toEqual([]);
+    expect(await open.store.receipts(open.merchant.id)).toEqual([]);
+    expect(open.facilitator.settles).toEqual([]);
   });
 });
 

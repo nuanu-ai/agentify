@@ -1511,42 +1511,90 @@ if (databaseUrl === null) {
         expect(second).toStrictEqual({ dispatched: 0, receipted: 0, rearmed: 0, refused: 0 });
       }, 30_000);
 
-      it("writes the receipt a delivered order has none of, once", async () => {
-        const card = await store.publishCard(A, { ...asyncCard, merchant_item_id: "swept-r" }, now);
-        const offered = await gateway.beginPurchase(card.id, {});
-        if (offered.step !== "pay") throw new Error("no price was offered");
-        const orderId = offered.order.order.id;
-
-        const paid = `swept-r-${randomUUID()}`;
-        await gateway.runner.presentVerifiedPayment(orderId, paid, paid, PAID_AT, now);
-        const worker = workUntilStopped(
-          { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
-          { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
-        );
-        await vi.waitFor(async () => {
-          expect((await store.orderById(orderId))?.order.state).toBe("delivered");
-        });
-        await worker.stop();
-
-        // A delivered order without a receipt, as a record written by an
-        // older version of this code looks.
-        await pool.query("delete from receipts where order_id = $1", [orderId]);
-        expect(
-          (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
-        ).toBeNull();
-
-        const first = await gateway.runner.sweep();
-        expect(first?.receipted).toBe(1);
-        const written =
-          (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null;
-        expect(written?.outcome).toBe("delivered");
-
-        const second = await gateway.runner.sweep();
-        expect(second?.receipted).toBe(0);
-        expect(
-          (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
-        ).toStrictEqual(written);
-      }, 30_000);
+      it.each(["observed", "legacy_assertion"] as const)(
+        "repairs a real missing receipt only when payment evidence is %s",
+        async (evidence) => {
+          const card = await store.publishCard(
+            A,
+            { ...asyncCard, merchant_item_id: "swept-r" },
+            now,
+          );
+          await gateway.poll(A, 0);
+          const offered = await gateway.beginPurchase(card.id, {});
+          if (offered.step !== "pay") throw new Error("no price was offered");
+          const orderId = offered.order.order.id;
+          const paid = `swept-r-${randomUUID()}`;
+          await gateway.payPurchase(orderId, paid, paid);
+          const worker = workUntilStopped(
+            { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
+            { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
+          );
+          await vi.waitFor(async () =>
+            expect((await store.orderById(orderId))?.order.state).toBe("delivered"),
+          );
+          await worker.stop();
+          const original = (await store.receipts(A)).find((row) => row.order_id === orderId);
+          expect(original).toMatchObject({ outcome: "delivered", price: { amount: "12.00" } });
+          expect((await store.orderById(orderId))?.paymentAttempt?.completion?.settled).toBe(true);
+          await pool.query("delete from receipts where order_id = $1", [orderId]);
+          if (evidence === "legacy_assertion") {
+            // Historic rows kept a settlement assertion but no execution provenance.
+            await pool.query(
+              `update orders set record = (record - 'paymentAttempt' - 'paymentRecovery' - 'paymentFingerprint') || jsonb_build_object('paymentWords', $2::jsonb) where id = $1`,
+              [
+                orderId,
+                JSON.stringify([
+                  { about: "settle", at: now, said: "the facilitator was not asked" },
+                ]),
+              ],
+            );
+            expect((await store.orderById(orderId))?.paymentAttempt).toBeUndefined();
+          }
+          expect((await store.receipts(A)).find((row) => row.order_id === orderId)).toBeUndefined();
+          if (evidence === "observed") {
+            const put = store.putReceipt.bind(store);
+            store.putReceipt = async () => {
+              throw new Error(
+                "postgres://operator:receipt-secret@db.invalid/database\nAuthorization: private",
+              );
+            };
+            let refused: Awaited<ReturnType<typeof gateway.runner.sweep>> = null;
+            const logged = await loggedWhile(async () => {
+              try {
+                refused = await gateway.runner.sweep();
+              } finally {
+                store.putReceipt = put;
+              }
+            });
+            expect(refused).toMatchObject({ receipted: 0, refused: 1 });
+            const receiptFailure = logged
+              .split("\n")
+              .filter((line) => line.includes(orderId) && /sweep.*receipt/i.test(line));
+            expect(receiptFailure).toHaveLength(1);
+            expect(logged).not.toMatch(/receipt-secret|Authorization|db\.invalid/);
+            expect(
+              (await store.receipts(A)).find((row) => row.order_id === orderId),
+            ).toBeUndefined();
+          }
+          const first = await gateway.runner.sweep();
+          expect(first?.receipted).toBe(evidence === "observed" ? 1 : 0);
+          const written = (await store.receipts(A)).find((row) => row.order_id === orderId);
+          if (evidence === "observed") {
+            expect(written).toMatchObject({
+              outcome: "delivered",
+              price: { amount: "12.00" },
+              paid_at: original?.paid_at,
+              transaction: original?.transaction,
+            });
+          } else expect(written).toBeUndefined();
+          const second = await gateway.runner.sweep();
+          expect(second?.receipted).toBe(0);
+          expect((await store.receipts(A)).find((row) => row.order_id === orderId)).toEqual(
+            written,
+          );
+        },
+        30_000,
+      );
     });
 
     describe("the registry of payout splits", () => {

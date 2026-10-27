@@ -15,7 +15,6 @@
  * follow the count as well as the stream.
  */
 
-import type { Order } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Harness, harness, workOnce } from "../testing/harness.js";
@@ -32,15 +31,6 @@ const asyncCard: Card = {
   result: { activation_code: { type: "string" } },
   fulfillment: "async",
   fulfill_deadline_seconds: 3_600,
-};
-
-const syncCard: Card = {
-  merchant_item_id: "room-101",
-  title: "A room for the night",
-  description: "One night in room 101",
-  price: { amount: "80.00", currency: "USD" },
-  result: { access_code: { type: "string" } },
-  fulfillment: "sync",
 };
 
 let open: Harness | null = null;
@@ -94,6 +84,7 @@ describe("an effect that could not be written down", () => {
     const harnessed = await started();
     const orderId = await quoted(harnessed, asyncCard);
 
+    const stage = harnessed.queue.stage.bind(harnessed.queue);
     harnessed.queue.stage = async () => {
       throw new Error("the queue would not take the envelope");
     };
@@ -110,6 +101,19 @@ describe("an effect that could not be written down", () => {
 
     const after = await harnessed.store.orderById(orderId);
     expect(after?.order.state).not.toBe("paid");
+    harnessed.queue.stage = stage;
+    const healthyOrder = await quoted(harnessed, asyncCard);
+    await harnessed.gateway.runner.presentVerifiedPayment(
+      healthyOrder,
+      "alice",
+      "PAY-B",
+      PAID_AT,
+      harnessed.now(),
+    );
+    expect((await harnessed.store.orderById(healthyOrder))?.order.state).toBe("paid");
+    expect(
+      (await harnessed.queue.draw(harnessed.merchant.id, 10, 0)).map((row) => row.envelope.kind),
+    ).toEqual(["order"]);
   });
 
   it("leaves no order calling itself delivered with no receipt behind it", async () => {
@@ -136,85 +140,9 @@ describe("an effect that could not be written down", () => {
     const after = await harnessed.store.orderById(orderId);
     expect(after?.order.state).not.toBe("delivered");
   });
-
-  it("is the only reason those orders do not move, with nothing broken", async () => {
-    // The negative control: both cases above pass trivially if a purchase never
-    // reaches those states at all.
-    const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
-
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      orderId,
-      "alice",
-      "PAY-A",
-      PAID_AT,
-      harnessed.now(),
-    );
-
-    const after = await harnessed.store.orderById(orderId);
-    expect(after?.order.state).toBe("paid");
-    const drawn = await harnessed.queue.draw(harnessed.merchant.id, 10, 0);
-    expect(drawn.map((delivery) => delivery.envelope.kind)).toStrictEqual(["order"]);
-  });
 });
 
 describe("the sweep of what an order is still owed", () => {
-  it("writes the receipt a delivered order has none of, and writes it once", async () => {
-    // A delivered order with no receipt, as a defect could leave one. After the
-    // second run the receipt is still the one the first run wrote, identifier
-    // and all.
-    const harnessed = await started();
-    const orderId = await quoted(harnessed, syncCard);
-    await harnessed.store.withOrder(orderId, (found) => ({
-      save: { ...found, order: deliveredWithMoneyIn(found.order) },
-      result: null,
-    }));
-    expect(
-      (await harnessed.store.receipts(harnessed.merchant.id)).find(
-        (receipt) => receipt.order_id === orderId,
-      ) ?? null,
-    ).toBeNull();
-
-    await sweep(harnessed);
-    const written =
-      (await harnessed.store.receipts(harnessed.merchant.id)).find(
-        (receipt) => receipt.order_id === orderId,
-      ) ?? null;
-    expect(written?.outcome).toBe("delivered");
-    expect(written?.price.amount).toBe("80.00");
-
-    await sweep(harnessed);
-    expect(
-      (await harnessed.store.receipts(harnessed.merchant.id)).find(
-        (receipt) => receipt.order_id === orderId,
-      ) ?? null,
-    ).toStrictEqual(written);
-  });
-
-  it("leaves an assertion-only saved charge without a receipt", async () => {
-    const harnessed = await started();
-    const orderId = await quoted(harnessed, syncCard);
-    await harnessed.store.withOrder(orderId, (found) => ({
-      save: {
-        ...found,
-        order: deliveredWithMoneyIn(found.order),
-        paymentWords: [
-          { about: "settle", at: harnessed.now(), said: "the facilitator was not asked" },
-        ],
-      },
-      result: null,
-    }));
-
-    const repaired = await sweep(harnessed);
-
-    expect(repaired.receipted).toBe(0);
-    expect(
-      (await harnessed.store.receipts(harnessed.merchant.id)).find(
-        (receipt) => receipt.order_id === orderId,
-      ) ?? null,
-    ).toBeNull();
-  });
-
   it("starts the clock again on an open order whose deadline has passed", async () => {
     // Only a reminder declares an order overdue. A reminder lost to a handler
     // that kept throwing leaves an order nothing will close and a buyer nothing
@@ -444,19 +372,4 @@ async function paidWithNothingOnTheStream(harnessed: Harness): Promise<string> {
 
   harnessed.advance(harnessed.runtime.config.sweepDispatchGraceMs + 1_000);
   return orderId;
-}
-
-/**
- * The same order, delivered and paid for, built by hand: the gateway itself
- * cannot produce a delivered order with no receipt, which is the record the
- * sweep exists for.
- */
-function deliveredWithMoneyIn(order: Order): Order {
-  return {
-    ...order,
-    state: "delivered",
-    payment: "settled",
-    closure: null,
-    timestamps: { ...order.timestamps, paidAt: order.timestamps.quotedAt },
-  };
 }
