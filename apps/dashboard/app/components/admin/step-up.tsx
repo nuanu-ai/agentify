@@ -9,6 +9,7 @@
  */
 
 import { Button } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import { Form } from "react-router";
 import type { StepUpLink, StepUpView } from "../../../src/admin/step-up.js";
 import { Moment } from "../moment.js";
@@ -19,7 +20,7 @@ const SIGN_IN_AGAIN = "/admin/sign-in-again";
 
 const minutes = (seconds: number): string => {
   const whole = Math.ceil(seconds / 60);
-  return whole <= 1 ? "a minute" : `${whole} minutes`;
+  return whole <= 1 ? "a minute" : withUnit(whole, "minutes");
 };
 
 /** What became of the link the operator asked for. */
@@ -92,7 +93,7 @@ export function StepUp({
       <p className="what">Sign in again to act</p>
       <p className="why">
         {pressed ? "Nothing was changed. " : null}
-        Actions need a sign-in from the last 15 minutes; yours was at{" "}
+        Actions need a sign-in from the last 15&nbsp;minutes; yours was at{" "}
         <Moment at={view.signedInAt} />.
       </p>
       {view.link === null ? null : (

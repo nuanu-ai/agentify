@@ -13,6 +13,7 @@
  * network and heard nothing, which is not the same as nothing being charged.
  */
 
+import { withUnit } from "@agentify/ui/units";
 import type { Fulfillment, MerchantFinding, OrderStatus } from "@nuanu-ai/agentify-contracts";
 
 /**
@@ -249,7 +250,8 @@ export const notConnectedSince = (when: string): string =>
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on
  * the wire so nothing turns it into a float, and `"5.00"` shown as `$5` is a
- * different number to anybody checking their books.
+ * different number to anybody checking their books. It is kept on one line
+ * with its currency, so it is for a page and nothing else.
  */
 export const money = (sum: { readonly amount: string; readonly currency: string }): string =>
-  `${sum.amount} ${sum.currency}`;
+  withUnit(sum.amount, sum.currency);

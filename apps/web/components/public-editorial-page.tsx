@@ -1,3 +1,4 @@
+import { keepUnits } from "@agentify/ui/units";
 import { Fragment, type ReactNode } from "react";
 
 import type {
@@ -12,16 +13,16 @@ function renderNode(node: Exclude<RichText, string>[number], key: string): React
     case "link":
       return (
         <a href={node.href} key={key}>
-          {node.value}
+          {keepUnits(node.value)}
         </a>
       );
     case "text":
-      return <Fragment key={key}>{node.value}</Fragment>;
+      return <Fragment key={key}>{keepUnits(node.value)}</Fragment>;
   }
 }
 
 function renderRichText(content: RichText): ReactNode {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") return keepUnits(content);
   return content.map((node, index) => renderNode(node, `${node.kind}-${index}`));
 }
 

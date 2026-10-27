@@ -4,6 +4,7 @@
  * browser would show them before any script of theirs asks the API.
  */
 
+import { asTyped } from "@agentify/ui/units";
 import { prerender } from "react-dom/static";
 import { describe, expect, it } from "vitest";
 import { scanFixture } from "../lib/scan-fixtures";
@@ -89,7 +90,7 @@ describe("ScanExperience teaser actions", () => {
     const markup = await drawn("running");
 
     expect(markup).toContain("example.com");
-    expect(markup).toContain("usually under 60 s");
+    expect(asTyped(markup)).toContain("usually under 60 s");
     expect(markup).not.toContain("Scan 018f3f56");
   });
 

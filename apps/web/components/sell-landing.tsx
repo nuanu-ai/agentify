@@ -1,5 +1,6 @@
 import "./sell-landing.css";
 
+import { keepUnits } from "@agentify/ui/units";
 import { Fragment } from "react";
 import { LANDING_SHARED_CONTENT } from "../content/landing";
 import type { SellLanding } from "../content/sell";
@@ -82,8 +83,8 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
                     <span className="scene-product__thumb">✦</span>
                     <div className="scene-product__copy">
                       <div>
-                        <b>{sale.product.name}</b>
-                        <strong>{sale.product.price}</strong>
+                        <b>{keepUnits(sale.product.name)}</b>
+                        <strong>{keepUnits(sale.product.price)}</strong>
                       </div>
                     </div>
                   </div>
@@ -98,7 +99,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
                   </span>
                   <div>
                     <small>{sale.paid.kind}</small>
-                    <strong>{sale.paid.amount}</strong>
+                    <strong>{keepUnits(sale.paid.amount)}</strong>
                     <span className="payment-result__note">{sale.paid.note}</span>
                   </div>
                   <span className="payment-result__check">✓</span>
@@ -228,7 +229,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               <div className="payment-map__body">
                 <Wallet side={money.map.buyer} />
                 <div className="payment-flow">
-                  <span>{money.map.flow.amount}</span>
+                  <span>{keepUnits(money.map.flow.amount)}</span>
                   <i />
                   <small>{money.map.flow.note}</small>
                 </div>
@@ -360,9 +361,9 @@ function Wallet({
         </div>
       </div>
       {merchant ? (
-        <strong className="wallet__amount">{side.amount}</strong>
+        <strong className="wallet__amount">{keepUnits(side.amount)}</strong>
       ) : (
-        <span className="wallet__amount">{side.amount}</span>
+        <span className="wallet__amount">{keepUnits(side.amount)}</span>
       )}
     </div>
   );
@@ -424,7 +425,7 @@ function DashboardWindow({ view: shown }: Readonly<{ view: SellLanding["dashboar
                     <b>{name}</b>
                     <small>{id}</small>
                   </td>
-                  <td>{price}</td>
+                  <td>{keepUnits(price ?? "")}</td>
                   <td className="mini-app__when">{when}</td>
                   <td>
                     <span className={state === "On sale" ? "mini-app__on" : "mini-app__off"}>

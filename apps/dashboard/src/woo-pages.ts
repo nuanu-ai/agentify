@@ -10,6 +10,7 @@
 import { readinessOf, UNKNOWN } from "@agentify/core";
 import { publishRefusalReason } from "@agentify/gateway";
 import type { SetupResult } from "@agentify/gateway/analytics";
+import { keepUnits, withUnit } from "@agentify/ui/units";
 import {
   type CardInput,
   MERCHANT_FINDINGS,
@@ -321,15 +322,15 @@ export const rateFarSays = (far: {
   const { rate, currency, example } = far;
   const costs =
     example.kind === "priced"
-      ? `${example.name} (${groupedRate(example.price)} ${currency}) would sell for` +
-        ` ${dollarsAt(example.price, rate) ?? "?"} USD instead of` +
-        ` ${dollarsAt(example.price, far.reference) ?? "?"} USD.`
+      ? `${keepUnits(example.name)} (${withUnit(groupedRate(example.price), currency)}) would sell for` +
+        ` ${withUnit(dollarsAt(example.price, rate) ?? "?", "USD")} instead of` +
+        ` ${withUnit(dollarsAt(example.price, far.reference) ?? "?", "USD")}.`
       : example.kind === "none"
         ? `None of the first ${EXAMPLE_PAGE} products in your shop's public catalogue has a` +
           ` price in ${currency}, so no example is shown.`
         : "Your shop's public catalogue didn't answer, so no example is shown.";
   return (
-    `${groupedRate(rate)} ${currency} is ${far.gap} Coinbase's ${referenceShown(far.reference)}.` +
+    `${withUnit(groupedRate(rate), currency)} is ${far.gap} Coinbase's ${referenceShown(far.reference)}.` +
     ` ${costs} If that's right, type the rate again.` +
     (far.typed.includes(".") ? " If the dot separates thousands, leave it out." : "")
   );

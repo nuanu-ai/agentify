@@ -19,7 +19,7 @@ import type {
   OrdersQuery,
   OrdersShown,
 } from "@agentify/gateway/operator";
-import { asTyped } from "@agentify/ui/units";
+import { asTyped, keepUnits, withUnit } from "@agentify/ui/units";
 import { type From, fromIn, type Mark, writeFrom } from "../cursor.js";
 import { dayOf, moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
@@ -152,6 +152,10 @@ const paymentToned = (payment: OperatorOrderRow["payment"]): Toned => ({
 /** A merchant as the workspace names it: the name they sell under, or their identifier. */
 const merchantName = (merchant: OrderMerchant): string => merchant.serviceName ?? merchant.id;
 
+/** The product's title as the merchant wrote it, kept for a page, or its code where it has none. */
+const productName = (product: OperatorOrder["product"]): string =>
+  product.title === null ? product.merchantItemId : keepUnits(product.title);
+
 interface OrderRowView {
   readonly id: string;
   readonly to: string;
@@ -177,7 +181,7 @@ const orderRowView = (row: OperatorOrderRow): OrderRowView => ({
   priced: row.pricedAt === null ? null : at(row.pricedAt),
   day: dayOf(new Date(row.pricedAt ?? row.createdAt).toISOString()),
   merchant: merchantName(row.merchant),
-  product: row.product.title ?? row.product.merchantItemId,
+  product: productName(row.product),
   amount: row.price === null ? null : money(row.price),
   state: ORDER_WORDS[row.status],
   payment: paymentToned(row.payment),
@@ -430,7 +434,7 @@ function stepView(step: OrderStep, order: OperatorOrder, merchant: string): Step
       return {
         who: "Purchase",
         what: "Order created",
-        said: `An agent asked to buy ${order.product.title ?? order.product.merchantItemId} from ${merchant}.`,
+        said: `An agent asked to buy ${productName(order.product)} from ${merchant}.`,
         at: when,
         dot: null,
       };
@@ -557,10 +561,10 @@ function stepView(step: OrderStep, order: OperatorOrder, merchant: string): Step
 const durationOf = (ms: number): string => {
   const minutes = Math.floor(ms / 60_000);
   if (minutes < 1) return "less than a minute";
-  if (minutes < 120) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  if (minutes < 120) return withUnit(minutes, `minute${minutes === 1 ? "" : "s"}`);
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours} hours`;
-  return `${Math.floor(hours / 24)} days`;
+  if (hours < 48) return withUnit(hours, "hours");
+  return withUnit(Math.floor(hours / 24), "days");
 };
 
 const cardOf = (order: OperatorOrder): string => {
@@ -719,7 +723,7 @@ export function orderPageView(
     kind: "order",
     readAt: `Read ${moment(readAt.toISOString())}`,
     id: order.id,
-    title: order.product.title ?? order.product.merchantItemId,
+    title: productName(order.product),
     state: ORDER_WORDS[order.status],
     amount: order.price === null ? null : money(order.price),
     merchant: { name: merchant, to: `/admin/merchants/${encodeURIComponent(order.merchant.id)}` },
@@ -730,8 +734,10 @@ export function orderPageView(
       reason: agent.reason?.message ?? null,
       sellerWords:
         agent.refusal !== undefined
-          ? `${agent.refusal.code}: ${agent.refusal.message}`
-          : (agent.merchant_closure?.message ?? null),
+          ? `${agent.refusal.code}: ${keepUnits(agent.refusal.message)}`
+          : agent.merchant_closure?.message === undefined
+            ? null
+            : keepUnits(agent.merchant_closure.message),
     },
     merchantSide: merchantSideOf(order, merchant),
     timeline: order.timeline.map((step) => stepView(step, order, merchant)),

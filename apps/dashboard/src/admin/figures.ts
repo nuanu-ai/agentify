@@ -41,6 +41,7 @@ import {
   type WaitingForAdmission,
   type Workers,
 } from "@agentify/gateway/operator";
+import { withUnit } from "@agentify/ui/units";
 import type { SectionCounts } from "@agentify/ui/workspace-view";
 import type { AdReportCounts, LinkPurpose } from "../dashboard-entry.js";
 import { LINK_CHANNEL_LIMIT } from "../identity.js";
@@ -117,19 +118,19 @@ const chartClock = (at: number): string => {
   return `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}`;
 };
 
-/** "3 h 12 min", "12 min", "2 d 3 h", "under a minute". */
+/** "3 h 12 min", "12 min", "2 d 3 h", "under a minute", each number kept with its unit. */
 const durationWritten = (ms: number): string => {
   const minutes = Math.floor(ms / 60_000);
   if (minutes < 1) return "under a minute";
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return withUnit(minutes, "min");
   const hours = Math.floor(minutes / 60);
-  if (hours < 48) return `${hours} h ${minutes % 60} min`;
-  return `${Math.floor(hours / 24)} d ${hours % 24} h`;
+  if (hours < 48) return `${withUnit(hours, "h")} ${withUnit(minutes % 60, "min")}`;
+  return `${withUnit(Math.floor(hours / 24), "d")} ${withUnit(hours % 24, "h")}`;
 };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
-const usd = (amount: string) => `${amount} USD`;
+const usd = (amount: string) => withUnit(amount, "USD");
 
 const sumOf = (...amounts: readonly string[]): string =>
   dollarsOf(amounts.reduce((all, amount) => all + microsOf(amount), 0n));
@@ -686,7 +687,7 @@ function worthOf(reads: OverviewReads): OverviewView["worth"] {
   else if (ads.givenUp + ads.refused > 0) {
     items.push({
       badge: { tone: "partial", word: "Given up" },
-      title: `${plural(ads.givenUp + ads.refused, "sign-up report")} to the ad network ${ads.givenUp + ads.refused === 1 ? "was" : "were"} not delivered in 30 days`,
+      title: `${plural(ads.givenUp + ads.refused, "sign-up report")} to the ad network ${ads.givenUp + ads.refused === 1 ? "was" : "were"} not delivered in 30\u00a0days`,
       aside: "",
       why: `${ads.givenUp} given up and ${ads.refused} refused. Nothing a merchant or a buyer does depends on them.`,
       links: [{ label: "See the outboxes in Health", href: "/admin/health" }],
@@ -751,7 +752,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
             : "With a product on sale now",
     },
     {
-      label: "Orders · 7 days",
+      label: "Orders · 7\u00a0days",
       figure: orders === null ? null : String(orders.count),
       aside:
         orders === null
@@ -759,7 +760,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
           : `${orders.delivered} delivered · ${orders.paymentUnknown} unknown · ${orders.count - orders.delivered - orders.paymentUnknown} other. ${plural(orders.lapsed, "unpaid attempt")} not counted.`,
     },
     {
-      label: "Settled · 7 days",
+      label: "Settled · 7\u00a0days",
       figure: week === null ? null : week.sales.amount,
       unit: "USD",
       aside:
@@ -768,7 +769,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
           : `${plural(week.sales.count, "order")} whose payment settled`,
     },
     {
-      label: "Commission · 7 days",
+      label: "Commission · 7\u00a0days",
       figure: week === null ? null : week.commission,
       unit: "USD",
       aside: `${share} of sales paid into splits, held there until paid out`,
@@ -834,8 +835,8 @@ export interface MoneyReads {
 }
 
 const PERIODS: readonly (readonly [MoneyPeriod, string, string])[] = [
-  ["7d", "7 days", "in the last 7 days"],
-  ["30d", "30 days", "in the last 30 days"],
+  ["7d", "7\u00a0days", "in the last 7\u00a0days"],
+  ["30d", "30\u00a0days", "in the last 30\u00a0days"],
   ["all", "All time", "in all time"],
 ];
 
@@ -1279,7 +1280,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
             part: "Merchants' workers",
             badge: { tone: "fail", word: `${workers.silentOf} out of touch` },
             fact: [
-              `${plural(workers.silentOf, "merchant")} with products on sale ${workers.silentOf === 1 ? "has" : "have"} no compatible worker that polled within the last ${minutes} minutes, so their products are out of the catalogue and their purchases are refused: `,
+              `${plural(workers.silentOf, "merchant")} with products on sale ${workers.silentOf === 1 ? "has" : "have"} no compatible worker that polled within the last ${withUnit(minutes, "minutes")}, so their products are out of the catalogue and their purchases are refused: `,
               ...workers.silent.flatMap((silent, index) => [
                 ...(index === 0 ? [] : [", "]),
                 { text: silent.name, href: `/admin/merchants/${silent.merchantId}` },
@@ -1303,7 +1304,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
               part: "Merchants' workers",
               badge: { tone: "pass", word: "Connected" },
               fact: [
-                `${workers.connectedWithin} of the ${plural(workers.everConnected, "merchant")} whose worker ever connected did so with a compatible worker within the last ${minutes} minutes. No merchant with products on sale is out of touch.`,
+                `${workers.connectedWithin} of the ${plural(workers.everConnected, "merchant")} whose worker ever connected did so with a compatible worker within the last ${withUnit(minutes, "minutes")}. No merchant with products on sale is out of touch.`,
               ],
             },
   );
@@ -1396,7 +1397,7 @@ export function healthViewOf(reads: HealthReads): HealthView {
               ? { tone: "partial", word: `${ads.givenUp + ads.refused} not delivered` }
               : { tone: "pass", word: "Delivered" },
           fact: [
-            `${plural(ads.delivered, "sign-up report")} delivered in 30 days; ${ads.refused} refused and ${ads.givenUp} given up; ${ads.waiting} waiting.`,
+            `${plural(ads.delivered, "sign-up report")} delivered in 30\u00a0days; ${ads.refused} refused and ${ads.givenUp} given up; ${ads.waiting} waiting.`,
           ],
         },
   );

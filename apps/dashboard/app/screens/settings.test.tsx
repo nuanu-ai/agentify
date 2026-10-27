@@ -18,6 +18,7 @@ import {
   payoutSplitNetworkOf,
   type RecordedPayoutSplit,
 } from "@agentify/gateway";
+import { asTyped, withUnit } from "@agentify/ui/units";
 import { checksummedAddressOf, PayoutWalletSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
@@ -503,7 +504,7 @@ describe("a change of the payout wallet on its way", () => {
 
     const said = within(form).getByRole("status").textContent ?? "";
     expect(said).toMatch(/emailing everyone on your account/i);
-    expect(said).toMatch(/30 seconds/);
+    expect(said).toMatch(/30\sseconds/);
     expect(screen.getByRole("button", { name: "Change wallet" }).hasAttribute("disabled")).toBe(
       true,
     );
@@ -963,7 +964,7 @@ describe("what Getting paid says in each state", () => {
     ...[1, 2].flatMap((count) => sentencesOf(tooMany(count))),
     ...sentencesOf(paysBoth("0.1%")),
     // An amount is written as digits, which `sentencesOf` reads as `#`.
-    ...["1.1 USDC", "1.1 test USDC"].flatMap((amount) =>
+    ...[withUnit("1.1", "USDC"), withUnit("1.1", "test USDC")].flatMap((amount) =>
       [true, false].flatMap((one) => sentencesOf(brings(amount, one))),
     ),
   ]);
@@ -1267,7 +1268,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     await act(() => vi.advanceTimersByTimeAsync(1));
 
     expect(screen.queryByText(WALLET_WORDS.waitingAddress)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.connectUnanswered))).toBeTruthy();
     expect(coinbase.keys).toBe(false);
     expect(box().value).toBe("0x1234");
   });
@@ -1287,7 +1288,7 @@ describe("creating or connecting a Coinbase Wallet from the settings", () => {
     });
 
     expect(box().value).toBe("0x1234");
-    expect(screen.getByText(WALLET_WORDS.connectUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.connectUnanswered))).toBeTruthy();
   });
 
   it("takes the refusal of an earlier address off the box it fills, so it is not read out against the new one", async () => {
@@ -1707,7 +1708,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
 
     expect(screen.queryByText(WALLET_WORDS.waitingPayout)).toBeNull();
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.payoutUnanswered))).toBeTruthy();
     expect(coinbase.keys).toBe(false);
   });
 
@@ -1729,7 +1730,7 @@ describe("sending the payout from a Coinbase Wallet", () => {
     });
 
     expect(screen.queryByText(/did not send|Nothing was sent|sent nothing/)).toBeNull();
-    expect(screen.getByText(WALLET_WORDS.payoutUnanswered)).toBeTruthy();
+    expect(screen.getByText(asTyped(WALLET_WORDS.payoutUnanswered))).toBeTruthy();
   });
 
   it("does not say nothing was sent on a later press that is closed, once a payout went unanswered", async () => {

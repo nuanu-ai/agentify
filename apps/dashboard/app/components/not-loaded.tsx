@@ -1,3 +1,4 @@
+import { keepUnits } from "@agentify/ui/units";
 import type { ReactNode } from "react";
 import { isRouteErrorResponse, useHref, useLocation, useRouteError } from "react-router";
 import { troubleIn } from "../answer.js";
@@ -54,7 +55,7 @@ export const readFailedIn = ({
       return (
         <Frame tab={tab} title={title}>
           <NotLoaded {...(passing ? { again: trouble.again } : {})}>
-            <div className="what">{trouble.said}</div>
+            <div className="what">{keepUnits(trouble.said)}</div>
           </NotLoaded>
         </Frame>
       );

@@ -252,7 +252,7 @@ describe("one order", () => {
         "It is not on the open list their worker reads.",
       ],
     });
-    expect(view.card).toBe("Card esim-7d · Later, within 1 hour");
+    expect(view.card).toBe("Card esim-7d · Later, within 1\u00a0hour");
   });
 
   it("says the merchant reads a payment after their closure where it is back on their open list", () => {
@@ -299,7 +299,7 @@ describe("one order", () => {
     const { payment } = page(unknownOrder());
 
     expect(payment.head).toStrictEqual({ text: "Outcome unknown", tone: "unknown" });
-    expect(payment.unknown).toBe("Unknown since 2026-10-23 12:05:00 UTC, for 2 hours.");
+    expect(payment.unknown).toBe("Unknown since 2026-10-23 12:05:00 UTC, for 2\u00a0hours.");
     expect(payment.recovery?.nextBlock).toBe("0x1c9a3f2");
     expect(payment.recovery?.hint?.whole).toMatch(/^0x91c4/);
     expect(payment.dropped).toBe("2 more fell off the end of the list.");

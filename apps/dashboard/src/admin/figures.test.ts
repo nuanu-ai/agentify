@@ -466,6 +466,6 @@ describe("the chart of settled sales", () => {
 
     const onThatDay = chart.bars.filter((bar) => bar.label.startsWith("22 Oct"));
     expect(onThatDay.map((bar) => bar.className)).toStrictEqual(["bar", "bar nodel"]);
-    expect(onThatDay[1]?.label).toBe("22 Oct: 8.00 USD paid with no delivery recorded");
+    expect(onThatDay[1]?.label).toBe("22 Oct: 8.00\u00a0USD paid with no delivery recorded");
   });
 });

@@ -264,11 +264,11 @@ describe("the script that waits the wait out", () => {
     const page = alive({ wall: "interval", seconds: 43 });
 
     expect(page.button.disabled).toBe(true);
-    expect(page.button.textContent).toBe("Send another link in 43 s");
+    expect(page.button.textContent).toBe("Send another link in 43\u00a0s");
 
     page.pass(40_000);
     expect(page.button.disabled).toBe(true);
-    expect(page.button.textContent).toBe("Send another link in 3 s");
+    expect(page.button.textContent).toBe("Send another link in 3\u00a0s");
 
     page.pass(3_000);
     expect(page.button.disabled).toBe(false);
@@ -282,13 +282,13 @@ describe("the script that waits the wait out", () => {
 
   it("counts an hour's wait in minutes and drops to seconds near the end", () => {
     const page = alive({ wall: "hourly", seconds: 2_820 });
-    expect(page.button.textContent).toBe("Send another link in 47 min");
+    expect(page.button.textContent).toBe("Send another link in 47\u00a0min");
 
     page.pass(2_729_000);
-    expect(page.button.textContent).toBe("Send another link in 2 min");
+    expect(page.button.textContent).toBe("Send another link in 2\u00a0min");
 
     page.pass(1_000);
-    expect(page.button.textContent).toBe("Send another link in 90 s");
+    expect(page.button.textContent).toBe("Send another link in 90\u00a0s");
 
     page.pass(90_000);
     expect(page.button.disabled).toBe(false);
@@ -310,7 +310,7 @@ describe("the script that waits the wait out", () => {
     expect(readable(served({ wall: "hourly", seconds: 61 }))).toContain("Try again in 61 seconds");
 
     const page = alive({ wall: "hourly", seconds: 61 });
-    expect(page.button.textContent).toBe("Send another link in 61 s");
+    expect(page.button.textContent).toBe("Send another link in 61\u00a0s");
   });
 });
 

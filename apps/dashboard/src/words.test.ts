@@ -73,11 +73,11 @@ describe("the words a merchant reads", () => {
 });
 
 describe("money on a screen", () => {
-  it("prints an amount exactly as it arrived", () => {
+  it("prints an amount exactly as it arrived, on one line with its currency", () => {
     // Money is a decimal string on the wire so nothing turns it into a float;
     // "5.00" shown as "5" is where a merchant's books would first disagree.
-    expect(money({ amount: "5.00", currency: "USD" })).toBe("5.00 USD");
-    expect(money({ amount: "0.000001", currency: "USDC" })).toBe("0.000001 USDC");
-    expect(money({ amount: "1234.50", currency: "USD" })).toBe("1234.50 USD");
+    expect(money({ amount: "5.00", currency: "USD" })).toBe("5.00\u00a0USD");
+    expect(money({ amount: "0.000001", currency: "USDC" })).toBe("0.000001\u00a0USDC");
+    expect(money({ amount: "1234.50", currency: "USD" })).toBe("1234.50\u00a0USD");
   });
 });

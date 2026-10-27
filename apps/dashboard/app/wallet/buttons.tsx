@@ -8,6 +8,7 @@
  */
 
 import { Button } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import { useEffect, useRef, useState } from "react";
 import { type PagePresses, pressesOf } from "./presses.js";
 import type { askAddress, sendPayout } from "./requests.js";
@@ -20,7 +21,7 @@ import { WALLET_ANSWERS_WITHIN_MS } from "./waiting.js";
  */
 const coinbase = () => import("./coinbase.js");
 
-const LIMIT = `${WALLET_ANSWERS_WITHIN_MS / 60_000} minutes`;
+const LIMIT = withUnit(WALLET_ANSWERS_WITHIN_MS / 60_000, "minutes");
 
 /**
  * What the buttons say. Coinbase's window closes the same way whether the
