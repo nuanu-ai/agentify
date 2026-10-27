@@ -1362,6 +1362,13 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
+/** Presses the signed-in address in the header's row, which opens the account's menu. */
+const openTheAccount = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-account > summary");
+  if (button === null) throw new Error("the page draws no account menu");
+  button.click();
+};
+
 /** Products as an operator who also sells sees it, with the door into the workspace in the header. */
 const operatorsCards = (told: Told): GalleryState =>
   at(told, {
@@ -1415,6 +1422,22 @@ const CARDS: GalleryState[] = [
     ),
     scene: {
       steps: [{ shows: "Products", does: openTheMenu }],
+      shows: "Sign out",
+    },
+  },
+  {
+    ...cards(
+      {
+        id: "dashboard-cards-account",
+        screen: "Products",
+        when: "A merchant on a computer presses their address at the end of the header's row.",
+        cause: "The account's menu opens under the address with Settings and Sign out.",
+      },
+      cardsView(CATALOGUE, ORIGIN.live),
+      "live",
+    ),
+    scene: {
+      steps: [{ shows: WHO, does: openTheAccount }],
       shows: "Sign out",
     },
   },

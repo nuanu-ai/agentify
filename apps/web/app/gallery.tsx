@@ -385,6 +385,13 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
+/** Presses the signed-in address in the header's row, which opens the account's menu. */
+const openTheAccount = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-account > summary");
+  if (button === null) throw new Error("the page draws no account menu");
+  button.click();
+};
+
 const askForTheReport = (page: Document) => {
   typeInto(page, "email", WHO);
   tick(page, "site_is_mine");
@@ -698,6 +705,23 @@ const PUBLIC: GalleryState[] = [
         answers: visitor(true),
         steps: [{ shows: "Privacy and data controls", does: openTheMenu }],
         shows: WHO,
+      },
+    },
+  ),
+  at(
+    {
+      id: "scanner-privacy-account",
+      screen: "Privacy",
+      when: "A signed-in visitor on a computer presses their address at the end of the header's row.",
+      cause: "The account's menu opens under the address with Settings and Sign out.",
+    },
+    {
+      path: "/privacy",
+      loaded: { "routes/privacy": getPublicEditorialPage("/privacy", SITE) },
+      scene: {
+        answers: visitor(true),
+        steps: [{ shows: WHO, does: openTheAccount }],
+        shows: "Sign out",
       },
     },
   ),
