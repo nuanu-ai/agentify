@@ -1101,7 +1101,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
             unfulfilled.length === 0 ? {} : parts.woo.connectorSales(person, unfulfilled),
           ]);
     const view = ordersView(
-      viewing(person).mode,
       cards.document,
       orders,
       open.document,
@@ -1594,7 +1593,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         return {
           kind: "view",
           view: receiptsView(
-            viewing(person),
             cards.document,
             receipts.document,
             config.transactionPage,

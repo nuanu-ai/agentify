@@ -1818,13 +1818,12 @@ const ordersAt = (
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
-    owed?: Parameters<typeof ordersView>[5];
-    lapsed?: Parameters<typeof ordersView>[7];
-    connector?: Parameters<typeof ordersView>[9];
+    owed?: Parameters<typeof ordersView>[4];
+    lapsed?: Parameters<typeof ordersView>[6];
+    connector?: Parameters<typeof ordersView>[8];
   }> = {},
 ) =>
   ordersView(
-    mode,
     cards,
     listed,
     open,
@@ -1891,7 +1890,7 @@ const secondsAfter = (iso: string, seconds: number) =>
  * and its hour to deliver ran out; the second was refused by the merchant's
  * code after payment.
  */
-const OWED_BECAUSE: Parameters<typeof ordersView>[5] = Object.fromEntries(
+const OWED_BECAUSE: Parameters<typeof ordersView>[4] = Object.fromEntries(
   OWING.orders
     .filter((order) => order.status === "unfulfilled")
     .map((order, at) => {
@@ -1968,7 +1967,6 @@ const LAPSED: readonly LapsedAttempt[] = ordersOf([
   price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
   asked_at: secondsAfter(order.price.at, -2),
   priced_at: at === 2 ? null : order.price.at,
-  test: order.test,
 }));
 
 const ORDERS: GalleryState[] = [
@@ -2351,7 +2349,7 @@ const ORDERS: GalleryState[] = [
       screen: "Orders",
       when: "A merchant on the test site looks at the orders their trial purchases made.",
       cause:
-        "Every order on the test site is a test purchase, one of them unfulfilled; the band over the page says so, and no sum repeats it.",
+        "Every order on the test site is a test purchase, one of them unfulfilled, and the band over the page says so.",
     },
     ordersOf(
       [
@@ -2380,7 +2378,6 @@ const RECEIPTS: GalleryState[] = [
     },
     ((listed) =>
       receiptsView(
-        seenBy("live"),
         SOLD,
         listed,
         TRANSACTIONS.live,
@@ -2406,7 +2403,6 @@ const RECEIPTS: GalleryState[] = [
         "The contract admits receipts with historical unfulfilled or closed outcomes; the gateway currently issues only delivered or shipped receipts. One row has no recorded transaction.",
     },
     receiptsView(
-      seenBy("live"),
       SOLD,
       receiptsOf([
         ["vpn", "delivered"],
@@ -2429,7 +2425,7 @@ const RECEIPTS: GalleryState[] = [
       when: "A merchant opens Receipts before any product was released to a buyer.",
       cause: "The gateway lists no receipts.",
     },
-    receiptsView(seenBy("live"), SOLD, receiptsOf([]), TRANSACTIONS.live),
+    receiptsView(SOLD, receiptsOf([]), TRANSACTIONS.live),
     "live",
   ),
   receipts(
@@ -2440,7 +2436,6 @@ const RECEIPTS: GalleryState[] = [
       cause: "Every receipt there is a test purchase, paid in test funds on Base Sepolia.",
     },
     receiptsView(
-      seenBy("test"),
       SOLD,
       receiptsOf(
         [
@@ -2466,7 +2461,6 @@ const RECEIPTS: GalleryState[] = [
       mode: "live",
       loaded: {
         "routes/receipts": receiptsView(
-          seenBy("live"),
           SOLD,
           receiptsOf(
             Array.from(

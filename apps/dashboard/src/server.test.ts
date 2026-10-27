@@ -4548,31 +4548,6 @@ describe("the receipts screen", () => {
     expect(html).toContain(`href="https://sepolia.basescan.org/tx/${transfer}"`);
   });
 
-  it("marks money that was never real as what it is", async () => {
-    // While every order is a test, this is every row; a ledger of payments that
-    // never happened, laid out as one, is the worst thing this page could be.
-    const { browser, gateway, harnessed } = await started({
-      dashboard: { FACILITATOR_URL: "https://x402.org/facilitator" },
-    });
-    const itemId = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    await browser.signIn();
-
-    const receipts = readable((await browser.get("/receipts")).html);
-    const orders = readable((await browser.get("/orders")).html);
-
-    // The band over every page of the test channel says it, once, and no
-    // sentence over the list or mark on a sum says it again.
-    expect(receipts).toContain(SURFACE_WORDS.test);
-    expect(orders).toContain(SURFACE_WORDS.test);
-    expect(receipts).not.toContain("Every receipt here is a test purchase");
-    expect(orders).not.toContain("Every order here is a test purchase");
-    expect(receipts).not.toContain("80.00 USD test");
-    expect(orders).not.toContain("80.00 USD test");
-  });
-
   it("counts nothing it cannot count, and says what is missing instead", async () => {
     // A receipt is written only when goods are released, so a paid, undelivered
     // purchase has none, and a tile counting those would read zero forever: a

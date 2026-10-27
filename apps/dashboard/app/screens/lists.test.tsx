@@ -1,10 +1,7 @@
 /**
- * Sentences the real gateway cannot reach yet: while every order is a test, a
- * list mixing test and real money cannot be produced over HTTP, and its failure
- * would be a merchant counting test purchases as takings. The views are pure
- * functions of the gateway's documents, and the documents here are built by the
- * contract's own schemas, so nothing is stubbed; each page is drawn as the
- * server sends it.
+ * The lists of orders, receipts and cards as the server draws them. The views
+ * are pure functions of the gateway's documents, and the documents here are
+ * built by the contract's own schemas, so nothing is stubbed.
  */
 
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@agentify/gateway";
@@ -20,14 +17,13 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { inViewersZone } from "../../src/moments.js";
 import { readable } from "../../src/testing/html.js";
-import type { Viewer } from "../../src/viewer.js";
 import { cardsView, ordersView, receiptsView } from "../../src/views.js";
 import { CardsScreen } from "./cards.js";
 import { OrdersScreen } from "./orders.js";
 import { ReceiptsScreen } from "./receipts.js";
 
 /** Every screen says who it is drawn for. */
-const SEEN_BY: Viewer = { base: "", mode: "sandbox", who: "owner@example.com", confirmed: true };
+const WHO = "owner@example.com";
 
 /** Inside the gate, as the screens are, so a form that posts knows its address. */
 const served = (screen: () => ReactElement): string => {
@@ -37,7 +33,7 @@ const served = (screen: () => ReactElement): string => {
   return renderToString(
     <Stub
       initialEntries={["/page"]}
-      hydrationData={{ loaderData: { "routes/gate": { who: SEEN_BY.who } } }}
+      hydrationData={{ loaderData: { "routes/gate": { who: WHO } } }}
     />,
   );
 };
@@ -62,7 +58,7 @@ const cards = MerchantCardListSchema.parse({
   ],
 });
 
-const order = (id: string, test: boolean) => ({
+const order = (id: string) => ({
   id,
   merchant_item_id: "room-101",
   params: {},
@@ -72,12 +68,12 @@ const order = (id: string, test: boolean) => ({
     at: "2026-08-26T10:20:00Z",
     as_of: "2026-08-26T10:15:00Z",
   },
-  test,
+  test: false,
   status: "delivered",
   payment_status: "paid",
 });
 
-const receipt = (id: string, test: boolean) => ({
+const receipt = (id: string) => ({
   id,
   order_id: `ord_${id}`,
   item_id: "itm_1",
@@ -89,17 +85,14 @@ const receipt = (id: string, test: boolean) => ({
   },
   paid_at: "2026-08-26T10:20:03Z",
   outcome: "delivered",
-  test,
+  test: false,
 });
 
-const ordersPage = (orders: OrderList, viewer: Viewer = SEEN_BY): string =>
-  served(() => <OrdersScreen view={ordersView(viewer.mode, cards, orders, orders)} />);
+const ordersPage = (orders: OrderList): string =>
+  served(() => <OrdersScreen view={ordersView(cards, orders, orders)} />);
 
-const receiptsPage = (receipts: ReceiptList, viewer: Viewer = SEEN_BY): string =>
-  served(() => <ReceiptsScreen view={receiptsView(viewer, cards, receipts)} />);
-
-/** On the live site, which draws no band over its pages to say what is a test. */
-const ON_LIVE: Viewer = { ...SEEN_BY, mode: "live" };
+const receiptsPage = (receipts: ReceiptList): string =>
+  served(() => <ReceiptsScreen view={receiptsView(cards, receipts)} />);
 
 /**
  * The split a merchant's payments go to on the test channel, made by the
@@ -121,8 +114,8 @@ const AT_THREE_PERCENT = {
 
 /** An order at this price whose payment went into a split on these terms. */
 const pricedAt = (amount: string, id = `ord_${amount}`) => ({
-  ...order(id, false),
-  price: { ...order(id, false).price, amount },
+  ...order(id),
+  price: { ...order(id).price, amount },
 });
 
 /** Each row's amount, as a person reads it in its column. */
@@ -140,7 +133,7 @@ const openedIn = (html: string): string[] =>
 describe("the receipts of sales that went out", () => {
   it("puts each payment under its day in the viewer's calendar, the heading naming the zone its time is in", () => {
     const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [{ ...receipt("rcp_1", false), paid_at: "2026-08-26T20:15:03Z" }],
+      receipts: [{ ...receipt("rcp_1"), paid_at: "2026-08-26T20:15:03Z" }],
     });
 
     const html = inViewersZone("Asia/Makassar", () => receiptsPage(receipts));
@@ -154,7 +147,7 @@ describe("the receipts of sales that went out", () => {
     // A parcel with a carrier has not been delivered, so its row does not say
     // so; both are counted among the receipts.
     const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [receipt("rcp_1", false), { ...receipt("rcp_2", false), outcome: "shipped" }],
+      receipts: [receipt("rcp_1"), { ...receipt("rcp_2"), outcome: "shipped" }],
     });
 
     const text = readable(receiptsPage(receipts));
@@ -167,9 +160,9 @@ describe("the receipts of sales that went out", () => {
   it("lists the latest payment first, whatever order the gateway gave them in", () => {
     const receipts: ReceiptList = ReceiptListSchema.parse({
       receipts: [
-        { ...receipt("rcp_old", false), paid_at: "2026-08-26T09:00:03Z" },
-        { ...receipt("rcp_new", false), paid_at: "2026-08-26T11:00:03Z" },
-        { ...receipt("rcp_mid", false), paid_at: "2026-08-26T10:00:03Z" },
+        { ...receipt("rcp_old"), paid_at: "2026-08-26T09:00:03Z" },
+        { ...receipt("rcp_new"), paid_at: "2026-08-26T11:00:03Z" },
+        { ...receipt("rcp_mid"), paid_at: "2026-08-26T10:00:03Z" },
       ],
     });
 
@@ -184,7 +177,7 @@ describe("the receipts of sales that went out", () => {
     const id = "rcp_d59f0110946cfebd26bbf9ae7de0134e";
     const order = "ord_d59f0110946cfebd26bbf9ae7de0134e";
     const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [{ ...receipt(id, false), order_id: order }],
+      receipts: [{ ...receipt(id), order_id: order }],
     });
 
     const html = receiptsPage(receipts);
@@ -208,7 +201,7 @@ describe("a row that opens to its details", () => {
       () =>
         ordersPage(
           OrderListSchema.parse({
-            orders: [order("ord_0a1b2c3d4e5f6a7b", false), order("ord_9f8e7d6c5b4a3f2e", false)],
+            orders: [order("ord_0a1b2c3d4e5f6a7b"), order("ord_9f8e7d6c5b4a3f2e")],
           }),
         ),
     ],
@@ -217,10 +210,7 @@ describe("a row that opens to its details", () => {
       () =>
         receiptsPage(
           ReceiptListSchema.parse({
-            receipts: [
-              receipt("rcp_0a1b2c3d4e5f6a7b", false),
-              receipt("rcp_9f8e7d6c5b4a3f2e", false),
-            ],
+            receipts: [receipt("rcp_0a1b2c3d4e5f6a7b"), receipt("rcp_9f8e7d6c5b4a3f2e")],
           }),
         ),
     ],
@@ -229,95 +219,6 @@ describe("a row that opens to its details", () => {
 
     expect(names).toHaveLength(2);
     expect(new Set(names).size).toBe(2);
-  });
-});
-
-describe("a list where some of the money was real and some was not", () => {
-  it("counts the test purchases rather than calling the whole page a test", () => {
-    const orders: OrderList = OrderListSchema.parse({
-      orders: [order("ord_1", true), order("ord_2", false), order("ord_3", false)],
-    });
-
-    const text = readable(ordersPage(orders, ON_LIVE));
-
-    expect(text).toContain("1 order here is a test purchase");
-    expect(text).not.toContain("Every order here is a test purchase");
-  });
-
-  it("marks each test order's sum, in every row the order is drawn in, and no real one", () => {
-    const orders: OrderList = OrderListSchema.parse({
-      orders: [
-        { ...order("ord_1", true), status: "unfulfilled" },
-        order("ord_2", false),
-        order("ord_3", false),
-      ],
-    });
-
-    const html = ordersPage(orders, ON_LIVE);
-    const rows = html.split("<li").slice(1);
-
-    // The refund's own row and its line in the list beside the two real sales.
-    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
-    expect(rows.filter((row) => row.includes("ord_2") && row.includes(">test<"))).toHaveLength(0);
-  });
-
-  it("marks the test rows and leaves the real ones alone", () => {
-    const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [receipt("rcp_1", true), receipt("rcp_2", false)],
-    });
-
-    const html = receiptsPage(receipts, ON_LIVE);
-    const rows = html.split('class="list-opens').slice(1);
-
-    expect(readable(html)).toContain("1 receipt here is a test purchase");
-    // One row carries the mark and the other does not; a page that marked both
-    // or neither would be useless on exactly the day this matters. The mark is
-    // found by its word, not its class, because the page uses that class for
-    // another pill too.
-    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(1);
-  });
-
-  it("says nothing about test money when none of it was a test", () => {
-    const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [receipt("rcp_1", false)],
-    });
-    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", false)] });
-
-    expect(readable(receiptsPage(receipts, ON_LIVE))).not.toContain("test purchase");
-    expect(readable(ordersPage(orders, ON_LIVE))).not.toContain("test purchase");
-    expect(receiptsPage(receipts, ON_LIVE)).not.toContain(">test<");
-    expect(ordersPage(orders, ON_LIVE)).not.toContain(">test<");
-  });
-
-  it("says once on the live site, which draws no band, that every row is a test", () => {
-    const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
-    });
-    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
-
-    expect(readable(receiptsPage(receipts, ON_LIVE))).toContain(
-      "Every receipt here is a test purchase: no real money moved.",
-    );
-    expect(readable(ordersPage(orders, ON_LIVE))).toContain(
-      "Every order here is a test purchase: no real money moved.",
-    );
-  });
-
-  it("leaves it to the band on a channel that draws one, in no sentence and on no sum", () => {
-    // The test site's band says on every page that its payments are tests, so
-    // neither the list nor a sum in it says it a second time.
-    const onTest: Viewer = { ...SEEN_BY, mode: "test" };
-    const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
-    });
-    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
-
-    const html = receiptsPage(receipts, onTest);
-
-    expect(readable(html)).not.toContain("test purchase");
-    expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
-    expect(html).not.toContain(">test<");
-    expect(ordersPage(orders, onTest)).not.toContain(">test<");
   });
 });
 
@@ -342,9 +243,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const paidInto = Object.fromEntries(orders.orders.map((one) => [one.id, SPLIT]));
 
     const html = served(() => (
-      <OrdersScreen
-        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, paidInto)}
-      />
+      <OrdersScreen view={ordersView(cards, orders, orders, undefined, {}, paidInto)} />
     ));
 
     // The row says the price the buyer paid; its opened part says the
@@ -360,14 +259,14 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
   it("says a receipt's shares the same way", () => {
     const receipts: ReceiptList = ReceiptListSchema.parse({
       receipts: SHARES.map(([price], at) => ({
-        ...receipt(`rcp_${at}`, false),
-        price: { ...receipt(`rcp_${at}`, false).price, amount: price },
+        ...receipt(`rcp_${at}`),
+        price: { ...receipt(`rcp_${at}`).price, amount: price },
       })),
     });
     const paidInto = Object.fromEntries(receipts.receipts.map((one) => [one.order_id, SPLIT]));
 
     const html = served(() => (
-      <ReceiptsScreen view={receiptsView(SEEN_BY, cards, receipts, null, paidInto)} />
+      <ReceiptsScreen view={receiptsView(cards, receipts, null, paidInto)} />
     ));
 
     expect(amountsIn(html)).toStrictEqual(SHARES.map(([price]) => `${price} USD`));
@@ -383,7 +282,6 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     const html = served(() => (
       <OrdersScreen
         view={ordersView(
-          SEEN_BY.mode,
           cards,
           orders,
           orders,
@@ -407,9 +305,7 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     });
 
     const html = served(() => (
-      <OrdersScreen
-        view={ordersView(SEEN_BY.mode, cards, orders, orders, undefined, {}, { ord_split: SPLIT })}
-      />
+      <OrdersScreen view={ordersView(cards, orders, orders, undefined, {}, { ord_split: SPLIT })} />
     ));
 
     expect(openedIn(html)[0]).toContain("Your share");
@@ -427,7 +323,6 @@ describe("a paid order left unfulfilled", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
-            SEEN_BY.mode,
             cards,
             unfulfilled,
             unfulfilled,
@@ -463,7 +358,6 @@ describe("a paid order left unfulfilled", () => {
       served(() => (
         <OrdersScreen
           view={ordersView(
-            SEEN_BY.mode,
             cards,
             unfulfilled,
             unfulfilled,
@@ -499,7 +393,6 @@ describe("a paid order left unfulfilled", () => {
     const html = served(() => (
       <OrdersScreen
         view={ordersView(
-          SEEN_BY.mode,
           cards,
           two,
           two,
@@ -534,9 +427,7 @@ describe("an order delivered and not paid", () => {
   // that need them; but whether to revoke what was delivered or to wait is
   // theirs to decide, as the documentation says, and the screen says so.
   const held: OrderList = OrderListSchema.parse({
-    orders: [
-      { ...order("ord_held", false), status: "delivered_unpaid", payment_status: "not_paid" },
-    ],
+    orders: [{ ...order("ord_held"), status: "delivered_unpaid", payment_status: "not_paid" }],
   });
 
   it("is not counted as needing the merchant, and says it waits on the buyer", () => {
@@ -561,7 +452,7 @@ describe("an order delivered and not paid", () => {
 
   it("is told apart from a refund due listed beside it", () => {
     const both: OrderList = OrderListSchema.parse({
-      orders: [...held.orders, { ...order("ord_owed", false), status: "unfulfilled" }],
+      orders: [...held.orders, { ...order("ord_owed"), status: "unfulfilled" }],
     });
 
     const text = readable(ordersPage(both));

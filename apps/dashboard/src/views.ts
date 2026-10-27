@@ -7,10 +7,8 @@
  * thing; `words.ts` carries those cases.
  */
 
-import type { SurfaceMode } from "@agentify/core";
 import { percentOf } from "@agentify/core/published";
 import type { Integration } from "@agentify/gateway";
-import { SURFACE_WORDS } from "@agentify/ui/surface";
 import {
   API_ROUTES,
   expandPath,
@@ -35,7 +33,6 @@ import {
 } from "./listing.js";
 import { moment, withinDay } from "./moments.js";
 import { type SplitTerms, sharesOf } from "./shares.js";
-import type { Viewer } from "./viewer.js";
 import type { ShopTotal } from "./woo-shops.js";
 import {
   CARD_WORDS,
@@ -76,8 +73,6 @@ export interface Rest {
   readonly href: string;
   readonly words: string;
 }
-
-const countOf = (many: number, thing: string): string => `${many} ${thing}${many === 1 ? "" : "s"}`;
 
 // --- cards -------------------------------------------------------------------
 
@@ -367,11 +362,6 @@ interface OrderRow {
   /** The product's code: the row does not print it, and a search finds the order by it. */
   readonly itemId: string;
   readonly amount: string;
-  /**
-   * An unmarked sum for a test purchase is a payment that never happened, so
-   * a page that does not otherwise say which sums are tests marks each.
-   */
-  readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
   readonly share: string | null;
   readonly state: Word;
@@ -477,11 +467,6 @@ export interface OrdersView {
   /** What became of a closure the merchant just pressed, where the page cannot simply show it. */
   readonly pressed: ClosurePressed | null;
   /**
-   * Said once over the orders where some are test purchases and no band over
-   * the page says the channel's payments are tests; null otherwise.
-   */
-  readonly testNote: string | null;
-  /**
    * The orders the address asked for, newest first and at most a page of
    * them: what was searched for, the segments with their counts, how much was
    * cut, and why none is drawn where the merchant has some.
@@ -529,7 +514,6 @@ export interface LapsedAttempt {
   readonly price: { readonly amount: string; readonly currency: string } | null;
   readonly asked_at: string;
   readonly priced_at: string | null;
-  readonly test: boolean;
 }
 
 const NO_LAPSED: LapsedAttempts = { page: null, of: 0 };
@@ -709,7 +693,6 @@ const factsOf = (kept: {
 };
 
 export const ordersView = (
-  mode: SurfaceMode,
   cards: MerchantCardList,
   orders: OrderList,
   open: OrderList,
@@ -732,7 +715,6 @@ export const ordersView = (
     product: titles.get(order.merchant_item_id) ?? order.merchant_item_id,
     itemId: order.merchant_item_id,
     amount: money(order.price),
-    test: order.test,
     share: shareIn(order.price, paidInto[order.id]),
     state: merchantOrderWord(order, reopened(order)),
     paymentUnresolved: order.payment_status === "unresolved",
@@ -820,7 +802,6 @@ export const ordersView = (
           product: titles.get(attempt.merchant_item_id) ?? attempt.merchant_item_id,
           itemId: attempt.merchant_item_id,
           amount: attempt.price === null ? "No price" : money(attempt.price),
-          test: attempt.test,
           share: null,
           state: ORDER_WORDS[attempt.status],
           shopTotal: null,
@@ -880,7 +861,6 @@ export const ordersView = (
   return {
     none: orders.orders.length === 0 && lapsed.of === 0,
     pressed: null,
-    testNote: testOrders(onLapsed ? { orders: lapsed.page ?? [] } : orders, mode),
     lapsedApart:
       !onLapsed && asked.q !== "" && lapsed.of > 0
         ? {
@@ -998,25 +978,6 @@ const REFUND: Rest = {
 const PAID_AFTER_CLOSURE =
   "The buyer's payment arrived after you closed this order, so they paid and nothing was delivered through Agentify. Close it again with a note that says what you did.";
 
-/**
- * Orders carry the test flag too, and their sums would otherwise be taken for
- * money that moved: each sum carries the mark, and the page says it once too.
- * Where the band over every page of the channel already says its payments are
- * tests, the page does not say it a second time.
- */
-const testOrders = (
-  orders: Readonly<{ orders: readonly Readonly<{ test: boolean }>[] }>,
-  mode: SurfaceMode,
-): string | null => {
-  const tests = orders.orders.filter((order) => order.test).length;
-  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
-    return null;
-  }
-  return tests === orders.orders.length
-    ? "Every order here is a test purchase: no real money moved."
-    : `${countOf(tests, "order")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}: no real money moved for ${tests === 1 ? "it" : "those"}.`;
-};
-
 /** Missing cause means unknown cause, rather than a guessed missed deadline. */
 const UNFULFILLED_BECAUSE: Readonly<Record<UnfulfilledCause, string>> = {
   refused: "Paid, but your integration refused the order, so nothing was delivered.",
@@ -1124,7 +1085,6 @@ interface ReceiptRow {
   readonly needsYou: boolean;
   readonly product: string;
   readonly amount: string;
-  readonly test: boolean;
   /** Null where the payment did not go into one of the merchant's payout splits. */
   readonly share: string | null;
   readonly outcome: Word;
@@ -1139,8 +1099,6 @@ interface ReceiptRow {
 }
 
 export interface ReceiptsView {
-  /** Null when no receipt is a test purchase, or where the band over the page says so. */
-  readonly testWarning: string | null;
   /** The receipts the address asks for, the latest payment first, a page at a time. */
   readonly listing: Listing<ReceiptRow>;
 }
@@ -1151,7 +1109,6 @@ const ALL_RECEIPTS: readonly SegmentRule<ReceiptRow>[] = [
 ];
 
 export const receiptsView = (
-  viewer: Viewer,
   cards: MerchantCardList,
   receipts: ReceiptList,
   transactionPage: string | null = null,
@@ -1169,7 +1126,6 @@ export const receiptsView = (
         needsYou: needsYou(receipt.outcome),
         product: titles.get(receipt.item_id) ?? receipt.item_id,
         amount: money(receipt.price),
-        test: receipt.test,
         share: shareIn(receipt.price, paidInto[receipt.order_id]),
         outcome: ORDER_WORDS[receipt.outcome],
         paid: momentView(receipt.paid_at),
@@ -1180,7 +1136,6 @@ export const receiptsView = (
       }),
     );
   return {
-    testWarning: testWarning(receipts, viewer.mode),
     listing: listingOf({
       rows,
       asked: {
@@ -1198,21 +1153,4 @@ export const receiptsView = (
       showAll: "Show all receipts",
     }),
   };
-};
-
-/**
- * A mark per row tells two rows apart but does not stop a merchant reading a
- * page of them as takings, so where a row is a test the page says so once: in
- * the band over every page of a channel that has one, or else in a sentence.
- */
-const testWarning = (receipts: ReceiptList, mode: SurfaceMode): string | null => {
-  const tests = receipts.receipts.filter((receipt) => receipt.test).length;
-  if (tests === 0 || SURFACE_WORDS[mode] !== null) {
-    return null;
-  }
-  const subject =
-    tests === receipts.receipts.length
-      ? "Every receipt here is a test purchase"
-      : `${countOf(tests, "receipt")} here ${tests === 1 ? "is a test purchase" : "are test purchases"}`;
-  return `${subject}: no real money moved.`;
 };

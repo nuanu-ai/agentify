@@ -68,21 +68,6 @@ textarea {
   overflow-x: auto;
 }
 
-/* Beside the amount rather than in its own column, so it cannot scroll out of
-   sight while the number it qualifies stays visible. */
-.tag {
-  font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fail);
-  border: var(--hairline) solid var(--fail);
-  border-radius: 2px;
-  padding: 1px 4px;
-  margin-left: 6px;
-  vertical-align: 1px;
-}
-
 /* --- controls ----------------------------------------------------------- */
 
 /*

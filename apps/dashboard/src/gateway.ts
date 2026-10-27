@@ -612,7 +612,6 @@ const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
       order.price === null || order.timestamps.quotedAt === null
         ? null
         : new Date(order.timestamps.quotedAt).toISOString(),
-    test: order.test,
   };
 };
 
