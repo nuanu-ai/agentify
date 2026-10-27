@@ -33,7 +33,7 @@ const loadIndex = (): Promise<MiniSearch> => {
 };
 
 /** Where the last query is kept; a browser that keeps nothing simply forgets it. */
-const KEPT = "agentify-docs-search";
+export const KEPT = "agentify-docs-search";
 
 const keptQuery = (): string => {
   try {

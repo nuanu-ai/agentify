@@ -3,9 +3,9 @@
  * the page for an address it has no page at, each drawn through the route
  * tree `routes.ts` declares, in the body every page is drawn in, with the data
  * the build's own loaders give it, as the live channel's Caddy serves it. The
- * privacy choices, which only a press opens over a page, are drawn with a
- * scene: what the tab's browser keeps and what the site answers the page's
- * requests with. Nothing here runs on the site.
+ * search and the privacy choices, which only a press opens over a page, are
+ * drawn with a scene: what the tab's browser keeps and what the site answers
+ * the page's requests with. Nothing here runs on the site.
  */
 
 import {
@@ -22,6 +22,8 @@ import { fillTemplates } from "../testing/caddy-templates.js";
 import { CHANNELS } from "../testing/edge.js";
 import { DocsBody } from "./root.js";
 import * as Page from "./routes/page.js";
+import { searchIndex } from "./search.server.js";
+import { KEPT } from "./search-panel.js";
 import { servedTemplate } from "./served.js";
 
 type StubRoute = Parameters<typeof createRoutesStub>[0][number];
@@ -146,6 +148,24 @@ export const gallery: GallerySurface = {
           { shows: "Privacy choices", does: (page) => press(page, "footer button.foot-action") },
         ],
         shows: "Essential processing",
+      },
+    },
+    {
+      id: "docs-front-search",
+      screen: FRONT,
+      address: docsAddress("/"),
+      when: "A reader who searched for refunds before presses Search.",
+      cause:
+        "The search fetches its index the first time it opens and opens on the query the tab's browser kept, listing the sections that match.",
+      draw: await drawnAt("/"),
+      scene: {
+        local: { [KEPT]: "refund" },
+        answers: {
+          ...SIGNED_OUT,
+          "GET /docs/search-index.json": { status: 200, body: await searchIndex() },
+        },
+        steps: [{ shows: "Search", does: (page) => press(page, ".docs-search-button") }],
+        shows: "what happens about a refund?",
       },
     },
     {
