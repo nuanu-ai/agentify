@@ -19,6 +19,7 @@
 
 import { spawn } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   mkdtempSync,
@@ -77,7 +78,7 @@ const REFUSED = {
 } satisfies CardInput;
 
 /** The file the program writes each order's address to, beside itself. */
-const ADDRESSES = "orders.txt";
+const PURCHASE = "purchase.json";
 
 /** What the fault preload prints for each read of an order it lets through. */
 const READ_MARK = "[faults] order read";
@@ -90,6 +91,7 @@ interface Faults {
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
   readonly waitMs?: number;
+  readonly stopBeforePayment?: boolean;
 }
 
 interface Run {
@@ -151,6 +153,7 @@ describe("the quickstart's test buyer", () => {
     card: CardInput,
     faults: Faults = {},
     env: Readonly<Record<string, string | null>> = {},
+    file = PURCHASE,
   ): Promise<Run> => {
     const lines = {
       AGENTIFY_URL: booted.baseUrl,
@@ -164,7 +167,7 @@ describe("the quickstart's test buyer", () => {
         .flatMap(([name, value]) => (value === null ? [] : [`${name}=${value}`]))
         .join("\n"),
     );
-    const child = spawn(process.execPath, ["--import", FAULTS, "--env-file=.env", "buyer.mts"], {
+    const child = spawn(process.execPath, ["--import", FAULTS, "--env-file=.env", "buyer.mts", file], {
       cwd: directory,
       env: { BUYER_FAULTS: JSON.stringify(faults) },
     });
@@ -183,8 +186,8 @@ describe("the quickstart's test buyer", () => {
 
   /** The order's address as the program wrote it, or undefined where it wrote none. */
   const keptAddress = (): string | undefined => {
-    const file = join(directory, ADDRESSES);
-    return existsSync(file) ? readFileSync(file, "utf8").trim().split(" ")[1] : undefined;
+    const file = join(directory, PURCHASE);
+    return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).statusUrl : undefined;
   };
 
   /**
@@ -212,7 +215,7 @@ describe("the quickstart's test buyer", () => {
     expect(statusUrl, bought.printed).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/x402\/orders\//);
     // The address opens the order, so it is kept in the file and not printed.
     expect(bought.printed).not.toContain(statusUrl);
-    expect(statSync(join(directory, ADDRESSES)).mode & 0o777).toBe(0o600);
+    expect(statSync(join(directory, PURCHASE)).mode & 0o777).toBe(0o600);
     expect(facilitator.settles).toHaveLength(1);
   });
 
@@ -235,7 +238,7 @@ describe("the quickstart's test buyer", () => {
 
     expect(waiting.code, waiting.printed).not.toBe(0);
     expect(readsIn(waiting.printed)).toBe(60);
-    expect(waiting.printed).toContain(ADDRESSES);
+    expect(waiting.printed).toContain(PURCHASE);
     const statusUrl = keptAddress();
     expect(statusUrl, waiting.printed).toBeDefined();
     expect(waiting.printed).not.toContain(statusUrl);
@@ -246,7 +249,7 @@ describe("the quickstart's test buyer", () => {
 
     expect(refused.code, refused.printed).not.toBe(0);
     expect(refused.printed).toContain("out_of_stock");
-    expect(refused.printed).toContain(ADDRESSES);
+    expect(refused.printed).toContain(PURCHASE);
     const statusUrl = keptAddress();
     expect(statusUrl, refused.printed).toBeDefined();
     expect(refused.printed).not.toContain(statusUrl);
@@ -292,18 +295,119 @@ describe("the quickstart's test buyer", () => {
     const stopped = await run(AT_ONCE);
 
     expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(stopped.printed).toContain(ADDRESSES);
+    expect(stopped.printed).toContain(PURCHASE);
     expect(keptAddress()).toBeDefined();
     expect(facilitator.verifies).toHaveLength(1);
     expect(facilitator.settles).toHaveLength(1);
   });
 
-  it("signs once when the answer to the payment is lost, and keeps no address it never had", async () => {
+  it("resumes a paid purchase after losing its answer and restarting, without another order or charge", async () => {
     const lost = await run(AT_ONCE, { losePaidAnswer: true });
 
     expect(lost.code, lost.printed).not.toBe(0);
     expect(keptAddress()).toBeUndefined();
     expect(facilitator.verifies).toHaveLength(1);
+    expect(facilitator.settles).toHaveLength(1);
+    const orderId = facilitator.settles[0]?.orderId;
+    const resumed = await run(AT_ONCE);
+    expect(resumed.code, resumed.printed).toBe(0);
+    expect(resumed.printed).toContain(goodsOf(orderId ?? "").access_url);
+    expect(keptAddress()).toBeDefined();
+    expect(facilitator.settles).toHaveLength(1);
+    expect(await merchant.orders.list()).toHaveLength(1);
+  });
+
+  it("reads the saved order after its card leaves the catalog", async () => {
+    const bought = await run(AT_ONCE);
+    const address = keptAddress();
+    expect(bought.code, bought.printed).toBe(0);
+    await fetch(`${booted.baseUrl}/v0/cards/${ids.get(AT_ONCE.merchant_item_id)}/pause`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${booted.merchantKey}` },
+    });
+    const resumed = await run(AT_ONCE);
+    expect(resumed.code, resumed.printed).toBe(0);
+    expect(keptAddress()).toBe(address);
+    expect(facilitator.verifies).toHaveLength(1);
+    expect(facilitator.settles).toHaveLength(1);
+    expect(await merchant.orders.list()).toHaveLength(1);
+  });
+
+  it("starts a distinct purchase only when given a different file and keeps the first purchase", async () => {
+    const first = await run(AT_ONCE);
+    expect(first.code, first.printed).toBe(0);
+    const saved = readFileSync(join(directory, PURCHASE), "utf8");
+    const second = await run(AT_ONCE, {}, {}, "second-purchase.json");
+    expect(second.code, second.printed).toBe(0);
+    expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe(saved);
+    expect(facilitator.settles).toHaveLength(2);
+    expect(await merchant.orders.list()).toHaveLength(2);
+  });
+
+  it("pays nothing when its purchase cannot be saved", async () => {
+    const stopped = await run(AT_ONCE, {}, {}, "missing/purchase.json");
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(facilitator.verifies).toHaveLength(0);
+    expect(facilitator.settles).toHaveLength(0);
+  });
+
+  it("refuses a damaged purchase file before opening or paying an order", async () => {
+    await writeFile(join(directory, PURCHASE), "{broken");
+    const stopped = await run(AT_ONCE);
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(await merchant.orders.list()).toHaveLength(0);
+    expect(facilitator.settles).toHaveLength(0);
+    expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe("{broken");
+  });
+
+  it.each([
+    ["wallet", { BUYER_PRIVATE_KEY: generatePrivateKey() }],
+    ["site", { AGENTIFY_URL: "http://127.0.0.1:9" }],
+    ["product", { ITEM_ID: "item_another" }],
+  ])("does not spend or replace a saved purchase after its %s changes", async (_what, env) => {
+    await run(AT_ONCE, { losePaidAnswer: true });
+    const saved = readFileSync(join(directory, PURCHASE), "utf8");
+    const stopped = await run(AT_ONCE, {}, env);
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(facilitator.settles).toHaveLength(1);
+    expect(await merchant.orders.list()).toHaveLength(1);
+    expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe(saved);
+  });
+
+  it("does not start another purchase while the original payment outcome is unknown", async () => {
+    facilitator.willSettle({ settled: "unknown", reason: "the payment network did not answer" });
+    await run(AT_ONCE, { losePaidAnswer: true });
+    const stopped = await run(AT_ONCE);
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    expect(facilitator.settles).toHaveLength(1);
+    expect(await merchant.orders.list()).toHaveLength(1);
+  });
+
+  it("does not replace an expired saved price with a new purchase", async () => {
+    const stopped = await run(AT_ONCE, { stopBeforePayment: true });
+    expect(stopped.code, stopped.printed).not.toBe(0);
+    const [order] = await merchant.orders.list();
+    if (!order) throw new Error("the price request must have opened an order");
+    const saved = await booted.gateway.orderById(order.id);
+    if (!saved) throw new Error("the order must still be held");
+    await booted.gateway.runner.apply(order.id, {
+      kind: "deadline_expired",
+      deadline: "quote_expiry",
+      at: (saved.order.timestamps.quotedAt ?? 0) + saved.order.policy.deadlines.quoteTtlMs,
+    });
+    const resumed = await run(AT_ONCE);
+    expect(resumed.code, resumed.printed).not.toBe(0);
+    expect(facilitator.verifies).toHaveLength(0);
+    expect(facilitator.settles).toHaveLength(0);
+    expect(await merchant.orders.list()).toHaveLength(1);
+  });
+
+  it("makes an existing readable purchase file private before using it", async () => {
+    await run(AT_ONCE);
+    chmodSync(join(directory, PURCHASE), 0o644);
+    const resumed = await run(AT_ONCE);
+    expect(resumed.code, resumed.printed).toBe(0);
+    expect(statSync(join(directory, PURCHASE)).mode & 0o777).toBe(0o600);
     expect(facilitator.settles).toHaveLength(1);
   });
 

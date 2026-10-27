@@ -30,6 +30,7 @@ interface Faults {
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
   readonly waitMs?: number;
+  readonly stopBeforePayment?: boolean;
 }
 
 const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
@@ -87,8 +88,9 @@ globalThis.fetch = async (input, init) => {
   if (failed !== undefined) return unavailable(failed);
 
   if (reading) console.error("[faults] order read");
-  const answer = await reachable(input, init);
   const paid = new Headers(init?.headers).has("payment-signature");
+  if (paid && faults.stopBeforePayment) throw new TypeError("payment was not sent");
+  const answer = await reachable(input, init);
   if (paid && faults.losePaidAnswer === true) {
     await answer.body?.cancel();
     throw new TypeError("fetch failed: the connection closed before the answer arrived");
