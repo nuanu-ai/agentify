@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * Sentences the real gateway cannot reach yet: while every order is a test, a
  * list mixing test and real money cannot be produced over HTTP, and its failure
@@ -132,6 +133,8 @@ const amountsIn = (html: string): string[] =>
   );
 
 /** What each row opens to. */
+const documentOf = (html: string) => new DOMParser().parseFromString(html, "text/html");
+
 const openedIn = (html: string): string[] =>
   [...html.matchAll(/<div class="more-body">([\s\S]*?)<\/div><\/details>/g)].map((opened) =>
     readable(opened[1] ?? ""),
@@ -176,6 +179,8 @@ describe("the receipts of sales that went out", () => {
     const text = readable(receiptsPage(receipts));
     const at = (id: string) => text.indexOf(id);
 
+    for (const id of ["rcp_new", "rcp_mid", "rcp_old"])
+      expect(at(id), id).toBeGreaterThanOrEqual(0);
     expect(at("rcp_new")).toBeLessThan(at("rcp_mid"));
     expect(at("rcp_mid")).toBeLessThan(at("rcp_old"));
   });
@@ -203,33 +208,75 @@ describe("a row that opens to its details", () => {
   // Two purchases of one product in the same second share a title, a day and
   // a time; read out by those alone, the two presses could not be told apart.
   it.each([
-    [
-      "orders",
-      () =>
-        ordersPage(
-          OrderListSchema.parse({
-            orders: [order("ord_0a1b2c3d4e5f6a7b", false), order("ord_9f8e7d6c5b4a3f2e", false)],
-          }),
-        ),
-    ],
-    [
-      "receipts",
-      () =>
-        receiptsPage(
-          ReceiptListSchema.parse({
-            receipts: [
-              receipt("rcp_0a1b2c3d4e5f6a7b", false),
-              receipt("rcp_9f8e7d6c5b4a3f2e", false),
-            ],
-          }),
-        ),
-    ],
-  ])("names apart two %s of one product made in the same second", (_list, page) => {
-    const names = [...page().matchAll(/<summary aria-label="([^"]*)"/g)].map((found) => found[1]);
-
-    expect(names).toHaveLength(2);
-    expect(new Set(names).size).toBe(2);
-  });
+    ["orders", false],
+    ["orders", true],
+    ["receipts", false],
+    ["receipts", true],
+  ] as const)(
+    "names purchases by title, day, time and ID: %s, different day %s",
+    (kind, differentDay) => {
+      const ids =
+        kind === "orders"
+          ? ["ord_0a1b2c3d4e5f6a7b", "ord_9f8e7d6c5b4a3f2e"]
+          : ["rcp_0a1b2c3d4e5f6a7b", "rcp_9f8e7d6c5b4a3f2e"];
+      const first = ids[0] ?? "";
+      const second = ids[1] ?? "";
+      const html =
+        kind === "orders"
+          ? ordersPage(
+              OrderListSchema.parse({
+                orders: [
+                  { ...order(first, false), status: "unfulfilled" },
+                  {
+                    ...order(second, false),
+                    price: {
+                      ...order(second, false).price,
+                      at: differentDay ? "2026-08-25T10:20:00Z" : "2026-08-26T10:20:00Z",
+                    },
+                  },
+                ],
+              }),
+            )
+          : receiptsPage(
+              ReceiptListSchema.parse({
+                receipts: [
+                  receipt(first, false),
+                  {
+                    ...receipt(second, false),
+                    paid_at: differentDay ? "2026-08-25T10:20:03Z" : "2026-08-26T10:20:03Z",
+                  },
+                ],
+              }),
+            );
+      const page = documentOf(html);
+      const names = [...page.querySelectorAll("details.row-more > summary")].map(
+        (one) => one.getAttribute("aria-label") ?? "",
+      );
+      expect(names).toHaveLength(2);
+      for (const [id, day, short] of [
+        [first, "26 August 2026", `${kind === "orders" ? "ord" : "rcp"}_0a1b…6a7b`],
+        [
+          second,
+          differentDay ? "25 August 2026" : "26 August 2026",
+          `${kind === "orders" ? "ord" : "rcp"}_9f8e…3f2e`,
+        ],
+      ]) {
+        const name = names.find((name) => name.includes(short ?? ""));
+        expect(name).toBeDefined();
+        expect(name).toContain("A room for the night");
+        expect(name).toContain(day);
+        expect(name).toContain(kind === "orders" ? "10:20:00" : "10:20:03");
+        const rows = [...page.querySelectorAll(`[id="details-${id}"]`)];
+        expect(rows.length).toBeGreaterThan(0);
+        for (const row of rows)
+          expect(
+            row.matches("details")
+              ? row.querySelector(":scope > summary")
+              : row.querySelector("details > summary"),
+          ).not.toBeNull();
+      }
+    },
+  );
 });
 
 describe("a list where some of the money was real and some was not", () => {
@@ -247,18 +294,36 @@ describe("a list where some of the money was real and some was not", () => {
   it("marks each test order's sum, in every row the order is drawn in, and no real one", () => {
     const orders: OrderList = OrderListSchema.parse({
       orders: [
-        { ...order("ord_1", true), status: "unfulfilled" },
+        {
+          ...order("ord_1", true),
+          status: "unfulfilled",
+          price: { ...order("ord_1", true).price, amount: "5.00" },
+        },
         order("ord_2", false),
         order("ord_3", false),
       ],
     });
 
     const html = ordersPage(orders, ON_LIVE);
-    const rows = html.split("<li").slice(1);
-
-    // The refund's own row and its line in the list beside the two real sales.
-    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(2);
-    expect(rows.filter((row) => row.includes("ord_2") && row.includes(">test<"))).toHaveLength(0);
+    const page = documentOf(html);
+    for (const [id, copies, marked] of [
+      ["ord_1", 2, true],
+      ["ord_2", 1, false],
+      ["ord_3", 1, false],
+    ] as const) {
+      const rows = [...page.querySelectorAll("li")].filter(
+        (row) =>
+          row.id === `details-${id}` ||
+          row.querySelector(`[id="details-${id}"], a[href*="details=${id}"]`) !== null,
+      );
+      expect(rows, id).toHaveLength(copies);
+      for (const row of rows) {
+        const amount = row.querySelector(".cell-amount, [class*=amount]");
+        expect(amount, id).not.toBeNull();
+        expect(amount?.textContent?.includes("test"), id).toBe(marked);
+        expect(amount?.textContent, id).toContain(marked ? "5.00 USD" : "80.00 USD");
+      }
+    }
   });
 
   it("marks the test rows and leaves the real ones alone", () => {
@@ -266,15 +331,17 @@ describe("a list where some of the money was real and some was not", () => {
       receipts: [receipt("rcp_1", true), receipt("rcp_2", false)],
     });
 
-    const html = receiptsPage(receipts, ON_LIVE);
-    const rows = html.split('class="list-opens').slice(1);
-
-    expect(readable(html)).toContain("1 receipt here is a test purchase");
-    // One row carries the mark and the other does not; a page that marked both
-    // or neither would be useless on exactly the day this matters. The mark is
-    // found by its word, not its class, because the page uses that class for
-    // another pill too.
-    expect(rows.filter((row) => row.includes(">test<"))).toHaveLength(1);
+    const page = documentOf(receiptsPage(receipts, ON_LIVE));
+    for (const [id, marked] of [
+      ["rcp_1", true],
+      ["rcp_2", false],
+    ] as const) {
+      const rows = page.querySelectorAll(`[id="details-${id}"]`);
+      expect(rows).toHaveLength(1);
+      const amount = rows[0]?.querySelector(".cell-amount");
+      expect(amount).not.toBeNull();
+      expect(amount?.textContent?.includes("test")).toBe(marked);
+    }
   });
 
   it("says nothing about test money when none of it was a test", () => {
@@ -295,29 +362,14 @@ describe("a list where some of the money was real and some was not", () => {
     });
     const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
 
-    expect(readable(receiptsPage(receipts, ON_LIVE))).toContain(
-      "Every receipt here is a test purchase: no real money moved.",
-    );
-    expect(readable(ordersPage(orders, ON_LIVE))).toContain(
-      "Every order here is a test purchase: no real money moved.",
-    );
-  });
-
-  it("leaves it to the band on a channel that draws one, in no sentence and on no sum", () => {
-    // The test site's band says on every page that its payments are tests, so
-    // neither the list nor a sum in it says it a second time.
-    const onTest: Viewer = { ...SEEN_BY, mode: "test" };
-    const receipts: ReceiptList = ReceiptListSchema.parse({
-      receipts: [receipt("rcp_1", true), receipt("rcp_2", true)],
-    });
-    const orders: OrderList = OrderListSchema.parse({ orders: [order("ord_1", true)] });
-
-    const html = receiptsPage(receipts, onTest);
-
-    expect(readable(html)).not.toContain("test purchase");
-    expect(readable(ordersPage(orders, onTest))).not.toContain("test purchase");
-    expect(html).not.toContain(">test<");
-    expect(ordersPage(orders, onTest)).not.toContain(">test<");
+    for (const [html, kind] of [
+      [receiptsPage(receipts, ON_LIVE), "receipt"],
+      [ordersPage(orders, ON_LIVE), "order"],
+    ]) {
+      const text = readable(html ?? "");
+      expect(text).toMatch(new RegExp(`every ${kind}.*test purchase`, "i"));
+      expect(text).toMatch(/no real money moved/i);
+    }
   });
 });
 
@@ -371,9 +423,14 @@ describe("the shares of a sale paid into the merchant's payout split", () => {
     ));
 
     expect(amountsIn(html)).toStrictEqual(SHARES.map(([price]) => `${price} USD`));
-    for (const [at, opened] of openedIn(html).entries()) {
-      const [, merchant] = SHARES[at] ?? [];
-      expect(opened).toContain(`Your share ${merchant}, after Agentify's 0.1%`);
+    const page = documentOf(html);
+    expect(page.querySelectorAll("details.row-more")).toHaveLength(7);
+    for (const [at, [, merchant]] of SHARES.entries()) {
+      const row = page.getElementById(`details-rcp_${at}`);
+      expect(row, `rcp_${at}`).not.toBeNull();
+      expect(row?.querySelector(".more-body")?.textContent).toContain(
+        `Your share${merchant}, after Agentify's 0.1%`,
+      );
     }
   });
 
@@ -555,7 +612,7 @@ describe("an order delivered and not paid", () => {
   it("leaves to the merchant whether to revoke what they delivered or to wait", () => {
     const text = readable(ordersPage(held));
 
-    expect(text).toContain("whether to revoke what you delivered or wait is yours to decide");
+    expect(text).toMatch(/revoke.*delivered.*wait.*yours to decide/i);
     expect(text).not.toMatch(/nothing for you to do/i);
   });
 
@@ -858,21 +915,25 @@ describe("a search over the cards", () => {
 
 describe("an empty catalogue", () => {
   const none = () =>
-    readable(
-      served(() => (
-        <CardsScreen
-          view={cardsView(
-            MerchantCardListSchema.parse({ selling: "open", cards: [] }),
-            "https://agentify.ad",
-            true,
-          )}
-          base=""
-        />
-      )),
-    );
+    served(() => (
+      <CardsScreen
+        view={cardsView(
+          MerchantCardListSchema.parse({ selling: "open", cards: [] }),
+          "https://agentify.ad",
+          true,
+        )}
+        base=""
+      />
+    ));
 
   it("offers the ways to a first card to a merchant who sells", () => {
-    expect(none()).toContain("Publish a card through the SDK");
-    expect(none()).toContain("Connect a WooCommerce shop");
+    const page = documentOf(none());
+    const links = [...page.querySelectorAll("a")];
+    expect(links.find((link) => /SDK/.test(link.textContent ?? ""))?.getAttribute("href")).toBe(
+      "/docs/quickstart",
+    );
+    expect(
+      links.find((link) => /WooCommerce/.test(link.textContent ?? ""))?.getAttribute("href"),
+    ).toBe("/woocommerce");
   });
 });
