@@ -788,6 +788,7 @@ describe("verifying a payment", () => {
       ["invalid_exact_evm_nonce_already_used", "signature"],
       ["insufficient_funds", "insufficient_funds"],
       ["invalid_exact_evm_insufficient_balance", "insufficient_funds"],
+      ["invalid_payload", "unexplained"],
       ["invalid_exact_evm_transaction_simulation_failed", "unexplained"],
       ["invalid_exact_evm_payload_authorization_from_address_kyt", "wallet_refused"],
       ["self_send_not_allowed", "wallet_refused"],
