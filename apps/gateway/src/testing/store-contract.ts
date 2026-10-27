@@ -1860,15 +1860,59 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           "ord_5",
         ]);
         expect(await idsOf(store.orders(A))).toHaveLength(5);
-        const first = await store.lapsedAttempts(A, { offset: 0, limit: 2 });
-        const second = await store.lapsedAttempts(A, { offset: 2, limit: 2 });
-        expect(first.orders.map((one) => one.order.id)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(second.orders.map((one) => one.order.id)).toStrictEqual(["ord_2"]);
-        expect(first.of).toBe(3);
-        expect(await store.lapsedAttempts(A, { offset: 0, limit: 0 })).toStrictEqual({
+        const ids = (page: { readonly orders: readonly StoredOrder[] }) =>
+          page.orders.map((one) => one.order.id);
+        const first = await store.lapsedAttempts(A, { limit: 2 });
+        expect(ids(first)).toStrictEqual(["ord_4", "ord_3"]);
+        expect(first).toMatchObject({ of: 3, newer: 0, previous: null });
+        expect(first.next).toStrictEqual({ createdAt: 3, id: "ord_3" });
+        const second = await store.lapsedAttempts(A, {
+          limit: 2,
+          from: { after: first.next ?? { createdAt: 0, id: "" } },
+        });
+        expect(ids(second)).toStrictEqual(["ord_2"]);
+        expect(second).toMatchObject({ of: 3, newer: 2, next: null });
+        expect(second.previous).toStrictEqual({ createdAt: 2, id: "ord_2" });
+        const back = await store.lapsedAttempts(A, {
+          limit: 2,
+          from: { before: second.previous ?? { createdAt: 0, id: "" } },
+        });
+        expect(ids(back)).toStrictEqual(["ord_4", "ord_3"]);
+        expect(back).toMatchObject({ newer: 0, previous: null, next: first.next });
+        expect(await store.lapsedAttempts(A, { limit: 0 })).toStrictEqual({
           orders: [],
           of: 3,
+          newer: 0,
+          previous: null,
+          next: null,
         });
+      });
+
+      it("reads apart from a cursor naming an attempt that is not there, where its moment and identifier fall", async () => {
+        const store = await twoMerchants();
+        const price = { amount: "5.00", currency: "USD", asOf: 0 };
+        for (const [id, createdAt] of [
+          ["ord_1", 1],
+          ["ord_2", 3],
+          ["ord_3", 3],
+          ["ord_4", 4],
+        ] as const) {
+          const base = anOrder(id, "expired", { createdAt });
+          await store.addOrder({ ...base, order: { ...base.order, price } });
+        }
+        const ids = (page: { readonly orders: readonly StoredOrder[] }) =>
+          page.orders.map((one) => one.order.id);
+        // Between ord_3 and ord_2, which were made in the same millisecond.
+        const gone = { createdAt: 3, id: "ord_2z" };
+
+        const older = await store.lapsedAttempts(A, { limit: 10, from: { after: gone } });
+        const newer = await store.lapsedAttempts(A, { limit: 10, from: { before: gone } });
+
+        expect(ids(older)).toStrictEqual(["ord_2", "ord_1"]);
+        expect(older).toMatchObject({ newer: 2, next: null });
+        expect(ids(newer)).toStrictEqual(["ord_4", "ord_3"]);
+        expect(newer).toMatchObject({ newer: 0, previous: null });
+        expect(newer.next).toStrictEqual({ createdAt: 3, id: "ord_3" });
       });
 
       it("is marked as it ends, so an order born waiting and closed later leaves the default reads and is forgotten", async () => {
@@ -1885,7 +1929,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         }));
 
         expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([]);
-        expect((await store.lapsedAttempts(A, { offset: 0, limit: 10 })).of).toBe(1);
+        expect((await store.lapsedAttempts(A, { limit: 10 })).of).toBe(1);
         expect(await store.forgetLapsedBefore(Date.now() + 31 * DAY, 10)).toBe(1);
         expect(await store.orderById("ord_born")).toBeNull();
       });

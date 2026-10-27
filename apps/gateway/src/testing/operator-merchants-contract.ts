@@ -10,7 +10,11 @@
 import type { Order, SurfaceMode } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import type { MerchantRecord, OperatorMerchants } from "../ports/operator/merchants.js";
+import type {
+  MerchantList,
+  MerchantRecord,
+  OperatorMerchants,
+} from "../ports/operator/merchants.js";
 import type { Store, StoredOrder } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
@@ -249,7 +253,7 @@ export function describeOperatorMerchants(
         ]);
       });
 
-      it("reads a page after the first by leaving out the rows before it, in the same order", async () => {
+      it("reads on past a merchant's place and back to the merchants nearest before it, in the same order", async () => {
         const under = await open();
         const { store, merchants } = under;
         await merchant(store, "mch_old_sale", 1_000, SELLS);
@@ -257,17 +261,53 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_never", 3_000, SELLS);
         await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
         await store.addOrder(sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
+        const ids = (list: MerchantList) => list.rows.map((row) => row.id);
+        const nowhere = { waiting: false, lastSaleAt: null, createdAt: 0, id: "" };
 
-        const second = await merchants.list({ ...LIVE, limit: 2, offset: 1 });
-        const past = await merchants.list({ ...LIVE, limit: 2, offset: 3 });
-        const far = await merchants.list({ ...LIVE, limit: 2, offset: 5e21 });
+        const first = await merchants.list({ ...LIVE, limit: 2 });
+        expect(ids(first)).toStrictEqual(["mch_new_sale", "mch_old_sale"]);
+        expect(first).toMatchObject({ total: 3, newer: 0, previous: null });
+        expect(first.next).toMatchObject({ waiting: false, createdAt: 1_000, id: "mch_old_sale" });
+        const second = await merchants.list({
+          ...LIVE,
+          limit: 2,
+          from: { after: first.next ?? nowhere },
+        });
+        expect(ids(second)).toStrictEqual(["mch_never"]);
+        expect(second).toMatchObject({ total: 3, newer: 2, next: null });
+        expect(second.previous).toStrictEqual({
+          waiting: false,
+          lastSaleAt: null,
+          createdAt: 3_000,
+          id: "mch_never",
+        });
+        const back = await merchants.list({
+          ...LIVE,
+          limit: 2,
+          from: { before: second.previous ?? nowhere },
+        });
+        expect(ids(back)).toStrictEqual(ids(first));
+        expect(back).toMatchObject({ newer: 0, previous: null, next: first.next });
+      });
 
-        expect(second.rows.map((row) => row.id)).toStrictEqual(["mch_old_sale", "mch_never"]);
-        expect(second.total).toBe(3);
-        expect(past.rows).toStrictEqual([]);
-        expect(past.total).toBe(3);
-        expect(far.rows).toStrictEqual([]);
-        expect(far.total).toBe(3);
+      it("places a cursor naming a merchant who is not listed where what they were sorted by falls", async () => {
+        const under = await open();
+        const { store, merchants } = under;
+        await merchant(store, "mch_old_sale", 1_000, SELLS);
+        await merchant(store, "mch_never_old", 2_000, SELLS);
+        await merchant(store, "mch_never_new", 4_000, SELLS);
+        await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
+        const ids = (list: MerchantList) => list.rows.map((row) => row.id);
+        const gone = { waiting: false, lastSaleAt: null, createdAt: 3_000, id: "mch_gone" };
+
+        const older = await merchants.list({ ...LIVE, limit: 50, from: { after: gone } });
+        const newer = await merchants.list({ ...LIVE, limit: 50, from: { before: gone } });
+
+        expect(ids(older)).toStrictEqual(["mch_never_old"]);
+        expect(older).toMatchObject({ total: 3, newer: 2, next: null });
+        expect(ids(newer)).toStrictEqual(["mch_old_sale", "mch_never_new"]);
+        expect(newer).toMatchObject({ newer: 0, previous: null });
+        expect(newer.next).toMatchObject({ id: "mch_never_new" });
       });
 
       it("finds a merchant by seller name, site or identifier ignoring case, and by identifiers the caller found", async () => {

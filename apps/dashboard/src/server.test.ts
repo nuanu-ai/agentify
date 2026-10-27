@@ -3799,19 +3799,19 @@ describe("the cards screen", () => {
     const kept = await browser.post(switchOf(room, "pause"), {
       q: "room",
       show: "off-sale",
-      page: "3",
+      after: "1787000000000.item_7d3e",
     });
     const unknown = await browser.post(switchOf(room, "resume"), {
       q: " room ",
       show: "every",
-      page: "-1",
+      after: "page-3",
     });
     // A search in another script goes back as a browser writes it, since a
     // header carries no letter outside Latin-1.
     const written = await browser.post(switchOf(room, "pause"), { q: "кофе" });
     await browser.post(switchOf(room, "resume"));
 
-    expect(kept.to).toBe("/products?q=room&show=off-sale&page=3");
+    expect(kept.to).toBe("/products?q=room&show=off-sale&after=1787000000000.item_7d3e");
     expect(unknown.to).toBe("/products?q=room");
     expect(written.to).toBe(`/products?q=${encodeURIComponent("кофе")}`);
     expect(await purchasable(gateway, room)).toBe(true);
@@ -7766,11 +7766,13 @@ describe("closing fulfillment from Orders", () => {
     const closed = await running.browser.post("/orders", {
       order_id: id,
       show: "needs",
-      page: "2",
+      before: "1787000000000.ord_7d3e",
     });
 
     expect(closed.status).toBe(303);
-    expect(closed.to).toBe(`/orders?show=needs&page=2&details=${id}#details-${id}`);
+    expect(closed.to).toBe(
+      `/orders?show=needs&before=1787000000000.ord_7d3e&details=${id}#details-${id}`,
+    );
   });
 
   it("rereads an unanswered write and shows the recorded closure", async () => {

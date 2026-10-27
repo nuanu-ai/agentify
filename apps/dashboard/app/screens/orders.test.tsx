@@ -389,12 +389,15 @@ describe("a long list of orders", () => {
     expect(readable(served(() => <OrdersScreen view={view} />))).toContain("Showing 1–50 of 120");
   });
 
+  /** The address of the page Next leads to from the first. */
+  const second = () =>
+    new URL(ordersView(CARDS, many, many).listing.cut?.next ?? "", "https://agentify.ad")
+      .searchParams;
+
   it("puts each day's orders under one heading, the newest day first", () => {
     // The oldest sixty fall on the eleventh of October and the newest sixty on
     // the twelfth, so the second page holds the turn of the day.
-    const html = served(() => (
-      <OrdersScreen view={ordersView(CARDS, many, many, new URLSearchParams("page=2"))} />
-    ));
+    const html = served(() => <OrdersScreen view={ordersView(CARDS, many, many, second())} />);
 
     const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
       (day) => day[1],
@@ -406,9 +409,7 @@ describe("a long list of orders", () => {
   it("puts them under the days of the viewer's calendar, the heading naming the zone each time is in", () => {
     // Every order here falls between 07:00 and 09:00 in Bali, on the twelfth.
     const html = inViewersZone("Asia/Makassar", () =>
-      served(() => (
-        <OrdersScreen view={ordersView(CARDS, many, many, new URLSearchParams("page=2"))} />
-      )),
+      served(() => <OrdersScreen view={ordersView(CARDS, many, many, second())} />),
     );
 
     const days = [...html.matchAll(/<li class="list-day"><h3>([^<]*)<\/h3><\/li>/g)].map(
@@ -536,7 +537,11 @@ describe("a long run of orders told in full", () => {
       served(() => (
         <OrdersScreen view={ordersView(CARDS, owing, owing, new URLSearchParams(address))} />
       ));
-    const second = drawnAt("show=needs&page=2");
+    const next = new URL(
+      ordersView(CARDS, owing, owing, new URLSearchParams("show=needs")).listing.cut?.next ?? "",
+      "https://agentify.ad",
+    ).searchParams;
+    const second = drawnAt(next.toString());
     const [id = ""] = toldIn(second, "Orders that need you");
     const rowOf = (html: string) =>
       html.split("<li ").find((row) => row.includes(`name="order_id" value="${id}"`)) ?? "";
@@ -547,9 +552,9 @@ describe("a long run of orders told in full", () => {
     expect(row).toMatch(/<summary[^>]*aria-label="Close fulfillment for /);
     expect(row).not.toMatch(/<a [^>]*href="[^"]*details=/);
     expect(form?.fields.get("show")).toBe("needs");
-    expect(form?.fields.get("page")).toBe("2");
+    expect(form?.fields.get("after")).toBe(next.get("after"));
     // Named by the address, as the closure's answer names it, it is open.
-    expect(rowOf(drawnAt(`show=needs&page=2&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
+    expect(rowOf(drawnAt(`${next}&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
   });
 
   it("says once which of how many it shows where the list is the orders that need the merchant", () => {
@@ -832,6 +837,13 @@ describe("a closure recorded", () => {
 });
 
 describe("the purchases that lapsed unpaid", () => {
+  /** Where an attempt stands in the list, by when it was asked for and its identifier. */
+  const markOf = (attempt: LapsedAttempt | undefined) => ({
+    key: [Date.parse(attempt?.asked_at ?? "")],
+    id: attempt?.id ?? "",
+  });
+  const placeOf = (attempt: LapsedAttempt | undefined) =>
+    `${markOf(attempt).key[0]}.${markOf(attempt).id}`;
   // As the gateway reads them apart: a page of them, newest first, and how
   // many there are in all.
   const page = (from: number): LapsedAttempt[] =>
@@ -851,10 +863,16 @@ describe("the purchases that lapsed unpaid", () => {
       CARDS,
       THREE,
       THREE,
-      new URLSearchParams("show=lapsed&page=2"),
+      new URLSearchParams(`show=lapsed&after=${placeOf(page(49)[0])}`),
       {},
       {},
-      { page: second, of: 120 },
+      {
+        page: second,
+        of: 120,
+        newer: 50,
+        previous: markOf(second[0]),
+        next: markOf(second.at(-1)),
+      },
     );
     const elsewhere = ordersView(
       CARDS,
@@ -863,10 +881,7 @@ describe("the purchases that lapsed unpaid", () => {
       new URLSearchParams(),
       {},
       {},
-      {
-        page: null,
-        of: 120,
-      },
+      { page: null, of: 120 },
     );
 
     expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
@@ -876,8 +891,8 @@ describe("the purchases that lapsed unpaid", () => {
       from: 51,
       to: 100,
       of: 120,
-      previous: "/orders?show=lapsed",
-      next: "/orders?show=lapsed&page=3",
+      previous: `/orders?show=lapsed&before=${placeOf(second[0])}`,
+      next: `/orders?show=lapsed&after=${placeOf(second.at(-1))}`,
     });
     expect(there.listing.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
       ["All", 3, false],
@@ -909,7 +924,7 @@ describe("the purchases that lapsed unpaid", () => {
       new URLSearchParams("show=lapsed"),
       {},
       {},
-      { page: [unpriced], of: 1 },
+      { page: [unpriced], of: 1, newer: 0, previous: null, next: null },
     );
 
     expect(view.listing.rows.map((row) => [row.id, row.amount])).toStrictEqual([
@@ -994,7 +1009,7 @@ describe("an order's facts", () => {
       new URLSearchParams({ show: "lapsed", details: attempts[0]?.id ?? "" }),
       {},
       {},
-      { page: attempts, of: attempts.length },
+      { page: attempts, of: attempts.length, newer: 0, previous: null, next: null },
     );
 
   const UNPRICED: LapsedAttempt = {
