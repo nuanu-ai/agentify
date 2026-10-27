@@ -310,6 +310,7 @@ function runtsOf(): Runt[] {
       middle: number;
       height: number;
       block: Element | null;
+      shown: boolean;
     };
     const lines: Word[][] = [];
     const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
@@ -340,6 +341,9 @@ function runtsOf(): Runt[] {
           middle: (box.top + box.bottom) / 2,
           height: box.height,
           block,
+          // A glyph hidden from a screen reader, such as an arrow, is drawn
+          // beside a label rather than read as a block of its own.
+          shown: holder?.closest('[aria-hidden="true"]') === null,
         };
         const line = lines.at(-1);
         const on = line?.[0];
@@ -363,7 +367,13 @@ function runtsOf(): Runt[] {
     }
     // A control whose words stand in blocks of their own is a card, not a
     // button's label; its paragraphs are left to the browser as any other.
-    if (!heading && new Set(lines.flat().map((word) => word.block)).size > 1) continue;
+    const blocks = new Set(
+      lines
+        .flat()
+        .filter((word) => word.shown)
+        .map((word) => word.block),
+    );
+    if (!heading && blocks.size > 1) continue;
     if (last.length !== 1 || alone.block !== moved.block) continue;
     const lastWidth = alone.right - alone.left;
     const aboveWidth = moved.right - Math.min(...above.map((word) => word.left));
