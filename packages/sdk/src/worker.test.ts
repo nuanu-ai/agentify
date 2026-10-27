@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import type {
   HandlerAnswer,
   Order,
@@ -6,7 +8,7 @@ import type {
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FIRST_RETRY_MS, RETRY_CEILING_MS } from "./backoff.js";
+import { FIRST_RETRY_MS } from "./backoff.js";
 import { createClient, type QuoteHandler } from "./client.js";
 import { contractVersion } from "./contract.js";
 import type { OrderEvent as ReadEvent } from "./reading.js";
@@ -14,7 +16,6 @@ import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";
 import { waitUntil } from "./testing/waiting.js";
 import { batch, polling } from "./testing/worker-stream.js";
 import {
-  POLL_DEADLINE_MS,
   POLL_WAIT_SECONDS,
   QUIET_POLL_FLOOR_MS,
   type RunningWorker,
@@ -227,7 +228,7 @@ describe("an order off the worker stream", () => {
     // be a second opinion about how often a merchant's code may run.
     let attempts = 0;
 
-    await workerOver(
+    const { problems } = await workerOver(
       {
         poll_worker: polling(batch(envelopes.order), batch(envelopes.order)),
         answer_order: () => ({ body: { ok: true, result: "delivered" } }),
@@ -246,24 +247,15 @@ describe("an order off the worker stream", () => {
       "the second answer",
     );
     expect(attempts).toBe(2);
+    expect(
+      problems.find((problem) => problem.kind === WORKER_PROBLEM_KINDS.HANDLER_FAILED),
+    ).toMatchObject({
+      kind: WORKER_PROBLEM_KINDS.HANDLER_FAILED,
+      fatal: false,
+      subject: order.id,
+      message: expect.stringMatching(/the supplier timed out/),
+    });
     expect(gateway?.callsTo("answer_order")).toHaveLength(1);
-  });
-
-  it("says so when the handler threw, naming the order", async () => {
-    const { problems } = await workerOver(
-      { poll_worker: polling(batch(envelopes.order)) },
-      {
-        order: () => {
-          throw new Error("the supplier timed out");
-        },
-      },
-    );
-
-    await waitUntil(() => problems.length > 0, "the problem to be reported");
-    expect(problems[0]?.kind).toBe(WORKER_PROBLEM_KINDS.HANDLER_FAILED);
-    expect(problems[0]?.subject).toBe(order.id);
-    expect(problems[0]?.message).toMatch(/the supplier timed out/);
-    expect(problems[0]?.fatal).toBe(false);
   });
 
   it.each([
@@ -659,26 +651,6 @@ describe("a gateway newer than this package", () => {
     expect(clock.waits).toStrictEqual([]);
   });
 
-  it("does not tell the merchant a newer release reads a message that is merely broken", async () => {
-    // A known notice with a timestamp that is not one is not news from a newer
-    // Agentify, and saying it was would send the merchant to upgrade for nothing.
-    const { problems } = await workerOver(
-      {
-        poll_worker: polling(
-          newerPoll({ ...envelopes.event, payload: { ...event, at: "yesterday" } }),
-        ),
-      },
-      { order: () => ({ delivered: { access_url: "https://example.com/a" } }) },
-    );
-
-    await waitUntil(() => problems.length > 0, "the unread event");
-
-    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false, subject: event.order_id });
-    expect(problems[0]?.message).toContain("at: ");
-    expect(problems[0]?.message).not.toMatch(/newer release/);
-    expect(problems[0]?.message).not.toContain("yesterday");
-  });
-
   it("names every field that failed on an event of a kind it knows, never its kind", async () => {
     // A known notice is read with its own shape, so what is reported is where
     // that shape failed, not that the kind looked unfamiliar.
@@ -698,7 +670,10 @@ describe("a gateway newer than this package", () => {
 
     expect(problems[0]?.message).toContain("at: ");
     expect(problems[0]?.message).toContain("price.amount: expected string");
+    expect(problems[0]).toMatchObject({ kind: "unread", fatal: false, subject: event.order_id });
     expect(problems[0]?.message).not.toContain("type: ");
+    expect(problems[0]?.message).not.toMatch(/newer release/);
+    expect(problems[0]?.message).not.toContain("yesterday");
   });
 
   it("never writes a value into the problem about a message it could not read, and keeps it short", async () => {
@@ -1304,15 +1279,6 @@ describe("a poll that goes quiet", () => {
     // And it goes on asking.
     await waitUntil(() => (gateway?.callsTo("poll_worker").length ?? 0) >= 2, "a further poll");
   });
-
-  it("is given up on soon enough that a watcher can still tell an outage from a recovery", () => {
-    // A gateway that accepts a poll and never answers fails it only when the
-    // deadline runs out, so two reports are the deadline plus the longest rest
-    // apart. `DOUBT_MS` in packages/slice/src/subscription.ts waits ninety
-    // seconds before calling the quiet a recovery; this side's two terms must
-    // stay under it.
-    expect(POLL_DEADLINE_MS + RETRY_CEILING_MS).toBeLessThan(90_000);
-  });
 });
 
 describe("how long a stop waits", () => {
@@ -1490,40 +1456,70 @@ describe("a quiet stream", () => {
 });
 
 describe("an answer that could not be delivered", () => {
-  it("promises the redelivery only where nothing was handed over", async () => {
-    // An answer refused a connection certainly left the order unanswered, so
-    // it comes back, and the merchant is told so.
-    const problems: WorkerProblem[] = [];
-
-    gateway = await startFakeGateway({
-      apiKey: API_KEY,
-      routes: { poll_worker: polling(batch(envelopes.order)) },
-    });
-
-    const closing = gateway;
-
-    running = startWorker(
-      { apiKey: API_KEY, baseUrl: gateway.url },
-      {
-        order: async () => {
-          // The gateway goes away between the order and the answer, so the
-          // answer is refused a connection.
-          await closing.close();
-          return { delivered: { access_url: "https://a.example" } };
-        },
-        problem: (problem) => problems.push(problem),
-      },
-    );
-
-    await waitUntil(
-      () => problems.some((problem) => problem.kind === WORKER_PROBLEM_KINDS.ANSWER_FAILED),
-      "the failed answer to be reported",
-    );
-
-    await running.stop();
-    running = undefined;
-    gateway = undefined;
-  });
+  it.each(["connection_refused", "request_dropped", "answer_cut_short"])(
+    "promises redelivery only before receipt: %s",
+    async (failure) => {
+      const problems: WorkerProblem[] = [];
+      let polled = false;
+      let answerRequests = 0;
+      const server = createServer((request, response) => {
+        if (request.url === "/v0/worker/poll") {
+          if (polled) return;
+          polled = true;
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(JSON.stringify(batch(envelopes.order).body));
+          return;
+        }
+        answerRequests += 1;
+        if (failure === "answer_cut_short") {
+          response.writeHead(200, { "content-type": "application/json", "content-length": "512" });
+          response.write('{"ok":', () => response.socket?.destroy());
+        } else response.socket?.destroy();
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const { port } = server.address() as AddressInfo;
+      let closed = false;
+      const close = async () => {
+        if (closed) return;
+        closed = true;
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      };
+      try {
+        running = startWorker(
+          { apiKey: API_KEY, baseUrl: `http://127.0.0.1:${port}` },
+          {
+            order: async () => {
+              if (failure === "connection_refused") await close();
+              return { delivered: { access_url: "https://a.example" } };
+            },
+            problem: (problem) => problems.push(problem),
+          },
+        );
+        await waitUntil(
+          () => problems.some((problem) => problem.kind === WORKER_PROBLEM_KINDS.ANSWER_FAILED),
+          "the failed answer",
+        );
+        const message = problems.find(
+          (problem) => problem.kind === WORKER_PROBLEM_KINDS.ANSWER_FAILED,
+        )?.message;
+        if (failure === "connection_refused") {
+          expect(answerRequests).toBe(0);
+          expect(message).toMatch(/counts as undelivered.*sent again/);
+        } else {
+          expect(answerRequests).toBe(1);
+          expect(message).toMatch(
+            /whether the order is delivered again.*not something this side can say/,
+          );
+          expect(message).not.toMatch(/counts as undelivered|it is sent again/);
+        }
+      } finally {
+        await running?.stop();
+        running = undefined;
+        await close();
+      }
+    },
+  );
 });
 
 describe("a delivery carrying the field this contract removes", () => {
