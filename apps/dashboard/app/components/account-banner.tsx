@@ -64,13 +64,15 @@ function Reason({ note, here, back }: Readonly<{ note: AccountNote; here: string
 /**
  * The one banner over a dashboard page, drawn only where something about the
  * whole account is not as usual: a heading, then each reason in one line with
- * the way on from it. A way to the page it is drawn on is left out, since the
- * control it names is already on screen.
+ * the way on from it. In a list of several, a reason's line opens with its own
+ * title, unless the heading already says it. A way to the page it is drawn on
+ * is left out, since the control it names is already on screen.
  */
 export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[] }>) {
   const { pathname: here, search } = useLocation();
   const back = `${here}${search}`;
   if (notes.length === 0) return null;
+  const heading = headingOf(notes);
   return (
     <section className="account-banner" aria-label="About your account">
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -78,7 +80,7 @@ export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[
         <path d="M12 8v5M12 16.5v.5" />
       </svg>
       <div>
-        <b className={styles.heading}>{headingOf(notes)}</b>
+        <b className={styles.heading}>{heading}</b>
         {notes.length === 1 ? (
           notes.map((note) =>
             // A line that holds a form is no paragraph, which may hold none.
@@ -96,6 +98,7 @@ export function AccountBanner({ notes }: Readonly<{ notes: readonly AccountNote[
           <ul className={styles.reasons}>
             {notes.map((note) => (
               <li key={note.reason} data-reason={note.reason}>
+                {note.title === heading ? null : `${note.title}. `}
                 <Reason note={note} here={here} back={back} />
               </li>
             ))}
