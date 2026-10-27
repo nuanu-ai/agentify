@@ -1,3 +1,4 @@
+import { documentOf } from "../../testing/markup";
 /**
  * The two pages where a person acts on their own address, drawn by the whole
  * process and read as the HTML a browser receives: what each offers before the
@@ -46,8 +47,13 @@ describe.each([
   it("offers nothing to press until the browser has asked who is signed in", async () => {
     const { html } = await page(path);
 
-    expect(html).toContain("Finding out who is signed in");
-    expect(html).not.toMatch(/<button\b[^>]*>(Unsubscribe|Request data access|Delete my data)/);
+    const document = documentOf(html);
+    expect(document.querySelector("main")?.textContent).toMatch(/finding out.*signed in/i);
+    for (const button of document.querySelectorAll(
+      "main button, main [role=button], main input[type=submit]",
+    )) {
+      expect(button.textContent).not.toMatch(/unsubscribe|request data access|delete.*data/i);
+    }
   });
 });
 

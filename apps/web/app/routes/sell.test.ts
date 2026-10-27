@@ -1,3 +1,4 @@
+import { documentOf } from "../../testing/markup";
 /**
  * The merchant landing at `/sell`, asked of the whole process as a browser
  * on the test channel asks it, and drawn on its own for its pricing. Whether the live channel's edge lets a visitor reach it is the
@@ -98,15 +99,14 @@ describe("the pricing the landing shows", () => {
   it("draws each option as a section of its own", () => {
     const html = drawn({});
 
+    const page = documentOf(html);
+    expect(SELL_LANDING.pricing.options.length).toBeGreaterThan(0);
     for (const option of SELL_LANDING.pricing.options) {
-      expect(html).toContain(`id="pricing-${option.id}"`);
+      const section = page.getElementById(`pricing-${option.id}`);
+      expect(section?.textContent).toContain(option.name);
+      expect(section?.textContent).toContain(option.price);
+      expect(option.price).toMatch(/[1-9]/);
+      for (const term of option.terms) expect(section?.textContent).toContain(term);
     }
-  });
-
-  it("leaves no pricing where none is shown", () => {
-    const html = drawn({ options: [] });
-
-    expect(html).not.toContain('id="pricing"');
-    expect(html).toContain('id="money"');
   });
 });

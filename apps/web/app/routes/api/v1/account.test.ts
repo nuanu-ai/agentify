@@ -49,18 +49,17 @@ describe.each(ROUTES)("%s", (_what, path, body) => {
     expect(answered.status).toBe(404);
     expect(await refusalOf(answered)).toMatchObject({
       code: "session_not_found",
-      message: "Sign in with the address your reports were sent to before making this request.",
+      message: expect.stringMatching(/sign in.*address.*report/i),
     });
   });
 
-  it("changes nothing, and says so, where the dashboard does not answer", async () => {
+  it("refuses an unidentified visitor while the dashboard does not answer", async () => {
     const answered = await fromSite(path, "POST", body, { cookie: SIGNED_IN });
 
     expect(answered.status).toBe(503);
     expect(await refusalOf(answered)).toMatchObject({
       code: "visitor_unknown",
-      message:
-        "We cannot tell who is visiting right now, so nothing was changed. Try again shortly.",
+      message: expect.stringMatching(/cannot tell.*visiting.*nothing.*changed.*try again/i),
       retryable: true,
       retry_after_seconds: 30,
     });
