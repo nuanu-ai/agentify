@@ -18,6 +18,7 @@ import {
   type SurfaceMode,
 } from "@agentify/core";
 import type { Card, MerchantFinding, Money } from "@nuanu-ai/agentify-contracts";
+import type { PageFrom } from "../paging.js";
 import type { Integration } from "../store.js";
 import type { Tally } from "./money.js";
 
@@ -134,21 +135,46 @@ export interface MerchantListQuery {
   readonly segment?: MerchantSegment;
   /** At most this many rows, held between one and `MERCHANT_LIST_MAX`. */
   readonly limit: number;
-  /** How many rows of the list come before the first one read; none where absent. */
-  readonly offset?: number;
+  /** Where the page stands; the first page where absent. */
+  readonly from?: PageFrom<MerchantPlace>;
+}
+
+/**
+ * A place in the list, by what it is sorted by: whether a merchant waits for
+ * admission, the moment of their latest sale (null where they never sold),
+ * when they were made, and their identifier, which breaks a tie.
+ */
+export interface MerchantPlace {
+  readonly waiting: boolean;
+  readonly lastSaleAt: number | null;
+  readonly createdAt: number;
+  readonly id: string;
 }
 
 /**
  * One cut of the list: its rows, first what needs the operator (waiting for
  * admission), then by the latest sale, newest first, merchants who never sold
- * after, newest merchant first; how many the search and segment find in all;
- * and how many the search finds in each segment.
+ * after, newest merchant first, a tie broken by the identifier; how many the
+ * search and segment find in all and how many of them come before the page;
+ * the places of the page's first row where rows precede it and of its last
+ * where rows follow; and how many the search finds in each segment.
  */
 export interface MerchantList {
   readonly rows: readonly MerchantRow[];
   readonly total: number;
+  readonly newer: number;
+  readonly previous: MerchantPlace | null;
+  readonly next: MerchantPlace | null;
   readonly segments: Readonly<Record<MerchantSegment | "all", number>>;
 }
+
+/** Where a merchant's row stands in the list. */
+export const merchantPlaceOf = (row: MerchantRow): MerchantPlace => ({
+  waiting: row.segment === "waiting",
+  lastSaleAt: row.lastSaleAt,
+  createdAt: row.createdAt,
+  id: row.id,
+});
 
 /** A merchant's wallet as the page shows it. */
 interface MerchantWallet {
@@ -241,14 +267,6 @@ export const WORTH_A_LOOK_STATES = [
 /** A list query's limit, held between one and the list's most. */
 export const merchantLimitOf = (query: MerchantListQuery): number =>
   Math.max(1, Math.min(MERCHANT_LIST_MAX, Math.floor(query.limit)));
-
-/**
- * A list query's offset, a whole number from nought, and no larger than a
- * database reads, so a page far past the last reads no rows rather than
- * failing.
- */
-export const merchantOffsetOf = (query: MerchantListQuery): number =>
-  Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.floor(query.offset ?? 0)));
 
 /** The search as it is matched: trimmed and in lower case, or null where it finds everybody. */
 export const searchOf = (query: MerchantListQuery): string | null => {

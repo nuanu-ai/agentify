@@ -20,6 +20,8 @@ import type {
   Integration,
   IssuedMerchantKey,
   MerchantKey,
+  OrderPlace,
+  PageFrom,
   PayoutCheck,
   PayoutTransaction,
   RecordedPayoutSplit,
@@ -61,6 +63,7 @@ import {
   type RouteDefinition,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import type { From, Mark } from "./cursor.js";
 import { ANSWER_WITHIN_MS } from "./deadlines.js";
 import { PAGE_ROWS } from "./listing.js";
 import { NOT_A_PAYOUT_WALLET, type NotAWallet } from "./payout-wallet.js";
@@ -208,12 +211,20 @@ export interface GatewayClient {
   /** Every order but the purchases that lapsed unpaid, which are not read here. */
   orders(open: boolean): Promise<Answer<OrderList>>;
   /**
-   * One page of the purchases that lapsed unpaid, newest first, counted from
-   * one, and how many there are; a page past the last is the last.
+   * One page of the purchases that lapsed unpaid, newest first, where `from`
+   * stands, how many there are and how many are newer than the page, and the
+   * places of its first and last attempts where the list goes on that way; a
+   * cursor past either end reads the page at that end.
    */
-  lapsedAttempts(
-    page: number,
-  ): Promise<Answer<{ readonly attempts: readonly LapsedAttempt[]; readonly of: number }>>;
+  lapsedAttempts(from: From): Promise<
+    Answer<{
+      readonly attempts: readonly LapsedAttempt[];
+      readonly of: number;
+      readonly newer: number;
+      readonly previous: Mark | null;
+      readonly next: Mark | null;
+    }>
+  >;
   /** How many purchases lapsed unpaid, with none of them read. */
   lapsedCount(): Promise<Answer<number>>;
   /**
@@ -599,6 +610,16 @@ const orderRecordOf = (
  * attempt that ended before anybody named one: such an attempt has no price
  * and no moment it was priced, only the moment it was asked for.
  */
+/** A place older than every order: the page nearest before it is the oldest. */
+const BEFORE_EVERY_ORDER: OrderPlace = { createdAt: -1, id: "" };
+
+const placeOfMark = (mark: Mark): OrderPlace => ({ createdAt: mark.key[0] ?? 0, id: mark.id });
+
+const placesOf = (from: NonNullable<From>): PageFrom<OrderPlace> =>
+  "after" in from ? { after: placeOfMark(from.after) } : { before: placeOfMark(from.before) };
+
+const markOfPlace = (place: OrderPlace): Mark => ({ key: [place.createdAt], id: place.id });
+
 const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
   const { order } = record;
   return {
@@ -612,7 +633,6 @@ const lapsedAttemptOf = (record: StoredOrder): LapsedAttempt => {
       order.price === null || order.timestamps.quotedAt === null
         ? null
         : new Date(order.timestamps.quotedAt).toISOString(),
-    test: order.test,
   };
 };
 
@@ -668,21 +688,31 @@ export const gatewayFor = (
           ),
         ),
       ),
-    lapsedAttempts: (page) =>
+    lapsedAttempts: (from) =>
       call("reading the purchases that lapsed unpaid", async () => {
-        // Counted first, so an address naming any page reads at most the last
-        // one: an offset past every row of the table is one the database refuses.
-        const { of } = await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 });
-        const at = Math.min(page, Math.max(1, Math.ceil(of / PAGE_ROWS)));
-        const read = await application.lapsedAttempts(merchantId, {
-          offset: (at - 1) * PAGE_ROWS,
-          limit: PAGE_ROWS,
+        const read = async (at: PageFrom<OrderPlace> | undefined) =>
+          await application.lapsedAttempts(merchantId, {
+            limit: PAGE_ROWS,
+            ...(at === undefined ? {} : { from: at }),
+          });
+        const asked = from === null ? undefined : placesOf(from);
+        let page = await read(asked);
+        // A cursor past either end, as an address kept from a longer list
+        // holds, reads the page at that end rather than no rows.
+        if (asked !== undefined && page.orders.length === 0 && page.of > 0) {
+          page = await read("after" in asked ? { before: BEFORE_EVERY_ORDER } : undefined);
+        }
+        return done({
+          attempts: page.orders.map(lapsedAttemptOf),
+          of: page.of,
+          newer: page.newer,
+          previous: page.previous === null ? null : markOfPlace(page.previous),
+          next: page.next === null ? null : markOfPlace(page.next),
         });
-        return done({ attempts: read.orders.map(lapsedAttemptOf), of: read.of });
       }),
     lapsedCount: () =>
       call("counting the purchases that lapsed unpaid", async () =>
-        done((await application.lapsedAttempts(merchantId, { offset: 0, limit: 0 })).of),
+        done((await application.lapsedAttempts(merchantId, { limit: 0 })).of),
       ),
     ordersWithRecords: () =>
       call("reading the orders", async () => {

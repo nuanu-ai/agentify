@@ -17,6 +17,7 @@
 import type {
   JournalAction,
   JournalPage,
+  JournalQuery,
   JournalRow,
   JournalSubject,
 } from "@agentify/gateway/journal";
@@ -195,10 +196,30 @@ export interface JournalView {
   readonly unsearched: "no-such-account" | "not-searchable" | null;
   readonly lines: readonly JournalLineView[];
   readonly total: number;
-  /** Where the page of older rows starts, or null where these are the oldest. */
-  readonly before: number | null;
+  /** How many rows of the kind and the search are newer than the page. */
+  readonly newer: number;
+  /** Where the page stands, by a row's place in the journal; the newest page where null. */
+  readonly from: JournalFrom | null;
+  /** The place of the page's first row where newer rows precede it, for Previous. */
+  readonly previous: number | null;
+  /** The place of the page's last row where older rows follow it, for Next. */
   readonly next: number | null;
 }
+
+/** Where a page of the journal stands: right after a row's place, or right before one. */
+export type JournalFrom = NonNullable<JournalQuery["from"]>;
+
+/** A row's place in the journal as an address writes it. */
+const PLACE = /^[1-9][0-9]{0,15}$/;
+
+/** Where the address asks the journal to stand; a cursor that is no place, or one each way, is the newest page. */
+const journalFromIn = (query: URLSearchParams): JournalFrom | null => {
+  const after = oneParam(query, "after");
+  const before = oneParam(query, "before");
+  if (PLACE.test(after) && !query.has("before")) return { after: Number(after) };
+  if (PLACE.test(before) && !query.has("after")) return { before: Number(before) };
+  return null;
+};
 
 /** The sentences a refusal's code is said in, where the journal shows it. */
 const REFUSALS: Readonly<Record<string, string>> = {
@@ -509,6 +530,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       const asked = askedIn(
         query,
         ACCOUNTS_SEGMENTS.map((one) => one.key),
+        2,
       );
       const summaries = [...listing.listed];
       if (asked.q.includes("@")) {
@@ -520,10 +542,13 @@ export function accountsFor(parts: AdminParts): AccountsPages {
           if (found !== null) summaries.push(found);
         }
       }
-      summaries.sort(
-        (one, other) =>
-          (other.newestSession?.getTime() ?? 0) - (one.newestSession?.getTime() ?? 0) ||
-          one.email.localeCompare(other.email),
+      // The newest sign-in first, then the newest account among those with no
+      // open session.
+      const marks = new Map(
+        summaries.map((one) => [
+          one.id,
+          { key: [one.newestSession?.getTime() ?? -1, one.createdAt.getTime()], id: one.id },
+        ]),
       );
       const named = await namesOf(
         summaries.flatMap((one) => (one.merchantId === null ? [] : [one.merchantId])),
@@ -537,6 +562,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
             asked,
             path: "/admin/accounts",
             segments: ACCOUNTS_SEGMENTS,
+            markOf: (row) => marks.get(row.id) ?? { key: [-1, -1], id: row.id },
             matches: (row, words) =>
               row.email.includes(words) ||
               (row.merchant !== null &&
@@ -597,8 +623,7 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       );
       const kind = kinds.find((one) => one === wanted) ?? "all";
       const asked = oneParam(query, "q").trim();
-      const beforeText = oneParam(query, "before");
-      const before = /^[1-9][0-9]{0,15}$/.test(beforeText) ? Number(beforeText) : null;
+      const from = journalFromIn(query);
 
       let about: { merchant: string } | { account: string } | undefined;
       let unsearched: JournalView["unsearched"] = null;
@@ -644,11 +669,11 @@ export function accountsFor(parts: AdminParts): AccountsPages {
       const actions = JOURNAL_KINDS[kind];
       const page: JournalPage =
         unsearched !== null
-          ? { rows: [], total: 0, next: null }
+          ? { rows: [], total: 0, newer: 0, previous: null, next: null }
           : await store.journal({
               ...(about === undefined ? {} : { about }),
               ...(actions === undefined ? {} : { actions }),
-              ...(before === null ? {} : { before }),
+              ...(from === null ? {} : { from }),
               limit: LIST_CUT,
             });
       return {
@@ -662,7 +687,9 @@ export function accountsFor(parts: AdminParts): AccountsPages {
           unsearched,
           lines: await linesOf(page.rows),
           total: page.total,
-          before,
+          newer: page.newer,
+          from,
+          previous: page.previous,
           next: page.next,
         },
       };

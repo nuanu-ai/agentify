@@ -236,11 +236,13 @@ jobs:
 
       - run: pnpm --filter @agentify/docs budget
 
-  # Every screen state the gallery draws, at a phone's, a tablet's and a
-  # desktop's width: nothing on a page reaches past the window, and axe finds
-  # nothing it rates serious or critical. A job of its own, beside the gate,
-  # because it needs Chromium and no database; the headless shell is all a
-  # check that takes no screenshots launches.
+  # Every screen state the gallery draws, at a small phone's, a phone's, a
+  # tablet's and a desktop's width: nothing on a page reaches past the window,
+  # no footer leaves an empty band under it, no button's words press against
+  # its edges, no button or heading leaves a word alone on a short last line,
+  # and axe finds nothing it rates serious or critical. A job of its own,
+  # beside the gate, because it needs Chromium and no database; the headless
+  # shell is all a check that takes no screenshots launches.
   screens:
     name: screens
     needs: secret_scan

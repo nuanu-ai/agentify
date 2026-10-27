@@ -321,7 +321,8 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
           counts: ZERO,
           rows: [],
           newer: 0,
-          earlier: null,
+          previous: null,
+          next: null,
           merchants: [],
         });
       });
@@ -457,7 +458,8 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         expect(await orders.orders({ shown: "all", search: "no such thing" })).toMatchObject({
           counts: ZERO,
           rows: [],
-          earlier: null,
+          previous: null,
+          next: null,
         });
       });
 
@@ -470,7 +472,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         }
       });
 
-      it("is cut at fifty with the total, and leads to the earlier ones from where the cut fell", async () => {
+      it("is cut at fifty with the total, and leads on to the older ones from where the cut fell and back again", async () => {
         const { store, orders } = await open();
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
@@ -487,20 +489,137 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         expect(first.rows[0]?.id).toBe("ord_p53");
         expect(first.rows[49]?.id).toBe("ord_p04");
         expect(first.newer).toBe(0);
-        expect(first.earlier).toStrictEqual({ createdAt: t(4), id: "ord_p04" });
+        expect(first.previous).toBeNull();
+        expect(first.next).toStrictEqual({ createdAt: t(4), id: "ord_p04" });
 
         const second = await orders.orders({
           shown: "in_progress",
-          before: first.earlier ?? undefined,
+          from: { after: first.next ?? { createdAt: 0, id: "" } },
         });
 
         expect(idsOf(second.rows)).toStrictEqual(["ord_p03", "ord_p02", "ord_p01"]);
         expect(second.newer).toBe(50);
-        expect(second.earlier).toBeNull();
+        expect(second.next).toBeNull();
+        expect(second.previous).toStrictEqual({ createdAt: t(4), id: "ord_p03" });
         expect(second.counts.in_progress).toBe(53);
+
+        const back = await orders.orders({
+          shown: "in_progress",
+          from: { before: second.previous ?? { createdAt: 0, id: "" } },
+        });
+
+        expect(idsOf(back.rows)).toStrictEqual(idsOf(first.rows));
+        expect(back.newer).toBe(0);
+        expect(back.previous).toBeNull();
+        expect(back.next).toStrictEqual(first.next);
       });
 
-      it("ends a page that holds exactly the last orders with no way to earlier ones", async () => {
+      it("neither repeats nor skips an order made between two reads, going on or going back", async () => {
+        const { store, orders } = await open();
+        await store.addMerchant({ id: A, name: "Merchant A" }, 1);
+        const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
+        const made = async (step: number) =>
+          await store.addOrder(
+            sold(`ord_n${String(step).padStart(3, "0")}`, "quoted", eu, t(step)),
+          );
+        for (let step = 1; step <= 120; step += 1) await made(step);
+
+        const first = await orders.orders({ shown: "all" });
+        for (let step = 121; step <= 123; step += 1) await made(step);
+        const second = await orders.orders({
+          shown: "all",
+          from: { after: first.next ?? { createdAt: 0, id: "" } },
+        });
+
+        expect(second.rows[0]?.id).toBe("ord_n070");
+        expect(second.rows.at(-1)?.id).toBe("ord_n021");
+        expect(second.newer).toBe(53);
+
+        await made(124);
+        const back = await orders.orders({
+          shown: "all",
+          from: { before: second.previous ?? { createdAt: 0, id: "" } },
+        });
+
+        expect(idsOf(back.rows)).toStrictEqual(idsOf(first.rows));
+        expect(back.newer).toBe(4);
+        expect(back.previous).toStrictEqual({ createdAt: t(120), id: "ord_n120" });
+        expect(back.counts.all).toBe(124);
+      });
+
+      it("places a cursor whose order is not in the segment, or is nowhere, where its moment and identifier fall", async () => {
+        const { store, orders } = await open();
+        await store.addMerchant({ id: A, name: "Merchant A" }, 1);
+        const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
+        for (let step = 1; step <= 60; step += 1) {
+          await store.addOrder(
+            sold(`ord_g${String(step).padStart(2, "0")}`, "quoted", eu, t(step)),
+          );
+        }
+        await store.addOrder(sold("ord_ended", "delivered", eu, t(30) + 500));
+        const left = { createdAt: t(30) + 500, id: "ord_ended" };
+        const gone = { createdAt: t(30) + 500, id: "ord_gone" };
+
+        for (const cursor of [left, gone]) {
+          const older = await orders.orders({ shown: "in_progress", from: { after: cursor } });
+          const newer = await orders.orders({ shown: "in_progress", from: { before: cursor } });
+
+          expect(older.rows[0]?.id).toBe("ord_g30");
+          expect(older.rows).toHaveLength(30);
+          expect(older.newer).toBe(30);
+          expect(older.next).toBeNull();
+          expect(newer.rows[0]?.id).toBe("ord_g60");
+          expect(newer.rows.at(-1)?.id).toBe("ord_g31");
+          expect(newer.newer).toBe(0);
+          expect(newer.previous).toBeNull();
+          expect(newer.next).toStrictEqual({ createdAt: t(31), id: "ord_g31" });
+        }
+      });
+
+      it("breaks a tie in the moment by the identifiers' bytes, capitals before small letters, on and back", async () => {
+        // A database that sorted by a language's rules would put "B" after
+        // "b", and a cursor would then skip or repeat the orders between.
+        const { store, orders } = await open();
+        await store.addMerchant({ id: A, name: "Merchant A" }, 1);
+        const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
+        for (const id of ["ord_tie_a", "ord_tie_B", "ord_tie_b"]) {
+          await store.addOrder(sold(id, "quoted", eu, t(5)));
+        }
+        const at = (id: string) => ({ createdAt: t(5), id });
+
+        expect(idsOf((await orders.orders({ shown: "all" })).rows)).toStrictEqual([
+          "ord_tie_b",
+          "ord_tie_a",
+          "ord_tie_B",
+        ]);
+        expect(
+          idsOf((await orders.orders({ shown: "all", from: { after: at("ord_tie_a") } })).rows),
+        ).toStrictEqual(["ord_tie_B"]);
+        expect(
+          idsOf((await orders.orders({ shown: "all", from: { before: at("ord_tie_B") } })).rows),
+        ).toStrictEqual(["ord_tie_b", "ord_tie_a"]);
+      });
+
+      it("reads nothing past either end, with no way on from there", async () => {
+        const { store, orders } = await open();
+        await store.addMerchant({ id: A, name: "Merchant A" }, 1);
+        const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
+        await store.addOrder(sold("ord_only", "quoted", eu, t(1)));
+
+        const older = await orders.orders({
+          shown: "all",
+          from: { after: { createdAt: t(0), id: "ord_older" } },
+        });
+        const newer = await orders.orders({
+          shown: "all",
+          from: { before: { createdAt: t(2), id: "ord_newer" } },
+        });
+
+        expect(older).toMatchObject({ rows: [], newer: 1, previous: null, next: null });
+        expect(newer).toMatchObject({ rows: [], newer: 0, previous: null, next: null });
+      });
+
+      it("ends a page that holds exactly the last orders with no way on or back", async () => {
         const { store, orders } = await open();
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
@@ -513,7 +632,8 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         const page = await orders.orders({ shown: "all" });
 
         expect(page.rows).toHaveLength(50);
-        expect(page.earlier).toBeNull();
+        expect(page.previous).toBeNull();
+        expect(page.next).toBeNull();
       });
     });
 

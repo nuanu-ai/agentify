@@ -12,12 +12,14 @@ import type {
   OperatorOrder,
   OperatorOrderRow,
   OrderMerchant,
+  OrderPlace,
   OrderSegment,
   OrderStep,
-  OrdersCursor,
   OrdersPage,
+  OrdersQuery,
   OrdersShown,
 } from "@agentify/gateway/operator";
+import { type From, fromIn, type Mark, writeFrom } from "../cursor.js";
 import { dayOf, moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
 import { FULFILLMENT_WORDS, money, ORDER_WORDS, type Word } from "../words.js";
@@ -66,20 +68,6 @@ export const TIMELINE_NOTE =
 /** How long a search may be; the rest is not read. */
 const SEARCH_AT_MOST = 200;
 
-/** A cursor as the list's address carries it: the moment, a dot, the identifier. */
-const CURSOR = /^(\d{1,16})\.([A-Za-z0-9_-]{1,128})$/;
-
-/** The latest moment a date can hold: a cursor past it names no order. */
-const LAST_MOMENT = 8.64e15;
-
-const cursorIn = (query: URLSearchParams): OrdersCursor | null => {
-  const matched = CURSOR.exec(query.get("before") ?? "");
-  const createdAt = Number(matched?.[1]);
-  return matched === null || !Number.isSafeInteger(createdAt) || createdAt > LAST_MOMENT
-    ? null
-    : { createdAt, id: matched[2] ?? "" };
-};
-
 /**
  * A text as an address carried it, without the control characters no
  * identifier, product or site holds and a database refuses, trimmed.
@@ -90,15 +78,32 @@ export const typedIn = (text: string | null, atMost: number): string =>
 // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what it takes out
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 
-const cursorOf = (cursor: OrdersCursor): string => `${cursor.createdAt}.${cursor.id}`;
-
 /** What the list's address asks for. */
 export interface OrdersAsked {
   readonly shown: OrdersShown;
   readonly q: string;
   readonly merchantId: string | null;
-  readonly before: OrdersCursor | null;
+  /** Where the page stands, by when an order was made and its identifier; the newest page where null. */
+  readonly from: OrdersFrom | null;
 }
+
+type OrdersFrom = NonNullable<OrdersQuery["from"]>;
+
+const ordersFromOf = (from: From): OrdersFrom | null => {
+  if (from === null) return null;
+  const mark = "after" in from ? from.after : from.before;
+  const cursor = { createdAt: mark.key[0] ?? 0, id: mark.id };
+  return "after" in from ? { after: cursor } : { before: cursor };
+};
+
+const markOf = (cursor: OrderPlace): Mark => ({ key: [cursor.createdAt], id: cursor.id });
+
+const fromOf = (from: OrdersFrom | null): From =>
+  from === null
+    ? null
+    : "after" in from
+      ? { after: markOf(from.after) }
+      : { before: markOf(from.before) };
 
 export const ordersAskedIn = (query: URLSearchParams): OrdersAsked => {
   const show = (query.get("segment") ?? "all").replaceAll("-", "_");
@@ -107,7 +112,7 @@ export const ordersAskedIn = (query: URLSearchParams): OrdersAsked => {
     shown: SEGMENTS.some(([key]) => key === show) ? (show as OrdersShown) : "all",
     q: typedIn(query.get("q"), SEARCH_AT_MOST),
     merchantId: merchant === "" ? null : merchant,
-    before: cursorIn(query),
+    from: ordersFromOf(fromIn(query, 1)),
   };
 };
 
@@ -121,7 +126,7 @@ const placeOf = (asked: OrdersAsked, change: Partial<OrdersAsked>): string => {
   if (next.shown !== "all") fields.set("segment", segmentInAddress(next.shown));
   if (next.q !== "") fields.set("q", next.q);
   if (next.merchantId !== null) fields.set("merchant", next.merchantId);
-  if (next.before !== null) fields.set("before", cursorOf(next.before));
+  writeFrom(fields, fromOf(next.from));
   const search = fields.toString();
   return search === "" ? "/admin/orders" : `/admin/orders?${search}`;
 };
@@ -188,11 +193,15 @@ type OrdersResult =
       rows: readonly OrderRowView[];
       /** "Showing 1–50 of 61, newest first". */
       cut: string;
-      earlier: string | null;
-      newest: string | null;
+      previous: string | null;
+      next: string | null;
     }>
-  /** A read that succeeded and found nothing, with why. */
-  | Readonly<{ kind: "none"; said: string; clear: string | null }>
+  /**
+   * A read that succeeded and found nothing, with why, the way back to the
+   * whole list where it was narrowed, and to the newest page where a cursor
+   * found nothing past it.
+   */
+  | Readonly<{ kind: "none"; said: string; clear: string | null; newest: string | null }>
   | Readonly<{ kind: "unread" }>;
 
 export interface OrdersListView {
@@ -217,7 +226,7 @@ export function ordersListView(
     label,
     count: page === null ? null : page.counts[key],
     here: key === asked.shown,
-    to: placeOf(asked, { shown: key, before: null }),
+    to: placeOf(asked, { shown: key, from: null }),
   }));
   const common = {
     readAt: `Read ${moment(readAt.toISOString())}`,
@@ -231,7 +240,19 @@ export function ordersListView(
   const of = page.counts[asked.shown];
   const narrowed = asked.q !== "" || asked.merchantId !== null;
   if (page.rows.length === 0) {
-    const clear = narrowed ? placeOf(asked, { q: "", merchantId: null, before: null }) : null;
+    if (asked.from !== null && page.counts[asked.shown] > 0) {
+      return {
+        ...common,
+        merchants,
+        result: {
+          kind: "none",
+          said: `No ${"after" in asked.from ? "earlier" : "later"} order is in this segment.`,
+          clear: null,
+          newest: placeOf(asked, { from: null }),
+        },
+      };
+    }
+    const clear = narrowed ? placeOf(asked, { q: "", merchantId: null, from: null }) : null;
     const said =
       page.counts.all === 0
         ? !narrowed
@@ -239,14 +260,14 @@ export function ordersListView(
           : asked.q === ""
             ? "This merchant has no order here."
             : `No order matches “${asked.q}”.`
-        : asked.before !== null || asked.shown === "all"
+        : asked.shown === "all"
           ? "No earlier order is in this segment."
           : narrowed
             ? `No order among ${SEGMENT_NAMES[asked.shown]} matches ${
                 asked.q === "" ? "this merchant" : `“${asked.q}”`
               }.`
             : EMPTY_SEGMENT[asked.shown];
-    return { ...common, merchants, result: { kind: "none", said, clear } };
+    return { ...common, merchants, result: { kind: "none", said, clear, newest: null } };
   }
   const from = page.newer + 1;
   const to = page.newer + page.rows.length;
@@ -257,8 +278,8 @@ export function ordersListView(
       kind: "rows",
       rows: page.rows.map(orderRowView),
       cut: `Showing ${from}–${to} of ${of}, newest first`,
-      earlier: page.earlier === null ? null : placeOf(asked, { before: page.earlier }),
-      newest: asked.before === null ? null : placeOf(asked, { before: null }),
+      previous: page.previous === null ? null : placeOf(asked, { from: { before: page.previous } }),
+      next: page.next === null ? null : placeOf(asked, { from: { after: page.next } }),
     },
   };
 }

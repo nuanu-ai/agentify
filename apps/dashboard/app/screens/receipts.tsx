@@ -16,7 +16,6 @@ import { CutNote } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { Transfer } from "../components/transfer.js";
 import { Word } from "../components/word.js";
-import { TestMark } from "./orders.js";
 import styles from "./orders.module.css";
 
 /**
@@ -27,10 +26,8 @@ const RECEIPT_COLUMNS = "7rem minmax(0, 1fr) 8rem 10.5rem 8.5rem 1rem";
 
 export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
   const { listing } = view;
-  const marked = view.testWarning !== null;
   return (
     <>
-      {view.testWarning === null ? null : <p className="problem">{view.testWarning}</p>}
       <Group title="All receipts" count={listing.segments[0]?.count ?? listing.rows.length}>
         {listing.rows.length === 0 ? (
           <ListEmpty>No receipts yet.</ListEmpty>
@@ -62,10 +59,7 @@ export function ReceiptsScreen({ view }: Readonly<{ view: ReceiptsView }>) {
                           <Transfer transfer={row.transfer} />
                         )}
                       </Cell>
-                      <Cell at="amount">
-                        {row.amount}
-                        <TestMark test={marked && row.test} />
-                      </Cell>
+                      <Cell at="amount">{row.amount}</Cell>
                     </>
                   }
                 >

@@ -14,6 +14,7 @@
 
 import { notPlainTextIn } from "@nuanu-ai/agentify-contracts";
 import { z } from "zod";
+import type { PageFrom } from "./paging.js";
 
 /** The closed list of what an operator can do, as the journal names it. */
 export const JOURNAL_ACTIONS = [
@@ -140,25 +141,29 @@ export const settledPress = (press: JournalPress, changed: boolean): JournalEntr
 
 /**
  * Which rows to read: about one merchant (its keys' rows included) or one
- * account, of any of `actions`, newest first, at most `limit` of them,
- * starting after the row `before` names.
+ * account, of any of `actions`, newest first, at most `limit` of them, where
+ * `from` stands, a cursor being a row's `sequence`.
  */
 export interface JournalQuery {
   readonly about?: Readonly<{ merchant: string }> | Readonly<{ account: string }>;
   /** The kinds of action to read, every one where absent; none at all reads no row. */
   readonly actions?: readonly JournalAction[];
   readonly limit: number;
-  /** The `sequence` of the last row of the page before, whose `next` it is. */
-  readonly before?: number;
+  /** Where the page stands; the newest page where absent. */
+  readonly from?: PageFrom<number>;
 }
 
 /**
- * One page of the journal: its rows, how many rows match the query in all, and
- * where the next page starts, or null where this page holds the oldest.
+ * One page of the journal: its rows, how many rows match the query in all and
+ * how many of them are newer than the page, and the `sequence` of the page's
+ * first row where newer rows precede it and of its last where older ones
+ * follow.
  */
 export interface JournalPage {
   readonly rows: readonly JournalRow[];
   readonly total: number;
+  readonly newer: number;
+  readonly previous: number | null;
   readonly next: number | null;
 }
 

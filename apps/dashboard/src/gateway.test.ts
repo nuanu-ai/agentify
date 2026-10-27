@@ -305,7 +305,7 @@ describe("the orders a page reads", () => {
     expect(lapsedKey).not.toBe("");
 
     const read = JSON.stringify([
-      await owner.lapsedAttempts(1),
+      await owner.lapsedAttempts(null),
       await owner.orders(false),
       await owner.orders(true),
       await owner.getOrder(orderId),
@@ -615,7 +615,7 @@ describe("the orders a page reads", () => {
       answer.ok ? answer.document.orders.map((order) => order.id) : answer.why;
     expect(idsIn(await client.orders(false))).toStrictEqual([paid]);
     expect(idsIn(await client.orders(true))).toStrictEqual([paid]);
-    const page = await client.lapsedAttempts(1);
+    const page = await client.lapsedAttempts(null);
     expect(page.ok ? page.document.of : page.why).toBe(3);
     expect(page.ok ? page.document.attempts.map((attempt) => attempt.id) : []).toStrictEqual([
       unpriced.order.order.id,

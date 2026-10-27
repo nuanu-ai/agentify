@@ -87,9 +87,11 @@ import type {
   AnalyticsOf,
   Integration,
   IntegrationSwitch,
+  LapsedPage,
   PayoutWalletRead,
   PayoutWalletWrite,
   RecordedPayoutSplit,
+  Store,
   StoredCard,
   StoredKey,
   StoredMerchant,
@@ -2950,8 +2952,8 @@ export class Gateway {
    */
   async lapsedAttempts(
     merchantId: string,
-    page: { readonly offset: number; readonly limit: number },
-  ): Promise<{ readonly orders: readonly StoredOrder[]; readonly of: number }> {
+    page: Parameters<Store["lapsedAttempts"]>[1],
+  ): Promise<LapsedPage> {
     return this.runtime.store.lapsedAttempts(merchantId, page);
   }
 

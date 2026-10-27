@@ -64,6 +64,38 @@ if (databaseUrl === null) {
     return { store, merchants: postgresOperatorReader(db, "eip155:84532").merchants };
   });
 
+  describe("the operator's merchants made by the database's own clock", () => {
+    it("are listed and placed at whole milliseconds, as an address writes a cursor", async () => {
+      // A merchant a migration wrote with now() was made at a moment finer
+      // than a millisecond, which no cursor in an address can carry.
+      await pool.query(EMPTY_EVERY_TABLE);
+      const store = PostgresStore.over(db, "eip155:84532", ids);
+      const merchants = postgresOperatorReader(db, "eip155:84532").merchants;
+      for (const [id, at] of [
+        ["mch_old", 1_000],
+        ["mch_fine", 2_000],
+        ["mch_new", 3_000],
+      ] as const) {
+        await store.addMerchant({ id, name: "made in the dashboard" }, at);
+      }
+      await pool.query(
+        "update merchants set created_at = created_at + interval '671 microseconds' where id = 'mch_fine'",
+      );
+      const at = { at: Date.UTC(2026, 9, 23), surface: "test", limit: 1 } as const;
+      const nowhere = { waiting: false, lastSaleAt: null, createdAt: 0, id: "" };
+
+      const first = await merchants.list(at);
+      const fine = await merchants.list({ ...at, from: { after: first.next ?? nowhere } });
+
+      expect(fine.rows.map((row) => [row.id, row.createdAt])).toStrictEqual([["mch_fine", 2_000]]);
+      expect(fine.previous).toMatchObject({ createdAt: 2_000, id: "mch_fine" });
+      const back = await merchants.list({ ...at, from: { before: fine.previous ?? nowhere } });
+      expect(back.rows.map((row) => row.id)).toStrictEqual(["mch_new"]);
+      const on = await merchants.list({ ...at, from: { after: fine.next ?? nowhere } });
+      expect(on.rows.map((row) => row.id)).toStrictEqual(["mch_old"]);
+    });
+  });
+
   describe("the operator's merchants when the database cannot answer", () => {
     it("rejects each read rather than answering an empty channel", async () => {
       const closed = connect(databaseUrl, { max: 1 });

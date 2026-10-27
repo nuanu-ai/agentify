@@ -120,13 +120,7 @@ const dashboardAt = (base: string, path: string) => {
                   loads.push(load);
                   await load.done;
                 }
-                return ordersView(
-                  "live",
-                  NO_CARDS,
-                  ORDERS,
-                  ORDERS,
-                  new URL(request.url).searchParams,
-                );
+                return ordersView(NO_CARDS, ORDERS, ORDERS, new URL(request.url).searchParams);
               },
               Component: () => {
                 const view = useLoaderData() as OrdersView;
@@ -306,6 +300,26 @@ describe("the banner about the account", () => {
       "/settings",
       TEST_DASHBOARD,
     ]);
+  });
+
+  it("names every reason in a list of several, and leaves the heading's words to the heading", async () => {
+    const notes = accountOf(
+      { ...LIVE, sellerName: null, liveApproval: false },
+      { selling: "paused", busy: true },
+    );
+    framed("orders", { account: notes });
+    await screen.findByText("The screen");
+    const drawn = banner();
+    if (drawn === null) throw new Error("no banner was drawn");
+
+    const heading = headingOf(notes);
+    const items = within(drawn).getAllByRole("listitem");
+    expect(items).toHaveLength(notes.length);
+    for (const [index, note] of notes.entries()) {
+      const line = items[index]?.textContent ?? "";
+      if (note.title === heading) expect(line).not.toContain(heading);
+      else expect(line.startsWith(note.title)).toBe(true);
+    }
   });
 
   it("heads a single reason with its own title, as a line and not a list", async () => {
