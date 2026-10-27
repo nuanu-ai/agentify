@@ -201,14 +201,16 @@ async function aGatewayPayingThrough(
 ) {
   const config = testConfig({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
   let ahead = 0;
-  const clock = () => Date.now() + ahead;
+  const wallClock = Date.now.bind(Date);
+  const clock = () => wallClock() + ahead;
+  vi.spyOn(Date, "now").mockImplementation(clock);
   const queue = new MemoryQueue();
   const store = new MemoryStore(config.payment.network, randomIds, clock, queue.envelopes());
   const gateway = new Gateway({
     config,
     store,
     queue,
-    facilitator: new X402Facilitator(network, new PaymentEdge(config), undefined, clock),
+    facilitator: new X402Facilitator(network, new PaymentEdge(config)),
     clock,
     ids: randomIds,
     announcer: nobodyAnnounces,
@@ -634,7 +636,8 @@ async function deliveredThenTheWalletMoved() {
   });
   const itemId = await shop.publish(syncCard);
   const challenge = await challengeFor(shop.served, itemId);
-  const bought = await present(shop.served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
+  const originalPayment = await paymentAgainst(challenge, BUYER, "0x01");
+  const bought = await present(shop.served, itemId, originalPayment);
   expect(bought.status).toBe(200);
   const { order_id: orderId, status_url: statusUrl } = bought.body as {
     order_id: string;
@@ -652,6 +655,7 @@ async function deliveredThenTheWalletMoved() {
     shop,
     itemId,
     challenge,
+    originalPayment,
     orderId,
     statusUrl,
     paidTo,
@@ -706,11 +710,7 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
   it("opens nothing for the used authorization sent again, or for a renewal whose window has passed", async () => {
     const sold = await deliveredThenTheWalletMoved();
     try {
-      const used = await present(
-        sold.shop.served,
-        sold.itemId,
-        await paymentAgainst(sold.challenge, BUYER, "0x01"),
-      );
+      const used = await present(sold.shop.served, sold.itemId, sold.originalPayment);
       const lapsed = await present(
         sold.shop.served,
         sold.itemId,
@@ -738,11 +738,7 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
     try {
       sold.shop.advance(10 * 60_000);
 
-      const replayed = await present(
-        sold.shop.served,
-        sold.itemId,
-        await paymentAgainst(sold.challenge, BUYER, "0x01"),
-      );
+      const replayed = await present(sold.shop.served, sold.itemId, sold.originalPayment);
 
       expect(replayed.status).toBe(409);
       const { error } = replayed.body as { error: { code: string; message: string } };
