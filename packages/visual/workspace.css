@@ -389,6 +389,15 @@
 .op-dl dd {
   margin: 0;
   font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* On a phone a value stands under its label: two columns there leave each
+   label two or three lines. */
+@media (max-width: 600px) {
+  .op-dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .op-score {

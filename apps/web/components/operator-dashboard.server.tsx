@@ -346,7 +346,7 @@ function WorkerPanel({ data }: Readonly<{ data: OperatorDashboardData }>) {
               : "Nothing queued"}
           </Fact>
           <Fact term="Scans stuck running">{stuck > 0 ? number.format(stuck) : "None"}</Fact>
-          <Fact term="Failed · 15 min">
+          <Fact term={"Failed · 15\u00a0min"}>
             {`${number.format(Number(signals.failed_15m))} of ${counted(Number(signals.accepted_15m), "scan", "scans")} accepted`}
           </Fact>
           <Fact
@@ -513,7 +513,7 @@ export function OperatorDashboard({
                 {`${SCAN_LIMITS.perAddressHour} per rolling hour`}
               </Fact>
               <Fact term="Hard ceiling per site">{`${SCAN_LIMITS.perSiteDay} per UTC day`}</Fact>
-              <Fact term="Accepted requests · 24 h">
+              <Fact term={"Accepted requests · 24\u00a0h"}>
                 {number.format(overview.acceptedRequests24h)}
               </Fact>
               <Fact term="Verified challenges · rolling hour">
