@@ -101,7 +101,7 @@ import {
   wooImportView,
   wooShopView,
 } from "../src/woo-views.js";
-import { SITE_IN_SETTINGS } from "../src/words.js";
+import { money, SITE_IN_SETTINGS } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Gated, Trouble } from "./answer.js";
 import { shortened } from "./components/copy.js";
@@ -3002,7 +3002,7 @@ const RECOVERY_SALE = {
   orderId: idOf("ord", "Coffee & Brunch Gift Card recovery"),
   product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
-  amount: "25.00 USD",
+  amount: money({ amount: "25.00", currency: "USD" }),
 };
 
 /** Sales saved with no shop order yet, as the recovery page reads them. */

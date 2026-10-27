@@ -764,7 +764,7 @@ export const ordersView = (
         : {
             ...(order.merchant_closure.message === undefined
               ? {}
-              : { message: order.merchant_closure.message }),
+              : { message: keepUnits(order.merchant_closure.message) }),
           },
     closing: reopened(order) ? "again" : closable(order) ? "first" : null,
     shopTotal:

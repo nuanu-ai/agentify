@@ -182,7 +182,7 @@ function chartSummary(rows: readonly OperatorDay[]): string {
   return first && last
     ? `${counted(landings, "landing view", "landing views")} and ${counted(scans, "scan", "scans")} from ${chartDay(new Date(`${first.day}T00:00:00Z`))} to today${
         outnumbered > 0
-          ? `; on ${counted(outnumbered, "day", "days")} scans outnumbered measured landing views`
+          ? `; on ${withUnit(number.format(outnumbered), outnumbered === 1 ? "day" : "days")} scans outnumbered measured landing views`
           : ""
       }`
     : "No days to draw";
@@ -419,7 +419,7 @@ export function OperatorDashboard({
           figure={number.format(dataCopies.unconfirmed)}
           aside={
             dataCopies.unconfirmed > 0 && dataCopies.oldestAt !== null
-              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. None of five tries was confirmed by the mail service, or the copy was too large to email; each stays counted until a later copy to its address is sent, or for 30 days.`
+              ? `Oldest asked for ${day(new Date(dataCopies.oldestAt), zone)}. None of five tries was confirmed by the mail service, or the copy was too large to email; each stays counted until a later copy to its address is sent, or for ${withUnit(30, "days")}.`
               : "Every copy asked for was sent or is still being tried."
           }
         />

@@ -1,6 +1,7 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { PHONE_INPUT_PATTERN } from "@agentify/scanner-contracts/browser";
 import { useVisitor } from "@agentify/ui";
+import { keepUnits } from "@agentify/ui/units";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { waitLabel } from "../lib/link-answer";
 import { press } from "../lib/press";
@@ -120,7 +121,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     }
     if (outcome.kind === "refused") {
       setState(outcome.refusal.code === "signed_in_as_another_address" ? "stale" : "error");
-      setMessage(outcome.refusal.message);
+      setMessage(keepUnits(outcome.refusal.message));
       const field = refusedField(outcome.refusal.code);
       // A signed-in ask names the session's address, which has no field here.
       if (field !== undefined && !(signedIn && field === "email")) setRefused({ field });
