@@ -545,6 +545,9 @@ class TheTimer(ReleaseTest):
             self.assertEqual(self.tick(), 75)
             self.assertEqual(self.release("deploy-test"), 75)
         self.assertEqual(self.activations(), [])
+        self.assertEqual(self.tick(), 0, self.said)
+        self.assertEqual([activation["argv"][1] for activation in self.activations()], [self.first])
+        self.assertEqual(self.recorded("current"), self.first)
 
 
 class AManualRun(ReleaseTest):
