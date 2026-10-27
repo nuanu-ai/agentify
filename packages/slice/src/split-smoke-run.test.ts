@@ -100,23 +100,31 @@ const AS_THE_CONTRACTS_DO: readonly Effect[] = [
     transfers: [transfer(BUYER, SPLIT.address, 10_000n)],
   },
   {
-    after: ledger([40_000n, 1n, 9_988n, 119_997n], [0n, 1n, 1n, 10n]),
-    transfers: [transfer(SPLIT.address, WAREHOUSE, 9_999n), transfer(WAREHOUSE, MERCHANT, 9_988n)],
+    after: ledger([40_000n, 1n, 9_988n, 120_006n], [0n, 1n, 1n, 1n]),
+    transfers: [
+      transfer(SPLIT.address, WAREHOUSE, 9_999n),
+      transfer(WAREHOUSE, MERCHANT, 9_988n),
+      transfer(WAREHOUSE, COMMISSION, 9n),
+    ],
     created: [CREATED],
     distributed: [9_999n],
   },
   {
-    after: ledger([30_000n, 10_001n, 9_988n, 119_997n], [0n, 1n, 1n, 10n]),
+    after: ledger([30_000n, 10_001n, 9_988n, 120_006n], [0n, 1n, 1n, 1n]),
     transfers: [transfer(BUYER, SPLIT.address, 10_000n)],
   },
   {
-    after: ledger([30_000n, 1n, 19_978n, 119_997n], [0n, 1n, 1n, 20n]),
-    transfers: [transfer(SPLIT.address, WAREHOUSE, 10_000n), transfer(WAREHOUSE, MERCHANT, 9_990n)],
+    after: ledger([30_000n, 1n, 19_978n, 120_016n], [0n, 1n, 1n, 1n]),
+    transfers: [
+      transfer(SPLIT.address, WAREHOUSE, 10_000n),
+      transfer(WAREHOUSE, MERCHANT, 9_990n),
+      transfer(WAREHOUSE, COMMISSION, 10n),
+    ],
     distributed: [10_000n],
   },
   {
     after: ledger([30_000n, 1n, 19_978n, 120_016n], [0n, 1n, 1n, 1n]),
-    transfers: [transfer(WAREHOUSE, MERCHANT, 0n), transfer(WAREHOUSE, COMMISSION, 19n)],
+    transfers: [transfer(WAREHOUSE, MERCHANT, 0n), transfer(WAREHOUSE, COMMISSION, 0n)],
     distributed: [0n],
   },
 ];
@@ -354,7 +362,7 @@ describe("a split smoke's predictions", () => {
     [10_000n, 9_988n, 9n, 9_990n, 10n],
     [1_000_000n, 998_998n, 999n, 999_000n, 1_000n],
   ])(
-    "pays the merchant of a fresh split and credits Agentify a thousandth, for two payments of %i units each, with four one-unit residues at the end",
+    "pays the merchant of a fresh split and Agentify its thousandth in each payout, for two payments of %i units each, with four one-unit residues at the end",
     (price, firstToMerchant, firstToAgentify, secondToMerchant, secondToAgentify) => {
       const initial = ledger([10n * price, 0n, 0n, 0n], [0n, 0n, 0n, 0n]);
 
@@ -368,18 +376,21 @@ describe("a split smoke's predictions", () => {
         ["the operator's payout", false],
       ]);
       const [, first, , second, operator] = steps;
+      // The warehouse keeps one unit of the commission wallet's credit at its
+      // first withdrawal, as it does of every owner's.
       expect(first?.transfers).toStrictEqual([
         transfer(SPLIT.address, WAREHOUSE, price - 1n),
         transfer(WAREHOUSE, MERCHANT, firstToMerchant),
+        transfer(WAREHOUSE, COMMISSION, firstToAgentify - 1n),
       ]);
-      expect(first?.after.credited[COMMISSION]).toBe(firstToAgentify);
       expect(second?.transfers).toStrictEqual([
         transfer(SPLIT.address, WAREHOUSE, price),
         transfer(WAREHOUSE, MERCHANT, secondToMerchant),
+        transfer(WAREHOUSE, COMMISSION, secondToAgentify),
       ]);
       expect(operator?.transfers).toStrictEqual([
         transfer(WAREHOUSE, MERCHANT, 0n),
-        transfer(WAREHOUSE, COMMISSION, firstToAgentify + secondToAgentify - 1n),
+        transfer(WAREHOUSE, COMMISSION, 0n),
       ]);
       const end = operator?.after;
       expect([
@@ -394,12 +405,12 @@ describe("a split smoke's predictions", () => {
   it("carries into each withdrawal what the warehouse credited the wallet before the run", () => {
     const initial = ledger([50_000n, 0n, 0n, 0n], [0n, 0n, 1n, 5n]);
 
-    const [, first, , , operator] = planRun(SPLIT, WAREHOUSE, BUYER, PRICE, initial);
+    const [, first] = planRun(SPLIT, WAREHOUSE, BUYER, PRICE, initial);
 
-    expect(first?.transfers.at(-1)).toStrictEqual(transfer(WAREHOUSE, MERCHANT, 9_989n));
-    expect(operator?.transfers.at(-1)).toStrictEqual(
-      transfer(WAREHOUSE, COMMISSION, 5n + 19n - 1n),
-    );
+    expect(first?.transfers.slice(-2)).toStrictEqual([
+      transfer(WAREHOUSE, MERCHANT, 9_989n),
+      transfer(WAREHOUSE, COMMISSION, 5n + 9n - 1n),
+    ]);
   });
 
   it("keeps a second unit credited to the split where a price's shares both round down, and distributes it with the payout after", () => {
@@ -467,6 +478,7 @@ describe("a split smoke run", () => {
       transfers: [
         { from: SPLIT.address, to: WAREHOUSE, value: "9999" },
         { from: WAREHOUSE, to: MERCHANT, value: "9988" },
+        { from: WAREHOUSE, to: COMMISSION, value: "9" },
       ],
       after: expect.anything(),
     });
@@ -639,7 +651,7 @@ describe("a split smoke run", () => {
   it("stops at the second payment when another split credited the commission wallet between the steps, since the predictions no longer hold", async () => {
     const effects = withEffect(2, (payment) => ({
       ...payment,
-      elsewhere: { after: ledger([40_000n, 1n, 9_988n, 119_997n], [0n, 1n, 1n, 15n]) },
+      elsewhere: { after: ledger([40_000n, 1n, 9_988n, 120_006n], [0n, 1n, 1n, 6n]) },
     }));
 
     const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));
@@ -711,7 +723,7 @@ describe("a split smoke run", () => {
   it("stops at the second payment when somebody paid the merchant wallet between the steps", async () => {
     const effects = withEffect(2, (payment) => ({
       ...payment,
-      elsewhere: { after: ledger([40_000n, 1n, 9_989n, 119_997n], [0n, 1n, 1n, 10n]) },
+      elsewhere: { after: ledger([40_000n, 1n, 9_989n, 120_006n], [0n, 1n, 1n, 1n]) },
     }));
 
     const stopped = await stoppedAt(run(scriptedChain({ effects }), aJournal()));

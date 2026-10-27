@@ -734,7 +734,7 @@ describe("the payout instruction", () => {
     ).data;
 
     expect(dataIn(html)).toBe(built);
-    expect(dataIn(html)).toHaveLength(3_146);
+    expect(dataIn(html)).toHaveLength(3_658);
     expect(asCopied(html)).not.toMatch(ELIDED);
   });
 
@@ -775,6 +775,21 @@ describe("the payout instruction", () => {
     expect(dataIn(settingsPage({ mode: "live", wallet: W }))).toBe(
       merchantPayout(networkOf("live"), [splitOf("live", W)], PAYOUT_SPLIT_NETWORKS).data,
     );
+  });
+
+  it("says the one transaction pays Agentify's commission with the merchant's share, at the rate the screen names, outside the folded other-wallet steps", () => {
+    // On the live channel the Coinbase button sends the payout and the steps
+    // for another wallet stay folded, so the sentence must be outside them.
+    for (const mode of ["test", "live"] as const) {
+      const network = networkOf(mode);
+      const commission = percent(network.commissionAllocation, network.totalAllocation);
+      const unfolded = settingsPage({ mode, wallet: W }).replaceAll(
+        /<details[\s\S]*?<\/details>/g,
+        "",
+      );
+
+      expect(readable(unfolded)).toContain(`pays your share and Agentify's ${commission} together`);
+    }
   });
 
   it("links to how to send it from another wallet, and says that otherwise Agentify pays it out on no fixed date", () => {
@@ -911,11 +926,12 @@ describe("what Getting paid says in each state", () => {
       .split(/(?<=\.)\s+/)
       .map((one) => one.trim())
       .filter((one) => one.endsWith("."));
-  const { brings, tooMany, sentOn, ...plain } = PAYOUT_NOTES;
+  const { brings, tooMany, sentOn, paysBoth, ...plain } = PAYOUT_NOTES;
   const NOTED = new Set([
     ...Object.values(plain).flatMap(sentencesOf),
     ...Object.values(sentOn).flatMap(sentencesOf),
     ...[1, 2].flatMap((count) => sentencesOf(tooMany(count))),
+    ...sentencesOf(paysBoth("0.1%")),
     // An amount is written as digits, which `sentencesOf` reads as `#`.
     ...["1.1 USDC", "1.1 test USDC"].flatMap((amount) =>
       [true, false].flatMap((one) => sentencesOf(brings(amount, one))),

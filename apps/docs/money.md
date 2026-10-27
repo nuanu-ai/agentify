@@ -14,11 +14,11 @@
 ```mermaid
 flowchart TB
     accTitle: Where a buyer's payment goes
-    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify when it collects its own share, pays out every sale since the last payout through the shared 0xSplits warehouse: {{merchant-share:words}} to your wallet, and {{commission:words}} kept in the warehouse for Agentify. A refund, if you make one, goes from your wallet to the buyer outside Agentify, and closing fulfillment of an order moves no money.
+    accDescr: Each sale pays the whole price in USDC into your payout contract, which is made from your wallet's address and has no owner. One payout transaction, sent by you at any time or by Agentify on no fixed date, pays out every sale since the last payout through the shared 0xSplits warehouse: {{merchant-share:words}} to your wallet and {{commission:words}} to Agentify. A refund, if you make one, goes from your wallet to the buyer outside Agentify, and closing fulfillment of an order moves no money.
     B["Buyer's wallet"] -- "each sale: the whole<br/>price, in USDC" --> C["Your payout contract<br/>made from your<br/>wallet's address,<br/>with no owner"]
-    C -- "one payout for every<br/>sale since the last,<br/>sent by you at any time<br/>or by Agentify when it<br/>collects its share" --> W["0xSplits warehouse"]
+    C -- "one payout for every<br/>sale since the last,<br/>sent by you at any time<br/>or by Agentify on<br/>no fixed date" --> W["0xSplits warehouse"]
     W -- "{{merchant-share}}" --> Y["Your wallet"]
-    W -- "{{commission}}, kept there<br/>for Agentify" --> F["Agentify"]
+    W -- "{{commission}}" --> F["Agentify"]
     Y -. "a refund, if you<br/>make one, outside<br/>Agentify" .-> R["The buyer"]
 ```
 
@@ -57,15 +57,14 @@ it. On the test channel Coinbase Wallet's payout is not known to work, because
 Coinbase's window refuses transactions on the test network from the wallets it
 creates now, so Settings has no Coinbase payout button there. On either
 channel, any other wallet that holds a little ETH for the network's fee and lets you paste
-data into a transaction can send it. Either way your share reaches your wallet
-in that same transaction, which carries no money of its own and costs only the
-fee.
+data into a transaction can send it. Either way that one transaction pays your
+share to your wallet and our {{commission}} to us. It carries no money of its own
+and costs only the fee.
 [Sending a payout](/payout) is the step-by-step for whoever holds the wallet.
 
-If you never send one, your share arrives when Agentify collects its own,
-because collecting it pays out every payout contract, yours included. There is
-no fixed day for that, and until somebody pays it out, the money waits in the
-contract.
+If you never send one, your share arrives with Agentify's own payout, which
+pays out every payout contract, yours included. There is no fixed day for that,
+and until somebody pays it out, the money waits in the contract.
 
 ## What they pay in
 
@@ -193,7 +192,8 @@ who handle refunds and does not pay a buyer back from its own funds.
 
 We take {{commission}} of every payment, and it is inside your price. The buyer pays the
 price of your product and nothing on top of it, and your payout contract sends
-{{merchant-share}} of it to you and {{commission}} to us. If you want what reaches you to be the
+{{merchant-share}} of it to you and {{commission}} to us, both in the same payout transaction,
+whoever sends it. If you want what reaches you to be the
 whole of a price you have in mind, raise the product's price yourself. There
 is no subscription and no monthly fee. The Settings screen of your dashboard
 names the commission, and saving your wallet there is how you accept it.
