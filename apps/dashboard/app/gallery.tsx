@@ -3823,7 +3823,7 @@ const PROBLEMS: GalleryState[] = [
   at(
     {
       id: "dashboard-no-such-page",
-      screen: "No such page",
+      screen: "Page not found",
       when: "A signed-in merchant follows a link to an address the dashboard does not have.",
       cause: "The address matches none of the dashboard's pages.",
     },

@@ -607,7 +607,7 @@ describe("a move between pages", () => {
     await contents(page).getByRole("link", { name: "Orders and fulfillment modes" }).click();
 
     await page.getByRole("heading", { name: "This page could not be loaded" }).waitFor();
-    expect(await page.getByText("There is no such page").count()).toBe(0);
+    expect(await page.getByText("Page not found").count()).toBe(0);
     await page.context().close();
   });
 });
@@ -851,7 +851,7 @@ describe("an address the documentation answered at before", () => {
     const answered = await page.goto(`${edge.origin}/docs/no-such-page`);
 
     expect(answered?.status()).toBe(404);
-    expect(await page.locator("h1").textContent()).toContain("There is no such page");
+    expect(await page.locator("h1").textContent()).toContain("Page not found");
     await context.close();
   });
 });

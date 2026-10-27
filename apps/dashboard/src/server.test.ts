@@ -3024,7 +3024,7 @@ describe("the settings screen", () => {
       const data = await browser.get(`${path}.data`);
       expect(data.status, path).toBe(200);
       expect(data.html, path).toContain(PERSON);
-      expect(readable(data.html), path).not.toContain("There is no such page");
+      expect(readable(data.html), path).not.toContain("Page not found");
     }
   });
 
@@ -5428,7 +5428,7 @@ describe("when something goes wrong that the merchant has to get out of", () => 
     const answered = await browser.get("/nowhere");
 
     expect(answered.status).toBe(404);
-    expect(readable(answered.html)).toContain("There is no such page");
+    expect(readable(answered.html)).toContain("Page not found");
     // Said once, in the bar, as every screen's title is.
     expect(answered.html.match(/<h1\b/g)).toHaveLength(1);
     expect(answered.html).toMatch(/<a [^>]*href="\/products"[^>]*>Back to the dashboard<\/a>/);

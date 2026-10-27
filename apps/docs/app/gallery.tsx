@@ -94,7 +94,7 @@ export const gallery: GallerySurface = {
     ...pages,
     {
       id: "docs-missing",
-      screen: "No such page",
+      screen: "Page not found",
       address: "/docs/no-such-page",
       when: "Somebody follows a link to an address the documentation has no page at.",
       cause: "Caddy answers an address it finds no file for with the page the build drew for it.",
