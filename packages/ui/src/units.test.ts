@@ -28,6 +28,13 @@ describe("a number and its unit as a page shows them", () => {
     );
   });
 
+  it("join the binary sizes the scanner reports, a stay's nights and a line's speed", () => {
+    expect(keepUnits("larger than 512 KiB")).toBe(`larger than 512${NBSP}KiB`);
+    expect(keepUnits("1 MiB, 2 GiB")).toBe(`1${NBSP}MiB, 2${NBSP}GiB`);
+    expect(keepUnits("1 night, 3 Nights")).toBe(`1${NBSP}night, 3${NBSP}Nights`);
+    expect(keepUnits("up to 100 Mbps")).toBe(`up to 100${NBSP}Mbps`);
+  });
+
   it("leave a word that only begins like a unit alone", () => {
     for (const text of ["5 mines", "3 hats", "2 dimes", "10 GBP", "4 sizes", "7 dollars"]) {
       expect(keepUnits(text)).toBe(text);
