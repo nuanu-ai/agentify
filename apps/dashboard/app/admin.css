@@ -313,7 +313,10 @@
   gap: 2px;
 }
 
+/* A panel's own headings stand apart from what is above them; a check's title
+   stands level with its tick and its badge. */
 .op-checks .what h3 {
+  margin: 0;
   font-size: var(--text-body);
 }
 
