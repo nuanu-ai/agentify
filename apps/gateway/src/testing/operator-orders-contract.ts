@@ -576,6 +576,30 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         }
       });
 
+      it("breaks a tie in the moment by the identifiers' bytes, capitals before small letters, on and back", async () => {
+        // A database that sorted by a language's rules would put "B" after
+        // "b", and a cursor would then skip or repeat the orders between.
+        const { store, orders } = await open();
+        await store.addMerchant({ id: A, name: "Merchant A" }, 1);
+        const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
+        for (const id of ["ord_tie_a", "ord_tie_B", "ord_tie_b"]) {
+          await store.addOrder(sold(id, "quoted", eu, t(5)));
+        }
+        const at = (id: string) => ({ createdAt: t(5), id });
+
+        expect(idsOf((await orders.orders({ shown: "all" })).rows)).toStrictEqual([
+          "ord_tie_b",
+          "ord_tie_a",
+          "ord_tie_B",
+        ]);
+        expect(
+          idsOf((await orders.orders({ shown: "all", from: { after: at("ord_tie_a") } })).rows),
+        ).toStrictEqual(["ord_tie_B"]);
+        expect(
+          idsOf((await orders.orders({ shown: "all", from: { before: at("ord_tie_B") } })).rows),
+        ).toStrictEqual(["ord_tie_b", "ord_tie_a"]);
+      });
+
       it("reads nothing past either end, with no way on from there", async () => {
         const { store, orders } = await open();
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
