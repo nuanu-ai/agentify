@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setup } from "../../../../vitest.db.setup.js";
+import { setup } from "./database-command.js";
 
 const opened = vi.hoisted(() => [] as string[]);
 // Stop at native database I/O: none of these command-safety checks can erase a database.

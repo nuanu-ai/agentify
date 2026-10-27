@@ -28,7 +28,7 @@ export default defineConfig({
     environment: "node",
     // A run with no server reachable fails here rather than skipping every file
     // and exiting zero.
-    globalSetup: ["./vitest.db.setup.ts"],
+    globalSetup: ["./apps/gateway/src/testing/database-command.ts"],
     include: ["apps/*/src/**/*.db-test.ts"],
     // The offline suite's network refusal. A database is not reached with
     // `fetch`, so this still rules out a call to somebody's live API. And the
