@@ -777,6 +777,17 @@ describe("the payout instruction", () => {
     );
   });
 
+  it("says the one transaction pays Agentify's commission with the merchant's share, at the rate the screen names", () => {
+    for (const mode of ["test", "live"] as const) {
+      const network = networkOf(mode);
+      const commission = percent(network.commissionAllocation, network.totalAllocation);
+
+      expect(readable(settingsPage({ mode, wallet: W }))).toContain(
+        `pays your share and Agentify's ${commission} together`,
+      );
+    }
+  });
+
   it("links to how to send it from another wallet, and says that otherwise Agentify pays it out on no fixed date", () => {
     // Whether a wallet shows a field for the data, and where, is the payout
     // page's to say: it is written from what sending one shows.
