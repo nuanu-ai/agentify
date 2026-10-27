@@ -2,7 +2,7 @@
  * `pnpm gallery:check`: every state of every surface in the page
  * `pnpm gallery` wrote, each drawn in Chromium from that page's own markup,
  * stylesheets and fonts, composed by the gallery's own `frame.js` as its
- * frames are. It fails on four things.
+ * frames are. It fails on five things.
  *
  * At a small phone's, a phone's, a tablet's and a desktop's width (320, 390,
  * 768 and 1440 pixels), something on the page reaches past the window's right
@@ -28,6 +28,12 @@
  * the words a narrow window wraps onto a second line press against the
  * button. A failure names the state, the width, the button's words and how
  * close they come.
+ *
+ * At any of the four, a button drawn as one or a heading ends on a line of
+ * one word less than half as wide as the line above it, where the last word
+ * of that line would have fit beside it: "Turn product analytics / off". A
+ * failure names the state, the width, the words and the one left alone.
+ * Paragraphs are left to the browser's own rule, set in the shared tokens.
  *
  * At any of the four, axe rates a violation serious or critical. What it
  * rates moderate or minor is listed and passes.
@@ -96,6 +102,11 @@ interface Cramped {
   readonly above: number;
   readonly below: number;
   readonly side: number;
+}
+
+interface Runt {
+  readonly words: string;
+  readonly alone: string;
 }
 
 interface Violation {
@@ -240,6 +251,84 @@ function crampedOf(): Cramped[] {
   return cramped;
 }
 
+/**
+ * Runs in the page, as source, under the same constraint as `overflowOf`.
+ * Each word is measured by its own box and taken into the line its middle
+ * stands on, so a word set in another size on the same line is not taken for
+ * a line of its own. A last line of one word is a fault only where it is less
+ * than half as wide as the line above it and that line's last word would fit
+ * beside it: a three-word heading wrapped as "Nothing was / changed" is
+ * balanced, and a word too long to share a line has nowhere else to go.
+ */
+function runtsOf(): Runt[] {
+  const runts: Runt[] = [];
+  for (const element of document.querySelectorAll(".button, button, h1, h2, h3")) {
+    const drawn = element.getBoundingClientRect();
+    if (drawn.width === 0 || drawn.height === 0) continue;
+    if (element.closest("details:not([open]) > :not(summary)") !== null) continue;
+    const style = getComputedStyle(element);
+    if (!/^h[1-3]$/i.test(element.tagName)) {
+      const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
+      if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
+    }
+    type Word = { word: string; left: number; right: number; middle: number; height: number };
+    const lines: Word[][] = [];
+    const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    for (let text = texts.nextNode(); text !== null; text = texts.nextNode()) {
+      for (const found of (text.textContent ?? "").matchAll(/\S+/g)) {
+        range.setStart(text, found.index);
+        range.setEnd(text, found.index + found[0].length);
+        const box = range.getBoundingClientRect();
+        if (box.width === 0) continue;
+        const word = {
+          word: found[0],
+          left: box.left,
+          right: box.right,
+          middle: (box.top + box.bottom) / 2,
+          height: box.height,
+        };
+        const line = lines.at(-1);
+        const on = line?.[0];
+        if (
+          line !== undefined &&
+          on !== undefined &&
+          Math.abs(word.middle - on.middle) < word.height / 2
+        ) {
+          line.push(word);
+        } else {
+          lines.push([word]);
+        }
+      }
+    }
+    const last = lines.at(-1);
+    const above = lines.at(-2);
+    const alone = last?.[0];
+    const moved = above?.at(-1);
+    if (last === undefined || above === undefined || alone === undefined || moved === undefined) {
+      continue;
+    }
+    if (last.length !== 1) continue;
+    const lastWidth = alone.right - alone.left;
+    const aboveWidth = moved.right - Math.min(...above.map((word) => word.left));
+    if (lastWidth * 2 >= aboveWidth) continue;
+    const before = above.at(-2);
+    const space = before === undefined ? 0 : moved.left - before.right;
+    const room =
+      drawn.width - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+    if (moved.right - moved.left + space + lastWidth > room) continue;
+    runts.push({
+      words: lines
+        .flat()
+        .map((word) => word.word)
+        .join(" ")
+        .slice(0, 48),
+      alone: alone.word,
+    });
+  }
+  return runts;
+}
+
 const drawnAt = async (page: Page, document: string, width: number, height: number) => {
   await page.setViewportSize({ width, height });
   await page.setContent(document, { waitUntil: "load" });
@@ -280,6 +369,7 @@ const work = Object.entries(gallery.states).flatMap(([id, state]) => {
 const overflows: string[] = [];
 const bands: string[] = [];
 const crampedButtons: string[] = [];
+const runts: string[] = [];
 /** A violation once per state, with every width it was found at. */
 const violations = new Map<string, { widths: number[]; where: readonly string[] }>();
 const notices = new Map<string, Set<string>>();
@@ -310,6 +400,11 @@ try {
             `${id} at ${width} px draws the button "${button.words}" with its words ${button.above} px under its top, ${button.below} px over its bottom and ${button.side} px from a side`,
           );
         }
+        for (const runt of await page.evaluate(runtsOf)) {
+          runts.push(
+            `${id} at ${width} px leaves "${runt.alone}" alone on the last line of "${runt.words}"`,
+          );
+        }
         for (const violation of await axeOn(page, axe)) {
           const said = `${violation.rule} (${violation.impact}): ${violation.help}`;
           if (!FAILING.has(violation.impact)) {
@@ -334,6 +429,7 @@ const failures = [
   ...overflows,
   ...bands,
   ...crampedButtons,
+  ...runts,
   ...[...violations].map(([key, { widths, where }]) => {
     const [id = "", ...said] = key.split(" ");
     const at = widths.sort((one, other) => one - other).join(", ");
