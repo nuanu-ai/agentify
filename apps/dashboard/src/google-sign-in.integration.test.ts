@@ -206,7 +206,7 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
   };
 
   for (const javaScriptEnabled of [true, false]) {
-    it(`tells the tracker of the sign-up an ad brought, asking nothing and keeping the click out of cookies and Google's address, with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
+    it(`queues one pending registration for the sign-up an ad brought, asking nothing and keeping the click out of cookies and Google's address, with JavaScript ${javaScriptEnabled ? "on" : "off"}`, async () => {
       const email = `ad-${javaScriptEnabled ? "script" : "plain"}@gmail.com`;
       const context = await browser.newContext({ javaScriptEnabled });
       try {
@@ -223,7 +223,9 @@ describe("a Google sign-in from an ad in the built dashboard", () => {
         await page.getByRole("link", { name: "Continue to Agentify" }).click();
         await page.waitForURL(`${origin}/dashboard/choose-name`);
 
-        expect(await registrationOf(email)).toMatchObject([{ clickId: CLICK, state: "pending" }]);
+        const registration = await registrationOf(email);
+        expect(registration).toHaveLength(1);
+        expect(registration).toMatchObject([{ clickId: CLICK, state: "pending" }]);
         expect(sentToGoogle.at(-1)).toMatch(/^https:\/\/accounts\.google\.com\//);
         expect(decodeURIComponent(sentToGoogle.at(-1) ?? "")).not.toContain(CLICK);
         expect(cookiesAtGoogle).not.toContain(CLICK);

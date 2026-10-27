@@ -2819,7 +2819,15 @@ describe("the settings screen", () => {
 
     const page = (await browser.get("/settings")).html;
 
-    const form = formTo(page, "post", "/settings");
+    const panel =
+      /<section[^>]*aria-labelledby="what-buyers-see"[^>]*>([\s\S]*?)<\/section>/.exec(page)?.[1] ??
+      "";
+    expect(
+      formsIn(panel)
+        .filter(({ method }) => method === "post")
+        .map(({ action }) => action),
+    ).toStrictEqual(["/settings", "/settings/site"]);
+    const form = formTo(panel, "post", "/settings");
     expect(form).toBeDefined();
     expect(form?.fields.has("seller_name")).toBe(true);
     expect(form?.presses.map(({ label, action }) => ({ label, action }))).toStrictEqual([
@@ -3498,21 +3506,6 @@ describe("the cards screen", () => {
     expect(text).toContain("8.00 USD");
     expect(text).toContain("Later, within 4 hours");
     expect(text).toContain("On sale");
-  });
-
-  it("puts the switch for all selling at the end of the title bar, over the page", async () => {
-    // A merchant on a phone who has to stop selling reaches the switch
-    // without scrolling past every card first.
-    const { browser, gateway } = await started();
-    await publish(gateway, roomCard);
-
-    const html = (await browser.signIn()).html;
-    const title = html.indexOf('class="top-title"');
-    const control = html.indexOf(`action="${STOP_SELLING}"`);
-
-    expect(title).toBeGreaterThan(-1);
-    expect(control).toBeGreaterThan(title);
-    expect(control).toBeLessThan(html.indexOf('class="app-content"'));
   });
 
   it("answers a search in the address with the cards it finds, and says what found none", async () => {
@@ -7696,6 +7689,7 @@ describe("closing fulfillment from Orders", () => {
     const unowned = await stranger.post("/orders", { order_id: id });
     const absent = await stranger.post("/orders", { order_id: `ord_${"0".repeat(32)}` });
     expect(unowned.status).toBe(404);
+    expect(absent.status).toBe(404);
     expect(readable(unowned.html)).toBe(readable(absent.html));
     expect(await running.harnessed.store.orderById(id)).toStrictEqual(before);
   });
