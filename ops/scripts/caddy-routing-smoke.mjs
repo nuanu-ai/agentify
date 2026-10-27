@@ -1,7 +1,8 @@
 /**
  * Real-HTTP regression for the shared Caddy route table.
  *
- * Run explicitly because it creates an isolated Docker network and containers:
+ * It creates an isolated Docker network and containers, so it stays out of
+ * `pnpm test`; CI runs it in the decisions job, and by hand:
  *
  *   node ops/scripts/caddy-routing-smoke.mjs
  */

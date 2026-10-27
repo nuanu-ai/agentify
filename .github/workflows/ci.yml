@@ -281,3 +281,7 @@ jobs:
       - run: ./scripts/check-retired-claims.sh
       - run: python3 -m unittest discover -s deploy -p 'test_*.py'
       - run: python3 -m unittest discover -s deploy/ansible -p 'test_*.py'
+      # The site's Caddyfile in a real Caddy, before stand-ins for the scanner,
+      # the dashboard and the gateway: every address reaches the process that
+      # answers it. It needs Docker and nothing the install would bring.
+      - run: node ops/scripts/caddy-routing-smoke.mjs
