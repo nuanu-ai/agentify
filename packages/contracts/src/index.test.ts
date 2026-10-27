@@ -171,6 +171,7 @@ describe("the contract as JSON Schema", () => {
   it.each([
     ["service_name", "<b>Tea</b>", /plain text.*HTML markup/i],
     ["tags", ["Access", "access"], /same without regard to case/i],
+    ["seller_name_request", {}, /one of the two has to be there/i],
     [
       "evm_address",
       "0x52908400098527886E0F7030069857D2E4169Ee7",
@@ -187,6 +188,7 @@ describe("the contract as JSON Schema", () => {
   );
 
   it("discloses runtime-only card rules beside the generated card fields", () => {
+    expect(toJsonSchemas().seller_site.description).toMatch(/domain name.*no path.*credentials/i);
     const card = toJsonSchemas().card;
     expect(card.description).toMatch(/plain text.*HTML markup/i);
     expect(card.description).toMatch(/case-insensitive tag uniqueness.*runtime checks/i);

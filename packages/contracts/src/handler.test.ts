@@ -103,7 +103,11 @@ describe("a refusal", () => {
     // the person picking up the case nothing to read.
     expect(RefusalSchema.safeParse({ ...refusal, code: "" }).success).toBe(false);
     expect(RefusalSchema.safeParse({ ...refusal, code: "  " }).success).toBe(false);
-    expect(RefusalSchema.safeParse({ ...refusal, message: "" }).success).toBe(false);
+    for (const message of ["", " ", "\t\n"]) {
+      const unreadable = { ...refusal, message };
+      expect(RefusalSchema.safeParse(unreadable).success).toBe(false);
+      expect(HandlerAnswerSchema.safeParse({ refused: unreadable }).success).toBe(false);
+    }
   });
 
   it("refuses a code that is not text", () => {

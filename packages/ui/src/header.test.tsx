@@ -117,6 +117,9 @@ const work = ({
 describe("the site header", () => {
   it("offers the scanner and selling to agents, and leads to the documentation and the dashboard", () => {
     const header = site("scanner");
+    const firstControl = header.banner.querySelector("a, button, summary");
+    expect(firstControl).toBe(within(header.banner).getByRole("link", { name: "Skip to content" }));
+    expect(firstControl?.getAttribute("href")).toBe("#main");
 
     expect(
       header
