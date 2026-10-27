@@ -4932,7 +4932,9 @@ describe("the keys screen", () => {
 
       const written = said.join("\n");
       expect(written).toContain("issued a key");
-      for (const line of written.split("\n")) {
+      const issued = said.filter((line) => line.includes("issued a key"));
+      expect(issued).toHaveLength(1);
+      for (const line of issued) {
         expect(line, line).toContain(PERSON);
       }
       expect(written).toContain("\\u{202e}");
