@@ -351,6 +351,15 @@ above, and checks the cards against those on sale before its first run. The
 timer never names a card, so on TEST a release that takes cards off sale waits
 for a person's run.
 
+A release that changes the merchant contract requires a matching SDK release
+and updated merchant workers. Publish the SDK and prepare those workers before
+activating the gateway. Each worker supplies its contract version automatically;
+a missing version receives an update instruction and an incompatible one takes
+no work. Only a compatible poll opens sales, so a contact recorded before the
+contract change cannot keep a card on sale. Already accepted orders remain for
+compatible workers to finish. The catalogue verification below holds an upgrade
+to the same rule: a worker that has not reconnected cannot be counted as selling.
+
 A card also leaves the catalog for its seller's own state, whatever is
 released: while the seller has left too many paid orders without delivery or
 closure, or while the seller's own process has not polled for ten minutes.

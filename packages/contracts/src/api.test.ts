@@ -293,41 +293,74 @@ describe("asking for only the open orders", () => {
 });
 
 describe("the poll a worker makes", () => {
-  it("accepts a poll that names nothing and takes our defaults", () => {
-    expect(WorkerPollRequestSchema.parse({})).toStrictEqual({});
+  it("requires a worker to name its contract before it may take work", () => {
+    expectMissingFieldRejected(
+      WorkerPollRequestSchema,
+      { contract_version: CONTRACT_VERSION },
+      "contract_version",
+    );
+    expect(errorOf(WorkerPollRequestSchema, { contract_version: "" })).toContain(
+      "contract_version",
+    );
+    expect(WorkerPollRequestSchema.parse({ contract_version: CONTRACT_VERSION })).toStrictEqual({
+      contract_version: CONTRACT_VERSION,
+    });
   });
 
   it("accepts a wait window and a batch size", () => {
-    const asked = { wait_seconds: 25, max: 10 };
+    const asked = { contract_version: CONTRACT_VERSION, wait_seconds: 25, max: 10 };
     expect(WorkerPollRequestSchema.parse(asked)).toStrictEqual(asked);
   });
 
   it("accepts a poll that asks for no wait at all", () => {
     // A drain: whatever is queued now, at once. The SDK's worker does not
     // send one, but the contract allows it.
-    expect(WorkerPollRequestSchema.safeParse({ wait_seconds: 0 }).success).toBe(true);
+    expect(
+      WorkerPollRequestSchema.safeParse({ contract_version: CONTRACT_VERSION, wait_seconds: 0 })
+        .success,
+    ).toBe(true);
   });
 
   it("refuses a wait that is not a wait", () => {
-    expect(WorkerPollRequestSchema.safeParse({ wait_seconds: -1 }).success).toBe(false);
-    expect(WorkerPollRequestSchema.safeParse({ wait_seconds: 2.5 }).success).toBe(false);
+    expect(
+      WorkerPollRequestSchema.safeParse({ contract_version: CONTRACT_VERSION, wait_seconds: -1 })
+        .success,
+    ).toBe(false);
+    expect(
+      WorkerPollRequestSchema.safeParse({ contract_version: CONTRACT_VERSION, wait_seconds: 2.5 })
+        .success,
+    ).toBe(false);
   });
 
   it("refuses a batch of no envelopes", () => {
     // At most zero would look exactly like a quiet queue for ever.
-    expect(WorkerPollRequestSchema.safeParse({ max: 0 }).success).toBe(false);
-    expect(WorkerPollRequestSchema.safeParse({ max: 1 }).success).toBe(true);
+    expect(
+      WorkerPollRequestSchema.safeParse({ contract_version: CONTRACT_VERSION, max: 0 }).success,
+    ).toBe(false);
+    expect(
+      WorkerPollRequestSchema.safeParse({ contract_version: CONTRACT_VERSION, max: 1 }).success,
+    ).toBe(true);
   });
 
   it("puts no ceiling on either, because a ceiling would be the gateway's", () => {
     // Any limit is the gateway's own: whatever is asked, it answers with its
     // own window and batch size.
-    expect(WorkerPollRequestSchema.safeParse({ wait_seconds: 86_400 }).success).toBe(true);
-    expect(WorkerPollRequestSchema.safeParse({ max: 1_000_000 }).success).toBe(true);
+    expect(
+      WorkerPollRequestSchema.safeParse({
+        contract_version: CONTRACT_VERSION,
+        wait_seconds: 86_400,
+      }).success,
+    ).toBe(true);
+    expect(
+      WorkerPollRequestSchema.safeParse({ contract_version: CONTRACT_VERSION, max: 1_000_000 })
+        .success,
+    ).toBe(true);
   });
 
   it("refuses a field it does not know", () => {
-    expect(errorOf(WorkerPollRequestSchema, { cursor: "abc" })).toContain("cursor");
+    expect(
+      errorOf(WorkerPollRequestSchema, { contract_version: CONTRACT_VERSION, cursor: "abc" }),
+    ).toContain("cursor");
   });
 });
 

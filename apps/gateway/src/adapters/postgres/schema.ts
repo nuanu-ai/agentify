@@ -162,6 +162,8 @@ export const merchantContact = pgTable("merchant_contact", {
     .primaryKey()
     .references(() => merchants.id, { onDelete: "cascade" }),
   polledAt: timestamp("polled_at", { withTimezone: true, mode: "date" }).notNull(),
+  /** Only a matching version establishes readiness; null establishes none. */
+  contractVersion: text("contract_version"),
 });
 
 export const cards = pgTable(

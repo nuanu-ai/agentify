@@ -572,6 +572,8 @@ export interface PollDrawing {
   readonly gone?: AbortSignal;
   readonly keyId?: string | null;
   readonly through?: Integration;
+  /** The HTTP worker's declared contract; in-process callers use this build's. */
+  readonly contractVersion?: string;
 }
 
 /** One poll held open, the key it came in on, and the way to end it early. */
@@ -2329,7 +2331,10 @@ export class Gateway {
     waitMs: number,
     drawing: PollDrawing = {},
   ): Promise<WorkerPollResponse> {
-    const { gone, keyId = null, through = "api" } = drawing;
+    const { gone, keyId = null, through = "api", contractVersion = CONTRACT_VERSION } = drawing;
+    if (contractVersion !== CONTRACT_VERSION) {
+      return { contract_version: CONTRACT_VERSION, envelopes: [] };
+    }
     const held: HeldPoll = { keyId, stop: new AbortController() };
     const holding = this.#held.get(merchantId) ?? new Set<HeldPoll>();
     holding.add(held);

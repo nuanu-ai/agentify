@@ -876,6 +876,17 @@ such as a proxy's error page that happens to name a version, is reported as
 the subscription keeps asking. Once stopped, your process stays up and sells
 nothing until you upgrade.
 
+The SDK names the contract it understands in every poll request, without any
+setting for you to supply. Agentify checks it before drawing work or counting
+your process as connected. A different contract receives no work, and a poll
+that omits the version is refused with an instruction to update the SDK.
+You may publish products before starting a worker, but they enter the catalogue
+and take purchases only after a compatible worker connects. A gateway upgrade
+requires contact in its own contract; an earlier connection does not keep
+sales open. When your compatible process connects, sales resume automatically.
+Orders already paid remain yours to finish, with no second charge, and one
+outdated process does not disconnect another compatible process of yours.
+
 Every call the package makes names its release to Agentify in its `user-agent`
 header, as `agentify-sdk/` and the version, and Agentify notes it beside the
 key's last use each time it writes that down, which is every few minutes at

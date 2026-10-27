@@ -31,15 +31,15 @@ merchant's sales without paying; the objection stays open in [the research on
 unpaid price questions](../research/87-unpaid-price-questions.md).
 
 Every purchase of a merchant is refused with `seller_not_taking_orders` while
-no process of the merchant's own code has polled for ten minutes, at the
+no compatible process of the merchant's own code has polled for ten minutes, at the
 unpaid request and again before its first payment is verified; a payment that
 releases goods already made goes through. A synchronous purchase would charge
 nothing, but nobody would draw its order, so it could only lapse after the
 buyer had signed and waited. It is not a pause: nothing is stored to resume,
-the first poll lets the next purchase through, and cards the merchant paused
-stay paused. Contact is a poll of the merchant's own code, recorded per
-merchant at most every thirty seconds per process and kept in the database so
-that a restart refuses nobody; the rule allows for that half minute. A process
+the first compatible poll lets the next purchase through, and cards the merchant paused
+stay paused. Contact is a poll of the merchant's own code speaking the gateway's contract
+(ADR-0006), recorded with that version per merchant at most every thirty seconds per process and kept in the database so
+that a restart of the same contract refuses nobody; the rule allows for that half minute. A process
 whose handlers are all busy does not poll and counts as quiet. A merchant
 selling through the WooCommerce connector is never refused for this, because
 the connector runs inside Agentify.

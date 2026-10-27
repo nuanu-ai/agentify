@@ -10,7 +10,12 @@
  */
 
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
-import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import {
+  type Card,
+  CONTRACT_VERSION,
+  type Receipt,
+  type WorkerEnvelope,
+} from "@nuanu-ai/agentify-contracts";
 import {
   and,
   eq,
@@ -603,17 +608,26 @@ export class PostgresStore implements Store {
     // Selected rather than inserted as values, so a merchant who is not there
     // writes nothing instead of failing the foreign key.
     await this.#db.execute(sql`
-      insert into ${merchantContact} (merchant_id, polled_at)
-      select ${merchants.id}, ${new Date(at)} from ${merchants} where ${merchants.id} = ${merchantId}
+      insert into ${merchantContact} (merchant_id, polled_at, contract_version)
+      select ${merchants.id}, ${new Date(at)}, ${CONTRACT_VERSION} from ${merchants} where ${merchants.id} = ${merchantId}
       on conflict (merchant_id)
-      do update set polled_at = greatest(${merchantContact.polledAt}, excluded.polled_at)`);
+      do update set polled_at = case
+        when ${merchantContact.contractVersion} = excluded.contract_version
+          then greatest(${merchantContact.polledAt}, excluded.polled_at)
+        else excluded.polled_at end,
+        contract_version = excluded.contract_version`);
   }
 
   async lastContact(merchantId: string): Promise<number | null> {
     const [row] = await this.#db
       .select({ polledAt: merchantContact.polledAt })
       .from(merchantContact)
-      .where(eq(merchantContact.merchantId, merchantId))
+      .where(
+        and(
+          eq(merchantContact.merchantId, merchantId),
+          eq(merchantContact.contractVersion, CONTRACT_VERSION),
+        ),
+      )
       .limit(1);
     return row?.polledAt.getTime() ?? null;
   }
@@ -793,7 +807,13 @@ export class PostgresStore implements Store {
       })
       .from(cards)
       .innerJoin(merchants, eq(cards.merchantId, merchants.id))
-      .leftJoin(merchantContact, eq(merchantContact.merchantId, merchants.id))
+      .leftJoin(
+        merchantContact,
+        and(
+          eq(merchantContact.merchantId, merchants.id),
+          eq(merchantContact.contractVersion, CONTRACT_VERSION),
+        ),
+      )
       .orderBy(cards.asOf);
     return rows.map((row) => ({
       card: storedCardOf(row.card),
