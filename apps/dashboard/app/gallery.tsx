@@ -1492,11 +1492,11 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
-      id: "dashboard-cards-cut-short",
+      id: "dashboard-cards-first-page",
       screen: "Products",
       when: "A merchant selling a data plan per country and size opens Products.",
       cause:
-        "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many and leads to the next page.",
+        "The catalogue holds 216 cards and a page draws fifty, so the list says which fifty of how many; Previous is grey on the first page and Next leads on from its last card.",
     },
     cardsAt("/products", WHOLE_CATALOGUE),
     "live",
@@ -2281,11 +2281,11 @@ const ORDERS: GalleryState[] = [
   ),
   orders(
     {
-      id: "dashboard-orders-cut-short",
+      id: "dashboard-orders-first-page",
       screen: "Orders",
       when: "A merchant with a season of sales opens Orders.",
       cause:
-        "The gateway lists 214 orders and a page draws fifty, the newest first, so the list says which fifty of how many and leads to the next page.",
+        "The gateway lists 214 orders and a page draws fifty, the newest first, so the list says which fifty of how many; Previous is grey on the first page and Next leads on from its last order.",
     },
     SEASON,
   ),
@@ -2366,6 +2366,23 @@ const ORDERS: GalleryState[] = [
 
 const receipts = (told: Told, view: ReturnType<typeof receiptsView>, mode: SurfaceMode) =>
   at(told, { path: "/receipts", mode, loaded: { "routes/receipts": view } });
+
+/** Months of sales: 420 receipts, the latest payment first. */
+const MONTHS_OF_RECEIPTS = receiptsOf(
+  Array.from(
+    { length: 420 },
+    (_, at) => [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
+  ),
+);
+
+const receiptsAt = (address: string) =>
+  receiptsView(SOLD, MONTHS_OF_RECEIPTS, TRANSACTIONS.live, {}, new URLSearchParams(address));
+
+/** The address Next leads to from the second page of those receipts. */
+const THIRD_PAGE_OF_RECEIPTS = [1, 2].reduce(
+  (address) => (receiptsAt(address).listing.cut?.next ?? "").replace(/^\/receipts\??/, ""),
+  "",
+);
 
 const RECEIPTS: GalleryState[] = [
   receipts(
@@ -2450,29 +2467,17 @@ const RECEIPTS: GalleryState[] = [
   ),
   at(
     {
-      id: "dashboard-receipts-cut-short",
+      id: "dashboard-receipts-older",
       screen: "Receipts",
-      when: "A merchant with months of sales turns to the third page of their receipts.",
+      when: "A merchant with months of sales presses Next twice on Receipts.",
       cause:
-        "The gateway lists 420 receipts and a page draws fifty, the latest payment first, so the pager says which fifty of how many, names the pages around this one and leads both ways.",
+        "The gateway lists 420 receipts and a page draws fifty, the latest payment first. The address carries the receipt the page before ended on, so a payment that arrives meanwhile moves no row, and the pager says which fifty of how many and leads both ways.",
     },
     {
-      path: "/receipts?page=3",
+      path: `/receipts?${THIRD_PAGE_OF_RECEIPTS}`,
       mode: "live",
       loaded: {
-        "routes/receipts": receiptsView(
-          SOLD,
-          receiptsOf(
-            Array.from(
-              { length: 420 },
-              (_, at) =>
-                [(["vpn", "esimEurope", "number"] as const)[at % 3] ?? "vpn", "delivered"] as const,
-            ),
-          ),
-          TRANSACTIONS.live,
-          {},
-          new URLSearchParams("page=3"),
-        ),
+        "routes/receipts": receiptsAt(THIRD_PAGE_OF_RECEIPTS),
       },
     },
   ),
