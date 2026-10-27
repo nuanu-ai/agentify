@@ -24,15 +24,21 @@
  * not measured here, since its footer ends where its content does.
  *
  * At any of the four, a button drawn as one, filled or with a border, has
- * its words closer than 4 pixels to its top or bottom edge or 8 to a side:
+ * its words closer than 4 pixels to its top or bottom edge or 8 to a side
+ * (a button, a link, a disclosure's summary or anything with the button
+ * role counts, whatever its class):
  * the words a narrow window wraps onto a second line press against the
  * button. A failure names the state, the width, the button's words and how
  * close they come.
  *
- * At any of the four, a button drawn as one or a heading ends on a line of
- * one word less than half as wide as the line above it, where the last word
- * of that line would have fit beside it: "Turn product analytics / off". A
- * failure names the state, the width, the words and the one left alone.
+ * At any of the four, a button drawn as one, as above, or a heading of any
+ * level or with the heading role ends on a line of one word less than half
+ * as wide as the line above it, in the same block, where the last word of
+ * that line would have fit beside it: "Turn product analytics / off". Text
+ * that sets a title under a label on a line of its own is not one wrapped
+ * line, and is left alone. A failure names the state, the width, the words
+ * and the one left alone. A title set in bold type rather than as a heading
+ * is not read: it is a heading that should be marked as one.
  * Paragraphs are left to the browser's own rule, set in the shared tokens.
  *
  * At any of the four, axe rates a violation serious or critical. What it
@@ -211,7 +217,7 @@ function footOf(): Foot {
  */
 function crampedOf(): Cramped[] {
   const cramped: Cramped[] = [];
-  for (const button of document.querySelectorAll(".button, button")) {
+  for (const button of document.querySelectorAll(".button, button, a, summary, [role=button]")) {
     const drawn = button.getBoundingClientRect();
     if (drawn.width === 0 || drawn.height === 0) continue;
     if (button.closest("details:not([open]) > :not(summary)") !== null) continue;
@@ -271,17 +277,26 @@ function crampedOf(): Cramped[] {
  */
 function runtsOf(): Runt[] {
   const runts: Runt[] = [];
-  for (const element of document.querySelectorAll(".button, button, h1, h2, h3")) {
+  for (const element of document.querySelectorAll(
+    ".button, button, a, summary, [role=button], h1, h2, h3, h4, h5, h6, [role=heading]",
+  )) {
     const drawn = element.getBoundingClientRect();
     if (drawn.width === 0 || drawn.height === 0) continue;
     if (element.closest("details:not([open]) > :not(summary)") !== null) continue;
     const style = getComputedStyle(element);
     if (style.visibility !== "visible") continue;
-    if (!/^h[1-3]$/i.test(element.tagName)) {
+    if (!element.matches("h1, h2, h3, h4, h5, h6, [role=heading]")) {
       const filled = !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(style.backgroundColor);
       if (!filled && Number.parseFloat(style.borderTopWidth) === 0) continue;
     }
-    type Word = { word: string; left: number; right: number; middle: number; height: number };
+    type Word = {
+      word: string;
+      left: number;
+      right: number;
+      middle: number;
+      height: number;
+      block: Element | null;
+    };
     const lines: Word[][] = [];
     const texts = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const range = document.createRange();
@@ -290,6 +305,10 @@ function runtsOf(): Runt[] {
       if (holder !== null && getComputedStyle(holder).overflow === "hidden") {
         const box = holder.getBoundingClientRect();
         if (box.width <= 1 || box.height <= 1) continue;
+      }
+      let block = holder;
+      while (block !== null && block !== element && getComputedStyle(block).display === "inline") {
+        block = block.parentElement;
       }
       for (const found of (text.textContent ?? "").matchAll(/\S+/g)) {
         range.setStart(text, found.index);
@@ -302,6 +321,7 @@ function runtsOf(): Runt[] {
           right: box.right,
           middle: (box.top + box.bottom) / 2,
           height: box.height,
+          block,
         };
         const line = lines.at(-1);
         const on = line?.[0];
@@ -323,7 +343,7 @@ function runtsOf(): Runt[] {
     if (last === undefined || above === undefined || alone === undefined || moved === undefined) {
       continue;
     }
-    if (last.length !== 1) continue;
+    if (last.length !== 1 || alone.block !== moved.block) continue;
     const lastWidth = alone.right - alone.left;
     const aboveWidth = moved.right - Math.min(...above.map((word) => word.left));
     if (lastWidth * 2 >= aboveWidth) continue;
