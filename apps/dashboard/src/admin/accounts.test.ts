@@ -390,4 +390,50 @@ describe("the Journal", () => {
     const oneWord = readable((await operator.get("/admin/journal?q=laptop")).html);
     expect(oneWord).toContain("No row is about an account with the ID “laptop”");
   });
+
+  it("pages by Previous and Next, with a row written between two clicks neither repeated nor skipped", async () => {
+    const workspace = await serve();
+    const operator = await workspace.signedIn(OPERATOR, { operator: true });
+    const written = async (row: number) =>
+      await workspace.harnessed.store.recordJournal({
+        at: Date.now(),
+        actor: { kind: "terminal" },
+        action: "end_sessions",
+        subject: { kind: "account", id: "acc_paged" },
+        reason: `Row ${String(row).padStart(2, "0")}`,
+        outcome: { kind: "done" },
+      });
+    for (let row = 1; row <= 55; row += 1) await written(row);
+    const rowsIn = (html: string) => readable(html).match(/Row \d{2}/g) ?? [];
+    const way = (html: string, rel: "prev" | "next") => {
+      const link = new RegExp(
+        `<a class="pager-step ${rel}" href="[^"]*(/admin/journal[^"]*)"`,
+      ).exec(html);
+      return link?.[1]?.replaceAll("&amp;", "&") ?? null;
+    };
+
+    const first = (await operator.get("/admin/journal?kind=sessions")).html;
+    expect(readable(first)).toContain("Showing 1–50 of 55");
+    expect(way(first, "prev")).toBeNull();
+    const next = way(first, "next");
+    expect(next).toMatch(/^\/admin\/journal\?kind=sessions&after=\d+$/);
+
+    await written(56);
+    const second = (await operator.get(next ?? "")).html;
+    expect(rowsIn(second)).toStrictEqual(["Row 05", "Row 04", "Row 03", "Row 02", "Row 01"]);
+    expect(readable(second)).toContain("Showing 52–56 of 56");
+    expect(way(second, "next")).toBeNull();
+
+    await written(57);
+    const back = (await operator.get(way(second, "prev") ?? "")).html;
+    expect(rowsIn(back)).toStrictEqual(rowsIn(first));
+    expect(readable(back)).toContain("Showing 3–52 of 57");
+
+    const kinds = [...back.matchAll(/href="[^"]*\/admin\/journal(\?[^"]*)?"/g)].map(
+      (link) => link[1] ?? "",
+    );
+    expect(kinds.filter((one) => !/after=|before=/.test(one)).length).toBeGreaterThan(1);
+    const malformed = (await operator.get("/admin/journal?kind=sessions&after=yesterday")).html;
+    expect(rowsIn(malformed).slice(0, 2)).toStrictEqual(["Row 57", "Row 56"]);
+  });
 });
