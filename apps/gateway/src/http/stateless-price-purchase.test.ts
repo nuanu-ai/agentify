@@ -593,6 +593,26 @@ describe("a stamped price and an order born at payment", () => {
     },
   );
 
+  it("refuses at once a used authorization from a wallet whose other payment was just read, however often it is sent", async () => {
+    // A wallet's balance read for one payment says nothing of another
+    // authorization it signed: that one may be cancelled already, and under a
+    // fresh price each time it would hold a buyer's place for a round trip.
+    await started({ ...CARD, price_check: undefined });
+    const chain = chainHolding();
+    expect((await pay(await quote(), "0x01")).status).toBe(200);
+    const checked = h.facilitator.verifies.length;
+
+    chain.used = true;
+    for (const nonce of ["0x02", "0x02", "0x03"]) {
+      const refused = await pay(await quote(), nonce);
+      expect(refused.status, nonce).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: "payment_not_verified", retryable: false },
+      });
+    }
+    expect(h.facilitator.verifies).toHaveLength(checked);
+  });
+
   it("charges two buyers of one merchant whose payments are checked at the same time", async () => {
     await started({ ...CARD, price_check: undefined });
     const first = await quote();

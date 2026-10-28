@@ -89,6 +89,7 @@ describe("a payer's wallet as read from the chain", () => {
     const chain = {
       reads: 0,
       held: 5n as bigint | Error,
+      used: false,
       gate: null as Promise<void> | null,
       async balance(): Promise<bigint> {
         throw new Error("not asked here");
@@ -97,7 +98,7 @@ describe("a payer's wallet as read from the chain", () => {
         chain.reads += 1;
         if (chain.gate !== null) await chain.gate;
         if (chain.held instanceof Error) throw chain.held;
-        return { held: chain.held, used: false };
+        return { held: chain.held, used: chain.used };
       },
     };
     return chain;
@@ -145,36 +146,52 @@ describe("a payer's wallet as read from the chain", () => {
     expect((await Promise.all(asked)).filter((state) => state === null).length).toBeGreaterThan(0);
   });
 
-  it("keeps a balance that covers the price for a few seconds, and never one that does not", async () => {
+  it("keeps a read of one authorization that covers the price for a few seconds, and never one that does not", async () => {
     const chain = aChain();
     let now = 0;
     const reads = new PayerReads(
       () => chain,
       () => now,
     );
+    const asked = (price: bigint) => reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x01", price);
 
     chain.held = 0n;
-    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x01", 1n)).toMatchObject({
-      held: 0n,
-    });
+    expect(await asked(1n)).toMatchObject({ held: 0n });
     chain.held = 9n;
-    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x02", 1n)).toMatchObject({
-      held: 9n,
-    });
+    expect(await asked(1n)).toMatchObject({ held: 9n });
     chain.held = 0n;
-    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x03", 1n)).toMatchObject({
-      held: 9n,
-    });
+    expect(await asked(1n)).toMatchObject({ held: 9n });
     // Kept against a price of 1, it does not stand for a price of 20.
-    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x04", 20n)).toMatchObject({
-      held: 0n,
-    });
+    expect(await asked(20n)).toMatchObject({ held: 0n });
     now += 5_000;
     chain.held = 30n;
-    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x05", 1n)).toMatchObject({
-      held: 30n,
-    });
+    expect(await asked(1n)).toMatchObject({ held: 30n });
     expect(chain.reads).toBe(4);
+  });
+
+  it("reads afresh every other authorization of a wallet, and never keeps one found used", async () => {
+    const chain = aChain();
+    const reads = new PayerReads(
+      () => chain,
+      () => 0,
+    );
+    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x01", 1n)).toStrictEqual({
+      held: 5n,
+      used: false,
+    });
+    // Read below a dearer price, so that read is asked again for that price.
+    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x02", 9n)).toMatchObject({
+      used: false,
+    });
+
+    chain.used = true;
+    for (const price of [9n, 1n, 1n]) {
+      expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x02", price)).toStrictEqual({
+        held: 5n,
+        used: true,
+      });
+    }
+    expect(chain.reads).toBe(5);
   });
 
   it("answers nothing for a read that failed or a chain that is not configured", async () => {
@@ -195,7 +212,7 @@ describe("a payer's wallet as read from the chain", () => {
     ).toBeNull();
   });
 
-  it("keeps a bounded number of wallets, letting the oldest go first", async () => {
+  it("keeps a bounded number of authorizations, letting the oldest go first", async () => {
     const chain = aChain();
     const reads = new PayerReads(
       () => chain,
@@ -205,9 +222,9 @@ describe("a payer's wallet as read from the chain", () => {
       await reads.stateOf("mch_a", "0xtoken", `0xwallet${one}`, "0x01", 1n);
     const before = chain.reads;
 
-    await reads.stateOf("mch_a", "0xtoken", "0xwallet1024", "0x02", 1n);
+    await reads.stateOf("mch_a", "0xtoken", "0xwallet1024", "0x01", 1n);
     expect(chain.reads).toBe(before);
-    await reads.stateOf("mch_a", "0xtoken", "0xwallet0", "0x02", 1n);
+    await reads.stateOf("mch_a", "0xtoken", "0xwallet0", "0x01", 1n);
     expect(chain.reads).toBe(before + 1);
   });
 });
