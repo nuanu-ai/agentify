@@ -890,7 +890,7 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
 describe("a payment presented to get back a paid order", () => {
   it.each([
     ["the split the seller left", true, /start a new purchase/],
-    ["the split it was checked against", false, /sign a new payment for this order/],
+    ["the split it was checked against", false, /sign a new payment for the same price/],
   ])(
     "is not charged to %s when the order comes to take a new charge while it is checked",
     async (_split, moved, next) => {

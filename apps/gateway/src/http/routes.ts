@@ -706,12 +706,12 @@ async function answerPurchase(
       );
 
     case "not_this_purchase":
-      // The order already belongs to another payer. Its identifier is in every
-      // challenge for it and a listing can publish it, so holding it proves
-      // nothing; the wording says nothing about how far along it is. Nothing
-      // was charged, and the payer may be the buyer who lost the race to pay
-      // or the buyer itself signing again from another of its wallets, so the
-      // words tell each what to do without telling them apart.
+      // The order already belongs to another payer. Its stamped price is in
+      // the challenge and in every payment made against it, so holding it
+      // proves nothing; the wording says nothing about how far along it is.
+      // Nothing was charged, and the payer may be the buyer who lost the race
+      // to pay or the buyer itself signing again from another of its wallets,
+      // so the words tell each what to do without telling them apart.
       return written(
         response,
         CONFLICT,
@@ -722,7 +722,7 @@ async function answerPurchase(
       );
 
     case "payment_not_verified":
-      // Nothing was touched; the order ends on its own deadline.
+      // Nothing was touched, and nothing is written for a payment that does not verify.
       return written(
         response,
         CONFLICT,

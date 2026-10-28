@@ -450,9 +450,9 @@ interface SaleFacts {
  * mode: a synchronous purchase would charge nothing, but nobody would draw
  * its order, so it could only lapse after the buyer had signed and waited. A
  * shop sold through the connector is never silent, since the connector runs
- * inside Agentify. A seller at the limit of purchases waiting for payment is
- * not off sale: a place frees within a minute, and anybody can fill the limit
- * without paying, so it must not empty a seller's listing.
+ * inside Agentify. A seller whose price questions or payment checks are full
+ * is not off sale: places free within seconds, and anybody can fill them
+ * without paying, so they must not empty a seller's listing.
  */
 const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
   if (facts.selling !== "open" || priceProblemsOf(facts.price).length > 0) {
@@ -2590,12 +2590,7 @@ export class Gateway {
     if (taken.kind === "not_owner") {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
-      // The merchant may have closed an unpaid order while this payment was
-      // being checked, and nobody owns it: it is over, not somebody else's.
-      const now = await this.runtime.store.orderById(orderId);
-      return now !== null && overWithNothingHeld(now)
-        ? noPaymentTakenFor(now.order)
-        : { step: "not_this_purchase" };
+      return { step: "not_this_purchase" };
     }
     if (taken.kind === "ship_to_changed") {
       this.runner.purchases.giveUp(key);
@@ -3563,11 +3558,11 @@ function briefly(said: string): string {
 /** What a buyer is told for a payment that got no verdict, by why. */
 const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
   no_answer:
-    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
+    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again while its price holds",
   refused_agentify:
     "this payment charged nothing and was not checked: the payment check turned away Agentify itself or the terms Agentify asked it to check, so Agentify cannot check payments right now and no payment can be taken until it can",
   seller_cannot_be_paid:
-    "this payment charged nothing and was not checked: the seller cannot be paid for this order right now, so no payment for it can be taken",
+    "this payment charged nothing and was not checked: the seller cannot be paid for this purchase right now, so no payment for it can be taken",
   payer_contradicted:
     "this payment charged nothing: the payment check vouched for it but named a different payer from the wallet that signed it, so Agentify did not accept it",
 };
@@ -3575,11 +3570,11 @@ const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
 /** What an agent whose payment was refused does next, by why it was refused. */
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:
-    "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
-  insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
-  signature: "sign a new payment for this order and present it while its price holds",
+    "the offer it was made against no longer stands, because the price moved or the seller changed where they are paid, so start a new purchase for a fresh price and pay against that",
+  insufficient_funds: "fund the paying wallet and pay again for the same price while it holds",
+  signature: "sign a new payment for the same price and present it while the price holds",
   amount_not_payable:
-    "the payment network will not carry a payment of this amount, which is the order's own price, so neither a new signature nor a new purchase at this price will pass",
+    "the payment network will not carry a payment of this amount, which is this purchase's own price, so neither a new signature nor a new purchase at this price will pass",
   wallet_refused:
     "the payment network refused this payment from the wallet that signed it, as that wallet stands",
   unexplained:
