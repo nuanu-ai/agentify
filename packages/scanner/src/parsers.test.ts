@@ -668,16 +668,26 @@ describe("a page or a sitemap as large as the fetch admits", () => {
   // up on a large page does not pass either.
   const pageCap = 2 * 1024 * 1024;
   const sitemapCap = 5 * 1024 * 1024;
-  const budgetMs = 500;
+  // CI's shared runners read these pages four to five times slower than a
+  // development machine; a reader that retries from every opening takes
+  // minutes, so two seconds still tells the two apart.
+  const budgetMs = 2_000;
   const fill = (unit: string, room: number): string =>
     unit.repeat(Math.floor((room - 256) / unit.length));
-  // Counted in this test process's CPU time, not by the wall clock, so test
-  // files running beside it on a busy machine do not count against the reader.
+  // Counted in this test process's CPU time, the least of three reads, so
+  // neither test files running beside it nor a garbage collection left by an
+  // earlier file counts against the reader; a reader that retries from every
+  // opening takes minutes on each of the three.
   const timed = <T>(read: () => T): { value: T; ms: number } => {
-    const started = process.cpuUsage();
-    const value = read();
-    const used = process.cpuUsage(started);
-    return { value, ms: (used.user + used.system) / 1_000 };
+    let value = read();
+    let least = Number.POSITIVE_INFINITY;
+    for (let reads = 0; reads < 3; reads += 1) {
+      const started = process.cpuUsage();
+      value = read();
+      const used = process.cpuUsage(started);
+      least = Math.min(least, (used.user + used.system) / 1_000);
+    }
+    return { value, ms: least };
   };
   // A long text is compared by its length and its two ends, so a failure
   // prints a line rather than two megabytes.

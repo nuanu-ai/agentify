@@ -1,5 +1,77 @@
 # Merchant SDK release history
 
+## 0.11.0
+
+### Minor Changes
+
+- ae941b1: Your worker now sends its contract version on every poll, and the gateway
+  takes work only from a worker that speaks its contract version, 6 in this
+  release. Your sales through the SDK open only once such a worker has connected, so a
+  worker on an older SDK has to be upgraded. You can still publish cards before
+  you start a worker, and orders already accepted stay for a compatible worker
+  to fulfill, without another charge.
+- 1945505: If you deliver an order again with other goods than the ones the buyer already
+  has, the answer is still `ok: true`, with the new word
+  `already_delivered_other_goods`, and the buyer keeps the goods you delivered
+  first. The SDK reports a `repeat_with_other_goods` problem naming the order,
+  without either set of goods, whether the delivery came from a handler or from
+  `deliver`. An older SDK that does not know the word reads it as `unknown`.
+- 5bb3264: This release speaks contract version 6. A worker on an older SDK reports the
+  problem `contract_version_mismatch` at its first poll after the gateway is
+  released and stops; your sales through it resume once you upgrade to this
+  release and start the worker again.
+  
+  A price question you answer no longer opens an order. Agentify puts your price
+  in the payment request under its own stamp and writes the order only when the
+  buyer's payment arrives and is verified, so answering a price question reserves
+  no stock and your handler should not set any aside for it. An order reaches
+  your handler only once a payment has been presented for it. The ending reasons
+  `unavailable`, `price_check_unanswered` and `price_expired` and the refusal
+  codes `order_not_priced_yet` and `order_closed_before_it_was_priced` are gone,
+  because no order can reach them.
+  
+  Your price answer may carry an optional `quote_reference` of up to 512
+  printable characters, which Agentify stamps with the price and returns
+  unchanged on the order. The buyer can read it in the payment request, so put
+  no secrets and no personal data in it.
+  
+  When a discovery catalogue replays the example purchase your card lists,
+  Agentify answers it as a look at the listing and does not ask your price
+  handler.
+  
+  The contracts package exports `listedPurchaseOf`, the example purchase a
+  card's listing declares.
+
+### Patch Changes
+
+- 09a5935: A card's `fulfill_deadline_seconds` is refused at publication unless it is
+  between 60 and 2592000 seconds, a minute to thirty days. A shorter deadline
+  closed every paid order unfulfilled before the merchant's process could
+  answer, and a longer one had no limit at all. A card already stored with a
+  deadline outside that range is read back, listed and sold as it was stored.
+- d902732: An asynchronous or parcel card needs your shop's site in your seller settings.
+  Without it the card is not published, and a card already published leaves the
+  catalogue and refuses new purchases before anything is charged, until you add
+  the site; you do not have to publish it again. Orders already paid continue to
+  fulfillment and recovery, and a synchronous card sells without a site. Buyers
+  are told to read your cancellation, refund and support terms on that site
+  before they pay, and Agentify does not check who owns the site or what it says.
+- bc59c24: Timing changes your worker will see. An order your process does not answer
+  comes again for up to three hours after it was first handed over, with pauses
+  that grow to fifteen minutes, as long as its deadline allows; before, it came
+  five times within about half a minute. Each repeat carries the same order id,
+  so a handler that already holds against repeats needs no change. A price
+  question now waits ten seconds for your answer instead of five, and the price
+  you name holds for three minutes instead of thirty seconds, so name a price you
+  can keep for that long.
+- Updated dependencies [ae941b1]
+- Updated dependencies [09a5935]
+- Updated dependencies [d902732]
+- Updated dependencies [1945505]
+- Updated dependencies [5bb3264]
+- Updated dependencies [bc59c24]
+  - @nuanu-ai/agentify-contracts@0.17.0
+
 ## 0.10.0
 
 ### Minor Changes
