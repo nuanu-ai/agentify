@@ -1,188 +1,424 @@
-# Unpaid price questions: design and implementation
+# Unpaid price questions: the design as built
 
-The product owner agreed this design on 2026-10-27 for the unpaid-purchase
-problem in [research 87](87-unpaid-price-questions.md). The implementation is
-in [PR #215](https://github.com/nuanu-ai/agentify/pull/215). This note separates
-his decisions from engineering choices and records what remains unverified.
-[ADR-0043](../decisions/0043-the-purchase-door-refuses-before-any-charge.md)
-and [ADR-0049](../decisions/0049-a-price-travels-with-the-buyer.md) hold the
-resulting rules. Review and TEST acceptance remain separate from implementation.
+This note describes how Agentify answers purchases nobody has paid for yet, as
+the design stands in the code: a price that travels with the buyer under the
+gateway's stamp, an order written only when a verified payment arrives, and
+gates per merchant for price questions and for payment checks. It separates
+the product owner's decisions from engineering choices, gives the evidence for
+each and lists what is still exposed. The problem it answers is surveyed in
+[research 87](87-unpaid-price-questions.md), and the rules that are expensive
+to reverse are in
+[ADR-0043](../decisions/0043-the-purchase-door-refuses-before-any-charge.md),
+[ADR-0049](../decisions/0049-a-price-travels-with-the-buyer.md) and
+[ADR-0023](../decisions/0023-woocommerce-connect.md). The implementation is in
+pull request #___.
 
-## The problem addressed
+## The problem
 
-An unpaid request originally wrote an order before asking the merchant its
-price. Fifty outstanding prices stopped further purchases for that merchant.
-One caller could keep those places occupied without paying. The rows remained
-for thirty days, and durable price questions shared the merchant’s queue with
-accepted orders. The WooCommerce connector also opened a new guest cart for
-each shipping calculation. A price that reserved stock exposed another form
-of unpaid inventory holding
+An unpaid request used to write an order before asking the merchant its price.
+Fifty outstanding prices stopped further purchases for that merchant, so one
+caller could keep those places occupied without paying. The rows stayed for
+thirty days, and durable price questions shared the merchant's queue with
+accepted orders. The WooCommerce connector also opened a new guest cart in the
+shop for every shipping calculation. A price that reserved stock would have
+been another way to hold inventory without paying
 ([OWASP OAT-021](https://owasp.org/www-project-automated-threats-to-web-applications/)).
 
-## The owner's decisions
+## The product owner's decisions
 
-“A request nobody paid for may use a moment of a merchant's capacity and holds
-nothing over time” and “Work that is paid for never waits behind work that is
-not.” The owner also requires one merchant's load not to slow another.
+On 2026-10-26 the product owner rejected the limit of fifty, because nobody
+should be able to stop a merchant's sales without paying. On 2026-10-27 he
+gave the rule the design follows: "A request nobody paid for may use a moment
+of a merchant's capacity and holds nothing over time" and "Work that is paid
+for never waits behind work that is not." One merchant's load must not slow
+another's either.
 
 He chose a stamped price that travels with the buyer, with the order written
 when payment arrives. The gateway keeps the merchant's price until its stated
-term; it does not ask the merchant to price it again. A repeated saved challenge
-finds the same order. The price term is judged when the complete paid request
-reaches Agentify, not when the buyer signs or the chain executes the payment.
+term and does not ask the merchant to price it again. A repeated saved
+challenge finds the same order. The term is judged when the complete paid
+request reaches Agentify, not when the buyer signs or the chain executes the
+payment. On 2026-10-28 he set the term at "at least three minutes", because an
+agent may show the price to a person.
 
-One admission gate protects both SDK and WooCommerce merchants. Its initial
-bounds are loose code constants, with no new settings. The limit of fifty and
-the merchant's Lapsed view are removed, without replacement price counters.
-A request with no admitted price question uses the existing silent-price path
-for synchronous goods; other modes refuse with `seller_busy` and a short
-`Retry-After` before any order or charge.
+One admission gate protects both SDK and WooCommerce merchants. Its bounds are
+loose code constants, with no new settings. The limit of fifty and the
+merchant's Lapsed list are removed, and no counter of outstanding prices
+replaces them. A request that gets no place for its price question sells a
+synchronous card at its card price, as a silence does; other modes refuse with
+`seller_busy` and a short `Retry-After`, before any order or charge.
 
-The owner approved short product caches, longer settings caches and a small
-reusable cart pool for WooCommerce, subject to a lab check. No additional shop
-request-rate cap is introduced. He also approved a generic optional
-`quote_reference` to carry a merchant's calculation confirmation. The stamp
-covers it, the buyer can read it in the 402, and documentation forbids secrets
-or personal data in it. The Woo quote table and its code are removed together.
-A connector's needs alone do not justify expanding the public contract.
+He approved short product caches, longer settings caches and a small pool of
+reused carts for WooCommerce, subject to a lab check, with no cap on the rate
+of requests to a shop. On 2026-10-28 he decided that a cart whose state is in
+doubt is never used again and that a new one is opened automatically at most
+once per shop every ten minutes. He also approved a generic optional
+`quote_reference` that carries a merchant's confirmation of its calculation.
+The stamp covers it, the buyer can read it in the 402, and the documentation
+forbids secrets and personal data in it. The connector's table of quotes and
+its code are removed. A connector's needs alone do not justify widening the
+public contract.
 
-There are no external consumers requiring compatibility: old `extra.order_id`
-payment challenges are removed rather than supported beside stamped prices.
+There are no outside consumers to stay compatible with, so challenges carrying
+the old `extra.order_id` are removed rather than supported beside stamped
+prices. He chose to carry the stamp in `extra`, following what x402 sellers do,
+over `extensions`, which the specification describes (see the alternatives
+below).
 
-A wallet quota, a reserved SDK execution slot, fair lanes for callers, vetted
-agent directories and Cloudflare protection are deferred. For a synchronous
-sale, concurrent signatures can all pass verification against one wallet's
-balance before any charge executes. The merchant's production cost can multiply
-across those purchases. Documentation explains that risk and recommends payment
-before fulfillment when producing the goods costs money.
+A wallet quota, a reserved place in the SDK's handlers, fair lanes between
+callers, vetted agent directories and Cloudflare protection are deferred. For
+a synchronous sale, several signatures from one wallet can all pass
+verification against the same balance before any charge executes, and the
+merchant's cost of making the goods can multiply across those purchases. The
+documentation explains that risk and recommends payment before fulfillment
+when making the goods costs money; whether to limit it is an open question in
+[00-open-questions](00-open-questions.md).
 
-## Engineering choices in the implementation
+## The price and its stamp
 
-The per-merchant gate admits four active price questions and sixteen admissions
-per second. These numbers are initial bounds, not measured shop capacity. An
-admission occupies a place only while the HTTP caller waits, at most five
-seconds. Ready accepted orders and events are selected before price questions;
-a running SDK handler is not preempted. One merchant cannot fill another's gate.
-The gateway's shared database pool and facilitator key remain common resources;
-this change establishes no global load or denial-of-service isolation.
+`extra.price_stamp` is an opaque value authenticated with HMAC-SHA256. It binds
+the price's identifier, the merchant and the integration, a digest of the
+card's published terms and of the policy they give, keyed digests of the
+canonical parameters and of a parcel's locality, the amount and currency, where
+the price came from (the card or the merchant's answer), its times, the chain,
+token and signature domain, the payee and the authorization window. It holds no
+buyer key and no full address, so the paid retry repeats the JSON body. The
+card's digest leaves out when the card was published, so a card republished
+unchanged keeps the prices already given for it. A changed seller site voids no
+price either; that is an engineering choice, made when the product owner asked
+about it. A fixed-price card takes its price from the card with no merchant
+work, so its stamps cost nothing to obtain.
 
-A price question lives only in gateway memory, including when pg-boss handles
-durable work. It is removed when the caller stops waiting. A restart drops
-questions instead of replaying requests whose callers are gone. This topology
-assumes one gateway process per deployed channel; multiple gateways would need
-a separate design for routing merchant polls and their transient questions.
-
-The opaque `extra.price_stamp` is an HMAC-SHA256 authenticated payload. It binds
-the price identifier, merchant and integration, published card and merchant
-policy, canonical parameters, parcel locality, amount and currency, price source,
-timestamps, original chain/token/signature domain, payee and authorization
-window. Parameters and locality use keyed digests. The stamp contains neither
-a buyer key nor the full delivery address. The paid retry repeats the JSON
-body. A fixed-price card takes its price from the card without merchant work.
-
-The gateway authenticates the stamp and judges its term at arrival of the
-complete paid request. Verification runs before any durable order, claim, job
-or order-created event. An admission lock serializes one price, and only a
-successful verification can commit ownership, the complete address, nonce
-exclusivity and durable effects on that same locked database transaction.
-Financial effects run after commit. A connection lost during verification
-cannot later accept its abandoned request. While the original can still finish,
-a replay receives neutral advice to repeat the saved purchase, even after the
-price term; it is not told to request a new price.
-
-The former write-before-verification implementation failed this principle.
-Review exposed free admission rows, misleading analytics and an expiry race.
-Its unowned-attempt cleanup, Lapsed classification and fixture-only birth APIs
-are removed. There is no production source of that attempt class; accepted
-financial history, including unknown outcomes, remains. The cancelled retention
-decision is removed rather than kept as a compatibility mechanism.
-
-One verification per merchant and four per gateway process bound held database connections
-and upstream work. One merchant cannot occupy every global verification place.
-These are engineering constants, not measured throughput or complete shared
-resource isolation. Production facilitator requests have an actual aborting
-30-second deadline and chain reads ten seconds; permits last until bounded
-completion. Missing, nonhex and odd-byte signatures fail cheaply. Empty bytes
-can be valid for contract wallets, so supported signatures are not reduced to
-one EOA length. Some well-shaped invalid proofs still need the bounded upstream
-check. Refusal guidance is identical before and after payment to avoid a state
-oracle.
-
-An unconsumed offer is refused if the card, merchant policy, integration or
-effective payee changes. Mutable eligibility is rechecked under merchant/card
-locks at acceptance after verification; price expiry still uses original arrival. A verified owner freezes the complete address within the priced
-locality under the same merchant/order locking boundary. Accepted orders retain
-their exact financial requirements. Verification that finishes after the price
-term still completes a request admitted in time. Paid recovery uses the exact
-saved stamp and a fresh owner signature; the original spent authorization is
-rejected. No new buyer package is introduced.
+`quote_reference` is 1 to 512 printable ASCII characters. At its widest, with a
+reference of 512 characters that JSON escapes, the stamp is 2,173 characters,
+which take about 2,900 bytes of the 8,192-byte challenge header once it is
+encoded; a stamp with no reference takes about 1,100. A card is measured with
+the widest stamp before it is published, so a priced purchase never answers
+wider than its card was measured.
 
 `PRICE_STAMP_KEY` is a separate random channel secret of at least 32 bytes,
-stable across releases. Rotation installs a new current key and retains the old
-one in `PRICE_STAMP_PREVIOUS_KEY` until outstanding price terms expire. Paid
-recovery uses the exact saved offer after signing keys are retired. Keys never
-appear in health, logs, merchant settings or payment requirements. The public
-contract is version 6.
+stable across releases. Rotation installs a new current key and keeps the old
+one in `PRICE_STAMP_PREVIOUS_KEY` until the outstanding terms have run out. A
+stamp that does not authenticate under either key is taken only when it is,
+byte for byte, the saved price of an existing order, at the cost of one read,
+so a buyer can still get a paid purchase back after both keys have moved on.
+Keys never appear in health, logs, merchant settings or payment requirements.
+The public contract is version 6.
 
-WooCommerce keeps successful product reads for five seconds and successful shop
-settings reads for three minutes, coalescing simultaneous reads. Paid inspection
-uses fresh product and settings data. Failed refreshes do not serve stale data;
-credentials and connection changes invalidate the caches. A compact generic
-calculation reference replaces the durable quote ledger, with no shop-specific
-field in Core.
+## Price questions
 
-A shop has separate paid and free lanes, each with eight exclusive cart slots.
-An inclusive-tax handler may calculate destination and base taxation in
-parallel; two carts times the existing four handlers explains each lane's size.
-There is no new SDK execution option or increased handler limit. A paid bundle
-is reserved before polling, so unavailable local capacity cannot spend a Core
-handover attempt. At this stage that wait pauses the connector's shared poll,
-including downloads and new questions; finer job selection is deferred.
-Free quote cleanup retains only free resources after its caller times out.
+A price question lives only in the gateway's memory while its caller waits,
+including when pg-boss holds the durable work. It is removed when the caller
+stops waiting, and a restart drops it rather than replaying a request whose
+caller is gone. Ready accepted orders and events are drawn before price
+questions, and a running SDK handler is not interrupted.
 
-The registry is keyed by normalized shop origin, across accounts, reconnects,
-credential revisions and worker restarts. It persists per-slot bootstrap rights,
-ownership and the next creation time. Safe idle tokens are encrypted using a
-purpose-specific key derived from the existing dashboard authentication secret.
-In-use identities interrupted by restart are retired; stale completion cannot
-restore or modify the new owner's state. Private shop credentials and read
-caches remain account-scoped even when anonymous cart capacity is shared.
+The gate per merchant admits four questions at once and sixteen started in any
+one second, the second counted from each admission so that a burst at the end
+of one second cannot double up with the start of the next. Sixteen more may
+wait in line. A question waits for a place for two seconds at most, and never
+for more than half of its answer window. Then a synchronous card sells at its
+card price without asking the merchant, and a card paid before delivery
+answers `seller_busy`, HTTP 429, with `Retry-After: 2`. Four is the number of
+messages an SDK worker handles at once; sixteen a second is a loose bound on
+how fast questions reach one merchant, whatever the pace of its answers. These
+are not measured shop capacity.
 
-The product owner approved automatic replacement on 2026-10-28, at most one new
-identity per shop every ten minutes. Permission is spent before opening, even
-if the reply fails or supplies no token. Paid and free replacements, including
-expired-cart renewal, share that bound; their bootstrap entitlements cannot be
-stolen by repeated failures in another slot. A doubtful identity is never
-reused. Expired or unusable retained claims retire before another cleanup
-attempt, and ownership is checked before encrypted state is decoded or changed. Session
-identity registration is atomic before using a new, restored or refreshed token;
-rotating token bytes cannot give two slots ownership of the same shop session.
+A price question that was asked and not answered in time, on a card paid
+before delivery, answers `seller_busy` with `Retry-After: 10`, retryable. Its
+words say that nothing was charged, that the purchase may go through if asked
+again, and that a silence which repeats means the seller's price check is not
+answering. It asks for a longer wait than a full gate does because, unlike a
+full gate, a silent price check may be down for good: a handler that always
+times out, or a shop whose keys are gone. A merchant's answer that the product is unavailable answers
+`not_selling`, which is not retryable.
 
-With WooCommerce's standard 48-hour guest-session lifetime, the intended bound
-is the sixteen-slot pool plus about 288 replacements over two days: about 304
-unexpired sessions per shop. Customized session lifetimes change that figure;
-expired SQL rows may remain until the shop purges them. Actual database cleanup
-has not been measured. One replacement interval need not restore a two-cart
-bundle, so full recovery can take several intervals. No staffed restart is
-required and no new merchant setting is introduced.
+A merchant with nothing under way and nobody waiting is forgotten, so the gate
+holds only merchants with live work, whatever identifiers callers present. One
+merchant's questions never take another's places.
 
-## Lab evidence and its limits
+## Payments
 
-The pre-registered lab probe used the actual Nuanu Tote Bag, product 23, on
+### Before the payment is checked
+
+The stamp is authenticated before any gate is entered or the order is read, so
+a forged stamp costs at most one read. The term is judged against the moment
+the complete paid request arrived. Then the card and the merchant are checked
+as they stand: a card off sale, a switched integration or a missing seller site
+on a card paid before delivery answers `not_selling`, saying that nothing was
+charged, and a missing site in its own words; a changed card or payee answers
+`payment_not_taken`, not retryable. The same cause gets the same answer here
+and again inside the admission.
+
+Inside one gateway process, one request per price is checked at a time. A
+second request for the same price, while the first is being checked, is
+answered HTTP 409 `payment_not_taken`, retryable, with `Retry-After: 2`. The
+words neither say that nothing was charged nor suggest buying again, because
+the first request may still be charged; they ask the agent to send the same
+request again to learn how the purchase stands.
+
+### The two lanes
+
+Payments are checked per merchant in two lanes. A payment whose EIP-3009
+signature is 65 bytes and recovers, here and without asking anybody, to the
+`from` address it names goes into the buyer lane: four checks at once and
+sixteen waiting. Before it takes a place there, the gateway reads the wallet's
+token balance; a wallet holding less than the price is refused at once with
+`payment_not_verified` and the balance named, and takes no place. Balances are
+kept for five seconds, for at most 1,024 wallets, the oldest dropped first, so
+one buyer's retries ask the chain once. A read that fails is not kept and
+refuses nothing.
+
+Any other signature goes into the unproven lane, two checks at once and four
+waiting: a contract wallet's, an ERC-6492 wrapper, or bytes that are no
+signature at all. Those payments wait behind each other and never in front of
+a buyer whose own key signed. A payment that finds its line full, or no place
+within two seconds, is answered `seller_busy`, HTTP 429, with `Retry-After: 2`,
+and the agent sends the same request with the same payment again. There is no
+cap across merchants in the process. Getting a paid purchase back uses the same
+lanes and skips the balance read, because a return charges nothing. The lanes
+decide only where a payment waits; the facilitator still decides whether it is
+valid.
+
+The facilitator's check gives up after ten seconds and the charge after thirty,
+both set explicitly on the client, since a check holds one of the merchant's
+places while it waits. The database pool waits at most three seconds for a
+connection.
+
+### Admission
+
+Verification holds no database transaction, lock or connection. Only a
+verified payment is admitted, in one short transaction: it tries a transaction
+lock on the price, finds no order, holds the merchant's row `for no key update`
+and the card `for share`, checks the standing again (card terms, payee, the
+selling switch, the integration and, for a card paid before delivery, the
+seller's site), records the authorization's fingerprint, made from its payer
+and nonce, against this order alone, and writes the order, its jobs and its
+order-created analytics together. The transaction sets a lock timeout of two
+seconds; a lock not granted in time (PostgreSQL's 55P03) is answered busy before
+any write, which also turns away a legitimate edit's long lock. The charge runs
+after commit. A connection lost before commit leaves nothing written and
+charges nothing.
+
+Parameters or a locality other than the stamped ones are refused only after the
+payment verifies (`payment_not_taken` or `ship_to_changed`), so a published
+stamp cannot be used to test guesses about another buyer's parameters or
+address. The first verified payment writes the full address with the order.
+
+A failure on Agentify's side before the first write is answered by what it is.
+A write that never began wrote nothing and is answered HTTP 503
+`gateway_failed`, retryable. Before the first write, only a failure that can
+pass by itself is retryable: no connection, a lost connection, a lock not
+granted, the database shutting down or out of connections, and a serialization
+failure or deadlock. Anything else is HTTP 500 `gateway_failed`, not retryable,
+saying that nothing was charged. A failure at or after admission is reported as
+an outcome nobody knows.
+
+The in-memory guard is one process's. With a second gateway process on a
+channel, the admission would still make one order of one price (a test holds
+two processes to that), but both processes would verify the same payment at
+once. A second process is the exit trigger in ADR-0049.
+
+### A payment signed for the listing, and the listed example
+
+A payment signed against a listing challenge carries no stamp. It gets a fresh
+priced 402, with nothing verified or charged, through the ordinary validation
+of a purchase, and the reason "the payment was for the listing and charged
+nothing; here is its price", 70 characters. Every challenge reason is measured
+into a card's widest header, so a new reason must not be longer than the
+longest there is, 73 characters, or cards published at the limit answer wider
+than they were measured.
+
+After a payment settles through Coinbase's CDP facilitator with
+`extensions.bazaar` in its challenge, Coinbase's indexer replays the card's
+declared example input as an unpaid purchase
+([get discovered](https://docs.cdp.coinbase.com/x402/seller/get-discovered)).
+It was seen on TEST since 2026-10-20 after about half of the payments, and on
+production after three of four payments since 26 October. The follower arrives
+0.5 to 3 seconds after settlement, from a different TLS client. For a card that
+declares parameters, the example holds a word naming each parameter's type,
+and for a parcel the schema's sample address, which is a real office address,
+so the replay asked the merchant to price values no buyer meant. A body equal
+to the card's own example, where the card declares parameters or is a parcel,
+is now answered as the listing probe is and the merchant is not asked. A
+listing-signed payment carrying it gets the listing with the listing-signed
+reason. A card with neither parameters nor an address lists the body a real
+purchase sends, so its example remains a purchase like any other.
+
+### An empty wallet the facilitator does not name
+
+On TEST on 2026-10-27, an honest payment from a fresh wallet holding no test
+USDC was refused at verification with `invalid_payload` and "execution
+reverted", which names no cause, and Agentify could only say it did not know
+whether funding, a new signature or a new purchase would help. The facilitator
+named an explicit insufficient-funds code nowhere in that run.
+
+As an engineering choice, a verification refusal whose code names no cause
+(`unexplained`, `unrecognised` or none) is now held against one batched read
+from the chain, `eth_chainId` and `balanceOf` in one request with a two-second
+limit and no retries. If the wallet holds less than the amount, the refusal is
+relabelled `insufficient_funds`, naming the balance and keeping the
+facilitator's words. A code that names a cause is never relabelled, nor is a
+refusal at settlement, and a balance from another chain is never taken. The
+balance pre-check in the buyer lane usually refuses such a wallet before the
+facilitator is asked. Whether CDP refuses an empty wallet at verification or
+only at settlement is open: the TEST observation was on Base Sepolia, and the
+live chain is untested.
+
+### Orders opened before this release
+
+An order opened before prices were stamped keeps no saved payment requirements.
+Such an order refuses to settle and says so: it "was opened before prices were
+stamped and keeps no saved payment requirements, so an operator has to finish
+or close it by hand". Before the release, a channel's open ones are listed with
+
+```sql
+select id, merchant_id, state from orders where price_offer is null and open;
+```
+
+Production held none on 2026-10-28. The release cannot be rolled back past the
+dashboard's migrations `0025_stateless_woo_quotes` and
+`0026_woo_cart_resources`, because the first drops the connector's quote
+ledger, which every earlier revision writes at each price question
+(`deploy/README.md`).
+
+## WooCommerce carts
+
+### Reads and their caches
+
+The connector keeps a successful product read for five seconds and a
+successful read of the shop's settings for three minutes, and simultaneous
+reads share one request. The read at payment is fresh. A failed refresh serves
+nothing stale, and a change of credentials or connection empties the caches.
+The cache drops expired entries when it adds one, keeps no entry over 256 KiB
+and holds at most 139 entries per connection. The `quote_reference` carries the
+product and settings facts the price rests on, with no shop-specific field in
+the core and no stored quote.
+
+### Lanes and the replacement allowance
+
+A shop has a paid lane and a free lane of guest carts, eight slots each. Four
+handlers may each calculate the destination and, for a shop that enters prices
+with tax, the tax base at once, which is two carts per handler. There is no new
+SDK option and no increase in handlers. A free question may not spend the
+replacement allowance while fewer than two paid slots are in use or can open
+without it.
+
+Polling never waits for carts. Downloads, their prices and order events use
+none. A parcel order takes one paid cart per question after it is drawn. It
+waits only for a paid cart another calculation is using; otherwise it answers
+nothing and spends a hand-over. Whether a paid order that finds no usable paid
+cart should be handled otherwise is a question for the product owner.
+
+These openings are free of the allowance: a slot's first opening, counted only
+once the shop issues a session; the renewal of an idle empty cart within five
+minutes of its token's expiry; a slot whose token no longer decrypts after a
+key rotation; and a replacement whose opening issued no session, which gives
+the allowance back. Everything else is budgeted at one new session per shop
+every ten minutes: retirement after a doubtful change, a refused session, and
+an interrupted claim on a cart in use. A session with under an hour left is not
+kept for reuse.
+
+### What retires a cart
+
+A cart is retired when a change's outcome is unknown: a transport error, a 5xx,
+a 408, a 2xx that does not acknowledge the change, or an unstructured 4xx other
+than 401, 403 and 429. It is retired when WordPress refuses the session in its
+own shape, and when its identity or ownership is lost. Nothing is retired for
+a 429 with any body, for a 401 or 403 from something in front of the shop, or
+for a read without a token that failed.
+
+After a reused session is refused, the question tries another cart; a fresh
+session refused ends the question. After a failed opening, only carts that
+already hold a session are tried. A paid order is never refused because a
+session was refused, a firewall answered with its own page, or a page arrived
+in place of a change's acknowledgement.
+
+### The registry
+
+The registry is keyed by the shop's normalized origin, across accounts,
+reconnects, credential revisions and worker restarts, so two accounts
+connected to one shop share its carts and its allowance, while their
+credentials and read caches stay apart. Connecting the same shop from a second
+account stays allowed, because testers share the TEST lab shop. The registry
+keeps each slot's right to a first opening, the allowance's next time and the
+ownership, and it writes only when something changed. Idle tokens are encrypted
+under a key derived for this purpose from the dashboard's authentication
+secret. A cart in use when the worker restarted is retired, and a stale owner's
+completion cannot restore or change the new owner's state; ownership is
+checked before encrypted state is decoded or changed. A new, restored or
+refreshed token's identity is registered atomically before the cart is used,
+so rotating token bytes cannot give two slots one shop session. A registry
+that failed to start is retried, and a runtime whose carts were taken over is
+replaced after ten minutes.
+
+### How many sessions a shop holds
+
+With WooCommerce's default guest session of 48 hours, a shop holds about 300
+unexpired sessions from Agentify at most: the sixteen slots and about 288
+replacements over two days. It usually holds sixteen or fewer. Each rotation of
+Agentify's key adds up to sixteen more, a renewal briefly overlaps old and new,
+and a registry failure during registration can leave one extra. A shop whose
+sessions last less than about an hour falls back to one cart every ten minutes
+after its first sixteen. Expired rows may remain until the shop purges them;
+when it does has not been measured. Full recovery can take several ten-minute
+intervals, with no staffed step and no new merchant setting.
+
+### Import and orders from before this release
+
+Import asks the shop for a guest cart once when it has a parcel. A refusal holds
+each parcel back on the "to fix" list, naming the HTTP status and what the shop
+has to allow. An order paid before this release carries no quoted price and is
+refused before the shop is asked, in words that claim no change.
+
+## Evidence and its limits
+
+A pre-registered probe on 2026-10-27 used the Nuanu Tote Bag, product 23, on
 `woo.nuanu.ai`. Twenty-two serial Store API requests took 31.366 seconds and
-spent nothing. The original token worked across Bali, Jakarta, a German
-location without rates and Bali again; each successful removal left the cart
-empty. Full locality replacement mattered: clearing the previous state was
-needed for the German request. The returned JWT values changed, while their
-user identity remained the same. Their declared `exp - iat` was 172800 seconds.
+spent nothing. The original token worked for Bali, Jakarta, a German location
+without rates and Bali again, and each successful removal left the cart empty.
+Clearing the previous locality fully was needed for the German request. The
+returned JWT values changed while their user identity stayed the same, and they
+declared a lifetime (`exp - iat`) of 172,800 seconds.
 
-The probe did not inspect WooCommerce session rows, wait for real token expiry,
-measure sustainable capacity or flood the shop. A declared two-day lifetime is
-not proof of actual expiration or cleanup. Evidence is summarized in the
-[historical handover checks](2026-10-27-unpaid-price-validation.md). The
-[review response](2026-10-28-pr215-review-response.md) records the corrections and
-current acceptance evidence; the raw local probe
-contains token hashes rather than token values.
+A second probe on 2026-10-28 made twenty anonymous requests in 7.249 seconds,
+with no orders or payments. The cart part of a free calculation with its
+cleanup took 2.827 seconds, and 2.061 seconds after a restart; the paid lane in
+parallel took 2.388 and 2.029 seconds. After the registry was restored from
+PostgreSQL no new carts opened, paid and free sessions stayed apart, and every
+cart used was confirmed empty. The prediction that the cart part would exceed
+four seconds at least once was not borne out. The probe left out private reads
+of products and settings, the tax-base check, currency rates and the worker's
+transport, so it does not establish how long a full price answer takes or how
+many a shop can serve.
+
+On TEST on 2026-10-28, the documentation's buyer program bought a real file
+from an internal test merchant at 0.01 test USDC. A proxy cut the first paid
+answer after the gateway reported payment; running the program again returned
+the same order and goods with a fresh signature and no second charge, and an
+intended second purchase made a second order. Two transfers of 0.01 went to the
+merchant's split on Base Sepolia, 0.02 test USDC in all against a cap of 0.05.
+The database held no new order before each first payment, the 402 carried
+`price_stamp` and no `order_id`, and the purchase replies carried `no-store`.
+This run accepts that scenario only: arbitrary wallets and MCP clients, Bazaar
+visibility, shop throughput and production remain unverified.
+
+Neither probe inspected WooCommerce's session rows, waited for a real token to
+expire, measured sustainable capacity or flooded the shop. A declared two-day
+lifetime is not proof of expiry or cleanup.
+
+## What remains exposed
+
+Stamps for fixed-price cards cost nothing to obtain, and unpaid floods and the
+reads of the card and the merchant before any gate are not bounded by a gate.
+Payers with contract wallets share a small lane with noise, and under a flood
+they get `seller_busy`. If the balance read fails, from a rate limit or an
+outage, payments signed by a wallet's own key go to the buyer lane unchecked,
+and each fresh wallet costs one read from the chain. The facilitator, the chain
+endpoint and the database are shared by every merchant. A lock held for more
+than two seconds answers busy even when a legitimate edit holds it. Two
+accounts connected to one shop share its carts. Several purchases from one
+wallet can pass verification against one balance on a synchronous card.
 
 ## The alternatives, and why they lost
 
@@ -208,16 +444,18 @@ because the merchant already promises the price until `expires_at`, so asking
 again doubts that promise; because it asks every paying buyer's merchant twice;
 and because a price that moved refuses the buyer after they signed. Worked
 through with the product owner: a buyer told 112.40 who pays while the
-merchant's engine now says 113.50 buys at 112.40 under the stamp, under the accepted design, and
-would be refused and asked to sign again under this alternative.
+merchant's engine now says 113.50 buys at 112.40 under the stamp, and would be
+refused and asked to sign again under this alternative.
 
-Keeping the order stored before payment was the gateway’s original design, what
+Keeping the order stored before payment was the gateway's original design, what
 Crossmint's demo seller does with `orderId` in `extra`
 ([worldstore-agent](https://github.com/crossmint/worldstore-agent/blob/HEAD/server/src/routes/orders.js#L119-L232)),
 and what the
 [Agentic Commerce Protocol](https://github.com/agentic-commerce-protocol/agentic-commerce-protocol)
 does with its checkout session. It lost because what is stored for free is what
-anybody can fill for free.
+anybody can fill for free. Its thirty-day deletion of unpaid attempts, the
+Lapsed list and the ways of creating such attempts for tests went with it; paid
+history, including outcomes nobody knows, stays.
 
 Letting the merchant check the price when the order arrives lost for three
 reasons. The merchant would have to remember every answer, so every free
@@ -232,6 +470,11 @@ Taking every price from the card works only for cards with a fixed price. A
 card with a price check exists because the real price depends on the purchase:
 a parcel's shipping on its destination, a WooCommerce shop's tax and shipping,
 a sale in another currency at the merchant's rate.
+
+A key for the order that the buyer's client keeps would add a duty to every
+buyer and does nothing to bound unpaid work; the buyer example keeps the 402
+for recovery instead
+([ADR-0011](../decisions/0011-agent-collection-door.md)).
 
 The stamp itself is not new. The Payment HTTP authentication scheme of Tempo
 and Stripe, an individual draft, binds a challenge's identifier to its fields
@@ -259,16 +502,16 @@ In practice sellers put their own data in `extra`: Crossmint its order,
 [Nevermined](https://nevermined.ai/docs/development-guide/nevermined-x402) its
 identifiers, and x402's own Lightning scheme its invoice
 ([exact on Lightning](https://github.com/x402-foundation/x402/blob/1148309d5bdf4db476c488048d34dc6706a1c6da/specs/schemes/exact/scheme_exact_lnbtc.md)).
-The clients examined in the design discussion returned the gateway's former `extra.order_id`. The product owner
-chose to follow that practice. Agents treat the value as opaque, so moving it
-later changes nothing for them.
+The clients examined in the design discussion returned the gateway's former
+`extra.order_id`. The product owner chose to follow that practice. Agents
+treat the value as opaque, so moving it later changes nothing for them.
 
 A limit per wallet at the unpaid request cannot work, because the wallet is not
 known there and proving one costs nothing
 ([87-unpaid-price-questions](87-unpaid-price-questions.md)). A limit per wallet
-at payment was set aside as described above. Card payments do not have this
-problem because an authorization holds the money, and prepaid schemes such as
-Skyfire's tokens or Nevermined's credits reserve it in advance; x402's `exact`
+at payment is deferred, as above. Card payments do not have this problem
+because an authorization holds the money, and prepaid schemes such as Skyfire's
+tokens or Nevermined's credits reserve it in advance; x402's `exact`
 verification by its specification commits nothing, and x402's own Express
 middleware verifies, runs the handler, settles afterwards and discards the
 response if settlement fails, with nothing against several payments from one
@@ -278,20 +521,35 @@ A study of May 2026 found that race in official SDKs and in one production
 deployment and proposes reserving before committing
 ([Free-Riding the Agentic Web](https://arxiv.org/abs/2605.30998)).
 
+The first bound on payment checks was one verification at a time per merchant
+and four per process, with the admission's lock and a pooled connection held
+across the facilitator call. A forged stamp entered the gate under whatever
+merchant it named, so four junk payments anywhere refused every other merchant,
+and two honest buyers of one merchant could not pay at once. Four checks per
+merchant with no cap across merchants fixed that, but well-formed payments
+signed with noise could still fill a merchant's four places, each for a round
+trip to the facilitator, so the checks split into the two lanes above.
+
 Fair sharing of the gate between sources, a separate room for agents signed
 under directories other parties vet, a lane for agents that sign a payment
-before the price, and a rate limit at the edge in front of the gateway through
-Cloudflare are kept for later, when abuse or a merchant whose gate is often full
-is seen. The product owner wants Cloudflare later as the outer layer. If it is
-added, only per-address rate limits fit: challenges and bot-fight modes would
-refuse honest agents, which are programs.
+before the price, a reserved place in the SDK's handlers and a rate limit at
+the edge in front of the gateway through Cloudflare are kept for later, when
+abuse or a merchant whose gate is often full is seen. The product owner wants
+Cloudflare later as the outer layer. If it is added, only per-address rate
+limits fit: challenges and bot-fight modes would refuse honest agents, which
+are programs.
+
+For WooCommerce, a new cart per price leaves a session in the shop for every
+question; a single shared pool of carts let free questions take the carts a
+paid parcel needed; and stopping a shop's sales for good once its carts are in
+doubt turned a transient failure into a permanent one, when an unknown change
+only forbids reusing that cart.
 
 ## Remaining measurements and operational questions
 
-Shop capacity, response-time distributions, real cart expiry and server-side
-session cleanup remain unmeasured. Shared database and facilitator isolation,
-facilitator quotas and fairness between callers are tracked in
-[open questions](00-open-questions.md). The gate constants must not be described
-as a capacity benchmark. The local tests establish bounded admission and
-selection order; they do not establish product acceptance or completed TEST
-payments.
+Shop capacity, the distribution of response times, real cart expiry and the
+shop's own session cleanup remain unmeasured. Isolation of the shared database
+and facilitator, the facilitator's quotas and fairness between callers are in
+[open questions](00-open-questions.md). The gate's constants are not a capacity
+benchmark. The tests establish bounded admission and the order of selection;
+they do not establish completed payments on the live channel.
