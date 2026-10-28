@@ -179,7 +179,9 @@ user identity remained the same. Their declared `exp - iat` was 172800 seconds.
 The probe did not inspect WooCommerce session rows, wait for real token expiry,
 measure sustainable capacity or flood the shop. A declared two-day lifetime is
 not proof of actual expiration or cleanup. Evidence is summarized in the
-[handover checks](2026-10-27-unpaid-price-validation.md); the raw local probe
+[historical handover checks](2026-10-27-unpaid-price-validation.md). The
+[review response](2026-10-28-pr215-review-response.md) records the corrections and
+current acceptance evidence; the raw local probe
 contains token hashes rather than token values.
 
 ## The alternatives, and why they lost

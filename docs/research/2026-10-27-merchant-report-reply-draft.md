@@ -1,8 +1,8 @@
 # Draft reply to Stefan Abrudan's report
 
-Draft only. Not sent. PR #211 is merged; PR #215 is under preparation and has
-not established production rollout. Update the release and TEST evidence before
-sending this reply.
+Draft only. Not sent. PR #211 is merged; PR #216 replaces #215 and is awaiting review.
+TEST evidence covers `1ddf951a`; production rollout is not established. Add the
+production release identifier before sending this reply as a delivery report.
 
 Thank you for the detailed report and for separating your runner's ENG01 issue
 from Agentify's tests. We have kept that distinction: the synthetic 9.99 USDC
@@ -44,7 +44,7 @@ The branch also exposes the build revision and worker contract on public
 health, with unknown values distinguishable from known ones and private
 configuration excluded. That makes it possible to attribute a test to a build.
 
-Your unpaid-purchase observation led to a separate admission change in PR #215.
+Your unpaid-purchase observation led to a separate admission change in PR #216.
 Unpaid prices no longer create durable orders or hold places in a fifty-order
 limit. An authenticated price travels through the normal x402 retry; the order
 is created only after verified acceptance, atomically with ownership and its
@@ -71,6 +71,9 @@ The remaining dispositions are explicit:
 | Coinbase TLS validation and discovery | Not confirmed from our side in this work. A successful validator response alone would not prove a visible discovery listing. |
 
 The full status and evidence are tracked in
-[the finding register](2026-10-27-merchant-report-status.md). Release identifiers
-and the final TEST result must be added before this draft becomes a report of
-what is available to merchants.
+[the finding register](2026-10-27-merchant-report-status.md). The [28 October acceptance](2026-10-28-pr215-review-response.md) records two
+0.01 test-USDC purchases on Base Sepolia, lost-answer recovery with no extra
+debit, no order at unpaid pricing, private journals and fixture cleanup. It
+uses the branch SDK and the unmodified buyer example, not arbitrary third-party
+wallets or MCP clients. Production release identifiers are still required
+before this draft describes what is available to live merchants.
