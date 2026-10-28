@@ -165,6 +165,8 @@ interface Standing {
    * `inspectProduct`.
    */
   readonly shop?: WooRequest;
+  /** The shop's guest cart, which opens where a test does not say. */
+  readonly cart?: WooRequest;
   readonly inspectProduct?: (
     keys: Parameters<typeof inspectProductInTheShop>[0],
     merchantItemId: string,
@@ -960,6 +962,65 @@ describe("importing the catalogue", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card).toMatchObject({ fulfillment: "ship", ship_within_seconds: 604_800 });
     expect(listed[0]?.card.result).toBeUndefined();
+  });
+
+  it("holds a parcel back from a shop that will not open a cart for a visitor, and says why", async () => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({ virtual: false, downloadable: false, downloads: [] }),
+          aProduct({ id: 12, name: "Guide to the tote" }),
+        ],
+      }),
+      inspectProduct: async (_keys, merchantItemId) =>
+        merchantItemId.endsWith("_11")
+          ? {
+              ok: true,
+              product: {
+                kind: "parcel",
+                productId: "11",
+                price: { amount: "25.00", currency: "USD" },
+                fingerprint: "accepted-parcel-fingerprint",
+                tax: { mode: "off" as const },
+              },
+            }
+          : {
+              ok: true,
+              product: {
+                kind: "download",
+                productId: "12",
+                downloadId: "dl_guide",
+                fileName: "Guide",
+                price: { amount: "25.00", currency: "USD" },
+                fingerprint: "accepted-download-fingerprint",
+                tax: { mode: "off" as const },
+              },
+            },
+      // What a plugin that turns the REST API off for visitors answers.
+      cart: async () =>
+        Response.json(
+          {
+            code: "rest_cannot_access",
+            message: "Only authenticated users can access the REST API.",
+          },
+          { status: 401 },
+        ),
+    });
+    await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
+      seller_site: SHOP,
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    const listed = (await cardsOf(running)) as unknown as readonly {
+      card: { fulfillment: string };
+    }[];
+    expect(listed.map((one) => one.card.fulfillment)).toEqual(["async"]);
+    expect(readable(imported.html)).toMatch(/would not open a cart for a visitor/);
+    expect(readable(imported.html)).toMatch(/HTTP 401/);
   });
 
   it("keeps imported cards when the merchant forgets the shop", async () => {
