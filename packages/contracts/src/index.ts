@@ -152,6 +152,7 @@ export {
   CardSchema,
   deliveryCheckFor,
   FulfillmentSchema,
+  listedPurchaseOf,
   MerchantCardSchema,
   PriceCheckSchema,
   PublicCardSchema,

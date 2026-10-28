@@ -14,3 +14,5 @@ Since no order exists before a verified payment, the ending reasons
 unavailable, price_check_unanswered and price_expired and the refusal codes
 order_not_priced_yet and order_closed_before_it_was_priced are removed, and
 the worker no longer suggests setting stock aside for a price question.
+The contracts package exports listedPurchaseOf, the example purchase a
+card's listing declares.

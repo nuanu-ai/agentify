@@ -983,6 +983,16 @@ const listedAnswerOf = (card: Card): Record<string, unknown> => {
 };
 
 /**
+ * The example purchase a card's listing declares, in the shape this gateway
+ * takes one: each parameter's stand-in, and for a parcel the address
+ * schema's own example.
+ */
+export const listedPurchaseOf = (card: Card): Record<string, unknown> => ({
+  params: exampleOf(card.params ?? {}),
+  ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
+});
+
+/**
  * The card as a discovery catalog reads it. The two things a card cannot know
  * are passed in: the address this resource answers at, pinned by whoever runs
  * the gateway, and the name its seller is listed under. A seller with no name
@@ -1000,10 +1010,7 @@ export const bazaarDeclarationOf = (
     ...(listed.serviceName === null ? {} : { serviceName: listed.serviceName }),
     ...(card.tags === undefined ? {} : { tags: card.tags }),
   },
-  input: {
-    params: exampleOf(card.params ?? {}),
-    ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
-  },
+  input: listedPurchaseOf(card),
   inputSchema: purchaseBodySchemaOf(card),
   output: { example: listedAnswerOf(card) },
 });

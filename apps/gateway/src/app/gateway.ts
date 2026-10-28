@@ -27,7 +27,6 @@ import {
 import { SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
 import {
   type Acceptance,
-  bazaarDeclarationOf,
   CARD_REJECTED,
   type CallError,
   type Card,
@@ -36,6 +35,7 @@ import {
   type Delivery,
   deliveryCheckFor,
   type HandlerAnswer,
+  listedPurchaseOf,
   localityOf,
   MERCHANT_FINDINGS,
   type MerchantCard,
@@ -1991,11 +1991,11 @@ export class Gateway {
 
   /**
    * Whether a purchase body is the card's own listed example, where that
-   * example holds stand-in values: a word naming a type for each parameter,
-   * or the schema's sample address. A discovery catalog replays it after a
-   * payment goes through, and a buyer never means it. A card with neither
-   * parameters nor an address lists the body a real purchase sends, so its
-   * example is a purchase like any other.
+   * example holds a stand-in no buyer sends: the word naming a string
+   * parameter's type, or the schema's sample address. A discovery catalog
+   * replays it after a payment goes through. A stand-in for a number or a
+   * boolean, zero or false, is a value buyers send, so an example made only of
+   * those is a purchase like any other.
    */
   #isListedExample(
     stored: StoredCard,
@@ -2003,14 +2003,13 @@ export class Gateway {
     shipTo: ShipTo | undefined,
   ): boolean {
     const { card } = stored;
-    if (Object.keys(card.params ?? {}).length === 0 && card.fulfillment !== "ship") return false;
-    const { input } = bazaarDeclarationOf(card, {
-      url: purchaseUrlOf(this.runtime.config, stored.id),
-      serviceName: null,
-    });
+    const standsIn =
+      card.fulfillment === "ship" ||
+      Object.values(card.params ?? {}).some((field) => field.type === "string");
     return (
+      standsIn &&
       canonical({ params, ...(shipTo === undefined ? {} : { ship_to: shipTo }) }) ===
-      canonical(input)
+        canonical(listedPurchaseOf(card))
     );
   }
 
