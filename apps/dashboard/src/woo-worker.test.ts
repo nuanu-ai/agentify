@@ -4522,14 +4522,31 @@ describe("a shop whose guest carts are short", () => {
         total: sold.total.amount,
       }),
     });
-    return { worker, answered };
+    return {
+      worker,
+      answered,
+      offer: (envelope: { kind: string; payload: unknown }) => waiting.push(envelope),
+      drained: () => waiting.length === 0,
+    };
   };
+  /** Counts its waits rather than reading the clock, which some cases set. */
   const within = async (condition: () => boolean, ms = 1_000) => {
-    const deadline = Date.now() + ms;
-    while (!condition() && Date.now() < deadline)
+    for (let waited = 0; !condition() && waited < ms; waited += 2)
       await new Promise((resolve) => setTimeout(resolve, 2));
     return condition();
   };
+  const priceOfTheTote = (priceId: string) => ({
+    kind: "quote_request" as const,
+    id: `env-${priceId}`,
+    sent_at: new Date().toISOString(),
+    payload: {
+      merchant_item_id: TOTE,
+      price_id: priceId,
+      purpose: "purchase" as const,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      ship_to: PLACE,
+    },
+  });
 
   it("keeps delivering downloads and answering prices from a shop that will not open a cart for a visitor", async () => {
     // A plugin that turns the REST API off for guests answers the cart this way.
@@ -4575,6 +4592,34 @@ describe("a shop whose guest carts are short", () => {
       expect([...cart.holds.values()].every((held) => !held)).toBe(true);
     } finally {
       await run.worker.stop();
+    }
+  });
+
+  it("prices parcels again ten minutes after another worker took the shop's carts over", async () => {
+    aGuestCart(() => null);
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    let time = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    const run = working(shops, [priceOfTheTote("prc-before")]);
+    try {
+      expect(await within(() => run.answered.has("prc-before"))).toBe(true);
+      expect(run.answered.get("prc-before")).toMatchObject({
+        available: true,
+        price: { amount: "25.00" },
+      });
+      await shops.startCartRuntime(SHOP, "another-worker");
+      run.offer(priceOfTheTote("prc-taken-over"));
+      expect(await within(run.drained)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(run.answered.has("prc-taken-over")).toBe(false);
+      time += 600_001;
+      run.offer(priceOfTheTote("prc-after"));
+      expect(await within(() => run.answered.has("prc-after"))).toBe(true);
+      expect(run.answered.get("prc-after")).toMatchObject({ available: true });
+    } finally {
+      await run.worker.stop();
+      clock.mockRestore();
     }
   });
 

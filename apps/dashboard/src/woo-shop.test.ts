@@ -1081,6 +1081,22 @@ describe("the protected product check", () => {
     }
   });
 
+  it("asks the shop again for a product document too large to keep", async () => {
+    stand = await shopAnswering((asked) =>
+      asked.url.includes("/settings/")
+        ? { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) }
+        : {
+            status: 200,
+            body: parcelDocument({ description: "<p>A long story.</p>".repeat(16_000) }),
+          },
+    );
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+    const item = merchantItemIdFor(stand.url, "28");
+    expect(await runtime.inspectForQuote(item)).toMatchObject({ ok: true });
+    expect(await runtime.inspectForQuote(item)).toMatchObject({ ok: true });
+    expect(stand.asked.filter((call) => /\/products\/28$/.test(call.url))).toHaveLength(2);
+  });
+
   it("refuses a settings document that names another setting, or none", async () => {
     // A cache that took one setting's address for another's would lend the
     // other setting's answer to the one asked for.
@@ -2457,6 +2473,27 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       ok: false,
       again: true,
     });
+  });
+
+  it("prices again once the cart registry answers after it failed at the first question", async () => {
+    const shop = aShopOfSessions();
+    const registry = memoryWooShops();
+    let blips = 1;
+    const resources = {
+      ...registry,
+      startCartRuntime: async (shopUrl: string, owner: string) => {
+        if (blips-- > 0) throw new Error("Connection terminated unexpectedly");
+        await registry.startCartRuntime(shopUrl, owner);
+      },
+    };
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      resources,
+    );
+    await expect(runtime.shippingRates("28", JAKARTA)).rejects.toThrow("Connection terminated");
+    expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({ ok: true });
   });
 
   it("keeps concurrent cities in separate carts and cleans both before reuse", async () => {
