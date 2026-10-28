@@ -78,7 +78,9 @@ describe("the merchant's price gate", () => {
     });
 
     expect(refused.status).toBe(429);
-    expect(refused.headers.get("retry-after")).toBe("2");
+    // A price check that did not answer may not answer the next time either,
+    // so the agent is asked to wait longer than for a full gate.
+    expect(refused.headers.get("retry-after")).toBe("10");
     expect(refused.body).toMatchObject({ error: { code: "seller_busy", retryable: true } });
     expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
     expect(h.facilitator.verifies).toHaveLength(0);
