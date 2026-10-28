@@ -61,6 +61,22 @@ export function paymentChainOn(
     return { client, heard };
   };
 
+  /**
+   * A client whose reads made together go out as one batch with the chain's
+   * identity, so they are one request and an answer from another chain is
+   * never taken (`servesThisChain`).
+   */
+  const batching = () =>
+    createPublicClient({
+      chain,
+      transport: http(rpcUrl, { timeout: BALANCE_READ_MS, retryCount: 0, batch: true }),
+    });
+  const servesThisChain = (serves: number): void => {
+    if (serves !== chain.id) {
+      throw new Error(`the chain endpoint at ${host} does not answer for ${network}`);
+    }
+  };
+
   return {
     async accepts(wallet, digest, signature) {
       const { client, heard } = await asking();
@@ -82,12 +98,7 @@ export function paymentChainOn(
       return valid;
     },
     async balance(token, wallet) {
-      // The chain's identity and the balance go out as one batch, so the read
-      // is one request and a balance from another chain is never taken.
-      const client = createPublicClient({
-        chain,
-        transport: http(rpcUrl, { timeout: BALANCE_READ_MS, retryCount: 0, batch: true }),
-      });
+      const client = batching();
       const [serves, held] = await Promise.all([
         client.getChainId(),
         client.readContract({
@@ -97,10 +108,28 @@ export function paymentChainOn(
           args: [wallet as Address],
         }),
       ]);
-      if (serves !== chain.id) {
-        throw new Error(`the chain endpoint at ${host} does not answer for ${network}`);
-      }
+      servesThisChain(serves);
       return held;
+    },
+    async payerState(token, wallet, nonce) {
+      const client = batching();
+      const [serves, held, used] = await Promise.all([
+        client.getChainId(),
+        client.readContract({
+          address: token as Address,
+          abi: ERC20,
+          functionName: "balanceOf",
+          args: [wallet as Address],
+        }),
+        client.readContract({
+          address: token as Address,
+          abi: EIP3009,
+          functionName: "authorizationState",
+          args: [wallet as Address, nonce as Hex],
+        }),
+      ]);
+      servesThisChain(serves);
+      return { held, used };
     },
     async used(token, wallet, nonce) {
       const { client } = await asking();

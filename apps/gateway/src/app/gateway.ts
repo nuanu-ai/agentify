@@ -75,7 +75,7 @@ import type {
 } from "../analytics/events.js";
 import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
-import { atomicUnits, inUsdc, PaymentEdge } from "../http/x402.js";
+import { atomicUnits, CLOCK_SKEW_SECONDS, inUsdc, PaymentEdge } from "../http/x402.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { NoVerdict, VerifyOutcome } from "../ports/facilitator.js";
@@ -111,7 +111,7 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
-import { keyHolderOf, RecentBalances } from "./payer-proof.js";
+import { PayerReads, payerOf } from "./payer-proof.js";
 import { validityNeededAfterCheckMs } from "./payment-window.js";
 import {
   decodePriceStamp,
@@ -713,7 +713,7 @@ export class Gateway {
     atOnce: UNPROVEN_CHECKS_AT_ONCE,
     waitingAtMost: UNPROVEN_CHECKS_WAITING_AT_MOST,
   });
-  readonly #balances = new RecentBalances(
+  readonly #payers = new PayerReads(
     () => this.runtime.balances,
     () => this.runtime.clock(),
   );
@@ -2112,31 +2112,64 @@ export class Gateway {
   }
 
   /**
-   * Where a payment waits for its check, or its refusal where its wallet
-   * cannot pay. A payment its wallet's own key signed waits in the
-   * merchant's lane for buyers; any other waits in the lane that cannot hold
-   * up a buyer. A wallet shown to hold less than the price is refused here,
-   * taking no place, where the payment would charge. A balance that cannot be
-   * read refuses nothing.
+   * Where a payment waits for its check, and for whom, or its refusal here
+   * for what the token would refuse anyway. A payment its wallet's own key
+   * signed, from a wallet the chain shows holds the price, waits in the
+   * merchant's lane for buyers. Any other waits in the lane nobody can vouch
+   * for: a contract wallet's, noise, and a key's payment whose wallet could
+   * not be read. In either lane the payer is one wallet, so holding more
+   * places takes more wallets. A return of a paid order is never held to the
+   * wallet's balance.
    */
   async #laneOf(
+    merchantId: string,
     payment: string,
     requirements: PaymentRequirements,
     charges: boolean,
-  ): Promise<PaymentLane | { readonly refused: PurchaseAttempt }> {
-    const wallet = await keyHolderOf(payment, requirements);
-    if (wallet === null) return "unproven";
-    if (!charges) return "proven";
-    const held = await this.#balances.of(requirements.asset, wallet);
+  ): Promise<
+    { readonly lane: PaymentLane; readonly payer: string } | { readonly refused: PurchaseAttempt }
+  > {
+    const proof = await payerOf(payment, requirements);
+    const now = BigInt(Math.floor(this.runtime.clock() / 1_000));
+    if (proof.validAfter !== null && proof.validAfter > now + BigInt(CLOCK_SKEW_SECONDS)) {
+      return { refused: signedWrongly("the signed authorization is not valid yet") };
+    }
+    if (!proof.signedByKey) return { lane: "unproven", payer: proof.claimed };
+    const payer = proof.wallet.toLowerCase();
+    if (!proof.lowS) {
+      return {
+        refused: signedWrongly(
+          "the signature is the high-s form, which the token refuses; sign again with the wallet's own signer",
+        ),
+      };
+    }
+    if (!charges) return { lane: "proven", payer };
     const asked = BigInt(requirements.amount);
-    if (held === null || held >= asked) return "proven";
-    return {
-      refused: verificationRefusal({
-        verified: false,
-        reason: "insufficient_funds",
-        message: `the paying wallet holds ${inUsdc(held)} USDC on ${requirements.network}, less than the ${inUsdc(asked)} USDC this price asks`,
-      }),
-    };
+    const state = await this.#payers.stateOf(
+      merchantId,
+      requirements.asset,
+      proof.wallet,
+      proof.nonce,
+      asked,
+    );
+    if (state === null) return { lane: "unproven", payer };
+    if (state.used) {
+      return {
+        refused: signedWrongly(
+          "the signed authorization has already been used, and each payment needs one of its own",
+        ),
+      };
+    }
+    if (state.held < asked) {
+      return {
+        refused: verificationRefusal({
+          verified: false,
+          reason: "insufficient_funds",
+          message: `the paying wallet holds ${inUsdc(state.held)} USDC on ${requirements.network}, less than the ${inUsdc(asked)} USDC this price asks`,
+        }),
+      };
+    }
+    return { lane: "proven", payer };
   }
 
   /**
@@ -2146,11 +2179,11 @@ export class Gateway {
    */
   async #checked<T>(
     merchantId: string,
-    lane: PaymentLane,
+    waits: { readonly lane: PaymentLane; readonly payer: string },
     check: () => Promise<T>,
   ): Promise<T | null> {
-    const gate = lane === "proven" ? this.#paymentGate : this.#unprovenGate;
-    const place = await gate.enter(merchantId, PAYMENT_PLACE_WAIT_MS);
+    const gate = waits.lane === "proven" ? this.#paymentGate : this.#unprovenGate;
+    const place = await gate.enter(merchantId, PAYMENT_PLACE_WAIT_MS, waits.payer);
     if (place === null) return null;
     try {
       return await check();
@@ -2276,8 +2309,8 @@ export class Gateway {
       payment,
       payTo: offer.payTo,
     };
-    const lane = await this.#laneOf(payment, requirements, true);
-    if (typeof lane !== "string") return lane.refused;
+    const lane = await this.#laneOf(offer.merchantId, payment, requirements, true);
+    if ("refused" in lane) return lane.refused;
     const anotherPurchase =
       (asked !== undefined && asked.itemId !== offer.itemId) ||
       priceFactsDigest(fit.data as Readonly<Record<string, unknown>>, key, "params") !==
@@ -2525,8 +2558,8 @@ export class Gateway {
     // order owned by a payment's fingerprint, where the payment layer named no
     // payer, is still checked there.
     const paidBy = before.paidBy;
-    const lane = await this.#laneOf(payment, saved.requirements, !paidFor);
-    if (typeof lane !== "string") return lane.refused;
+    const lane = await this.#laneOf(before.merchantId, payment, saved.requirements, !paidFor);
+    if ("refused" in lane) return lane.refused;
     const checked = await this.#checked(before.merchantId, lane, async () => {
       const here =
         paidFor && paidBy !== null && isAddress(paidBy)
@@ -3656,6 +3689,10 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   unrecognised:
     "the payment layer refused it for a reason this system does not recognise, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
 };
+
+/** A payment refused here for what the token would refuse in its signature. */
+const signedWrongly = (said: string): PurchaseAttempt =>
+  verificationRefusal({ verified: false, reason: "signature", message: said });
 
 /** A stamp Agentify did not sign, or one changed since, that is no saved price either. */
 const unknownPrice = (): PurchaseAttempt => ({

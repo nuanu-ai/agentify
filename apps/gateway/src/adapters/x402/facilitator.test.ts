@@ -180,6 +180,9 @@ describe("a refusal that does not say why, of a payment from a wallet that canno
           if (held instanceof Error) throw held;
           return held;
         },
+        payerState: async () => {
+          throw new Error("not asked by the payment layer");
+        },
       },
     ).verify(charge(honest()));
     return { answered, read };

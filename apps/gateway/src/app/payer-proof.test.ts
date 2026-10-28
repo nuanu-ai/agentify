@@ -165,11 +165,16 @@ describe("a payer's wallet as read from the chain", () => {
     expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x03", 1n)).toMatchObject({
       held: 9n,
     });
-    now += 5_000;
-    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x04", 1n)).toMatchObject({
+    // Kept against a price of 1, it does not stand for a price of 20.
+    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x04", 20n)).toMatchObject({
       held: 0n,
     });
-    expect(chain.reads).toBe(3);
+    now += 5_000;
+    chain.held = 30n;
+    expect(await reads.stateOf("mch_a", "0xtoken", "0xwallet", "0x05", 1n)).toMatchObject({
+      held: 30n,
+    });
+    expect(chain.reads).toBe(4);
   });
 
   it("answers nothing for a read that failed or a chain that is not configured", async () => {

@@ -27,4 +27,14 @@ export interface TokenBalances {
    * serves another chain, neither of which is an answer.
    */
   balance(token: string, wallet: string): Promise<bigint>;
+  /**
+   * `wallet`'s balance of `token`, and whether the token has marked its
+   * EIP-3009 authorization `nonce` used or cancelled, read together in one
+   * request and quickly. It throws as `balance` does.
+   */
+  payerState(
+    token: string,
+    wallet: string,
+    nonce: string,
+  ): Promise<{ readonly held: bigint; readonly used: boolean }>;
 }
