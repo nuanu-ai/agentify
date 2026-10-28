@@ -1,60 +1,80 @@
-# A price travels with the buyer until verified acceptance
+# A price travels with the buyer, and an order is born at its verified payment
 
-Status: the product owner approved stateless pricing on 2026-10-27, including a
-buyer-visible generic calculation reference and removal of compatibility paths.
-The review corrections implement the same no-unpaid-order rule. Reasoning and
-engineering choices: [research](../research/90-unpaid-price-questions-design.md).
+Status: the product owner chose on 2026-10-27 a price that travels with the
+buyer under Agentify's stamp, an order written only once a payment verifies,
+the term judged by when the paid request arrives, a generic `quote_reference`
+the buyer can read, no support kept for the old `extra.order_id`, and the stamp
+in `extra`, where x402 sellers put their own data. How a payment is admitted,
+the exit trigger and the listed-example rule are engineering choices. The
+mechanics and every alternative with its source are in
+[research 90](../research/90-unpaid-price-questions-design.md).
 
 ## Context
 
-Creating an order for an unpaid price or an unverified signature lets a caller
-consume storage and distort order analytics without buying. A price still holds
-until its stated end, and one price must never become two purchases.
+An unpaid purchase used to write an order before its price was asked, so anyone
+could fill the database, the merchant's queue and the order figures without
+paying (ADR-0043). A price must still hold for its stated term, and one price
+must never become two purchases.
 
 ## Decision
 
-Unpaid pricing creates no durable order, queue job or calculation ledger.
-The 402 carries the normal x402 amount and opaque `extra.price_stamp`, bound by
-HMAC-SHA256 to a channel secret. A price question exists only while its caller
-waits; restart ends that wait. Contract version 6 removes `extra.order_id`.
+An unpaid request writes nothing. Its 402 carries the ordinary x402 amount,
+asset and payee and an opaque `extra.price_stamp`: an HMAC-SHA256 under a
+channel secret over every fact the price rests on, with the parameters and a
+parcel's locality only as keyed digests. It holds no buyer key and no full
+address, so the paid request repeats the purchase body. A price question lives
+only while its caller waits. Contract version 6 removes `extra.order_id` and
+the ending reasons `unavailable`, `price_check_unanswered` and `price_expired`.
 
-The stamp binds the price identifier, merchant and integration, published card
-and policy, canonical parameters, parcel locality, amount, currency, source,
-timestamps, original chain/token/signature domain, payee and authorization
-window. Parameters and locality use keyed digests. Neither a buyer key nor the
-full address travels in it. The paid retry repeats its purchase body.
+The stamp is authenticated before any gate is entered; one that does not
+authenticate is taken only as the byte-for-byte saved price of an existing
+order, so a paid return outlives a retired signing key. The 30-second term is
+judged by when the complete paid request arrives. One price names one order.
 
-Verification precedes persistence. A transient admission lock serializes the
-price through acceptance. Only successful verification may atomically commit
-the owned order, nonce claim, jobs and order-created analytics on the same
-connection holding that lock. External financial effects run after commit.
-A lost lock connection cannot later create or charge its abandoned admission.
+Inside the gateway process one request per price is checked at a time; another
+gets a retryable `payment_not_taken` with `Retry-After: 2` that neither says
+nothing was charged nor suggests buying again. Verification holds no database
+connection. A verified payment is admitted in one short transaction with a
+two-second lock timeout, which locks the price, finds no order, holds the
+merchant's row and the card, checks that the card's terms, payee, selling
+switch, integration and, for a card paid before delivery, the seller's site
+still stand, records the authorization's nonce against this order alone, and
+writes the order, its jobs and its analytics together. A lock not granted in
+time answers busy before any write. The charge runs after commit. The exit
+trigger is a second gateway process on a channel: the in-memory guard does not
+cross processes, and while the admission still makes one order of one price,
+both processes would verify the same payment.
 
-The price term is judged at arrival of the complete paid request. Verification
-may finish later. A concurrent retry receives neutral, retryable advice to keep
-and repeat that purchase; it is never told to buy again while the first request
-may complete. Refusal guidance discloses no difference between paid and unpaid
-records. Payment checks are bounded, including fixed prices and recovery.
+A price depends on the card's terms, policy, integration and payee, not on when
+the card was published, so republishing it unchanged keeps outstanding prices
+and a changed seller site voids none. A changed term or payee answers
+`payment_not_taken`, not retryable; a card off sale or a switched integration
+answers `not_selling` and says nothing was charged. Parameters or a locality
+other than the stamped ones are refused only after the payment verifies, so a
+published stamp cannot test guesses about them.
 
-Engineering choice: an unconsumed offer is refused if its card, policy,
-integration or effective payee changes. Mutable eligibility is checked under
-merchant/card locks at acceptance. Accepted purchases retain their exact saved
-financial terms. First verified ownership freezes the full address within the
-priced locality under the ownership lock. Failed verification freezes nothing.
-
-A paid return uses the exact saved stamp and fresh owner proof after price
-expiry or signing-key retirement; the original spent authorization is forbidden.
-A payment signed from a listing without a stamp receives a fresh priced 402,
-without verification or charge, through the ordinary purchase validation path.
-
-A merchant may return bounded `quote_reference`, authenticated in the stamp and
-returned unchanged on the order. The buyer can read it: no secrets or personal
-data belong in it. Connector needs alone do not justify widening the contract.
+A payment signed for the listing, with no stamp, gets a fresh priced 402 and
+nothing is verified or charged. A body equal to the card's own listed example,
+where the card declares parameters or is a parcel, is answered as the listing
+without asking the merchant, because Coinbase's catalogue replays that example
+after payments settled through its facilitator. A merchant's `quote_reference`,
+up to 512 printable characters, is stamped and returned unchanged on the order;
+the buyer reads it, so it holds no secret and no personal data. A paid purchase
+comes back for the exact saved stamp and a fresh signature from the wallet that
+paid, never for the spent authorization.
 
 ## Alternatives rejected
 
-Repricing at payment breaks the promised term and asks the merchant twice.
-Persisting an unverified attempt still admits free storage growth; its former
-thirty-day cleanup has no remaining production purpose and is removed. A client
-private order key adds a buyer obligation unrelated to bounding unpaid work;
-the buyer example saves the challenge for recovery instead (ADR-0011).
+Asking the merchant again at payment, as x402's reference server does, doubts
+the stated term, asks twice per sale and refuses a buyer who has signed.
+Storing the order before payment, as Crossmint's demo seller and the Agentic
+Commerce Protocol's checkout do, lets anyone fill for free what is stored for
+free, and its thirty-day deletion goes with it. A price check when the order
+reaches the merchant stores every free answer there and, for a card paid
+first, comes after the money moved, where ten such refusals stop the
+merchant's sales (ADR-0046). Every price from the card
+serves fixed prices only. A limit per wallet before payment has no wallet to
+count. `extensions` instead of `extra`: x402 v2 reserves `extra` for the
+scheme, but sellers use it and agents treat the value as opaque. A key the
+buyer's client keeps adds a duty to every buyer; the buyer example keeps the
+402 instead (ADR-0011).
