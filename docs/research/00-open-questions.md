@@ -36,6 +36,7 @@ and git keeps the entries that were here.
 | Who answers the access requests the scanner records through the route its privacy page names; the scanner's page counts them and nothing records an answer | product owner | `85-operator-admin.md` |
 | ~~How the purchase door keeps unpaid price questions from loading a merchant's shop without letting anybody stop that merchant's sales for free; the limit of fifty purchases waiting for payment still lets them, and the product owner does not accept that (2026-10-26)~~ | product owner | `87-unpaid-price-questions.md`, ADR-0043; resolved by the stateless-price design, ADR-0049 |
 | How a merchant learns that their price handler is failing, once a purchase refused at its price question leaves no order behind: a handler that goes silent or answers wrongly now shows only as sales that do not happen | product owner | `87-unpaid-price-questions.md` |
+| Whether a buyer paying from a contract wallet, such as a Safe or a wallet signing through ERC-6492, may be told that the seller is busy: a payment whose signature is not the paying wallet's own key waits in a small line of its own for each merchant, and anyone can fill that line for free. The product owner agreed on 2026-10-28 to leave it so and keep the question open | product owner | ADR-0043 |
 
 ## Money
 
@@ -58,7 +59,7 @@ owner's to decide, and until then is a limit a parcel sells with.
 | How long a merchant has to ship: the connector publishes every parcel with seven days, a constant of its own rather than the merchant's word | product owner | ADR-0023 |
 | Whether to translate a region's code by the shop's own list, since WooCommerce writes the regions of 37 of its 69 listed countries its own way and an agent naming such a region is told "not available" | product owner | `41-woo-parcel-probe.md` |
 | Whether the guest sessions the connector keeps in a merchant's shop are acceptable, each holding the last destination priced in it for up to 48 hours: usually sixteen or fewer, at most about 300; and whether the connection screen says so | product owner | `41-woo-parcel-probe.md`, `90-unpaid-price-questions-design.md` |
-| What a paid parcel order does when the shop has no usable paid cart free: today it answers nothing and spends one of its hand-overs | product owner | `90-unpaid-price-questions-design.md` |
+| ~~What a paid parcel order does when the shop has no usable paid cart free: today it answers nothing and spends one of its hand-overs~~ — paid orders keep being handed over to the merchant for up to three hours (the product owner, 2026-10-28) | product owner | `90-unpaid-price-questions-design.md` |
 | How slow a shop may be: a parcel's price is several requests to the shop within five seconds, 0.9–2.8 seconds each from outside, so a slow shop loses sales to "not available" | product owner | `41-woo-parcel-probe.md` |
 | The backups taken before a buyer's address is erased, which keep it with no upper bound: the portal and the contract say so since 2026-10-26, and whether a retention bounds every copy is open | product owner | ADR-0029 |
 
