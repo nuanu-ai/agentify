@@ -220,3 +220,42 @@ describe("a wallet's balance of the token, on the chain", () => {
     await expect(reader?.balance(USDC_ON_BASE_SEPOLIA, WALLET)).rejects.toThrow();
   });
 });
+
+describe("a payer's wallet on the chain, as a payment is about to wait for its check", () => {
+  const USDC_ON_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  const NONCE = `0x${"22".repeat(32)}`;
+
+  it("reads what it holds and whether the authorization was used, in one request", async () => {
+    const balanceData = `0x70a08231${"0".repeat(24)}${WALLET.slice(2)}`;
+    const stateData = `0xe94a0102${"0".repeat(24)}${WALLET.slice(2)}${NONCE.slice(2)}`;
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(84532, (asked) => {
+        const [transaction] = asked.params ?? [];
+        if (transaction?.to?.toLowerCase() !== USDC_ON_BASE_SEPOLIA.toLowerCase())
+          return { error: { code: -32602, message: "wrong token" } };
+        if (transaction.data === balanceData)
+          return { result: `0x${42n.toString(16).padStart(64, "0")}` };
+        if (transaction.data === stateData) return { result: `0x${"0".repeat(63)}1` };
+        return { error: { code: -32602, message: "wrong query" } };
+      }),
+    );
+
+    expect(await reader?.payerState(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).toStrictEqual({
+      held: 42n,
+      used: true,
+    });
+    expect(requestsServed).toBe(1);
+  });
+
+  it("is not read from an endpoint serving another chain", async () => {
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(8453, { result: `0x${"0".repeat(64)}` }),
+    );
+
+    await expect(reader?.payerState(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).rejects.toThrow(
+      /does not answer/,
+    );
+  });
+});

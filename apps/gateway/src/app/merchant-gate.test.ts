@@ -73,4 +73,27 @@ describe("a merchant's gate", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await gate.enter("mch_a", 0)).toEqual(expect.any(Function));
   });
+
+  it("lets one payer hold one place and wait for one more, and turns its third away at once", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const gate = new MerchantGate({ atOnce: 4, waitingAtMost: 8 });
+    const held = await gate.enter("mch_a", 1_000, "0xpayer");
+    if (held === null) throw new Error("the payer found no place");
+    const second = gate.enter("mch_a", 1_000, "0xpayer");
+    const third = gate.enter("mch_a", 1_000, "0xpayer");
+
+    expect(await landed(second)).toBe(false);
+    expect(await third).toBeNull();
+    held();
+    expect(await second).toEqual(expect.any(Function));
+  });
+
+  it("lets other payers in past a payer that waits for its own place to free", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const gate = new MerchantGate({ atOnce: 4, waitingAtMost: 8 });
+    await gate.enter("mch_a", 1_000, "0xpayer");
+    void gate.enter("mch_a", 1_000, "0xpayer");
+
+    expect(await gate.enter("mch_a", 0, "0xanother")).toEqual(expect.any(Function));
+  });
 });

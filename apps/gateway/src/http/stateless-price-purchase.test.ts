@@ -95,8 +95,8 @@ async function quote(shipTo?: ShipTo) {
   return decodePaymentRequiredHeader(answer.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
     .accepts[0] as PaymentRequirements;
 }
-async function pay(offer: PaymentRequirements, nonce: string, shipTo?: ShipTo) {
-  const payment = await signedPayment(BUYER, offer, {
+async function pay(offer: PaymentRequirements, nonce: string, shipTo?: ShipTo, wallet = BUYER) {
+  const payment = await signedPayment(wallet, offer, {
     nonce,
     validBefore: h.now() + offer.maxTimeoutSeconds * 1000,
   });
@@ -104,6 +104,30 @@ async function pay(offer: PaymentRequirements, nonce: string, shipTo?: ShipTo) {
     body: body(shipTo),
     headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
   });
+}
+
+/**
+ * A payment chain on which every wallet holds `held` and every authorization
+ * is unused, or whose reads fail with `held`, standing in for the endpoint.
+ */
+function chainHolding(held: bigint | Error = 1_000_000_000n, used = false) {
+  const chain = {
+    held,
+    used,
+    reads: 0,
+    async balance(): Promise<bigint> {
+      chain.reads += 1;
+      if (chain.held instanceof Error) throw chain.held;
+      return chain.held;
+    },
+    async payerState(): Promise<{ held: bigint; used: boolean }> {
+      chain.reads += 1;
+      if (chain.held instanceof Error) throw chain.held;
+      return { held: chain.held, used: chain.used };
+    },
+  };
+  Object.assign(h.runtime, { balances: chain });
+  return chain;
 }
 
 describe("a stamped price and an order born at payment", () => {
@@ -242,11 +266,12 @@ describe("a stamped price and an order born at payment", () => {
         price_check,
         params: { email: { type: "string", required: false } },
       });
+      chainHolding();
       const offers: PaymentRequirements[] = [];
       for (let one = 0; one < 5; one += 1) offers.push(await quote());
       const presented = await Promise.all(
         offers.map((offer, index) =>
-          signedPayment(BUYER, offer, {
+          signedPayment(aWallet(`buyer ${index}`), offer, {
             nonce: `0x${index + 1}`,
             validBefore: h.now() + offer.maxTimeoutSeconds * 1000,
           }),
@@ -295,6 +320,7 @@ describe("a stamped price and an order born at payment", () => {
 
   it("lets another merchant complete a purchase while four of one merchant's payments are being checked", async () => {
     await started({ ...CARD, price_check: undefined });
+    chainHolding();
     const offers: PaymentRequirements[] = [];
     for (let one = 0; one < 4; one += 1) offers.push(await quote());
     const payTo = offers[0]?.payTo;
@@ -313,7 +339,9 @@ describe("a stamped price and an order born at payment", () => {
         settle: h.facilitator.settle.bind(h.facilitator),
       },
     });
-    const paying = offers.map((offer, index) => pay(offer, `0x${index + 1}`));
+    const paying = offers.map((offer, index) =>
+      pay(offer, `0x${index + 1}`, undefined, aWallet(`buyer ${index}`)),
+    );
     pending.push(...paying);
     await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(4));
     const other = await h.addMerchant("Another merchant");
@@ -352,7 +380,7 @@ describe("a stamped price and an order born at payment", () => {
   it("refuses an empty wallet's payment at once, before it takes a place or reaches the payment layer", async () => {
     await started({ ...CARD, price_check: undefined });
     const offer = await quote();
-    Object.assign(h.runtime, { balances: { balance: async () => 0n } });
+    chainHolding(0n);
 
     const refused = await pay(offer, "0x01");
 
@@ -367,7 +395,7 @@ describe("a stamped price and an order born at payment", () => {
 
   it("lets a buyer whose wallet can pay through while payments nobody can prove fill its merchant's lane", async () => {
     await started({ ...CARD, price_check: undefined });
-    Object.assign(h.runtime, { balances: { balance: async () => 1_000_000_000n } });
+    chainHolding();
     const offers: PaymentRequirements[] = [];
     for (let one = 0; one < 9; one += 1) offers.push(await quote());
     const junked = await Promise.all(
@@ -418,29 +446,162 @@ describe("a stamped price and an order born at payment", () => {
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it("sends a payment to its lane when the paying wallet's balance cannot be read", async () => {
+  it("sends a payment whose wallet's balance cannot be read to the lane nobody can vouch for", async () => {
     await started({ ...CARD, price_check: undefined });
-    const offer = await quote();
-    Object.assign(h.runtime, {
-      balances: {
-        balance: async () => {
-          throw new Error("the chain endpoint did not answer");
-        },
-      },
-    });
+    const offers: PaymentRequirements[] = [];
+    for (let one = 0; one < 7; one += 1) offers.push(await quote());
+    chainHolding(new Error("the chain endpoint did not answer"));
+    const junked = await Promise.all(
+      offers.slice(0, 6).map((offer, index) => junk(offer, `0x${(index + 10).toString(16)}`)),
+    );
+    releaseVerification = h.facilitator.holdVerification();
+    const sending = junked.map((payment) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: body(),
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      }),
+    );
+    pending.push(...sending);
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(2));
+    const unread = offers[6];
+    if (unread === undefined) throw new Error("no price was issued");
 
-    const paid = await pay(offer, "0x01");
+    // Its signature is its wallet's, but nothing shows the wallet can pay, so
+    // it waits where payments nobody can vouch for wait, and that line is full.
+    const refused = await pay(unread, "0x01");
+
+    expect(refused.status).toBe(429);
+    expect(refused.body).toMatchObject({ error: { code: "seller_busy", retryable: true } });
+    releaseVerification();
+  });
+
+  it("asks the chain again for a wallet that held less than the price, so a buyer who tops up can pay", async () => {
+    await started({ ...CARD, price_check: undefined });
+    const first = await quote();
+    const second = await quote();
+    const chain = chainHolding(0n);
+    expect((await pay(first, "0x01")).status).toBe(409);
+
+    chain.held = 1_000_000_000n;
+    const paid = await pay(second, "0x02");
 
     expect(paid.status).toBe(200);
     expect(h.facilitator.settles).toHaveLength(1);
   });
+
+  it("holds one place and one place in line per wallet, however many prices it signs for", async () => {
+    // One signed header sent again under many stamps: the stamp is not part
+    // of what the wallet signs, and the facilitator refuses every copy but
+    // after its round trip. Each copy beyond the second is turned away here.
+    await started({ ...CARD, price_check: undefined });
+    chainHolding();
+    const offers: PaymentRequirements[] = [];
+    for (let one = 0; one < 25; one += 1) offers.push(await quote());
+    const attacker = aWallet("one funded wallet");
+    const signed = decodePaymentSignatureHeader(
+      await signedPayment(attacker, offers[0] as PaymentRequirements, {
+        nonce: "0xa1",
+        validBefore: h.now() + (offers[0]?.maxTimeoutSeconds ?? 0) * 1000,
+      }),
+    );
+    const replays = offers.slice(0, 24).map((offer) =>
+      encodePaymentSignatureHeader({
+        ...signed,
+        accepted: { ...signed.accepted, extra: { ...offer.extra } },
+      }),
+    );
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    releaseVerification = release;
+    const fromAttacker = (payment: string) =>
+      (decodePaymentSignatureHeader(payment).payload as { authorization?: { from?: string } })
+        .authorization?.from === attacker.address;
+    Object.assign(h.runtime, {
+      facilitator: {
+        verify: async (charge: Parameters<typeof h.facilitator.verify>[0]) => {
+          const verified = await h.facilitator.verify(charge);
+          if (!fromAttacker(charge.payment)) return verified;
+          await held;
+          return { verified: false, reason: "signature", message: "already used" };
+        },
+        settle: h.facilitator.settle.bind(h.facilitator),
+      },
+    });
+    const sending = replays.map((payment) =>
+      served.call("POST", `/x402/${itemId}/purchase`, {
+        body: body(),
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      }),
+    );
+    pending.push(...sending);
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+    const honest = offers[24];
+    if (honest === undefined) throw new Error("no honest price was issued");
+
+    const paid = await pay(honest, "0x01", undefined, aWallet("an honest buyer"));
+
+    expect(paid.status).toBe(200);
+    expect(h.facilitator.verifies.filter((charge) => fromAttacker(charge.payment))).toHaveLength(1);
+    releaseVerification();
+    const answers = await Promise.all(sending);
+    expect(answers.filter((answer) => answer.status === 429).length).toBeGreaterThanOrEqual(22);
+  });
+
+  it.each([
+    ["is not valid yet", "validAfter"],
+    ["is a high-s copy of a valid signature", "high-s"],
+    ["names an authorization the token has already used", "used"],
+  ] as const)(
+    "refuses at once, taking no place, a payment whose authorization %s",
+    async (_what, fault) => {
+      await started({ ...CARD, price_check: undefined });
+      const offer = await quote();
+      chainHolding(1_000_000_000n, fault === "used");
+      let payment = await signedPayment(BUYER, offer, {
+        nonce: "0x01",
+        validBefore: h.now() + offer.maxTimeoutSeconds * 1000,
+        ...(fault === "validAfter" ? { validAfter: h.now() + 120_000 } : {}),
+      });
+      if (fault === "high-s") {
+        const decoded = decodePaymentSignatureHeader(payment);
+        const signed = decoded.payload as { signature: string };
+        const n = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+        const r = signed.signature.slice(2, 66);
+        const s = BigInt(`0x${signed.signature.slice(66, 130)}`);
+        const v = Number.parseInt(signed.signature.slice(130, 132), 16);
+        payment = encodePaymentSignatureHeader({
+          ...decoded,
+          payload: {
+            ...decoded.payload,
+            signature: `0x${r}${(n - s).toString(16).padStart(64, "0")}${(v === 27 ? 28 : 27).toString(16)}`,
+          },
+        });
+      }
+
+      const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+        body: body(),
+        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+      });
+
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: "payment_not_verified", retryable: false },
+      });
+      expect(h.facilitator.verifies).toHaveLength(0);
+    },
+  );
 
   it("charges two buyers of one merchant whose payments are checked at the same time", async () => {
     await started({ ...CARD, price_check: undefined });
     const first = await quote();
     const second = await quote();
     releaseVerification = h.facilitator.holdVerification();
-    const paying = [pay(first, "0x01"), pay(second, "0x02")];
+    const paying = [
+      pay(first, "0x01", undefined, aWallet("the first buyer")),
+      pay(second, "0x02", undefined, aWallet("the second buyer")),
+    ];
     pending.push(...paying);
     await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(2));
     releaseVerification();
