@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { type Harness, harness } from "@agentify/gateway/testing";
+import { type Harness, harness, workUntilStopped } from "@agentify/gateway/testing";
 import type { SendDataCopyRequest } from "@agentify/scanner-contracts/report-identity";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -145,7 +145,24 @@ async function aChannel() {
   if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
   const offered = await harnessed.gateway.beginPurchase(published.id, { email: BUYER });
   if (offered.step !== "pay") throw new Error("no price was offered");
-  const order = offered.order;
+  // Keep real private payment and goods on the stored order: the export must omit them.
+  harnessed.facilitator.willSettle({ settled: false, reason: "payment failed" });
+  const worker = workUntilStopped(harnessed, {
+    onOrder: () => ({ delivered: { code: SECRETS.goods } }),
+  });
+  try {
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      SECRETS.payment,
+      "fp-data-copy-buyer",
+      undefined,
+      { itemId: published.id, params: { email: BUYER } },
+    );
+  } finally {
+    await worker.stop();
+  }
+  const order = await harnessed.store.orderById(offered.order.order.id);
+  if (order === null) throw new Error("the paid purchase wrote no order");
   await harnessed.store.recordJournal({
     at: AT.getTime(),
     actor: { kind: "account", id: "acc_the_operator" },
@@ -297,20 +314,6 @@ describe("a copy of an address's data", () => {
   it("excludes stored credentials, the buyer's authorization, key and received goods", async () => {
     const channel = await aChannel();
     const { harnessed, order } = channel;
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      order.order.id,
-      "the-buyer",
-      SECRETS.payment,
-      harnessed.merchant.wallet,
-      harnessed.now(),
-    );
-    // A refused charge leaves the authorization and the goods held for this buyer.
-    harnessed.facilitator.willSettle({ settled: false, reason: "payment failed" });
-    await harnessed.gateway.runner.apply(
-      order.order.id,
-      { kind: "handler_delivered", at: harnessed.now() },
-      { delivery: { code: SECRETS.goods } },
-    );
     const stored = await harnessed.store.orderById(order.order.id);
     expect(stored).toMatchObject({
       payment: SECRETS.payment,

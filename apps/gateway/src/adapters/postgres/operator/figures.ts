@@ -236,12 +236,10 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
         count: number;
         delivered: number;
         unknown: number;
-        lapsed: number;
       }>(sql`
-        select (count(*) filter (where not orders.lapsed))::int as count,
-               (count(*) filter (where not orders.lapsed and orders.state = 'delivered'))::int as delivered,
-               (count(*) filter (where not orders.lapsed and ${PAYMENT_UNKNOWN}))::int as unknown,
-               (count(*) filter (where orders.lapsed))::int as lapsed
+        select count(*)::int as count,
+               (count(*) filter (where orders.state = 'delivered'))::int as delivered,
+               (count(*) filter (where ${PAYMENT_UNKNOWN}))::int as unknown
           from orders
          where orders.created_at >= ${from} and orders.created_at < ${until}`);
       return {
@@ -249,7 +247,6 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
         count: recent?.count ?? 0,
         delivered: recent?.delivered ?? 0,
         paymentUnknown: recent?.unknown ?? 0,
-        lapsed: recent?.lapsed ?? 0,
       };
     });
   },

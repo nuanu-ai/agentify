@@ -1,4 +1,3 @@
-import { durationInWords, LAPSED_KEPT_MS } from "@agentify/core/published";
 import { Button, Field } from "@agentify/ui";
 import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -258,8 +257,7 @@ const OrderDetails = ({
 const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
   const { listing } = view;
   const here = listing.segments.find((one) => one.here);
-  const title =
-    here?.key === "open" ? "Open orders" : here?.key === "lapsed" ? "Lapsed unpaid" : "All orders";
+  const title = here?.key === "open" ? "Open orders" : "All orders";
   return (
     <Group title={title} count={here?.count ?? listing.rows.length}>
       {listing.rows.length === 0 ? (
@@ -282,7 +280,7 @@ const OrderList = ({ view }: Readonly<{ view: OrdersView }>) => {
                 open={row.opened || view.pressed?.id === row.id || undefined}
                 cells={
                   <>
-                    <Cell at="fact">{row.priced === null ? "Not priced" : row.time}</Cell>
+                    <Cell at="fact">{row.time}</Cell>
                     <Cell at="title">{row.product}</Cell>
                     <Cell at="state">
                       <span className={styles.wraps}>
@@ -362,21 +360,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
   const opening = listing.rows.some(
     (row) => row.opened && row.id.toLowerCase() === listing.search.q.toLowerCase(),
   );
-  const note = (
-    <p className="note">
-      Purchases that ended before they had a price are under Lapsed, not here; nothing was charged
-      for them.
-    </p>
-  );
-  if (view.none) {
-    return (
-      <>
-        <ListEmpty>No orders yet.</ListEmpty>
-        {note}
-      </>
-    );
-  }
-  const lapsed = here?.key === "lapsed";
+  if (view.none) return <ListEmpty>No orders yet.</ListEmpty>;
   return (
     <>
       <ListTools
@@ -384,7 +368,6 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
         path="/orders"
         label="Search orders by ID or product"
         placeholder="Search by order ID or product"
-        searchable={!lapsed}
         {...(opening
           ? {}
           : {
@@ -392,15 +375,6 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
                 `Only orders whose ID or product matches “${q}” are counted and shown.`,
             })}
       />
-      {view.lapsedApart === null ? null : (
-        <p className="search-cut">
-          {view.lapsedApart.says}{" "}
-          <Link to={view.lapsedApart.to} prefetch="intent">
-            Lapsed
-          </Link>
-          .
-        </p>
-      )}
       {view.closedElsewhere === null ? null : (
         <p className="quiet">
           {`Fulfillment closed for ${shortened(view.closedElsewhere.id)} · `}
@@ -409,15 +383,7 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           </Link>
         </p>
       )}
-      {lapsed ? (
-        <>
-          <OrderList view={view} />
-          <p className="note">
-            Nothing was charged for these, and each is deleted{" "}
-            {durationInWords(LAPSED_KEPT_MS, "day")} after it was last written.
-          </p>
-        </>
-      ) : here?.key === "needs" ? (
+      {here?.key === "needs" ? (
         <Group title="Needs you" count={view.needsYou.of} warn aside={closureHelp}>
           {listing.rows.length === 0 ? (
             <NothingHere listing={listing} />
@@ -451,7 +417,6 @@ export function OrdersScreen({ view }: Readonly<{ view: OrdersView }>) {
           <OrderList view={view} />
         </>
       )}
-      {note}
     </>
   );
 }

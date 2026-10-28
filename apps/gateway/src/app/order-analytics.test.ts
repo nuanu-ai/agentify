@@ -1,3 +1,4 @@
+import { admitVerifiedOrder } from "../testing/accepted-order.js";
 /**
  * The product analytics an order gives as it lives: one event when it is
  * written, one per result of each payment attempt, and one each time the
@@ -20,6 +21,7 @@ import {
   workOnce,
   workUntilStopped,
 } from "../testing/harness.js";
+import type { PricedPurchase } from "./gateway.js";
 import { channelOf, orderChanged } from "./order-analytics.js";
 
 const PAYER = "0x0000000000000000000000000000000000000008";
@@ -99,11 +101,11 @@ const published = async (
   return made.id;
 };
 
-/** An order priced and waiting for its payment. */
-const priced = async (h: Harness, itemId: string): Promise<string> => {
+/** A stamped price held by the buyer before any durable order exists. */
+const priced = async (h: Harness, itemId: string): Promise<PricedPurchase> => {
   const offered = await h.gateway.beginPurchase(itemId, {});
   if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-  return offered.order.order.id;
+  return offered.order;
 };
 
 const stored = async (h: Harness, orderId: string): Promise<StoredOrder> => {
@@ -133,7 +135,8 @@ async function recoverable(fulfillment: "async" | "sync") {
     notBefore: String(Math.floor(h.now() / 1000) - 30),
   };
   h.facilitator.willVerify({ verified: true, payer: PAYER, validUntil: null, recovery });
-  return { h, recovery, payTo, orderId: await priced(h, itemId) };
+  const offer = await priced(h, itemId);
+  return { h, recovery, payTo, offer, orderId: offer.order.id };
 }
 
 /** Every deadline the order is waiting on, run out, as its reminders would. */
@@ -152,8 +155,13 @@ describe("the order an agent's purchase writes", () => {
     open = await harness();
     const itemId = await published(open);
 
-    const orderId = await priced(open, itemId);
+    const offer = await priced(open, itemId);
+    const orderId = offer.order.id;
 
+    expect(recorded(open, "agc_order_created")).toStrictEqual([]);
+    expect(await open.store.orderById(orderId)).toBeNull();
+    open.advance(1_000);
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
     const created = recorded(open, "agc_order_created");
     expect(created).toStrictEqual([
       {
@@ -168,8 +176,7 @@ describe("the order an agent's purchase writes", () => {
     expect(at?.at).toStrictEqual(
       new Date((await stored(open, orderId)).order.timestamps.createdAt),
     );
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
     await open.gateway.orderById(orderId);
 
     expect(recorded(open, "agc_order_created")).toHaveLength(1);
@@ -193,7 +200,8 @@ describe("the order an agent's purchase writes", () => {
     await open.gateway.sellThrough(open.merchant.id, "woocommerce");
     const itemId = await published(open, "async", "woocommerce");
 
-    await priced(open, itemId);
+    const offer = await priced(open, itemId);
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     expect(recorded(open, "agc_order_created")[0]?.fields).toMatchObject({
       integration: "woocommerce",
@@ -202,7 +210,8 @@ describe("the order an agent's purchase writes", () => {
 
   it("calls the money real on the live channel's mainnet, and test everywhere else", async () => {
     open = await harness(LIVE);
-    await priced(open, await published(open));
+    const live = await priced(open, await published(open));
+    await open.gateway.payPurchase(live.priceOffer.stamp, "PAYMENT", "fp-live");
     expect(recorded(open, "agc_order_created")[0]?.fields).toStrictEqual({
       integration: "api",
       money_mode: "real",
@@ -211,7 +220,8 @@ describe("the order an agent's purchase writes", () => {
     await open.stop();
 
     open = await harness({ FACILITATOR_URL: "sandbox:scripted" });
-    await priced(open, await published(open));
+    const sandbox = await priced(open, await published(open));
+    await open.gateway.payPurchase(sandbox.priceOffer.stamp, "PAYMENT", "fp-sandbox");
     expect(recorded(open, "agc_order_created")[0]?.fields).toMatchObject({
       money_mode: "test",
       network: "base_sepolia",
@@ -222,10 +232,11 @@ describe("the order an agent's purchase writes", () => {
 describe("a payment attempt's result", () => {
   it("is recorded paid once, with the stored price's exact amount and currency, when the charge settles", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
 
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     const attempt = (await stored(open, orderId)).paymentAttempt;
     expect(recorded(open, "agc_payment_result")).toStrictEqual([
@@ -247,10 +258,10 @@ describe("a payment attempt's result", () => {
 
   it("is recorded not paid, with the reason, when the charge is reported failed", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
+    const offer = await priced(open, await published(open));
     open.facilitator.willSettle({ settled: false, reason: "insufficient funds" });
 
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     expect(payments(open)).toStrictEqual([
       {
@@ -263,9 +274,9 @@ describe("a payment attempt's result", () => {
   });
 
   it("is recorded unresolved when the outcome becomes unknown, and paid for the same attempt when recovery finds it, with one charge", async () => {
-    const { h, orderId } = await recoverable("async");
+    const { h, orderId, offer } = await recoverable("async");
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-original");
     h.advance(20_000);
     await runOut(h, orderId);
     h.runtime.facilitator.reconcile = async () => ({
@@ -301,9 +312,9 @@ describe("a payment attempt's result", () => {
   });
 
   it("is not recorded again while recovery keeps finding the outcome unknown", async () => {
-    const { h, orderId } = await recoverable("async");
+    const { h, orderId, offer } = await recoverable("async");
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-original");
     h.advance(20_000);
     await runOut(h, orderId);
     let block = 100;
@@ -326,12 +337,12 @@ describe("a payment attempt's result", () => {
   });
 
   it("is not recorded for a price or a payment that was only verified", async () => {
-    const { h, orderId, recovery, payTo } = await recoverable("sync");
-    await h.store.claimPayment("fp-original", orderId);
-
-    await h.gateway.runner.presentVerifiedPayment(orderId, PAYER, "PAYMENT", payTo, h.now(), {
-      recovery,
+    const { h, recovery, offer } = await recoverable("sync");
+    await admitVerifiedOrder(h.gateway, offer, {
+      owner: PAYER,
+      payment: "PAYMENT",
       fingerprint: "fp-original",
+      recovery,
     });
 
     expect(payments(h)).toStrictEqual([]);
@@ -339,7 +350,10 @@ describe("a payment attempt's result", () => {
 
   it("is not recorded paid off a payment stage that says settled with no saved completion behind it", async () => {
     open = await harness();
-    const quoted = await stored(open, await priced(open, await published(open)));
+    const offer = await priced(open, await published(open));
+    open.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-original");
+    const quoted = await stored(open, offer.order.id);
     const { paymentAttempt: _none, ...unattempted } = quoted;
 
     const events = orderChanged(
@@ -355,8 +369,9 @@ describe("a payment attempt's result", () => {
 
   it("leaves the amount out, and never says zero, where the order holds no price", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
     const paid = await stored(open, orderId);
     const attempt = paid.paymentAttempt;
     if (attempt === undefined) throw new Error("no attempt");
@@ -380,8 +395,9 @@ describe("a payment attempt's result", () => {
 describe("the outcome the buyer reads", () => {
   it("is recorded delivered, with the payment as it stands, when the goods arrive", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     await workOnce(open, { onOrder: () => ({ delivered: { activation_code: "CODE-1" } }) });
 
@@ -399,8 +415,9 @@ describe("the outcome the buyer reads", () => {
 
   it("is not recorded at the order's birth, nor for a step that leaves it in progress", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     await workOnce(open, { onOrder: () => ({ accepted: {} }) });
 
@@ -411,8 +428,9 @@ describe("the outcome the buyer reads", () => {
   it("is attributed to the merchant's worker when the goods come through their key", async () => {
     open = await harness();
     served = await serve(open);
-    const orderId = await priced(open, await published(open));
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     const delivered = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
       headers: { authorization: `Bearer ${theMerchantKey("test")}` },
@@ -426,11 +444,12 @@ describe("the outcome the buyer reads", () => {
   });
 
   it("is recorded delivered_unpaid, with the reason, when goods were made and the charge failed", async () => {
-    const { h, orderId, recovery, payTo } = await recoverable("sync");
-    await h.store.claimPayment("fp-original", orderId);
-    await h.gateway.runner.presentVerifiedPayment(orderId, PAYER, "PAYMENT", payTo, h.now(), {
-      recovery,
+    const { h, orderId, recovery, offer } = await recoverable("sync");
+    await admitVerifiedOrder(h.gateway, offer, {
+      owner: PAYER,
+      payment: "PAYMENT",
       fingerprint: "fp-original",
+      recovery,
     });
     h.facilitator.willSettle({ settled: false, reason: "payment failed" });
 
@@ -466,7 +485,7 @@ describe("the outcome the buyer reads", () => {
     await worker.stop();
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     const orderId = offered.order.order.id;
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-1", address);
+    await h.gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "fp-1", address);
     await h.gateway.acceptOrder(h.merchant.id, orderId, {});
 
     await h.gateway.deliverOrder(h.merchant.id, orderId, {
@@ -482,8 +501,9 @@ describe("the outcome the buyer reads", () => {
 
   it("is recorded fulfillment_closed, claiming no refund, when the merchant closes a paid order", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
-    await open.gateway.payPurchase(orderId, "PAYMENT", "fp-1");
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-1");
 
     await open.gateway.closeOrder(open.merchant.id, orderId, { message: "We agreed an offset." });
 
@@ -493,10 +513,10 @@ describe("the outcome the buyer reads", () => {
   });
 
   it("is recorded fulfillment_closed by the merchant at a closure while the payment is unknown, and not again when recovery finds it paid", async () => {
-    const { h, orderId } = await recoverable("async");
+    const { h, orderId, offer } = await recoverable("async");
     served = await serve(h);
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(orderId, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "fp-original");
     h.advance(20_000);
     await runOut(h, orderId);
 
@@ -527,11 +547,12 @@ describe("the outcome the buyer reads", () => {
   });
 
   it("goes expired, back to in progress, then delivered when a late charge is found, with one payment", async () => {
-    const { h, orderId, recovery, payTo } = await recoverable("sync");
-    await h.store.claimPayment("fp-original", orderId);
-    await h.gateway.runner.presentVerifiedPayment(orderId, PAYER, "PAYMENT", payTo, h.now(), {
-      recovery,
+    const { h, orderId, recovery, payTo, offer } = await recoverable("sync");
+    await admitVerifiedOrder(h.gateway, offer, {
+      owner: PAYER,
+      payment: "PAYMENT",
       fingerprint: "fp-original",
+      recovery,
     });
     h.advance(60_000);
     await runOut(h, orderId);
@@ -576,8 +597,9 @@ describe("the outcome the buyer reads", () => {
 describe("what an order's analytics carry", () => {
   it("names the order, the payment and the charge only by reference, never in a property", async () => {
     open = await harness();
-    const orderId = await priced(open, await published(open));
-    await open.gateway.payPurchase(orderId, "PAYMENT-AUTHORIZATION", "fp-secret");
+    const offer = await priced(open, await published(open));
+    const orderId = offer.order.id;
+    await open.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT-AUTHORIZATION", "fp-secret");
     await workOnce(open, { onOrder: () => ({ delivered: { activation_code: "CODE-1" } }) });
     const order = await stored(open, orderId);
 
@@ -613,7 +635,13 @@ describe("what an order's analytics carry", () => {
   it("records nothing about a change whose write is rolled back", async () => {
     const h = await harness();
     open = h;
-    const orderId = await priced(h, await published(h));
+    const offer = await priced(h, await published(h));
+    const orderId = offer.order.id;
+    await admitVerifiedOrder(h.gateway, offer, {
+      owner: PAYER,
+      payment: "PAYMENT",
+      fingerprint: "fp-original",
+    });
     const before = h.store.recordedAnalytics.length;
     const found = await stored(h, orderId);
     const channel = channelOf(h.runtime.config);

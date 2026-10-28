@@ -41,6 +41,7 @@ const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 async function aGatewayOnAPort() {
   const ids = () => randomUUID();
   const config = loadConfig({
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     PAY_TO_ADDRESS: PAY_TO,
   });

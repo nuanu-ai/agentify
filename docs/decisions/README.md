@@ -38,6 +38,8 @@ written in; the rest are in English.
 | [0034](0034-an-agent-knows-the-seller-by-their-site.md) | An agent knows who sells by the seller's name and the address of the shop's own site, on every card and order. |
 | [0017](0017-leniency-at-the-door.md) | The wire may accept shorter spellings, but they are opened into the one canonical shape at the door, before anything is stored or served. |
 
+| [0049](0049-a-price-travels-with-the-buyer.md) | An authenticated price travels in the 402; only a presented payment creates an order, and one price names one order. |
+
 ### Merchant integration
 
 | Decision | What it decides |
@@ -48,9 +50,8 @@ written in; the rest are in English.
 | [0014](0014-registration.md) | An account comes into being only at a sign-in, and a merchant only when that person presses the dashboard's one control for it; no terminal command makes either. |
 | [0035](0035-agentify-is-not-the-store.md) | Agentify is not the store: a product comes from the merchant's own system, and Agentify holds no goods. |
 | [0036](0036-a-merchant-sells-through-one-integration-at-a-time.md) | A merchant sells through one integration at a time, the SDK or one WooCommerce shop, and the other's cards are off sale. |
-| [0043](0043-the-purchase-door-refuses-before-any-charge.md) | At most fifty of a merchant's purchases wait for payment at once; every purchase is refused, and the merchant's cards left out of the catalogue, while the merchant's own code has not polled for ten minutes. |
+| [0043](0043-the-purchase-door-refuses-before-any-charge.md) | Per-merchant admission bounds transient price work and gives ready paid work priority; every purchase is refused, and the merchant's cards left out of the catalogue, while the merchant's own code has not polled for ten minutes. |
 | [0046](0046-ten-unserved-orders-stop-a-merchant.md) | While ten or more paid orders a merchant took on are left without delivery or closure, every new purchase of theirs is refused, synchronous ones included, until a late delivery or a closure leaves fewer; orders Agentify never handed over, and a shop's downloads, do not count. |
-| [0048](0048-an-attempt-that-lapsed-unpaid-is-deleted-after-thirty-days.md) | An order that ended with nothing charged, held or presented to pay with is deleted thirty days after it was last written, unless a receipt or a payment claim names it. |
 | [0023](0023-woocommerce-connect.md) | A connected WooCommerce shop's keys are a merchant credential Agentify holds and fulfills orders with, importing the shop's products as cards. |
 | [0041](0041-a-taxed-woocommerce-sale-is-taken-on-within-a-cent.md) | A WooCommerce shop that calculates tax is sold from where its cart and its order agree: downloads only with prices entered including tax, parcels at the cart's total, tax rounded at the subtotal, and every shop's order taken on within one cent of the payment, the difference recorded. |
 | [0044](0044-a-shop-in-another-currency-sells-at-its-merchants-rate.md) | A WooCommerce shop priced in another currency, one Coinbase gives a rate for at no decimals or two, sells at a rate its merchant sets and Agentify keeps every version of; a price binds the shop's amount, the dollars and the rate, and the shop's order is matched in its own currency. |

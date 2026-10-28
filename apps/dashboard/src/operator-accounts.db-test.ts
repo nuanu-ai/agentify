@@ -352,7 +352,7 @@ if (databaseUrl === null) {
       };
       expect((await identity.sendReportLink(report)).status).toBe("accepted");
       const now = new Date();
-      await postgresWooShops(pool).connect({
+      await postgresWooShops(pool, "operator-accounts-cart-auth-secret").connect({
         accountId: seller.person.id,
         shopUrl: "https://shop.example.com",
         consumerKey: "k".repeat(43),

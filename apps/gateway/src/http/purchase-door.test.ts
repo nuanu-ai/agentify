@@ -136,194 +136,8 @@ const listedIn = async (served: Served): Promise<string[]> =>
     (item) => item.id,
   );
 
-/** Fifty purchases priced and left unpaid, the seller answering each price. */
-const fiftyWaiting = async (
-  harnessed: Harness,
-  served: Served,
-  itemId: string,
-  merchantId: string,
-  through: Integration,
-) => {
-  const worker = workUntilStopped(harnessed, { onQuote: () => priced, merchantId, through });
-  try {
-    for (let one = 0; one < 50; one += 1) {
-      const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
-        body: { params: {} },
-      });
-      expect(answered.status).toBe(402);
-    }
-  } finally {
-    await worker.stop();
-  }
-};
+/** The harness's own seller with one card on sale through their own code. */
 
-describe("purchases waiting for payment", () => {
-  it.each<Integration>(["api", "woocommerce"])(
-    "refuse the fifty-first, through %s, before the seller or their shop is asked its price",
-    async (through) => {
-      const { harnessed, served } = await started();
-      const merchantId = harnessed.merchant.id;
-      const itemId = await sellingThrough(harnessed, merchantId, through);
-      await fiftyWaiting(harnessed, served, itemId, merchantId, through);
-
-      const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
-        body: { params: {} },
-      });
-
-      expect(refused.status).toBe(429);
-      expect(Number(refused.headers.get("retry-after"))).toBeGreaterThan(0);
-      const { error } = refused.body as Refused;
-      expect(error.code).toBe("seller_busy");
-      expect(error.retryable).toBe(true);
-      expect(error.message).toContain("nothing was charged");
-      expect(error.message).toContain("a few seconds");
-      // No price question went to the seller's stream, which is the only way a
-      // question reaches their code or the connector that asks their shop.
-      expect(await harnessed.queue.draw(merchantId, 100, 0)).toStrictEqual([]);
-      expect(await harnessed.store.orders(merchantId)).toHaveLength(50);
-    },
-  );
-
-  it("let a purchase through again once exactly one of fifty has lapsed unpaid", async () => {
-    const { harnessed, served } = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "api");
-    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
-    try {
-      let firstId = "";
-      for (let n = 0; n < 50; n++) {
-        expect(
-          (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
-        ).toBe(402);
-        if (n === 0) {
-          firstId = (await harnessed.store.orders(merchantId))[0]?.order.id ?? "";
-          harnessed.advance(1_000);
-        }
-      }
-      harnessed.advance(29_001);
-      await harnessed.gateway.runner.apply(firstId, {
-        kind: "deadline_expired",
-        at: harnessed.now(),
-        deadline: "quote_expiry",
-      });
-      const stillHeld = (await harnessed.store.orders(merchantId)).filter(
-        (row) => row.order.id !== firstId,
-      );
-      expect(stillHeld).toHaveLength(49);
-      for (const row of stillHeld) {
-        expect(row.order.state).toBe("quoted");
-        expect((row.order.timestamps.quotedAt ?? 0) + 30_000).toBeGreaterThan(harnessed.now());
-      }
-      expect(
-        (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
-      ).toBe(402);
-      expect(
-        (await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } })).status,
-      ).toBe(429);
-    } finally {
-      await worker.stop();
-    }
-  });
-
-  it("hold no place once their prices have run out, while the reminders that close them have not fired", async () => {
-    const { harnessed, served } = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
-
-    // No reminder is applied: in this harness they wait on real time.
-    harnessed.advance(31_000);
-    const worker = workUntilStopped(harnessed, { onQuote: () => priced });
-    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
-      body: { params: {} },
-    });
-    await worker.stop();
-
-    expect(answered.status).toBe(402);
-  });
-
-  it("are said in the log at most once a minute while a seller's purchases are refused for them, naming the seller and how many wait", async () => {
-    // A price that holds five minutes, so the fifty still wait a minute on.
-    const { harnessed, served } = await started({ QUOTE_TTL_MS: String(5 * MINUTE) });
-    const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
-    // Another card of the same seller's, which asks the buyer where to send it.
-    const mailed = await harnessed.store.publishCard(
-      merchantId,
-      { ...pricedCard, merchant_item_id: "esim-mailed", params: { email: { type: "string" } } },
-      harnessed.now(),
-    );
-    const refuse = async () => {
-      const refused = await served.call("POST", `/x402/${mailed.id}/purchase`, {
-        body: { params: { email: "buyer@example.com" } },
-      });
-      expect(refused.status).toBe(429);
-    };
-
-    const first = await loggedWhile(async () => {
-      await refuse();
-      harnessed.advance(30_000);
-      await refuse();
-    });
-    harnessed.advance(31_000);
-    const later = await loggedWhile(refuse);
-
-    const lines = (said: string) => said.split("\n").filter((line) => line.includes(merchantId));
-    expect(lines(first)).toHaveLength(1);
-    expect(lines(first)[0]).toContain("50 purchases");
-    expect(lines(later)).toHaveLength(1);
-    expect(first + later).not.toContain("buyer@example.com");
-  });
-
-  it("are told to their seller, only while as many wait as the limit allows", async () => {
-    const { harnessed, served } = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
-
-    const busy = await harnessed.gateway.standingOf(merchantId);
-    harnessed.advance(31_000);
-    const free = await harnessed.gateway.standingOf(merchantId);
-
-    expect(busy.busy).toBe(true);
-    expect(free.busy).toBe(false);
-  });
-
-  it("leave the seller's cards in the catalogue, and a look at one still offers the price", async () => {
-    // A place frees within a minute, and anybody can fill the fifty without
-    // paying, so a full limit must not empty a seller's listing.
-    const { harnessed, served } = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = await sellingThrough(harnessed, merchantId, "api");
-    await fiftyWaiting(harnessed, served, itemId, merchantId, "api");
-
-    const looked = await served.call("GET", `/x402/${itemId}/purchase`);
-
-    expect(await listedIn(served)).toStrictEqual([itemId]);
-    expect(looked.status).toBe(402);
-    expect(looked.headers.get("payment-required")).not.toBeNull();
-  });
-
-  it("are counted for each seller apart, so one seller's fifty hold up nobody else", async () => {
-    const { harnessed, served } = await started();
-    const busy = harnessed.merchant.id;
-    const busyItem = await sellingThrough(harnessed, busy, "api");
-    await fiftyWaiting(harnessed, served, busyItem, busy, "api");
-    const other = await harnessed.addMerchant();
-    const otherItem = await sellingThrough(harnessed, other.id, "api");
-
-    const worker = workUntilStopped(harnessed, { onQuote: () => priced, merchantId: other.id });
-    const answered = await served.call("POST", `/x402/${otherItem}/purchase`, {
-      body: { params: {} },
-    });
-    await worker.stop();
-
-    expect(answered.status).toBe(402);
-  });
-});
-
-/** The harness's own seller with one card of theirs on sale, through their own code. */
 const selling = async (harnessed: Harness, card: Card): Promise<string> =>
   (await harnessed.store.publishCard(harnessed.merchant.id, card, harnessed.now())).id;
 
@@ -399,12 +213,18 @@ describe("a purchase that charges before its goods", () => {
 
     harnessed.advance(3 * MINUTE);
     const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
-    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, payment, fingerprint);
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      payment,
+      fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect(paid.step).toBe("seller_not_taking_orders");
     expect(harnessed.facilitator.verifies).toStrictEqual([]);
     expect(harnessed.facilitator.settles).toStrictEqual([]);
-    expect((await harnessed.store.orderById(offered.order.order.id))?.order.payment).toBe("none");
+    expect(await harnessed.store.orderById(offered.order.order.id)).toBeNull();
   });
 
   it("is refused while the seller's own code is silent, however often the connector of a shop they left still polls", async () => {
@@ -510,7 +330,13 @@ describe("a worker's contract admission", () => {
     if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
     const orderId = offered.order.order.id;
     const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
-    const paid = await harnessed.gateway.payPurchase(orderId, payment, fingerprint);
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      payment,
+      fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect(paid.step).toBe("under_way");
     await vi.waitFor(async () =>
       expect((await harnessed.store.orderById(orderId))?.order.state).toBe("paid"),
@@ -623,7 +449,7 @@ describe("a synchronous purchase", () => {
     expect(error.code).toBe("seller_not_taking_orders");
     expect(error.retryable).toBe(true);
     expect(error.message).toContain("nothing was charged");
-    expect(await harnessed.store.orders(harnessed.merchant.id)).toHaveLength(1);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     expect(taken.status).toBe(402);
   });
 
@@ -638,7 +464,13 @@ describe("a synchronous purchase", () => {
 
     harnessed.advance(3 * MINUTE);
     const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
-    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, payment, fingerprint);
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      payment,
+      fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect(paid.step).toBe("seller_not_taking_orders");
     expect(harnessed.facilitator.verifies).toStrictEqual([]);
@@ -671,7 +503,13 @@ const leftUnserved = async (
       if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
       const orderId = offered.order.order.id;
       const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
-      await harnessed.gateway.payPurchase(orderId, payment, fingerprint, shipTo);
+      await harnessed.gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        payment,
+        fingerprint,
+        shipTo,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
       await vi.waitFor(async () =>
         expect((await harnessed.store.orderById(orderId))?.order.state).toBe("dispatched"),
       );
@@ -737,7 +575,13 @@ const lateSettled = async (harnessed: Harness): Promise<string> => {
   const offered = await harnessed.gateway.beginPurchase(published.id, {});
   if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
   const orderId = offered.order.order.id;
-  await harnessed.gateway.payPurchase(orderId, "PAYMENT-LATE", "fp-late");
+  await harnessed.gateway.payPurchase(
+    offered.order.priceOffer.stamp,
+    "PAYMENT-LATE",
+    "fp-late",
+    undefined,
+    { itemId: offered.order.itemId, params: offered.order.params },
+  );
   const executedAt = harnessed.now();
   harnessed.advance(2_000);
   const attempt = (await harnessed.store.orderById(orderId))?.paymentAttempt;
@@ -873,12 +717,18 @@ describe("a seller with ten paid orders left unserved", () => {
     const settled = harnessed.facilitator.settles.length;
 
     const { payment, fingerprint } = paymentNamingNoPayer(harnessed);
-    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, payment, fingerprint);
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      payment,
+      fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect(paid.step).toBe("seller_not_fulfilling");
     expect(harnessed.facilitator.verifies).toHaveLength(verified);
     expect(harnessed.facilitator.settles).toHaveLength(settled);
-    expect((await harnessed.store.orderById(offered.order.order.id))?.order.payment).toBe("none");
+    expect(await harnessed.store.orderById(offered.order.order.id)).toBeNull();
   });
 
   it("is said in the log at most once a minute, naming the seller and nothing of the buyer", async () => {
@@ -936,18 +786,14 @@ describe("a seller with ten paid orders left unserved", () => {
     const merchantId = harnessed.merchant.id;
     const itemId = await sellingThrough(harnessed, merchantId, "api");
     const worker = workUntilStopped(harnessed, { onQuote: () => priced });
-    const offered = await served.call("POST", `/x402/${itemId}/purchase`, { body: { params: {} } });
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
     await worker.stop();
-    expect(offered.status).toBe(402);
-    const [orderId] = (await harnessed.store.orders(merchantId)).map((held) => held.order.id);
-    if (orderId === undefined) throw new Error("no order was opened");
-    const record = await harnessed.store.orderById(orderId);
-    if (record === null) throw new Error("the order went missing");
+    if (offered.step !== "pay") throw new Error("the merchant gave no price");
     await leftUnserved(harnessed, itemId, 10);
     const settled = harnessed.facilitator.settles.length;
 
     const payTo = (await harnessed.store.merchantById(merchantId))?.payoutWallet.split?.address;
-    const { payment } = await signedFor(harnessed, record, aWallet("a buyer"), {
+    const { payment } = await signedFor(harnessed, offered.order, aWallet("a buyer"), {
       nonce: "0x7",
       ...(payTo === undefined ? {} : { payTo }),
     });
@@ -979,16 +825,24 @@ describe("a seller with ten paid orders left unserved", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      first.payment,
+      first.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("delivered_unpaid");
     harnessed.facilitator.willSettle();
     await leftUnserved(harnessed, itemId, 10);
 
     const repeated = await harnessed.gateway.payPurchase(
-      orderId,
+      offered.order.priceOffer.stamp,
       second.payment,
       second.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
 
     expect(repeated.step).toBe("settled");
@@ -1006,7 +860,9 @@ describe("a seller with ten paid orders left unserved", () => {
     if (kept == null || owner == null) throw new Error("the order kept no payment");
     const settled = harnessed.facilitator.settles.length;
 
-    const again = await harnessed.gateway.payPurchase(first, kept, owner);
+    const stamp = (await harnessed.store.orderById(first))?.priceOffer?.stamp;
+    if (stamp === undefined) throw new Error("the paid order kept no offer");
+    const again = await harnessed.gateway.payPurchase(stamp, kept, owner);
 
     expect(again.step).not.toBe("seller_not_fulfilling");
     expect("order" in again && again.order.order.id).toBe(first);

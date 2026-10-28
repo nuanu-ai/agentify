@@ -77,7 +77,6 @@ import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
-  type LapsedAttempt,
   ordersView,
   receiptsView,
 } from "../src/views.js";
@@ -1470,18 +1469,6 @@ const CARDS: GalleryState[] = [
   ),
   cards(
     {
-      id: "dashboard-cards-busy",
-      screen: "Products",
-      when: "A merchant opens Products while as many purchases of theirs as Agentify allows are priced and unpaid.",
-      cause:
-        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so and that sales resume by themselves; each place comes free when its purchase is paid or its price runs out.",
-    },
-    cardsView(CATALOGUE, ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live"), { busy: true }) },
-  ),
-  cards(
-    {
       id: "dashboard-cards-wallet-changing",
       screen: "Products",
       when: "A merchant on the live site opens Products while a change of their payout wallet waits to apply.",
@@ -1836,15 +1823,13 @@ const ordersAt = (
     cards = SOLD,
     open = openAmong(listed),
     owed = {},
-    lapsed,
     connector = {},
   }: Readonly<{
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
     owed?: Parameters<typeof ordersView>[4];
-    lapsed?: Parameters<typeof ordersView>[6];
-    connector?: Parameters<typeof ordersView>[8];
+    connector?: Parameters<typeof ordersView>[7];
   }> = {},
 ) =>
   ordersView(
@@ -1854,7 +1839,6 @@ const ordersAt = (
     new URL(path, ORIGIN[mode]).searchParams,
     owed,
     paidIntoSplit(mode, listed.orders),
-    lapsed,
     {},
     connector,
     new Set(),
@@ -1978,20 +1962,6 @@ const PAID_AFTER_CLOSURE = OrderListSchema.parse({
       : order,
   ),
 });
-
-/** Two purchases priced and never paid, and one the price check refused before any price. */
-const LAPSED: readonly LapsedAttempt[] = ordersOf([
-  ["number", "expired"],
-  ["vpn", "expired"],
-  ["esimEurope", "rejected"],
-]).orders.map((order, at) => ({
-  id: order.id,
-  merchant_item_id: order.merchant_item_id,
-  status: order.status,
-  price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
-  asked_at: secondsAfter(order.price.at, -2),
-  priced_at: at === 2 ? null : order.price.at,
-}));
 
 const ORDERS: GalleryState[] = [
   {
@@ -2327,36 +2297,6 @@ const ORDERS: GalleryState[] = [
     ]),
     "/orders",
     { cards: soldAs(cardsOf("paused", ON_SALE)) },
-  ),
-  orders(
-    {
-      id: "dashboard-orders-lapsed",
-      screen: "Orders",
-      when: "A merchant opens Lapsed beside their orders to find a purchase a buyer says failed.",
-      cause:
-        "Purchases priced and never paid, or refused before payment, priced or not, are read apart from the other orders, a page at a time, and kept for thirty days.",
-    },
-    ordersOf([
-      ["vpn", "delivered"],
-      ["esimEurope", "in_progress"],
-    ]),
-    "/orders?show=lapsed",
-    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
-  ),
-  orders(
-    {
-      id: "dashboard-orders-lapsed-unpriced",
-      screen: "Orders",
-      when: "A merchant opens a lapsed purchase that the price check refused before naming any price.",
-      cause:
-        "The attempt was never priced, so its row says Not priced and its details say when it was asked for, with no moment for a price.",
-    },
-    ordersOf([
-      ["vpn", "delivered"],
-      ["esimEurope", "in_progress"],
-    ]),
-    `/orders?${new URLSearchParams({ show: "lapsed", details: LAPSED[2]?.id ?? "" })}`,
-    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
   ),
   orders(
     {

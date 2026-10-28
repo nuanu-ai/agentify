@@ -115,6 +115,33 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
 }
 
 function transitionIn(order: Order, event: OrderEvent): TransitionResult {
+  if (event.kind === "payment_presented") {
+    const quotedAt = order.timestamps.quotedAt;
+    if (
+      order.state !== "quoted" ||
+      order.payment !== "none" ||
+      quotedAt === null ||
+      event.at < quotedAt ||
+      event.at >= quotedAt + order.policy.deadlines.quoteTtlMs
+    ) {
+      return reject(
+        order,
+        event,
+        "event_not_applicable",
+        "a payment request is admitted only while the quoted price holds",
+      );
+    }
+    if (order.timestamps.paymentPresentedAt !== null) return ok(order);
+    return ok({
+      ...order,
+      timestamps: {
+        ...order.timestamps,
+        createdAt: event.at,
+        paymentPresentedAt: event.at,
+      },
+    });
+  }
+
   if (event.kind === "close_called") {
     if (order.state === "delivered") {
       return answer(order, { ok: false, error: "fulfillment_complete", retryable: false });

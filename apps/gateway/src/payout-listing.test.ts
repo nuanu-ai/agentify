@@ -31,15 +31,6 @@ const NOW = Date.parse("2026-10-14T12:00:00.000Z");
 const T1 = PAYOUT_SPLIT_NETWORKS;
 const T1_TEST = payoutSplitNetworkOf(T1, "eip155:84532");
 
-const card: Card = {
-  merchant_item_id: "a-room",
-  title: "A room",
-  description: "A room sold by the merchant who published this card",
-  price: { amount: "80.00", currency: "USD" },
-  result: { access_code: { type: "string" } },
-  fulfillment: "sync",
-};
-
 /** Goods that arrive after the purchase, so the payment is taken before anything is delivered. */
 const lateGoods: Card = {
   merchant_item_id: "esim-7d",
@@ -71,6 +62,7 @@ const aGatewayOver = (
   environment: Record<string, string> = {},
 ): Gateway => {
   const config = loadConfig({
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     ...environment,
   });
@@ -98,7 +90,7 @@ const aMerchantPaidAt = async (
 ): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
-  await database.store.setSellerSite(id, "https://shop.example", NOW);
+  await database.store.setSellerSite(id, "https://shop.example.com", NOW);
   await database.store.noteContact(id, NOW);
   await database.store.setPayoutWallet(
     id,
@@ -208,7 +200,10 @@ describe("the operator's payout, listed", () => {
     await gateway.poll(merchant, 0);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
     const first = payoutSplitFor(T1_TEST, merchant, walletNumber(1));
     await database.store.setPayoutWallet(
       merchant,
@@ -267,12 +262,18 @@ describe("the operator's payout, listed", () => {
     const database = aDatabase();
     const merchant = await aMerchantPaidAt(database, "mch_a", walletNumber(1));
     const gateway = aGatewayOver(database);
-    const stored = await database.store.publishCard(merchant, card, NOW);
+    const stored = await database.store.publishCard(merchant, lateGoods, NOW);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    const due = deadlines(offered.order.order).find((deadline) => deadline.kind === "quote_expiry");
-    if (due === undefined) throw new Error("the order waits on no price that can lapse");
-    const before = (await database.store.orderById(offered.order.order.id))?.order.state;
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
+    const record = await database.store.orderById(offered.order.order.id);
+    if (record === null) throw new Error("the paid purchase wrote no order");
+    const due = deadlines(record.order).find((deadline) => deadline.kind === "async_fulfillment");
+    if (due === undefined) throw new Error("the paid order has no fulfillment deadline");
+    const before = record.order.state;
 
     vi.useFakeTimers();
     try {
@@ -326,7 +327,10 @@ describe("a payout over a split that would hand a share to an address no wallet 
     await gateway.poll(merchant, 0);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
     const moved = await database.store.setPayoutWallet(
       merchant,
       { address: T1_TEST.multicall3, pending: null },

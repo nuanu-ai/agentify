@@ -45,7 +45,6 @@ export const counts = (
     delivered_unpaid: 0,
     in_progress: 0,
     ended: 0,
-    lapsed: 0,
     ...given,
   };
   const all =
@@ -54,8 +53,7 @@ export const counts = (
       segments.unfulfilled +
       segments.delivered_unpaid +
       segments.in_progress +
-      segments.ended +
-      segments.lapsed;
+      segments.ended;
   return { ...segments, all };
 };
 
@@ -105,7 +103,6 @@ export const closedOrder = (): OperatorOrder => ({
       message: "Our supplier could not issue a profile for this region.",
     },
     onOpenList: false,
-    lapsed: false,
   },
   timeline: [
     { kind: "created", at: T },
@@ -175,7 +172,6 @@ export const unknownOrder = (): OperatorOrder => {
       status: "payment_unresolved",
       payment_status: "unresolved",
       onOpenList: true,
-      lapsed: false,
     },
     timeline: [
       { kind: "created", at: sent - 2_000 },
@@ -226,7 +222,7 @@ export const parcelOrder = (): OperatorOrder => ({
     transaction: TX,
     ship_by: "2026-10-23T14:49:00.000Z",
   },
-  merchantReads: { status: "shipped", payment_status: "paid", onOpenList: false, lapsed: false },
+  merchantReads: { status: "shipped", payment_status: "paid", onOpenList: false },
   timeline: [
     { kind: "created", at: T },
     { kind: "priced", at: T + 1_000, price: { amount: "39.00", currency: "USD" } },

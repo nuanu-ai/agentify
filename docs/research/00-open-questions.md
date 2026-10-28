@@ -34,7 +34,8 @@ and git keeps the entries that were here.
 | How fresh a sign-in an administrative action asks for, fifteen minutes or another window, and whether reading the admin asks for one too | product owner, with the architect | `85-operator-admin.md` |
 | Whether the admin reads the splits' balances from the chain, so that the commission Agentify has received is a figure rather than a link to the explorer | product owner | `85-operator-admin.md` |
 | Who answers the access requests the scanner records through the route its privacy page names; the scanner's page counts them and nothing records an answer | product owner | `85-operator-admin.md` |
-| How the purchase door keeps unpaid price questions from loading a merchant's shop without letting anybody stop that merchant's sales for free; the limit of fifty purchases waiting for payment still lets them, and the product owner does not accept that (2026-10-26) | product owner | `87-unpaid-price-questions.md`, ADR-0043 |
+| ~~How the purchase door keeps unpaid price questions from loading a merchant's shop without letting anybody stop that merchant's sales for free; the limit of fifty purchases waiting for payment still lets them, and the product owner does not accept that (2026-10-26)~~ | product owner | `87-unpaid-price-questions.md`, ADR-0043; resolved by the stateless-price design, ADR-0049 |
+| How a merchant learns that their price handler is failing, once a purchase refused at its price question leaves no order behind: a handler that goes silent or answers wrongly now shows only as sales that do not happen | product owner | `87-unpaid-price-questions.md` |
 
 ## Money
 
@@ -44,6 +45,7 @@ and git keeps the entries that were here.
 | Whether Coinbase Wallet pays the network fee in USDC with no paymaster of ours, and what a first payout does when the wallet holds no USDC yet; checked by hand on the test channel | product owner | `48-merchant-wallet-onboarding.md` |
 | Who pays for the purchase that first lists a card in the Bazaar, which at a real price sends the merchant its own price from Agentify's wallet | product owner, when a merchant with expensive goods arrives | `04-spike-bazaar-listing.md` |
 | Whether an Indonesian merchant may accept USDC through Agentify for goods priced in rupiah, given the Currency Law's requirement of the rupiah for payments in Indonesia and Bank Indonesia's position that crypto assets are not a means of payment, and what that makes of Agentify's own part; answered before an Indonesian shop sells on the live channel | product owner, with legal counsel | `58-woo-shop-currency.md` |
+| Whether one wallet's purchases at once are limited where a card is charged after its goods: each signature passes the payment check against the same balance, the merchant makes the goods for each, and only one charge goes through. The buyer gets none of the unpaid goods, so the cost is the merchant's making them; x402's own server does not limit this either. Left open until a merchant whose goods cost money to make sells that way | product owner | `87-unpaid-price-questions.md` |
 
 ## Known limits of parcels
 
@@ -73,6 +75,8 @@ owner's to decide, and until then is a limit a parcel sells with.
 | How the scanner's limits stated on its documentation page are held equal to the worker's literals, which no test compares | engineering | — |
 | How the release preflight's fixtures, snapshots of `docker compose config` taken by hand, are kept in step with `compose.yaml`; their synthetic encryption key also decodes to 33 bytes where the scanner needs 32 | engineering | — |
 | A test path for the idempotency of `verify`, which no route can reach without a live payment | engineering | — |
+| How a flood of purchase requests for one merchant is kept from slowing every other merchant's sales through the one database pool they share: an unpaid request reads the card and the merchant before any limit can refuse it | architect | `87-unpaid-price-questions.md` |
+| How a flood of signed payments for one merchant is kept from using up the payment facilitator's rate limit, which every merchant's payments share through one key: which of our own checks come before the facilitator is called, and how many of its calls one merchant may hold at once | architect | `87-unpaid-price-questions.md` |
 | Whether the Bazaar's crawler accepts a card at a real listing; its validator accepts the declaration on both methods | a real listing | `26-discovery-method-on-get.md`, ADR-0012 |
 | How the Bazaar indexes a card whose `payTo` is a merchant's split; only a payment for a real card on production shows it | a real listing | `47-commission-in-the-product.md` |
 | Whether the Bazaar indexes a payment settled on the testnet or only on mainnet; `pnpm smoke:bootstrap` measures it, from a place allowed to hold the facilitator's credentials | engineering, by a measurement | `04-spike-bazaar-listing.md` |

@@ -1,3 +1,4 @@
+import { storeAcceptedOrder } from "./accepted-order.js";
 /**
  * The store port's promises, run against memory under `pnpm test` and against
  * Postgres under `pnpm test:db`, so the two adapters cannot drift apart.
@@ -13,14 +14,16 @@
  * only on Postgres, across two pools; the envelopes in each adapter's own file.
  */
 
-import type { Order } from "@agentify/core";
+import { type Order, transition } from "@agentify/core";
 import type { Card, Receipt } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import type { JournalEntry, JournalPage, JournalPress, JournalSubject } from "../ports/journal.js";
 import type {
+  AdmittedOrder,
   PayoutWalletWrite,
   RecordedPayoutSplit,
   Store,
+  StoredCard,
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
@@ -131,10 +134,13 @@ export const anOrder = (
       },
       redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, maxAttempts: 1 },
     },
-    payment: "none",
+    payment:
+      state === "delivered" || state === "unfulfilled" || state === "fulfillment_closed"
+        ? "settled"
+        : "verified",
     cardPrice: { amount: "5.00", currency: "USD", asOf: 0 },
-    price: null,
-    quoteSource: null,
+    price: { amount: "5.00", currency: "USD", asOf: 0 },
+    quoteSource: "card_snapshot",
     dispatch: { attempts: 0, accepted: false },
     heldFulfillment: false,
     closure: null,
@@ -142,8 +148,9 @@ export const anOrder = (
     timestamps: {
       createdAt: at.createdAt ?? 1_000,
       quotedAt: null,
+      paymentPresentedAt: null,
       settleStartedAt: null,
-      paidAt: null,
+      paidAt: at.createdAt ?? 1_000,
       dispatchedAt: null,
     },
   },
@@ -154,9 +161,9 @@ export const anOrder = (
   params: {},
   priceId: null,
   delivery: null,
-  payment: null,
-  payTo: null,
-  paidBy: null,
+  payment: "verified-fixture-payment",
+  payTo: W1,
+  paidBy: W1,
   settlement: null,
   paymentWords: [],
   paymentWordsDropped: 0,
@@ -468,15 +475,30 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // switch is made, so an order still waiting on it — to be paid at a
         // price it was quoted, or answered, or delivered — would wait for good.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_quoted", "quoted", { merchantId: A, createdAt: 1 }));
-        await store.addOrder(anOrder("ord_paid", "paid", { merchantId: A, createdAt: 2 }));
-        await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A, createdAt: 3 }));
-        await store.addOrder(anOrder("ord_done", "delivered", { merchantId: A, createdAt: 4 }));
-        await store.addOrder(anOrder("ord_theirs", "paid", { merchantId: B, createdAt: 5 }));
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_waiting", "paid", { merchantId: A, createdAt: 1 }),
+        );
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_paid", "paid", { merchantId: A, createdAt: 2 }),
+        );
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_owed", "unfulfilled", { merchantId: A, createdAt: 3 }),
+        );
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_done", "delivered", { merchantId: A, createdAt: 4 }),
+        );
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_theirs", "paid", { merchantId: B, createdAt: 5 }),
+        );
 
         expect(await store.switchIntegration(A, "woocommerce")).toStrictEqual({
           switched: false,
-          waiting: ["ord_quoted", "ord_paid"],
+          waiting: ["ord_waiting", "ord_paid"],
         });
         expect((await store.merchantById(A))?.integration).toBe("api");
       });
@@ -486,8 +508,14 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // happen, so it must leave both the integration and selling as they are.
         const store = await twoMerchants();
         await store.publishCard(B, card("sku-1", "A room"), 10_000);
-        await store.addOrder(anOrder("ord_paid", "paid", { merchantId: A, createdAt: 1 }));
-        await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A, createdAt: 2 }));
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_paid", "paid", { merchantId: A, createdAt: 1 }),
+        );
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_owed", "unfulfilled", { merchantId: A, createdAt: 2 }),
+        );
         await store.switchIntegration(B, "woocommerce");
 
         expect(await store.switchHeldBy(A, "woocommerce")).toStrictEqual(["ord_paid"]);
@@ -501,8 +529,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
       it("is not held by an order that owes nothing but money", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_owed", "unfulfilled", { merchantId: A }));
-        await store.addOrder(anOrder("ord_unpaid", "delivered_unpaid", { merchantId: A }));
+        await storeAcceptedOrder(store, anOrder("ord_owed", "unfulfilled", { merchantId: A }));
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_unpaid", "delivered_unpaid", { merchantId: A }),
+        );
 
         expect((await store.switchIntegration(A, "woocommerce")).switched).toBe(true);
       });
@@ -533,29 +564,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           sellingPaused: false,
         });
         expect(await store.selling(A)).toBe("open");
-      });
-
-      it("writes no order sold through an integration its merchant has left", async () => {
-        // The birth of an order and a switch wait for each other on the
-        // merchant, so an order read as on sale a moment before the switch is
-        // not written after it.
-        const store = await twoMerchants();
-        await store.switchIntegration(A, "woocommerce");
-
-        expect(
-          await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), {
-            through: "api",
-            waitingAtMost: 20,
-          }),
-        ).toBe("switched_away");
-        expect(await store.orderById("ord_1")).toBeNull();
-        expect(
-          await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), {
-            through: "woocommerce",
-            waitingAtMost: 20,
-          }),
-        ).toBe("written");
-        expect(await store.orderById("ord_2")).not.toBeNull();
       });
 
       it("is refused for a merchant the store does not hold", async () => {
@@ -1118,20 +1126,27 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           await store.addMerchant({ id: C, name: "Merchant C" }, 2_500);
           await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
           // In the spelling an agent's client may have written it back in.
-          await store.addOrder(paidOrder("ord_s1", A, splitOf(A, W1).address.toLowerCase(), 3_100));
-          await store.addOrder(paidOrder("ord_w0", A, W0, 3_200));
+          await storeAcceptedOrder(
+            store,
+            paidOrder("ord_s1", A, splitOf(A, W1).address.toLowerCase(), 3_100),
+          );
+          await storeAcceptedOrder(store, paidOrder("ord_w0", A, W0, 3_200));
           await store.setPayoutWallet(A, paidAt(A, W1), waitingFor(A, W1, W2, 90_000), 4_000);
           await store.setPayoutWallet(A, waitingFor(A, W1, W2, 90_000), paidAt(A, W3), 5_000);
           await store.setPayoutWallet(B, NO_WALLET, paidAt(B, W1), 6_000);
-          await store.addOrder(paidOrder("ord_s4", B, splitOf(B, W1).address, 6_100));
+          await storeAcceptedOrder(store, paidOrder("ord_s4", B, splitOf(B, W1).address, 6_100));
           // Merchant C sold on Base, as a database moved from one channel to
           // the other holds it: the split is another network's, and an order
           // was paid to it.
           await store.recordPayoutSplits([splitOf(C, W2, BASE)], 7_000);
-          await store.addOrder(paidOrder("ord_c", C, splitOf(C, W2, BASE).address, 7_050));
+          await storeAcceptedOrder(
+            store,
+            paidOrder("ord_c", C, splitOf(C, W2, BASE).address, 7_050),
+          );
           // An order nobody has paid for yet, which names no address at all.
-          await store.addOrder(
-            anOrder("ord_unpaid", "quoted", { merchantId: A, createdAt: 7_100 }),
+          await storeAcceptedOrder(
+            store,
+            anOrder("ord_unpaid", "paid", { merchantId: A, createdAt: 7_100 }),
           );
           // A split whose merchant is gone, as one forgotten on the test
           // channel leaves it: nothing of theirs is in force, nothing was
@@ -1512,106 +1527,158 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
-    describe("a purchase waiting for payment", () => {
-      /**
-       * A purchase being priced or priced and not paid, at `createdAt`, with
-       * the deployment's windows: five seconds for a price question, thirty
-       * for a price to hold.
-       */
-      const pending = (
-        id: string,
-        state: "created" | "quoted",
-        createdAt: number,
-        merchantId = A,
-      ): StoredOrder => {
-        const base = anOrder(id, state, { merchantId, createdAt });
+    describe("verified purchase admission", () => {
+      const accepted = (id: string, fingerprint = id): AdmittedOrder => {
+        const initial = anOrder(id, "quoted");
+        const quoted: Order = {
+          ...initial.order,
+          payment: "none",
+          price: initial.order.cardPrice,
+          quoteSource: "card_snapshot",
+          timestamps: { ...initial.order.timestamps, quotedAt: 1_000 },
+        };
+        const moved = transition(quoted, { kind: "payment_verified", at: 1_001 });
+        if (!moved.ok) throw new Error("the verified purchase was refused");
+        const record: StoredOrder = {
+          ...initial,
+          through: "api",
+          order: moved.order,
+          paidBy: W1,
+          payment: "verified-payment",
+          payTo: W2,
+          paymentFingerprint: fingerprint,
+        };
         return {
-          ...base,
-          order: {
-            ...base.order,
-            policy: {
-              ...base.order.policy,
-              deadlines: {
-                ...base.order.policy.deadlines,
-                quoteResponseMs: 5_000,
-                quoteTtlMs: 30_000,
-              },
-            },
-            timestamps: {
-              ...base.order.timestamps,
-              quotedAt: state === "quoted" ? createdAt : null,
-            },
-          },
+          record,
+          eligible: () => true,
+          fingerprint,
+          birth: { through: "api" },
+          alongside: [],
+          analytics: [],
         };
       };
 
-      /** A purchase priced and not paid, as `addOrder` is given one at its birth. */
-      const waiting = (id: string, merchantId = A) =>
-        pending(id, "quoted", Number(id.replace(/\D/g, "")) || 1, merchantId);
-
-      it("is written while fewer of its seller's purchases wait, and refused once as many do as allowed", async () => {
-        // Only a seller's own purchases still waiting for payment count: one
-        // paid, one charging, one that ended and another seller's hold no place.
+      it("keeps verification transient, refuses overlap and preserves the committed buyer key", async () => {
         const store = await twoMerchants();
-        await store.addOrder(pending("ord_1", "created", 1));
-        await store.addOrder(waiting("ord_2"));
-        await store.addOrder(anOrder("ord_3", "paid", { createdAt: 3 }));
-        await store.addOrder(anOrder("ord_4", "expired", { createdAt: 4 }));
-        const charging = anOrder("ord_5", "quoted", { createdAt: 5 });
-        await store.addOrder({ ...charging, order: { ...charging.order, payment: "settling" } });
-        await store.addOrder(waiting("ord_6", B));
-        await store.addOrder(waiting("ord_7", B));
-
-        expect(await store.addOrder(waiting("ord_8"), { through: "api", waitingAtMost: 2 })).toBe(
-          "too_many_waiting",
-        );
-        expect(await store.orderById("ord_8")).toBeNull();
-        expect(await store.addOrder(waiting("ord_9"), { through: "api", waitingAtMost: 3 })).toBe(
-          "written",
-        );
-        expect(await store.orderById("ord_9")).not.toBeNull();
+        const prepared = accepted("ord_one_price");
+        let entered!: () => void;
+        let release!: () => void;
+        const inside = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const first = store.admitOrder(prepared.record.order.id, async () => {
+          entered();
+          await resume;
+          return { accept: prepared, result: "accepted" };
+        });
+        try {
+          await inside;
+          expect(await store.orders(A)).toStrictEqual([]);
+          expect(await store.paymentClaimHolder(prepared.fingerprint)).toBeNull();
+          const overlap = await store.admitOrder(prepared.record.order.id, async () => ({
+            result: "overlap",
+          }));
+          expect(overlap).toStrictEqual({ kind: "busy" });
+        } finally {
+          release();
+        }
+        expect(await first).toStrictEqual({ kind: "decided", result: "accepted" });
+        const repeated = await store.admitOrder(prepared.record.order.id, async (found) => ({
+          result: found,
+        }));
+        expect(repeated).toStrictEqual({ kind: "decided", result: prepared.record });
+        expect(await store.paymentClaimHolder(prepared.fingerprint)).toStrictEqual({
+          orderId: prepared.record.order.id,
+          retained: true,
+        });
       });
 
-      it("holds no place once its price has run out, though nothing has closed it yet", async () => {
-        // A reminder that fires late, or never, must not keep a seller's
-        // places taken: the price is gone, and no payment will be taken at it.
+      it("checks current card terms after verification instead of accepting its earlier snapshot", async () => {
         const store = await twoMerchants();
-        await store.addOrder(pending("ord_1", "quoted", 1_000));
-        await store.addOrder(pending("ord_2", "created", 1_000));
-
-        expect(await store.waitingForPayment(A, 20_000, 20)).toBe(2);
-        expect(
-          await store.addOrder(pending("ord_3", "quoted", 20_000), {
-            through: "api",
-            waitingAtMost: 2,
-          }),
-        ).toBe("too_many_waiting");
-        // The price named at 1s holds until 31s; the question asked at 1s may
-        // name one until 6s, which then holds until 36s.
-        expect(await store.waitingForPayment(A, 32_000, 20)).toBe(1);
-        expect(await store.waitingForPayment(A, 37_000, 20)).toBe(0);
-        expect(
-          await store.addOrder(pending("ord_4", "quoted", 37_000), {
-            through: "api",
-            waitingAtMost: 1,
-          }),
-        ).toBe("written");
+        const published = await store.publishCard(
+          A,
+          card("room-101", "A room for the night"),
+          1_000,
+        );
+        const prepared = accepted("ord_changed_terms");
+        const current = {
+          ...prepared,
+          record: { ...prepared.record, itemId: published.id },
+          eligible: (_merchant: unknown, found: StoredCard | null) =>
+            found?.card.title === "A room for the night",
+        };
+        let entered!: () => void;
+        let release!: () => void;
+        const inside = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const pending = store.admitOrder(current.record.order.id, async () => {
+          entered();
+          await resume;
+          return { accept: current, result: true };
+        });
+        try {
+          await inside;
+          await store.publishCard(A, { ...published.card, title: "A room for two nights" }, 1_001);
+        } finally {
+          release();
+        }
+        expect(await pending).toStrictEqual({ kind: "offer_changed" });
+        expect(await store.orderById(current.record.order.id)).toBeNull();
+        expect(await store.paymentClaimHolder(current.fingerprint)).toBeNull();
       });
 
-      it("is held to the limit however many purchases of one seller arrive at once", async () => {
-        // Counted and written apart, every one of them would count the same
-        // nineteen and all of them would be written.
+      it("refuses a nonce already accepted for another price without creating another order", async () => {
         const store = await twoMerchants();
+        const first = accepted("ord_first", "one-authorization");
+        const second = accepted("ord_second", "one-authorization");
+        await store.admitOrder(first.record.order.id, async () => ({
+          accept: first,
+          result: true,
+        }));
+        expect(
+          await store.admitOrder(second.record.order.id, async () => ({
+            accept: second,
+            result: true,
+          })),
+        ).toStrictEqual({ kind: "payment_already_spent" });
+        expect(await store.orderById(second.record.order.id)).toBeNull();
+        expect((await store.orders(A)).map((order) => order.order.id)).toStrictEqual([
+          first.record.order.id,
+        ]);
+      });
 
-        const born = await Promise.all(
-          Array.from({ length: 30 }, (_, at) =>
-            store.addOrder(waiting(`ord_${at + 1}`), { through: "api", waitingAtMost: 20 }),
-          ),
-        );
-
-        expect(born.filter((one) => one === "written")).toHaveLength(20);
-        expect(born.filter((one) => one === "too_many_waiting")).toHaveLength(10);
-        expect(await store.orders(A)).toHaveLength(20);
+      it("refuses the prior integration when the merchant switches during verification", async () => {
+        const store = await twoMerchants();
+        const prepared = accepted("ord_in_switch");
+        let entered!: () => void;
+        let release!: () => void;
+        const inside = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const pending = store.admitOrder(prepared.record.order.id, async () => {
+          entered();
+          await resume;
+          return { accept: prepared, result: true };
+        });
+        try {
+          await inside;
+          expect(await store.switchIntegration(A, "woocommerce")).toMatchObject({ switched: true });
+        } finally {
+          release();
+        }
+        expect(await pending).toStrictEqual({ kind: "switched_away" });
+        expect(await store.orderById(prepared.record.order.id)).toBeNull();
+        expect(await store.paymentClaimHolder(prepared.fingerprint)).toBeNull();
       });
     });
 
@@ -1642,13 +1709,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // kept, one closed or delivered with the fact left on it, and another
         // seller's: none of these counts.
         const store = await twoMerchants();
-        await store.addOrder(paidOrder("ord_1", "unfulfilled", true));
-        await store.addOrder(paidOrder("ord_2", "unfulfilled", true));
-        await store.addOrder(paidOrder("ord_3", "unfulfilled", false));
-        await store.addOrder(paidOrder("ord_4", "unfulfilled", undefined));
-        await store.addOrder(paidOrder("ord_5", "fulfillment_closed", true));
-        await store.addOrder(paidOrder("ord_6", "delivered", true));
-        await store.addOrder(paidOrder("ord_7", "unfulfilled", true, B));
+        await storeAcceptedOrder(store, paidOrder("ord_1", "unfulfilled", true));
+        await storeAcceptedOrder(store, paidOrder("ord_2", "unfulfilled", true));
+        await storeAcceptedOrder(store, paidOrder("ord_3", "unfulfilled", false));
+        await storeAcceptedOrder(store, paidOrder("ord_4", "unfulfilled", undefined));
+        await storeAcceptedOrder(store, paidOrder("ord_5", "fulfillment_closed", true));
+        await storeAcceptedOrder(store, paidOrder("ord_6", "delivered", true));
+        await storeAcceptedOrder(store, paidOrder("ord_7", "unfulfilled", true, B));
 
         expect(await store.unservedOrders(A, 10)).toBe(2);
         expect(await store.unservedOrders(B, 10)).toBe(1);
@@ -1657,7 +1724,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       it("is counted up to the number asked and no further", async () => {
         const store = await twoMerchants();
         for (let one = 1; one <= 4; one += 1) {
-          await store.addOrder(paidOrder(`ord_${one}`, "unfulfilled", true));
+          await storeAcceptedOrder(store, paidOrder(`ord_${one}`, "unfulfilled", true));
         }
 
         expect(await store.unservedOrders(A, 3)).toBe(3);
@@ -1667,11 +1734,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       it("names, among the sellers asked about, those with at least as many as asked", async () => {
         const store = await twoMerchants();
         for (let one = 1; one <= 3; one += 1) {
-          await store.addOrder(paidOrder(`ord_${one}`, "unfulfilled", true));
+          await storeAcceptedOrder(store, paidOrder(`ord_${one}`, "unfulfilled", true));
         }
-        await store.addOrder(paidOrder("ord_4", "unfulfilled", true, B));
-        await store.addOrder(paidOrder("ord_5", "unfulfilled", false, B));
-        await store.addOrder(paidOrder("ord_6", "fulfillment_closed", true, B));
+        await storeAcceptedOrder(store, paidOrder("ord_4", "unfulfilled", true, B));
+        await storeAcceptedOrder(store, paidOrder("ord_5", "unfulfilled", false, B));
+        await storeAcceptedOrder(store, paidOrder("ord_6", "fulfillment_closed", true, B));
 
         expect([...(await store.stoppedSellers([A, B], 2))]).toStrictEqual([A]);
         expect([...(await store.stoppedSellers([B], 1))]).toStrictEqual([B]);
@@ -1680,192 +1747,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
       });
     });
 
-    describe("an attempt that lapsed unpaid", () => {
-      const DAY = 86_400_000;
-
-      /** An order as it ended, with some of its facts changed. */
-      const ended = (
-        id: string,
-        state: Order["state"],
-        changed: { readonly order?: Partial<Order>; readonly merchantId?: string } = {},
-        more: Partial<StoredOrder> = {},
-      ): StoredOrder => {
-        const base = anOrder(id, state, { merchantId: changed.merchantId ?? A });
-        return { ...base, ...more, order: { ...base.order, ...changed.order } };
-      };
-
-      it("is forgotten a batch at a time once last written before the instant, and nothing with money, a claim, a receipt or goods goes with it", async () => {
-        const store = await twoMerchants();
-        const forgotten = ["ord_refused", "ord_lapsed", "ord_lapsed_too", "ord_theirs"];
-        await store.addOrder(
-          ended("ord_refused", "rejected", { order: { closure: { cause: "unavailable" } } }),
-        );
-        await store.addOrder(ended("ord_lapsed", "expired"));
-        await store.addOrder(ended("ord_lapsed_too", "expired"));
-        await store.addOrder(ended("ord_theirs", "expired", { merchantId: B }));
-        // Goods made after the deadline, held for a repeat purchase.
-        await store.addOrder(
-          ended("ord_goods_held", "expired", { order: { heldFulfillment: true } }),
-        );
-        // A charge that was sent and failed, and one nobody answered.
-        await store.addOrder(
-          ended(
-            "ord_charge_failed",
-            "rejected",
-            { order: { payment: "settle_failed" } },
-            {
-              payment: "PAYMENT",
-              paidBy: "0x00000000000000000000000000000000000000aa",
-            },
-          ),
-        );
-        await store.addOrder(
-          ended("ord_charge_unknown", "rejected", { order: { payment: "outcome_unknown" } }),
-        );
-        await store.addOrder(ended("ord_claimed", "expired"));
-        await store.claimPayment("fp_claimed", "ord_claimed");
-        await store.addOrder(ended("ord_receipted", "expired"));
-        await store.putReceipt(A, aReceipt("rcp_1", "ord_receipted", "delivered"));
-        await store.addOrder(
-          ended("ord_delivered", "delivered", { order: { payment: "settled" } }),
-        );
-        await store.addOrder(ended("ord_waiting", "quoted"));
-        const everyOrder = async () => [
-          ...(await idsOf(store.orders(A))),
-          ...(await idsOf(store.orders(B))),
-        ];
-        const before = await everyOrder();
-
-        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(3);
-        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(1);
-        expect(await store.forgetLapsedBefore(Date.now() + DAY, 3)).toBe(0);
-
-        expect(await everyOrder()).toStrictEqual(before.filter((id) => !forgotten.includes(id)));
-        for (const id of forgotten) {
-          expect(await store.orderById(id)).toBeNull();
-        }
-        expect(
-          (await store.receipts(A)).find((receipt) => receipt.order_id === "ord_receipted") ?? null,
-        ).not.toBeNull();
-      });
-
-      it("is left out of a merchant's orders when asked, and read apart a page at a time, newest first, with how many there are", async () => {
-        // One that ended before it had a price is read here too, the one place
-        // a merchant can find it.
-        const store = await twoMerchants();
-        const price = { amount: "5.00", currency: "USD", asOf: 0 };
-        const priced = (id: string, state: Order["state"], createdAt: number, merchantId = A) => {
-          const base = anOrder(id, state, { merchantId, createdAt });
-          return { ...base, order: { ...base.order, price } };
-        };
-        await store.addOrder(priced("ord_1", "delivered", 1));
-        await store.addOrder(priced("ord_2", "expired", 2));
-        await store.addOrder(anOrder("ord_3", "rejected", { createdAt: 3 }));
-        await store.addOrder(priced("ord_4", "rejected", 4));
-        await store.addOrder(priced("ord_5", "quoted", 5));
-        await store.addOrder(priced("ord_6", "expired", 6, B));
-
-        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([
-          "ord_1",
-          "ord_5",
-        ]);
-        expect(await idsOf(store.orders(A))).toHaveLength(5);
-        const ids = (page: { readonly orders: readonly StoredOrder[] }) =>
-          page.orders.map((one) => one.order.id);
-        const first = await store.lapsedAttempts(A, { limit: 2 });
-        expect(ids(first)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(first).toMatchObject({ of: 3, newer: 0, previous: null });
-        expect(first.next).toStrictEqual({ createdAt: 3, id: "ord_3" });
-        const second = await store.lapsedAttempts(A, {
-          limit: 2,
-          from: { after: first.next ?? { createdAt: 0, id: "" } },
-        });
-        expect(ids(second)).toStrictEqual(["ord_2"]);
-        expect(second).toMatchObject({ of: 3, newer: 2, next: null });
-        expect(second.previous).toStrictEqual({ createdAt: 2, id: "ord_2" });
-        const back = await store.lapsedAttempts(A, {
-          limit: 2,
-          from: { before: second.previous ?? { createdAt: 0, id: "" } },
-        });
-        expect(ids(back)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(back).toMatchObject({ newer: 0, previous: null, next: first.next });
-        expect(await store.lapsedAttempts(A, { limit: 0 })).toStrictEqual({
-          orders: [],
-          of: 3,
-          newer: 0,
-          previous: null,
-          next: null,
-        });
-      });
-
-      it("reads apart from a cursor naming an attempt that is not there, where its moment and identifier fall", async () => {
-        const store = await twoMerchants();
-        const price = { amount: "5.00", currency: "USD", asOf: 0 };
-        for (const [id, createdAt] of [
-          ["ord_1", 1],
-          ["ord_2", 3],
-          ["ord_3", 3],
-          ["ord_4", 4],
-        ] as const) {
-          const base = anOrder(id, "expired", { createdAt });
-          await store.addOrder({ ...base, order: { ...base.order, price } });
-        }
-        const ids = (page: { readonly orders: readonly StoredOrder[] }) =>
-          page.orders.map((one) => one.order.id);
-        // Between ord_3 and ord_2, which were made in the same millisecond.
-        const gone = { createdAt: 3, id: "ord_2z" };
-
-        const older = await store.lapsedAttempts(A, { limit: 10, from: { after: gone } });
-        const newer = await store.lapsedAttempts(A, { limit: 10, from: { before: gone } });
-
-        expect(ids(older)).toStrictEqual(["ord_2", "ord_1"]);
-        expect(older).toMatchObject({ newer: 2, next: null });
-        expect(ids(newer)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(newer).toMatchObject({ newer: 0, previous: null });
-        expect(newer.next).toStrictEqual({ createdAt: 3, id: "ord_3" });
-      });
-
-      it("is marked as it ends, so an order born waiting and closed later leaves the default reads and is forgotten", async () => {
-        const store = await twoMerchants();
-        const born = anOrder("ord_born", "quoted");
-        await store.addOrder({
-          ...born,
-          order: { ...born.order, price: { amount: "5.00", currency: "USD", asOf: 0 } },
-        });
-
-        await store.withOrder("ord_born", (found) => ({
-          save: { ...found, order: { ...found.order, state: "expired" as const } },
-          result: null,
-        }));
-
-        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([]);
-        expect((await store.lapsedAttempts(A, { limit: 10 })).of).toBe(1);
-        expect(await store.forgetLapsedBefore(Date.now() + 31 * DAY, 10)).toBe(1);
-        expect(await store.orderById("ord_born")).toBeNull();
-      });
-
-      it("is kept while it was last written after the instant", async () => {
-        const store = await twoMerchants();
-        await store.addOrder(ended("ord_lapsed", "expired"));
-
-        expect(await store.forgetLapsedBefore(Date.now() - DAY, 10)).toBe(0);
-        expect(await store.orderById("ord_lapsed")).not.toBeNull();
-      });
-    });
-
     describe("an order", () => {
-      it("is written once under one identifier, and a second attempt is refused", async () => {
-        // A second write would replace the order an agent holds an identifier
-        // for. Both adapters must refuse in their own words, not a driver's.
-        const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
-
-        await expect(store.addOrder(anOrder("ord_1", "quoted"))).rejects.toThrow(
-          /already written down/,
-        );
-        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
-      });
-
       it("is said not to be there rather than thrown about", async () => {
         const store = await twoMerchants();
 
@@ -1880,7 +1762,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // double charge. The pause stands in for a real transaction's length; the
         // results are sorted because the port promises no overlap, not an order.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
 
         const bump = () =>
           store.withOrder("ord_1", async (found) => {
@@ -1916,8 +1798,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // a row would stall the next test's truncate, and the failure would land
         // there instead of here.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created", { createdAt: 1_000 }));
-        await store.addOrder(anOrder("ord_2", "created", { createdAt: 2_000 }));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid", { createdAt: 1_000 }));
+        await storeAcceptedOrder(store, anOrder("ord_2", "paid", { createdAt: 2_000 }));
 
         let releaseFirst: () => void = () => undefined;
         const held = new Promise<void>((resolve) => {
@@ -1955,7 +1837,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // nobody is told. Memory must catch its promise chain, and Postgres must
         // release the row lock on rollback.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
 
         const broken = store.withOrder("ord_1", () => {
           throw new Error("the decision blew up");
@@ -1966,7 +1848,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           found: true,
           result: "still here",
         });
-        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
       });
 
       it("is not written when the decision asked for nothing to be written", async () => {
@@ -1976,23 +1858,23 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // because each adapter reaches them by different routes. A byte-identical
         // write-back is invisible here; the database file checks the row itself.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
 
         await store.withOrder("ord_1", (found) => ({
           result: { ...found, order: { ...found.order, state: "expired" as const } },
         }));
 
-        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
         expect(
           await store.withOrder("ord_1", (found) => ({ result: found.order.state })),
-        ).toStrictEqual({ found: true, result: "created" });
+        ).toStrictEqual({ found: true, result: "paid" });
       });
 
       it("is not found by another merchant, and is not written by one either", async () => {
         // Ownership is read under the same lock as the order, and the answer is
         // an unknown identifier's, so trying one found in a log reveals nothing.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created", { merchantId: B }));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid", { merchantId: B }));
 
         const asA = await store.withOrder(
           "ord_1",
@@ -2004,7 +1886,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         );
 
         expect(asA).toStrictEqual({ found: false });
-        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
       });
 
       it("is not found through a key that no longer works, and is through one that does", async () => {
@@ -2012,7 +1894,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // works, read under the same hold, so a key revoked by any process
         // takes no order from the moment it is revoked.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
@@ -2024,7 +1906,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             (found) => {
               asked += 1;
               return {
-                save: { ...found, order: { ...found.order, state: "quoted" as const } },
+                save: { ...found, order: { ...found.order, state: "paid" as const } },
                 result: "handed over",
               };
             },
@@ -2035,7 +1917,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await handOver("mk_b")).toStrictEqual({ found: false });
         expect(await handOver("mk_nobody")).toStrictEqual({ found: false });
         expect(asked).toBe(0);
-        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
 
         expect(await handOver("mk_2")).toStrictEqual({ found: true, result: "handed over" });
       });
@@ -2045,10 +1927,10 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // carrying another merchant would split the document from the column:
         // an order in one merchant's list whose envelopes go on another's stream.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
 
         await store.withOrder("ord_1", (found) => ({
-          save: { ...found, merchantId: B, order: { ...found.order, state: "quoted" as const } },
+          save: { ...found, merchantId: B, order: { ...found.order, state: "paid" as const } },
           result: null,
         }));
 
@@ -2058,13 +1940,16 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect((await store.merchantOrder(A, "ord_1"))?.order.id).toBe("ord_1");
         expect(await store.merchantOrder(B, "ord_1")).toBeNull();
         // The rest of the save did land.
-        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
       });
 
       it("is its own merchant's to read, and the buying surface's whoever asks", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_mine", "created", { createdAt: 1_000 }));
-        await store.addOrder(anOrder("ord_theirs", "created", { merchantId: B, createdAt: 2_000 }));
+        await storeAcceptedOrder(store, anOrder("ord_mine", "paid", { createdAt: 1_000 }));
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_theirs", "paid", { merchantId: B, createdAt: 2_000 }),
+        );
 
         expect((await store.merchantOrder(A, "ord_mine"))?.order.id).toBe("ord_mine");
         expect(await store.merchantOrder(A, "ord_theirs")).toBeNull();
@@ -2078,9 +1963,13 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // buyer's key is the only thing it finds an order by: the identifier
         // reaches the merchant and the payment side.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted", { buyerKey: "bk_1", createdAt: 1_000 }));
-        await store.addOrder(
-          anOrder("ord_2", "quoted", {
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_1", "paid", { buyerKey: "bk_1", createdAt: 1_000 }),
+        );
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_2", "paid", {
             merchantId: B,
             buyerKey: "bk_2",
             createdAt: 2_000,
@@ -2094,19 +1983,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         // A decision about the order rewrites its document and keeps the key.
         await store.withOrder("ord_2", (found) => ({
-          save: { ...found, order: { ...found.order, state: "paid" as const } },
+          save: { ...found, order: { ...found.order, state: "dispatched" as const } },
           result: null,
         }));
-        expect((await store.orderByBuyerKey("bk_2"))?.order.state).toBe("paid");
+        expect((await store.orderByBuyerKey("bk_2"))?.order.state).toBe("dispatched");
       });
 
       it("refuses a second order under a buyer's key another order has", async () => {
         // Otherwise one key would open either of two orders.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted", { buyerKey: "bk_1" }));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid", { buyerKey: "bk_1" }));
 
         await expect(
-          store.addOrder(anOrder("ord_2", "quoted", { buyerKey: "bk_1" })),
+          storeAcceptedOrder(store, anOrder("ord_2", "paid", { buyerKey: "bk_1" })),
         ).rejects.toThrow(/buyer's key/);
         expect(await store.orderById("ord_2")).toBeNull();
         expect((await store.orderByBuyerKey("bk_1"))?.order.id).toBe("ord_1");
@@ -2117,12 +2006,16 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // a column written on save and memory from the state, so this catches a
         // column that fell behind the document.
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_open", "dispatched", { createdAt: 1_000 }));
-        await store.addOrder(anOrder("ord_debt", "unfulfilled", { createdAt: 2_000 }));
-        await store.addOrder(anOrder("ord_unpaid", "delivered_unpaid", { createdAt: 3_000 }));
-        await store.addOrder(anOrder("ord_done", "delivered", { createdAt: 4_000 }));
+        await storeAcceptedOrder(store, anOrder("ord_open", "dispatched", { createdAt: 1_000 }));
+        await storeAcceptedOrder(store, anOrder("ord_debt", "unfulfilled", { createdAt: 2_000 }));
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_unpaid", "delivered_unpaid", { createdAt: 3_000 }),
+        );
+        await storeAcceptedOrder(store, anOrder("ord_done", "delivered", { createdAt: 4_000 }));
         // Another merchant's open order, which must be in neither of A's lists.
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           anOrder("ord_theirs", "dispatched", { merchantId: B, createdAt: 5_000 }),
         );
 
@@ -2154,7 +2047,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // of integration: nothing of it waits on a handler.
         const store = await twoMerchants();
         const closed = anOrder("ord_closed_paid_later", "fulfillment_closed");
-        await store.addOrder({
+        await storeAcceptedOrder(store, {
           ...closed,
           order: {
             ...closed.order,
@@ -2162,7 +2055,10 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             merchantClosure: { at: 1_000, paymentCompletedAt: 2_000 },
           },
         });
-        await store.addOrder(anOrder("ord_closed", "fulfillment_closed", { createdAt: 2_000 }));
+        await storeAcceptedOrder(
+          store,
+          anOrder("ord_closed", "fulfillment_closed", { createdAt: 2_000 }),
+        );
 
         expect(await idsOf(store.orders(A, { open: true }))).toStrictEqual([
           "ord_closed_paid_later",
@@ -2181,7 +2077,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     describe("a payment", () => {
       it("rolls claim retention back when another write in the order transaction fails", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
         await store.claimPayment("fp-rollback", "ord_1");
         await expect(
           store.withOrder("ord_1", (found) => ({
@@ -2195,12 +2091,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         ).rejects.toThrow("claim");
         await store.releaseClaim("fp-rollback", "ord_1");
         expect(await store.claimPayment("fp-rollback", "ord_2")).toEqual({ claimed: true });
-        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
       });
 
       it("refuses acceptance if another order obtained the claim before its transaction retained it", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
         await store.claimPayment("fp-racing", "ord_1");
         let release: () => void = () => undefined;
         let entered: () => void = () => undefined;
@@ -2226,12 +2122,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.claimPayment("fp-racing", "ord_2")).toEqual({ claimed: true });
         release();
         await expect(accepting).rejects.toThrow("claim");
-        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
       });
 
       it("names the order holding a payment's claim and whether it kept it, and claims nothing by asking", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
         expect(await store.paymentClaimHolder("fp-asked")).toBeNull();
         expect(await store.claimPayment("fp-asked", "ord_1")).toEqual({ claimed: true });
         expect(await store.paymentClaimHolder("fp-asked")).toEqual({
@@ -2251,7 +2147,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
       it("keeps an accepted authorization bound to its order after pruning and release", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
         await store.claimPayment("fp-retained", "ord_1");
         await store.withOrder("ord_1", (found) => ({
           save: found,
@@ -2268,7 +2164,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
       it("does not write an order whose payment claim no longer belongs to it", async () => {
         const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "quoted"));
+        await storeAcceptedOrder(store, anOrder("ord_1", "paid"));
         await store.claimPayment("fp-other", "ord_2");
         await expect(
           store.withOrder("ord_1", (found) => ({
@@ -2277,18 +2173,18 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             result: null,
           })),
         ).rejects.toThrow("claim");
-        expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+        expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
       });
 
       it("finds unanswered charges in bounded order including purchases closed on silence", async () => {
         const store = await twoMerchants();
         for (const [id, state, payment] of [
           ["ord_a", "rejected", "outcome_unknown"],
-          ["ord_b", "quoted", "settling"],
+          ["ord_b", "paid", "settling"],
           ["ord_c", "delivered", "settled"],
         ] as const) {
           const record = anOrder(id, state);
-          await store.addOrder({
+          await storeAcceptedOrder(store, {
             ...record,
             payment: "SAVED",
             order: { ...record.order, payment },

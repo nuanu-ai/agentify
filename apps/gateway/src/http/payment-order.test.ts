@@ -1,11 +1,6 @@
 /**
- * What a payment names its order by. The payment requirements go to the
- * payment facilitator on every verification and charge, and a discovery
- * listing can publish them as the last paying request carried them, so they
- * name the order by its identifier, which opens nothing. The buyer's key, the
- * one thing that opens the order and its goods, is in none of it, and holding
- * a published identifier buys nothing: an order belongs to the payer bound to
- * its first verified payment.
+ * Payment requirements carry a stamped price, which opens no order or goods.
+ * Only a verified payment establishes the payer who can collect the order.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -28,6 +23,8 @@ import { MemoryStore } from "../adapters/memory/store.js";
 import { X402Facilitator } from "../adapters/x402/facilitator.js";
 import { Gateway } from "../app/gateway.js";
 import { setServiceName } from "../app/merchants.js";
+import { decodePriceStamp, orderIdForPrice } from "../app/price-stamp.js";
+
 import { nobodyAnnounces } from "../ports/announcer.js";
 import { randomIds } from "../ports/clock.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
@@ -43,11 +40,9 @@ import {
 } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import {
-  CHALLENGE_REASONS,
-  ORDER_IN_EXTRA,
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
-  PaymentEdge,
+  PRICE_STAMP_IN_EXTRA,
   widestChallengeOn,
 } from "./x402.js";
 
@@ -80,9 +75,17 @@ const asyncCard: Card = {
 /** The whole of a header, decoded from base64 and nothing more, so no field is left unread. */
 const plainly = (header: string): string => Buffer.from(header, "base64").toString("utf8");
 
-/** The order a challenge names, or undefined where it names none. */
-const orderIn = (challenge: string): unknown =>
-  decodePaymentRequiredHeader(challenge).accepts[0]?.extra?.[ORDER_IN_EXTRA];
+/** The opaque stamped price carried by a challenge. */
+const stampIn = (challenge: string): unknown =>
+  decodePaymentRequiredHeader(challenge).accepts[0]?.extra?.[PRICE_STAMP_IN_EXTRA];
+
+/** The deterministic order identifier committed by this stamped price. */
+const orderIdIn = (challenge: string): string => {
+  const stamp = stampIn(challenge);
+  const offer = typeof stamp === "string" ? decodePriceStamp(stamp) : null;
+  if (offer === null) throw new Error("no stamped price was offered");
+  return orderIdForPrice(offer);
+};
 
 /**
  * What an x402 client sends back: the offer it accepted, the resource and the
@@ -210,7 +213,8 @@ async function aGatewayPayingThrough(
     config,
     store,
     queue,
-    facilitator: new X402Facilitator(network, new PaymentEdge(config)),
+    facilitator: new X402Facilitator(network),
+
     clock,
     ids: randomIds,
     announcer: nobodyAnnounces,
@@ -295,13 +299,13 @@ const present = (served: Served, itemId: string, payment: string) =>
   });
 
 /**
- * A payment that is not one, carrying only the order the challenge named, as
- * anyone who read the challenge or a listing could send.
+ * A payment that is not one, carrying only the stamped price anyone who read
+ * the challenge or a listing could send.
  */
-const onlyTheOrder = (challenge: string): string =>
+const onlyTheStamp = (challenge: string): string =>
   encodePaymentSignatureHeader({
     x402Version: 2,
-    accepted: { extra: { [ORDER_IN_EXTRA]: orderIn(challenge) } } as never,
+    accepted: { extra: { [PRICE_STAMP_IN_EXTRA]: stampIn(challenge) } } as never,
     payload: {},
   });
 
@@ -346,11 +350,55 @@ const expectToSayWhatBecameOf = async (
 };
 
 describe("the order on the payment side", () => {
+  it("answers a signed listing offer with a fresh stamped price before accepting payment", async () => {
+    const network = new Recording();
+    const shop = await aGatewayPayingThrough(network);
+    try {
+      const itemId = await shop.publish(asyncCard);
+      const listed = await shop.served.call("GET", `/x402/${itemId}/purchase`);
+      expect(listed.status).toBe(402);
+      const listing = listed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
+      expect(stampIn(listing)).toBeUndefined();
+
+      const priced = await present(
+        shop.served,
+        itemId,
+        await paymentAgainst(listing, BUYER, "0x01", { signedAt: shop.now() }),
+      );
+
+      expect(priced.status).toBe(402);
+      const challenge = priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
+      expect(stampIn(challenge)).toEqual(expect.any(String));
+      expect(shop.store.holdings().orders).toStrictEqual([]);
+      expect(network.sent).toStrictEqual([]);
+      expect(network.charged).toStrictEqual([]);
+
+      const bought = await present(
+        shop.served,
+        itemId,
+        await paymentAgainst(challenge, BUYER, "0x02", { signedAt: shop.now() }),
+      );
+
+      expect(bought.status).toBe(200);
+      const { order_id: orderId, status_url: statusUrl } = bought.body as {
+        order_id: string;
+        status_url: string;
+      };
+      expect(orderId).toBe(orderIdIn(challenge));
+      expect((await shop.store.orderById(orderId))?.order.state).toBe("paid");
+      expect(shop.store.holdings().orders).toHaveLength(1);
+      expect(network.charged).toHaveLength(1);
+      expect((await shop.served.call("GET", new URL(statusUrl).pathname)).status).toBe(200);
+    } finally {
+      await shop.close();
+    }
+  });
+
   it.each([
     ["delivered in the answer", syncCard],
     ["delivered later", asyncCard],
   ])(
-    "is named by its identifier in every challenge, payment and facilitator call for a product %s, and never by its buyer's key",
+    "carries its stamped price in every challenge, payment and facilitator call for a product %s, and never its buyer's key",
     async (_mode, card) => {
       const network = new Recording();
       const gateway = await aGatewayPayingThrough(network);
@@ -372,13 +420,13 @@ describe("the order on the payment side", () => {
         // The order is a real one: its address opens it.
         const status = await gateway.served.call("GET", new URL(statusUrl).pathname);
         expect(status.status).toBe(200);
-        // Verified, then charged: two calls, and each carried the identifier.
+        // Verified, then charged: both calls carry the stamped price.
         expect(network.sent).toHaveLength(2);
-        expect(orderIn(challenge)).toBe(orderId);
+        expect(orderIdIn(challenge)).toBe(orderId);
         const key = (await gateway.store.orderById(orderId))?.buyerKey ?? "";
         expect(key).not.toBe("");
         for (const sent of [plainly(challenge), plainly(payment), ...network.sent]) {
-          expect(sent).toContain(orderId);
+          expect(sent).toContain(stampIn(challenge));
           expect(sent).not.toContain(key);
         }
       } finally {
@@ -390,54 +438,67 @@ describe("the order on the payment side", () => {
 });
 
 describe("the order a payment names", () => {
-  it.each([false, true])(
-    "answers a payment for an order its merchant closed unpaid as over and uncharged, revealing nothing of the closure (closure races verification=%s)",
-    async (racing) => {
-      const { harnessed, served } = await started();
-      const itemId = await publish(harnessed, asyncCard);
+  it("stops a new charge when the merchant closes during verification and reveals the closure only to the owner", async () => {
+    const { harnessed, served } = await started();
+    const itemId = await publish(harnessed, syncCard);
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    let release: () => void = () => undefined;
+    const trying: ReturnType<typeof present>[] = [];
+    try {
       const challenge = await challengeFor(served, itemId);
-      const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-      if (opened === undefined) throw new Error("no order was priced");
-      const release = racing ? harnessed.facilitator.holdVerification() : () => undefined;
-      let trying: ReturnType<typeof present> | undefined;
-      try {
-        if (racing) {
-          trying = present(served, itemId, await paymentAgainst(challenge, STRANGER, "0x02"));
-          await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
-        }
-        expect(
-          await harnessed.gateway.closeOrder(harnessed.merchant.id, opened.order.id, {
-            message: "Private merchant explanation",
-          }),
-        ).toEqual({ ok: true });
-        release();
-        const answered = await (trying ??
-          present(served, itemId, await paymentAgainst(challenge, STRANGER, "0x02")));
-        expect(answered.status).toBe(409);
-        expect(answered.body).toMatchObject({
-          error: { code: "payment_not_taken", retryable: false },
-        });
-        expect(JSON.stringify(answered.body)).toContain("this order is over");
-        expect(JSON.stringify(answered.body)).toContain("Nothing was charged");
-        expectNoKeyIn(answered.body);
-        for (const privateWord of [
-          "merchant_closure",
-          "Private merchant explanation",
-          "fulfillment_closed",
-        ]) {
-          expect(JSON.stringify(answered.body)).not.toContain(privateWord);
-        }
-        // Answered before the payment is checked, unless it was already
-        // being checked when the merchant closed.
-        expect(harnessed.facilitator.verifies).toHaveLength(racing ? 1 : 0);
-        expect(harnessed.facilitator.settles).toEqual([]);
-        expect((await harnessed.store.orderById(opened.order.id))?.paidBy).toBeNull();
-      } finally {
-        release();
-        await trying;
+      const orderId = orderIdIn(challenge);
+      harnessed.facilitator.willSettle({ settled: false, reason: "refused in the script" });
+      const first = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
+      expect(first.status).toBe(409);
+      await reaching(harnessed, orderId, "delivered_unpaid");
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+
+      release = harnessed.facilitator.holdVerification();
+      trying.push(present(served, itemId, await paymentAgainst(challenge, BUYER, "0x02")));
+      await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(2));
+      expect(
+        await harnessed.gateway.closeOrder(harnessed.merchant.id, orderId, {
+          message: "Private merchant explanation",
+        }),
+      ).toEqual({ ok: true });
+      release();
+      const [owner] = await Promise.all(trying);
+      expect(owner?.status).toBe(409);
+      expect(owner?.body).toMatchObject({
+        order_id: orderId,
+        status: "fulfillment_closed",
+        payment_status: "not_paid",
+        delivered: null,
+        merchant_closure: { message: "Private merchant explanation" },
+      });
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+      const stranger = await present(
+        served,
+        itemId,
+        await paymentAgainst(challenge, STRANGER, "0x03"),
+      );
+      expect(stranger.status).toBe(409);
+      expect(stranger.body).toMatchObject({ error: { code: "not_this_purchase" } });
+      expectNoKeyIn(stranger.body);
+      for (const privateWord of [
+        "merchant_closure",
+        "Private merchant explanation",
+        "fulfillment_closed",
+        "SESAME",
+      ]) {
+        expect(JSON.stringify(stranger.body)).not.toContain(privateWord);
       }
-    },
-  );
+      expect(harnessed.facilitator.settles).toHaveLength(1);
+      expect((await harnessed.store.orderById(orderId))?.paidBy).toBe(BUYER);
+      expect((await harnessed.store.orderById(orderId))?.order.state).toBe("fulfillment_closed");
+    } finally {
+      release();
+      await Promise.allSettled(trying);
+      await worker.stop();
+    }
+  });
 
   it("lets the recorded payer recover a closed paid order with a fresh verified authorization and no new charge", async () => {
     const { harnessed, served } = await started();
@@ -472,39 +533,34 @@ describe("the order a payment names", () => {
   });
 
   it("binds a payment to the order whose challenge carried it", async () => {
-    // Two orders for one card are open at once, and the payment is for the
-    // older one: a gateway binding to the newest open order would pay the
-    // other.
+    // Two prices for one card are offered; only the one the buyer accepted
+    // creates an order.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
     const first = await challengeFor(served, itemId);
-    const [older] = await harnessed.store.orders(harnessed.merchant.id);
-    await challengeFor(served, itemId);
-    const newer = (await harnessed.store.orders(harnessed.merchant.id)).find(
-      (held) => held.order.id !== older?.order.id,
-    );
+    const older = orderIdIn(first);
+    const newer = orderIdIn(await challengeFor(served, itemId));
 
     const bought = await present(served, itemId, await paymentAgainst(first, BUYER, "0x01"));
 
     expect(bought.status).toBe(200);
-    expect((bought.body as { order_id: string }).order_id).toBe(older?.order.id);
-    expect((await harnessed.store.orderById(newer?.order.id ?? ""))?.order.state).toBe("quoted");
+    expect((bought.body as { order_id: string }).order_id).toBe(older);
+    expect(await harnessed.store.orderById(newer)).toBeNull();
   });
 
-  it("is the only thing a payment is bound by: one naming its order any other way pays nothing", async () => {
-    // No fallback: an identifier under another name, or the buyer's key where
-    // the identifier goes, is a payment for no order, and gets a fresh price.
+  it("admits no payment through an unrelated field or an invented price stamp", async () => {
+    // A stamp under another field, or an unrelated value in its field,
+    // cannot admit a payment.
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
     const challenge = await challengeFor(served, itemId);
-    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
     const accepted = decodePaymentRequiredHeader(challenge).accepts[0];
-    if (accepted === undefined || opened === undefined) throw new Error("nothing was priced");
-    const { [ORDER_IN_EXTRA]: _named, ...rest } = accepted.extra ?? {};
+    if (accepted === undefined) throw new Error("nothing was priced");
+    const { [PRICE_STAMP_IN_EXTRA]: _named, ...rest } = accepted.extra ?? {};
 
-    for (const [nonce, named] of [
-      ["0x01", { payment_ref: opened.order.id }],
-      ["0x02", { [ORDER_IN_EXTRA]: opened.buyerKey }],
+    for (const [nonce, named, status] of [
+      ["0x01", { payment_ref: stampIn(challenge) }, 402],
+      ["0x02", { [PRICE_STAMP_IN_EXTRA]: "bk_nobody_issued_this" }, 409],
     ] as const) {
       const answered = await present(
         served,
@@ -516,13 +572,21 @@ describe("the order a payment names", () => {
         }),
       );
 
-      expect(answered.status, JSON.stringify(named)).toBe(402);
-      expect(
-        decodePaymentRequiredHeader(answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "").error,
-      ).toBe(CHALLENGE_REASONS.noHeldOrder);
+      expect(answered.status, JSON.stringify(named)).toBe(status);
+      if (status === 409) {
+        expect(answered.body).toMatchObject({
+          error: { code: "payment_not_verified", retryable: false },
+        });
+      } else {
+        const repriced = answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
+        expect(stampIn(repriced)).toEqual(expect.any(String));
+        expect(stampIn(repriced)).not.toBe(stampIn(challenge));
+      }
+      expectNoKeyIn(answered.body);
     }
     expect(harnessed.facilitator.verifies).toHaveLength(0);
-    expect((await harnessed.store.orderById(opened.order.id))?.order.state).toBe("quoted");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    expect(harnessed.store.holdings().orders).toStrictEqual([]);
   });
 
   it.each([
@@ -546,7 +610,7 @@ describe("the order a payment names", () => {
         answer === undefined ? null : workUntilStopped(harnessed, { onOrder: () => answer });
       try {
         const challenge = await challengeFor(served, itemId);
-        expect(typeof orderIn(challenge)).toBe("string");
+        expect(typeof stampIn(challenge)).toBe("string");
         const bought = await present(
           served,
           itemId,
@@ -562,7 +626,7 @@ describe("the order a payment names", () => {
           itemId,
           await paymentAgainst(challenge, STRANGER, "0x02"),
         );
-        const notOne = await present(served, itemId, onlyTheOrder(challenge));
+        const notOne = await present(served, itemId, onlyTheStamp(challenge));
 
         expect(stranger.status).toBe(409);
         expect(stranger.body).toStrictEqual({
@@ -766,10 +830,9 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
     }
   });
 
-  it("pays a repeat that is charged anew at the split the seller is paid at now, never at the one they left", async () => {
-    // The seller ran out of time and their goods came late, so the buyer's
-    // repeat is a new charge: the payment request it kept no longer says where
-    // the money goes.
+  it("refuses a new charge after the seller changes split, whether the buyer signs for the saved payee or changes it", async () => {
+    // A repeat that would charge is held to the saved offer. Changing its
+    // unsigned payee cannot release goods against a different payment.
     const network = new Recording();
     const shop = await aGatewayPayingThrough(network, {
       SYNC_RESPONSE_MS: "80",
@@ -812,12 +875,12 @@ describe("a payer whose answer was lost, after the seller moved their wallet", (
         itemId,
         await paymentAgainst(challenge, BUYER, "0x03", { payTo: paidNow }),
       );
-      expect(toTheSplitNow.status, JSON.stringify(toTheSplitNow.body)).toBe(200);
-      expect(toTheSplitNow.body).toMatchObject({
-        order_id: orderId,
-        delivered: { access_code: "SESAME" },
-      });
-      expect(network.charged).toStrictEqual([paidNow]);
+      expect(toTheSplitNow.status, JSON.stringify(toTheSplitNow.body)).toBe(409);
+      expect(toTheSplitNow.body).toMatchObject({ error: { code: "payment_not_verified" } });
+      expectNoKeyIn(toTheSplitNow.body);
+      expect(JSON.stringify(toTheSplitNow.body)).not.toContain("SESAME");
+      expect(network.charged).toStrictEqual([]);
+      expect((await shop.store.orderById(orderId))?.order.state).toBe("expired");
     } finally {
       await shop.close();
     }
@@ -850,11 +913,10 @@ describe("a payment presented to get back a paid order", () => {
       let release: () => void = () => undefined;
       try {
         const challenge = await challengeFor(served, itemId);
-        const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-        const orderId = opened?.order.id ?? "";
+        const orderId = orderIdIn(challenge);
         const buying = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
         await vi.waitFor(async () =>
-          expect((await harnessed.store.orderById(orderId))?.paidBy).not.toBeNull(),
+          expect((await harnessed.store.orderById(orderId))?.paidBy).toBe(BUYER),
         );
         const paidTo = (await harnessed.store.orderById(orderId))?.payTo;
         if (moved) {
@@ -1066,7 +1128,6 @@ describe("a payment presented with a request other than the one it was made for"
     });
     expect(priced.status).toBe(402);
     const challenge = priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "";
-    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
     const shopCall = (itemId: string, body: unknown, payment: string) =>
       served.call("POST", `/x402/${itemId}/purchase`, {
         body,
@@ -1081,7 +1142,7 @@ describe("a payment presented with a request other than the one it was made for"
       handled,
       worker,
       challenge,
-      orderId: opened?.order.id ?? "",
+      orderId: orderIdIn(challenge),
       sendTo,
       shopCall,
     };
@@ -1109,7 +1170,7 @@ describe("a payment presented with a request other than the one it was made for"
         expect(JSON.stringify(misplaced.body)).not.toContain(ORIGINAL.email);
         expect(sale.harnessed.facilitator.settles).toHaveLength(0);
         expect(sale.handled).toStrictEqual([]);
-        expect((await sale.harnessed.store.orderById(sale.orderId))?.paidBy).toBeNull();
+        expect(await sale.harnessed.store.orderById(sale.orderId)).toBeNull();
 
         const bought = await sale.sendTo(sale.guide, ORIGINAL, payment);
         expect(bought.status, JSON.stringify(bought.body)).toBe(200);
@@ -1329,7 +1390,7 @@ describe("goods made for a purchase whose charge did not go through", () => {
       expect(again.body).toMatchObject({
         error: { code: "payment_not_verified", retryable: false },
       });
-      expect(JSON.stringify(again.body)).toMatch(/charged nothing/i);
+      expect(JSON.stringify(again.body)).toMatch(/(?:charged nothing|nothing was charged)/i);
       expect(JSON.stringify(again.body)).toMatch(/start a new purchase/i);
       expect(sale.network.charged).toStrictEqual([]);
     } finally {
@@ -1343,52 +1404,16 @@ describe("the order named by a payment, where it ended before a payment was take
     const { harnessed, served } = await started();
     const itemId = await publish(harnessed, asyncCard);
     const challenge = await challengeFor(served, itemId);
-    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-    const orderId = opened?.order.id ?? "";
+    const orderId = orderIdIn(challenge);
     harnessed.advance(60_000);
 
-    const answered = await present(served, itemId, onlyTheOrder(challenge));
+    const answered = await present(served, itemId, onlyTheStamp(challenge));
 
     expect(answered.status).toBe(409);
     expectNoKeyIn(answered.body);
     expect(harnessed.facilitator.verifies).toHaveLength(0);
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
-    await expectToSayWhatBecameOf(answered.body, served, orderId, { retryable: false });
-  });
-
-  it("does not tell a payment that came after the price lapsed that the order ended uncharged when another took the order first", async () => {
-    // The price's timer can fire late, and the order is read before the lapse
-    // is applied; a payment can take it in between. The order was charged, to
-    // its buyer; only this payment was not.
-    const { harnessed, served } = await started();
-    const itemId = await publish(harnessed, asyncCard);
-    const challenge = await challengeFor(served, itemId);
-    const [opened] = await harnessed.store.orders(harnessed.merchant.id);
-    const orderId = opened?.order.id ?? "";
-    const release = harnessed.facilitator.holdVerification();
-    const first = present(served, itemId, await paymentAgainst(challenge, BUYER, "0x01"));
-    await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
-    harnessed.advance(31_000);
-    const runner = harnessed.gateway.runner;
-    const apply = runner.apply.bind(runner);
-    vi.spyOn(runner, "apply").mockImplementationOnce(async (id, event, facts) => {
-      release();
-      expect((await first).status).toBe(200);
-      return apply(id, event, facts);
-    });
-
-    const answered = await present(
-      served,
-      itemId,
-      await paymentAgainst(challenge, STRANGER, "0x02"),
-    );
-
-    expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("settled");
-    expect(answered.status).toBe(409);
-    expect((answered.body as { error: { code: string } }).error.code).toBe("not_this_purchase");
-    const { message } = (answered.body as { error: { message: string } }).error;
-    expect(message).not.toMatch(/is over/i);
-    expect(message).toMatch(/another payment already took this purchase/i);
+    expect(await harnessed.store.orderById(orderId)).toBeNull();
+    expect(answered.body).toMatchObject({ error: { code: "payment_not_taken", retryable: false } });
   });
 
   it("hands back no order for a synchronous purchase whose seller ran out of time, and its buyer still collects", async () => {
@@ -1407,7 +1432,7 @@ describe("the order named by a payment, where it ended before a payment was take
     await reaching(harnessed, orderId, "expired");
     const checked = harnessed.facilitator.verifies.length;
 
-    const answered = await present(served, itemId, onlyTheOrder(challenge));
+    const answered = await present(served, itemId, onlyTheStamp(challenge));
 
     expect(answered.status).toBe(409);
     expectNoKeyIn(answered.body);
@@ -1449,7 +1474,7 @@ describe("the order named by a payment, where it ended before a payment was take
     ]);
     const checked = harnessed.facilitator.verifies.length;
 
-    const answered = await present(served, itemId, onlyTheOrder(challenge));
+    const answered = await present(served, itemId, onlyTheStamp(challenge));
 
     expect(answered.status).toBe(409);
     expectNoKeyIn(answered.body);

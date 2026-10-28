@@ -309,8 +309,11 @@ check starts no purchase and the card's price is not a fallback. Put the
 ordinary price of the product there rather than a zero or a placeholder: the
 agent decides from it whether to look any further.
 
-The check answers one question: what the product costs and whether it is there
-right now. We ask it at the moment of purchase, of your price handler.
+The check answers what the product costs and whether it is available now.
+Agentify asks it before payment, and an order is written only when a payment
+is presented. Publishing the card again before that payment invalidates the
+outstanding price; the agent must request a new one. Once the payment is
+accepted, the order keeps its price and fulfillment terms.
 
 The question travels the same channel as the orders: you put a price handler —
 the one you register under `on('quote', …)` — beside the order handler, in the
@@ -348,22 +351,33 @@ The field `purpose` says why we are asking. Today it always reads `"purchase"`:
 there is an agent behind the question, buying right now. A handler should
 accept the other value, `"poll"`, all the same, though nothing sends it yet.
 
-The field `price_id` identifies this one price question, and it is good once —
-no more than one order goes through under a single `price_id`. The same
-`price_id` arrives later with the order, so you can tie your own answer to the
-sale. Beside it comes `expires_at`, the moment up to which the price you name
-will be honoured: if you have set stock aside against it, there is no need to
-hold that stock any longer, and we send no separate message when the moment
-passes. Nobody is obliged to reserve anything — without a reservation the check
-stays an answer to a question rather than a commitment.
+The field `price_id` identifies one price question. At most one order uses it,
+and it arrives with that order so you can recognise the price you named.
+`expires_at` bounds the life of the price you name. Agentify judges its term when
+the paid request arrives at its gateway, rather than when the agent signs or
+when the charge executes.
 
-The answer has three parts:
+A price question creates no order and reserves no stock. Answer it without
+setting goods aside or creating a checkout session for the buyer. The question
+lives only while Agentify waits for your answer; a gateway restart forgets it.
+An agent may never pay for the price it asked for. Stock and fulfillment begin
+with the paid order.
+
+The answer carries these fields:
 
 | Field of the answer | Type | Required | Example |
 | --- | --- | --- | --- |
 | `available` | boolean | required | `true` |
 | `price` | an amount and a currency | required where `available` | `{ "amount": "5.00", "currency": "USD" }` |
 | `as_of` | a timestamp, ISO 8601 | required | `"2026-08-26T10:15:00Z"` |
+| `quote_reference` | 1–512 printable ASCII characters | optional where `available` | your own opaque reference to the price facts |
+
+Agentify authenticates `quote_reference` with the price and returns its exact
+bytes on the merchant's paid order. It is visible to the buyer in the 402
+payment requirements and may reach the payment facilitator or a discovery
+listing. Put no secret, personal data or protected download address in it.
+Keeping the price facts in the reference lets your handler recognise them
+without storing an unpaid question.
 
 In full it looks like this:
 
@@ -405,22 +419,17 @@ question goes out, before anyone knows when your answer will land, so it falls a
 little later — and what happens once a price has run out is in [Time ran
 out](/orders).
 
-We wait {{quote-response}} for an answer, and a question unanswered by then counts as
-silence, which costs different things in different modes ([What can go
-wrong](/failures)). The seconds run from the moment we ask, not from the moment
-your process takes the question, and the question shares the stream with
-everything else. The SDK handles up to four unfinished messages at once, so
-one slow order need not delay a price question. When all four places are busy
-with orders, questions or events, the question waits; more instances divide
-that work further. A question that expires in the queue is still unanswered. One purchase asks
-one question and that question is put on your stream once. At most {{waiting-for-payment-at-most}} of
-your purchases wait for payment at once, and a purchase beyond them is refused
-before its question is asked ([What can go wrong](/failures)), so purchases
-nobody pays reach your handler as {{waiting-for-payment-at-most}} questions at a time at most. A
-purchase that is paid frees its place at once, so the rate your price handler
-meets is otherwise the rate agents buy at, and that is the number to size it
-against. The thresholds that would hold that rate down further are among what
-is not settled below.
+We wait {{quote-response}} from asking, rather than from when your process
+takes the question. Each merchant's gate admits only questions that can still
+be answered in that window, and a question whose wait has ended is never
+handed out. Paid orders are drawn before price questions. The SDK handles up
+to four unfinished messages at once; more instances divide that work further.
+
+A full gate uses the card price for a synchronous sale, whose handler can
+still refuse before a charge. It refuses an asynchronous purchase or parcel
+with `seller_busy`, HTTP 429 and `Retry-After: 2`, before asking your price.
+The agent waits two seconds and tries again. These rules apply to the SDK and
+WooCommerce alike; they are described on [What can go wrong](/failures).
 
 Agentify keeps no stock counts: only you know how much of anything there is. So
 a product that can run out is worth listing with a check, because without one

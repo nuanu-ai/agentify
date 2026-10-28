@@ -36,6 +36,7 @@ vi.mock("../../dashboard/src/identity.js", async (importOriginal) => ({
 /** The test channel, with its database on a loopback port nothing listens on. */
 const TEST_CHANNEL = {
   DATABASE_URL: "postgres://agentify@127.0.0.1:9/agentify",
+  PRICE_STAMP_KEY: "app-fixture-price-stamp-key-at-least32bytes",
   AUTH_SECRET: "a".repeat(44),
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "https://x402.org/facilitator",

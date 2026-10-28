@@ -14,13 +14,7 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { inViewersZone } from "../../src/moments.js";
 import { formsIn, readable } from "../../src/testing/html.js";
-import {
-  CLOSURE_NOTES,
-  closedForGood,
-  drawnClosedForGood,
-  type LapsedAttempt,
-  ordersView,
-} from "../../src/views.js";
+import { CLOSURE_NOTES, closedForGood, drawnClosedForGood, ordersView } from "../../src/views.js";
 import type { ShopTotal } from "../../src/woo-shops.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
@@ -313,7 +307,6 @@ describe("a shop's order a cent from what the buyer paid", () => {
             new URLSearchParams({ details: FIRST }),
             {},
             {},
-            { page: null, of: 0 },
             totals,
           )}
         />
@@ -814,216 +807,10 @@ describe("a closure recorded", () => {
   });
 });
 
-describe("the purchases that lapsed unpaid", () => {
-  /** Where an attempt stands in the list, by when it was asked for and its identifier. */
-  const markOf = (attempt: LapsedAttempt | undefined) => ({
-    key: [Date.parse(attempt?.asked_at ?? "")],
-    id: attempt?.id ?? "",
-  });
-  const placeOf = (attempt: LapsedAttempt | undefined) =>
-    `${markOf(attempt).key[0]}.${markOf(attempt).id}`;
-  // As the gateway reads them apart: a page of them, newest first, and how
-  // many there are in all.
-  const page = (from: number): LapsedAttempt[] =>
-    Array.from({ length: 50 }, (_, at) => ({
-      id: idOf((from + at).toString(16).padStart(4, "0"), "dead"),
-      merchant_item_id: "vpn-1m",
-      status: at % 2 === 0 ? ("expired" as const) : ("rejected" as const),
-      price: { amount: "5.00", currency: "USD" },
-      asked_at: new Date(Date.parse("2026-10-11T22:59:00Z") - (from + at) * 60_000).toISOString(),
-      priced_at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
-    }));
-
-  it("are listed under their own segment a page at a time, and in no other", () => {
-    const second = page(50);
-
-    const there = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams(`show=lapsed&after=${placeOf(page(49)[0])}`),
-      {},
-      {},
-      {
-        page: second,
-        of: 120,
-        newer: 50,
-        previous: markOf(second[0]),
-        next: markOf(second.at(-1)),
-      },
-    );
-    const elsewhere = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams(),
-      {},
-      {},
-      { page: null, of: 120 },
-    );
-
-    expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
-      second.map((attempt) => attempt.id),
-    );
-    expect(there.listing.cut).toMatchObject({
-      from: 51,
-      to: 100,
-      of: 120,
-      previous: `/orders?show=lapsed&before=${placeOf(second[0])}`,
-      next: `/orders?show=lapsed&after=${placeOf(second.at(-1))}`,
-    });
-    expect(there.listing.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
-      ["All", 3, false],
-      ["Open", 3, false],
-      ["Needs you", 0, false],
-      ["Lapsed", 120, true],
-    ]);
-    expect(elsewhere.listing.rows.map((row) => row.id).sort()).toStrictEqual(
-      THREE.orders.map((order) => order.id).sort(),
-    );
-    const text = readable(served(() => <OrdersScreen view={there} />));
-    expect(text).toContain("Showing 51–100 of 120");
-    expect(text).toContain("Closed on time limit");
-  });
-
-  it("include one that ended before any price was named, shown without a price", () => {
-    const unpriced: LapsedAttempt = {
-      id: idOf("0aa0", "beef"),
-      merchant_item_id: "vpn-1m",
-      status: "rejected",
-      price: null,
-      asked_at: "2026-10-11T23:00:00Z",
-      priced_at: null,
-    };
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams("show=lapsed"),
-      {},
-      {},
-      { page: [unpriced], of: 1, newer: 0, previous: null, next: null },
-    );
-
-    expect(view.listing.rows.map((row) => [row.id, row.amount])).toStrictEqual([
-      [unpriced.id, "No price"],
-    ]);
-    expect(readable(served(() => <OrdersScreen view={view} />))).toContain("VPN, one month");
-  });
-
-  it("are said, beside a search, to be left out of it and kept under Lapsed", () => {
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams({ q: "ord_ffff" }),
-      {},
-      {},
-      { page: null, of: 3 },
-    );
-
-    const text = readable(served(() => <OrdersScreen view={view} />));
-    expect(text).toContain("No order matches");
-    expect(text).toContain("Purchases that lapsed unpaid are not searched: 3 are under Lapsed");
-  });
-
-  it("are not offered beside a search, which reads only the other orders", () => {
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams({ q: FIRST }),
-      {},
-      {},
-      { page: null, of: 120 },
-    );
-
-    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
-  });
-
-  it("are a segment only where there is one, so a list without them reads as before", () => {
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams(),
-      {},
-      {},
-      {
-        page: null,
-        of: 0,
-      },
-    );
-
-    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
-  });
-
-  it("are orders, so a merchant with no other is not told there are none", () => {
-    const view = ordersView(
-      CARDS,
-      ordersOf([]),
-      ordersOf([]),
-      new URLSearchParams(),
-      {},
-      {},
-      { page: null, of: 3 },
-    );
-
-    expect(view.none).toBe(false);
-    expect(readable(served(() => <OrdersScreen view={view} />))).not.toContain("No orders yet");
-  });
-});
-
 describe("an order's facts", () => {
   /** The opened part of one order's row, read apart from the rest of the page. */
   const detailsText = (html: string, id: string) =>
     readable(new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "");
-
-  const lapsedPage = (attempts: LapsedAttempt[]) =>
-    ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams({ show: "lapsed", details: attempts[0]?.id ?? "" }),
-      {},
-      {},
-      { page: attempts, of: attempts.length, newer: 0, previous: null, next: null },
-    );
-
-  const UNPRICED: LapsedAttempt = {
-    id: idOf("0aa0", "beef"),
-    merchant_item_id: "vpn-1m",
-    status: "rejected",
-    price: null,
-    asked_at: "2026-10-11T23:00:00Z",
-    priced_at: null,
-  };
-
-  it("say a purchase that ended before any price was set was not priced, and when it was asked for, never a price set", () => {
-    const html = served(() => <OrdersScreen view={lapsedPage([UNPRICED])} />);
-    const details = detailsText(html, UNPRICED.id);
-
-    expect(readable(html)).toContain("Not priced");
-    expect(readable(html)).not.toMatch(/Price set \d/);
-    expect(details).toContain("Asked to buy 2026-10-11 23:00:00 UTC");
-    expect(details).not.toContain("Price set");
-  });
-
-  it("say when a lapsed purchase's price was set, apart from when it was asked for", () => {
-    const priced: LapsedAttempt = {
-      ...UNPRICED,
-      status: "expired",
-      price: { amount: "5.00", currency: "USD" },
-      asked_at: "2026-10-11T22:59:58Z",
-      priced_at: "2026-10-11T23:00:00Z",
-    };
-    const html = served(() => <OrdersScreen view={lapsedPage([priced])} />);
-    const details = detailsText(html, priced.id);
-
-    expect(readable(html)).not.toContain("Not priced");
-    expect(details).toContain("Asked to buy 2026-10-11 22:59:58 UTC");
-    expect(details).toContain("Price set 2026-10-11 23:00:00 UTC");
-  });
 
   const UNFULFILLED = ordersOf([
     { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
@@ -1163,7 +950,6 @@ describe("the way on for an unfulfilled order", () => {
               [NEVER_RECEIVED]: cause("charge_confirmed_late"),
             },
             {},
-            undefined,
             {},
             {
               [FIRST]: { kind: "parcel", placed: true },
@@ -1258,7 +1044,6 @@ describe("the transaction that paid an order", () => {
           new URLSearchParams({ details: FIRST }),
           {},
           {},
-          { page: null, of: 0 },
           {},
           {},
           new Set(),

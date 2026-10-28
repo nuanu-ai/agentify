@@ -53,7 +53,7 @@ import {
  * told to wait before trying again: long enough not to knock at once, short
  * against the half minute a price holds.
  */
-const SELLER_BUSY_RETRY_AFTER_SECONDS = 5;
+const SELLER_BUSY_RETRY_AFTER_SECONDS = 2;
 
 /**
  * The merchant whose key opened this call. The mounting loop answers 401
@@ -486,10 +486,10 @@ const isEmptyDocument = (body: unknown): boolean =>
  * malformed document is refused with its fields before the agent signs
  * anything.
  *
- * A POST with the purchase document and no payment opens and prices an order
- * and answers with the challenge. With a payment it drives the order the
- * payment names; a payment naming no order we hold gets a fresh challenge, so
- * the agent pays against a price we actually issued.
+ * An unpaid purchase receives a stamped price without creating an order.
+ * A payment signed against a listing has no stamp and receives a purchase
+ * price to sign. A paid request repeats the body and stamp; an invalid stamp
+ * is refused before any charge.
  */
 async function purchase(
   gateway: Gateway,
@@ -499,6 +499,7 @@ async function purchase(
   // Purchase and recovery replies can contain the private order address and goods.
   response.setHeader("Cache-Control", "no-store");
   const itemId = params.item_id ?? "";
+  const arrivedAt = gateway.runtime.clock();
   const presented = presentedPayment(request.headers);
 
   if (request.method === "GET") {
@@ -534,40 +535,32 @@ async function purchase(
 
   const held = hold(PurchaseRequestSchema, body);
 
-  if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
-    const named = await gateway.orderById(presented.orderId);
-    if (named !== null) {
-      // A paid request's body is read only for the parameters and address sent
-      // again, which must be the ones the order was priced for. A malformed one
-      // is refused, or the payment would go through for something the agent did
-      // not mean.
-      if (!held.ok && carriesWhatWasPriced(body)) {
-        return written(
-          response,
-          BAD_REQUEST,
-          refusal(
-            "malformed_body",
-            "this call's body is not the document this call takes, and the problems say which fields and why",
-            { problems: held.problems },
-          ),
-        );
-      }
-      // Read before the payment: a failure after the money moved would leave a
-      // paid agent with an error and no address to come back to.
-      const seller = await gateway.sellerOf(named.merchantId);
+  if (presented !== null && presented !== "unreadable") {
+    if (!held.ok) {
+      return written(
+        response,
+        BAD_REQUEST,
+        refusal("malformed_body", "repeat the purchase JSON body with payment", {
+          problems: held.problems,
+        }),
+      );
+    }
+    if (presented.stamp !== null) {
+      const named = presented.orderId === null ? null : await gateway.orderById(presented.orderId);
+      const resource = named === null ? await gateway.paidResource(itemId) : null;
+      const merchantId = named?.merchantId ?? resource?.stored.merchantId;
+      const seller = merchantId === undefined ? null : await gateway.sellerOf(merchantId);
       return answerPurchase(
         gateway,
         edge,
         response,
         await gateway.payPurchase(
-          named.order.id,
+          presented.stamp,
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
-          held.ok ? (held.value as PurchaseRequest).ship_to : undefined,
-          {
-            itemId,
-            ...(held.ok ? { params: (held.value as PurchaseRequest).params } : {}),
-          },
+          (held.value as PurchaseRequest).ship_to,
+          { itemId, params: (held.value as PurchaseRequest).params },
+          arrivedAt,
         ),
         seller,
       );
@@ -596,23 +589,14 @@ async function purchase(
     edge,
     response,
     attempt,
-    // No payment on this path; where an answer carries an order's status,
-    // the seller is read there.
+    // No payment is admitted on this path; where an answer carries an order's
+    // status, the seller is read there.
     null,
     // Why this call did not return the resource. An unreadable payment must
     // be said, or the agent cannot tell its encoding is at fault and retries
     // the same header.
-    presented === null
-      ? undefined
-      : presented === "unreadable"
-        ? CHALLENGE_REASONS.unreadablePayment
-        : CHALLENGE_REASONS.noHeldOrder,
+    presented === "unreadable" ? CHALLENGE_REASONS.unreadablePayment : undefined,
   );
-}
-
-/** Whether a body that did not read as a purchase was trying to say what was bought. */
-function carriesWhatWasPriced(body: unknown): boolean {
-  return typeof body === "object" && body !== null && ("ship_to" in body || "params" in body);
 }
 
 async function answerPurchase(
@@ -680,15 +664,14 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
-      // A purchase waiting for payment lapses with its price, so a place comes
-      // free within a minute and usually much sooner.
+      // Busy admission is transient; retrying asks again before any payment.
       response.setHeader("retry-after", String(SELLER_BUSY_RETRY_AFTER_SECONDS));
       return written(
         response,
         TOO_MANY_REQUESTS,
         refusal(
           "seller_busy",
-          "this seller has too many purchases waiting for payment right now, so this one was not started and nothing was charged; try again in a few seconds",
+          "this seller is busy right now, so this purchase was not started and nothing was charged; try again in a few seconds",
         ),
       );
 
@@ -759,7 +742,7 @@ async function answerPurchase(
         PAYMENT_REQUIRED_HEADER,
         edge.challengeFor(
           price,
-          attempt.order.order.id,
+          attempt.order.priceOffer.stamp,
           {
             itemId: offered.stored.id,
             card: offered.stored.card,
@@ -767,6 +750,7 @@ async function answerPurchase(
             payTo: offered.payTo,
           },
           why,
+          attempt.order.priceOffer.requirements,
         ),
       );
       return written(response, PAYMENT_REQUIRED, {});

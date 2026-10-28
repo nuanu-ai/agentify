@@ -71,6 +71,19 @@ describe("the price answer", () => {
     expect(QuoteResponseSchema.parse(available)).toStrictEqual(available);
   });
 
+  it("returns a bounded merchant calculation reference unchanged", () => {
+    const quoted = { ...available, quote_reference: "\\".repeat(512) };
+    expect(QuoteResponseSchema.parse(quoted)).toStrictEqual(quoted);
+  });
+  it.each(["", "a".repeat(513), "private\nline", "é"])(
+    "refuses an invalid calculation reference (%j)",
+    (quote_reference) => {
+      expect(errorOf(QuoteResponseSchema, { ...available, quote_reference })).toContain(
+        "quote_reference",
+      );
+    },
+  );
+
   it("accepts a refusal without a price", () => {
     expect(QuoteResponseSchema.parse(unavailable)).toStrictEqual(unavailable);
   });

@@ -1,3 +1,4 @@
+import { storeAcceptedOrder } from "../testing/accepted-order.js";
 /**
  * What a gateway does with the registry of payout splits when it starts, and
  * where it takes a payment address from afterwards.
@@ -115,7 +116,11 @@ const aGatewayOver = (
   database: ReturnType<typeof aDatabase>,
   environment: Record<string, string> = {},
 ) => {
-  const config = loadConfig({ DATABASE_URL: databaseUrl, ...environment });
+  const config = loadConfig({
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+    DATABASE_URL: databaseUrl,
+    ...environment,
+  });
   const facilitator = new ScriptedFacilitator();
   const announcer = new RecordingAnnouncer();
   const gateway = new Gateway({
@@ -139,6 +144,7 @@ const aGatewayOver = (
 const aMerchant = async (database: ReturnType<typeof aDatabase>, id: string): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
+  await database.store.setSellerSite(id, "https://shop.example.com", NOW);
   await database.store.noteContact(id, NOW);
   return id;
 };
@@ -523,7 +529,11 @@ describe("a start that finds wallets with no split recorded", () => {
     // An existing merchant's next challenge is their split, from the registry.
     const database = await withoutTheirSplits();
     const { gateway, facilitator } = aGatewayOver(database);
-    const stored = await database.store.publishCard("mch_2", card, NOW);
+    const stored = await database.store.publishCard(
+      "mch_2",
+      { ...card, fulfillment: "async" },
+      NOW,
+    );
 
     await gateway.start();
 
@@ -531,7 +541,10 @@ describe("a start that finds wallets with no split recorded", () => {
     expect((await gateway.paidResource(stored.id))?.payTo).toBe(split);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
     expect(facilitator.verifies.at(-1)?.payTo).toBe(split);
   });
 });
@@ -673,7 +686,7 @@ describe("a start on a registry holding a split of a wallet the wallet rule refu
     await aMerchant(database, "mch_refused");
     const split = await recordedFor(database, "mch_refused");
     await paidUnder(database, "mch_refused", W);
-    await database.store.addOrder({
+    await storeAcceptedOrder(database.store, {
       ...anOrder("ord_paid_there", "delivered", { merchantId: "mch_refused", createdAt: NOW }),
       payTo: split.address,
     });
@@ -695,13 +708,20 @@ describe("the address a payment is asked for", () => {
     const { gateway, facilitator } = aGatewayOver(database);
     await gateway.start();
     const recorded = await paidUnder(database, "mch_one", W, edited);
-    const stored = await database.store.publishCard("mch_one", card, NOW);
+    const stored = await database.store.publishCard(
+      "mch_one",
+      { ...card, fulfillment: "async" },
+      NOW,
+    );
 
     expect((await gateway.paidResource(stored.id))?.payTo).toBe(recorded.address);
     expect(payoutSplitFor(T1_TEST, "mch_one", W).address).not.toBe(recorded.address);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
     expect(facilitator.verifies.at(-1)?.payTo).toBe(recorded.address);
   });
 });

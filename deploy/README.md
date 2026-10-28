@@ -750,13 +750,21 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
-`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`,
+`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `PRICE_STAMP_KEY`,
 `AGENTIFY_AUTH_SECRET`, `TOKEN_HMAC_SECRET`,
 `EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`, the last at least 32
 characters of its own (`openssl rand -base64 32`): the scanner presents it to
 the dashboard's private route, and the preflight refuses a channel where any
 other service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
+`PRICE_STAMP_KEY` is a separate random secret of at least 32 bytes
+(`openssl rand -base64 32`), stable across releases and unique to this channel.
+To rotate, move the current value into `PRICE_STAMP_PREVIOUS_KEY`, install a
+new current key, and deploy. Remove the previous key only after all outstanding
+price terms have elapsed. Paid recovery uses the exact saved offer and remains
+available after either signing key is retired. Neither value belongs in logs,
+health responses or a merchant configuration.
+
 PRODUCTION adds `AGENTIFY_DB_PASSWORD`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`. TEST may name the three mail settings too, and does where its
 sign-in links and rate notices are to reach real mailboxes, as an acceptance

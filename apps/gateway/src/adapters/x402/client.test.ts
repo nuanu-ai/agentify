@@ -383,6 +383,7 @@ describe("choosing a facilitator client for a configuration", () => {
     // "unknown", and the agent retries a purchase that can never complete.
     const rooted = facilitatorClientFor(
       loadConfig({
+        PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
         DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
         FACILITATOR_URL: "https://api.cdp.coinbase.com./platform/v2/x402",
         CDP_API_KEY_ID: "an-api-key",
@@ -634,6 +635,7 @@ describe("the gateway's start on Coinbase's facilitator", () => {
    */
   const onCoinbase = (key: ApiKey) =>
     loadConfig({
+      PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
       DATABASE_URL: "postgres://agentify@127.0.0.1:1/agentify",
       FACILITATOR_URL: COINBASE_FACILITATOR,
       CDP_API_KEY_ID: key.id,

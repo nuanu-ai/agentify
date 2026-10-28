@@ -16,6 +16,7 @@
  * future, so no test here waits on wall time to reach its assertion.
  */
 
+import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { type Environment, keyPrefixFor } from "@agentify/core";
@@ -88,6 +89,7 @@ export interface Booted {
 export function sliceEnv(overrides: Record<string, string> = {}): Record<string, string> {
   const settings = {
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    PRICE_STAMP_KEY: randomBytes(32).toString("base64url"),
     PAY_TO_ADDRESS: SLICE_PAY_TO,
     // Short enough that an idle poll parks briefly rather than for the
     // production window, so the merchant's loop picks up work promptly and the

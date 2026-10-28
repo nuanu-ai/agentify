@@ -30,7 +30,4 @@ export const DELIVERED_NOT_PAID = sql`(${orders.state} = 'delivered_unpaid' and 
 export const IN_PROGRESS = sql`(${orders.state} in ${statesIn(IN_PROGRESS_STATES)} and not (${PAYMENT_UNKNOWN}))`;
 
 /** `endedOrder`. */
-export const ENDED = sql`(${orders.state} in ${statesIn(ENDED_STATES)} and not ${orders.lapsed} and not (${PAYMENT_UNKNOWN}))`;
-
-/** `lapsedAttempt`, as the store writes it into the orders table's `lapsed` column. */
-export const LAPSED = sql`(${orders.lapsed})`;
+export const ENDED = sql`(${orders.state} in ${statesIn(ENDED_STATES)} and not (${PAYMENT_UNKNOWN}))`;

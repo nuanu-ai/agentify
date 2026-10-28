@@ -51,7 +51,7 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
   // here and executed after the goods. The settle's own outcomes are not
   // answered because nothing has been sent for execution yet — on the
   // asynchronous card, whose charge goes out from this state, they are.
-  quoted: ["payment_verified", "purchase_repeated", "deadline_expired"],
+  quoted: ["payment_presented", "payment_verified", "purchase_repeated", "deadline_expired"],
   // Queued for the merchant. Every answer of his is taken here as well as in
   // `dispatched`: he is plainly holding the order, because he is answering,
   // and our own record of the hand-over has simply not landed yet.
@@ -77,13 +77,13 @@ const ANSWERED: Record<OrderState, readonly OrderEventKind[]> = {
     "refuse_called",
     "deadline_expired",
   ],
-  // The whole row, and not because this state is permissive. Both ways into it
+  // Every event except initial payment admission: both ways into this state
   // hand the payment over for execution, so an order here is always mid-charge
   // and the settling guard answers everything the state itself would have
   // dismissed — with "come back once the charge reports" rather than "this
   // means nothing here". Which of the two a caller gets is the subject of the
   // settle-in-flight tests below.
-  fulfilled: [...ORDER_EVENT_KINDS],
+  fulfilled: ORDER_EVENT_KINDS.filter((kind) => kind !== "payment_presented"),
   // Closed as a success. A redelivered acceptance is ordinary here and is
   // answered with the state he is in. The hand-over that would have carried it
   // is not: the worker's poll gives out exactly what this row takes, so a

@@ -72,7 +72,7 @@ by merchant", preserves the original payment and history, and attributes any
 refund or agreement claim to the merchant. A missed deadline establishes
 unfulfilled delivery, not a required whole-price refund. A shop connector adapts
 the shop to the public contracts; the core and SDK acquire no shop-specific
-business rules. Closure does not undo delivery or cancel a payment already
+business rules. A connector's needs alone do not justify expanding a public contract. Closure does not undo delivery or cancel a payment already
 accepted for execution (ADR-0028; the product owner, 2026-10-19).
 
 ## Git

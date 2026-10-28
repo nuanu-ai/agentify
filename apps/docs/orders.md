@@ -134,6 +134,7 @@ sequenceDiagram
 | `params` | the purchase parameters, already checked against the card's declaration |
 | `price` | the sale price: `amount`, `currency`, `at` — the moment that price was fixed for this sale — and `as_of`, the moment the price it was worked out from was true |
 | `price_id` | the identifier of the price question this sale came out of, absent where the card has no price check or the check went silent |
+| `quote_reference` | your optional opaque price reference, returned unchanged from your available answer; 1–512 printable ASCII characters, visible to the buyer and carrying no secret or personal data |
 | `ship_to` | a parcel's address, and only on a parcel's order |
 | `test` | `true` on the test channel, `false` on the live one |
 
@@ -158,9 +159,18 @@ card's `result`. A process that sells products in more than one mode tells
 them apart by `merchant_item_id`, and answers with the goods or with
 `accepted` accordingly.
 
-The field `price_id` ties the order to your own answer about the price: if you
-set stock aside against the price you named, this is the moment to write it
-off. The identifier is good once, and no second order arrives under it.
+The field `price_id` ties the order to the price you named. At most one order
+uses that question's identifier. An unpaid question creates no order and
+reserves no stock. Its optional `quote_reference` carries your public price
+facts through the buyer under Agentify's stamp, then arrives unchanged on the
+paid order.
+
+The price holds until its term ends, judged when the paid request reaches
+Agentify. That request repeats the product and parameters and, for a parcel,
+the complete `ship_to`. The locality must be the one priced; the first verified
+payer supplies the full address within it, which Agentify then holds for that
+order. Publishing a card again invalidates an outstanding unpaid price before
+anything is charged. An order accepted for payment keeps its original terms.
 
 ### What a handler can answer
 
@@ -418,11 +428,11 @@ flowchart LR
 
 | `status` | What it means | On `orders.list({ open: true })` | What a loop over open orders does |
 | --- | --- | --- | --- |
-| `in_progress` | the purchase has not finished: priced, paid, with your handler, or taken on | once it is paid | on an asynchronous order or a parcel, delivers if your own record says the goods are ready; on a synchronous one, nothing, since your handler answers it |
+| `in_progress` | the purchase has not finished: its payment verified, with your handler, or taken on | once it is paid | on an asynchronous order or a parcel, delivers if your own record says the goods are ready; on a synchronous one, nothing, since your handler answers it |
 | `delivered` | the goods are the agent's and the money moved | no | — |
 | `shipped` | a parcel's shipment is recorded and the money moved | no | — |
-| `rejected` | nothing was charged: your price check said there is none, or stayed silent on an asynchronous card or a parcel; a charge before the goods failed; or you refused a synchronous order | no | — |
-| `expired` | a deadline ran out and nothing was charged: the price lapsed, or a synchronous answer did not arrive | no | — |
+| `rejected` | nothing was charged: a charge before the goods failed, or you refused a synchronous order | no | — |
+| `expired` | a synchronous answer did not arrive by its deadline and nothing was charged | no | — |
 | `unfulfilled` | the payment went through and no delivery is recorded | yes, until you deliver or close fulfillment | delivers if your own record says to, or closes fulfillment: until one or the other, an order you were given counts toward the stop on {{unserved-at-most}} such orders |
 | `delivered_unpaid` | you delivered a synchronous order and the charge failed: the buyer has no goods and paid nothing | yes | skips it: a repeat purchase that pays releases the goods you made |
 | `payment_unresolved` | nobody knows whether the charge went through | only after a synchronous delivery, and not once you closed fulfillment | skips it: Agentify settles it when the payment is known |
@@ -430,12 +440,9 @@ flowchart LR
 
 Where we rather than you ended an order and the word alone would leave the
 agent guessing its next step, the status carries a `reason`. `rejected` comes
-with `unavailable` (your price check said there is none),
-`price_check_unanswered` (it did not answer in time, or its answer could not be
-accepted) or `payment_not_settled` (the charge did not go through). `expired`
-comes with `price_expired` (the price ran out before the payment was taken) or
-`merchant_timed_out` (a synchronous answer did not arrive in time). A
-`delivered_unpaid` order is still open and comes with `payment_not_settled`
+with `payment_not_settled` when the charge did not go through. `expired`
+comes with `merchant_timed_out` when a synchronous answer did not arrive in
+time. A `delivered_unpaid` order is still open and comes with `payment_not_settled`
 too, so that the agent does not read the word as a delivery: the reason tells
 it that nothing was taken, that Agentify holds the goods you made, and that
 paying for the same purchase again from the wallet that signed it releases them.
@@ -460,14 +467,10 @@ get the goods, it is how you find the payment to send money back to, as
 [If the buyer did not get the goods](/money#if-the-buyer-did-not-get-the-goods)
 describes.
 
-An order that ended `rejected` or `expired` with nothing charged or held is
-deleted {{lapsed-kept}} after it was last written, at the first daily clean-up
-after that. From then on `orders.get`
-refuses it with `no_such_order`, as an order that never existed, it is no
-longer in `orders.list`, and the agent's status address answers it as an
-unknown order. Your dashboard lists such
-orders apart, under Lapsed. An order with a payment, a claim on a payment, a
-receipt or goods held is never deleted.
+An unpaid price question creates no order. Failed payment verification also
+creates none. An order appears only after verified acceptance; its payment and
+fulfillment history remain available, including when the payment outcome is
+unknown or the merchant ends fulfillment.
 
 On the orders you read back, `status` and `payment_status` are the words in the
 tables above and one more, `unknown`: a word Agentify added after your release
@@ -516,10 +519,10 @@ cannot reach us they throw, as an `AgentifyError` carrying a `code` and the
 `route` it happened on — worth remembering about a loop that runs the moment a
 process comes back up.
 
-An order the agent was given a price for and has not paid is not on the open
-list, because it never reached your handler: delivering against it would make
-goods for a purchase that never happened. A loop over the list therefore rests
-on your own record of what you have already sent. One that makes the goods
+A price requested without payment creates no order and appears in neither
+order list. A payment that has established no buyer is also kept off the
+merchant's lists. A loop over open orders rests on your own record of what
+you have already sent. One that makes the goods
 afresh for every order it finds will issue a new code, be told it succeeded,
 and lose it ([Telling a repeat apart](#telling-a-repeat-apart)).
 
@@ -620,24 +623,22 @@ you closed fulfillment, and its `status` column is the word each one reads.
 | --- | --- | --- | --- |
 | You delivered the goods | `delivered` | in your payout contract | the goods, the price they were charged and whether the money behind it was real |
 | You recorded a parcel's shipment | `shipped` | in your payout contract | that the parcel shipped, with your carrier, your tracking number and when you recorded it — and nothing after |
-| There is none, or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
-| Time ran out: the price lapsed before the payment, or no synchronous delivery arrived | `expired` | never moved | the order ended on its deadline |
+| A charge failed before the goods, or you refused in the synchronous mode | `rejected` | never moved | a refusal, and that the purchase did not happen; where the refusal was yours, your code and your message arrive with it |
+| No synchronous delivery arrived by its deadline | `expired` | never moved | the order ended on its deadline |
 | The money was charged and no delivery happened | `unfulfilled` | in your payout contract | no delivery is recorded, and Agentify confirms no refund |
 | You delivered synchronously and the payment did not execute | `delivered_unpaid` | never arrived | the reason `payment_not_settled`: nothing was taken, Agentify holds the goods, and paying for this same purchase again from the same wallet releases them |
 | You closed fulfillment | `fulfillment_closed`, or `payment_unresolved` while the payment is unknown | where `payment_status` says: in your payout contract when `paid` | that you closed fulfillment, with your message as your words, and on a paid order Agentify's own sentence that no refund is confirmed |
 | The facilitator did not say whether the money was charged | `payment_unresolved` | unknown until Agentify finds the transfer or proof it cannot happen | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
 A purchase whose parameters do not fit the card is refused at the door, before
-any order exists, and a payment that fails its check is refused the same way,
-leaving the priced order to lapse as `expired`. Three more refusals come
-before anything is charged, all described on [What can go wrong](/failures): a
-purchase while {{waiting-for-payment-at-most}} of yours already wait for payment, any purchase
-while no process of yours has polled for {{silent-after}},
-and any purchase while {{unserved-at-most}} or more of your orders are paid for with nothing
-delivered. A pause ends no orders: cards
-stop selling, and the orders already taken on play out in the ordinary way.
-To stop Agentify accepting deliveries for one order, [close
-fulfillment](#closing-fulfillment).
+any order exists. A payment that fails its check reaches no merchant handler;
+a price requested without payment creates no order. A full price-question gate lets a
+synchronous card sell at its card price; an asynchronous card or parcel is
+refused with `seller_busy`, HTTP 429 and `Retry-After: 2`. A merchant whose
+process has stopped polling is refused with `seller_not_taking_orders`.
+A merchant who leaves {{unserved-at-most}} paid orders without delivery or
+closure is refused with `seller_not_fulfilling`, until enough are delivered
+or closed. These rules are described on [What can go wrong](/failures).
 
 ## Every time limit
 
@@ -647,8 +648,8 @@ the two your card names.
 
 | What waits | Whom it binds | How long | Counted from | When it runs out |
 | --- | --- | --- | --- | --- |
-| Your price handler's answer | you | {{quote-response}} | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment (`rejected`, `price_check_unanswered`) |
-| The price an order was given | the agent | {{quote-ttl}} | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the agent asks for a fresh price (`expired`, `price_expired`); no order reaches you |
+| Your price handler's answer | you | {{quote-response}} | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment, with no order written |
+| The price offered to the agent | the agent | {{quote-ttl}} | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the paid request must arrive before the term ends; otherwise the agent asks for a fresh price, and no order is written |
 | Each hand-over of an order to your process | you | {{handler-answer}} | the order is handed to your process | the order is sent again, up to {{redelivery-max-attempts}} deliveries in all, within its own deadline |
 | The goods of a synchronous order | you | {{sync-response}} | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays, unless you closed fulfillment |
 | The facilitator's answer about the charge | Agentify | {{settle-response}} on a synchronous order; {{settle-before-goods:number}} where the charge comes before the goods | the charge is sent | `payment_unresolved` |
@@ -668,9 +669,8 @@ By the order's identifier: it is the same across every repeat, and your side
 answers with the earlier result under it instead of delivering a second time.
 Orders are delivered at least once, so a repeat is ordinary traffic; it does
 not mean that anything broke. On the agent's side we recognise a repeat by the
-payment: the payment request we issue names the order by the same identifier,
-and it comes back in the payment the agent signs, so a repeat names the order
-it repeats and we carry that order on from where it stopped.
+payment: its saved `extra.price_stamp` identifies the same purchase on every
+repeat, and we carry its order on from where it stopped.
 
 To recover a lost answer, the agent signs a new payment for that same payment
 request from the same wallet, and once Agentify has checked that signature,
@@ -682,11 +682,12 @@ An agent therefore keeps the payment request and the payment it signed from
 before it sends the payment until it has the answer: the request to sign
 again, and the payment to tell it which wallet signs.
 
-The payment request names the order only by its `order_id`, which opens
-nothing. The payment that already paid an order, sent again, is refused,
-because it can be read from the chain; a fresh payment from another wallet is
-refused as `not_this_purchase`. Neither answer reveals the order's goods, its
-address or where to read it.
+The payment request carries the opaque stamped price in `extra.price_stamp`.
+It opens no order or goods. An order is created when the paid request arrives;
+the purchase answer carries its `order_id` and the private `status_url` that
+opens it. The signature used for recovery must be fresh and valid; the
+authorization that paid the order cannot be reused. No refusal
+reveals the order's goods, address or private status URL.
 
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is
@@ -718,7 +719,8 @@ Within one SDK instance, up to four messages can be unfinished at once. A slow
 order handler lets another order or price question run while there is room.
 When all four places are occupied, the instance asks for nothing more until
 one finishes, so a price question can still wait behind slow work. More
-instances divide the stream further.
+instances divide the stream further. Agentify draws paid orders ahead of
+price questions; a question whose wait has ended is never handed out.
 
 Handlers for different orders may overlap and finish in a different order.
 Within one instance, an order event waits for earlier handlers for the same

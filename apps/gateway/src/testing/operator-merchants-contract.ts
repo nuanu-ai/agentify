@@ -18,6 +18,7 @@ import type {
 import type { Store, StoredOrder } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
+import { storeAcceptedOrder } from "./accepted-order.js";
 import { anOrder } from "./store-contract.js";
 
 /** What a case is handed: an empty store opened for Base Sepolia, and the reader over it. */
@@ -90,7 +91,12 @@ const order = (
   rest: Partial<StoredOrder> = {},
 ): StoredOrder => {
   const made = anOrder(id, state, { merchantId, createdAt });
-  return { ...made, ...rest, order: { ...made.order, ...change } };
+  return {
+    ...made,
+    paidBy: "0x00000000000000000000000000000000000000aa",
+    ...rest,
+    order: { ...made.order, payment: state === "delivered" ? "settled" : "verified", ...change },
+  };
 };
 
 /**
@@ -109,6 +115,7 @@ const sale = (
   const made = anOrder(id, state, { merchantId, createdAt: 1_000 });
   return {
     ...made,
+    paidBy: "0x00000000000000000000000000000000000000aa",
     ...(executedAt === undefined
       ? {}
       : {
@@ -239,8 +246,8 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_never_old", 3_000, SELLS);
         await merchant(store, "mch_never_new", 4_000, SELLS);
         await merchant(store, "mch_waits", 500, { name: "Waits", wallet: W1 });
-        await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
-        await store.addOrder(sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
+        await storeAcceptedOrder(store, sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
+        await storeAcceptedOrder(store, sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
 
         const list = await merchants.list({ ...LIVE, limit: 50 });
 
@@ -259,8 +266,8 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_old_sale", 1_000, SELLS);
         await merchant(store, "mch_new_sale", 2_000, SELLS);
         await merchant(store, "mch_never", 3_000, SELLS);
-        await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
-        await store.addOrder(sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
+        await storeAcceptedOrder(store, sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
+        await storeAcceptedOrder(store, sale("ord_new", "mch_new_sale", AT - DAY, "1.00"));
         const ids = (list: MerchantList) => list.rows.map((row) => row.id);
         const nowhere = { waiting: false, lastSaleAt: null, createdAt: 0, id: "" };
 
@@ -296,7 +303,7 @@ export function describeOperatorMerchants(
         await merchant(store, "mch_old_sale", 1_000, SELLS);
         await merchant(store, "mch_never_old", 2_000, SELLS);
         await merchant(store, "mch_never_new", 4_000, SELLS);
-        await store.addOrder(sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
+        await storeAcceptedOrder(store, sale("ord_old", "mch_old_sale", AT - 40 * DAY, "1.00"));
         const ids = (list: MerchantList) => list.rows.map((row) => row.id);
         const gone = { waiting: false, lastSaleAt: null, createdAt: 3_000, id: "mch_gone" };
 
@@ -371,23 +378,31 @@ export function describeOperatorMerchants(
         await store.addKey({ id: "mk_b", merchantId: "mch_b", label: "b", digest: "d3" }, 1_000);
         await store.disableKeyOf("mch_a", "mk_2", 1_500);
         await store.noteContact("mch_a", AT - 20_000);
-        await store.addOrder(order("ord_in", "mch_a", FROM, "delivered"));
-        await store.addOrder(order("ord_before", "mch_a", FROM - 1, "delivered"));
-        await store.addOrder(order("ord_lapsed", "mch_a", AT - DAY, "expired"));
-        await store.addOrder(order("ord_b", "mch_b", AT - DAY, "delivered"));
-        await store.addOrder(sale("ord_s1", "mch_a", AT - DAY, "8.00"));
-        await store.addOrder(sale("ord_s2", "mch_a", FROM, "2.5"));
+        await storeAcceptedOrder(
+          store,
+          order("ord_in", "mch_a", FROM, "delivered_unpaid", { payment: "settle_failed" }),
+        );
+        await storeAcceptedOrder(store, order("ord_before", "mch_a", FROM - 1, "delivered"));
+        await storeAcceptedOrder(store, order("ord_expired", "mch_a", AT - DAY, "expired"));
+        await storeAcceptedOrder(
+          store,
+          order("ord_b", "mch_b", AT - DAY, "delivered_unpaid", { payment: "settle_failed" }),
+        );
+        await storeAcceptedOrder(store, sale("ord_s1", "mch_a", AT - DAY, "8.00"));
+        await storeAcceptedOrder(store, sale("ord_s2", "mch_a", FROM, "2.5"));
         // Settled whatever became of the goods: unfulfilled, or closed by the merchant.
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           sale("ord_s3", "mch_a", AT - 2 * DAY, "0.000001", { state: "unfulfilled" }),
         );
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           sale("ord_s4", "mch_a", AT - 3 * DAY, "3.00", { state: "fulfillment_closed" }),
         );
-        await store.addOrder(sale("ord_s5", "mch_a", FROM - 1, "100.00"));
-        await store.addOrder(sale("ord_s6", "mch_a", null, "50.00"));
+        await storeAcceptedOrder(store, sale("ord_s5", "mch_a", FROM - 1, "100.00"));
+        await storeAcceptedOrder(store, sale("ord_s6", "mch_a", null, "50.00"));
         await store.putReceipt("mch_a", receiptAlone("ord_in", AT));
-        await store.addOrder(sale("ord_sb", "mch_b", AT, "9.00"));
+        await storeAcceptedOrder(store, sale("ord_sb", "mch_b", AT, "9.00"));
 
         const list = await merchants.list({ ...LIVE, limit: 50 });
         const a = list.rows.find((row) => row.id === "mch_a");
@@ -405,7 +420,7 @@ export function describeOperatorMerchants(
           cards: { onSale: 2, published: 3 },
           thirtyDays: {
             from: FROM,
-            orders: 1,
+            orders: 2,
             settled: { amount: "13.500001", count: 4 },
           },
           lastSaleAt: AT - DAY,
@@ -421,7 +436,10 @@ export function describeOperatorMerchants(
         const { store, merchants } = under;
         await merchant(store, "mch_a", 1_000, SELLS);
         const priceless = sale("ord_priceless", "mch_a", AT - DAY, "1.00");
-        await store.addOrder({ ...priceless, order: { ...priceless.order, price: null } });
+        await storeAcceptedOrder(store, {
+          ...priceless,
+          order: { ...priceless.order, price: null },
+        });
 
         await expect(merchants.list({ ...LIVE, limit: 50 })).rejects.toThrow();
         await expect(merchants.merchant("mch_a", LIVE)).rejects.toThrow();
@@ -557,13 +575,16 @@ export function describeOperatorMerchants(
         const under = await open();
         const { store, merchants } = under;
         await merchant(store, "mch_a", 1_000, SELLS);
-        await store.addOrder(sale("ord_1", "mch_a", FROM, "1.00"));
-        await store.addOrder(sale("ord_2", "mch_a", FROM + DAY - 1, "2.00"));
+        await storeAcceptedOrder(store, sale("ord_1", "mch_a", FROM, "1.00"));
+        await storeAcceptedOrder(store, sale("ord_2", "mch_a", FROM + DAY - 1, "2.00"));
         // Dated by the block's time where the chain was seen, not by when it was paid.
-        await store.addOrder(sale("ord_3", "mch_a", FROM - 1, "0.10", { executedAt: AT }));
-        await store.addOrder(sale("ord_4", "mch_a", AT - 60_000, "0.20"));
-        await store.addOrder(sale("ord_5", "mch_a", FROM - 1, "50.00"));
-        await store.addOrder(sale("ord_6", "mch_a", null, "60.00"));
+        await storeAcceptedOrder(
+          store,
+          sale("ord_3", "mch_a", FROM - 1, "0.10", { executedAt: AT }),
+        );
+        await storeAcceptedOrder(store, sale("ord_4", "mch_a", AT - 60_000, "0.20"));
+        await storeAcceptedOrder(store, sale("ord_5", "mch_a", FROM - 1, "50.00"));
+        await storeAcceptedOrder(store, sale("ord_6", "mch_a", null, "60.00"));
 
         const record = await merchants.merchant("mch_a", LIVE);
         const days = record?.thirtyDays.days ?? [];
@@ -583,7 +604,8 @@ export function describeOperatorMerchants(
         const [itemId] = await merchant(store, "mch_a", 1_000, SELLS);
         await merchant(store, "mch_b", 1_000, SELLS);
         const priced = { amount: "8.00", currency: "USD", asOf: 0 };
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           order(
             "ord_unknown",
             "mch_a",
@@ -595,17 +617,24 @@ export function describeOperatorMerchants(
             },
           ),
         );
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           order("ord_settling", "mch_a", AT - 2_000, "paid", {
             payment: "settling",
             price: priced,
           }),
         );
-        await store.addOrder(order("ord_unfulfilled", "mch_a", AT - 3_000, "unfulfilled"));
-        await store.addOrder(order("ord_unpaid", "mch_a", AT - 4_000, "delivered_unpaid"));
-        await store.addOrder(order("ord_delivered", "mch_a", AT - 5_000, "delivered"));
-        await store.addOrder(order("ord_open", "mch_a", AT - 6_000, "created"));
-        await store.addOrder(order("ord_b", "mch_b", AT - 500, "unfulfilled"));
+        await storeAcceptedOrder(
+          store,
+          order("ord_unfulfilled", "mch_a", AT - 3_000, "unfulfilled"),
+        );
+        await storeAcceptedOrder(
+          store,
+          order("ord_unpaid", "mch_a", AT - 4_000, "delivered_unpaid"),
+        );
+        await storeAcceptedOrder(store, order("ord_delivered", "mch_a", AT - 5_000, "delivered"));
+        await storeAcceptedOrder(store, order("ord_open", "mch_a", AT - 6_000, "paid"));
+        await storeAcceptedOrder(store, order("ord_b", "mch_b", AT - 500, "unfulfilled"));
 
         const look = (await merchants.merchant("mch_a", LIVE))?.worthALook;
 
@@ -637,7 +666,10 @@ export function describeOperatorMerchants(
         const { store, merchants } = under;
         await merchant(store, "mch_a", 1_000, SELLS);
         for (let n = 0; n < 21; n += 1) {
-          await store.addOrder(order(`ord_${n}`, "mch_a", AT - n * 1_000, "unfulfilled"));
+          await storeAcceptedOrder(
+            store,
+            order(`ord_${n}`, "mch_a", AT - n * 1_000, "unfulfilled"),
+          );
         }
 
         const look = (await merchants.merchant("mch_a", LIVE))?.worthALook;

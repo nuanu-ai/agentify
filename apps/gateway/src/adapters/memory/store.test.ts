@@ -1,3 +1,4 @@
+import { storeAcceptedOrder } from "../../testing/accepted-order.js";
 /**
  * The in-memory store. What it promises as a port is checked once, in
  * `testing/store-contract.ts`, and run both here and against Postgres under
@@ -43,10 +44,10 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
       },
       redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, maxAttempts: 1 },
     },
-    payment: "none",
+    payment: "verified",
     cardPrice: { amount: "5.00", currency: "USD", asOf: 0 },
-    price: null,
-    quoteSource: null,
+    price: { amount: "5.00", currency: "USD", asOf: 0 },
+    quoteSource: "card_snapshot",
     dispatch: { attempts: 0, accepted: false },
     heldFulfillment: false,
     closure: null,
@@ -54,8 +55,9 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
     timestamps: {
       createdAt: 0,
       quotedAt: null,
+      paymentPresentedAt: null,
       settleStartedAt: null,
-      paidAt: null,
+      paidAt: 0,
       dispatchedAt: null,
     },
   },
@@ -66,9 +68,9 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
   params: {},
   priceId: null,
   delivery: null,
-  payment: null,
-  payTo: null,
-  paidBy: null,
+  payment: "SAVED-VERIFIED",
+  payTo: "0x00000000000000000000000000000000000000aa",
+  paidBy: "0x00000000000000000000000000000000000000aa",
   settlement: null,
   paymentWords: [],
   paymentWordsDropped: 0,
@@ -84,7 +86,7 @@ describe("MemoryStore, where it is not like the other one", () => {
     // builds every object afresh from a row.
     const store = new MemoryStore("eip155:84532", counted());
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
-    await store.addOrder(order("ord_1", "created"));
+    await storeAcceptedOrder(store, order("ord_1", "paid"));
 
     const read = await store.orderById("ord_1");
     expect(() => {
@@ -172,7 +174,7 @@ describe("MemoryStore writes that go with an order", () => {
       async remind() {},
     });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
-    await store.addOrder(order("ord_1", "paid"));
+    await storeAcceptedOrder(store, order("ord_1", "paid"));
 
     await store.withOrder("ord_1", (found) => ({
       save: { ...found, order: { ...found.order, state: "dispatched" } },
@@ -215,7 +217,7 @@ describe("MemoryStore writes that go with an order", () => {
       async remind() {},
     });
     await store.addMerchant({ id: A, name: "Merchant A" }, 0);
-    await store.addOrder(order("ord_1", "paid"));
+    await storeAcceptedOrder(store, order("ord_1", "paid"));
 
     await expect(
       store.withOrder("ord_1", (found) => ({

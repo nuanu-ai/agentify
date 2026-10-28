@@ -24,6 +24,7 @@ const DATABASE_URL = "postgres://agentify@localhost:5432/agentify";
 
 /** What a live chain needs besides the table before `loadConfig` takes it. */
 const LIVE = {
+  PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
   DATABASE_URL,
   PAYMENT_NETWORK: "eip155:8453",
   FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -48,7 +49,13 @@ const TEST_CHANNEL = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532")
 /** The token a gateway on this network asks a buyer for, as its payment library names it. */
 const tokenOn = (network: string): string => {
   const config = loadConfig(
-    network === "eip155:8453" ? LIVE : { DATABASE_URL, PAYMENT_NETWORK: network },
+    network === "eip155:8453"
+      ? LIVE
+      : {
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+          DATABASE_URL,
+          PAYMENT_NETWORK: network,
+        },
   );
   return new PaymentEdge(config).token().asset;
 };

@@ -19,7 +19,8 @@ import {
   paymentUnknown,
   unfulfilledOrder,
 } from "../../../ports/operator/orders.js";
-import { lapsedAttempt, type StoredOrder } from "../../../ports/store.js";
+import type { StoredOrder } from "../../../ports/store.js";
+import { storeAcceptedOrder } from "../../../testing/accepted-order.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../../testing/database.js";
 import { countedIds } from "../../../testing/harness.js";
 import { describeOperatorOrders } from "../../../testing/operator-orders-contract.js";
@@ -31,7 +32,6 @@ import {
   DELIVERED_NOT_PAID,
   ENDED,
   IN_PROGRESS,
-  LAPSED,
   PAYMENT_UNKNOWN,
   UNFULFILLED,
 } from "./predicates.js";
@@ -99,11 +99,17 @@ if (databaseUrl === null) {
       const store = PostgresStore.over(db, "eip155:84532", countedIds());
       await store.addMerchant({ id: "mch_twins", name: "A merchant" }, 1);
       const written: StoredOrder[] = [];
-      for (const state of ORDER_STATES) {
+      for (const state of ORDER_STATES.filter(
+        (state) => state !== "created" && state !== "quoted",
+      )) {
         for (const payment of PAYMENT_STAGES) {
           const base = anOrder(`ord_${state}_${payment}`, state, { merchantId: "mch_twins" });
-          const record = { ...base, order: { ...base.order, payment } };
-          await store.addOrder(record);
+          const record = {
+            ...base,
+            paidBy: "0x00000000000000000000000000000000000000aa",
+            order: { ...base.order, payment },
+          };
+          await storeAcceptedOrder(store, record);
           written.push(record);
         }
       }
@@ -113,7 +119,6 @@ if (databaseUrl === null) {
         delivered_unpaid: [DELIVERED_NOT_PAID, deliveredNotPaid],
         in_progress: [IN_PROGRESS, inProgress],
         ended: [ENDED, endedOrder],
-        lapsed: [LAPSED, lapsedAttempt],
       } as const;
       const read = readOnlyOn(db);
 

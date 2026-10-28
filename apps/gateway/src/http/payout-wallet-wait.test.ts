@@ -326,7 +326,7 @@ describe("a replacement on the live deployment", () => {
     expect(harnessed.facilitator.settles.at(-1)?.payTo).toBe(recorded?.address);
   });
 
-  it("checks a payment against the split in force when it arrives, though its order opened before the moment", async () => {
+  it("refuses a stamped offer whose payout split changed before payment and prices a fresh purchase at the new split", async () => {
     // A merchant often leaves a wallet because its key leaked. Checked
     // against the split in force when the order opened, every order that
     // straddles the moment would be paid to the wallet they left.
@@ -338,9 +338,20 @@ describe("a replacement on the live deployment", () => {
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     harnessed.advance(2_000);
 
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    const refused = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
-    expect(harnessed.facilitator.verifies.at(-1)?.payTo).toBe(
+    expect(refused.step).toBe("payment_not_verified");
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    const fresh = await harnessed.gateway.beginPurchase(itemId, {});
+    if (fresh.step !== "pay") throw new Error("the seller gave no replacement price");
+    expect(fresh.order.priceOffer.requirements.payTo).toBe(
       (await recordedSplitOf(harnessed, A_WALLET))?.address,
     );
   });

@@ -6,7 +6,7 @@
 
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { merchantItemIdFor } from "./woo-catalog.js";
 
 const readCatalogue = (url: string, atMost?: number) => catalogueOf(url, atMost, fetch);
@@ -39,7 +39,9 @@ import {
   readTheOrderInTheShop,
   shipmentInTheShop,
   shippingRatesInTheShop,
+  WooShopRuntime,
 } from "./woo-shop.js";
+import { memoryWooShops } from "./woo-shops.js";
 
 interface Asked {
   readonly method: string;
@@ -57,20 +59,20 @@ interface Stand {
   close(): Promise<void>;
 }
 
+interface ShopAnswer {
+  readonly status: number;
+  readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly raw?: string;
+}
 const shopAnswering = async (
-  answer: (asked: Asked) => {
-    status: number;
-    body?: unknown;
-    headers?: Readonly<Record<string, string>>;
-    /** Sent as it is in place of the body, for an answer that is not JSON. */
-    raw?: string;
-  },
+  answer: (asked: Asked) => ShopAnswer | Promise<ShopAnswer>,
 ): Promise<Stand> => {
   const asked: Asked[] = [];
   const server: Server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => {
+    request.on("end", async () => {
       const call: Asked = {
         method: request.method ?? "GET",
         url: request.url ?? "/",
@@ -81,7 +83,7 @@ const shopAnswering = async (
         body: Buffer.concat(chunks).toString("utf8"),
       };
       asked.push(call);
-      const said = answer(call);
+      const said = await answer(call);
       response.writeHead(said.status, { "content-type": "application/json", ...said.headers });
       response.end(said.raw ?? JSON.stringify(said.body));
     });
@@ -996,6 +998,86 @@ describe("the protected product check", () => {
       expect(read, requested).toMatchObject({ ok: false, again: false, saidNo: false });
       await stand.close();
       stand = null;
+    }
+  });
+
+  it("keeps private credentials and cached product answers separate when connections share anonymous carts", async () => {
+    stand = await shopAnswering((asked) => {
+      if (asked.url.includes("/settings/"))
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+      const accountA =
+        asked.authorization ===
+        `Basic ${Buffer.from("ck_account_a:cs_account_a").toString("base64")}`;
+      return { status: 200, body: parcelDocument({ price: accountA ? "20.00" : "30.00" }) };
+    });
+    const owner = new WooShopRuntime(connectionTo(stand.url), fetch);
+    const a = owner.forConnection({
+      ...connectionTo(stand.url),
+      consumerKey: "ck_account_a",
+      consumerSecret: "cs_account_a",
+    });
+    const b = owner.forConnection({
+      ...connectionTo(stand.url),
+      consumerKey: "ck_account_b",
+      consumerSecret: "cs_account_b",
+    });
+    const item = merchantItemIdFor(stand.url, "28");
+    const [first, second] = await Promise.all([a.inspectForQuote(item), b.inspectForQuote(item)]);
+    expect(first).toMatchObject({ ok: true, product: { price: { amount: "20.00" } } });
+    expect(second).toMatchObject({ ok: true, product: { price: { amount: "30.00" } } });
+    expect(await a.inspectForQuote(item)).toMatchObject({
+      ok: true,
+      product: { price: { amount: "20.00" } },
+    });
+  });
+
+  it("coalesces short product reads and longer settings reads for quotes while paid inspection stays fresh", async () => {
+    let price = "20.00";
+    let refuseProduct = false;
+    stand = await shopAnswering((asked) =>
+      asked.url.includes("/settings/")
+        ? { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) }
+        : refuseProduct
+          ? { status: 503, body: {} }
+          : { status: 200, body: parcelDocument({ price }) },
+    );
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+    try {
+      const keys = connectionTo(stand.url);
+      const runtime = new WooShopRuntime(keys, fetch);
+      const item = merchantItemIdFor(stand.url, "28");
+      const first = await Promise.all([
+        runtime.inspectForQuote(item),
+        runtime.inspectForQuote(item),
+      ]);
+      expect(first.every((read) => read.ok && read.product.price.amount === "20.00")).toBe(true);
+      expect(stand.asked.filter((call) => /\/products\/28$/.test(call.url))).toHaveLength(1);
+      const settings = stand.asked.filter((call) =>
+        /\/settings\/[^/]+\/woocommerce_/.test(call.url),
+      ).length;
+      price = "21.00";
+      expect(await inspectProductInTheShop(keys, item, fetch)).toMatchObject({
+        ok: true,
+        product: { price: { amount: "21.00" } },
+      });
+      clock.mockReturnValue(1_800_000_006_000);
+      refuseProduct = true;
+      expect(await runtime.inspectForQuote(item)).toMatchObject({ ok: false, again: true });
+      refuseProduct = false;
+      expect(await runtime.inspectForQuote(item)).toMatchObject({
+        ok: true,
+        product: { price: { amount: "21.00" } },
+      });
+      expect(
+        stand.asked.filter((call) => /\/settings\/[^/]+\/woocommerce_/.test(call.url)),
+      ).toHaveLength(settings * 2);
+      clock.mockReturnValue(1_800_000_181_000);
+      await runtime.inspectForQuote(item);
+      expect(
+        stand.asked.filter((call) => /\/settings\/[^/]+\/woocommerce_/.test(call.url)),
+      ).toHaveLength(settings * 3);
+    } finally {
+      clock.mockRestore();
     }
   });
 
@@ -2155,17 +2237,424 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     shipping_rates: [aPackage(rates)],
     ...overrides,
   });
+  const emptyCart = () => cart([], { items: [], needs_shipping: false, shipping_rates: [] });
   const shopWithRates = (answered: () => { status: number; body: unknown }) =>
     shopAnswering((asked) => {
       if (asked.method === "GET" && asked.url === "/wp-json/wc/store/v1/cart") {
-        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
       }
+      if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
       if (asked.url === "/wp-json/wc/store/v1/cart/add-item") {
         return { status: 201, body: cart([]) };
       }
       return answered();
     });
   const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
+
+  it("keeps concurrent cities in separate carts and cleans both before reuse", async () => {
+    const carts = new Map<string, { held: boolean; city: string }>();
+    const together = Promise.withResolvers<void>();
+    let concurrent = false;
+    let updates = 0;
+    stand = await shopAnswering(async (asked) => {
+      const token = asked.cartToken ?? `cart-${carts.size + 1}`;
+      const state = carts.get(token) ?? { held: false, city: "" };
+      carts.set(token, state);
+      if (asked.url.endsWith("/add-item")) state.held = true;
+      if (asked.url.endsWith("/remove-item")) state.held = false;
+      if (asked.url.endsWith("/update-customer")) {
+        state.city = JSON.parse(asked.body).shipping_address.city;
+        if (concurrent) {
+          updates += 1;
+          if (updates === 2) together.resolve();
+          await together.promise;
+        }
+      }
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: state.held
+          ? cart([rate({ price: state.city === "Berlin" ? "900" : "500" })])
+          : emptyCart(),
+        headers: { "Cart-Token": token },
+      };
+    });
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+    expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+    concurrent = true;
+    const unblock = setTimeout(() => together.resolve(), 1_000);
+    try {
+      const [jakarta, berlin] = await Promise.all([
+        runtime.shippingRates("28", JAKARTA),
+        runtime.shippingRates("28", { country: "DE", city: "Berlin" }),
+      ]);
+      expect(jakarta).toMatchObject({ ok: true, rates: [{ cost: "5.00" }] });
+      expect(berlin).toMatchObject({ ok: true, rates: [{ cost: "9.00" }] });
+      expect(carts.size).toBe(2);
+      expect([...carts.values()].every((cart) => !cart.held)).toBe(true);
+    } finally {
+      clearTimeout(unblock);
+      together.resolve();
+      await runtime.drain();
+    }
+  });
+
+  it("rejects a newly opened free cart that repeats a paid session kept only on disk after restart", async () => {
+    const resources = memoryWooShops();
+    const expiresAt = new Date(Date.now() + 172_800_000);
+    let issued = 0;
+    const tokenFor = (identity: string) =>
+      `e30.${Buffer.from(JSON.stringify({ user_id: identity, iat: ++issued, exp: Math.floor(expiresAt.getTime() / 1000) })).toString("base64url")}.signature`;
+    const paidToken = tokenFor("paid-session");
+    const contents = new Map<string, boolean>();
+    const mutations: string[] = [];
+    let opened = 0;
+    stand = await shopAnswering((asked) => {
+      const identity =
+        asked.cartToken === undefined
+          ? ++opened === 1
+            ? "paid-session"
+            : "second-paid-session"
+          : (JSON.parse(
+              Buffer.from(asked.cartToken.split(".")[1] ?? "", "base64url").toString("utf8"),
+            ).user_id as string);
+      if (asked.method === "POST") mutations.push(identity);
+      if (asked.url.endsWith("/add-item")) contents.set(identity, true);
+      if (asked.url.endsWith("/remove-item")) contents.set(identity, false);
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: contents.get(identity) ? cart([rate()]) : emptyCart(),
+        headers: { "Cart-Token": tokenFor(identity) },
+      };
+    });
+    await resources.startCartRuntime(stand.url, "previous-worker");
+    await resources.claimCart(stand.url, "previous-worker", "paid", 0, "paid-empty", new Date());
+    await resources.finishCart(stand.url, "previous-worker", "paid", 0, "paid-empty", {
+      token: paidToken,
+      expiresAt,
+    });
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch, resources);
+    let bundle: Awaited<ReturnType<WooShopRuntime["reservePaid"]>> = null;
+    try {
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+      expect(mutations).toEqual([]);
+      bundle = await runtime.reservePaid();
+      expect(bundle).not.toBeNull();
+      expect(await bundle?.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(mutations).toContain("paid-session");
+      expect(opened).toBe(2);
+    } finally {
+      await bundle?.release();
+      await runtime.drain();
+    }
+  });
+
+  it.each([
+    "transport",
+    "proxy add 504",
+    "proxy add 202",
+    "proxy remove 504",
+    "proxy add HTML",
+    "proxy remove HTML",
+  ] as const)(
+    "does not revive an uncertain mutation from an empty read while a completed failed cart recovers: %s",
+    async (failure) => {
+      const carts = new Map<string, { held: number }>();
+      let retryCleanup = false;
+      let originalUnknown = false;
+      const request: WooRequest = async (url, init) => {
+        const path = new URL(url).pathname;
+        const token = new Headers(init?.headers).get("cart-token") ?? `cart-${carts.size + 1}`;
+        const state = carts.get(token) ?? { held: 0 };
+        carts.set(token, state);
+        if (path.endsWith("/add-item")) {
+          if (token === "cart-1" && !originalUnknown && !failure.startsWith("proxy remove")) {
+            originalUnknown = true;
+            if (failure === "transport")
+              throw new Error("reply lost while the shop still has the mutation");
+            if (failure === "proxy add 202") return Response.json(cart([rate()]), { status: 202 });
+            return failure.endsWith("HTML")
+              ? new Response("<html>Proxy response</html>", { status: 200 })
+              : Response.json({}, { status: 504 });
+          }
+          // Reusing the first token would overlap the original add, whose response was lost.
+          state.held =
+            token === "cart-1" && originalUnknown
+              ? failure.startsWith("proxy remove")
+                ? 0
+                : 2
+              : 1;
+        }
+        if (path.endsWith("/remove-item")) {
+          if (token === "cart-1" && !originalUnknown && failure.startsWith("proxy remove")) {
+            originalUnknown = true;
+            state.held = 0;
+            return failure.endsWith("HTML")
+              ? new Response("<html>Proxy response</html>", { status: 200 })
+              : Response.json({}, { status: 504 });
+          }
+          if (!retryCleanup)
+            return Response.json(
+              {
+                code: "woocommerce_rest_cart_conflict",
+                message: "Cart update was refused.",
+                data: { status: 409 },
+              },
+              { status: 409 },
+            );
+          state.held = 0;
+        }
+        return Response.json(
+          state.held ? cart([rate()], { items: [{ ...LINE, quantity: state.held }] }) : emptyCart(),
+          { headers: { "Cart-Token": token } },
+        );
+      };
+      const runtime = new WooShopRuntime(connectionTo("https://woo.nuanu.ai"), request);
+      for (let count = 0; count < 8; count += 1)
+        expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+      expect(carts.size).toBe(8);
+      retryCleanup = true;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({
+        ok: true,
+        rates: [{ cost: "5.00" }],
+      });
+      expect(carts.size).toBe(8);
+      expect(carts.get("cart-1")?.held).toBe(0);
+      expect([...carts.values()].map((cart) => cart.held)).toStrictEqual([0, 0, 1, 1, 1, 1, 1, 1]);
+    },
+  );
+
+  it("replaces an expired known-dirty identity through the creation budget instead of retrying its cleanup forever", async () => {
+    let time = 1_800_000_000_000;
+    let sessions = 0;
+    let cleanupAllowed = false;
+    const contents = new Map<string, boolean>();
+    stand = await shopAnswering((asked) => {
+      let token = asked.cartToken;
+      if (token === undefined) {
+        sessions += 1;
+        token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 60 })).toString("base64url")}.signature`;
+        contents.set(token, false);
+      } else if (
+        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
+          1000 <=
+        time
+      ) {
+        return {
+          status: 401,
+          body: { code: "woocommerce_rest_invalid_cart_token", message: "Expired cart token." },
+        };
+      }
+      if (asked.url.endsWith("/add-item")) contents.set(token, true);
+      if (asked.url.endsWith("/remove-item")) {
+        if (!cleanupAllowed)
+          return {
+            status: 409,
+            body: { code: "woocommerce_rest_cart_conflict", message: "Cart update was refused." },
+          };
+        contents.set(token, false);
+      }
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: contents.get(token) ? cart([rate()]) : emptyCart(),
+        headers: { "Cart-Token": token },
+      };
+    });
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    try {
+      const runtime = new WooShopRuntime(connectionTo(stand.url), fetch, memoryWooShops());
+      for (let attempt = 0; attempt < 8; attempt += 1)
+        expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+      expect(sessions).toBe(8);
+      time += 61_000;
+      cleanupAllowed = true;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(9);
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(9);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("waits for an in-flight cart mutation after quote cancellation before cleaning or reusing its slot", async () => {
+    const adding = Promise.withResolvers<void>();
+    const finishAdd = Promise.withResolvers<void>();
+    let held = false;
+    let first = true;
+    let finished = false;
+    const request: WooRequest = async (url, init) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/add-item") && first) {
+        first = false;
+        adding.resolve();
+        return await new Promise<Response>((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("request aborted")), {
+            once: true,
+          });
+          void finishAdd.promise.then(() => {
+            held = true;
+            resolve(Response.json(cart([])));
+          });
+        });
+      }
+      if (path.endsWith("/add-item")) held = true;
+      if (path.endsWith("/remove-item")) held = false;
+      return Response.json(held ? cart([rate()]) : emptyCart(), {
+        headers: { "Cart-Token": TOKEN },
+      });
+    };
+    const runtime = new WooShopRuntime(connectionTo("https://woo.nuanu.ai"), request);
+    const caller = new AbortController();
+    const work = runtime.shippingRates("28", JAKARTA, caller.signal).finally(() => {
+      finished = true;
+    });
+    await adding.promise;
+    caller.abort();
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(finished).toBe(false);
+    } finally {
+      finishAdd.resolve();
+      await work;
+    }
+    expect(held).toBe(false);
+    expect(await runtime.shippingRates("28", { country: "DE", city: "Berlin" })).toMatchObject({
+      ok: true,
+    });
+    expect(held).toBe(false);
+  });
+
+  it("renews an observed empty cart after its shop-declared token expiry", async () => {
+    let time = 1_800_000_000_000;
+    let sessions = 0;
+    const contents = new Map<string, boolean>();
+    stand = await shopAnswering((asked) => {
+      let token = asked.cartToken;
+      if (token === undefined) {
+        sessions += 1;
+        token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 172800 })).toString("base64url")}.signature`;
+        contents.set(token, false);
+      } else if (
+        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
+          1000 <=
+        time
+      ) {
+        return { status: 401, body: { code: "invalid_cart_token" } };
+      }
+      if (asked.url.endsWith("/add-item")) contents.set(token, true);
+      if (asked.url.endsWith("/remove-item")) contents.set(token, false);
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: contents.get(token) ? cart([rate()]) : emptyCart(),
+        headers: { "Cart-Token": token },
+      };
+    });
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    try {
+      const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      time += 172_801_000;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(2);
+      expect([...contents.values()]).toStrictEqual([false, false]);
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("reuses one exclusive cart across complete locality replacements and leaves it empty after each question", async () => {
+    let sessions = 0;
+    let held = false;
+    const localities: unknown[] = [];
+    stand = await shopAnswering((asked) => {
+      if (asked.method === "GET") {
+        if (asked.cartToken === undefined) sessions += 1;
+        return {
+          status: 200,
+          body: cart([], { items: held ? [LINE] : [], needs_shipping: held, shipping_rates: [] }),
+          headers: { "Cart-Token": TOKEN },
+        };
+      }
+      if (asked.url.endsWith("/add-item")) {
+        held = true;
+        return { status: 201, body: cart([]) };
+      }
+      if (asked.url.endsWith("/remove-item")) {
+        held = false;
+        return {
+          status: 200,
+          body: cart([], { items: [], needs_shipping: false, shipping_rates: [] }),
+        };
+      }
+      localities.push(JSON.parse(asked.body).shipping_address);
+      return { status: 200, body: cart([rate()]) };
+    });
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+    expect(
+      await runtime.shippingRates("28", {
+        country: "ID",
+        state: "JK",
+        city: "Jakarta",
+        postal_code: "10110",
+      }),
+    ).toMatchObject({ ok: true });
+    expect(held).toBe(false);
+    expect(await runtime.shippingRates("28", { country: "DE", city: "Berlin" })).toMatchObject({
+      ok: true,
+    });
+    expect(held).toBe(false);
+    expect(sessions).toBe(1);
+    expect(localities).toStrictEqual([
+      { country: "ID", state: "JK", city: "Jakarta", postcode: "10110" },
+      { country: "DE", state: "", city: "Berlin", postcode: "" },
+    ]);
+    expect(stand.asked.filter((call) => call.url.endsWith("/remove-item"))).toHaveLength(2);
+  });
+
+  it("recovers free pricing with a new identity at most every ten minutes after uncertain mutations exhaust its lane", async () => {
+    let time = 1_800_000_000_000;
+    let sessions = 0;
+    let broken = true;
+    const held = new Set<string>();
+    const retired = new Set<string>();
+    stand = await shopAnswering((asked) => {
+      const token = asked.cartToken ?? `identity-${++sessions}`;
+      if (asked.url.endsWith("/add-item")) {
+        held.add(token);
+        if (broken) {
+          retired.add(token);
+          return { status: 503, raw: "<html>proxy lost the mutation response</html>" };
+        }
+        expect(retired.has(token)).toBe(false);
+      }
+      if (asked.url.endsWith("/remove-item")) held.delete(token);
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: held.has(token)
+          ? cart([rate()])
+          : cart([], { items: [], needs_shipping: false, shipping_rates: [] }),
+        headers: { "Cart-Token": token },
+      };
+    });
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    try {
+      const runtime = new WooShopRuntime(connectionTo(stand.url), fetch, memoryWooShops());
+      for (let attempt = 0; attempt < 9; attempt += 1)
+        expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+      expect(sessions).toBe(9);
+      broken = false;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+      expect(sessions).toBe(9);
+      time += 600_000;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(sessions).toBe(10);
+      expect(held.size).toBe(0);
+    } finally {
+      clock.mockRestore();
+    }
+  });
 
   it("asks a fresh cart with its token and no nonce, and sends every field of the place", async () => {
     // A field left out keeps the shop's base location, so a German address
@@ -2181,6 +2670,8 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       "GET /wp-json/wc/store/v1/cart",
       "POST /wp-json/wc/store/v1/cart/add-item",
       "POST /wp-json/wc/store/v1/cart/update-customer",
+      "POST /wp-json/wc/store/v1/cart/remove-item",
+      "GET /wp-json/wc/store/v1/cart",
     ]);
     expect(JSON.parse(stand.asked[1]?.body ?? "")).toStrictEqual({ id: 28, quantity: 1 });
     expect(JSON.parse(stand.asked[2]?.body ?? "")).toStrictEqual({
@@ -2354,8 +2845,9 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     ] as const) {
       stand = await shopAnswering((asked) => {
         if (asked.method === "GET") {
-          return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+          return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
         }
+        if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
         if (asked.url.endsWith("/add-item")) return addItem ?? { status: 201, body: cart([]) };
         return placed ?? { status: 200, body: cart([rate()]) };
       });
@@ -2407,7 +2899,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         stand = await shopAnswering((asked) => {
           if (asked.url === step) return failure;
           if (asked.method === "GET") {
-            return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+            return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
           }
           if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
           return { status: 200, body: cart([rate()]) };
@@ -2561,9 +3053,10 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const lines = [{ name: "PPN", rate: "11%" }];
     stand = await shopAnswering((asked) => {
       if (asked.method === "GET") {
-        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
       }
       if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
       if (asked.url.endsWith("/select-shipping-rate")) {
         return {
           status: 200,
@@ -2614,9 +3107,10 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const lines = [{ name: "PPN", rate: "11%" }];
     stand = await shopAnswering((asked) => {
       if (asked.method === "GET") {
-        return { status: 200, body: cart([]), headers: { "Cart-Token": TOKEN } };
+        return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
       }
       if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+      if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
       if (asked.url.endsWith("/select-shipping-rate")) {
         return {
           status: 200,

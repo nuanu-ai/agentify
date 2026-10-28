@@ -165,7 +165,7 @@ describe("a site for purchases paid before delivery", () => {
       const catalog = await served.call("GET", "/x402/catalog");
       expect(catalog.body).toMatchObject({ items: [{ id: stored.id, seller: { site: SITE } }] });
       expect((await ask()).status).toBe(402);
-      expect(await h.store.orders(h.merchant.id)).toHaveLength(method === "POST" ? 1 : 0);
+      expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
       expect(questions).toBe(method === "POST" ? 1 : 0);
     },
   );
@@ -197,7 +197,7 @@ describe("a site for purchases paid before delivery", () => {
     expect((await served.call("GET", "/x402/catalog")).body).toMatchObject({
       items: [{ id, seller: { site: SITE } }],
     });
-    expect(await quote(served, id)).toMatchObject({ extra: { order_id: expect.any(String) } });
+    expect(await quote(served, id)).toMatchObject({ extra: { price_stamp: expect.any(String) } });
   });
 
   it("refuses a previously quoted unpaid purchase before verification if the merchant has no site", async () => {

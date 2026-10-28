@@ -13,7 +13,10 @@ import { startGateway } from "./start.js";
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
 /** The one variable that has no sensible default and must always be given. */
-const required = { DATABASE_URL: database };
+const required = {
+  PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+  DATABASE_URL: database,
+};
 
 /**
  * What the gateway said when it refused to start on this environment. Refusals
@@ -30,6 +33,20 @@ const refusalFor = (overrides: Record<string, string>): string => {
 };
 
 describe("loadConfig", () => {
+  it.each([undefined, "", "short"])("refuses an absent or weak price signing key (%s)", (key) => {
+    expect(() => loadConfig({ ...required, PRICE_STAMP_KEY: key })).toThrow(/PRICE_STAMP_KEY/);
+  });
+  it("refuses a weak rotation key and accepts separate stable channel keys", () => {
+    expect(() => loadConfig({ ...required, PRICE_STAMP_PREVIOUS_KEY: "short" })).toThrow(
+      /PRICE_STAMP_PREVIOUS_KEY/,
+    );
+    expect(
+      loadConfig({
+        ...required,
+        PRICE_STAMP_PREVIOUS_KEY: "p".repeat(32),
+      }).priceStampKeys.previous,
+    ).toBe("p".repeat(32));
+  });
   it("reads the environment and fills in the sandbox defaults", () => {
     const config = loadConfig(required);
 
@@ -515,6 +532,7 @@ describe("loadConfig", () => {
     // Nothing answers at this database, so a gateway that skipped the check
     // would fail on the connection instead, in other words.
     const cramped = loadConfig({
+      ...required,
       DATABASE_URL: "postgres://agentify:secret@127.0.0.1:1/agentify",
       HANDLER_ANSWER_MS: "9000",
       REDELIVERY_BASE_DELAY_MS: "500",

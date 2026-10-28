@@ -26,7 +26,7 @@ import {
   secondAttemptProblem,
 } from "./config.js";
 import { buildApp } from "./http/server.js";
-import { PaymentEdge, widestChallengeOn } from "./http/x402.js";
+import { widestChallengeOn } from "./http/x402.js";
 import type { Announcer } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
@@ -53,7 +53,7 @@ const QUEUE_POLL_INTERVAL_MS = 250;
  * the same: an RPC that does not answer this chain is reported, and recovery
  * asks it again on every poll.
  */
-export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
+export async function paymentLayer(config: GatewayConfig): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
     return new ScriptedFacilitator();
   }
@@ -65,7 +65,7 @@ export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Pr
   }
   const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
   (started.broken ? console.error : console.log)(`[gateway] ${started.said}`);
-  return new X402Facilitator(client, edge, started.recovery);
+  return new X402Facilitator(client, started.recovery);
 }
 
 /**
@@ -214,7 +214,6 @@ export async function startGateway(
     throw new Error(`the gateway will not start: ${cramped}`);
   }
   const { db, pool } = connect(config.databaseUrl);
-  const edge = new PaymentEdge(config);
   const queue = queueOn(config.databaseUrl, {
     pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
     reminders: {
@@ -232,7 +231,7 @@ export async function startGateway(
     // works only because the queue and the store share one Postgres.
     store: PostgresStore.over(db, config.payment.network, randomIds, queue.envelopes()),
     queue,
-    facilitator: await paymentLayer(config, edge),
+    facilitator: await paymentLayer(config),
     clock: systemClock,
     ids: randomIds,
     // The gateway announces only on the live deployment; elsewhere a change

@@ -1,3 +1,4 @@
+import { storeAcceptedOrder } from "../../testing/accepted-order.js";
 /**
  * The real adapters, against a real Postgres. Not part of `pnpm test`: they run
  * under `pnpm test:db`, which needs a Postgres (`docker compose up -d --wait
@@ -22,13 +23,14 @@ import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
-import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import { transition } from "@agentify/core";
+import type { Card, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { PgBoss } from "pg-boss";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { Gateway } from "../../app/gateway.js";
+import { Gateway, type PricedPurchase } from "../../app/gateway.js";
 import type { Runtime } from "../../app/runtime.js";
 import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
@@ -43,9 +45,11 @@ import {
   countedIds,
   loggedWhile,
   serve,
+  signedFor,
   testConfig,
   workUntilStopped,
 } from "../../testing/harness.js";
+import { aWallet } from "../../testing/signed-payment.js";
 import { anOrder, describeStore } from "../../testing/store-contract.js";
 import { describeWalletSpelling } from "../../testing/wallet-spelling.js";
 import { ScriptedFacilitator } from "../memory/facilitator.js";
@@ -135,9 +139,6 @@ async function backendPid(of: Pool): Promise<number> {
   return pid;
 }
 
-/** The address the payments below were checked against; nothing here turns on which. */
-const PAID_AT = "0x0000000000000000000000000000000000000009";
-
 const syncCard: Card = {
   merchant_item_id: "room-101",
   title: "A room for the night",
@@ -173,7 +174,8 @@ if (databaseUrl === null) {
     let boss: PgBoss;
     let gateway: Gateway;
     let facilitator: ScriptedFacilitator;
-    let now = Date.parse("2026-08-26T12:00:00.000Z");
+    let testAt = Date.parse("2026-08-26T12:00:00.000Z");
+    let now = testAt;
 
     beforeAll(async () => {
       // The schema first, from the same checked-in migrations a deployment
@@ -249,6 +251,54 @@ if (databaseUrl === null) {
     };
     beforeEach(theMerchantOfThisSuite);
 
+    const settledWithin = async (pending: Promise<unknown>, ms: number): Promise<boolean> => {
+      let settled = false;
+      void pending.then(
+        () => {
+          settled = true;
+        },
+        () => {
+          settled = true;
+        },
+      );
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      return settled;
+    };
+
+    /** Accepted history comes from the same signed admission and settlement path as a buyer's purchase. */
+    const acceptedPurchaseFixture = async (offer: PricedPurchase) => {
+      await store.noteContact(offer.merchantId, now);
+      const buyer = aWallet("the PostgreSQL fixture buyer");
+      const signed = await signedFor(gateway, offer, buyer, {
+        nonce: `0x${randomUUID().replaceAll("-", "")}`,
+      });
+      const worker =
+        offer.order.mode.settle === "after_fulfillment"
+          ? workUntilStopped(
+              {
+                gateway,
+                merchant: { id: offer.merchantId, name: "", key: "", keyId: "", wallet: "" },
+              },
+              { onOrder: () => ({ delivered: { access_code: "DB-HISTORY" } }) },
+            )
+          : null;
+      try {
+        await gateway.payPurchase(
+          offer.priceOffer.stamp,
+          signed.payment,
+          signed.fingerprint,
+          undefined,
+          { itemId: offer.itemId, params: offer.params },
+        );
+      } finally {
+        await worker?.stop();
+      }
+      const accepted = await store.orderById(offer.order.id);
+      if (accepted?.paidBy !== buyer.address.toLowerCase())
+        throw new Error("The fixture purchase was not admitted for its verified buyer.");
+      return accepted;
+    };
+
     afterAll(async () => {
       await gateway.stop();
       // Dropped here so the database keeps no test run's pg-boss; the drop in
@@ -259,7 +309,10 @@ if (databaseUrl === null) {
     });
 
     afterEach(() => {
-      now = Date.parse("2026-08-26T12:00:00.000Z");
+      // The shared Gateway retains admission windows across cases. Give each
+      // case its own second while keeping deadline advances local to that case.
+      testAt += 1_000;
+      now = testAt;
     });
 
     it("keeps a product off sale until a worker confirms this contract, even with a recent contact from an older gateway", async () => {
@@ -355,18 +408,19 @@ if (databaseUrl === null) {
           )
         ).rows[0]?.set ?? 0;
 
-      it("sets no clock, so a seller's fifty-first purchase waiting for payment writes nothing", async () => {
+      it("prices fifty-one unpaid purchases without writing orders or reminders", async () => {
         const card = await store.publishCard(A, syncCard, now);
         await gateway.poll(A, 0);
-        for (let one = 0; one < 50; one += 1) {
+        const before = await clocksSet();
+        expect(before).toBe(0);
+        for (let one = 0; one < 51; one += 1) {
           expect((await gateway.beginPurchase(card.id, {})).step).toBe("pay");
         }
-        const before = await clocksSet();
-        expect(before).toBeGreaterThan(0);
-
-        const refused = await gateway.beginPurchase(card.id, {});
-
-        expect(refused.step).toBe("seller_busy");
+        const written = await pool.query<{ n: number }>(
+          "select count(*)::int as n from orders where merchant_id = $1",
+          [A],
+        );
+        expect(written.rows[0]?.n).toBe(0);
         expect(await clocksSet()).toBe(before);
       });
     });
@@ -425,19 +479,6 @@ if (databaseUrl === null) {
       // switch holds it for update while it counts the orders that hold it, so
       // neither can land inside the other. The store contract runs them one
       // after the other; only two connections can show they wait.
-      const settledWithin = async (pending: Promise<unknown>, ms: number): Promise<boolean> => {
-        let settled = false;
-        void pending.then(
-          () => {
-            settled = true;
-          },
-          () => {
-            settled = true;
-          },
-        );
-        await new Promise((resolve) => setTimeout(resolve, ms));
-        return settled;
-      };
 
       afterEach(async () => {
         await pool.query("delete from orders where merchant_id = $1", [A]);
@@ -445,14 +486,31 @@ if (databaseUrl === null) {
       });
 
       it("makes a birth wait for a switch, and writes nothing once the switch has moved the merchant", async () => {
+        await gateway.poll(A, 0);
+        const card = await store.publishCard(
+          A,
+          { ...syncCard, fulfillment: "async", merchant_item_id: "born-in-switch" },
+          now,
+        );
+        const offered = await gateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const signed = await signedFor(
+          gateway,
+          offered.order,
+          aWallet("the integration switch buyer"),
+          { nonce: "0x01" },
+        );
         const switching = await pool.connect();
         try {
           await switching.query("begin");
           await switching.query("select id from merchants where id = $1 for update", [A]);
 
-          const born = store.addOrder(
-            anOrder("ord_born_in_the_switch", "quoted", { merchantId: A }),
-            { through: "api", waitingAtMost: 20 },
+          const born = gateway.payPurchase(
+            offered.order.priceOffer.stamp,
+            signed.payment,
+            signed.fingerprint,
+            undefined,
+            { itemId: card.id, params: {} },
           );
           expect(await settledWithin(born, 300)).toBe(false);
 
@@ -461,42 +519,72 @@ if (databaseUrl === null) {
           ]);
           await switching.query("commit");
 
-          expect(await born).toBe("switched_away");
-          expect(await store.orderById("ord_born_in_the_switch")).toBeNull();
+          expect((await born).step).toBe("not_selling");
+          expect(await store.orderById(offered.order.order.id)).toBeNull();
         } finally {
           switching.release();
         }
       });
 
       it("makes a switch wait for a birth, and counts the order it wrote", async () => {
-        const birth = await pool.connect();
+        await gateway.poll(A, 0);
+        const card = await store.publishCard(
+          A,
+          { ...syncCard, fulfillment: "async", merchant_item_id: "born-before-switch" },
+          now,
+        );
+        const offered = await gateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const signed = await signedFor(
+          gateway,
+          offered.order,
+          aWallet("the admission before switch buyer"),
+          { nonce: "0x01" },
+        );
+        const entered = Promise.withResolvers<void>();
+        const released = Promise.withResolvers<void>();
+        const arm = queue.remindWithin.bind(queue);
+        queue.remindWithin = async (tx, reminder, afterMs) => {
+          if (reminder.orderId === offered.order.order.id) {
+            entered.resolve();
+            await released.promise;
+          }
+          return arm(tx, reminder, afterMs);
+        };
+        let paying: Promise<unknown> | undefined;
         try {
-          await birth.query("begin");
-          await birth.query("select id from merchants where id = $1 for no key update", [A]);
-
+          paying = gateway.payPurchase(
+            offered.order.priceOffer.stamp,
+            signed.payment,
+            signed.fingerprint,
+            undefined,
+            { itemId: card.id, params: {} },
+          );
+          await entered.promise;
           const switched = store.switchIntegration(A, "woocommerce");
           expect(await settledWithin(switched, 300)).toBe(false);
-
-          await birth.query(
-            `insert into orders (id, state, open, merchant_id, item_id, merchant_item_id, record, created_at, updated_at)
-             values ('ord_born_first', 'paid', true, $1, 'item_x', 'sku-x', '{}', now(), now())`,
-            [A],
+          released.resolve();
+          await paying;
+          expect(await switched).toStrictEqual({
+            switched: false,
+            waiting: [offered.order.order.id],
+          });
+          expect((await store.orderById(offered.order.order.id))?.paidBy).toBe(
+            aWallet("the admission before switch buyer").address.toLowerCase(),
           );
-          await birth.query("commit");
-
-          expect(await switched).toStrictEqual({ switched: false, waiting: ["ord_born_first"] });
         } finally {
-          birth.release();
+          released.resolve();
+          await paying;
+          queue.remindWithin = arm;
         }
       });
     });
 
-    it("lets one of two separate database clients take an order, and makes the other wait to find out", async () => {
+    it("serializes decisions from two separate database clients against one accepted order", async () => {
       // Two pools and two connections, so only the database can make the second
       // wait: a chain of promises in one adapter would pass the store contract's
-      // race just as well. Without the hold both read the order before either
-      // writes, both own it, and one charge fails after the goods are handed
-      // over.
+      // race just as well. Both decisions read the same accepted history; only
+      // the database hold makes the second see the first decision's marker.
       const published = await store.publishCard(
         A,
         { ...syncCard, merchant_item_id: "contested" },
@@ -504,6 +592,7 @@ if (databaseUrl === null) {
       );
       const offered = await gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
+      const accepted = await acceptedPurchaseFixture(offered.order);
       const orderId = offered.order.order.id;
 
       // One connection each: the check below names the two backends by pid, so
@@ -556,13 +645,13 @@ if (databaseUrl === null) {
               }
             }
 
-            if (found.paidBy !== null && found.paidBy !== who) {
-              return { result: { took: false, heldBy: found.paidBy } };
+            if (found.priceId?.startsWith("winner:")) {
+              return { result: { took: false, heldBy: found.priceId.slice(7) } };
             }
             // Noted before the write goes back. Alice reads first by
             // arrangement; only the hold makes her decide before bob reads.
             reads.push(`${who} decided`);
-            return { save: { ...found, paidBy: who }, result: { took: true } };
+            return { save: { ...found, priceId: `winner:${who}` }, result: { took: true } };
           });
 
         const aliceTaking = take(
@@ -579,7 +668,8 @@ if (databaseUrl === null) {
         // Without the lock bob reads and decides while alice polls, and the
         // marks come out "alice", "bob", "bob decided", "alice decided".
         expect(reads).toStrictEqual(["alice", "alice decided", "bob"]);
-        expect((await store.orderById(orderId))?.paidBy).toBe("alice");
+        expect((await store.orderById(orderId))?.priceId).toBe("winner:alice");
+        expect((await store.orderById(orderId))?.paidBy).toBe(accepted.paidBy);
       } finally {
         await alicePool.end();
         await bobPool.end();
@@ -593,7 +683,15 @@ if (databaseUrl === null) {
       // under the hold, the revocation either lands first and the hand-over
       // finds nothing, or waits until the hand-over is written.
       await store.addKey({ id: "mk_held", merchantId: A, label: "held", digest: "dg-held" }, now);
-      await store.addOrder(anOrder("ord_held", "created"));
+      const card = await store.publishCard(
+        A,
+        { ...syncCard, fulfillment: "async", merchant_item_id: "key-revocation" },
+        now,
+      );
+      const offer = await gateway.beginPurchase(card.id, {});
+      if (offer.step !== "pay") throw new Error("no price was offered");
+      const accepted = await acceptedPurchaseFixture(offer.order);
+      const orderId = accepted.order.id;
       const poller = connect(databaseUrl, { max: 1 });
       const command = connect(databaseUrl, { max: 1 });
 
@@ -612,12 +710,14 @@ if (databaseUrl === null) {
           entered = resolve;
         });
         const handOver = polling.withOrder(
-          "ord_held",
+          orderId,
           async (found) => {
             entered();
             await released;
+            const dispatched = transition(found.order, { kind: "order_dispatched", at: now });
+            if (!dispatched.ok) throw new Error("The accepted order could not be dispatched.");
             return {
-              save: { ...found, order: { ...found.order, state: "quoted" as const } },
+              save: { ...found, order: dispatched.order },
               result: "handed over",
             };
           },
@@ -642,7 +742,7 @@ if (databaseUrl === null) {
         expect(await handOver).toStrictEqual({ found: true, result: "handed over" });
         expect((await revoked)?.key.disabledAt).not.toBeNull();
         expect(
-          await store.withOrder("ord_held", () => ({ result: "again" }), {
+          await store.withOrder(orderId, () => ({ result: "again" }), {
             merchantId: A,
             keyId: "mk_held",
           }),
@@ -669,11 +769,12 @@ if (databaseUrl === null) {
       // a merchant's code could repeat forever.
       const published = await store.publishCard(
         A,
-        { ...syncCard, merchant_item_id: "closed-with-half-a-character" },
+        { ...syncCard, fulfillment: "async", merchant_item_id: "closed-with-half-a-character" },
         now,
       );
       const offered = await gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
+      await acceptedPurchaseFixture(offered.order);
       const orderId = offered.order.order.id;
       const { secret } = await gateway.issueMerchantKey(A, "closing", {
         kind: "signed_in",
@@ -690,7 +791,7 @@ if (databaseUrl === null) {
         const cut = await close(`${"We are sorry ".repeat(10)}\uD83D`);
         expect(cut.status).toBe(400);
         expect(cut.body).toMatchObject({ error: { code: "malformed_body", retryable: false } });
-        expect((await store.orderById(orderId))?.order.state).toBe("quoted");
+        expect((await store.orderById(orderId))?.order.state).toBe("paid");
 
         expect((await close("We are sorry \u{1F64F}")).body).toEqual({ ok: true });
         expect((await store.orderById(orderId))?.order.merchantClosure?.message).toBe(
@@ -713,6 +814,7 @@ if (databaseUrl === null) {
       );
       const offered = await gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
+      await acceptedPurchaseFixture(offered.order);
       const orderId = offered.order.order.id;
 
       const writtenAt = async (): Promise<string> => {
@@ -735,7 +837,7 @@ if (databaseUrl === null) {
       await store.withOrder(orderId, (found) => ({
         // The order this decision would have written, handed back as its answer
         // rather than named in `save`.
-        result: { ...found, order: { ...found.order, state: "expired" as const } },
+        result: { ...found, priceId: "proposed without writing" },
       }));
 
       expect(await writtenAt()).toBe(before);
@@ -784,6 +886,7 @@ if (databaseUrl === null) {
         );
         const offered = await gateway.beginPurchase(published.id, { email: BUYER });
         if (offered.step !== "pay") throw new Error("no price was offered");
+        await acceptedPurchaseFixture(offered.order);
         const orderId = offered.order.order.id;
 
         const thrown = await refusedBy("orders", "record", () =>
@@ -821,8 +924,8 @@ if (databaseUrl === null) {
 
     it("walks a parcel through the database and the queue, and keeps nothing of its address", async () => {
       // pg-boss keeps finished jobs for days, so taking the order on must erase
-      // the order's copy of the address and delete both the price question and
-      // the hand-over. Searched as text across every job on the stream, so a
+      // the order's copy of the address and delete its hand-overs. Price
+      // questions are ephemeral. Searched as text across every job, so a
       // field this test did not think of is found too.
       const buyer = `The buyer ${randomUUID()}`;
       const shipTo = {
@@ -862,7 +965,10 @@ if (databaseUrl === null) {
       const orderId = offered.order.order.id;
 
       const paid = `parcel-${randomUUID()}`;
-      await gateway.payPurchase(orderId, paid, paid);
+      await gateway.payPurchase(offered.order.priceOffer.stamp, paid, paid, shipTo, {
+        itemId: offered.order.itemId,
+        params: offered.order.params,
+      });
       const takingOn = workUntilStopped(
         { gateway, merchant },
         { onOrder: () => ({ accepted: {} }) },
@@ -879,14 +985,13 @@ if (databaseUrl === null) {
         [streamOf(A), `%${buyer}%`],
       );
       expect(Number(rows[0]?.n)).toBe(0);
-      // The price question carries the place and not the person, so it is
-      // found by the identifier the order kept for it.
+      // A price question carries locality, but no question is written into pg-boss.
       const kept = await store.orderById(orderId);
       const asked = await pool.query<{ n: string }>(
         `select count(*) as n from ${QUEUE_SCHEMA}.job where name = $1 and data @> $2::jsonb`,
-        [streamOf(A), JSON.stringify({ payload: { price_id: kept?.priceQuestion } })],
+        [streamOf(A), JSON.stringify({ payload: { price_id: kept?.priceId } })],
       );
-      expect(kept?.priceQuestion).toEqual(expect.any(String));
+      expect(kept?.priceId).toEqual(expect.any(String));
       expect(Number(asked.rows[0]?.n)).toBe(0);
       expect(JSON.stringify(kept)).not.toContain(buyer);
     }, 30_000);
@@ -909,7 +1014,13 @@ if (databaseUrl === null) {
       // A fingerprint of this run's own, so the claim left behind by a previous
       // run — or by another test in this one — is never what decides it.
       const paid = `walked-${randomUUID()}`;
-      const bought = await gateway.payPurchase(offered.order.order.id, paid, paid);
+      const bought = await gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        paid,
+        paid,
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
       await worker.stop();
 
       expect(bought.step).toBe("settled");
@@ -952,27 +1063,23 @@ if (databaseUrl === null) {
         },
       });
 
-      const aReceipt = (orderId: string, itemId: string): Receipt => ({
-        id: `rcp_${randomUUID()}`,
-        order_id: orderId,
-        item_id: itemId,
-        price: {
-          amount: "80.00",
-          currency: "USD",
-          at: "2026-08-26T12:00:00.000Z",
-          as_of: "2026-08-26T12:00:00.000Z",
-        },
-        paid_at: "2026-08-26T12:00:00.000Z",
-        outcome: "delivered",
-        test: true,
-      });
-
-      /** An order of A's, priced and waiting to be paid for. */
-      const anOrder = async (name: string): Promise<{ id: string; itemId: string }> => {
+      /** A completed synchronous purchase of A's, including its genuine receipt. */
+      const anOrder = async (
+        name: string,
+      ): Promise<{ id: string; itemId: string; offer: PricedPurchase }> => {
         const card = await store.publishCard(A, { ...syncCard, merchant_item_id: name }, now);
         const offered = await gateway.beginPurchase(card.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
-        return { id: offered.order.order.id, itemId: card.id };
+        await acceptedPurchaseFixture(offered.order);
+        return { id: offered.order.order.id, itemId: card.id, offer: offered.order };
+      };
+
+      const receiptedOrder = async (name: string) => {
+        const order = await anOrder(name);
+        const receipt = (await store.receipts(A)).find((row) => row.order_id === order.id);
+        if (receipt === undefined) throw new Error("the completed sale has no receipt");
+        await pool.query("delete from receipts where order_id = $1", [order.id]);
+        return { ...order, receipt };
       };
 
       it("is not there at all when the write it went in with rolled back", async () => {
@@ -981,7 +1088,7 @@ if (databaseUrl === null) {
         // Postgres refuses the second write and takes the first down with it.
         // A pg-boss insert that had gone out on the library's own connection
         // would survive that, and the count below would be one.
-        const order = await anOrder("rolled-back");
+        const order = await receiptedOrder("rolled-back");
         const envelopeId = `env_${randomUUID()}`;
 
         await expect(
@@ -989,7 +1096,7 @@ if (databaseUrl === null) {
             save: { ...found, priceId: "the write that never happened" },
             alongside: [
               { kind: "envelope", merchantId: A, envelope: anEnvelope(envelopeId) },
-              { kind: "receipt", merchantId: "mch_nobody", receipt: aReceipt(order.id, "item") },
+              { kind: "receipt", merchantId: "mch_nobody", receipt: order.receipt },
             ],
             result: null,
           })),
@@ -1008,14 +1115,14 @@ if (databaseUrl === null) {
         // The negative control for the case above: the same three writes with
         // nothing refusing, so that "no job" there means the rollback and not
         // that this never writes one.
-        const order = await anOrder("went-through");
+        const order = await receiptedOrder("went-through");
         const envelopeId = `env_${randomUUID()}`;
 
         await store.withOrder(order.id, (found) => ({
           save: { ...found, priceId: "the write that happened" },
           alongside: [
             { kind: "envelope", merchantId: A, envelope: anEnvelope(envelopeId) },
-            { kind: "receipt", merchantId: A, receipt: aReceipt(order.id, order.itemId) },
+            { kind: "receipt", merchantId: A, receipt: order.receipt },
           ],
           result: null,
         }));
@@ -1070,18 +1177,17 @@ if (databaseUrl === null) {
       });
 
       /**
-       * An order whose question and first hand-over a worker drew and finished,
+       * An order whose first hand-over a worker drew and finished,
        * with a second hand-over waiting out a delay, an event about it, and
        * another order's hand-over beside them. pg-boss keeps a finished job in
        * its table for days, so "drawn" is not "gone".
        */
       const aStreamCarryingAnAddress = async (name: string) => {
-        const order = await anOrder(name);
+        const order = await receiptedOrder(name);
         const priceId = `prc_${randomUUID()}`;
         const otherOrderId = `ord_${randomUUID()}`;
         await queue.draw(A, 100, 0);
         await queue.publish(A, aQuestion(priceId));
-        await queue.publish(A, aHandOver(order.id));
         for (const drawn of await queue.draw(A, 10, 2_000)) {
           await queue.finish(A, drawn.handle);
         }
@@ -1098,20 +1204,20 @@ if (databaseUrl === null) {
         });
         await queue.publish(A, aHandOver(otherOrderId));
         expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(2);
-        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(1);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(0);
         return { order, priceId, otherOrderId };
       };
 
       it("deletes every job carrying a parcel's address with the order, finished ones included", async () => {
-        // Once the merchant has the address, the order's hand-overs and its
-        // price question leave the queue in the same transaction as the order
+        // Once the merchant has the address, its hand-overs leave the queue
+        // in the same transaction as the order
         // that says so. The event about the order carries no address and stays,
         // and so does another order's hand-over.
         const { order, priceId, otherOrderId } = await aStreamCarryingAnAddress("forgotten");
 
         await store.withOrder(order.id, (found) => ({
           save: found,
-          alongside: [{ kind: "forget", merchantId: A, orderId: order.id, priceQuestion: priceId }],
+          alongside: [{ kind: "forget", merchantId: A, orderId: order.id }],
           result: null,
         }));
 
@@ -1132,15 +1238,15 @@ if (databaseUrl === null) {
           store.withOrder(order.id, (found) => ({
             save: found,
             alongside: [
-              { kind: "forget", merchantId: A, orderId: order.id, priceQuestion: priceId },
-              { kind: "receipt", merchantId: "mch_nobody", receipt: aReceipt(order.id, "item") },
+              { kind: "forget", merchantId: A, orderId: order.id },
+              { kind: "receipt", merchantId: "mch_nobody", receipt: order.receipt },
             ],
             result: null,
           })),
         ).rejects.toThrow();
 
         expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(2);
-        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(1);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(0);
       });
     });
 
@@ -1236,6 +1342,7 @@ if (databaseUrl === null) {
         );
         const offered = await gateway.beginPurchase(published.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
+        const accepted = await acceptedPurchaseFixture(offered.order);
         const orderId = offered.order.order.id;
 
         const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
@@ -1249,7 +1356,10 @@ if (databaseUrl === null) {
             // Long enough for the client to notice and emit, with nothing in
             // flight on it.
             await new Promise((resolve) => setTimeout(resolve, 250));
-            return { save: { ...found, paidBy: "whoever" }, result: "decided" };
+            return {
+              save: { ...found, priceId: "decision-that-must-roll-back" },
+              result: "decided",
+            };
           });
 
           // A named matcher, not a bare `toThrow()`: `terminate`'s own
@@ -1262,13 +1372,158 @@ if (databaseUrl === null) {
 
         expect(unlistened).toStrictEqual([]);
 
-        expect((await store.orderById(orderId))?.paidBy).toBeNull();
+        expect((await store.orderById(orderId))?.paidBy).toBe(accepted.paidBy);
+        expect((await store.orderById(orderId))?.priceId).toBe(accepted.priceId);
 
         // The pool drew a fresh connection rather than handing the broken one
         // back out, so the store still works.
         expect((await own.orderById(orderId))?.order.id).toBe(orderId);
       } finally {
         await ownPool.end();
+      }
+    }, 30_000);
+
+    it("waits for a concurrent card edit before deciding final verified acceptance", async () => {
+      await gateway.poll(A, 0);
+      const card = await store.publishCard(
+        A,
+        { ...syncCard, fulfillment: "async", merchant_item_id: `held-edit-${randomUUID()}` },
+        now,
+      );
+      const offered = await gateway.beginPurchase(card.id, {});
+      if (offered.step !== "pay") throw new Error("no price was offered");
+      const signed = await signedFor(gateway, offered.order, aWallet("the held card edit buyer"), {
+        nonce: "0x01",
+      });
+      const before = { verified: facilitator.verifies.length, settled: facilitator.settles.length };
+      const release = facilitator.holdVerification();
+      const trying = gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        signed.payment,
+        signed.fingerprint,
+        undefined,
+        { itemId: card.id, params: {} },
+      );
+      const editor = await pool.connect();
+      try {
+        await vi.waitFor(() => expect(facilitator.verifies).toHaveLength(before.verified + 1));
+        await editor.query("begin");
+        await editor.query(
+          "update cards set card = jsonb_set(card, '{title}', to_jsonb($2::text)) where id = $1",
+          [card.id, "A room for two nights"],
+        );
+        release();
+        expect(await settledWithin(trying, 100)).toBe(false);
+        expect(facilitator.settles).toHaveLength(before.settled);
+        await editor.query("commit");
+        expect(await trying).toMatchObject({ step: "payment_not_taken", retryable: false });
+        expect(await store.orderById(offered.order.order.id)).toBeNull();
+        expect(await store.paymentClaimHolder(signed.fingerprint)).toBeNull();
+        expect(facilitator.settles).toHaveLength(before.settled);
+      } finally {
+        await editor.query("rollback");
+        editor.release();
+        release();
+        await trying;
+      }
+    });
+
+    it("cannot accept or settle a late verification after its admission connection dies", async () => {
+      const application = `admission-${randomUUID()}`;
+      const owner = connect(databaseUrl, { max: 3, application_name: application });
+      const own = PostgresStore.over(owner.db, "eip155:84532", countedIds(), queue.envelopes());
+      const paymentLayer = new ScriptedFacilitator();
+      const ownGateway = new Gateway({
+        ...gateway.runtime,
+        store: own,
+        facilitator: paymentLayer,
+        ids: (kind) => `${kind}_${randomUUID()}`,
+      });
+      let release: (() => void) | undefined;
+      let paying: Promise<unknown> | undefined;
+      try {
+        await gateway.poll(A, 0);
+        const card = await store.publishCard(
+          A,
+          {
+            ...syncCard,
+            merchant_item_id: `connection-loss-${randomUUID()}`,
+            fulfillment: "async",
+          },
+          now,
+        );
+        const offered = await ownGateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const offer = offered.order;
+        const buyer = aWallet("the admission connection-loss buyer");
+        const signed = await signedFor(ownGateway, offer, buyer, { nonce: "0x01" });
+        release = paymentLayer.holdVerification();
+        // Observe the complete Gateway path; effects must wait for its admission commit.
+        paying = ownGateway.payPurchase(
+          offer.priceOffer.stamp,
+          signed.payment,
+          signed.fingerprint,
+          undefined,
+          { itemId: card.id, params: {} },
+        );
+        const answered = paying.then(
+          (value) => ({ value, failed: false }),
+          () => ({ failed: true }),
+        );
+        await vi.waitFor(() => expect(paymentLayer.verifies).toHaveLength(1));
+        const held = await pool.query<{ pid: number }>(
+          "select pid from pg_stat_activity where application_name = $1 and state = 'idle in transaction'",
+          [application],
+        );
+        expect(held.rows).toHaveLength(1);
+        const pid = held.rows[0]?.pid;
+        if (pid === undefined) throw new Error("no admission transaction was found");
+        await terminate(pid);
+        now += 31_000;
+        release();
+        expect((await answered).failed).toBe(true);
+        expect(await store.orderById(offer.order.id)).toBeNull();
+        expect(await store.paymentClaimHolder(signed.fingerprint)).toBeNull();
+        expect(paymentLayer.settles).toStrictEqual([]);
+        expect(
+          (
+            await pool.query(
+              "select id from commerce_analytics_events where refs ->> 'order' = $1",
+              [offer.order.id],
+            )
+          ).rows,
+        ).toStrictEqual([]);
+        expect(await queue.holdsOrder(A, offer.order.id)).toBe(false);
+        // A replacement process has no in-memory knowledge of the first verifier.
+        const restarted = new Gateway({ ...ownGateway.runtime });
+        const replay = await signedFor(restarted, offer, buyer, { nonce: "0x02" });
+        expect(
+          await restarted.payPurchase(
+            offer.priceOffer.stamp,
+            replay.payment,
+            replay.fingerprint,
+            undefined,
+            { itemId: card.id, params: {} },
+          ),
+        ).toMatchObject({ step: "payment_not_taken", retryable: false });
+        expect(paymentLayer.settles).toStrictEqual([]);
+        // The same adapter accepts and settles a new valid purchase once its connection is live.
+        const fresh = await restarted.beginPurchase(card.id, {});
+        if (fresh.step !== "pay") throw new Error("no replacement price was offered");
+        const replacement = await signedFor(restarted, fresh.order, buyer, { nonce: "0x03" });
+        await restarted.payPurchase(
+          fresh.order.priceOffer.stamp,
+          replacement.payment,
+          replacement.fingerprint,
+          undefined,
+          { itemId: card.id, params: {} },
+        );
+        expect((await store.orderById(fresh.order.order.id))?.order.payment).toBe("settled");
+        expect(paymentLayer.settles).toHaveLength(1);
+      } finally {
+        release?.();
+        await paying?.catch(() => undefined);
+        await owner.pool.end();
       }
     }, 30_000);
 
@@ -1461,13 +1716,7 @@ if (databaseUrl === null) {
         const orderId = offered.order.order.id;
         facilitator.willSettle({ settled: "unknown", reason: "response lost" });
         try {
-          await gateway.runner.presentVerifiedPayment(
-            orderId,
-            "payer",
-            "authorization",
-            PAID_AT,
-            now,
-          );
+          await acceptedPurchaseFixture(offered.order);
           const attempt = (await store.orderById(orderId))?.paymentAttempt;
           if (attempt === undefined) throw new Error("no submitted attempt");
           const executedAt = now;
@@ -1522,10 +1771,9 @@ if (databaseUrl === null) {
         const card = await store.publishCard(A, asyncCard, now);
         const offered = await gateway.beginPurchase(card.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
+        await acceptedPurchaseFixture(offered.order);
         const orderId = offered.order.order.id;
 
-        const paid = `swept-${randomUUID()}`;
-        await gateway.runner.presentVerifiedPayment(orderId, paid, paid, PAID_AT, now);
         expect((await store.orderById(orderId))?.order.state).toBe("paid");
 
         // The envelope this sale wrote is drawn off and thrown away: the
@@ -1546,10 +1794,13 @@ if (databaseUrl === null) {
           { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
           { onOrder: () => ({ accepted: {} }) },
         );
-        await vi.waitFor(async () => {
-          expect((await store.orderById(orderId))?.order.state).toBe("dispatched");
-        });
-        await worker.stop();
+        try {
+          await vi.waitFor(async () => {
+            expect((await store.orderById(orderId))?.order.state).toBe("dispatched");
+          });
+        } finally {
+          await worker.stop();
+        }
 
         const second = await gateway.runner.sweep();
         expect(second).toStrictEqual({ dispatched: 0, receipted: 0, rearmed: 0, refused: 0 });
@@ -1567,16 +1818,18 @@ if (databaseUrl === null) {
           const offered = await gateway.beginPurchase(card.id, {});
           if (offered.step !== "pay") throw new Error("no price was offered");
           const orderId = offered.order.order.id;
-          const paid = `swept-r-${randomUUID()}`;
-          await gateway.payPurchase(orderId, paid, paid);
+          await acceptedPurchaseFixture(offered.order);
           const worker = workUntilStopped(
             { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
             { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
           );
-          await vi.waitFor(async () =>
-            expect((await store.orderById(orderId))?.order.state).toBe("delivered"),
-          );
-          await worker.stop();
+          try {
+            await vi.waitFor(async () =>
+              expect((await store.orderById(orderId))?.order.state).toBe("delivered"),
+            );
+          } finally {
+            await worker.stop();
+          }
           const original = (await store.receipts(A)).find((row) => row.order_id === orderId);
           expect(original).toMatchObject({ outcome: "delivered", price: { amount: "12.00" } });
           expect((await store.orderById(orderId))?.paymentAttempt?.completion?.settled).toBe(true);
@@ -1808,7 +2061,11 @@ if (databaseUrl === null) {
 
       /** A gateway of its own over this database, with nothing in memory but its queue. */
       const aGatewayOn = (db: Database) => {
-        const config = loadConfig({ DATABASE_URL: databaseUrl });
+        const config = loadConfig({
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+          DATABASE_URL: databaseUrl,
+        });
+
         return new Gateway({
           config,
           store: PostgresStore.over(db, "eip155:84532", countedIds()),
@@ -1832,7 +2089,7 @@ if (databaseUrl === null) {
              pending_payout_wallet_from = $3 where id = 'mch_old_two'`,
           [W1, W2, new Date(now + 3_600_000)],
         );
-        await store.addOrder({
+        await storeAcceptedOrder(store, {
           ...anOrder("ord_old", "delivered", { merchantId: "mch_old_one", createdAt: now - 5_000 }),
           payTo: W1,
         });
@@ -1941,6 +2198,7 @@ if (databaseUrl === null) {
         );
         try {
           const config = loadConfig({
+            PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
             DATABASE_URL: databaseUrl,
             FACILITATOR_URL: "sandbox:scripted",
           });
@@ -1985,6 +2243,7 @@ if (databaseUrl === null) {
         /** The live deployment on Base, under the fixture's commission wallet. */
         const onBase = () =>
           loadConfig({
+            PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
             DATABASE_URL: databaseUrl,
             PAYMENT_NETWORK: "eip155:8453",
             FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -2057,6 +2316,7 @@ if (databaseUrl === null) {
           now,
         );
         const config = loadConfig({
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
           DATABASE_URL: databaseUrl,
           FACILITATOR_URL: "sandbox:scripted",
         });
