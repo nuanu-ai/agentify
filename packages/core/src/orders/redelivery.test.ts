@@ -144,6 +144,20 @@ describe("handing an unanswered order over again for three hours", () => {
     expect(at(T0 + 2 * HOUR + 45 * MINUTE)).toStrictEqual({ retry: false, reason: "past_window" });
   });
 
+  it("gives no repeat to an order whose first hand-over was never recorded", () => {
+    // With nothing to count three hours from, a window started now would never
+    // close, and the order would be repeated until a deadline weeks away.
+    expect(
+      nextRedelivery({
+        attempts: 1,
+        now: T0,
+        firstHandedOverAt: null,
+        deadlineAt: null,
+        policy: THREE_HOURS,
+      }),
+    ).toStrictEqual({ retry: false, reason: "past_window" });
+  });
+
   it("measures the three hours from the first hand-over, however many came after it", () => {
     // A day to fulfil, so only the three hours can stop the repeats.
     const policy = {
