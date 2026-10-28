@@ -19,16 +19,16 @@ is recorded as unfulfilled after.
 
 | Situation | Synchronous | Asynchronous | A parcel | What you do |
 | --- | --- | --- | --- | --- |
-| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment with `seller_busy`, HTTP 429 and `Retry-After: 10`, and no order reaches you; the agent may ask again, and is told that a silence that repeats means your price check is not answering | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
+| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment with `seller_busy` and asked again ten seconds later; no order reaches you | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
 | You refused | the purchase did not happen and nothing was charged | the paid order is unfulfilled (`unfulfilled`) | as in the asynchronous mode | refuse before the money where you can, in the answer to the price question; after it, refuse at once rather than wait out your deadline |
 | Your handler threw, or your process fell over | the order comes again after a pause that grows with each attempt, up to {{redelivery-max-attempts}} deliveries in all, while its deadline lasts | as in the synchronous mode | as in the synchronous mode | throw for a failure that may pass, and keep refusals for "this cannot be delivered" |
 | No answer by the deadline | nothing was charged (`expired`) | the paid order is unfulfilled (`unfulfilled`) | the paid order is unfulfilled (`unfulfilled`) | name a deadline you can keep; a late delivery still counts until you close fulfillment |
-| The same order arrived twice | answer with the result you gave the first time | as in the synchronous mode | record the same shipment | key your delivery on `order.id` and hand back the first result; a repeat whose goods differ from the first is answered `already_delivered_other_goods`; check what the two share before revoking anything |
+| The same order arrived twice | answer with the result you gave the first time | as in the synchronous mode | record the same shipment | key your delivery on `order.id` and hand back the first result; check what a repeat's goods share with the first before revoking anything |
 | The answer to the agent was lost | the agent signs a new payment for the same payment request from the same wallet and receives what you delivered, with no second charge; asking the purchase address again without that request starts a new purchase, which is charged again once paid | the agent signs a new payment for the same payment request from the same wallet and is answered with the order, with no second charge; asking the purchase address again without that request starts a new purchase, which is charged again once paid | as in the asynchronous mode | nothing; a repeat that does reach your handler gets the first result |
 | The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a paid order unfulfilled | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
-| The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out. Verification reserves no money: several purchases from one wallet can pass it even when the balance cannot cover all their charges. The buyer receives no unpaid goods, but your cost of making them can multiply across concurrent purchases. If goods cost money to make, publish them with asynchronous fulfillment so payment comes before you make them |
+| The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; if goods cost money to make, sell them asynchronously, as the paragraph below the table explains |
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
-| Your price-question gate is full | the question waits briefly for a place; if none comes, the sale goes on at the card's price without asking your price handler | the request waits briefly for a place, then is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before a price question or order is written | as in the asynchronous mode | keep a synchronous card's price current; an agent refused with 429 waits two seconds and tries again |
+| Your price-question gate is full | the question waits briefly for a place; if none comes, the sale goes on at the card's price without asking your price handler | the request waits briefly for a place, then is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before any order is written | as in the asynchronous mode | keep a synchronous card's price current |
 | No process of yours has polled for {{silent-after}} | a new purchase is refused with `seller_not_taking_orders` before its price is asked and before any order exists, and so is a payment for a price named before the silence; your cards leave the catalogue, nothing is charged, and the agent tries again later | as in the synchronous mode | as in the synchronous mode | keep a process running and polling: its first poll brings your cards back and lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected, and [what to check](#your-integration-has-not-connected) |
 | {{Unserved-at-most}} paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the {{unserved-at-most:ordinal}} such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than {{unserved-at-most}} remain, the next purchase goes through with nothing switched back on |
 
@@ -39,37 +39,59 @@ carried and not weighed, so an old one is not a silence. A refusal and its
 message reach the agent word for word, so write the message for a stranger
 ([refusal codes](/cards#refusal-codes)).
 
-The price-question gate belongs to each merchant separately and applies to
-both SDK and WooCommerce sales. It admits only questions that can still be
-answered within {{quote-response}}, and a question that finds it full waits
-for a place inside that same time. A question whose wait has ended is never
-handed to your handler, and paid orders are drawn before price questions.
-Another merchant's questions never take your places. There is no limit of
-outstanding unpaid prices: they hold no order or place in a queue after the
-question ends. The gate and the polling rule recover without a switch in the
-dashboard. An answer that the product is unavailable refuses that purchase
-with `not_selling`, which is not retryable.
+When your price check is silent on a card paid before delivery, the agent gets
+`seller_busy`, HTTP 429, with `Retry-After: 10`. It is told that nothing was
+charged, that the purchase may go through if it asks again, and that a silence
+which repeats means your price check is not answering.
 
-Payments are checked with the payment network a few at a time for each
-merchant, and another merchant's payments never take your places. A paid
-request that finds no place within a short wait is refused with
-`seller_busy`, HTTP 429 and `Retry-After: 2`, before anything is charged, and
-the agent sends the same request with the same payment again. A payment
-signed by the paying wallet's own key, from a wallet holding less than the
-price, is refused at once with words telling the agent to fund it, and so is
-an authorization that is not valid yet, has been used, or carries a signature
-the token refuses. A payment whose signature is not that wallet's own key, as
-a contract wallet's is, and one whose wallet's balance could not be read, wait
-in a small line of their own. In either line one wallet holds at most one place
-and waits for at most one more, so holding several places in front of a buyer
-takes several wallets, each holding the price. While one
-request for a price is being checked, another for the same price is refused
-with `payment_not_taken`, marked retryable, with `Retry-After: 2`. That
-answer does not say whether the first request will be charged, so the agent
-sends the same request again to learn how the purchase stands, rather than
-buying anew. A paid request that fails on Agentify's side before anything was
-written for it, for a reason that will not pass by itself, is answered with
-HTTP 500 and `gateway_failed`, not retryable, and nothing was charged.
+A repeat delivery whose goods differ from the ones the order already holds is
+still answered with success, as `already_delivered_other_goods`. The buyer
+keeps the goods you delivered first, and the SDK warns you, naming the order.
+The two are compared as documents, so a repeat that differs only in, say, when
+it was issued may name the same voucher the buyer holds: check what the two
+share before revoking anything.
+
+A payment check reserves no money. Several purchases from one wallet can pass
+it at once even when the wallet cannot cover all of their charges, and on a
+synchronous card you make the goods for each before the charges run. The buyer
+receives none of the goods it did not pay for, but your cost of making them
+can multiply. If your goods cost money to make, publish them for asynchronous
+delivery, so that the payment comes before you make them.
+
+Your price questions pass a gate of your own, for sales through the SDK and
+through WooCommerce alike, and another seller's questions never take your
+places. It hands your process only questions that can still be answered within
+{{quote-response}}, and never one whose wait has ended, and paid orders reach
+your process before price questions. A question that finds the gate full waits
+for a place inside that same time. If none comes, a synchronous card sells at
+its card price, and a card paid before delivery is refused with `seller_busy`,
+HTTP 429, with `Retry-After: 2`. Nothing counts prices that were named and not
+paid: once its question ends, a price holds no order and no place in a queue.
+The gate, like the polling rule, recovers by itself, with nothing to switch on
+in the dashboard. An answer of yours that the product is unavailable refuses
+that purchase with `not_selling`, which is not retryable.
+
+The facilitator checks your buyers' payments a few at a time, and another
+seller's payments never take your places. A paid request that finds no place
+within a short wait is refused with `seller_busy`, HTTP 429, with
+`Retry-After: 2`, before anything is charged, and the agent sends the same
+request with the same payment again. A payment signed by the paying wallet's
+own key, from a wallet that holds less than the price, is refused at once, and
+the agent is told to fund the wallet. An authorization that is not valid yet,
+has been used, or carries a signature the token refuses is refused at once too.
+A payment whose signature is not that wallet's own key, as a contract wallet's
+is not, and one whose wallet's balance could not be read, wait in a small line
+of their own. In either line one wallet holds at most one place and waits for
+at most one more, so holding several places in front of a buyer takes several
+wallets, each holding the price.
+
+While one request for a price is being checked, another for the same price is
+refused with `payment_not_taken`, marked retryable, with `Retry-After: 2`.
+That answer does not say whether the first request will be charged, so the
+agent sends the same request again to learn how the purchase stands rather
+than buying anew. A paid request that fails on Agentify's side before anything
+was written for it, for a reason that will not pass by itself, is answered
+with HTTP 500 and `gateway_failed`, not retryable, and nothing was charged.
 
 The rule about polling covers every purchase sold through your own code,
 whatever its mode. Without a process of
