@@ -778,27 +778,35 @@ run needs; without them its dashboard writes every message to the
 application's log instead of sending it.
 
 The channel overlays use free public Base RPC: `https://sepolia.base.org` on
-TEST and `https://mainnet.base.org` on PRODUCTION. Two things read it. Payment
-recovery reads it in the background, as below. The dashboard's Settings reads
-it each time it draws a merchant's payout: an `eth_chainId` and one
-`eth_call`, a dry run of the payout that names what it would bring, kept for
-five seconds per payout. Both share the endpoint, and a free public endpoint
-limits requests per address, so a busy dashboard can use up what recovery
-needs. An RPC provider's endpoint named in `AGENTIFY_PAYMENT_RPC_URL` is
-limited by the provider's plan instead. A page
-waits for the chain for at most half its deadline, and after a read it gave
-up on, the pages about that payout say for five seconds that the chain did
-not answer, without asking it.
+TEST and `https://mainnet.base.org` on PRODUCTION. Several things read it. The
+gateway reads a paying wallet's balance and the authorization's nonce before
+the payment is checked, a wallet's balance when the facilitator refuses a
+payment without naming a cause, and a returning payment's nonce when a buyer
+gets a paid purchase back. Payment recovery reads it in the background, as
+below. The dashboard's Settings reads it each time it draws a merchant's
+payout: an `eth_chainId` and one `eth_call`, a dry run of the payout that names
+what it would bring, kept for five seconds per payout. All of them share the
+endpoint, and a free public endpoint limits requests per address, so a busy
+dashboard or a flood of payments can use up what recovery needs, and a payment
+whose wallet could not be read waits in the smaller line for payments nobody
+can vouch for. An RPC provider's endpoint named in `AGENTIFY_PAYMENT_RPC_URL`
+is limited by the provider's plan instead, and production should have one. A
+page waits for the chain for at most half its deadline, and after a read it
+gave up on, the pages about that payout say for five seconds that the chain
+did not answer, without asking it.
 
 `AGENTIFY_PAYMENT_RPC_URL` replaces that address. Setting it explicitly to an
-empty value disables chain checks: recovery is off, and every Settings panel
-with a payout says it could not read from the network what the payout would
-bring, while still giving the transaction. The gateway receives it as
+empty value disables chain checks: recovery is off, every payment that would
+charge waits in the smaller line, and every Settings panel with a payout says
+it could not read from the network what the payout would bring, while still
+giving the transaction. The gateway receives it as
 `PAYMENT_RPC_URL`. Local Compose and the standalone gateway have no default
 RPC.
 
 RPC is read only. Recovery calls it for unanswered payments after their
-response deadline, never for ordinary verification or settlement. The gateway asks the
+response deadline; the reads before a payment's check decide only where it
+waits or refuse what the token would refuse, and verification and settlement
+stay with the facilitator. The gateway asks the
 endpoint for its chain id at start-up, and the log's first lines say whether it
 serves the channel's network; it asks again on every recovery poll, so an
 endpoint that did not answer at start-up is used as soon as it does, without a
@@ -811,7 +819,7 @@ Recovery reads the finalized block and the USDC nonce state there. When the
 nonce was used and no transaction hash is known, it finds the first block at or
 after the moment the payment was verified by bisecting block times, then reads
 the receipts of the blocks up to the authorization's expiry, which for a
-payment accepted here is about two minutes of blocks. It sends no log queries:
+payment accepted here is about four minutes of blocks. It sends no log queries:
 Base mainnet's public endpoint refuses them and Base Sepolia's caps them at 200
 blocks. The endpoint must therefore support `eth_chainId`,
 `eth_getBlockByNumber`, `eth_call`, `eth_getBlockReceipts` and
