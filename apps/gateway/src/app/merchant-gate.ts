@@ -24,6 +24,8 @@ export interface GateLimits {
   readonly atOnce: number;
   /** How many places one merchant may be handed within any one second, where bounded. */
   readonly perSecond?: number;
+  /** How many callers may wait in one merchant's line; one more is turned away at once. */
+  readonly waitingAtMost: number;
 }
 
 export class MerchantGate {
@@ -44,7 +46,7 @@ export class MerchantGate {
     if (line.waiting.length === 0 && this.#fits(line)) {
       return Promise.resolve(this.#admit(merchantId, line));
     }
-    if (waitMs <= 0) {
+    if (waitMs <= 0 || line.waiting.length >= this.#limits.waitingAtMost) {
       this.#forgetIfIdle(merchantId, line);
       return Promise.resolve(null);
     }

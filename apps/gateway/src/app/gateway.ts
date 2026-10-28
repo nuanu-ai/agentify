@@ -65,6 +65,7 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import type { PaymentRequirements } from "@x402/core/types";
 import { isAddress } from "viem";
 import type {
   AnalyticsEvent,
@@ -74,7 +75,7 @@ import type {
 } from "../analytics/events.js";
 import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
-import { atomicUnits, PaymentEdge } from "../http/x402.js";
+import { atomicUnits, inUsdc, PaymentEdge } from "../http/x402.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { NoVerdict, VerifyOutcome } from "../ports/facilitator.js";
@@ -110,6 +111,7 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
+import { keyHolderOf, RecentBalances } from "./payer-proof.js";
 import { validityNeededAfterCheckMs } from "./payment-window.js";
 import {
   decodePriceStamp,
@@ -162,8 +164,24 @@ const PRICE_QUESTIONS_PER_SECOND = 16;
  */
 const PRICE_PLACE_WAIT_MS = 2_000;
 
+/** How many price questions may wait in one merchant's line for a place. */
+const PRICE_QUESTIONS_WAITING_AT_MOST = 16;
+
 /** Payments of one merchant's checked with the payment layer at once. */
 const PAYMENT_CHECKS_AT_ONCE = 4;
+
+/** How many payments may wait in one merchant's line for a check. */
+const PAYMENT_CHECKS_WAITING_AT_MOST = 16;
+
+/**
+ * Places for payments whose signature is not the key of the wallet they name:
+ * a contract wallet's, or noise. They wait behind each other and never in
+ * front of a buyer whose key signed.
+ */
+const UNPROVEN_CHECKS_AT_ONCE = 2;
+
+/** How many such payments may wait in one merchant's line. */
+const UNPROVEN_CHECKS_WAITING_AT_MOST = 4;
 
 /** How long a payment waits for a place among its merchant's checks before it is sent back. */
 const PAYMENT_PLACE_WAIT_MS = 2_000;
@@ -366,6 +384,9 @@ export type PurchaseAttempt =
   | { readonly step: "payment_not_verified"; readonly why: string; readonly retryable: boolean }
   /** Another payer's payment owns this order, and this payment is not it. */
   | { readonly step: "not_this_purchase" };
+
+/** Which of a merchant's lanes a payment waits in for its check (`Gateway#laneOf`). */
+type PaymentLane = "proven" | "unproven";
 
 /** What the steps of one payment share: when it arrived, and how far it got. */
 interface Paying {
@@ -682,8 +703,20 @@ export class Gateway {
   readonly #priceGate = new MerchantGate({
     atOnce: PRICE_QUESTIONS_AT_ONCE,
     perSecond: PRICE_QUESTIONS_PER_SECOND,
+    waitingAtMost: PRICE_QUESTIONS_WAITING_AT_MOST,
   });
-  readonly #paymentGate = new MerchantGate({ atOnce: PAYMENT_CHECKS_AT_ONCE });
+  readonly #paymentGate = new MerchantGate({
+    atOnce: PAYMENT_CHECKS_AT_ONCE,
+    waitingAtMost: PAYMENT_CHECKS_WAITING_AT_MOST,
+  });
+  readonly #unprovenGate = new MerchantGate({
+    atOnce: UNPROVEN_CHECKS_AT_ONCE,
+    waitingAtMost: UNPROVEN_CHECKS_WAITING_AT_MOST,
+  });
+  readonly #balances = new RecentBalances(
+    () => this.runtime.balances,
+    () => this.runtime.clock(),
+  );
   /**
    * The order of each price whose payment this process is checking. Held in
    * memory because one process takes a channel's payments; the admission's
@@ -2079,12 +2112,45 @@ export class Gateway {
   }
 
   /**
-   * Runs one check with the payment layer once this merchant has a place for
-   * it, or answers null when no place came in time. Other merchants' checks
-   * never take this merchant's places.
+   * Where a payment waits for its check, or its refusal where its wallet
+   * cannot pay. A payment its wallet's own key signed waits in the
+   * merchant's lane for buyers; any other waits in the lane that cannot hold
+   * up a buyer. A wallet shown to hold less than the price is refused here,
+   * taking no place, where the payment would charge. A balance that cannot be
+   * read refuses nothing.
    */
-  async #checked<T>(merchantId: string, check: () => Promise<T>): Promise<T | null> {
-    const place = await this.#paymentGate.enter(merchantId, PAYMENT_PLACE_WAIT_MS);
+  async #laneOf(
+    payment: string,
+    requirements: PaymentRequirements,
+    charges: boolean,
+  ): Promise<PaymentLane | { readonly refused: PurchaseAttempt }> {
+    const wallet = await keyHolderOf(payment, requirements);
+    if (wallet === null) return "unproven";
+    if (!charges) return "proven";
+    const held = await this.#balances.of(requirements.asset, wallet);
+    const asked = BigInt(requirements.amount);
+    if (held === null || held >= asked) return "proven";
+    return {
+      refused: verificationRefusal({
+        verified: false,
+        reason: "insufficient_funds",
+        message: `the paying wallet holds ${inUsdc(held)} USDC on ${requirements.network}, less than the ${inUsdc(asked)} USDC this price asks`,
+      }),
+    };
+  }
+
+  /**
+   * Runs one check with the payment layer once this merchant has a place for
+   * it in `lane`, or answers null when no place came in time. Other
+   * merchants' checks never take this merchant's places.
+   */
+  async #checked<T>(
+    merchantId: string,
+    lane: PaymentLane,
+    check: () => Promise<T>,
+  ): Promise<T | null> {
+    const gate = lane === "proven" ? this.#paymentGate : this.#unprovenGate;
+    const place = await gate.enter(merchantId, PAYMENT_PLACE_WAIT_MS);
     if (place === null) return null;
     try {
       return await check();
@@ -2210,6 +2276,8 @@ export class Gateway {
       payment,
       payTo: offer.payTo,
     };
+    const lane = await this.#laneOf(payment, requirements, true);
+    if (typeof lane !== "string") return lane.refused;
     const anotherPurchase =
       (asked !== undefined && asked.itemId !== offer.itemId) ||
       priceFactsDigest(fit.data as Readonly<Record<string, unknown>>, key, "params") !==
@@ -2219,7 +2287,7 @@ export class Gateway {
       offer.placeDigest;
     if (anotherPurchase || anotherPlace) {
       // Even a mismatch is private: a published offer must not become an address/parameter oracle.
-      const checked = await this.#checked(offer.merchantId, () =>
+      const checked = await this.#checked(offer.merchantId, lane, () =>
         this.runtime.facilitator.verify(charge),
       );
       if (checked === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
@@ -2288,7 +2356,7 @@ export class Gateway {
       through: stored.integration,
     };
 
-    const verified = await this.#checked(offer.merchantId, () =>
+    const verified = await this.#checked(offer.merchantId, lane, () =>
       this.runtime.facilitator.verify(charge),
     );
     if (verified === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
@@ -2457,7 +2525,9 @@ export class Gateway {
     // order owned by a payment's fingerprint, where the payment layer named no
     // payer, is still checked there.
     const paidBy = before.paidBy;
-    const checked = await this.#checked(before.merchantId, async () => {
+    const lane = await this.#laneOf(payment, saved.requirements, !paidFor);
+    if (typeof lane !== "string") return lane.refused;
+    const checked = await this.#checked(before.merchantId, lane, async () => {
       const here =
         paidFor && paidBy !== null && isAddress(paidBy)
           ? await returningPayment(

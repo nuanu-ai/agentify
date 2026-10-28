@@ -72,6 +72,12 @@ export function atomicUnits(amount: string, decimals: number): string {
   return written;
 }
 
+/** An amount in USDC's smallest unit as dollars, with every digit it has and at least two. */
+export function inUsdc(units: bigint): string {
+  const digits = units.toString().padStart(7, "0");
+  return `${digits.slice(0, -6)}.${digits.slice(-6).replace(/0{1,4}$/, "")}`;
+}
+
 const PARCEL_LISTED =
   "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping and any tax for it included";
 

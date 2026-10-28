@@ -17,7 +17,12 @@ import {
   type VerifyResponse,
 } from "@x402/core/types";
 import { failureNamed } from "../../failure-named.js";
-import { authorisedUntil, CLOCK_SKEW_SECONDS, PRICE_STAMP_IN_EXTRA } from "../../http/x402.js";
+import {
+  authorisedUntil,
+  CLOCK_SKEW_SECONDS,
+  inUsdc,
+  PRICE_STAMP_IN_EXTRA,
+} from "../../http/x402.js";
 import type {
   Charge,
   Facilitator,
@@ -315,13 +320,6 @@ function refusal(answer: { invalidReason?: unknown; invalidMessage?: unknown }):
     message,
     ...(word === undefined ? {} : { code: word }),
   };
-}
-
-/** An amount of USDC's smallest unit in dollars, with every digit it has and at least two. */
-function inUsdc(units: bigint): string {
-  const digits = units.toString().padStart(7, "0");
-  const fraction = digits.slice(-6).replace(/0{1,4}$/, "");
-  return `${digits.slice(0, -6)}.${fraction}`;
 }
 
 const textOf = (value: unknown): string | undefined =>

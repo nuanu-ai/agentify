@@ -235,6 +235,7 @@ export async function startGateway(
   });
 
   announceTheEnvironment(config);
+  const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
 
   const runtime: Runtime = {
     config,
@@ -250,7 +251,8 @@ export async function startGateway(
     // applies at once and nobody is told.
     announcer,
     widestChallenge: widestChallengeOn(config),
-    chain: paymentChainOn(config.payment.network, config.payment.rpcUrl),
+    chain,
+    balances: chain,
     payoutCheck: payoutCheckOn(config.payoutSplit, config.payment.rpcUrl),
   };
 
