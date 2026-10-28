@@ -768,6 +768,36 @@ describe("when a delivery goes unanswered", () => {
     });
   });
 
+  it("withdraws a repeat decided before the merchant took the order on, so it never reaches him later", async () => {
+    // A handler slower than our wait accepts after a repeat was queued, and
+    // that repeat's pause can be fifteen minutes, long past the moment his
+    // worker could tell it from the order it is already filling.
+    const harnessed = await started({
+      HANDLER_ANSWER_MS: "60000",
+      REDELIVERY_BASE_DELAY_MS: "60000",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "600000",
+    });
+    const merchantId = harnessed.merchant.id;
+    const { orderId, stamp } = await priced(harnessed, asyncCard);
+    await harnessed.gateway.payPurchase(stamp, "PAYMENT", "PAYMENT");
+    expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
+    const handOver = (await harnessed.store.orderById(orderId))?.openDeliveryId ?? null;
+    if (handOver === null) throw new Error("no hand-over is open to go quiet");
+    await harnessed.queue.remind({ kind: "delivery_unanswered", orderId, handOver }, 0);
+    await vi.waitFor(
+      async () => expect(await harnessed.queue.holdsOrder(merchantId, orderId)).toBe(true),
+      { timeout: 2_000, interval: 5 },
+    );
+
+    await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
+
+    expect(await harnessed.queue.holdsOrder(merchantId, orderId)).toBe(false);
+    expect((await state(harnessed, orderId))?.dispatch).toStrictEqual({
+      attempts: 1,
+      accepted: true,
+    });
+  });
+
   it("does not close an order on the silence after a repeat its merchant had already taken on", async () => {
     // A slow handler may accept after our answer wait has expired, and the repeat
     // sent for that silence is ordinary. The silence after the repeat must not
