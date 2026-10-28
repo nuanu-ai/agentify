@@ -26,6 +26,9 @@ measurements determine the signals.
 | Are scans progressing? | Queue length/oldest age, running/stale workers, accepted and finished outcomes over fifteen minutes, completion p50/p95 and count | Durable scan rows avoid double-counting retries. Acceptance-to-finish duration differs from HTTP response time. |
 | Is commerce stuck or financially uncertain? | Open and overdue orders, oldest overdue age, unknown payment outcomes and oldest settlement uncertainty | Core deadlines use each order's stored policy. Unknown payments include closed orders. These gauges are neither payment retry instructions nor purchase-success rates. |
 | What version and evidence am I looking at? | Source SHA from each image, target reachability, snapshot success and last-success timestamp | A reachable listener can still have a failed business snapshot. Missing or incomplete data stays unknown. |
+| Who does a slow purchase wait on? | `agentify_price_answer_duration_seconds` by outcome (answered, unavailable, silent) and integration; `agentify_payment_verify_duration_seconds` by lane and verdict; `agentify_payment_admission_duration_seconds` by result; `agentify_payment_settle_duration_seconds` by outcome and by whether the card is charged on purchase or after its goods; `agentify_payer_read_duration_seconds` by outcome | Each is one party's share of a purchase, summed over the process's life; nothing joins them into one purchase. Buckets run from 5 ms to 200 s, while the HTTP request histogram still stops at 60 s. |
+| Are buyers paying near or after the end of a price? | `agentify_price_to_payment_seconds`, from a price being named to the arrival of its first payment, late payments included | A price holds three minutes, so observations past 180 s are payments for a price that had lapsed. |
+| Why are buyers told to come back? | `agentify_retry_after_answers_total` by answer (`seller_busy`, `payment_being_checked`, `not_checked_now`) and the seconds asked; `agentify_gate_refusals_total` by gate (`price`, `proven` for the buyer lane, `unproven`, `payer_read`) | `seller_busy` is now separate from other 4xx answers. Not every gate refusal reaches the buyer: a full price gate on a card charged after its goods sells it at the card price, and a refused payer read sends the payment to the unproven lane. |
 | What explains the symptom? | Worker dependencies/heartbeat, analytics leases and dead letters, host capacity, collector delivery and scoped error logs | These are diagnosis signals below the product view. TEST host capacity covers a shared VM. Log volume is not a count of purchases. |
 
 ## Layout and interpretation
@@ -72,6 +75,9 @@ missing data until those measurements arrive. Dashboard existence, a successful
 build or a running collector is not acceptance of live telemetry.
 
 Application instrumentation adds no user events or request payload logs.
+The purchase measurements take every label from a short fixed list, so no
+series names a merchant, a wallet, an order, an item, a price or an amount.
+Which values should alert anybody stays the operator's decision.
 No log line carries a buyer's key, an order's status address, a WooCommerce
 order key or a WooCommerce download link, since each opens an order or its
 goods to whoever reads the shared stack. A line names an order by its
