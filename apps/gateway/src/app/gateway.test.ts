@@ -2067,6 +2067,33 @@ describe("the price question", () => {
     await buying;
   });
 
+  it("gives a merchant ten seconds to answer, enough for a shop to price a parcel through several calls", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, livePriced(asyncCard));
+
+    const buying = harnessed.gateway.beginPurchase(itemId, {});
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 200);
+    const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
+    if (question?.kind !== "quote_request") throw new Error("nobody was asked the price");
+
+    harnessed.advance(10_000 - 1);
+
+    const acknowledged = await harnessed.gateway.answerQuote(
+      harnessed.merchant.id,
+      question.payload.price_id,
+      {
+        available: true,
+        price: { amount: "9.00", currency: "USD" },
+        as_of: "2026-08-26T12:00:00.000Z",
+      },
+    );
+
+    expect(acknowledged).toStrictEqual({ used: true });
+    const offered = await buying;
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    expect(offered.order.order.price?.amount).toBe("9.00");
+  });
+
   it("tells a merchant his answer priced nothing when the machine would not take it", async () => {
     // Somebody is still parked on the question, so an acknowledgement built
     // out of "was anybody listening" would say yes, while the order closed a
