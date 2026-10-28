@@ -1597,7 +1597,7 @@ if (databaseUrl === null) {
       }
     }, 30_000);
 
-    it("answers an admission busy when the merchant's row stays held past its lock wait", async () => {
+    it("answers an admission kept from the merchant's row past its lock wait as a moment's failure", async () => {
       const blocker = await pool.connect();
       let release: (() => void) | undefined;
       try {
@@ -1629,9 +1629,11 @@ if (databaseUrl === null) {
         await blocker.query("select id from merchants where id = $1 for update", [A]);
         release();
 
-        // Two seconds of lock wait, and room for a slow machine.
+        // Two seconds of lock wait, and room for a slow machine. Nothing about
+        // another request for this price is true here, so the answer is the
+        // neutral one for a moment's failure.
         expect(await settledWithin(paying, 8_000)).toBe(true);
-        expect(await paying).toStrictEqual({ step: "payment_being_checked" });
+        expect(await paying).toStrictEqual({ step: "not_checked_now" });
         expect(await store.orderById(offered.order.order.id)).toBeNull();
         expect(await store.paymentClaimHolder(signed.fingerprint)).toBeNull();
         expect(facilitator.settles).toHaveLength(before.settled);
