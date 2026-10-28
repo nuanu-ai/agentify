@@ -487,6 +487,8 @@ async function purchase(
   edge: PaymentEdge,
   { params, body, request, response }: RouteCall,
 ): Promise<RouteAnswer> {
+  // Purchase and recovery replies can contain the private order address and goods.
+  response.setHeader("Cache-Control", "no-store");
   const itemId = params.item_id ?? "";
   const presented = presentedPayment(request.headers);
 
