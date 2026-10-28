@@ -2637,7 +2637,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       let token = asked.cartToken;
       if (token === undefined) {
         sessions += 1;
-        token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 60 })).toString("base64url")}.signature`;
+        token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 172_800 })).toString("base64url")}.signature`;
         contents.set(token, false);
       } else if (
         JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
@@ -2670,12 +2670,48 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       for (let attempt = 0; attempt < 8; attempt += 1)
         expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
       expect(sessions).toBe(8);
-      time += 61_000;
+      time += 172_801_000;
       cleanupAllowed = true;
       expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
       expect(sessions).toBe(9);
       expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
       expect(sessions).toBe(9);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("opens sessions for a shop whose sessions last minutes only as fast as the replacement budget allows", async () => {
+    let time = 1_800_000_000_000;
+    let sessions = 0;
+    const holds = new Map<string, boolean>();
+    const request: WooRequest = async (url, init) => {
+      const path = new URL(url).pathname;
+      let token = new Headers(init?.headers).get("cart-token");
+      if (token === null) {
+        sessions += 1;
+        token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 360 })).toString("base64url")}.signature`;
+      }
+      if (path.endsWith("/add-item")) holds.set(token, true);
+      if (path.endsWith("/remove-item")) holds.set(token, false);
+      return Response.json(holds.get(token) === true ? cart([rate()]) : emptyCart(), {
+        status: path.endsWith("/add-item") ? 201 : 200,
+        headers: { "Cart-Token": token },
+      });
+    };
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    try {
+      const runtime = new WooShopRuntime(
+        connectionTo("https://woo.nuanu.ai"),
+        request,
+        memoryWooShops(),
+      );
+      for (let question = 0; question < 20; question += 1) {
+        await runtime.shippingRates("28", JAKARTA);
+        time += 120_000;
+      }
+      // Eight first openings, then one replacement every ten minutes of the forty.
+      expect(sessions).toBe(11);
     } finally {
       clock.mockRestore();
     }

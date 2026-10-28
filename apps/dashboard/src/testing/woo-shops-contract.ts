@@ -188,8 +188,9 @@ export const wooShopsContract = (
       await using(async (shops, accounts) => {
         const alias = "https://SHOP.example.com:443/";
         await shops.startCartRuntime(alias, "first-worker");
+        // Two paid carts are never opened, so free questions may spend the budget.
         for (const lane of ["paid", "quote"] as const) {
-          for (let slot = 0; slot < 8; slot += 1) {
+          for (let slot = 0; slot < (lane === "paid" ? 6 : 8); slot += 1) {
             expect(
               await openedAndRetired(shops, "first-worker", lane, slot, `${lane}-${slot}`),
             ).toEqual({ kind: "new" });
@@ -275,11 +276,8 @@ export const wooShopsContract = (
         expect(await shops.claimCart(SHOP, "worker", "paid", 1, "paid-repair", NOW)).toEqual({
           kind: "new",
         });
-        await shops.finishCart(SHOP, "worker", "paid", 1, "paid-repair", {
-          token: "repaired-paid-session",
-          expiresAt: MUCH_LATER,
-        });
-        // Two paid carts can open now, so the next replacement may be a free one.
+        // One paid cart in use and one never opened: the paid lane is not
+        // short, so the next replacement may be a free one.
         expect(await shops.claimCart(SHOP, "worker", "quote", 0, "free-repair", LATER)).toEqual({
           kind: "new",
         });

@@ -57,6 +57,8 @@ export interface WooCartResourceState {
 // Four handlers can each calculate the destination and the shop's tax base concurrently.
 export const WOO_CARTS_PER_LANE = 8;
 const WOO_CART_REPLACEMENT_MS = 600_000;
+/** A session this close to its expiry can lapse between the claim and the shop's answer. */
+const WOO_CART_RENEWED_BEFORE_EXPIRY_MS = 300_000;
 export const emptyCartResources = (): WooCartResourceState => ({
   owner: "",
   nextCreationAt: 0,
@@ -89,6 +91,9 @@ const slotOf = (state: WooCartResourceState, lane: WooCartLane, index: number): 
   if (slot === undefined) throw new Error("The WooCommerce cart registry is incomplete.");
   return slot;
 };
+/** Never opened, or empty and idle: either opens without the replacement budget. */
+const opensFreely = (slot: ResourceSlot): boolean => !slot.initialized || slot.state === "idle";
+
 const retire = (slot: ResourceSlot): void => {
   slot.state = "retired";
   slot.token = null;
@@ -168,7 +173,8 @@ export const wooCartResources = (access: CartResourceAccess): WooCartResources =
         if (
           slot.state === "idle" &&
           slot.token !== null &&
-          (slot.expiresAt === null || slot.expiresAt > now.getTime())
+          (slot.expiresAt === null ||
+            slot.expiresAt - WOO_CART_RENEWED_BEFORE_EXPIRY_MS > now.getTime())
         ) {
           slot.state = "in_use";
           slot.claim = claim;
@@ -178,10 +184,28 @@ export const wooCartResources = (access: CartResourceAccess): WooCartResources =
             expiresAt: slot.expiresAt === null ? null : new Date(slot.expiresAt),
           };
         }
-        if (slot.state === "idle") retire(slot);
-        if (slot.initialized && state.nextCreationAt > now.getTime())
-          return { kind: "wait", retryAt: new Date(state.nextCreationAt) };
-        if (slot.initialized) state.nextCreationAt = now.getTime() + WOO_CART_REPLACEMENT_MS;
+        if (slot.state === "idle") {
+          // Its session expires minutes after the new one opens, so the shop holds
+          // no more live sessions than before and the replacement budget is not spent.
+          retire(slot);
+          slot.initialized = false;
+        }
+        if (slot.initialized) {
+          // Paid orders are not left without carts by free questions.
+          const paidThatOpen = state.slots
+            .slice(0, WOO_CARTS_PER_LANE)
+            .filter((one) => one.state === "in_use" || opensFreely(one)).length;
+          if (lane === "quote" && paidThatOpen < 2)
+            return {
+              kind: "wait",
+              retryAt: new Date(
+                Math.max(state.nextCreationAt, now.getTime() + WOO_CART_REPLACEMENT_MS),
+              ),
+            };
+          if (state.nextCreationAt > now.getTime())
+            return { kind: "wait", retryAt: new Date(state.nextCreationAt) };
+          state.nextCreationAt = now.getTime() + WOO_CART_REPLACEMENT_MS;
+        }
         slot.state = "in_use";
         slot.claim = claim;
         slot.token = null;

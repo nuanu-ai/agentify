@@ -1278,6 +1278,7 @@ const keepCartToken = (slot: CartSlot, token: string): void => {
 };
 
 const CART_PATH = "/wp-json/wc/store/v1/cart";
+const KEPT_CART_LIVES_AT_LEAST_MS = 3_600_000;
 const CART_UNAVAILABLE: NotSellable = {
   ok: false,
   again: true,
@@ -1542,8 +1543,15 @@ export class WooShopRuntime {
         for (const wake of this.#room) wake();
         return;
       }
+      // An empty cart near its expiry is renewed for free, so one kept for reuse
+      // must outlive that margin by enough that renewal cannot become a
+      // session per question.
       const empty =
-        slot.observedEmpty && !slot.quarantined && !slot.uncertainMutation && slot.token !== null
+        slot.observedEmpty &&
+        !slot.quarantined &&
+        !slot.uncertainMutation &&
+        slot.token !== null &&
+        (slot.expiresAt === null || slot.expiresAt - Date.now() >= KEPT_CART_LIVES_AT_LEAST_MS)
           ? {
               token: slot.token,
               expiresAt: slot.expiresAt === null ? null : new Date(slot.expiresAt),
