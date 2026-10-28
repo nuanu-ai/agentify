@@ -609,6 +609,9 @@ async function answerPurchase(
     case "no_such_item":
       return refusedWith(response, NO_SUCH_ITEM);
 
+    case "listed_example":
+      return probeAnswer(gateway, edge, response, attempt.itemId, why ?? CHALLENGE_REASONS.probe);
+
     case "params_rejected":
       return written(
         response,

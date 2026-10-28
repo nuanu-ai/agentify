@@ -27,6 +27,7 @@ import {
 import { SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
 import {
   type Acceptance,
+  bazaarDeclarationOf,
   CARD_REJECTED,
   type CallError,
   type Card,
@@ -306,6 +307,11 @@ export type PurchaseAttempt =
   /** The purchase is under way and the agent is not waiting on it. */
   | { readonly step: "under_way"; readonly order: StoredOrder; readonly seller?: Seller }
   | { readonly step: "no_such_item" }
+  /**
+   * The card's own example purchase, which holds stand-in values: it is
+   * answered as the listing is, and its merchant is asked nothing.
+   */
+  | { readonly step: "listed_example"; readonly itemId: string }
   | { readonly step: "params_rejected"; readonly problems: readonly Problem[] }
   /** A parcel's purchase without an address, or another purchase with one. */
   | { readonly step: "ship_to_rejected"; readonly message: string }
@@ -1777,6 +1783,9 @@ export class Gateway {
     if (stored === null) {
       return { step: "no_such_item" };
     }
+    if (this.#isListedExample(stored, params, shipTo)) {
+      return { step: "listed_example", itemId };
+    }
 
     const fit = purchaseCheckFor(stored.card).safeParse(params);
     if (!fit.success) {
@@ -1925,6 +1934,31 @@ export class Gateway {
         },
       },
     };
+  }
+
+  /**
+   * Whether a purchase body is the card's own listed example, where that
+   * example holds stand-in values: a word naming a type for each parameter,
+   * or the schema's sample address. A discovery catalog replays it after a
+   * payment goes through, and a buyer never means it. A card with neither
+   * parameters nor an address lists the body a real purchase sends, so its
+   * example is a purchase like any other.
+   */
+  #isListedExample(
+    stored: StoredCard,
+    params: Readonly<Record<string, unknown>>,
+    shipTo: ShipTo | undefined,
+  ): boolean {
+    const { card } = stored;
+    if (Object.keys(card.params ?? {}).length === 0 && card.fulfillment !== "ship") return false;
+    const { input } = bazaarDeclarationOf(card, {
+      url: purchaseUrlOf(this.runtime.config, stored.id),
+      serviceName: null,
+    });
+    return (
+      canonical({ params, ...(shipTo === undefined ? {} : { ship_to: shipTo }) }) ===
+      canonical(input)
+    );
   }
 
   /**

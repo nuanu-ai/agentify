@@ -37,6 +37,12 @@ example address the contract's own schema publishes:
 {{parcel-purchase}}
 ```
 
+This exact body is also the example purchase a discovery catalog lists for
+such a card, and catalogs send it back as a test. Agentify answers a body that
+repeats a card's listed example, where the card asks for parameters or an
+address, with the card's listing and does not ask your price handler, so a test
+purchase of your own sends an address of its own.
+
 `name`, `line_one`, `city`, `country` and `phone_number` are required, and
 `line_two`, `state` and `postal_code` are given where the address has them.
 `country` is two capital letters, ISO 3166-1 alpha-2, and `state` is the

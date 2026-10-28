@@ -46,7 +46,12 @@ const PARCEL_CARD: Card = {
   ship_within_seconds: 172800,
 };
 const BUYER = aWallet("the buyer");
-const ADDRESS = ShipToSchema.parse((ShipToSchema.meta()?.examples as unknown[])?.[0]);
+// A buyer's own name on the schema's sample place: the sample itself is the
+// listing's example purchase, which is answered as the listing is.
+const ADDRESS = ShipToSchema.parse({
+  ...((ShipToSchema.meta()?.examples as unknown[])?.[0] as object),
+  name: "The buyer",
+});
 let h: Harness;
 let served: Served;
 let itemId: string;
