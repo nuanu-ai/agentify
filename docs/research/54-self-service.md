@@ -143,14 +143,23 @@ the status, and a repeated approval preserves the original approval time.
 
 ## WooCommerce recovery
 
-The merchant opens an authenticated recovery page from their own Orders. The
-owner is checked before recovery details are disclosed or the shop is called.
-For a download whose shop-order creation is uncertain (`create_unknown`), the
-merchant supplies the exact existing WooCommerce order ID. The connector uses
-the shared sale and product checks before binding that order and attempting
-delivery. The page offers no shop creation action. Parcels and refusals before
-shop creation are unavailable here; address erasure and live-channel gates
-remain in force.
+The merchant opens an authenticated recovery page for one order from their own
+Orders; neither the SDK nor the operator's workspace recovers a WooCommerce
+sale. The owner is checked before recovery details are disclosed or the shop is
+called. For a download whose shop-order creation is uncertain
+(`create_unknown`), the merchant supplies the exact existing WooCommerce order
+ID. The connector uses the shared sale and product checks before binding that
+order and attempting delivery; a mismatch stays unfulfilled.
+
+After a refusal proved before the create request (`precreate_refused`), the
+page may create the shop order once, while the order is unfulfilled, the same
+shop is connected again under a new grant and the product still qualifies (the
+product owner, 2026-10-26). The ledger becomes `create_unknown` before the
+request is sent, so a second press creates nothing, and the order carries what
+the buyer paid. The Agentify order is read again after the shop's checks, just
+before the ledger moves, so a closure can meet a create only between that read
+and the shop's answer. Parcels are not recovered here, because their address is
+erased; live-channel gates remain in force.
 
 A recorded shop order and delivery (`placed`) can retry the saved delivery
 after the shop is disconnected or the merchant switches to their own SDK
