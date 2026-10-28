@@ -24,6 +24,12 @@ describe("private capability and email crypto", () => {
       parts[field] = bytes.toString("base64url");
       expect(() => decryptSensitiveValue(parts.join("."), key)).toThrow();
     }
+    // The genuine tag cut to four bytes would leave a forgery a few billion guesses away.
+    const cut = first.split(".");
+    cut[2] = Buffer.from(cut[2] ?? "", "base64url")
+      .subarray(0, 4)
+      .toString("base64url");
+    expect(() => decryptSensitiveValue(cut.join("."), key)).toThrow();
   });
 
   it("normalizes lookup input and derives a 256-bit opaque capability", () => {
