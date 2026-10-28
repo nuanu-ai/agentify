@@ -25,8 +25,8 @@ import {
 import { pageIn } from "../../ports/paging.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
-  type AdmissionDecision,
   type AdmissionResult,
+  type AdmittedOrder,
   type AnalyticsOf,
   analyticsEventOf,
   type CatalogEntry,
@@ -774,46 +774,44 @@ export class MemoryStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async admitOrder<T>(
-    id: string,
-    decide: (found: StoredOrder | null) => Promise<AdmissionDecision<T>>,
-  ): Promise<AdmissionResult<T>> {
+  async admitOrder(accepted: AdmittedOrder): Promise<AdmissionResult> {
+    const id = accepted.record.order.id;
+    if (accepted.record.paidBy === null)
+      throw new Error("admission must create one verified owned order");
     const name = `payment-admission:${id}`;
     if (this.#running.has(name)) return { kind: "busy" };
     this.#running.add(name);
     try {
-      const found = this.#orders.get(id) ?? null;
-      const decided = await decide(found);
-      const accepted = decided.accept;
-      if (accepted === undefined) return { kind: "decided", result: decided.result };
-      if (found !== null || accepted.record.order.id !== id || accepted.record.paidBy === null)
-        throw new Error("admission must create one verified owned order");
+      const found = this.#orders.get(id);
+      if (found !== undefined) return { kind: "existing", order: found };
+      // In the order Postgres decides, and nothing armed, staged or written
+      // before every refusal has had its say, as a rolled-back transaction
+      // leaves nothing.
       return await this.#withMerchant(accepted.record.merchantId, () =>
-        this.#withPaymentClaims(async (): Promise<AdmissionResult<T>> => {
-          if (
-            this.#merchants.get(accepted.record.merchantId)?.integration !== accepted.birth.through
-          )
-            return { kind: "switched_away" };
+        this.#withPaymentClaims(async (): Promise<AdmissionResult> => {
+          const currentMerchant = this.#merchants.get(accepted.record.merchantId);
+          if (currentMerchant?.integration !== accepted.birth.through) return { kind: "off_sale" };
+          const standing = accepted.standing(
+            this.#storedMerchantOf(currentMerchant),
+            this.#cards.get(accepted.record.itemId) ?? null,
+          );
+          if (standing === "off_sale") return { kind: "off_sale" };
+          if (standing === "changed") return { kind: "offer_changed" };
           const claim = this.#paymentClaims.get(accepted.fingerprint);
           if (claim !== undefined && claim.orderId !== id) return { kind: "payment_already_spent" };
-          const arrivals: (() => void)[] = [];
-          for (const write of accepted.alongside)
-            arrivals.push(await this.#takeWithTheOrder(write));
-          for (const clock of accepted.birth.clocks ?? [])
-            await this.#envelopes.remind(clock.reminder, clock.afterMs);
-          const currentMerchant = this.#merchants.get(accepted.record.merchantId);
-          const currentCard = this.#cards.get(accepted.record.itemId);
-          if (
-            currentMerchant === undefined ||
-            !accepted.eligible(this.#storedMerchantOf(currentMerchant), currentCard ?? null)
-          )
-            return { kind: "offer_changed" };
           if (
             [...this.#orders.values()].some(
               (record) => record.buyerKey === accepted.record.buyerKey,
             )
           )
             throw new Error(`the order ${id} carries a buyer's key another order has`);
+          // What can fail goes before the order is written, which cannot be
+          // undone here; a failure then leaves no order, as a rollback would.
+          const arrivals: (() => void)[] = [];
+          for (const write of accepted.alongside)
+            arrivals.push(await this.#takeWithTheOrder(write));
+          for (const clock of accepted.birth.clocks ?? [])
+            await this.#envelopes.remind(clock.reminder, clock.afterMs);
           this.#paymentClaims.set(accepted.fingerprint, {
             orderId: id,
             at: this.#now(),
@@ -823,7 +821,7 @@ export class MemoryStore implements Store {
           this.#written.set(id, this.#now());
           for (const { event, at } of accepted.analytics) await this.recordAnalytics(event, at);
           for (const arrive of arrivals) arrive();
-          return { kind: "decided", result: decided.result };
+          return { kind: "admitted" };
         }),
       );
     } finally {

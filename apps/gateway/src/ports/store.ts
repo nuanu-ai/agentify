@@ -109,28 +109,35 @@ export interface ClockAtBirth {
   readonly afterMs: number;
 }
 
+/**
+ * Whether a verified purchase may still be accepted, judged on the merchant
+ * and card as they stand at its admission: `off_sale` where the card or its
+ * seller no longer sells, `changed` where the terms the price was named on
+ * have changed.
+ */
+export type AdmissionStanding = "stands" | "off_sale" | "changed";
+
 /** One verified purchase, committed together before any external effects run. */
 export interface AdmittedOrder {
   readonly record: StoredOrder;
   /** Pure final admission rule, evaluated with current merchant and card held through commit. */
-  readonly eligible: (merchant: StoredMerchant, card: StoredCard | null) => boolean;
+  readonly standing: (merchant: StoredMerchant, card: StoredCard | null) => AdmissionStanding;
   readonly birth: Birth;
   readonly fingerprint: string;
   readonly alongside: readonly WithTheOrder[];
   readonly analytics: readonly { readonly event: AnalyticsEvent; readonly at: number }[];
 }
 
-export interface AdmissionDecision<T> {
-  readonly result: T;
-  readonly accept?: AdmittedOrder;
-}
-
-export type AdmissionResult<T> =
-  | { readonly kind: "decided"; readonly result: T }
+export type AdmissionResult =
+  | { readonly kind: "admitted" }
+  /** The order was already there, admitted by an earlier request; nothing was written. */
+  | { readonly kind: "existing"; readonly order: StoredOrder }
+  /** Another admission of the same price holds it right now; nothing was written. */
   | { readonly kind: "busy" }
   | { readonly kind: "payment_already_spent" }
-  | { readonly kind: "offer_changed" }
-  | { readonly kind: "switched_away" };
+  /** The seller moved to the other integration, or `standing` said `off_sale`. */
+  | { readonly kind: "off_sale" }
+  | { readonly kind: "offer_changed" };
 
 /**
  * What switching a merchant to the other integration came to.
@@ -985,17 +992,15 @@ export interface Store {
   stoppedSellers(merchantIds: readonly string[], atLeast: number): Promise<ReadonlySet<string>>;
 
   /**
-   * Holds a price without writing a reservation. The callback may verify and
-   * prepare a purchase, but executes no external effects. Its accepted order,
-   * nonce claim, jobs and analytics commit on the connection holding the lock.
-   * A lost connection cannot commit; contending admissions return busy.
-   * After verification, the current merchant and card stay locked while the
-   * acceptance predicate, nonce claim and writes complete.
+   * Accepts one purchase whose payment has already been verified, in one short
+   * transaction: it holds the price against another admission of it, finds an
+   * order already there, checks `standing` on the merchant and card as they
+   * stand and keeps them held, claims the payment, and writes the order, its
+   * jobs and analytics. Either all of it commits or nothing does, and a lost
+   * connection commits nothing. Nothing slow happens inside it, and nothing
+   * outside the database: the caller verifies before and charges after.
    */
-  admitOrder<T>(
-    id: string,
-    decide: (found: StoredOrder | null) => Promise<AdmissionDecision<T>>,
-  ): Promise<AdmissionResult<T>>;
+  admitOrder(accepted: AdmittedOrder): Promise<AdmissionResult>;
 
   /**
    * One order by its identifier, whoever it belongs to. Unscoped because its

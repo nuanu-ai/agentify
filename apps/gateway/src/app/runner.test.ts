@@ -169,7 +169,7 @@ describe("an order that holds an address it should not", () => {
     expect(() =>
       open?.gateway.runner.preparePurchase(corrupt, PAID_AT, "a-payment", PAID_AT, 0, {
         fingerprint: "first-authorization",
-        eligible: () => true,
+        standing: () => "stands",
       }),
     ).toThrow(/address/i);
     expect(await open.store.orderById("ord_parcel")).toBeNull();
@@ -209,7 +209,7 @@ describe("an order that holds an address it should not", () => {
     expect(() =>
       open?.gateway.runner.preparePurchase(waiting, PAID_AT, "PAYMENT", PAID_AT, 0, {
         fingerprint: "first",
-        eligible: () => true,
+        standing: () => "stands",
       }),
     ).toThrow(/address/i);
     expect(() =>
@@ -219,7 +219,7 @@ describe("an order that holds an address it should not", () => {
         "PAYMENT",
         PAID_AT,
         0,
-        { fingerprint: "second", eligible: () => true },
+        { fingerprint: "second", standing: () => "stands" },
       ),
     ).toThrow(/address/i);
     expect(await open.store.orderById("ord_parcel")).toBeNull();
@@ -242,7 +242,7 @@ describe("an order that holds an address it should not", () => {
     expect(() =>
       open?.gateway.runner.preparePurchase(paid, PAID_AT, "PAYMENT", PAID_AT, 0, {
         fingerprint: "first",
-        eligible: () => true,
+        standing: () => "stands",
       }),
     ).toThrow(/address|parcel/i);
   });

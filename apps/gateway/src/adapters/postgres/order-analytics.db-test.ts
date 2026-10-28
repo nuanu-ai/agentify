@@ -137,22 +137,19 @@ if (databaseUrl === null) {
   const admitWithCreationEvent = async (order: StoredOrder, through: Integration = "api") => {
     const fingerprint = order.paymentFingerprint;
     if (fingerprint === undefined) throw new Error("The accepted history has no verified payment.");
-    const admitted = await store.admitOrder(order.order.id, async (found) => ({
-      result: found === null ? "written" : "exists",
-      ...(found === null
-        ? {
-            accept: {
-              record: order,
-              eligible: () => true,
-              birth: { through },
-              fingerprint,
-              alongside: [],
-              analytics: [{ event: created(order), at: CREATED_AT }],
-            },
-          }
-        : {}),
-    }));
-    return admitted.kind === "decided" ? admitted.result : admitted.kind;
+    const admitted = await store.admitOrder({
+      record: order,
+      standing: () => "stands",
+      birth: { through },
+      fingerprint,
+      alongside: [],
+      analytics: [{ event: created(order), at: CREATED_AT }],
+    });
+    return admitted.kind === "admitted"
+      ? "written"
+      : admitted.kind === "existing"
+        ? "exists"
+        : admitted.kind;
   };
 
   describe("the birth of an order", () => {
@@ -175,7 +172,7 @@ if (databaseUrl === null) {
     it("records nothing when the merchant no longer sells through the order's integration", async () => {
       const order = anOrderOf();
 
-      expect(await admitWithCreationEvent(order, "woocommerce")).toBe("switched_away");
+      expect(await admitWithCreationEvent(order, "woocommerce")).toBe("off_sale");
 
       expect(await outbox()).toStrictEqual([]);
     });

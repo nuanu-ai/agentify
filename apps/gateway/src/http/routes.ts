@@ -14,7 +14,6 @@ import type {
   OrderListQuery,
   PurchaseRequest,
   RouteName,
-  Seller,
   SellerNameRequest,
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
@@ -49,11 +48,14 @@ import {
 } from "./x402.js";
 
 /**
- * How long an agent refused for a seller's purchases waiting for payment is
- * told to wait before trying again: long enough not to knock at once, short
- * against the half minute a price holds.
+ * How long an agent turned away for a moment is told to wait before sending
+ * the same request: long enough not to knock at once, short against the half
+ * minute a price holds.
  */
-const SELLER_BUSY_RETRY_AFTER_SECONDS = 2;
+const BUSY_RETRY_AFTER_SECONDS = 2;
+
+/** Agentify could not do it now and did nothing; the same call may work in a moment. */
+const SERVICE_UNAVAILABLE = 503;
 
 /**
  * The merchant whose key opened this call. The mounting loop answers 401
@@ -546,10 +548,6 @@ async function purchase(
       );
     }
     if (presented.stamp !== null) {
-      const named = presented.orderId === null ? null : await gateway.orderById(presented.orderId);
-      const resource = named === null ? await gateway.paidResource(itemId) : null;
-      const merchantId = named?.merchantId ?? resource?.stored.merchantId;
-      const seller = merchantId === undefined ? null : await gateway.sellerOf(merchantId);
       return answerPurchase(
         gateway,
         edge,
@@ -562,7 +560,6 @@ async function purchase(
           { itemId, params: (held.value as PurchaseRequest).params },
           arrivedAt,
         ),
-        seller,
       );
     }
   }
@@ -589,13 +586,15 @@ async function purchase(
     edge,
     response,
     attempt,
-    // No payment is admitted on this path; where an answer carries an order's
-    // status, the seller is read there.
-    null,
-    // Why this call did not return the resource. An unreadable payment must
-    // be said, or the agent cannot tell its encoding is at fault and retries
-    // the same header.
-    presented === "unreadable" ? CHALLENGE_REASONS.unreadablePayment : undefined,
+    // Why this call did not return the resource. A payment must be said to
+    // have gone unused, or the agent cannot tell this price from a payment
+    // that failed: an unreadable one retries the same header, and an x402
+    // client does not sign a second challenge by itself.
+    presented === null
+      ? undefined
+      : presented === "unreadable"
+        ? CHALLENGE_REASONS.unreadablePayment
+        : CHALLENGE_REASONS.signedForTheListing,
   );
 }
 
@@ -604,7 +603,6 @@ async function answerPurchase(
   edge: PaymentEdge,
   response: RouteCall["response"],
   attempt: PurchaseAttempt,
-  seller: Seller | null,
   why?: ChallengeReason,
 ): Promise<RouteAnswer> {
   switch (attempt.step) {
@@ -664,14 +662,32 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
-      // Busy admission is transient; retrying asks again before any payment.
-      response.setHeader("retry-after", String(SELLER_BUSY_RETRY_AFTER_SECONDS));
+      response.setHeader("retry-after", String(BUSY_RETRY_AFTER_SECONDS));
+      return written(response, TOO_MANY_REQUESTS, refusal("seller_busy", attempt.why));
+
+    case "payment_being_checked":
+      // Neutral on purpose: the first request may still be charged, so this
+      // one is told neither that nothing was charged nor to buy again.
+      response.setHeader("retry-after", String(BUSY_RETRY_AFTER_SECONDS));
       return written(
         response,
-        TOO_MANY_REQUESTS,
+        CONFLICT,
         refusal(
-          "seller_busy",
-          "this seller is busy right now, so this purchase was not started and nothing was charged; try again in a few seconds",
+          "payment_not_taken",
+          "another request for this price is being checked right now, so this one was not taken; send the same request again in a few seconds to learn how the purchase stands, without starting a new purchase",
+          { retryable: true },
+        ),
+      );
+
+    case "not_checked_now":
+      response.setHeader("retry-after", String(BUSY_RETRY_AFTER_SECONDS));
+      return written(
+        response,
+        SERVICE_UNAVAILABLE,
+        refusal(
+          "gateway_failed",
+          "Agentify could not check this payment just now, so it was not used and nothing was charged for it; send the same request again in a few seconds",
+          { retryable: true },
         ),
       );
 
@@ -770,7 +786,7 @@ async function answerPurchase(
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
         document: agentOrderStatusOf(
           attempt.order,
-          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
+          attempt.seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
           gateway.runtime.config,
         ),
       };
@@ -781,7 +797,7 @@ async function answerPurchase(
         status: ["delivered", "shipped"].includes(outcomeFor(attempt.order.order)) ? OK : CONFLICT,
         document: agentOrderStatusOf(
           attempt.order,
-          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
+          attempt.seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
           gateway.runtime.config,
         ),
       };

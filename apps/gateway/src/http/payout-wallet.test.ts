@@ -653,8 +653,13 @@ describe("a wallet that moves while a sale is in flight", () => {
       headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
     });
 
+    // A changed payee is a change of the terms the price was named on, and is
+    // refused in the same words whether it lands before the payment arrives or
+    // while it is checked.
     expect(refused.status).toBe(409);
-    expect(refused.body).toMatchObject({ error: { code: "payment_not_verified" } });
+    expect(refused.body).toMatchObject({
+      error: { code: "payment_not_taken", retryable: false },
+    });
     expect(harnessed.facilitator.verifies).toStrictEqual([]);
     expect(harnessed.facilitator.settles).toStrictEqual([]);
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);

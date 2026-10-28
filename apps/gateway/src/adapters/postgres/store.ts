@@ -46,8 +46,8 @@ import {
 } from "../../ports/journal.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
-  type AdmissionDecision,
   type AdmissionResult,
+  type AdmittedOrder,
   type AnalyticsOf,
   analyticsEventOf,
   type CatalogEntry,
@@ -948,14 +948,14 @@ export class PostgresStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async admitOrder<T>(
-    id: string,
-    decide: (found: StoredOrder | null) => Promise<AdmissionDecision<T>>,
-  ): Promise<AdmissionResult<T>> {
+  async admitOrder(accepted: AdmittedOrder): Promise<AdmissionResult> {
+    const id = accepted.record.order.id;
+    if (accepted.record.paidBy === null)
+      throw new Error("admission must create one verified owned order");
     const streams: string[] = [];
-    let result: AdmissionResult<T>;
+    let result: AdmissionResult;
     try {
-      result = await this.#db.transaction(async (tx): Promise<AdmissionResult<T>> => {
+      result = await this.#db.transaction(async (tx): Promise<AdmissionResult> => {
         const held = await tx.execute<{ got: boolean }>(sql`
         select pg_try_advisory_xact_lock(hashtext(${`agentify.payment-admission:${id}`})) as got`);
         if (held.rows[0]?.got !== true) return { kind: "busy" };
@@ -963,15 +963,7 @@ export class PostgresStore implements Store {
           .select({ record: orders.record })
           .from(orders)
           .where(eq(orders.id, id));
-        const decided = await decide(found?.record ?? null);
-        const accepted = decided.accept;
-        if (accepted === undefined) return { kind: "decided", result: decided.result };
-        if (
-          found !== undefined ||
-          accepted.record.order.id !== id ||
-          accepted.record.paidBy === null
-        )
-          throw new Error("admission must create one verified owned order");
+        if (found !== undefined) return { kind: "existing", order: found.record };
         const [merchant] = await tx
           .select({ integration: merchants.integration })
           .from(merchants)
@@ -981,7 +973,7 @@ export class PostgresStore implements Store {
           merchant === undefined ||
           integrationOf(merchant.integration) !== accepted.birth.through
         )
-          return { kind: "switched_away" };
+          return { kind: "off_sale" };
         const [currentMerchant] = await this.#merchantsWhere(
           tx,
           eq(merchants.id, accepted.record.merchantId),
@@ -996,14 +988,15 @@ export class PostgresStore implements Store {
             ),
           )
           .for("share");
-        if (
-          currentMerchant === undefined ||
-          !accepted.eligible(
-            currentMerchant,
-            currentCard === undefined ? null : storedCardOf(currentCard),
-          )
-        )
-          return { kind: "offer_changed" };
+        const standing =
+          currentMerchant === undefined
+            ? "off_sale"
+            : accepted.standing(
+                currentMerchant,
+                currentCard === undefined ? null : storedCardOf(currentCard),
+              );
+        if (standing === "off_sale") return { kind: "off_sale" };
+        if (standing === "changed") return { kind: "offer_changed" };
         const [claim] = await tx
           .insert(paymentClaims)
           .values({
@@ -1030,7 +1023,7 @@ export class PostgresStore implements Store {
         for (const clock of accepted.birth.clocks ?? [])
           await this.#envelopes.remindWithin(tx, clock.reminder, clock.afterMs);
         for (const { event, at } of accepted.analytics) await recordAlong(tx, event, new Date(at));
-        return { kind: "decided", result: decided.result };
+        return { kind: "admitted" };
       });
     } catch (thrown) {
       const refused = uniquenessRefused(thrown);

@@ -7,7 +7,6 @@
  * The authenticated price travels in the requirements' extra and returns in
  * the payment. Only the gateway's verified stamp or its exact saved offer is
  * authoritative. Requirements may be published; no buyer key is in them.
-
  */
 
 import { createHash } from "node:crypto";
@@ -82,12 +81,14 @@ const PARCEL_PRICED =
 /**
  * Every reason a challenge gives for not returning the resource. A challenge
  * carries no other, so the widest a card's challenge can be is measured with
- * each of them.
+ * each of them; a reason longer than the longest here makes cards already
+ * published at the header limit answer wider than they were measured.
  */
 export const CHALLENGE_REASONS = {
   probe: "payment required",
   paymentOnAGet: "this GET is not read for payment: the purchase is a POST with a JSON body",
   unreadablePayment: "the payment could not be read, so here is a fresh price",
+  signedForTheListing: "the payment was for the listing and charged nothing; here is its price",
 } as const;
 
 export type ChallengeReason = (typeof CHALLENGE_REASONS)[keyof typeof CHALLENGE_REASONS];

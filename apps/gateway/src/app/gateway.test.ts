@@ -1659,7 +1659,7 @@ describe("two payments racing one order", () => {
     const paying = present(hers);
     try {
       await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
-      expect(await present(his)).toMatchObject({ step: "payment_not_taken", retryable: true });
+      expect(await present(his)).toStrictEqual({ step: "payment_being_checked" });
       expect(await harnessed.store.orderById(orderId)).toBeNull();
       expect(await harnessed.store.paymentClaimHolder(his.fingerprint)).toBeNull();
       release();

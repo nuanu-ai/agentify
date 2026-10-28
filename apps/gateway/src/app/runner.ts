@@ -73,8 +73,6 @@ import type {
   OrderLookup,
   PaymentCompletion,
   PaymentWord,
-  StoredCard,
-  StoredMerchant,
   StoredOrder,
   WithTheOrder,
 } from "../ports/store.js";
@@ -450,22 +448,10 @@ export class OrderRunner {
   }
 
   /**
-   * Presents a payment the payment layer has already verified, deciding
-   * ownership and changing the order inside the store's hold. Two verified
-   * payments for one order can both reach here, and deciding from a copy read
-   * before the hold would let both take it, with goods handed over against a
-   * charge that fails. So the guard reads `found.paidBy` under the lock: the
-   * first becomes the owner and the second is turned away without a mark on
-   * the order.
-   *
-   * Verification happens before the lock, since a network round-trip must not
-   * hold a row, so the machine's own `verify_payment` effect is dropped here as
-   * already answered.
-   *
-   * `owner` must arrive in the one spelling `walletThatPaid` in `gateway.ts`
-   * produces, and this is the only writer of `paidBy`, so the guard compares
-   * exactly; an address spelled the way a facilitator happened to spell it would
-   * make one wallet into two buyers, and nothing here could tell.
+   * The first payment for a price, verified and turned into the order the
+   * store admits: the verified owner, the payment and its claim, the jobs and
+   * the analytics that are written with it. Nothing is written here, and the
+   * effects wait for `finishAdmission` after the store commits.
    */
   preparePurchase(
     record: StoredOrder,
@@ -475,7 +461,7 @@ export class OrderRunner {
     at: number,
     verified: {
       readonly fingerprint: string;
-      readonly eligible: (merchant: StoredMerchant, card: StoredCard | null) => boolean;
+      readonly standing: AdmittedOrder["standing"];
       readonly recovery?: PaymentRecoveryContext;
       readonly shipTo?: ShipTo;
     },
@@ -509,7 +495,7 @@ export class OrderRunner {
       prepared: {
         accept: {
           record: next,
-          eligible: verified.eligible,
+          standing: verified.standing,
           fingerprint: verified.fingerprint,
           birth: {
             through,
@@ -528,6 +514,24 @@ export class OrderRunner {
     this.#wakeTheAgent(prepared.accept.record);
   }
 
+  /**
+   * Presents a payment the payment layer has already verified, deciding
+   * ownership and changing the order inside the store's hold. Two verified
+   * payments for one order can both reach here, and deciding from a copy read
+   * before the hold would let both take it, with goods handed over against a
+   * charge that fails. So the guard reads `found.paidBy` under the lock: the
+   * first becomes the owner and the second is turned away without a mark on
+   * the order.
+   *
+   * Verification happens before the lock, since a network round-trip must not
+   * hold a row, so the machine's own `verify_payment` effect is dropped here as
+   * already answered.
+   *
+   * `owner` must arrive in the one spelling `walletThatPaid` in `gateway.ts`
+   * produces, and this is the only writer of `paidBy`, so the guard compares
+   * exactly; an address spelled the way a facilitator happened to spell it would
+   * make one wallet into two buyers, and nothing here could tell.
+   */
   async presentVerifiedPayment(
     orderId: string,
     owner: string,
@@ -1076,8 +1080,12 @@ export class OrderRunner {
       );
     }
 
+    // Only an order opened before prices were stamped lacks them, and there is
+    // no other copy of what its buyer signed for, so it is refused by name.
     if (record.priceOffer === undefined) {
-      throw new Error(`the charge on ${record.order.id} has no saved payment requirements`);
+      throw new Error(
+        `the charge on ${record.order.id} cannot be executed: the order was opened before prices were stamped and keeps no saved payment requirements, so an operator has to finish or close it by hand`,
+      );
     }
     const outcome = await this.#runtime.facilitator.settle({
       orderId: record.order.id,

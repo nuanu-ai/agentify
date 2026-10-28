@@ -10,22 +10,16 @@ export async function storeAcceptedOrder(store: Store, record: StoredOrder): Pro
     throw new Error("An accepted-order fixture needs its verified owner and an accepted state.");
   const merchant = await store.merchantById(record.merchantId);
   if (merchant === null) throw new Error("The accepted-order fixture has no merchant.");
-  const admitted = await store.admitOrder(record.order.id, async (found) => ({
-    result: found ?? record,
-    ...(found === null
-      ? {
-          accept: {
-            record,
-            eligible: () => true,
-            birth: { through: record.through ?? merchant.integration },
-            fingerprint: record.paymentFingerprint ?? `accepted-fixture:${record.order.id}`,
-            alongside: [],
-            analytics: [],
-          },
-        }
-      : {}),
-  }));
-  if (admitted.kind !== "decided") throw new Error(`Fixture admission was ${admitted.kind}.`);
+  const admitted = await store.admitOrder({
+    record,
+    standing: () => "stands",
+    birth: { through: record.through ?? merchant.integration },
+    fingerprint: record.paymentFingerprint ?? `accepted-fixture:${record.order.id}`,
+    alongside: [],
+    analytics: [],
+  });
+  if (admitted.kind !== "admitted" && admitted.kind !== "existing")
+    throw new Error(`Fixture admission was ${admitted.kind}.`);
 }
 
 /** Starts at verified payment, then uses the production preparation, commit and effects. */
@@ -67,18 +61,16 @@ export async function admitVerifiedOrder(
     gateway.runtime.clock(),
     {
       fingerprint: verified.fingerprint,
-      eligible: (merchant, card) => merchant.id === offer.merchantId && card?.id === offer.itemId,
+      standing: (merchant, card) =>
+        merchant.id === offer.merchantId && card?.id === offer.itemId ? "stands" : "off_sale",
       ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }),
       ...(verified.shipTo === undefined ? {} : { shipTo: verified.shipTo }),
     },
   );
   if (!prepared.ok)
     throw new Error(`Verified fixture preparation failed: ${prepared.rejection.message}`);
-  const committed = await gateway.runtime.store.admitOrder(record.order.id, async () => ({
-    accept: prepared.prepared.accept,
-    result: true,
-  }));
-  if (committed.kind !== "decided")
+  const committed = await gateway.runtime.store.admitOrder(prepared.prepared.accept);
+  if (committed.kind !== "admitted")
     throw new Error(`Verified fixture admission was ${committed.kind}.`);
   await gateway.runner.finishAdmission(prepared.prepared);
 }

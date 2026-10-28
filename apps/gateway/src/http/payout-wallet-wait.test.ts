@@ -346,7 +346,7 @@ describe("a replacement on the live deployment", () => {
       { itemId: offered.order.itemId, params: offered.order.params },
     );
 
-    expect(refused.step).toBe("payment_not_verified");
+    expect(refused).toMatchObject({ step: "payment_not_taken", retryable: false });
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect(harnessed.facilitator.settles).toHaveLength(0);
     const fresh = await harnessed.gateway.beginPurchase(itemId, {});

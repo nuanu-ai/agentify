@@ -573,8 +573,9 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // The merchant may put it back, but that is not the retry working.
   not_selling: false,
 
-  // The seller's purchases waiting for payment lapse within a minute, and the
-  // same call goes through once one has.
+  // The seller's price questions or payment checks are full for a moment, or
+  // its price did not come in time; nothing was charged, and the same call
+  // goes through once a place frees.
   seller_busy: true,
   // The seller's own process comes back by itself, after a restart or a lost
   // connection, and the same call goes through at its first poll; nobody has

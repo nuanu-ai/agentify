@@ -203,6 +203,85 @@ describe("MemoryStore writes that go with an order", () => {
     expect(seenState).toBe("dispatched");
   });
 
+  it.each(["off_sale", "changed", "spent"] as const)(
+    "stages no envelope and arms no reminder for an admission refused as %s",
+    async (refusedAs) => {
+      // Postgres decides before it writes and rolls back what it wrote; here
+      // nothing may be armed or staged before every refusal has had its say.
+      const done: string[] = [];
+      const store = new MemoryStore("eip155:84532", counted(), undefined, {
+        async stage() {
+          done.push("staged");
+          return () => {};
+        },
+        async forget() {
+          return () => {};
+        },
+        async remind() {
+          done.push("armed");
+        },
+      });
+      await store.addMerchant({ id: A, name: "Merchant A" }, 0);
+      if (refusedAs === "spent") await storeAcceptedOrder(store, order("ord_1", "paid"));
+      done.splice(0);
+      const record = order("ord_2", "paid");
+
+      const admitted = await store.admitOrder({
+        record,
+        standing: () => (refusedAs === "spent" ? "stands" : refusedAs),
+        birth: {
+          through: "api",
+          clocks: [
+            {
+              reminder: {
+                kind: "deadline",
+                orderId: "ord_2",
+                at: 1,
+                deadline: "async_fulfillment",
+              },
+              afterMs: 1,
+            },
+          ],
+        },
+        fingerprint: refusedAs === "spent" ? "accepted-fixture:ord_1" : "fp-2",
+        alongside: [
+          {
+            kind: "envelope",
+            merchantId: A,
+            envelope: {
+              kind: "order",
+              id: "env_2",
+              sent_at: "2026-08-26T12:00:00.000Z",
+              payload: {
+                id: "ord_2",
+                merchant_item_id: "sku-1",
+                params: {},
+                price: {
+                  amount: "5.00",
+                  currency: "USD",
+                  at: "2026-08-26T12:00:00.000Z",
+                  as_of: "2026-08-26T12:00:00.000Z",
+                },
+                test: true,
+              },
+            },
+          },
+        ],
+        analytics: [],
+      });
+
+      expect(admitted.kind).toBe(
+        refusedAs === "spent"
+          ? "payment_already_spent"
+          : refusedAs === "changed"
+            ? "offer_changed"
+            : "off_sale",
+      );
+      expect(done).toStrictEqual([]);
+      expect(await store.orderById("ord_2")).toBeNull();
+    },
+  );
+
   it("writes nothing at all when one of the writes refuses", async () => {
     // All or nothing without a transaction: the write that can refuse is taken
     // first, so a refusal leaves no receipt, no envelope and the order where it

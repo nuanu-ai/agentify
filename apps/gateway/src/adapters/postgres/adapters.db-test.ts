@@ -1428,7 +1428,7 @@ if (databaseUrl === null) {
       }
     });
 
-    it("cannot accept or settle a late verification after its admission connection dies", async () => {
+    it("holds no transaction while a payment is checked, and neither accepts nor charges one whose admission connection dies", async () => {
       const application = `admission-${randomUUID()}`;
       const owner = connect(databaseUrl, { max: 3, application_name: application });
       const own = PostgresStore.over(owner.db, "eip155:84532", countedIds(), queue.envelopes());
@@ -1441,6 +1441,7 @@ if (databaseUrl === null) {
       });
       let release: (() => void) | undefined;
       let paying: Promise<unknown> | undefined;
+      const blocker = await pool.connect();
       try {
         await gateway.poll(A, 0);
         const card = await store.publishCard(
@@ -1471,16 +1472,29 @@ if (databaseUrl === null) {
           () => ({ failed: true }),
         );
         await vi.waitFor(() => expect(paymentLayer.verifies).toHaveLength(1));
-        const held = await pool.query<{ pid: number }>(
-          "select pid from pg_stat_activity where application_name = $1 and state = 'idle in transaction'",
+        // Nothing of the database is held while the payment layer answers.
+        const holding = await pool.query(
+          "select pid from pg_stat_activity where application_name = $1 and state like 'idle in transaction%'",
           [application],
         );
-        expect(held.rows).toHaveLength(1);
-        const pid = held.rows[0]?.pid;
-        if (pid === undefined) throw new Error("no admission transaction was found");
-        await terminate(pid);
-        now += 31_000;
+        expect(holding.rows).toStrictEqual([]);
+
+        // The merchant's row, held here, stops the admission inside its transaction.
+        await blocker.query("begin");
+        await blocker.query("select id from merchants where id = $1 for update", [A]);
         release();
+        const pid = await vi.waitFor(async () => {
+          const { rows } = await pool.query<{ pid: number }>(
+            "select pid from pg_stat_activity where application_name = $1 and wait_event_type = 'Lock'",
+            [application],
+          );
+          const waiting = rows[0]?.pid;
+          if (rows.length !== 1 || waiting === undefined)
+            throw new Error("the admission is not waiting on the merchant's row");
+          return waiting;
+        });
+        await terminate(pid);
+        await blocker.query("commit");
         expect((await answered).failed).toBe(true);
         expect(await store.orderById(offer.order.id)).toBeNull();
         expect(await store.paymentClaimHolder(signed.fingerprint)).toBeNull();
@@ -1494,7 +1508,8 @@ if (databaseUrl === null) {
           ).rows,
         ).toStrictEqual([]);
         expect(await queue.holdsOrder(A, offer.order.id)).toBe(false);
-        // A replacement process has no in-memory knowledge of the first verifier.
+        now += 31_000;
+        // A replacement process has no in-memory knowledge of the first request.
         const restarted = new Gateway({ ...ownGateway.runtime });
         const replay = await signedFor(restarted, offer, buyer, { nonce: "0x02" });
         expect(
@@ -1521,6 +1536,8 @@ if (databaseUrl === null) {
         expect((await store.orderById(fresh.order.order.id))?.order.payment).toBe("settled");
         expect(paymentLayer.settles).toHaveLength(1);
       } finally {
+        await blocker.query("rollback").catch(() => undefined);
+        blocker.release();
         release?.();
         await paying?.catch(() => undefined);
         await owner.pool.end();

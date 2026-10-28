@@ -1289,7 +1289,7 @@ describe("what an agent is told when the money is not settled", () => {
       price_check: "handler",
     });
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
-    expect(offered.step).toBe("not_selling");
+    expect(offered.step).toBe("seller_busy");
 
     const pricedId = await publish(served, syncCard);
     const priced = await harnessed.gateway.beginPurchase(pricedId, {});

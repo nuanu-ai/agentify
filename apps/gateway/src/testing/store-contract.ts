@@ -23,7 +23,6 @@ import type {
   PayoutWalletWrite,
   RecordedPayoutSplit,
   Store,
-  StoredCard,
   StoredOrder,
   StoredPayoutWallet,
 } from "../ports/store.js";
@@ -1550,7 +1549,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         };
         return {
           record,
-          eligible: () => true,
+          standing: () => "stands",
           fingerprint,
           birth: { through: "api" },
           alongside: [],
@@ -1558,125 +1557,76 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         };
       };
 
-      it("keeps verification transient, refuses overlap and preserves the committed buyer key", async () => {
+      it("commits one order for a price, keeps its claim, and finds it on a repeat", async () => {
         const store = await twoMerchants();
         const prepared = accepted("ord_one_price");
-        let entered!: () => void;
-        let release!: () => void;
-        const inside = new Promise<void>((resolve) => {
-          entered = resolve;
+        const [one, other] = await Promise.all([
+          store.admitOrder(prepared),
+          store.admitOrder(prepared),
+        ]);
+        // The second either waited out the first and found its order, or met
+        // the first holding the price; neither writes anything of its own.
+        const kinds = [one.kind, other.kind].sort();
+        expect(kinds[0]).toBe("admitted");
+        expect(["busy", "existing"]).toContain(kinds[1]);
+        expect((await store.orders(A)).map((order) => order.order.id)).toStrictEqual([
+          prepared.record.order.id,
+        ]);
+        expect(await store.admitOrder(prepared)).toStrictEqual({
+          kind: "existing",
+          order: prepared.record,
         });
-        const resume = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        const first = store.admitOrder(prepared.record.order.id, async () => {
-          entered();
-          await resume;
-          return { accept: prepared, result: "accepted" };
-        });
-        try {
-          await inside;
-          expect(await store.orders(A)).toStrictEqual([]);
-          expect(await store.paymentClaimHolder(prepared.fingerprint)).toBeNull();
-          const overlap = await store.admitOrder(prepared.record.order.id, async () => ({
-            result: "overlap",
-          }));
-          expect(overlap).toStrictEqual({ kind: "busy" });
-        } finally {
-          release();
-        }
-        expect(await first).toStrictEqual({ kind: "decided", result: "accepted" });
-        const repeated = await store.admitOrder(prepared.record.order.id, async (found) => ({
-          result: found,
-        }));
-        expect(repeated).toStrictEqual({ kind: "decided", result: prepared.record });
         expect(await store.paymentClaimHolder(prepared.fingerprint)).toStrictEqual({
           orderId: prepared.record.order.id,
           retained: true,
         });
       });
 
-      it("checks current card terms after verification instead of accepting its earlier snapshot", async () => {
-        const store = await twoMerchants();
-        const published = await store.publishCard(
-          A,
-          card("room-101", "A room for the night"),
-          1_000,
-        );
-        const prepared = accepted("ord_changed_terms");
-        const current = {
-          ...prepared,
-          record: { ...prepared.record, itemId: published.id },
-          eligible: (_merchant: unknown, found: StoredCard | null) =>
-            found?.card.title === "A room for the night",
-        };
-        let entered!: () => void;
-        let release!: () => void;
-        const inside = new Promise<void>((resolve) => {
-          entered = resolve;
-        });
-        const resume = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        const pending = store.admitOrder(current.record.order.id, async () => {
-          entered();
-          await resume;
-          return { accept: current, result: true };
-        });
-        try {
-          await inside;
+      it.each([
+        ["off_sale", "off_sale"],
+        ["changed", "offer_changed"],
+      ] as const)(
+        "refuses a purchase whose standing is %s on the card as it stands, writing nothing",
+        async (standing, kind) => {
+          const store = await twoMerchants();
+          const published = await store.publishCard(
+            A,
+            card("room-101", "A room for the night"),
+            1_000,
+          );
           await store.publishCard(A, { ...published.card, title: "A room for two nights" }, 1_001);
-        } finally {
-          release();
-        }
-        expect(await pending).toStrictEqual({ kind: "offer_changed" });
-        expect(await store.orderById(current.record.order.id)).toBeNull();
-        expect(await store.paymentClaimHolder(current.fingerprint)).toBeNull();
-      });
+          const prepared = accepted("ord_changed_terms");
+          const current: AdmittedOrder = {
+            ...prepared,
+            record: { ...prepared.record, itemId: published.id },
+            standing: (_merchant, found) =>
+              found?.card.title === "A room for the night" ? "stands" : standing,
+          };
+
+          expect(await store.admitOrder(current)).toStrictEqual({ kind });
+          expect(await store.orderById(current.record.order.id)).toBeNull();
+          expect(await store.paymentClaimHolder(current.fingerprint)).toBeNull();
+        },
+      );
 
       it("refuses a nonce already accepted for another price without creating another order", async () => {
         const store = await twoMerchants();
         const first = accepted("ord_first", "one-authorization");
         const second = accepted("ord_second", "one-authorization");
-        await store.admitOrder(first.record.order.id, async () => ({
-          accept: first,
-          result: true,
-        }));
-        expect(
-          await store.admitOrder(second.record.order.id, async () => ({
-            accept: second,
-            result: true,
-          })),
-        ).toStrictEqual({ kind: "payment_already_spent" });
+        expect(await store.admitOrder(first)).toStrictEqual({ kind: "admitted" });
+        expect(await store.admitOrder(second)).toStrictEqual({ kind: "payment_already_spent" });
         expect(await store.orderById(second.record.order.id)).toBeNull();
         expect((await store.orders(A)).map((order) => order.order.id)).toStrictEqual([
           first.record.order.id,
         ]);
       });
 
-      it("refuses the prior integration when the merchant switches during verification", async () => {
+      it("refuses the integration a merchant has switched away from", async () => {
         const store = await twoMerchants();
         const prepared = accepted("ord_in_switch");
-        let entered!: () => void;
-        let release!: () => void;
-        const inside = new Promise<void>((resolve) => {
-          entered = resolve;
-        });
-        const resume = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        const pending = store.admitOrder(prepared.record.order.id, async () => {
-          entered();
-          await resume;
-          return { accept: prepared, result: true };
-        });
-        try {
-          await inside;
-          expect(await store.switchIntegration(A, "woocommerce")).toMatchObject({ switched: true });
-        } finally {
-          release();
-        }
-        expect(await pending).toStrictEqual({ kind: "switched_away" });
+        expect(await store.switchIntegration(A, "woocommerce")).toMatchObject({ switched: true });
+
+        expect(await store.admitOrder(prepared)).toStrictEqual({ kind: "off_sale" });
         expect(await store.orderById(prepared.record.order.id)).toBeNull();
         expect(await store.paymentClaimHolder(prepared.fingerprint)).toBeNull();
       });
