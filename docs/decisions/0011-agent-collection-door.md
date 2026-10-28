@@ -26,8 +26,11 @@ that bought, as the one variable segment of `status_url` in the purchase's
 answer and in the status document, and holding that address is the proof on
 both channels. The status route finds an order by the key alone and answers an
 order identifier, or any other value, exactly as a key that names no order,
-with `Cache-Control: no-store`. A buyer who lost the purchase answer and signs
-the kept challenge again receives the original answer, with the same address.
+with `Cache-Control: no-store`. The purchase route's answers, which can carry
+the status address and the goods, send the same header, every refusal and
+discovery look included (the product owner, 2026-10-27). A buyer who lost the
+purchase answer and signs the kept challenge again receives the original
+answer, with the same address.
 The key is never written into anything the merchant reads, the payment
 requirements, the facilitator's calls, analytics or a log line.
 
