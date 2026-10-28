@@ -248,6 +248,32 @@ describe("an order that holds an address it should not", () => {
   });
 });
 
+describe("an order kept from before prices were stamped", () => {
+  it("is never charged, because it keeps no saved payment requirements", async () => {
+    // Its buyer signed requirements nothing saved, so there is nothing to
+    // charge against; the charge is refused by name rather than rebuilt.
+    open = await harness();
+    const kept = impossible(open.merchant.id);
+    await storeAcceptedOrder(open.store, {
+      ...kept,
+      order: {
+        ...kept.order,
+        state: "dispatched",
+        timestamps: { ...kept.order.timestamps, paidAt: null },
+      },
+    });
+
+    await expect(
+      open.gateway.runner.apply(
+        kept.order.id,
+        { kind: "handler_delivered", at: open.now() },
+        { delivery: { access_code: "SESAME" } },
+      ),
+    ).rejects.toThrow(kept.order.id);
+    expect(open.facilitator.settles).toStrictEqual([]);
+  });
+});
+
 describe("an order whose next clock could not be started", () => {
   it("is not written down at all", async () => {
     // The clock is armed before the order is written. Written first and then
