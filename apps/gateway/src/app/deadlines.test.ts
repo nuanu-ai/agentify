@@ -318,16 +318,16 @@ describe("fulfillment after a delayed charge", () => {
   afterEach(() => vi.useRealTimers());
 
   it.each([
-    { waitMs: 999, ending: "delivered" },
-    { waitMs: 1_000, ending: "unfulfilled" },
+    { waitMs: 59_999, ending: "delivered" },
+    { waitMs: 60_000, ending: "unfulfilled" },
   ])(
-    "ends as $ending after $waitMs ms of the merchant's full second",
+    "ends as $ending after $waitMs ms of the merchant's full minute, counted from the charge",
     async ({ waitMs, ending }) => {
       const harnessed = await started();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       const { orderId, stamp } = await priced(harnessed, {
         ...asyncCard,
-        fulfill_deadline_seconds: 1,
+        fulfill_deadline_seconds: 60,
       });
       const release = harnessed.facilitator.holdSettle();
       const requestedAt = harnessed.now();
@@ -335,7 +335,8 @@ describe("fulfillment after a delayed charge", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect((await state(harnessed, orderId))?.payment).toBe("settling");
 
-      // The charge takes longer than fulfillment is allowed to take.
+      // Two seconds of the charge, which a deadline counted from the request
+      // would already have spent.
       harnessed.advance(2_000);
       await vi.advanceTimersByTimeAsync(2_000);
       const confirmedAt = harnessed.now();

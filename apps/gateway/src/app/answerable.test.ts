@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Integration } from "../ports/store.js";
 import { type Harness, harness, workOnce, workUntilStopped } from "../testing/harness.js";
 
-/** A card charged at the purchase, its goods to follow within a second. */
+/** A card charged at the purchase, its goods to follow within a minute. */
 const prepaidCard: Card = CardSchema.parse({
   merchant_item_id: "esim-30d",
   title: "A thirty day eSIM",
@@ -26,7 +26,7 @@ const prepaidCard: Card = CardSchema.parse({
   price: { amount: "25.00", currency: "USD" },
   result: { activation_code: { type: "string" } },
   fulfillment: "async",
-  fulfill_deadline_seconds: 1,
+  fulfill_deadline_seconds: 60,
 });
 
 /** A parcel whose price its shop is asked, shipped within a day. */
@@ -98,7 +98,7 @@ const handOver = async (harnessed: Harness, through: Integration): Promise<void>
 
 /** The order's deadline to deliver or ship passes. */
 const missed = async (harnessed: Harness, orderId: string, parcel = false): Promise<void> => {
-  harnessed.advance(parcel ? 86_401_000 : 2_000);
+  harnessed.advance(parcel ? 86_401_000 : 61_000);
   await harnessed.gateway.runner.apply(orderId, {
     kind: "deadline_expired",
     at: harnessed.now(),

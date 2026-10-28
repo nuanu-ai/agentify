@@ -247,8 +247,9 @@ An asynchronous card can carry one deadline of its own,
 `fulfill_deadline_seconds`: how long you may take to deliver. It runs from the
 moment the buyer is charged, which for an asynchronous product is the moment of
 purchase, so the clock is already going when the order reaches your handler,
-and it covers every attempt we make to deliver that order to you. Name it, and
-the agent sees it before it buys.
+and it covers every attempt we make to deliver that order to you. It is at
+least a minute and at most thirty days; a card naming a shorter or a longer one
+is refused when you publish it. Name it, and the agent sees it before it buys.
 
 Leaving it out does not leave you off a clock. {{Default-async-fulfillment}} applies instead, the
 agent sees that deadline on your card in the catalog as if you had named it, and an
@@ -557,7 +558,7 @@ are together, the required fields first.
 | `result` | the shape of what the agent receives on delivery | required, except on a parcel's card, which has none |
 | `params` | the shape of the purchase parameters | required where the delivery needs input |
 | `fulfillment` | `'sync'`, `'async'` or `'ship'` | optional; a card that names no mode is `'sync'` |
-| `fulfill_deadline_seconds` | how long you may take to deliver | optional, and only on an asynchronous card |
+| `fulfill_deadline_seconds` | how long you may take to deliver, from the charge, at least a minute and at most thirty days | optional, and only on an asynchronous card |
 | `ship_within_seconds` | how long you have to hand a parcel to a carrier, from the charge, at most thirty days | required on a parcel's card, and only there |
 | `price_check` | `'handler'`: your price handler is asked the price and availability at the moment of purchase | optional |
 | `tags` | words describing the product for an agent's search, at most five | optional |

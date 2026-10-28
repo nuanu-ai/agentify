@@ -48,10 +48,10 @@ const written =
 /**
  * The mock merchant's asynchronous product, with a deadline it can be watched
  * against. The card as published names none, so the gateway holds it to the
- * system default of a day, which nobody at a console will reach; ten seconds is
- * short enough to watch run out.
+ * system default of a day, which nobody at a console will reach; a minute, the
+ * shortest a card may name, is short enough to watch run out.
  */
-const esimWithADeadline = (): CardInput => ({ ...EUROPE_ESIM, fulfill_deadline_seconds: 10 });
+const esimWithADeadline = (): CardInput => ({ ...EUROPE_ESIM, fulfill_deadline_seconds: 60 });
 
 /*
  * Three cards in the shape the public x402 catalogue is mostly made of:
@@ -147,7 +147,7 @@ export const TEMPLATES: readonly Template[] = [
   {
     key: "esim",
     label: "eSIM, delivered later",
-    about: "The pilot's asynchronous product, with a ten-second deadline you can watch run out.",
+    about: "The pilot's asynchronous product, with a one-minute deadline you can watch run out.",
     read: () => written(esimWithADeadline())(),
   },
 ];

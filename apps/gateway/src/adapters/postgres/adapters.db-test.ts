@@ -1825,7 +1825,7 @@ if (databaseUrl === null) {
       it("commits recovered late payment and its debt event together without a fulfillment handover", async () => {
         const card = await store.publishCard(
           A,
-          { ...asyncCard, merchant_item_id: "recovered-late", fulfill_deadline_seconds: 1 },
+          { ...asyncCard, merchant_item_id: "recovered-late", fulfill_deadline_seconds: 60 },
           now,
         );
         const offered = await gateway.beginPurchase(card.id, {});
@@ -1837,7 +1837,7 @@ if (databaseUrl === null) {
           const attempt = (await store.orderById(orderId))?.paymentAttempt;
           if (attempt === undefined) throw new Error("no submitted attempt");
           const executedAt = now;
-          now += 2000;
+          now += 61_000;
           const proof = { settled: true as const, transaction: `0x${"a".repeat(64)}`, executedAt };
           const publish = queue.publishWithin.bind(queue);
           queue.publishWithin = async () => {

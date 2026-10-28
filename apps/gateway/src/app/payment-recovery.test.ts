@@ -38,8 +38,17 @@ async function logged(run: () => Promise<void>): Promise<string[]> {
   return lines;
 }
 
-async function purchase(fulfillment: "async" | "sync" = "async", fulfillDeadlineSeconds?: number) {
-  const h = await harness({ SETTLE_RESPONSE_MS: "5000" });
+async function purchase(
+  fulfillment: "async" | "sync" = "async",
+  fulfillDeadlineSeconds?: number,
+  settleBeforeGoodsMs?: number,
+) {
+  const h = await harness({
+    SETTLE_RESPONSE_MS: "5000",
+    ...(settleBeforeGoodsMs === undefined
+      ? {}
+      : { SETTLE_BEFORE_GOODS_MS: String(settleBeforeGoodsMs) }),
+  });
   open = h;
   const published = await h.gateway.publishCard(h.merchant.id, {
     ...card,
@@ -370,11 +379,13 @@ describe("recovering a payment without another charge", () => {
   });
 
   it("marks a payment found after its fulfillment window unfulfilled, without a handover", async () => {
-    const { h, orderId, stamp } = await purchase("async", 1);
+    // The wait for the charge outlasts the minute, so the payment is still being
+    // settled when its window ends.
+    const { h, orderId, stamp } = await purchase("async", 60, 90_000);
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
     await h.gateway.payPurchase(stamp, "PAYMENT", "fp-original");
     const executedAt = h.now();
-    h.advance(2_000);
+    h.advance(61_000);
     const attempt = (await h.store.orderById(orderId))?.paymentAttempt;
     if (attempt === undefined) throw new Error("no submitted attempt");
     await h.gateway.runner.completePaymentAttempt(
@@ -395,7 +406,7 @@ describe("recovering a payment without another charge", () => {
     const envelopes = await drawEverything(h, h.merchant.id);
     expect(envelopes.map((envelope) => envelope.kind)).toEqual(["order_event"]);
     expect(envelopes[0]).toMatchObject({
-      payload: { type: "order.unfulfilled", at: new Date(executedAt + 1000).toISOString() },
+      payload: { type: "order.unfulfilled", at: new Date(executedAt + 60_000).toISOString() },
     });
     expect(h.facilitator.settles).toHaveLength(1);
   });

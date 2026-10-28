@@ -48,6 +48,15 @@ export const FulfillmentSchema = z
 const SHIP_WITHIN_AT_MOST_SECONDS = 2_592_000;
 
 /**
+ * The range a delivery deadline may name: a minute at least, since a shorter
+ * one closes paid orders before the merchant's process can answer, and at
+ * most the thirty days a parcel may take to ship.
+ */
+const DELIVER_WITHIN_AT_LEAST_SECONDS = 60;
+const DELIVER_WITHIN_AT_MOST_SECONDS = SHIP_WITHIN_AT_MOST_SECONDS;
+const DELIVER_WITHIN_RANGE = `fulfill_deadline_seconds is a whole number of seconds from ${DELIVER_WITHIN_AT_LEAST_SECONDS} (a minute) to ${DELIVER_WITHIN_AT_MOST_SECONDS} (thirty days)`;
+
+/**
  * How the price and availability of this card are asked for at purchase.
  * `"handler"` is the one way: the question travels the same outgoing channel
  * as the orders to the merchant's price handler, registered with
@@ -378,8 +387,15 @@ const CardFieldsSchema = z
 
     price_check: PriceCheckSchema.optional(),
 
-    /** How long the merchant may take to deliver an order it has accepted. */
-    fulfill_deadline_seconds: z.int().positive().optional(),
+    /**
+     * How long the merchant may take to deliver an order it has accepted,
+     * from a minute to thirty days.
+     */
+    fulfill_deadline_seconds: z
+      .int({ error: DELIVER_WITHIN_RANGE })
+      .min(DELIVER_WITHIN_AT_LEAST_SECONDS, { error: DELIVER_WITHIN_RANGE })
+      .max(DELIVER_WITHIN_AT_MOST_SECONDS, { error: DELIVER_WITHIN_RANGE })
+      .optional(),
 
     /**
      * On a parcel's card, how long the merchant may take to hand it to a

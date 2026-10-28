@@ -539,7 +539,7 @@ const isParcel = async (harnessed: Harness, itemId: string): Promise<boolean> =>
 const BUYER = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
 
 /**
- * One order of a card charged before its goods with a one-second deadline,
+ * One order of a card charged before its goods with a one-minute deadline,
  * whose charge nobody could confirm and which settled only after its deadline,
  * so the order became unfulfilled without ever being handed over.
  */
@@ -547,7 +547,7 @@ const lateSettled = async (harnessed: Harness): Promise<string> => {
   const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
     ...prepaidCard,
     merchant_item_id: "esim-late",
-    fulfill_deadline_seconds: 1,
+    fulfill_deadline_seconds: 60,
   });
   if (!published.ok) throw new Error("the card was refused");
   const merchant = await harnessed.store.merchantById(harnessed.merchant.id);
@@ -583,7 +583,7 @@ const lateSettled = async (harnessed: Harness): Promise<string> => {
     { itemId: offered.order.itemId, params: offered.order.params },
   );
   const executedAt = harnessed.now();
-  harnessed.advance(2_000);
+  harnessed.advance(61_000);
   const attempt = (await harnessed.store.orderById(orderId))?.paymentAttempt;
   if (attempt === undefined) throw new Error("no charge was submitted");
   await harnessed.gateway.runner.completePaymentAttempt(
