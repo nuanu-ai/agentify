@@ -1042,6 +1042,54 @@ if (databaseUrl === null) {
      * really in our transaction is a fact about Postgres that no offline test
      * can establish.
      */
+    it("hands an order over again when nothing after its hand-over's commit ran, from what the database holds", async () => {
+      const card = await store.publishCard(
+        A,
+        {
+          merchant_item_id: `esim-${randomUUID()}`,
+          title: "A seven day eSIM",
+          description: "Seven days of data in Indonesia",
+          price: { amount: "12.00", currency: "USD" },
+          result: { activation_code: { type: "string" } },
+          fulfillment: "async",
+          fulfill_deadline_seconds: 3_600,
+        },
+        now,
+      );
+      await store.noteContact(A, now);
+      const offered = await gateway.beginPurchase(card.id, {});
+      if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+      await acceptedPurchaseFixture(offered.order);
+      const orderId = offered.order.order.id;
+
+      // The process stops right after the hand-over commits: no reminder it
+      // would set afterwards is ever written.
+      const remind = queue.remind.bind(queue);
+      queue.remind = async (reminder, afterMs) => {
+        if (reminder.kind === "delivery_unanswered") throw new Error("the process stopped here");
+        await remind(reminder, afterMs);
+      };
+      try {
+        await gateway.poll(A, 0).catch(() => undefined);
+      } finally {
+        queue.remind = remind;
+      }
+      expect((await store.orderById(orderId))?.order.dispatch.attempts).toBe(1);
+
+      await vi.waitFor(
+        async () => {
+          const { envelopes } = await gateway.poll(A, 0);
+          expect(
+            envelopes.some(
+              (envelope) => envelope.kind === "order" && envelope.payload.id === orderId,
+            ),
+          ).toBe(true);
+        },
+        { timeout: 15_000, interval: 250 },
+      );
+      expect((await store.orderById(orderId))?.order.dispatch.attempts).toBe(2);
+    }, 30_000);
+
     describe("an effect written where the state is", () => {
       /** How many jobs with this envelope's identifier are on that stream. */
       const jobsFor = async (merchantId: string, envelopeId: string): Promise<number> => {
