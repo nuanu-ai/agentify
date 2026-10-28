@@ -4506,6 +4506,7 @@ describe("a shop whose guest carts are short", () => {
       answered,
       offer: (envelope: { kind: string; payload: unknown }) => waiting.push(envelope),
       drained: () => waiting.length === 0,
+      handedOver: (id: string) => handedOver.get(id) ?? 0,
     };
   };
   /** Counts its waits rather than reading the clock, which some cases set. */
@@ -4606,6 +4607,51 @@ describe("a shop whose guest carts are short", () => {
       run.offer(priceOfTheTote("prc-after"));
       expect(await within(() => run.answered.has("prc-after"))).toBe(true);
       expect(run.answered.get("prc-after")).toMatchObject({ available: true });
+    } finally {
+      await run.worker.stop();
+      clock.mockRestore();
+    }
+  });
+
+  it("takes on a paid parcel when its next hand-over comes after the ten-minute replacement, having answered nothing until then", async () => {
+    aGuestCart(() => null);
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    let time = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    // Every paid cart was opened and retired, and a replacement was just spent.
+    const at = new Date(time);
+    await shops.startCartRuntime(SHOP, "earlier-worker");
+    for (let slot = 0; slot < 8; slot += 1) {
+      await shops.claimCart(SHOP, "earlier-worker", "paid", slot, `opened-${slot}`, at);
+      await shops.registerCartIdentity(
+        SHOP,
+        "earlier-worker",
+        "paid",
+        slot,
+        `opened-${slot}`,
+        `retired-${slot}`,
+      );
+      await shops.finishCart(SHOP, "earlier-worker", "paid", slot, `opened-${slot}`, null);
+    }
+    await shops.claimCart(SHOP, "earlier-worker", "paid", 0, "replacement", at);
+    await shops.registerCartIdentity(
+      SHOP,
+      "earlier-worker",
+      "paid",
+      0,
+      "replacement",
+      "retired-again",
+    );
+    await shops.finishCart(SHOP, "earlier-worker", "paid", 0, "replacement", null);
+    const run = working(shops, [parcel("ord-tote")]);
+    try {
+      expect(await within(() => run.handedOver("ord-tote") >= 3)).toBe(true);
+      expect(run.answered.has("ord-tote")).toBe(false);
+      // The gateway hands it over again for three hours; ten minutes is the next replacement.
+      time += 600_001;
+      expect(await within(() => run.answered.has("ord-tote"))).toBe(true);
+      expect(run.answered.get("ord-tote")).toEqual({ accepted: {} });
     } finally {
       await run.worker.stop();
       clock.mockRestore();
