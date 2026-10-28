@@ -43,9 +43,9 @@ describe("loadConfig", () => {
     expect(
       loadConfig({
         ...required,
-        PRICE_STAMP_PREVIOUS_KEY: "a-previous-signing-key-at-least-32-bytes",
+        PRICE_STAMP_PREVIOUS_KEY: "p".repeat(32),
       }).priceStampKeys.previous,
-    ).toBe("a-previous-signing-key-at-least-32-bytes");
+    ).toBe("p".repeat(32));
   });
   it("reads the environment and fills in the sandbox defaults", () => {
     const config = loadConfig(required);

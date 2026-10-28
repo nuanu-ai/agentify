@@ -92,3 +92,6 @@ f1035b074385c50ad91a0c082cbc0078185f8658:packages/slice/src/quickstart-buyer.tes
 03185bc9af1c9c4b31d543bd0d4df36b243b480f:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:78
 ad8954313dbeafa7c088550fdc6e26eac66c2382:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:45
 ad8954313dbeafa7c088550fdc6e26eac66c2382:packages/slice/src/quickstart-buyer.test.ts:generic-api-key:78
+
+# Literal dummy rotation key in the configuration test, now replaced by repeated characters.
+c5afa3773343f6a26769b3b7e436bf064649e06f:apps/gateway/src/config.test.ts:generic-api-key:46
