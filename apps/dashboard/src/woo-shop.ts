@@ -1206,6 +1206,8 @@ interface CartSlot {
   busy: boolean;
   quarantined: boolean;
   uncertainMutation: boolean;
+  /** The shop refused this cart's session, so the question is asked in another cart. */
+  refused: boolean;
   observedEmpty: boolean;
   expiresAt: number | null;
   keys: string[];
@@ -1215,13 +1217,16 @@ const CartContentsSchema = z.looseObject({
   needs_shipping: z.boolean(),
   shipping_rates: z.array(z.unknown()),
 });
-/** Only a cart acknowledgement or a structured shop rejection establishes a POST outcome. */
+/**
+ * Only a cart acknowledgement, a structured shop rejection, or a request turned
+ * away before it ran (a rate limit, a refusal) establishes a POST outcome.
+ */
 const recordCartMutationOutcome = (
   slot: CartSlot,
   outcome?: { readonly status: number; readonly body: string },
 ): boolean => {
-  let known = false;
-  if (outcome !== undefined && outcome.status !== 408 && outcome.status < 500) {
+  let known = outcome !== undefined && [401, 403, 429].includes(outcome.status);
+  if (!known && outcome !== undefined && outcome.status !== 408 && outcome.status < 500) {
     try {
       const document: unknown = JSON.parse(outcome.body);
       known =
@@ -1243,6 +1248,15 @@ const recordCartMutationOutcome = (
     slot.uncertainMutation = true;
   }
   return known;
+};
+
+/** WordPress refuses in a document naming its code; a firewall answers with a page of its own. */
+const refusedByTheShop = (body: string): boolean => {
+  try {
+    return typeof codeOf(JSON.parse(body)) === "string";
+  } catch {
+    return false;
+  }
 };
 
 /** The issuing shop supplies this token; decoding its expiry does not verify a JWT signature. */
@@ -1289,6 +1303,7 @@ export class WooShopRuntime {
       busy: false,
       quarantined: false,
       uncertainMutation: false,
+      refused: false,
       observedEmpty: false,
       expiresAt: null,
       keys: [],
@@ -1454,6 +1469,7 @@ export class WooShopRuntime {
     slot.observedEmpty = admitted.kind === "reuse";
     slot.quarantined = false;
     slot.uncertainMutation = false;
+    slot.refused = false;
     slot.keys = [];
     if (admitted.kind === "new") {
       const opened = await this.#open(slot);
@@ -1521,7 +1537,7 @@ export class WooShopRuntime {
     if (slot.claim !== null) {
       // A completed mutation with failed cleanup can be cleaned again by this owner.
       // It remains in-use on disk, so a restart retires it instead of trusting dirty state.
-      if (!slot.uncertainMutation && slot.quarantined && slot.token !== null) {
+      if (!slot.uncertainMutation && !slot.refused && slot.quarantined && slot.token !== null) {
         slot.busy = false;
         for (const wake of this.#room) wake();
         return;
@@ -1543,6 +1559,7 @@ export class WooShopRuntime {
       );
       if (!kept) this.#alive = false;
       slot.claim = null;
+      slot.refused = false;
       if (empty === null) {
         slot.quarantined = true;
         slot.token = null;
@@ -1584,6 +1601,7 @@ export class WooShopRuntime {
       };
     await this.#ready;
     const tried = new Set<CartSlot>();
+    let refused: RatesRead | null = null;
     while (this.#alive && !signal?.aborted) {
       const untried = this.#carts
         .filter((slot) => slot.lane === lane && !slot.busy && !tried.has(slot))
@@ -1599,10 +1617,12 @@ export class WooShopRuntime {
         slot.busy = true;
         try {
           const taken = await this.#take(slot);
-          if (taken.kind === "failure") return taken.answer;
+          if (taken.kind === "failure") return refused ?? taken.answer;
           // A slot waiting for the replacement budget leaves its turn to one that is not.
           if (taken.kind === "wait") continue;
-          return await this.#calculate(slot, productId, place, signal);
+          const answer = await this.#calculate(slot, productId, place, signal);
+          if (!slot.refused) return answer;
+          refused = answer;
         } finally {
           await this.#finish(slot);
         }
@@ -1615,7 +1635,7 @@ export class WooShopRuntime {
       if (lane !== "paid" || !finishing) break;
       await this.#wait(Date.now() + 250, signal);
     }
-    return CART_UNAVAILABLE;
+    return refused ?? CART_UNAVAILABLE;
   }
 
   async #calculate(
@@ -1639,7 +1659,7 @@ export class WooShopRuntime {
       );
     } finally {
       // Cancellation stops further pricing steps; the mutation's own budget and removal still finish.
-      const clean = slot.token !== null && (await this.#clean(slot));
+      const clean = slot.token !== null && !slot.refused && (await this.#clean(slot));
       slot.quarantined = slot.quarantined || !clean;
     }
     return slot.quarantined && answer.ok ? CART_UNAVAILABLE : answer;
@@ -1718,10 +1738,6 @@ export class WooShopRuntime {
           signal,
         },
       );
-      if (response.status === 401 || response.status === 403) {
-        slot.quarantined = true;
-        slot.uncertainMutation = true;
-      }
       const token = response.headers.get("cart-token");
       if (token && !(await this.#keepOwnedToken(slot, token)))
         throw new Error("The shop returned another calculation's cart session.");
@@ -1830,8 +1846,10 @@ const ratesInCart = async (
       init.method === "POST" &&
       !recordCartMutationOutcome(slot, { status: response.status, body })
     ) {
+      // A page in place of the shop's answer to a change says nothing about the
+      // parcel, and its cart is retired, so the question is worth asking again.
       const why = `The shop's cart mutation has no confirmed outcome ${answered}.`;
-      return worthAskingAgain(response.status)
+      return worthAskingAgain(response.status) || response.status >= 400
         ? { ok: false, why, again: true }
         : { ok: false, why, again: false, saidNo: false };
     }
@@ -1844,6 +1862,18 @@ const ratesInCart = async (
       };
     if (worthAskingAgain(response.status)) {
       return { ok: false, why: `The shop's cart was too busy to answer ${answered}.`, again: true };
+    }
+    if (response.status === 401 || response.status === 403) {
+      // The shop's own refusal ends this session; a firewall's page in front of
+      // the shop says nothing about it.
+      slot.refused ||= refusedByTheShop(body);
+      return {
+        ok: false,
+        why: slot.refused
+          ? `The shop refused this cart's session ${answered}.`
+          : `Something in front of the shop turned the cart away ${answered}.`,
+        again: true,
+      };
     }
     if (!response.ok) {
       // Add-item refuses a product it will not sell with a 400 under one of

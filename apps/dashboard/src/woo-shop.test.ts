@@ -2414,36 +2414,34 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       ok: true,
       rates: [{ cost: "5.00" }],
     });
-    expect(
-      await resources.claimCart("https://woo.nuanu.ai", "next-worker", "paid", 0, "after", at),
-    ).toEqual({
-      kind: "stale",
-    });
+    // The refused session is retired rather than kept for the next question.
     await resources.startCartRuntime("https://woo.nuanu.ai", "next-worker");
     expect(
       await resources.claimCart("https://woo.nuanu.ai", "next-worker", "paid", 0, "after", at),
     ).toMatchObject({ kind: "new" });
   });
 
-  it("says a paid question is worth asking again when the shop refuses every cart's session", async () => {
-    const resources = memoryWooShops();
-    const shop = aShopOfSessions((path, token) =>
-      token !== null && path !== "/wp-json/wc/store/v1/cart"
-        ? Response.json(
-            { code: "woocommerce_rest_missing_nonce", message: "Missing the Nonce header." },
-            { status: 401 },
-          )
-        : null,
-    );
+  it("says a paid question is worth asking again when the shop refuses every cart's session, and never asks a refused one again", async () => {
+    const changed: string[] = [];
+    const shop = aShopOfSessions((path, token) => {
+      if (token === null || path === "/wp-json/wc/store/v1/cart") return null;
+      changed.push(token);
+      return Response.json(
+        { code: "woocommerce_rest_missing_nonce", message: "Missing the Nonce header." },
+        { status: 401 },
+      );
+    });
     const runtime = new WooShopRuntime(
       connectionTo("https://woo.nuanu.ai"),
       shop.request,
-      resources,
+      memoryWooShops(),
     );
-    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
-      ok: false,
-      again: true,
-    });
+    for (let question = 0; question < 2; question += 1)
+      expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
+        ok: false,
+        again: true,
+      });
+    expect(new Set(changed).size).toBe(changed.length);
   });
 
   it("says a paid question is worth asking again when a cart change met a page that is not the shop's", async () => {
@@ -2995,29 +2993,11 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         true,
       ],
       [
-        "a cart that wants a nonce",
-        null,
-        { status: 401, body: { code: "woocommerce_rest_missing_nonce" } },
-        false,
-      ],
-      [
-        "a cart that refuses its nonce",
-        null,
-        { status: 403, body: { code: "woocommerce_rest_invalid_nonce" } },
-        false,
-      ],
-      [
         // A code neither WooCommerce nor WordPress refuses a product or a place
         // with, as a plugin or a proxy in front of the cart can write.
         "a refusal under another code",
         null,
         refusing("rest_forbidden"),
-        false,
-      ],
-      [
-        "a refusal that is not WooCommerce's",
-        null,
-        { status: 400, raw: "<html>Bad Request</html>" },
         false,
       ],
       ["a page that is not JSON", null, { status: 200, raw: "not-json" }, false],
@@ -3064,6 +3044,35 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         again: false,
         saidNo,
       });
+      await stand.close();
+      stand = null;
+    }
+
+    // The shop refusing the cart's session, or a page in place of its answer
+    // to a change, says nothing about the parcel, and another cart may answer,
+    // so the question is worth asking again.
+    for (const [what, refusal] of [
+      [
+        "a cart that wants a nonce",
+        { status: 401, body: { code: "woocommerce_rest_missing_nonce" } },
+      ],
+      [
+        "a cart that refuses its nonce",
+        { status: 403, body: { code: "woocommerce_rest_invalid_nonce" } },
+      ],
+      ["a refusal that is not WooCommerce's", { status: 400, raw: "<html>Bad Request</html>" }],
+    ] as const) {
+      stand = await shopAnswering((asked) => {
+        if (asked.method === "GET") {
+          return { status: 200, body: emptyCart(), headers: { "Cart-Token": TOKEN } };
+        }
+        if (asked.url.endsWith("/remove-item")) return { status: 200, body: emptyCart() };
+        if (asked.url.endsWith("/add-item")) return { status: 201, body: cart([]) };
+        return refusal;
+      });
+      const read = await ratesFor(stand.url, "28", JAKARTA);
+      expect(read, what).toMatchObject({ ok: false, again: true });
+      expect(read, what).not.toHaveProperty("saidNo");
       await stand.close();
       stand = null;
     }
