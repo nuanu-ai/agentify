@@ -1210,10 +1210,6 @@ interface CartSlot {
   expiresAt: number | null;
   keys: string[];
 }
-export interface WooPaidCartBundle {
-  shippingRates(productId: string, place: ShipToLocality): Promise<RatesRead>;
-  release(): Promise<void>;
-}
 const CartContentsSchema = z.looseObject({
   items: z.array(z.looseObject({ key: z.string().min(1) })).max(16),
   needs_shipping: z.boolean(),
@@ -1388,19 +1384,20 @@ export class WooShopRuntime {
     return entry.pending;
   }
 
+  /** A free price question, in the carts no paid order uses. */
   shippingRates(
     productId: string,
     place: ShipToLocality,
     signal?: AbortSignal,
   ): Promise<RatesRead> {
     if (this.#cartOwner !== null) return this.#cartOwner.shippingRates(productId, place, signal);
-    const work = this.#price(productId, place, signal);
-    this.#active.add(work);
-    void work.then(
-      () => this.#active.delete(work),
-      () => this.#active.delete(work),
-    );
-    return work;
+    return this.#tracked(this.#price("quote", productId, place, signal));
+  }
+
+  /** A paid order's question, in carts no free question can take. */
+  paidShippingRates(productId: string, place: ShipToLocality): Promise<RatesRead> {
+    if (this.#cartOwner !== null) return this.#cartOwner.paidShippingRates(productId, place);
+    return this.#tracked(this.#price("paid", productId, place));
   }
 
   /** Waits for cart ownership and cleanup that outlived a price question's reply. */
@@ -1461,6 +1458,9 @@ export class WooShopRuntime {
     if (admitted.kind === "new") {
       const opened = await this.#open(slot);
       if (opened !== true) {
+        // An opening that issued no session changed nothing in the shop and
+        // leaves the slot free to open; one that did spends it.
+        if (slot.token !== null) await this.#keepOwnedToken(slot, slot.token);
         slot.quarantined = true;
         slot.uncertainMutation = true;
         await this.#finish(slot);
@@ -1569,73 +1569,12 @@ export class WooShopRuntime {
     });
   }
 
-  /** GET-only preparation precedes the gateway handover, so local cart scarcity spends no delivery. */
-  async reservePaid(signal?: AbortSignal): Promise<WooPaidCartBundle | null> {
-    if (this.#cartOwner !== null) return this.#cartOwner.reservePaid(signal);
-    await this.#ready;
-    while (this.#alive && !signal?.aborted) {
-      const available = this.#carts
-        .filter((slot) => slot.lane === "paid" && !slot.busy)
-        .sort(
-          (a, b) =>
-            Number(a.quarantined) +
-            Number(a.uncertainMutation) -
-            (Number(b.quarantined) + Number(b.uncertainMutation)),
-        );
-      const pair = available.slice(0, 2);
-      if (pair.length < 2) {
-        await this.#wait(Date.now() + 250, signal);
-        continue;
-      }
-      for (const slot of pair) slot.busy = true;
-      let ready = true;
-      let retryAt = Date.now() + 250;
-      try {
-        for (const slot of pair) {
-          if (signal?.aborted) {
-            ready = false;
-            break;
-          }
-          const taken = await this.#take(slot);
-          if (taken.kind !== "ready") {
-            ready = false;
-            if (taken.kind === "wait") retryAt = taken.until;
-            break;
-          }
-        }
-      } catch (error) {
-        await Promise.all(pair.map((slot) => this.#finish(slot)));
-        throw error;
-      }
-      if (!ready || signal?.aborted) {
-        await Promise.all(pair.map((slot) => this.#finish(slot)));
-        await this.#wait(retryAt, signal);
-        continue;
-      }
-      let next = 0;
-      let releasing: Promise<void> | undefined;
-      const active: Promise<RatesRead>[] = [];
-      return {
-        shippingRates: (productId, place) => {
-          const slot = releasing === undefined ? pair[next++] : undefined;
-          if (slot === undefined) return Promise.resolve(CART_UNAVAILABLE);
-          const work = this.#tracked(this.#calculate(slot, productId, place));
-          active.push(work);
-          return work;
-        },
-        release: () => {
-          releasing ??= (async () => {
-            await Promise.allSettled(active);
-            await Promise.all(pair.map((slot) => this.#finish(slot)));
-          })();
-          return releasing;
-        },
-      };
-    }
-    return null;
-  }
-
-  async #price(productId: string, place: ShipToLocality, signal?: AbortSignal): Promise<RatesRead> {
+  async #price(
+    lane: WooCartLane,
+    productId: string,
+    place: ShipToLocality,
+    signal?: AbortSignal,
+  ): Promise<RatesRead> {
     if (!/^[1-9]\d*$/.test(productId) || !Number.isSafeInteger(Number(productId)))
       return {
         ok: false,
@@ -1644,26 +1583,37 @@ export class WooShopRuntime {
         why: "The card names no product in a WooCommerce shop.",
       };
     await this.#ready;
-    if (signal?.aborted || !this.#alive) return CART_UNAVAILABLE;
-    const available = this.#carts
-      .filter((slot) => slot.lane === "quote" && !slot.busy)
-      .sort(
-        (a, b) =>
-          Number(a.quarantined) +
-          Number(a.uncertainMutation) -
-          (Number(b.quarantined) + Number(b.uncertainMutation)),
-      );
-    for (const slot of available) {
-      if (slot.busy) continue;
-      slot.busy = true;
-      try {
-        const taken = await this.#take(slot);
-        if (taken.kind === "failure") return taken.answer;
-        if (taken.kind === "wait") continue;
-        return await this.#calculate(slot, productId, place, signal);
-      } finally {
-        await this.#finish(slot);
+    const tried = new Set<CartSlot>();
+    while (this.#alive && !signal?.aborted) {
+      const untried = this.#carts
+        .filter((slot) => slot.lane === lane && !slot.busy && !tried.has(slot))
+        .sort(
+          (a, b) =>
+            Number(a.quarantined) +
+            Number(a.uncertainMutation) -
+            (Number(b.quarantined) + Number(b.uncertainMutation)),
+        );
+      for (const slot of untried) {
+        if (slot.busy) continue;
+        tried.add(slot);
+        slot.busy = true;
+        try {
+          const taken = await this.#take(slot);
+          if (taken.kind === "failure") return taken.answer;
+          // A slot waiting for the replacement budget leaves its turn to one that is not.
+          if (taken.kind === "wait") continue;
+          return await this.#calculate(slot, productId, place, signal);
+        } finally {
+          await this.#finish(slot);
+        }
       }
+      // A paid order waits for a cart another calculation is finishing with,
+      // never for a replacement, which is minutes away.
+      const finishing = this.#carts.some(
+        (slot) => slot.lane === lane && slot.busy && !tried.has(slot),
+      );
+      if (lane !== "paid" || !finishing) break;
+      await this.#wait(Date.now() + 250, signal);
     }
     return CART_UNAVAILABLE;
   }

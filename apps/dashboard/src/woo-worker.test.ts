@@ -4456,17 +4456,20 @@ describe("a shop whose guest carts are short", () => {
 
   /**
    * A merchant's stream as the gateway keeps it: an order nobody answered is
-   * handed over again on a later poll.
+   * handed over again a moment later, up to thirty times.
    */
   const working = (shops: WooShops, envelopes: { kind: string; payload: unknown }[]) => {
     const waiting = [...envelopes];
     const answered = new Map<string, unknown>();
+    const handedOver = new Map<string, number>();
     const client = {
       pollWorker: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2));
         const next = waiting.shift();
         if (next?.kind === "order") {
           const id = (next.payload as Order).id;
-          if (!answered.has(id)) waiting.push(next);
+          handedOver.set(id, (handedOver.get(id) ?? 0) + 1);
+          if (!answered.has(id) && (handedOver.get(id) ?? 0) < 30) waiting.push(next);
         }
         return { ok: true as const, document: { envelopes: next ? [next] : [] } };
       },

@@ -40,6 +40,7 @@ export interface WooCartResources {
 }
 
 interface ResourceSlot {
+  /** The shop issued this slot a session, so the next one it opens needs the replacement budget. */
   initialized: boolean;
   state: "empty" | "idle" | "in_use" | "retired";
   claim: string | null;
@@ -135,6 +136,7 @@ const registerIdentity = (
     return false;
   slot.identity = identity;
   slot.token = token;
+  slot.initialized = true;
   return true;
 };
 
@@ -180,7 +182,6 @@ export const wooCartResources = (access: CartResourceAccess): WooCartResources =
         if (slot.initialized && state.nextCreationAt > now.getTime())
           return { kind: "wait", retryAt: new Date(state.nextCreationAt) };
         if (slot.initialized) state.nextCreationAt = now.getTime() + WOO_CART_REPLACEMENT_MS;
-        slot.initialized = true;
         slot.state = "in_use";
         slot.claim = claim;
         slot.token = null;

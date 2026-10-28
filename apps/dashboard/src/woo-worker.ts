@@ -53,8 +53,6 @@ import {
   type ShopKeys,
   type SoldItem,
   shipmentInTheShop,
-  shippingRatesInTheShop,
-  type WooPaidCartBundle,
   WooShopRuntime,
 } from "./woo-shop.js";
 import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
@@ -69,7 +67,6 @@ export interface Filling {
   readonly shops: WooShops;
   /** The worker loop retains one runtime across turns for the connected shop. */
   readonly shopRuntime?: WooShopRuntime;
-  readonly paidCarts?: WooPaidCartBundle;
   readonly now: () => Date;
   /**
    * Injectable so this file's decisions can be tested without a WooCommerce; a
@@ -494,11 +491,12 @@ const fillParcelFromTheShop = async (
       "This paid parcel's order names no address or no product in this shop, so no WooCommerce order was created.",
     );
   }
+  const shopRuntime = parts.shopRuntime ?? new WooShopRuntime(connection);
   const askRates = (where: ShipToLocality) =>
     (
       parts.shippingRates ??
-      ((keys: WooConnection, id: string, at: ShipToLocality) =>
-        parts.paidCarts?.shippingRates(id, at) ?? shippingRatesInTheShop(keys.shopUrl, id, at))
+      ((_keys: WooConnection, id: string, at: ShipToLocality) =>
+        shopRuntime.paidShippingRates(id, at))
     )(connection, productId, where);
   const inspection = productInTheShop(connection, order.merchant_item_id, parts);
   const [inspected, rates, atBase] = await Promise.all([
@@ -767,14 +765,13 @@ const WAIT_SECONDS = 5;
  * to decide whether to come straight back: one envelope per poll, so a turn
  * that drew an event is not a quiet stream.
  */
-type ScheduleEnvelope = (envelope: WorkerEnvelope, answer: () => Promise<void>) => Promise<boolean>;
+type ScheduleEnvelope = (envelope: WorkerEnvelope, answer: () => Promise<void>) => Promise<void>;
 
 export const turnOnce = async (
   connection: WooConnection,
   parts: WorkingParts,
   schedule: ScheduleEnvelope = async (_envelope, answer) => {
     await answer();
-    return true;
   },
 ): Promise<number> => {
   const person = await parts.identity.byId(connection.accountId);
@@ -795,52 +792,40 @@ export const turnOnce = async (
   }
 
   for (const envelope of drawn.document.envelopes) {
-    if (envelope.kind !== "order") await parts.paidCarts?.release();
-    const scheduled = await schedule(envelope, async () => {
-      try {
-        if (envelope.kind === "quote_request") {
-          const answer =
-            connection.permissions !== "read_write"
-              ? { available: false as const, as_of: parts.now().toISOString() }
-              : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
-          if (answer === null) {
-            // Saying nothing is how the gateway hears that the shop did not answer;
-            // the agent is told the price check went unanswered.
-            return;
-          }
-          const said = await gateway.answerQuote(envelope.payload.price_id, answer);
-          if (!said.ok) {
-            console.error(
-              `[dashboard] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
-            );
-          }
-          return;
-        }
-        // Events have no reply.
-        if (envelope.kind !== "order") {
-          return;
-        }
-        const answer = await filledAsPaid(
-          gateway,
-          envelope.payload,
-          connection,
-          person.email,
-          parts,
-        );
+    await schedule(envelope, async () => {
+      if (envelope.kind === "quote_request") {
+        const answer =
+          connection.permissions !== "read_write"
+            ? { available: false as const, as_of: parts.now().toISOString() }
+            : await quoteFromTheShop(connection, envelope.payload, parts.now(), parts);
         if (answer === null) {
+          // Saying nothing is how the gateway hears that the shop did not answer;
+          // the agent is told the price check went unanswered.
           return;
         }
-        const said = await gateway.answerOrder(envelope.payload.id, answer);
+        const said = await gateway.answerQuote(envelope.payload.price_id, answer);
         if (!said.ok) {
           console.error(
-            `[dashboard] the answer for order ${envelope.payload.id} was not accepted: ${said.why}`,
+            `[dashboard] the price answer for ${envelope.payload.price_id} was not accepted: ${said.why}`,
           );
         }
-      } finally {
-        if (envelope.kind === "order") await parts.paidCarts?.release();
+        return;
+      }
+      // Events have no reply.
+      if (envelope.kind !== "order") {
+        return;
+      }
+      const answer = await filledAsPaid(gateway, envelope.payload, connection, person.email, parts);
+      if (answer === null) {
+        return;
+      }
+      const said = await gateway.answerOrder(envelope.payload.id, answer);
+      if (!said.ok) {
+        console.error(
+          `[dashboard] the answer for order ${envelope.payload.id} was not accepted: ${said.why}`,
+        );
       }
     });
-    if (!scheduled) await parts.paidCarts?.release();
   }
   return drawn.document.envelopes.length;
 };
@@ -1149,7 +1134,6 @@ export const startWooWorker = (
 
   const loopFor = (accountId: string) => {
     let alive = true;
-    const stopped = new AbortController();
     const active = new Set<Promise<void>>();
     const orders = new Set<string>();
     let wakeRoom: (() => void) | undefined;
@@ -1163,8 +1147,8 @@ export const startWooWorker = (
     };
     const schedule: ScheduleEnvelope = async (envelope, answer) => {
       await room();
-      if (!alive || !running) return false;
-      if (envelope.kind === "order" && orders.has(envelope.payload.id)) return false;
+      if (!alive || !running) return;
+      if (envelope.kind === "order" && orders.has(envelope.payload.id)) return;
       if (envelope.kind === "order") orders.add(envelope.payload.id);
       const work = Promise.resolve()
         .then(answer)
@@ -1179,7 +1163,6 @@ export const startWooWorker = (
           if (envelope.kind === "order") orders.delete(envelope.payload.id);
         });
       active.add(work);
-      return true;
     };
     const done = (async () => {
       while (alive && running) {
@@ -1219,20 +1202,11 @@ export const startWooWorker = (
             reader.shop.updateKeys(connection);
             reader.revision = connection.revision;
           }
-          const paidCarts = await reader.shop.reservePaid(stopped.signal);
-          if (paidCarts === null) break;
-          let filled: number;
-          try {
-            filled = await turnOnce(
-              connection,
-              { ...parts, shopRuntime: reader.shop, paidCarts },
-              schedule,
-            );
-            if (filled === 0) await paidCarts.release();
-          } catch (error) {
-            await paidCarts.release();
-            throw error;
-          }
+          const filled = await turnOnce(
+            connection,
+            { ...parts, shopRuntime: reader.shop },
+            schedule,
+          );
           if (filled === 0) {
             // A turn that drew nothing waits, so a gateway answering polls at
             // once (refused, or a zero wait) is not hammered; a turn that
@@ -1258,7 +1232,6 @@ export const startWooWorker = (
       stop: () => {
         if (!alive) return false;
         alive = false;
-        stopped.abort();
         wakeRoom?.();
         return true;
       },

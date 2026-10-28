@@ -2251,6 +2251,93 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     });
   const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
 
+  /**
+   * WooCommerce's guest carts, one session per token it issued, asked through
+   * the transport rather than a socket. `refuse` answers instead of the shop
+   * where it returns a response.
+   */
+  const aShopOfSessions = (
+    refuse: (path: string, token: string | null) => Response | null = () => null,
+  ) => {
+    const holds = new Map<string, boolean>();
+    let issued = 0;
+    const request: WooRequest = async (url, init) => {
+      const path = new URL(url).pathname;
+      const token = new Headers(init?.headers).get("cart-token");
+      const refused = refuse(path, token);
+      if (refused !== null) return refused;
+      const session = token ?? `session-${++issued}`;
+      if (path.endsWith("/add-item")) holds.set(session, true);
+      if (path.endsWith("/remove-item")) holds.set(session, false);
+      return Response.json(holds.get(session) === true ? cart([rate()]) : emptyCart(), {
+        status: path.endsWith("/add-item") ? 201 : 200,
+        headers: { "Cart-Token": session },
+      });
+    };
+    return { request, holds, sessions: () => issued };
+  };
+  /** Every paid cart but the first opened once and retired, and the replacement just spent. */
+  const oneUsablePaidCart = async (resources: ReturnType<typeof memoryWooShops>, shop: string) => {
+    const at = new Date();
+    await resources.startCartRuntime(shop, "earlier-worker");
+    for (let slot = 1; slot < 8; slot += 1) {
+      await resources.claimCart(shop, "earlier-worker", "paid", slot, `opened-${slot}`, at);
+      await resources.registerCartIdentity(
+        shop,
+        "earlier-worker",
+        "paid",
+        slot,
+        `opened-${slot}`,
+        `retired-${slot}`,
+      );
+      await resources.finishCart(shop, "earlier-worker", "paid", slot, `opened-${slot}`, null);
+    }
+    await resources.claimCart(shop, "earlier-worker", "paid", 1, "replacement", at);
+    await resources.finishCart(shop, "earlier-worker", "paid", 1, "replacement", null);
+  };
+
+  it("has a paid question wait for the one usable paid cart rather than say none is free", async () => {
+    const shop = aShopOfSessions();
+    const resources = memoryWooShops();
+    await oneUsablePaidCart(resources, "https://woo.nuanu.ai");
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      resources,
+    );
+    const [destination, base] = await Promise.all([
+      runtime.paidShippingRates("28", JAKARTA),
+      runtime.paidShippingRates("28", { country: "ID", state: "BA", city: "Denpasar" }),
+    ]);
+    expect(destination).toMatchObject({ ok: true, rates: [{ cost: "5.00" }] });
+    expect(base).toMatchObject({ ok: true, rates: [{ cost: "5.00" }] });
+    expect(shop.sessions()).toBe(1);
+    expect([...shop.holds.values()]).toStrictEqual([false]);
+  });
+
+  it("counts a session the shop issued against its cart even when the cart opened unusable", async () => {
+    // A cache in front of the shop serving one visitor's cart to everybody.
+    const shop = aShopOfSessions();
+    let opened = 0;
+    const request: WooRequest = async (url, init) => {
+      const token = new Headers(init?.headers).get("cart-token");
+      if (new URL(url).pathname === "/wp-json/wc/store/v1/cart" && token === null) {
+        opened += 1;
+        return Response.json(cart([rate()]), { headers: { "Cart-Token": `served-${opened}` } });
+      }
+      return await shop.request(url, init);
+    };
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      request,
+      memoryWooShops(),
+    );
+    for (let question = 0; question < 12; question += 1)
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+    // Eight first openings and one replacement; the rest wait ten minutes.
+    expect(opened).toBe(9);
+  });
+
   it("keeps concurrent cities in separate carts and cleans both before reuse", async () => {
     const carts = new Map<string, { held: boolean; city: string }>();
     const together = Promise.withResolvers<void>();
@@ -2333,17 +2420,14 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       expiresAt,
     });
     const runtime = new WooShopRuntime(connectionTo(stand.url), fetch, resources);
-    let bundle: Awaited<ReturnType<WooShopRuntime["reservePaid"]>> = null;
     try {
       expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
       expect(mutations).toEqual([]);
-      bundle = await runtime.reservePaid();
-      expect(bundle).not.toBeNull();
-      expect(await bundle?.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+      expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({ ok: true });
       expect(mutations).toContain("paid-session");
-      expect(opened).toBe(2);
+      // The paid question reuses the restored session; only the refused free cart was opened.
+      expect(opened).toBe(1);
     } finally {
-      await bundle?.release();
       await runtime.drain();
     }
   });

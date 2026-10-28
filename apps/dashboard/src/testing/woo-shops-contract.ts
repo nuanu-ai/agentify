@@ -65,6 +65,20 @@ export const wooShopsContract = (
 
   describe(`${name}: reusable cart identities`, () => {
     const clean = { token: "private-cart-token", expiresAt: MUCH_LATER };
+    /** A cart the shop issued a session for, whose last change is in doubt. */
+    const openedAndRetired = async (
+      shops: WooShops,
+      owner: string,
+      lane: "paid" | "quote",
+      slot: number,
+      claim: string,
+      at: Date = NOW,
+    ) => {
+      const answered = await shops.claimCart(SHOP, owner, lane, slot, claim, at);
+      await shops.registerCartIdentity(SHOP, owner, lane, slot, claim, `session-${claim}`);
+      await shops.finishCart(SHOP, owner, lane, slot, claim, null);
+      return answered;
+    };
     const sessionToken = (issued: number) =>
       `e30.${Buffer.from(JSON.stringify({ user_id: "one-shop-session", iat: issued, exp: Math.floor(MUCH_LATER.getTime() / 1000) })).toString("base64url")}.signature`;
 
@@ -177,14 +191,21 @@ export const wooShopsContract = (
         for (const lane of ["paid", "quote"] as const) {
           for (let slot = 0; slot < 8; slot += 1) {
             expect(
-              await shops.claimCart(SHOP, "first-worker", lane, slot, `${lane}-${slot}`, NOW),
+              await openedAndRetired(shops, "first-worker", lane, slot, `${lane}-${slot}`),
             ).toEqual({ kind: "new" });
-            await shops.finishCart(SHOP, "first-worker", lane, slot, `${lane}-${slot}`, null);
           }
         }
         expect(await shops.claimCart(alias, "first-worker", "quote", 0, "repair", NOW)).toEqual({
           kind: "new",
         });
+        await shops.registerCartIdentity(
+          SHOP,
+          "first-worker",
+          "quote",
+          0,
+          "repair",
+          "session-repair",
+        );
         await shops.finishCart(SHOP, "first-worker", "quote", 0, "repair", null);
         await shops.forget(accounts.one);
         await shops.startCartRuntime(SHOP, "second-worker");
@@ -211,10 +232,8 @@ export const wooShopsContract = (
     it("gives paid slots their own initial identities even after all free identities become uncertain", async () => {
       await using(async (shops) => {
         await shops.startCartRuntime(SHOP, "worker");
-        for (let slot = 0; slot < 8; slot += 1) {
-          await shops.claimCart(SHOP, "worker", "quote", slot, `free-${slot}`, NOW);
-          await shops.finishCart(SHOP, "worker", "quote", slot, `free-${slot}`, null);
-        }
+        for (let slot = 0; slot < 8; slot += 1)
+          await openedAndRetired(shops, "worker", "quote", slot, `free-${slot}`);
         await shops.claimCart(SHOP, "worker", "quote", 0, "free-repair", NOW);
         for (let slot = 0; slot < 8; slot += 1) {
           expect(await shops.claimCart(SHOP, "worker", "paid", slot, `paid-${slot}`, NOW)).toEqual({
@@ -229,8 +248,7 @@ export const wooShopsContract = (
         await shops.startCartRuntime(SHOP, "worker");
         await shops.claimCart(SHOP, "worker", "paid", 0, "known", NOW);
         await shops.finishCart(SHOP, "worker", "paid", 0, "known", { ...clean, expiresAt: LATER });
-        await shops.claimCart(SHOP, "worker", "quote", 0, "unknown", NOW);
-        await shops.finishCart(SHOP, "worker", "quote", 0, "unknown", null);
+        await openedAndRetired(shops, "worker", "quote", 0, "unknown");
         expect(await shops.claimCart(SHOP, "worker", "paid", 0, "renew", LATER)).toEqual({
           kind: "new",
         });
@@ -244,10 +262,8 @@ export const wooShopsContract = (
     it("lets only one simultaneous caller spend a replacement permission and never reuses its retired token", async () => {
       await using(async (shops) => {
         await shops.startCartRuntime(SHOP, "worker");
-        for (const slot of [0, 1]) {
-          await shops.claimCart(SHOP, "worker", "paid", slot, `old-${slot}`, NOW);
-          await shops.finishCart(SHOP, "worker", "paid", slot, `old-${slot}`, null);
-        }
+        for (const slot of [0, 1])
+          await openedAndRetired(shops, "worker", "paid", slot, `old-${slot}`);
         const claimed = await Promise.all(
           [0, 1].map((slot) =>
             shops.claimCart(SHOP, "worker", "paid", slot, `repair-${slot}`, NOW),
