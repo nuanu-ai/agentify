@@ -37,7 +37,11 @@ carries price questions (ADR-0002 §2) and order events.
    `delivery_does_not_match_card` if they do not fit and is otherwise a success
    carrying `purchase_already_closed`. A repeat answer to an order already
    carrying goods is `already_delivered` with no second check, so a retry is
-   safe.
+   safe. One that carries other goods than those the order keeps is still a
+   success, `already_delivered_other_goods`; the buyer keeps the first goods,
+   and the SDK warns once, naming the order and neither goods. An order that
+   keeps no goods answers plain `already_delivered`. This word is an
+   engineering choice awaiting the product owner's confirmation.
 3. An order is delivered at least once and an event at most once. The queue
    finishes every envelope as it hands it over and never offers it again.
    Whether an unanswered order goes out again is the order machine's decision,

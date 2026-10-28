@@ -30,9 +30,9 @@ it to the plain-text rule of ADR-0017 as well. How to reach the shop, its
 terms and its returns are for the agent to read on the site. An asynchronous
 or parcel card, paid before delivery, requires a site to be published. The
 refusal is a finding, `no_seller_site`, naming where to set it. Such a card
-without a site leaves the catalogue and refuses a new purchase before an order
-is opened or a price is asked, and a previously quoted order is refused before
-its first payment is verified. Supplying a site restores eligibility without
+without a site leaves the catalogue and refuses a new purchase before its price
+is asked, and a price already given for it is refused when its payment arrives,
+before the payment is checked. Supplying a site restores eligibility without
 republishing. Already accepted payments, paid recovery and fulfillment
 continue. A synchronous card may sell without a site. Nothing else about the
 merchant is kept for the agent. The storefront's documents gaining these
