@@ -63,9 +63,10 @@ const ABI = parseAbi([
   "event Transfer(address indexed from, address indexed to, uint256 value)",
 ]);
 /**
- * How many blocks one poll reads. An authorization accepted here is valid for
- * about two minutes, some sixty Base blocks, so one poll usually covers it;
- * a longer one, from an older record, continues on the next poll.
+ * How many blocks one poll reads. An authorization accepted here can be valid
+ * for nearly four minutes counting the allowance for clocks, some 115 Base
+ * blocks, so reading all of it can take two polls, the second going on
+ * where the first stopped.
  */
 const BLOCKS_PER_POLL = 64n;
 const EXPIRED_UNUSED: PaymentRecoveryOutcome = {
