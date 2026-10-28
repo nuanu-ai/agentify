@@ -27,15 +27,18 @@ import type {
   SettleOutcome,
   VerifyOutcome,
 } from "../../ports/facilitator.js";
+import type { TokenBalances } from "../../ports/payment-chain.js";
 import { authorizationOf, type Eip3009Recovery } from "./recovery.js";
 import { readRefusal } from "./refusal-codes.js";
 
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
+  readonly #balances: TokenBalances | undefined;
   readonly reconcile?: (request: PaymentRecoveryRequest) => Promise<PaymentRecoveryOutcome>;
 
-  constructor(client: FacilitatorClient, recovery?: Eip3009Recovery) {
+  constructor(client: FacilitatorClient, recovery?: Eip3009Recovery, balances?: TokenBalances) {
     this.#client = client;
+    this.#balances = balances;
     if (recovery) this.reconcile = (request) => recovery.reconcile(request);
   }
 
@@ -100,7 +103,7 @@ export class X402Facilitator implements Facilitator {
     } catch (thrown) {
       // A verdict sent with a refusing status is still a verdict.
       if (thrown instanceof VerifyError && refused(thrown.statusCode)) {
-        return refusal(thrown);
+        return await this.#explained(refusal(thrown), authorization);
       }
       const status =
         thrown instanceof VerifyError ? thrown.statusCode : statusOfFailedCheck(thrown);
@@ -129,7 +132,41 @@ export class X402Facilitator implements Facilitator {
         recovery,
       };
     }
-    return refusal(answered);
+    return await this.#explained(refusal(answered), authorization);
+  }
+
+  /**
+   * A refusal whose code names no cause, held against the payer's balance: a
+   * wallet holding less than the price cannot pay it, whatever else the
+   * facilitator saw. Only that fact relabels it. A refusal that names its
+   * cause, a balance that covers the price and a read that fails all leave
+   * the refusal as it was.
+   */
+  async #explained(
+    outcome: VerifyOutcome,
+    authorization: ReturnType<typeof authorizationOf>,
+  ): Promise<VerifyOutcome> {
+    if (
+      this.#balances === undefined ||
+      outcome.verified !== false ||
+      (outcome.reason !== "unexplained" && outcome.reason !== "unrecognised")
+    ) {
+      return outcome;
+    }
+    let held: bigint;
+    try {
+      held = await this.#balances.balance(authorization.asset, authorization.payer);
+    } catch {
+      return outcome;
+    }
+    const asked = BigInt(authorization.amount);
+    if (held >= asked) return outcome;
+    return {
+      verified: false,
+      reason: "insufficient_funds",
+      message: `the paying wallet holds ${inUsdc(held)} USDC on ${authorization.network}, less than the ${inUsdc(asked)} USDC this price asks (the payment layer said ${outcome.message})`,
+      ...(outcome.code === undefined ? {} : { code: outcome.code }),
+    };
   }
 
   async settle(charge: Charge): Promise<SettleOutcome> {
@@ -278,6 +315,13 @@ function refusal(answer: { invalidReason?: unknown; invalidMessage?: unknown }):
     message,
     ...(word === undefined ? {} : { code: word }),
   };
+}
+
+/** An amount of USDC's smallest unit in dollars, with every digit it has and at least two. */
+function inUsdc(units: bigint): string {
+  const digits = units.toString().padStart(7, "0");
+  const fraction = digits.slice(-6).replace(/0{1,4}$/, "");
+  return `${digits.slice(0, -6)}.${fraction}`;
 }
 
 const textOf = (value: unknown): string | undefined =>

@@ -65,7 +65,11 @@ export async function paymentLayer(config: GatewayConfig): Promise<Facilitator> 
   }
   const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
   (started.broken ? console.error : console.log)(`[gateway] ${started.said}`);
-  return new X402Facilitator(client, started.recovery);
+  return new X402Facilitator(
+    client,
+    started.recovery,
+    paymentChainOn(config.payment.network, config.payment.rpcUrl),
+  );
 }
 
 /**

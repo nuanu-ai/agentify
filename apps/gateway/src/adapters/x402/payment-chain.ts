@@ -9,11 +9,19 @@ import {
   type Transport,
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import type { PaymentChain } from "../../ports/payment-chain.js";
+import type { PaymentChain, TokenBalances } from "../../ports/payment-chain.js";
 
 const EIP3009 = parseAbi([
   "function authorizationState(address authorizer, bytes32 nonce) view returns (bool)",
 ]);
+const ERC20 = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
+
+/**
+ * How long a balance read may take. It runs while a payment's refusal is on
+ * its way to the buyer, inside the merchant's place for payment checks, so it
+ * gives up early and the refusal goes out as it was.
+ */
+const BALANCE_READ_MS = 2_000;
 
 /**
  * The chain `network` read through `rpcUrl`, the endpoint payment recovery
@@ -22,7 +30,10 @@ const EIP3009 = parseAbi([
  * wallet would look like one that does not exist and every authorization
  * like one never used.
  */
-export function paymentChainOn(network: string, rpcUrl?: string): PaymentChain | undefined {
+export function paymentChainOn(
+  network: string,
+  rpcUrl?: string,
+): (PaymentChain & TokenBalances) | undefined {
   if (!rpcUrl) return undefined;
   const chain = network === "eip155:8453" ? base : baseSepolia;
   const host = new URL(rpcUrl).host;
@@ -69,6 +80,27 @@ export function paymentChainOn(network: string, rpcUrl?: string): PaymentChain |
         throw new Error(`the chain endpoint at ${host} did not answer`);
       }
       return valid;
+    },
+    async balance(token, wallet) {
+      // The chain's identity and the balance go out as one batch, so the read
+      // is one request and a balance from another chain is never taken.
+      const client = createPublicClient({
+        chain,
+        transport: http(rpcUrl, { timeout: BALANCE_READ_MS, retryCount: 0, batch: true }),
+      });
+      const [serves, held] = await Promise.all([
+        client.getChainId(),
+        client.readContract({
+          address: token as Address,
+          abi: ERC20,
+          functionName: "balanceOf",
+          args: [wallet as Address],
+        }),
+      ]);
+      if (serves !== chain.id) {
+        throw new Error(`the chain endpoint at ${host} does not answer for ${network}`);
+      }
+      return held;
     },
     async used(token, wallet, nonce) {
       const { client } = await asking();
