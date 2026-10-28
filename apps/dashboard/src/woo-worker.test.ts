@@ -472,6 +472,39 @@ describe("one paid order, in the merchant's own shop", () => {
     },
   );
 
+  it("saves a silent shop's sale for its merchant to recover, and still delivers it when a later hand-over reaches the shop", async () => {
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+    const silent = {
+      ...filling(shops, shop.place),
+      inspectProduct: async (): Promise<ProductInspection> => ({
+        ok: false,
+        why: "The shop did not answer the protected product check.",
+        again: true,
+      }),
+    };
+
+    expect(
+      await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, silent, NO_SPLIT),
+    ).toBeNull();
+    expect(await shops.recoveryOrder("ord_1")).toMatchObject({
+      accountId: "acc_1",
+      phase: "shop_silent",
+      facts: { productFingerprint: "accepted-download-fingerprint", amount: "25.00" },
+      placed: null,
+    });
+
+    const answered = await fillFromTheShop(
+      anOrder(),
+      connection(),
+      MERCHANT_EMAIL,
+      filling(shops, shop.place),
+      NO_SPLIT,
+    );
+    expect(answered).toMatchObject({ delivered: { file_name: "Guide" } });
+    expect(shop.placed).toHaveLength(1);
+  });
+
   it("refuses an order whose product check could not be read in none of the words that say the product changed or the shop was silent", async () => {
     // The shop answered, so it was not silent, and what it answered says
     // nothing about the product, so no reason that says the product changed

@@ -314,6 +314,35 @@ export const wooShopsContract = (
     });
   });
 
+  describe(`${name}: a sale whose shop was silent`, () => {
+    it("is offered for recovery, and is taken by the next hand-over that reaches the shop", async () => {
+      await using(async (shops, accounts) => {
+        await shops.recordShopSilence(accounts.one, "ord_1", FACTS, NOW);
+        expect(await shops.heldSales(accounts.one, ["ord_1"])).toStrictEqual({
+          ord_1: "recoverable",
+        });
+        expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toStrictEqual({
+          kind: "ours",
+        });
+        expect(await shops.knownOrder("ord_1")).toMatchObject({ kind: "unknown" });
+      });
+    });
+
+    it("becomes a refusal when the shop later says no, and reopens for a merchant's create under the grant of the sale", async () => {
+      await using(async (shops, accounts) => {
+        await shops.recordShopSilence(accounts.one, "ord_1", FACTS, NOW);
+        await shops.recordPrecreateRefusal(accounts.one, "ord_1", FACTS, LATER);
+        expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "precreate_refused" });
+
+        await shops.recordShopSilence(accounts.one, "ord_2", FACTS, NOW);
+        expect(await shops.beginPrecreateRecovery("ord_2", FACTS.connectionRevision, LATER)).toBe(
+          true,
+        );
+        expect((await shops.recoveryOrder("ord_2"))?.phase).toBe("create_unknown");
+      });
+    });
+  });
+
   describe(`${name}: a Connect under way`, () => {
     const keys = {
       consumerKey: "ck_abc",

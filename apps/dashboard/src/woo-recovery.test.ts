@@ -116,7 +116,10 @@ const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
   ...changes,
 });
 
-const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACTS) => {
+const setup = async (
+  phase: "precreate_refused" | "create_unknown" | "shop_silent",
+  facts = FACTS,
+) => {
   const shops = memoryWooShops();
   await shops.connect({
     accountId: "acc_1",
@@ -124,12 +127,15 @@ const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACT
     consumerKey: "ck_new",
     consumerSecret: "cs_new",
     permissions: "read_write",
-    revision: "grant_2",
+    // A shop that was only silent is still connected under the grant of the sale.
+    revision: phase === "shop_silent" ? facts.connectionRevision : "grant_2",
     connectedAt: NOW,
     currency: null,
   });
   if (phase === "precreate_refused") {
     await shops.recordPrecreateRefusal("acc_1", "ord_1", facts, NOW);
+  } else if (phase === "shop_silent") {
+    await shops.recordShopSilence("acc_1", "ord_1", facts, NOW);
   } else {
     await shops.claimOrder("acc_1", "ord_1", facts, NOW);
   }
@@ -672,6 +678,37 @@ describe("a merchant creating the shop order of a download refused before creati
     );
     expect(test.created()).toBe(0);
     expect((await shops.recoveryOrder("ord_1"))?.phase).toBe("precreate_refused");
+  });
+});
+
+describe("a merchant creating the shop order of a download whose shop stayed silent", () => {
+  it("offers the create without asking for the shop to be connected again, and delivers once the shop places it", async () => {
+    const shops = await setup("shop_silent");
+    const test = parts(shops);
+    const pages = wooRecoveryPagesFor(test.value);
+
+    expect(await pages.page(OWNER, "ord_1")).toMatchObject({
+      kind: "view",
+      view: { mode: "create", unavailable: null },
+    });
+    expect(await pages.recover(OWNER, "ord_1", new FormData())).toMatchObject({
+      kind: "view",
+      view: { mode: "delivered", wooOrderId: "13" },
+    });
+    expect(test.created()).toBe(1);
+    expect(test.counts()).toEqual({ delivered: 1, read: 0 });
+  });
+
+  it("offers nothing while the order is still being handed over", async () => {
+    const shops = await setup("shop_silent");
+    const test = parts(shops);
+    test.becomes("in_progress");
+
+    expect(await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, test.value)).toMatchObject({
+      ok: false,
+      state: "refused",
+    });
+    expect(test.created()).toBe(0);
   });
 });
 
