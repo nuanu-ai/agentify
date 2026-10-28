@@ -183,6 +183,23 @@ describe("the merchant's delivery deadline", () => {
     }
   });
 
+  it("refuses a deadline under a minute or over thirty days, naming the range it may take", () => {
+    // A deadline of a second closes every paid order unfulfilled before the
+    // merchant can answer, and one of years holds a paid buyer to a promise
+    // nobody keeps.
+    const async = { ...syncCard, fulfillment: "async" };
+    for (const seconds of [1, 59, 2_592_001]) {
+      const message = errorOf(CardSchema, { ...async, fulfill_deadline_seconds: seconds });
+      for (const owed of ["fulfill_deadline_seconds", "60", "2592000"]) {
+        expect(message, `${seconds}: ${message}`).toContain(owed);
+      }
+    }
+    for (const seconds of [60, 2_592_000]) {
+      const card = { ...async, fulfill_deadline_seconds: seconds };
+      expect(CardSchema.safeParse(card).success, String(seconds)).toBe(true);
+    }
+  });
+
   it("accepts a card that names no deadline", () => {
     // The default is the gateway's setting, so a card may leave it out.
     expect(CardSchema.safeParse({ ...syncCard, fulfillment: "async" }).success).toBe(true);
