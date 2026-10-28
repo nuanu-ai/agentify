@@ -52,7 +52,8 @@ export class MerchantGate {
       const waiter: Waiter = {
         admit: resolve,
         timer: setTimeout(() => {
-          line.waiting.splice(line.waiting.indexOf(waiter), 1);
+          const place = line.waiting.indexOf(waiter);
+          if (place >= 0) line.waiting.splice(place, 1);
           this.#forgetIfIdle(merchantId, line);
           resolve(null);
         }, waitMs),
