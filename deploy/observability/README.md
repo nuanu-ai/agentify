@@ -46,7 +46,11 @@ Host metrics describe CPU, memory, filesystem, disks and network; the collector'
 own metrics describe scrape and write status. Three same-host public checks remain
 under `job="agentify/health"`. `/api/health`
 also checks the scanner worker, database, queue and analytics outbox.
-`/healthz` and `/dashboard/healthz` check their respective listeners. These
+`/healthz` and `/dashboard/healthz` check their respective listeners. The gateway's
+`/healthz` also returns `revision`, the commit CI wrote into the image, and
+`contract_version`, the shared wire-contract version. `revision` is `null` when
+the image has none, as with a local build. The response sends
+`Cache-Control: no-store` to tell caches not to retain the response. These
 requests do not make purchases or start scans. A public probe can fail because
 of the producer's egress as well as the application itself; this is not an
 independent external uptime service. TEST shares a machine with other
