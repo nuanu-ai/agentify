@@ -59,7 +59,9 @@ request for a price is being checked, another for the same price is refused
 with `payment_not_taken`, marked retryable, with `Retry-After: 2`. That
 answer does not say whether the first request will be charged, so the agent
 sends the same request again to learn how the purchase stands, rather than
-buying anew.
+buying anew. A paid request that fails on Agentify's side before anything was
+written for it, for a reason that will not pass by itself, is answered with
+HTTP 500 and `gateway_failed`, not retryable, and nothing was charged.
 
 The rule about polling covers every purchase sold through your own code,
 whatever its mode. Without a process of
