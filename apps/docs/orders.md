@@ -642,6 +642,10 @@ you closed fulfillment, and its `status` column is the word each one reads.
 | You closed fulfillment | `fulfillment_closed`, or `payment_unresolved` while the payment is unknown | where `payment_status` says: in your payout contract when `paid` | that you closed fulfillment, with your message as your words, and on a paid order Agentify's own sentence that no refund is confirmed |
 | The facilitator did not say whether the money was charged | `payment_unresolved` | unknown until Agentify finds the transfer or proof it cannot happen | "the outcome of the payment is not known", not "refused": another payment is refused while the first is unknown |
 
+An agent whose purchase is answered with HTTP 409 and an order document reads
+its `payment_status` before it buys again: `paid` means the money moved, and
+the order is the agent's to follow at its `status_url`.
+
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists. A payment that fails its check reaches no merchant handler;
 a price requested without payment creates no order. A price question that
@@ -679,6 +683,11 @@ numbers. A late synchronous answer is not an error and does not come back as
 an exception: the purchase has already ended with nothing charged, and goods
 that fit the card are kept for a repeat purchase without your code being told.
 
+The buyer's x402 client can stop before it signs: `@x402/core` 2.23.0 and
+later refuse any payment above 1 USD unless the client's operator raises
+`maxAmountPerPayment` in its spend controls. An agent on such a client buys a
+card priced above that only once its operator has raised the limit.
+
 ## Telling a repeat apart
 
 By the order's identifier: it is the same across every repeat, and your side
@@ -696,7 +705,12 @@ address again without that kept payment request starts a new purchase, which
 is charged again once paid, so recovery always signs the kept request again.
 An agent therefore keeps the payment request and the payment it signed from
 before it sends the payment until it has the answer: the request to sign
-again, and the payment to tell it which wallet signs.
+again, and the payment to tell it which wallet signs. Standard x402 clients
+keep nothing they signed, so their plain retry after a lost answer asks a new
+price and buys again; the client's `onAfterPaymentCreation` hook sees the 402
+being signed and is where an agent keeps it. An agent that did not keep it
+does not buy again before it has checked the wallet for a transfer to the
+`payTo` it signed for.
 
 The payment request carries the opaque stamped price in `extra.price_stamp`.
 It opens no order or goods. An order is created when the paid request arrives;
