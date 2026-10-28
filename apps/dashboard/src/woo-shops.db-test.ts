@@ -155,6 +155,69 @@ if (databaseUrl === null) {
       });
     });
 
+    it("rewrites nothing a registry call left unchanged, and seals again only the tokens it changed", async () => {
+      const origin = "https://idle-carts.example.com";
+      const shops = postgresWooShops(pool, "cart-test-auth-secret-with-thirty-two-bytes");
+      const at = new Date("2026-10-28T10:00:00Z");
+      const expiresAt = new Date("2026-10-30T10:00:00Z");
+      const stored = async () =>
+        (
+          await pool.query(
+            "select owner, next_creation_at, slots from dashboard_woo_cart_resources where shop_origin = $1",
+            [origin],
+          )
+        ).rows[0] as { slots: { token: string | null }[] };
+      await shops.startCartRuntime(origin, "worker");
+      for (const slot of [0, 1]) {
+        await shops.claimCart(origin, "worker", "paid", slot, `open-${slot}`, at);
+        await shops.finishCart(origin, "worker", "paid", slot, `open-${slot}`, {
+          token: `session-${slot}`,
+          expiresAt,
+        });
+      }
+      const idle = await stored();
+      await shops.claimCart(origin, "worker", "paid", 0, "in-use", at);
+      const claimed = await stored();
+      expect(claimed.slots[1]?.token).toBe(idle.slots[1]?.token);
+      expect(claimed.slots[0]?.token).toBe(idle.slots[0]?.token);
+
+      expect(
+        await shops.registerCartIdentity(origin, "worker", "paid", 0, "in-use", "session-0"),
+      ).toBe(true);
+      await shops.startCartRuntime(origin, "worker");
+      expect(await stored()).toEqual(claimed);
+    });
+
+    it("opens every cart whose token a rotated key cannot read as one never opened", async () => {
+      const origin = "https://rotated-key.example.com";
+      const before = postgresWooShops(pool, "auth-secret-before-the-rotation-32b");
+      const after = postgresWooShops(pool, "auth-secret-after-the-rotation-3-2b");
+      const at = new Date("2026-10-28T10:00:00Z");
+      await before.startCartRuntime(origin, "before-rotation");
+      for (const lane of ["paid", "quote"] as const)
+        for (let slot = 0; slot < 8; slot += 1) {
+          await before.claimCart(origin, "before-rotation", lane, slot, `${lane}-${slot}`, at);
+          await before.finishCart(origin, "before-rotation", lane, slot, `${lane}-${slot}`, {
+            token: `${lane}-session-${slot}`,
+            expiresAt: new Date("2026-10-30T10:00:00Z"),
+          });
+        }
+
+      await after.startCartRuntime(origin, "after-rotation");
+      for (const lane of ["paid", "quote"] as const)
+        for (let slot = 0; slot < 8; slot += 1)
+          expect(
+            await after.claimCart(
+              origin,
+              "after-rotation",
+              lane,
+              slot,
+              `again-${lane}-${slot}`,
+              at,
+            ),
+          ).toEqual({ kind: "new" });
+    });
+
     it("is refused when it is written without its revision", async () => {
       await pool.query("delete from dashboard_woo_shops");
       const account = await anAccount();
