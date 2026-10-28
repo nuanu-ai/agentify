@@ -1486,10 +1486,10 @@ export class WooShopRuntime {
     }
     if (admitted.kind === "wait") return { kind: "wait", until: admitted.retryAt.getTime() };
     slot.claim = claim;
+    // The question that holds the slot releases it, so nothing here does.
     if (admitted.kind === "new" && reuseOnly) {
       slot.token = null;
       slot.uncertainMutation = true;
-      await this.#finish(slot);
       return { kind: "wait", until: Date.now() + 250 };
     }
     slot.token = admitted.kind === "reuse" ? admitted.token : null;
@@ -1507,7 +1507,6 @@ export class WooShopRuntime {
         if (slot.token !== null) await this.#keepOwnedToken(slot, slot.token);
         slot.quarantined = true;
         slot.uncertainMutation = true;
-        await this.#finish(slot);
         return { kind: "failure", answer: opened };
       }
       slot.observedEmpty = true;
