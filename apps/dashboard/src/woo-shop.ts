@@ -1814,6 +1814,30 @@ export class WooShopRuntime {
   }
 }
 
+/**
+ * The status a shop refused a visitor's cart with, which leaves its parcels
+ * unpriceable; null where the cart opened or the shop did not clearly answer.
+ * The cart is opened without a token and nothing is put in it.
+ */
+export const guestCartRefusedWith = async (
+  shopUrl: string,
+  request: WooRequest = wooRequest,
+): Promise<number | null> => {
+  let response: Response;
+  try {
+    response = await request(`${new URL(shopUrl).origin}${CART_PATH}`, {
+      headers: { accept: "application/json" },
+      redirect: "manual",
+      signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+    });
+  } catch {
+    return null;
+  }
+  await response.body?.cancel();
+  if (worthAskingAgain(response.status)) return null;
+  return response.ok && response.headers.get("cart-token") ? null : response.status;
+};
+
 /** One-off pricing uses the same cleanup discipline as the worker's reusable runtime. */
 export const shippingRatesInTheShop = (
   shopUrl: string,

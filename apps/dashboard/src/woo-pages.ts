@@ -51,6 +51,7 @@ import { type ReferenceRead, referenceRateOf } from "./woo-reference.js";
 import {
   type CatalogueRead,
   catalogueOf,
+  guestCartRefusedWith,
   inspectProductInTheShop,
   inspectProductsInTheShop,
   type OrderMade,
@@ -101,6 +102,8 @@ export interface ShopCalls {
     merchantItemIds: readonly string[],
   ) => Promise<readonly ProductInspection[]>;
   readonly readOrder?: (keys: ShopKeys, orderId: string) => Promise<WooOrderLookup>;
+  /** The status the shop refused a visitor's cart with; null where it opened or did not say. */
+  readonly guestCart?: (shopUrl: string) => Promise<number | null>;
   /** The shop's own creation where a deployment passes nothing. */
   readonly placeOrder?: (keys: ShopKeys, sold: SoldItem) => Promise<OrderMade>;
 }
@@ -351,6 +354,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   const catalogue = parts.shop?.catalogue ?? catalogueOf;
   const inspectProduct = parts.shop?.inspectProduct ?? inspectProductInTheShop;
   const inspectProducts = parts.shop?.inspectProducts ?? inspectProductsInTheShop;
+  const guestCart = parts.shop?.guestCart ?? guestCartRefusedWith;
   /**
    * The shops being imported now, by origin. This process is the only one that
    * imports, so a shop walked twice at once would be a second press or a
@@ -663,9 +667,26 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       rate = current.rate;
     }
 
+    // A parcel is priced in the shop's own cart, so a shop that keeps visitors
+    // out of it sells no parcel; asked once, and only where there is one.
+    const cartRefused = inspections.some(
+      ({ inspected }) => inspected.ok && inspected.product.kind === "parcel",
+    )
+      ? await guestCart(connection.shopUrl)
+      : null;
     const qualified = inspections.map(({ product, inspected }) => {
       if (!inspected.ok) {
         return { ...product, qualification_problem: inspected.why };
+      }
+      if (cartRefused !== null && inspected.product.kind === "parcel") {
+        return {
+          ...product,
+          qualification_problem:
+            `Your shop would not open a cart for a visitor (HTTP ${cartRefused}). Agentify prices` +
+            " a parcel's shipping and tax in such a cart, so this parcel can't be sold. A security" +
+            " plugin or firewall that keeps visitors out of WooCommerce's cart usually causes this." +
+            " Let visitors reach /wp-json/wc/store/v1/cart, then import again.",
+        };
       }
       const publicPrice = decimalOfMinorUnits(
         product.prices.price,

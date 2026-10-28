@@ -38,6 +38,7 @@ import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
   catalogueOf,
+  guestCartRefusedWith,
   inspectProductInTheShop,
   inspectProductsInTheShop,
   type OrderMade,
@@ -356,6 +357,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           : await standing.catalogue(shopUrl);
       },
       inspectProduct,
+      guestCart: (shopUrl) =>
+        guestCartRefusedWith(
+          shopUrl,
+          standing.cart ??
+            (async () => Response.json({ items: [] }, { headers: { "Cart-Token": "guest" } })),
+        ),
       inspectProducts: async (keys, merchantItemIds) =>
         standing.shop === undefined
           ? await Promise.all(merchantItemIds.map((id) => inspectProduct(keys, id)))
@@ -964,7 +971,26 @@ describe("importing the catalogue", () => {
     expect(listed[0]?.card.result).toBeUndefined();
   });
 
-  it("holds a parcel back from a shop that will not open a cart for a visitor, and says why", async () => {
+  it.each([
+    [
+      "holds a parcel back from a shop that will not open a cart for a visitor, and says why",
+      // What a plugin that turns the REST API off for visitors answers.
+      () =>
+        Response.json(
+          {
+            code: "rest_cannot_access",
+            message: "Only authenticated users can access the REST API.",
+          },
+          { status: 401 },
+        ),
+      ["async"],
+    ],
+    [
+      "publishes a parcel from a shop whose cart was only too busy to answer",
+      () => new Response("<html>Service Unavailable</html>", { status: 503 }),
+      ["ship", "async"],
+    ],
+  ] as const)("%s", async (_case, cart, published) => {
     const running = await started({
       catalogue: async () => ({
         ok: true,
@@ -997,15 +1023,7 @@ describe("importing the catalogue", () => {
                 tax: { mode: "off" as const },
               },
             },
-      // What a plugin that turns the REST API off for visitors answers.
-      cart: async () =>
-        Response.json(
-          {
-            code: "rest_cannot_access",
-            message: "Only authenticated users can access the REST API.",
-          },
-          { status: 401 },
-        ),
+      cart: async () => cart(),
     });
     await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
       seller_site: SHOP,
@@ -1018,9 +1036,10 @@ describe("importing the catalogue", () => {
     const listed = (await cardsOf(running)) as unknown as readonly {
       card: { fulfillment: string };
     }[];
-    expect(listed.map((one) => one.card.fulfillment)).toEqual(["async"]);
-    expect(readable(imported.html)).toMatch(/would not open a cart for a visitor/);
-    expect(readable(imported.html)).toMatch(/HTTP 401/);
+    expect(listed.map((one) => one.card.fulfillment)).toEqual(published);
+    expect(readable(imported.html).includes("would not open a cart for a visitor (HTTP 401)")).toBe(
+      published.length === 1,
+    );
   });
 
   it("keeps imported cards when the merchant forgets the shop", async () => {
