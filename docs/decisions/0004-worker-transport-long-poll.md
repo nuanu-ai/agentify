@@ -45,13 +45,16 @@ carries price questions (ADR-0002 §2) and order events.
    разумно" (it does sound reasonable).
 3. An order is delivered at least once and an event at most once. The queue
    finishes every envelope as it hands it over and never offers it again.
-   Whether an unanswered order goes out again is the order machine's decision,
-   against the order's own attempts and deadline, and the resend is a fresh
-   envelope around the same order, so a handler has to survive seeing an order
-   twice and recognise it by the order's identifier. An event lost in a poll
-   response that never reached its worker is gone, and no event is the only
-   record of anything: its order stays in `orders.list({ open: true })` until
-   its fulfillment ends (ADR-0028).
+   Whether an unanswered order goes out again is the order machine's decision:
+   it hands the order over again, with pauses growing to fifteen minutes, for
+   three hours from its first hand-over or until the order's own deadline,
+   whichever comes first. The product owner set the three hours on
+   2026-10-28: "давай да, до 3 часов" (yes, let's, up to three hours). The
+   resend is a fresh envelope around the same order, so a handler has to
+   survive seeing an order twice and recognise it by the order's identifier.
+   An event lost in a poll response that never reached its worker is gone,
+   and no event is the only record of anything: its order stays in
+   `orders.list({ open: true })` until its fulfillment ends (ADR-0028).
 4. A connected worker with capacity has one poll parked at the gateway and
    woken on publish. A slow handler does not stop unrelated work until the
    worker is full; this promises neither a response deadline nor a throughput.
@@ -71,13 +74,14 @@ WebSocket is rejected as a persistent-connection stack bought for nothing we
 need, plus custom framing the hand-rolling rule
 (`docs/research/45-stack-toolchain.md`) forbids; it is revisited on a measured
 latency or throughput need long polling cannot meet, or on fan-out to many
-workers per merchant. Server-Sent Events go one way, so
-answers would need a second surface anyway. Webhooks as the default fall to
-ADR-0002: the merchant would have to expose a public endpoint. A batch a poll,
-each order's wait started by its place in the batch, guesses at handler times
-and notices a dead worker late; a call by which a worker reports starting each
-order adds to the wire what one envelope a poll gives. Answers carried in the
-next poll would tie the synchronous answer to polling cadence, which §4 keeps
-out of its path. Redelivery by the queue's visibility timeout would be a second
-opinion over the order machine's (§3). Draining a queue has precedents in
-`docs/research/12-big-players-merchant-integration.md`.
+workers per merchant. Server-Sent Events go one way, so answers would need a
+second surface anyway. Webhooks as the default fall to ADR-0002: the merchant
+would have to expose a public endpoint. A batch a poll, each order's wait
+started by its place in the batch, guesses at handler times and notices a dead
+worker late; a call by which a worker reports starting each order adds to the
+wire what one envelope a poll gives. Answers carried in the next poll would tie
+the synchronous answer to polling cadence, which §4 keeps out of its path.
+Redelivery by the queue's visibility timeout would be a second opinion over the
+order machine's (§3). A fixed count of hand-overs, five until 2026-10-28, ended
+before an ordinary outage of the merchant's process or shop did. Draining a
+queue has precedents in `docs/research/12-big-players-merchant-integration.md`.
