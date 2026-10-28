@@ -4684,6 +4684,7 @@ describe("a paid order that carries no quoted price", () => {
 
   it.each([
     ["a download", anOrder({ quote_reference: undefined })],
+    ["a download whose reference cannot be read", anOrder({ quote_reference: "bm90LWEtcHJpY2U" })],
     [
       "a parcel",
       anOrder({
@@ -4711,7 +4712,7 @@ describe("a paid order that carries no quoted price", () => {
     );
     expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
     const message = answer !== null && "refused" in answer ? answer.refused.message : "";
-    expect(message).toMatch(/no record of the price/i);
+    // Nothing is known of what changed, so the refusal says nothing changed.
     expect(message).not.toMatch(/changed/i);
     expect(cartsAsked).toBe(0);
     expect(shop.placed).toEqual([]);

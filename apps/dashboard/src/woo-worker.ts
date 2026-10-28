@@ -680,8 +680,9 @@ const fillParcelFromTheShop = async (
 };
 
 /**
- * An order paid before its price travelled with the buyer carries no reference,
- * and nothing the shop says now can tell what that price was.
+ * An order paid before its price travelled with the buyer carries no
+ * reference, and one that cannot be read is no better; nothing the shop says
+ * now can tell what that price was.
  */
 const refusedUnquoted = async (
   order: Order,
@@ -709,8 +710,8 @@ const refusedUnquoted = async (
     refused: {
       code: "cannot_fulfill",
       message:
-        "This order carries no record of the price the shop quoted for it, so the shop cannot be" +
-        " held to that price and no WooCommerce order was created.",
+        "This order carries no record of the shop's quoted price that the connector can read, so" +
+        " the shop cannot be held to that price and no WooCommerce order was created.",
     },
   };
 };
