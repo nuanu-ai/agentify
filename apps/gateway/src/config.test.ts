@@ -81,8 +81,8 @@ describe("loadConfig", () => {
     expect(redelivery).toStrictEqual({
       baseDelayMs: 500,
       factor: 2,
-      maxDelayMs: 30_000,
-      maxAttempts: 5,
+      maxDelayMs: 15 * 60_000,
+      windowMs: 3 * 60 * 60_000,
     });
   });
 
@@ -100,7 +100,7 @@ describe("loadConfig", () => {
       REDELIVERY_BASE_DELAY_MS: "10",
       REDELIVERY_FACTOR: "3",
       REDELIVERY_MAX_DELAY_MS: "100",
-      REDELIVERY_MAX_ATTEMPTS: "9",
+      REDELIVERY_WINDOW_MS: "9000",
     });
 
     expect(config.deadlines.quoteResponseMs).toBe(1000);
@@ -115,7 +115,7 @@ describe("loadConfig", () => {
       baseDelayMs: 10,
       factor: 3,
       maxDelayMs: 100,
-      maxAttempts: 9,
+      windowMs: 9000,
     });
   });
 

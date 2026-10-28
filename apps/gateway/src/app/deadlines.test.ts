@@ -630,6 +630,34 @@ describe("when a delivery goes unanswered", () => {
     expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);
   });
 
+  it("hands an order its merchant does not answer over again for three hours, with pauses that grow to fifteen minutes", async () => {
+    const MINUTE = 60_000;
+    const HOUR = 60 * MINUTE;
+    // The gateway's own redelivery numbers; only the handler's wait is brisk.
+    const harnessed = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: String(24 * HOUR) });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { orderId, stamp } = await priced(harnessed, asyncCard);
+    await harnessed.gateway.payPurchase(stamp, "PAYMENT", "PAYMENT");
+    const step = 30_000;
+    const handedOverAt: number[] = [];
+    for (let elapsed = 0; elapsed <= 4 * HOUR; elapsed += step) {
+      const { envelopes } = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+      if (envelopes.length > 0) handedOverAt.push(harnessed.now());
+      harnessed.advance(step);
+      await vi.advanceTimersByTimeAsync(step);
+    }
+
+    const first = handedOverAt[0] ?? Number.NaN;
+    const last = handedOverAt.at(-1) ?? Number.NaN;
+    expect(handedOverAt.length).toBeGreaterThan(5);
+    expect(last - first).toBeLessThan(3 * HOUR);
+    expect(last - first).toBeGreaterThan(3 * HOUR - 16 * MINUTE);
+    const pauses = handedOverAt.slice(1).map((at, index) => at - (handedOverAt[index] ?? at));
+    expect(Math.max(...pauses)).toBeLessThanOrEqual(15 * MINUTE + 2 * step);
+    // Still the merchant's to deliver until its own deadline.
+    expect((await state(harnessed, orderId))?.state).toBe("dispatched");
+  });
+
   it("wraps each repeat in a new message, so only the order's identifier holds still", async () => {
     // A redelivery comes in a new envelope with a new identifier. A handler that
     // deduplicated on the envelope would make the goods twice; the order's

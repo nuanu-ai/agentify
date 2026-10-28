@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TEST_POLICY } from "./fixtures.js";
+import { must, newOrder, T0, TEST_POLICY, walk } from "./fixtures.js";
 import { nextRedelivery } from "./redelivery.js";
 
 const policy = TEST_POLICY.redelivery;
@@ -72,5 +72,68 @@ describe("deciding whether to deliver an order again", () => {
 
     expect(onTheDot).toStrictEqual({ retry: false, reason: "past_deadline" });
     expect(justInside).toStrictEqual({ retry: true, attempt: 2, delayMs: 1_000 });
+  });
+});
+
+/**
+ * The gateway's own shape: pauses from half a second, doubling, never longer
+ * than fifteen minutes, for three hours after the order first reached its
+ * merchant.
+ */
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const THREE_HOURS = {
+  baseDelayMs: 500,
+  factor: 2,
+  maxDelayMs: 15 * MINUTE,
+  windowMs: 3 * HOUR,
+};
+
+describe("handing an unanswered order over again for three hours", () => {
+  it("hands it over again long after five attempts while the three hours last", () => {
+    expect(
+      nextRedelivery({
+        attempts: 12,
+        now: T0 + 2 * HOUR,
+        firstHandedOverAt: T0,
+        deadlineAt: null,
+        policy: THREE_HOURS,
+      }),
+    ).toStrictEqual({ retry: true, attempt: 13, delayMs: 15 * MINUTE });
+  });
+
+  it("stops once the next hand-over would land three hours or more after the first", () => {
+    const at = (now: number) =>
+      nextRedelivery({
+        attempts: 12,
+        now,
+        firstHandedOverAt: T0,
+        deadlineAt: null,
+        policy: THREE_HOURS,
+      });
+
+    expect(at(T0 + 2 * HOUR + 44 * MINUTE).retry).toBe(true);
+    expect(at(T0 + 2 * HOUR + 45 * MINUTE)).toStrictEqual({ retry: false, reason: "past_window" });
+  });
+
+  it("measures the three hours from the first hand-over, however many came after it", () => {
+    // A day to fulfil, so only the three hours can stop the repeats.
+    const policy = {
+      deadlines: { ...TEST_POLICY.deadlines, asyncFulfillmentMs: 24 * HOUR },
+      redelivery: THREE_HOURS,
+    };
+    let order = walk(newOrder("async", { policy }), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+    ]);
+    // Handed over again and again; the last time a minute before the silence.
+    for (const minutes of [30, 60, 120, 170])
+      order = must(order, { kind: "order_dispatched", at: T0 + minutes * MINUTE }).order;
+
+    const silence = must(order, { kind: "handler_undelivered", at: T0 + 171 * MINUTE });
+
+    expect(silence.effects.filter((effect) => effect.kind === "redeliver_order")).toStrictEqual([]);
+    expect(silence.order.state).toBe("dispatched");
   });
 });
