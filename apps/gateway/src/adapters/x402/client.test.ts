@@ -18,6 +18,7 @@ import { generateKeyPairSync, type KeyObject, verify } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { format } from "node:util";
+import { FacilitatorTimeoutError } from "@x402/core/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../../config.js";
 import { nobodyAnnounces } from "../../ports/announcer.js";
@@ -264,6 +265,33 @@ const refusalOf = (promise: Promise<unknown>): Promise<unknown> =>
     },
     (thrown: unknown) => thrown,
   );
+
+describe("how long a call to the facilitator may take", () => {
+  // A payment check holds one of its merchant's places while it waits, so it
+  // gives up sooner than a charge, whose deadlines research 46 sets against
+  // thirty seconds. Time is shortened here, so a request that is not answered
+  // is cut off at once and the client says what deadline it was given.
+  it.each([
+    ["checking a payment", "verify", 10_000],
+    ["executing a charge", "settle", 30_000],
+  ] as const)("gives up %s after its own time", async (_what, operation, deadline) => {
+    const server = createServer((request) => request.resume());
+    standing.push(server);
+    server.listen(0, "127.0.0.1");
+    await new Promise<void>((ready) => server.once("listening", () => ready()));
+    const { port } = server.address() as AddressInfo;
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const shortened = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => timeout(20));
+    const client = facilitatorClientFor(aPayment({ facilitatorUrl: `http://127.0.0.1:${port}` }));
+
+    const refused = await refusalOf(
+      client[operation](aPayload as never, aRequirement as never),
+    ).finally(() => shortened.mockRestore());
+
+    expect(refused).toBeInstanceOf(FacilitatorTimeoutError);
+    expect(refused).toMatchObject({ operation, timeoutMs: deadline });
+  });
+});
 
 describe("talking to a facilitator that takes credentials", () => {
   it("signs every call for the address and the method it is actually made on", async () => {
