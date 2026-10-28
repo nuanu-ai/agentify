@@ -680,9 +680,28 @@ describe("a stamped price and an order born at payment", () => {
         settles: 0,
         created: 0,
       });
+      // The buyer has signed, and the answer is about the money too.
+      expect(JSON.stringify(before.error)).toMatch(/nothing was charged/);
       expect(during).toStrictEqual(before);
     },
   );
+
+  it("tells a paying buyer when the seller gives no site for a card paid before its goods", async () => {
+    await started({ ...CARD, fulfillment: "async", price_check: undefined });
+    const offer = await quote();
+    const read = h.store.merchantById.bind(h.store);
+    h.store.merchantById = async (id) => {
+      const merchant = await read(id);
+      return merchant === null ? null : { ...merchant, sellerSite: null };
+    };
+    const refused = await pay(offer, "0x01");
+    h.store.merchantById = read;
+
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toMatch(/site/);
+    expect(JSON.stringify(refused.body)).toMatch(/nothing was charged/);
+    expect(h.facilitator.verifies).toHaveLength(0);
+  });
 
   it("keeps a price whose seller only moved their site, before arrival and during verification", async () => {
     const before = await changedWhilePaying("site", "before arrival");
