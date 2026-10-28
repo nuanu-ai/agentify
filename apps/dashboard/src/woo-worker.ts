@@ -203,25 +203,24 @@ export const fillFromTheShop = async (
     currency: order.price.currency,
     ...convertedFacts(bound),
   };
+  // A shop that did not answer said nothing about the product, and the order
+  // is handed over again for hours, so it waits for the shop.
+  if (!inspected.ok && inspected.again) {
+    console.error(`[dashboard] order ${order.id} waits: ${inspected.why}`);
+    return null;
+  }
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
-    // Refused either way, with the true reason: a shop that did not answer, or
-    // whose answer could not be read, has said nothing about the product.
-    const silent = !inspected.ok && inspected.again;
-    const cutOff = !inspected.ok && inspected.again && inspected.cutOff === true;
-    const unread = !inspected.ok && !inspected.again && !inspected.saidNo;
+    // An answer that could not be read says nothing about the product either,
+    // but it is an answer, and the shop would give it again.
+    const unread = !inspected.ok && !inspected.saidNo;
     if (!inspected.ok && unread) unreadable(order.id, inspected.why);
     return {
       refused: {
         code: "cannot_fulfill",
-        message: cutOff
-          ? "The shop's answer to the product check broke off and could not be read when this" +
-            " order was placed, so no WooCommerce order was created."
-          : silent
-            ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
-            : unread
-              ? UNREADABLE_PRODUCT
-              : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
+        message: unread
+          ? UNREADABLE_PRODUCT
+          : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
       },
     };
   }
