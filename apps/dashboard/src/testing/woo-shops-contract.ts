@@ -243,18 +243,45 @@ export const wooShopsContract = (
       });
     });
 
-    it("charges expired empty-cart renewal against the same budget as an uncertain replacement", async () => {
+    it("renews an empty cart a few minutes before its session expires, without spending the replacement budget", async () => {
       await using(async (shops) => {
+        const fourMinutesBefore = new Date(LATER.getTime() - 240_000);
         await shops.startCartRuntime(SHOP, "worker");
         await shops.claimCart(SHOP, "worker", "paid", 0, "known", NOW);
         await shops.finishCart(SHOP, "worker", "paid", 0, "known", { ...clean, expiresAt: LATER });
         await openedAndRetired(shops, "worker", "quote", 0, "unknown");
-        expect(await shops.claimCart(SHOP, "worker", "paid", 0, "renew", LATER)).toEqual({
+        expect(
+          await shops.claimCart(SHOP, "worker", "paid", 0, "renew", fourMinutesBefore),
+        ).toEqual({
           kind: "new",
         });
-        expect(await shops.claimCart(SHOP, "worker", "quote", 0, "repair", LATER)).toEqual({
-          kind: "wait",
-          retryAt: new Date(LATER.getTime() + 600_000),
+        expect(
+          await shops.claimCart(SHOP, "worker", "quote", 0, "repair", fourMinutesBefore),
+        ).toEqual({ kind: "new" });
+      });
+    });
+
+    it("keeps the replacement budget for paid carts while fewer than two of them can open", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "worker");
+        for (let slot = 1; slot < 8; slot += 1)
+          await openedAndRetired(shops, "worker", "paid", slot, `paid-${slot}`);
+        await openedAndRetired(shops, "worker", "quote", 0, "free");
+        expect(await shops.claimCart(SHOP, "worker", "quote", 0, "free-repair", NOW)).toMatchObject(
+          {
+            kind: "wait",
+          },
+        );
+        expect(await shops.claimCart(SHOP, "worker", "paid", 1, "paid-repair", NOW)).toEqual({
+          kind: "new",
+        });
+        await shops.finishCart(SHOP, "worker", "paid", 1, "paid-repair", {
+          token: "repaired-paid-session",
+          expiresAt: MUCH_LATER,
+        });
+        // Two paid carts can open now, so the next replacement may be a free one.
+        expect(await shops.claimCart(SHOP, "worker", "quote", 0, "free-repair", LATER)).toEqual({
+          kind: "new",
         });
       });
     });
