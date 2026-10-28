@@ -1454,4 +1454,74 @@ if (databaseUrl === null) {
       ).toStrictEqual([{ indexname: "orders_buyer_key_unique" }]);
     });
   });
+
+  describe("the migration that gives open orders three hours of hand-overs", () => {
+    let pool: Pool;
+    beforeAll(async () => {
+      pool = connect(databaseUrl).pool;
+      await pool.query("drop schema public cascade");
+      await pool.query("create schema public");
+      const journal = JSON.parse(
+        await readFile(join(migrationsIn, "meta", "_journal.json"), "utf8"),
+      ) as { entries: { idx: number; tag: string }[] };
+      for (const entry of journal.entries.filter((entry) => entry.idx < 35)) {
+        for (const statement of await statementsOf(`${entry.tag}.sql`)) await pool.query(statement);
+      }
+      await pool.query(
+        "insert into merchants (id,name,selling,created_at,updated_at) values ('mch_window','Window','open',now(),now())",
+      );
+    }, 60_000);
+    afterAll(async () => {
+      await pool.end();
+    });
+
+    it("moves every open order from five attempts to the window, counted from its latest known hand-over, and leaves closed orders as they were", async () => {
+      const five = { baseDelayMs: 500, factor: 2, maxDelayMs: 30_000, maxAttempts: 5 };
+      const order = (id: string, state: string, dispatchedAt: number | null) => ({
+        order: {
+          id,
+          state,
+          policy: { deadlines: { asyncFulfillmentMs: 86_400_000 }, redelivery: five },
+          timestamps: { createdAt: 1, paidAt: 2, dispatchedAt },
+        },
+        merchantId: "mch_window",
+        buyerKey: `bk_${id}`,
+      });
+      const rows = [
+        { open: true, record: order("ord_handed_over", "dispatched", 3) },
+        { open: true, record: order("ord_waiting", "paid", null) },
+        { open: false, record: order("ord_closed", "delivered", 3) },
+      ];
+      for (const { open, record } of rows) {
+        await pool.query(
+          "insert into orders (id,state,open,merchant_id,item_id,merchant_item_id,record,created_at,updated_at) values ($1,$2,$3,'mch_window','itm_window','sku',$4,now(),now())",
+          [record.order.id, record.order.state, open, JSON.stringify(record)],
+        );
+      }
+
+      for (const statement of await statementsOf("0035_order_redelivery_window.sql")) {
+        await pool.query(statement);
+      }
+
+      const window = { baseDelayMs: 500, factor: 2, maxDelayMs: 900_000, windowMs: 10_800_000 };
+      const moved = (
+        record: ReturnType<typeof order>,
+        firstDispatchedAt: number | null,
+      ): ReturnType<typeof order> => ({
+        ...record,
+        order: {
+          ...record.order,
+          policy: { ...record.order.policy, redelivery: window as never },
+          timestamps: { ...record.order.timestamps, firstDispatchedAt } as never,
+        },
+      });
+      expect(
+        (await pool.query("select record from orders order by id")).rows.map((row) => row.record),
+      ).toStrictEqual([
+        rows[2]?.record,
+        moved(order("ord_handed_over", "dispatched", 3), 3),
+        moved(order("ord_waiting", "paid", null), null),
+      ]);
+    });
+  });
 }
