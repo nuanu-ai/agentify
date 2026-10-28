@@ -4,7 +4,7 @@ import { telemetry } from "@agentify/observability/source";
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
 import { API_ROUTES, CONTRACT_VERSION, mountableRoutes } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader, encodePaymentSignatureHeader } from "@x402/core/http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSellerSite, setServiceName } from "../app/merchants.js";
 import {
   buyOverHttp,
@@ -50,6 +50,7 @@ afterEach(async () => {
   await open?.served.close();
   await open?.harnessed.stop();
   open = null;
+  vi.unstubAllEnvs();
 });
 
 const asMerchant = { authorization: `Bearer ${KEY}` };
@@ -130,18 +131,36 @@ describe("the surface is the table", () => {
     }
   });
 
-  it("answers the health check while the process is up, with no key on it", async () => {
-    // `compose.yaml` and whatever routes in front of the gateway health-check
-    // this address, so a key check or a changed answer here takes a working
-    // gateway out of rotation. It promises only that the process is up: a
-    // gateway whose queue schema was dropped still answers 200 here.
-    const { served } = await started();
+  it.each([
+    ["missing", undefined, null],
+    ["unknown", "unknown", null],
+    ["blank", "", null],
+    ["whitespace", "  ", null],
+    [
+      "known",
+      " 8bc29570eacfca8fc7d1dace8a376468f19da233 ",
+      "8bc29570eacfca8fc7d1dace8a376468f19da233",
+    ],
+  ] as const)(
+    "reports public liveness and contract version with a %s build revision",
+    async (_case, supplied, revision) => {
+      vi.stubEnv("AGENTIFY_SOURCE_REVISION", supplied);
+      vi.stubEnv("CDP_API_KEY_SECRET", "private-test-fixture");
+      const { served } = await started({
+        PAYMENT_RPC_URL: "http://127.0.0.1:1/private-test-path?key=private-test-query",
+      });
 
-    const answered = await served.call("GET", "/healthz");
+      const answered = await served.call("GET", "/healthz");
 
-    expect(answered.status).toBe(200);
-    expect(answered.body).toStrictEqual({ ok: true });
-  });
+      expect(answered.status).toBe(200);
+      expect(answered.body).toStrictEqual({
+        ok: true,
+        revision,
+        contract_version: CONTRACT_VERSION,
+      });
+      expect(answered.headers.get("cache-control")).toBe("no-store");
+    },
+  );
 
   it("leads an agent that asks the storefront's own root to the catalogue", async () => {
     // An agent given only the site tries the root first, and "no call here"

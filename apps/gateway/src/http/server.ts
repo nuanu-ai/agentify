@@ -14,6 +14,7 @@ import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@agentify/core";
 import { telemetry } from "@agentify/observability/source";
 import {
   type AuthMode,
+  CONTRACT_VERSION,
   type ErrorCode,
   type ErrorEnvelope,
   type HttpMethod,
@@ -28,6 +29,7 @@ import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
 import { failureNamed } from "../failure-named.js";
+import { sourceRevisionOf } from "../health-facts.js";
 import { FAILED, GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
 import { presentedPayment } from "./x402.js";
@@ -96,7 +98,12 @@ export function buildApp(gateway: Gateway): Express {
   app.use(express.json({ limit: BODY_LIMIT }));
 
   app.get("/healthz", (_request, response) => {
-    response.json({ ok: true });
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      ok: true,
+      revision: sourceRevisionOf(process.env),
+      contract_version: CONTRACT_VERSION,
+    });
   });
 
   // An agent given only the site tries the storefront's root first. The
