@@ -428,70 +428,49 @@ describe("one paid order, in the merchant's own shop", () => {
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
   });
 
-  it("does not tell the buyer the shop was silent when its answer to the product check broke off", async () => {
-    // The shop answered and its answer could not be read: the order is still
-    // refused, in words true of that.
-    const shops = memoryWooShops();
-    const shop = aShopThatAccepts();
-    const cutOff = async () =>
-      new Response(
-        new ReadableStream({ start: (controller) => controller.error(new Error("cut off")) }),
-        { status: 200 },
+  it.each([
+    [
+      "did not answer",
+      async (): Promise<ProductInspection> => ({
+        ok: false,
+        why: "The shop did not answer the protected product check.",
+        again: true,
+      }),
+    ],
+    [
+      "broke off its answer",
+      (asked: WooConnection, merchantItemId: string) =>
+        inspectProductInTheShop(
+          asked,
+          merchantItemId,
+          async () =>
+            new Response(
+              new ReadableStream({ start: (controller) => controller.error(new Error("cut off")) }),
+              { status: 200 },
+            ),
+        ),
+    ],
+  ])(
+    "answers nothing for a paid download whose shop %s, so the order comes again",
+    async (_case, inspectProduct) => {
+      // A shop down for a while says nothing about the product, and the order
+      // is handed over again for hours, so it waits for the shop.
+      const shops = memoryWooShops();
+      const shop = aShopThatAccepts();
+
+      const answer = await fillFromTheShop(
+        anOrder(),
+        connection(),
+        MERCHANT_EMAIL,
+        { ...filling(shops, shop.place), inspectProduct },
+        NO_SPLIT,
       );
 
-    const answer = await fillFromTheShop(
-      anOrder(),
-      connection(),
-      MERCHANT_EMAIL,
-      {
-        ...filling(shops, shop.place),
-        inspectProduct: (asked, merchantItemId) =>
-          inspectProductInTheShop(asked, merchantItemId, cutOff),
-      },
-      NO_SPLIT,
-    );
-
-    expect(answer).toMatchObject({
-      refused: {
-        code: "cannot_fulfill",
-        message: expect.stringMatching(/answer.*product check.*broke off.*could not be read/i),
-      },
-    });
-    expect(JSON.stringify(answer)).not.toMatch(/did not answer/i);
-    expect(shop.placed).toHaveLength(0);
-    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
-  });
-
-  it("refuses an order the shop said nothing about, and says the shop did not answer", async () => {
-    // The refusal's words reach the buyer's agent. A shop that timed out has
-    // said nothing about the product, so the reason is that the shop did not
-    // answer. The refusal is recorded like any other, so recovery can still
-    // finish the sale.
-    const shops = memoryWooShops();
-    const shop = aShopThatAccepts();
-
-    const answer = await fillFromTheShop(
-      anOrder(),
-      connection(),
-      MERCHANT_EMAIL,
-      {
-        ...filling(shops, shop.place),
-        inspectProduct: async () => ({
-          ok: false,
-          why: "The shop did not answer the protected product check.",
-          again: true,
-        }),
-      },
-      NO_SPLIT,
-    );
-
-    expect(answer).toMatchObject({
-      refused: { code: "cannot_fulfill", message: expect.stringMatching(/did not answer/) },
-    });
-    expect(JSON.stringify(answer)).not.toMatch(/no longer/);
-    expect(shop.placed).toHaveLength(0);
-    expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
-  });
+      expect(answer).toBeNull();
+      expect(shop.placed).toHaveLength(0);
+      expect(await shops.knownOrder("ord_1")).toBeNull();
+    },
+  );
 
   it("refuses an order whose product check could not be read in none of the words that say the product changed or the shop was silent", async () => {
     // The shop answered, so it was not silent, and what it answered says
