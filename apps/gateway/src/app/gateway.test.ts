@@ -1612,6 +1612,24 @@ describe("a price's life", () => {
     expect(harnessed.facilitator.verifies).toHaveLength(0);
   });
 
+  it("holds a price for three minutes, so an agent can show it to a person before paying", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.advance(3 * 60_000 - 1);
+
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "SHOWN-FIRST",
+      "SHOWN-FIRST",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
+
+    expect(harnessed.facilitator.settles).toHaveLength(1);
+  });
+
   it("takes a payment that arrives a moment before the price lapses", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
