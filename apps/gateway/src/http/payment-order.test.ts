@@ -227,6 +227,7 @@ async function aGatewayPayingThrough(
   };
   await store.addMerchant({ id: merchant.id, name: merchant.name }, clock());
   await setServiceName(store, merchant.id, merchant.name, clock());
+  await store.setSellerSite(merchant.id, "https://shop.example", clock());
   await gateway.setPayoutWallet(merchant.id, merchant.wallet, {
     kind: "signed_in",
     email: "owner@example.com",

@@ -301,18 +301,34 @@ describe("a purchase from the outside", () => {
   it("walks an asynchronous sale from the catalog to the receipt", async () => {
     const gateway = await aGatewayOnAPort();
     try {
-      const published = await gateway.call("POST", "/v0/catalog/publish", {
-        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
-        body: {
-          merchant_item_id: "esim-7-days",
-          title: "A seven day eSIM",
-          description: "Seven days of data, activated by code",
-          price: { amount: "12.50", currency: "USD" },
-          result: { activation_code: { type: "string" } },
-          fulfillment: "async",
-          fulfill_deadline_seconds: 86_400,
+      const card = {
+        merchant_item_id: "esim-7-days",
+        title: "A seven day eSIM",
+        description: "Seven days of data, activated by code",
+        price: { amount: "12.50", currency: "USD" },
+        result: { activation_code: { type: "string" } },
+        fulfillment: "async",
+        fulfill_deadline_seconds: 86_400,
+      };
+      const publish = () =>
+        gateway.call("POST", "/v0/catalog/publish", {
+          headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+          body: card,
+        });
+      const missingSite = await publish();
+      expect(missingSite.status).toBe(422);
+      expect(missingSite.body).toMatchObject({
+        error: {
+          problems: expect.arrayContaining([expect.objectContaining({ code: "no_seller_site" })]),
         },
       });
+      expect(await gateway.store.cards("mch_the_walk")).toHaveLength(0);
+      const site = await gateway.call("POST", "/v0/seller-name", {
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+        body: { seller_site: "https://shop.example" },
+      });
+      expect(site.status).toBe(200);
+      const published = await publish();
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
 

@@ -199,7 +199,7 @@ false, `error.problems` lists everything that stops the card being published
 in one answer, each finding with a code, words a person can act on and the
 path to the field where there is one. Four findings are about your merchant
 rather than the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site`
-on a parcel's card, and `no_operator_approval` on the live channel ([who
+on an asynchronous or parcel card, and `no_operator_approval` on the live channel ([who
 checks a card](/cards#who-checks-a-card-before-it-is-published)).
 Fixing what they name, not sending the card again, changes the answer.
 
