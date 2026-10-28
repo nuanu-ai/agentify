@@ -708,10 +708,11 @@ reveals the order's goods, address or private status URL.
 The rule to hold yourself to is that the goods on a repeat are the goods you
 sent the first time. What the buyer keeps is the first delivery: a later one is
 answered as a success, and whatever it carries is neither written down nor
-handed to the agent. So a handler that makes the goods afresh on every attempt
-— a new access code each time — leaves the buyer holding the first code while
-your own records say the second one was spent, and nothing in our answer shows
-you that.
+handed to the agent. So a handler that makes the goods afresh on every attempt,
+a new access code each time, leaves the buyer holding the first code while
+your own records say the second one was spent. The answer to that later
+delivery says so with `already_delivered_other_goods`, and the SDK reports it
+as a `repeat_with_other_goods` problem naming the order.
 
 A repeat of an asynchronous order you have already delivered is answered with
 what you answered the first time, taking the order on; there is no need to
