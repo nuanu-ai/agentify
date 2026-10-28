@@ -331,6 +331,110 @@ describe("a stamped price and an order born at payment", () => {
     expect(h.facilitator.settles).toHaveLength(5);
   });
 
+  /** A well-formed payment for `offer` from a wallet nobody holds the key of, signed with noise. */
+  async function junk(offer: PaymentRequirements, nonce: string): Promise<string> {
+    const genuine = decodePaymentSignatureHeader(
+      await signedPayment(BUYER, offer, {
+        nonce,
+        validBefore: h.now() + offer.maxTimeoutSeconds * 1000,
+      }),
+    );
+    const signed = genuine.payload as { authorization: Record<string, unknown> };
+    return encodePaymentSignatureHeader({
+      ...genuine,
+      payload: {
+        authorization: { ...signed.authorization, from: `0x${nonce.slice(2).padStart(40, "7")}` },
+        signature: `0x${"5a".repeat(65)}`,
+      },
+    });
+  }
+
+  it("refuses an empty wallet's payment at once, before it takes a place or reaches the payment layer", async () => {
+    await started({ ...CARD, price_check: undefined });
+    const offer = await quote();
+    Object.assign(h.runtime, { balances: { balance: async () => 0n } });
+
+    const refused = await pay(offer, "0x01");
+
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({
+      error: { code: "payment_not_verified", retryable: false },
+    });
+    expect(JSON.stringify(refused.body)).toMatch(/fund the paying wallet/);
+    expect(h.facilitator.verifies).toHaveLength(0);
+    expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
+  });
+
+  it("lets a buyer whose wallet can pay through while payments nobody can prove fill its merchant's lane", async () => {
+    await started({ ...CARD, price_check: undefined });
+    Object.assign(h.runtime, { balances: { balance: async () => 1_000_000_000n } });
+    const offers: PaymentRequirements[] = [];
+    for (let one = 0; one < 9; one += 1) offers.push(await quote());
+    const junked = await Promise.all(
+      offers.slice(0, 8).map((offer, index) => junk(offer, `0x${(index + 10).toString(16)}`)),
+    );
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    releaseVerification = release;
+    Object.assign(h.runtime, {
+      facilitator: {
+        verify: async (charge: Parameters<typeof h.facilitator.verify>[0]) => {
+          const verified = await h.facilitator.verify(charge);
+          if (junked.includes(charge.payment)) {
+            await held;
+            return { verified: false, reason: "signature", message: "not the wallet's" };
+          }
+          return verified;
+        },
+        settle: h.facilitator.settle.bind(h.facilitator),
+      },
+    });
+    const sending = junked.map((payment, index) =>
+      served
+        .call("POST", `/x402/${itemId}/purchase`, {
+          body: body(),
+          headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
+        })
+        .then((answer) => ({ index, answer })),
+    );
+    pending.push(...sending);
+    await vi.waitFor(() => expect(h.facilitator.verifies.length).toBeGreaterThan(0));
+    const honest = offers[8];
+    if (honest === undefined) throw new Error("no honest price was issued");
+
+    const paid = await pay(honest, "0x01");
+
+    expect(paid.status).toBe(200);
+    expect(paid.body).toMatchObject({ status: "delivered", payment_status: "paid" });
+    // The lane has a few places and a short line; the rest are turned away at once.
+    expect(
+      h.facilitator.verifies.filter((charge) => junked.includes(charge.payment)).length,
+    ).toBeLessThan(junked.length);
+    releaseVerification();
+    const turnedAway = (await Promise.all(sending)).filter(({ answer }) => answer.status === 429);
+    expect(turnedAway.length).toBeGreaterThan(0);
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
+
+  it("sends a payment to its lane when the paying wallet's balance cannot be read", async () => {
+    await started({ ...CARD, price_check: undefined });
+    const offer = await quote();
+    Object.assign(h.runtime, {
+      balances: {
+        balance: async () => {
+          throw new Error("the chain endpoint did not answer");
+        },
+      },
+    });
+
+    const paid = await pay(offer, "0x01");
+
+    expect(paid.status).toBe(200);
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
+
   it("charges two buyers of one merchant whose payments are checked at the same time", async () => {
     await started({ ...CARD, price_check: undefined });
     const first = await quote();
