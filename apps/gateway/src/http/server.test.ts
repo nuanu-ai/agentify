@@ -863,6 +863,27 @@ describe("the payment challenge", () => {
       },
     );
 
+    it("prices the example of a card whose parameters it fills with real values", async () => {
+      // A number's stand-in, zero, and a boolean's, false, are values a buyer
+      // really sends, so such an example is a purchase like any other.
+      const { served } = await started();
+      const itemId = await publish(served, {
+        ...syncCard,
+        merchant_item_id: "room-with-options",
+        params: { gift_wrap: { type: "boolean" }, nights: { type: "integer" } },
+      });
+      const { example } = await listing(served, itemId);
+      expect(example).toStrictEqual({ params: { gift_wrap: false, nights: 0 } });
+
+      const priced = await served.call("POST", `/x402/${itemId}/purchase`, { body: example });
+
+      expect(priced.status).toBe(402);
+      const challenge = decodePaymentRequiredHeader(
+        priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+      );
+      expect(challenge.accepts[0]?.extra).toMatchObject({ price_stamp: expect.any(String) });
+    });
+
     it("prices the example of a card with neither, which is a real purchase", async () => {
       const { served } = await started();
       const itemId = await publish(served, syncCard);
