@@ -39,7 +39,8 @@ the reason. A product also needs a name and a description in plain text,
 because the description is what a buyer reads before it decides to buy.
 
 At every purchase the connector asks your shop for the product's price, and
-for a parcel the shipping rate, and your shop has four seconds to answer. A
+for a parcel the shipping rate, and your shop has a second less than
+{{quote-response}} to answer, the time Agentify waits for a price. A
 shop slower than that loses that sale before any payment, and only the
 connector's own log, which your dashboard does not show, records why.
 
@@ -207,7 +208,7 @@ it back taxes every shipped order by the place it goes to, so a customer whose
 order goes somewhere taxed otherwise than that address pays the tax of where
 it goes.
 Its price question also asks your cart about your own address, within the same
-four seconds.
+time.
 
 The import also leaves in your shop every product of a shop whose catalogue
 shows prices otherwise than they are entered (Display prices in the shop),

@@ -95,9 +95,9 @@ export function sliceEnv(overrides: Record<string, string> = {}): Record<string,
     // production window, so the merchant's loop picks up work promptly and the
     // process is not held by a long server-side timer between tests. There is a
     // coupling worth naming here: the synchronous test needs the merchant's
-    // quote answer inside the gateway's QUOTE_RESPONSE_MS (5s by default), while
+    // quote answer inside the gateway's QUOTE_RESPONSE_MS (10s by default), while
     // the SDK worker can be blind for up to its QUIET_POLL_FLOOR_MS (1s) between
-    // empty polls. The default 5:1 margin holds comfortably; cutting
+    // empty polls. The default 10:1 margin holds comfortably; cutting
     // QUOTE_RESPONSE_MS close to a second would make that test price from the
     // snapshot intermittently and fail.
     WORKER_POLL_WAIT_MS: "500",

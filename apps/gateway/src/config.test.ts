@@ -62,7 +62,7 @@ describe("loadConfig", () => {
     const { deadlines, redelivery } = loadConfig(required);
 
     expect(deadlines).toStrictEqual({
-      quoteResponseMs: 5_000,
+      quoteResponseMs: 10_000,
       quoteTtlMs: 180_000,
       settleResponseMs: 10_000,
       settleBeforeGoodsMs: 35_000,
