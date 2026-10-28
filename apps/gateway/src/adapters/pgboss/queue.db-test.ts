@@ -539,10 +539,10 @@ if (databaseUrl === null) {
     }, 60_000);
 
     it("says whether a stream is still holding an order, and only about orders", async () => {
-      // The sweep asks this before sending an order again, and every hand-over
-      // counts toward an attempt cap that ends in a refund, so a wrong answer
-      // costs a merchant a retry. The answer is a containment filter pg-boss
-      // builds, which only a real database can check.
+      // The sweep asks this before sending an order again, so a wrong answer
+      // either leaves an order on no stream or hands it over twice. The answer
+      // is a containment filter pg-boss builds, which only a real database can
+      // check.
       const { queue } = await labQueue("pgboss_holds_order", { [STREAM]: {} });
       const orderEnvelope = (id: string, orderId: string): WorkerEnvelope => ({
         kind: "order",

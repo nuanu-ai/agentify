@@ -786,15 +786,15 @@ export class OrderRunner {
   /**
    * Puts a paid order that has reached nobody on its merchant's stream again.
    *
-   * The stream is asked first: every hand-over counts toward the machine's
-   * attempt cap, whose result is an unfulfilled paid order, so an envelope still sitting
-   * unclaimed is left alone rather than spend a delivery the merchant never
-   * failed. An envelope already drawn is on no stream and looks the same as one
-   * never written, since the order stays `paid` until the hand-over is
-   * recorded; `sweepDispatchGraceMs`, counted from when the money landed, covers
-   * a worker that drew promptly and is still working. A worker that polls less
-   * often than that gets a second hand-over, at most one per daily sweep, so the
-   * grace is the number to raise for a slow-polling merchant.
+   * The stream is asked first: every hand-over lengthens the pause before the
+   * next, so an envelope still sitting unclaimed is left alone rather than hand
+   * the order over twice for a delivery the merchant never failed. An envelope
+   * already drawn is on no stream and looks the same as one never written,
+   * since the order stays `paid` until the hand-over is recorded;
+   * `sweepDispatchGraceMs`, counted from when the money landed, covers a
+   * worker that drew promptly and is still working. A worker that polls less
+   * often than that gets a second hand-over, at most one per daily sweep, so
+   * the grace is the number to raise for a slow-polling merchant.
    */
   async #sweepTheDispatch(record: StoredOrder, now: number): Promise<number> {
     const paidAt = record.order.timestamps.paidAt;

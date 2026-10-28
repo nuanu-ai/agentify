@@ -13,8 +13,8 @@ import type { PricedPurchase } from "./gateway.js";
  * on a second run, for a reason in the data rather than in a memory of having
  * run: the receipt is still there, the overdue order is closed, the envelope is
  * still waiting on the stream. A second envelope is legal on the wire but not
- * free: every hand-over counts against the order's attempt cap, so the tests
- * follow the count as well as the stream.
+ * free: every hand-over lengthens the order's pause before the next, so the
+ * tests follow the count as well as the stream.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
@@ -209,9 +209,9 @@ describe("the sweep of what an order is still owed", () => {
   });
 
   it("leaves alone an order whose envelope is still waiting to be drawn", async () => {
-    // Each hand-over counts against the attempt cap, so with a second envelope
-    // a merchant merely between polls would find two deliveries spent without
-    // having failed one.
+    // Each hand-over lengthens the pause before the next, so with a second
+    // envelope a merchant merely between polls would get the order twice and
+    // wait longer for a retry without having failed one.
     const harnessed = await started();
     const { orderId, offer } = await quoted(harnessed, asyncCard);
     await admitVerifiedOrder(harnessed.gateway, offer, {

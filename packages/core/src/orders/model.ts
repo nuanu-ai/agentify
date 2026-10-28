@@ -560,7 +560,8 @@ export type Order = {
    * How many times the order has been handed to its merchant, and whether one
    * of those hand-overs was taken on.
    *
-   * `attempts` is what the backoff and the attempt cap count off. `accepted`
+   * `attempts` is what the backoff counts off; the hand-overs end with the
+   * redelivery window or the mode's deadline, not at a count. `accepted`
    * tells an order handed over from one already taken on, since `dispatched`
    * covers both. Once it is true, a silence noticed about the order spends no
    * delivery: the merchant has answered, perhaps later than we waited. A repeat

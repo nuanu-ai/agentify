@@ -380,10 +380,9 @@ describe("MemoryQueue holding an order", () => {
 
   it("counts an envelope waiting out a delay, which is one that will be handed over", async () => {
     // The sweep resends a paid order only when the stream holds nothing for
-    // it, since every hand-over counts against the attempt cap. The poll puts
-    // an envelope back with a wait when it meets a charge in flight; missed
-    // here, the sweep would spend one of the order's attempts on a hand-over
-    // already on its way.
+    // it, since every hand-over lengthens the pause before the next. The poll
+    // puts an envelope back with a wait when it meets a charge in flight;
+    // missed here, the sweep would hand over again an order already on its way.
     const queue = await started();
     await queue.publish(A, orderEnvelope("env_1", "ord_waiting"), 60_000);
 

@@ -1401,9 +1401,9 @@ describe("an answer that arrives before we recorded handing the order over", () 
   });
 
   it("counts one hand-over once, however we learn of it", () => {
-    // Both the backoff exponent and the attempt cap read this counter, so
-    // counting the same hand-over twice costs the order a retry against a
-    // merchant who is already struggling.
+    // The backoff exponent reads this counter, so counting the same hand-over
+    // twice lengthens the pause before the next retry, for a merchant who is
+    // already struggling.
     const paid = walk(newOrder("async"), [
       { kind: "payment_verified", at: T0 + 1 },
       { kind: "payment_settled", at: T0 + 2 },

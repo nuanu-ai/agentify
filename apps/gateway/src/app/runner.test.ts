@@ -461,10 +461,10 @@ describe("an event held to the hand-over the order is waiting on", () => {
     // The hand-over is read under the same hold that writes the change, not by
     // the caller beforehand: in between, the merchant's answer can land or
     // another delivery of the reminder can act. A redelivery decided on a stale
-    // hand-over spends one of the order's five attempts on a silence that never
-    // happened, and the closure at that cap on a paid order is a debt. The
-    // cleared hand-over is held back with the event too: writing it would drop
-    // the hand-over the order is actually waiting on.
+    // hand-over hands the order over again for a silence that never happened,
+    // and lengthens every pause after it. The cleared hand-over is held back
+    // with the event too: writing it would drop the hand-over the order is
+    // actually waiting on.
     open = await harness({ HANDLER_ANSWER_MS: "60000", DEFAULT_ASYNC_FULFILLMENT_MS: "60000" });
     const { orderId, handOver } = await handedOver(open);
 

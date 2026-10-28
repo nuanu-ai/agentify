@@ -89,8 +89,8 @@ export interface Queue {
   /**
    * Whether this merchant's stream still holds an undrawn order envelope for
    * this order, a delayed redelivery included. The sweep asks before sending
-   * an order again, because every hand-over counts towards the attempt cap and
-   * reaching it stops delivery attempts.
+   * an order again, because a needless hand-over puts a second copy on the
+   * merchant's stream and lengthens the pause before the next.
    *
    * An envelope already drawn looks the same as one never written; that gap is
    * covered by `sweepDispatchGraceMs`, not by this.

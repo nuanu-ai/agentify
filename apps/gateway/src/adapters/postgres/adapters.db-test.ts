@@ -1302,8 +1302,8 @@ if (databaseUrl === null) {
       // The lock must hold across processes: the overlap is two gateways, or
       // one handed its own job again after the queue's window ran out, so this
       // uses two stores on two pools. Without it both runs find the same
-      // envelope missing and both send it, spending one of the order's
-      // attempts, and closing at the attempt cap is a refund.
+      // envelope missing and both send it, and the merchant gets the order
+      // twice.
       const oneGateway = connect(databaseUrl, { max: 2 });
       const otherGateway = connect(databaseUrl, { max: 2 });
       const onePool = oneGateway.pool;
