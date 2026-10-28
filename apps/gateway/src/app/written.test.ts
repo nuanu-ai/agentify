@@ -213,7 +213,10 @@ describe("what this gateway checks before it sends a document", () => {
     // A reason says why Agentify ended a rejected or expired order. On any
     // other word it would explain an ending that did not happen, and beside a
     // merchant's refusal it would speak over the merchant.
-    const reason = { code: "price_expired", message: "The price ran out; start a new purchase." };
+    const reason = {
+      code: "merchant_timed_out",
+      message: "The seller did not deliver in time; nothing was charged.",
+    };
     const ended = { ...unrefused, status: "expired", reason };
 
     expect(sendable(AgentOrderStatusSchema, ended)).toBe(true);
@@ -238,7 +241,7 @@ describe("what this gateway checks before it sends a document", () => {
     expect(sendable(AgentOrderStatusSchema, unrefused)).toBe(true);
     const { reason: _none, ...unexplained } = owing;
     expect(sendable(AgentOrderStatusSchema, unexplained)).toBe(false);
-    expect(sendable(AgentOrderStatusSchema, { ...owing, reason: owed("price_expired") })).toBe(
+    expect(sendable(AgentOrderStatusSchema, { ...owing, reason: owed("merchant_timed_out") })).toBe(
       false,
     );
     expect(sendable(AgentOrderStatusSchema, { ...owing, status: "expired" })).toBe(false);
@@ -259,7 +262,7 @@ describe("what this gateway checks before it sends a document", () => {
     expect(
       sendable(AgentOrderStatusSchema, {
         ...held,
-        reason: { code: "price_expired", message: "The price ran out." },
+        reason: { code: "merchant_timed_out", message: "The seller did not deliver in time." },
       }),
     ).toBe(false);
   });

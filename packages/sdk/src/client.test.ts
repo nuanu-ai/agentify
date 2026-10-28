@@ -769,25 +769,19 @@ describe("closing an order the merchant took on", () => {
 
 describe("a refusal the gateway put into words", () => {
   /**
-   * The refusal the real gateway answers `get_order` with for an order that
-   * closed before a price was named, as `apps/gateway/src/http/routes.ts`
-   * writes it. Scripted as text, because it is not the route's document.
+   * The refusal the real gateway answers `get_order` with for an order it does
+   * not hold, as `apps/gateway/src/http/merchant-answers.ts` writes it.
+   * Scripted as text, because it is not the route's document.
    */
-  const closedBeforePriced = JSON.stringify({
-    error: {
-      code: "order_closed_before_it_was_priced",
-      message:
-        "this order ended as rejected before anybody named a price for it, so there is no sale to describe",
-      retryable: false,
-      status: "rejected",
-    },
+  const notHeld = JSON.stringify({
+    error: { code: "no_such_order", message: "there is no such order", retryable: false },
   });
 
   it("tells the merchant what the gateway said, not that we could not parse it", async () => {
     // The promise: a refusal reaches the caller in the gateway's own words,
-    // not as "not the document it promises" about an order that is over.
+    // not as "not the document it promises" about an order it does not hold.
     const agentify = await gatewayServing({
-      get_order: () => ({ status: 409, text: closedBeforePriced }),
+      get_order: () => ({ status: 404, text: notHeld }),
     });
 
     const refused = await agentify.orders.get("order-1").then(
@@ -795,8 +789,8 @@ describe("a refusal the gateway put into words", () => {
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
 
-    expect(refused).toContain("order_closed_before_it_was_priced");
-    expect(refused).toContain("no sale to describe");
+    expect(refused).toContain("no_such_order");
+    expect(refused).toContain("there is no such order");
     expect(refused).not.toContain("is not the document it promises");
   });
 

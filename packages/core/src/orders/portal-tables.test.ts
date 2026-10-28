@@ -331,10 +331,7 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     expect(outcomeFor(sync)).toBe("in_progress");
     expect(row[4]).toMatch(/no order.*written/i);
     expect(resultWords(0)).toEqual([]);
-    for (const refused of [async, parcel]) {
-      expect(outcomeFor(refused)).toBe("rejected");
-      expect(endingReasonFor(refused)).toBe("price_check_unanswered");
-    }
+    for (const refused of [async, parcel]) expect(outcomeFor(refused)).toBe("rejected");
   });
 
   it(`${TIME_LIMITS[1]}: admission uses the paid request's arrival before the term ends`, () => {

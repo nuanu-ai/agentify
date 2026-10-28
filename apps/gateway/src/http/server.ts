@@ -550,9 +550,6 @@ export function hold(schema: ZodType, value: unknown): Held {
 const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   gateway_failed: true,
 
-  // Not yet priced, and the same call returns the document once it is.
-  order_not_priced_yet: true,
-
   body_too_large: false,
   body_undecodable: false,
   charset_unsupported: false,
@@ -585,7 +582,6 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // unserved, and nothing tells a buyer when that will be.
   seller_not_fulfilling: false,
 
-  order_closed_before_it_was_priced: false,
   payment_already_spent: false,
   not_this_purchase: false,
 

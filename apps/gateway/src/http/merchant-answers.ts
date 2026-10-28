@@ -81,42 +81,22 @@ export const bodyRefused = (problems: readonly { readonly message: string }[]): 
 });
 
 /**
- * The merchant's read of one order, or why it cannot be given. An order with
- * no price cannot be described in a document that carries one, and the card's
- * price must not stand in for it. The refusal tells "still waiting for its
- * price" apart from "closed before it was priced".
+ * The merchant's read of one order, or why it cannot be given. Every order is
+ * born priced at its verified payment; one with no price was never a sale,
+ * and is read as no order at all.
  */
 export function merchantOrderAnswer(
   record: StoredOrder | null,
 ):
   | { readonly ok: true; readonly document: OrderWithStatus }
   | { readonly ok: false; readonly refused: Refused } {
-  if (record === null) {
+  if (record === null || record.order.price === null) {
     return { ok: false, refused: NO_SUCH_ORDER };
-  }
-  const status = outcomeFor(record.order);
-  if (record.order.price === null) {
-    const open = status === "in_progress";
-    return {
-      ok: false,
-      refused: {
-        status: CONFLICT,
-        code: open ? "order_not_priced_yet" : "order_closed_before_it_was_priced",
-        message: open
-          ? "this order is still waiting for its price, and until it has one there is no sale to describe"
-          : `this order ended as ${status} before anybody named a price for it, so there is no sale to describe`,
-        details: { status },
-      },
-    };
   }
   return { ok: true, document: merchantOrderOf(record) };
 }
 
-/**
- * A merchant's orders. The list leaves out orders that have no price (for
- * example closed before the merchant answered a price check); each is
- * readable by identifier, where the refusal says what became of it.
- */
+/** A merchant's orders, leaving out any with no price, which was never a sale. */
 export function merchantOrderList(records: readonly StoredOrder[]): OrderList {
   return {
     orders: records.filter((record) => record.order.price !== null).map(merchantOrderOf),

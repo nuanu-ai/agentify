@@ -3103,8 +3103,7 @@ export class Gateway {
   }
 
   /**
-   * The price and availability for a question that came off the stream. The
-   * acknowledgement is the merchant's cue to release stock he set aside, so
+   * The price and availability for a question that came off the stream.
    * `used` means the machine took this answer as the purchase's price, not
    * merely that the question was still held: our own clock can close it a
    * moment before the answer lands. A price no payment can be taken at is

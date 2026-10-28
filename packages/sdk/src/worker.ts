@@ -551,10 +551,7 @@ const gaveUpOn = ({ envelope, phase }: Taken): WorkerProblem => {
       const id = envelope.payload.price_id;
 
       return phase === "sending"
-        ? problem(
-            id,
-            `${stopped} for the price for question ${id}, ${unconfirmed}; stock set aside under that identifier can be released once the question expires`,
-          )
+        ? problem(id, `${stopped} for the price for question ${id}, ${unconfirmed}`)
         : problem(
             id,
             `${stopped} before your price handler answered question ${id}, so no price was sent, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused`,
@@ -796,10 +793,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.ANSWER_FAILED,
         fatal: false,
         subject: question.price_id,
-        // The advice about stock is the same whichever reach this was: a price
-        // that was used produces an order before the question expires, so
-        // stock is released only once it has expired.
-        message: `the price for question ${question.price_id} was answered and ${whatIsKnown(sent.failure)}; stock set aside under that identifier can be released once the question expires, whichever of those it was: ${sent.failure.reason}`,
+        message: `the price for question ${question.price_id} was answered and ${whatIsKnown(sent.failure)}: ${sent.failure.reason}`,
       });
       return;
     }
@@ -809,7 +803,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.QUOTE_ANSWER_UNUSED,
         fatal: false,
         subject: question.price_id,
-        message: `the price for question ${question.price_id} arrived too late to be used, or the question is no longer held; stock set aside under that identifier can be released`,
+        message: `the price for question ${question.price_id} arrived too late to be used, or the question is no longer held`,
       });
     }
   };

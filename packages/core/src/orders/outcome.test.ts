@@ -152,36 +152,22 @@ describe("what the agent is told an order came to", () => {
 
 /**
  * One status word can cover endings that call for different next steps: a
- * product that is gone, a price check nobody answered, a charge that did not go
- * through. The merchant's own words stay in the refusal and are never given a
- * reason of ours.
+ * charge that did not go through, a merchant who did not answer a synchronous
+ * purchase in time. The merchant's own words stay in the refusal and are never
+ * given a reason of ours.
  */
 describe("why an order ended, where its merchant did not say", () => {
   it("names the endings that one status word would otherwise blur", () => {
-    const priced = newOrder("sync", { priceCheck: "merchant" });
-    const asyncPriced = newOrder("async", { priceCheck: "merchant" });
     const dispatched = reach("dispatched");
     const due = (dispatched.timestamps.paidAt ?? 0) + dispatched.policy.deadlines.syncResponseMs;
 
     const cases = [
-      [walk(priced, [{ kind: "quote_answered", at: T0 + 1, available: false }]), "unavailable"],
-      [walk(asyncPriced, [{ kind: "quote_silent", at: T0 + 1 }]), "price_check_unanswered"],
       [
         walk(newOrder("async"), [
           { kind: "payment_verified", at: T0 + 1 },
           { kind: "payment_settle_failed", at: T0 + 2 },
         ]),
         "payment_not_settled",
-      ],
-      [
-        walk(newOrder("sync"), [
-          {
-            kind: "deadline_expired",
-            at: T0 + newOrder("sync").policy.deadlines.quoteTtlMs,
-            deadline: "quote_expiry",
-          },
-        ]),
-        "price_expired",
       ],
       [
         walk(dispatched, [{ kind: "deadline_expired", at: due, deadline: "sync_response" }]),

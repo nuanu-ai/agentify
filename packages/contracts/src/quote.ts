@@ -46,9 +46,9 @@ export const QuoteRequestSchema = z.strictObject({
   ship_to: ShipToLocalitySchema.optional(),
 
   /**
-   * The identifier of this question, which comes back attached to the order.
-   * It is good for one order: a merchant who set stock aside under it can
-   * release it when the order arrives or when the price expires.
+   * The identifier of this question, which comes back on the order if a buyer
+   * pays this price. Answer without setting goods aside for it: most prices
+   * are never paid, and nothing tells the merchant when one will not be.
    */
   price_id: IdentifierSchema,
 

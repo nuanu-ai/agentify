@@ -44,9 +44,8 @@ export class Waiting<T> {
   }
 
   /**
-   * Answers everybody parked under `key`, and says whether anybody was: a
-   * merchant who set stock aside against a price question learns from it
-   * whether to release what he held.
+   * Answers everybody parked under `key`, and says whether anybody was, which
+   * tells a merchant's price answer whether it was used.
    */
   answer(key: string, value: T): boolean {
     return this.#wakeAll(key, value);

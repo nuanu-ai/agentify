@@ -105,10 +105,10 @@ export function outcomeFor(order: Order): OrderOutcome {
 
 /**
  * Why an order ended, where its merchant did not say and one status word covers
- * endings that call for different next steps. `rejected` covers a product that
- * is gone, a price check nobody answered and a charge that did not go through;
- * `expired` covers a price that ran out before the payment and a merchant who
- * did not answer a synchronous purchase in time.
+ * endings that call for different next steps. An order is stored only once a
+ * payment for it is verified, so a price nobody named, a product the merchant
+ * said is gone and a price that ran out end no stored order and have no reason
+ * here: the purchase is refused on the call instead.
  *
  * The merchant's own refusal has no reason here: it travels in their words, and
  * a reason of ours beside it would speak for them. Endings whose word already
@@ -117,18 +117,12 @@ export function outcomeFor(order: Order): OrderOutcome {
  * words can contradict the payment.
  */
 export const ENDING_REASONS = [
-  /** The merchant's price check said there is none; it did not say why. */
-  "unavailable",
-  /** The merchant's price check gave no price the purchase could use. */
-  "price_check_unanswered",
   /**
    * The payment layer said the charge did not go through. On a synchronous
    * purchase whose goods were already made it explains `delivered_unpaid`,
    * which is still open and is not an ending.
    */
   "payment_not_settled",
-  /** The price ran out before a payment for it was taken. */
-  "price_expired",
   /** The merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",
   /**
@@ -154,17 +148,12 @@ export function endingReasonFor(order: Order): EndingReason | null {
   }
   const closure = order.closure;
   switch (closure.cause) {
-    case "unavailable":
-      return "unavailable";
-    case "quote_silent":
-      return "price_check_unanswered";
     case "payment_not_settled":
       return "payment_not_settled";
     case "deadline_expired":
-      if (closure.deadline === "quote_expiry") {
-        return "price_expired";
-      }
       return closure.deadline === "sync_response" ? "merchant_timed_out" : null;
+    case "unavailable":
+    case "quote_silent":
     case "payment_not_verified":
     case "payment_outcome_unknown":
     case "merchant_refused":

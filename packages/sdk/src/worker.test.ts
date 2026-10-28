@@ -446,8 +446,7 @@ describe("a price question off the same stream", () => {
   });
 
   it("tells the merchant when their price arrived too late to be used", async () => {
-    // The acknowledgement is the only notice that stock set aside can be
-    // released.
+    // The acknowledgement is the only notice that a price went unused.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -708,8 +707,8 @@ describe("a gateway newer than this package", () => {
   });
 
   it("leaves a price question that does not fit unanswered, names it, and says it counts as a silent price check", async () => {
-    // The merchant may have set stock aside under the question's identifier,
-    // and the consequence for the sale is the contract's, so both are said.
+    // The question goes unanswered and the consequence for the sale is the
+    // contract's, so both are said.
     const { problems } = await workerOver(
       {
         poll_worker: polling(
