@@ -79,11 +79,20 @@ request with the same payment again. A payment signed by the paying wallet's
 own key, from a wallet that holds less than the price, is refused at once, and
 the agent is told to fund the wallet. An authorization that is not valid yet,
 has been used, or carries a signature the token refuses is refused at once too.
-A payment whose signature is not that wallet's own key, as a contract wallet's
-is not, and one whose wallet's balance could not be read, wait in a small line
-of their own. In either line one wallet holds at most one place and waits for
-at most one more, so holding several places in front of a buyer takes several
-wallets, each holding the price.
+Whether an authorization has been used is read from the chain for that
+authorization each time it is sent, so a used one is refused at once however
+recently the same wallet paid. A payment whose signature is not that wallet's
+own key, as a contract wallet's is not, and one whose wallet's balance could
+not be read, wait in a small line of their own. In either line one wallet holds
+at most one place and waits for at most one more. In the line for payments
+signed by the wallet's own key, holding several places in front of a buyer
+therefore takes several wallets, each holding the price; the small line has no
+balance behind it, so a flood of such payments can fill it. A payment turned
+away because its own wallet already has a payment being checked at your shop
+is answered `seller_busy`, HTTP 429, with `Retry-After: 2`, in words that say
+so, and the agent sends it again once that payment has its answer. Only a line
+full of other wallets' payments is answered in words that say you have as many
+payments being checked as Agentify checks at once.
 
 While one request for a price is being checked, another for the same price is
 refused with `payment_not_taken`, marked retryable, with `Retry-After: 2`.

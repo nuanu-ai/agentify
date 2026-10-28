@@ -209,7 +209,13 @@ are no signature at all. Those payments wait behind each other and never in
 front of a buyer whose own key signed. A payment that finds its line full, or
 no place within two seconds, is answered `seller_busy`, HTTP 429, with
 `Retry-After: 2`, and the agent sends the same request with the same payment
-again. There is no cap across merchants in the process. The lanes decide only
+again. The gate says which bound turned a payment away: where the payment's own
+wallet already holds a place or a place in line at this merchant and that kept
+it out, the words are the wallet's (it already has a payment being checked at
+this seller; send this one again once that one has its answer); where other
+payers' payments took the places and the line, the words stay the seller's.
+The code and `Retry-After` are the same in both. There is no cap across
+merchants in the process. The lanes decide only
 where a payment waits; the facilitator still decides whether it is valid.
 
 In each lane one payer holds at most one place and one place in line per
@@ -243,12 +249,14 @@ chain endpoint configured, or no place among the merchant's reads of payers'
 wallets. Those reads are bounded per merchant at two at once and eight waiting,
 and a payment waits a second at most for one, because the endpoint is shared
 with payment recovery and a flood at one merchant must not keep it busy. Reads
-about the same authorization at the same time are one read. A balance read is
-kept for five seconds, for at most 1,024 wallets, the oldest dropped first, and
-it stands only for a price it covers, so one buyer's retries ask the chain
-once, and a buyer who tops up a wallet that held too little can pay at once. A
-kept balance skips the nonce read, so a used nonce presented within those five
-seconds reaches the facilitator, which refuses it.
+about the same authorization at the same time are one read. A read is kept for
+five seconds for the one authorization it was made for, its wallet and nonce,
+and only for a price it covers, for at most 1,024 authorizations, the oldest
+dropped first, so one buyer's retries of one payment ask the chain once and a
+buyer who tops up a wallet that held too little can pay at once. Another
+authorization from the same wallet is always read, because the token may have
+marked it used or cancelled since. A read that found an authorization used is
+never kept, and it replaces any earlier read of that authorization.
 
 Getting a paid purchase back charges nothing, so it is never judged by the
 wallet's balance: it uses the same lanes and skips the read. For the same
