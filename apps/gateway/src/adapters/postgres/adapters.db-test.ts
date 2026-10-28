@@ -1544,6 +1544,104 @@ if (databaseUrl === null) {
       }
     }, 30_000);
 
+    it("tells a payment whose admission found no free connection to come again, having written nothing", async () => {
+      const owner = connect(databaseUrl, { max: 1, connectionTimeoutMillis: 300 });
+      const own = PostgresStore.over(owner.db, "eip155:84532", countedIds(), queue.envelopes());
+      const paymentLayer = new ScriptedFacilitator();
+      const ownGateway = new Gateway({
+        ...gateway.runtime,
+        store: own,
+        facilitator: paymentLayer,
+        ids: (kind) => `${kind}_${randomUUID()}`,
+      });
+      let release: (() => void) | undefined;
+      let hog: Awaited<ReturnType<typeof owner.pool.connect>> | undefined;
+      try {
+        await gateway.poll(A, 0);
+        const card = await store.publishCard(
+          A,
+          { ...syncCard, merchant_item_id: `starved-${randomUUID()}`, fulfillment: "async" },
+          now,
+        );
+        const offered = await ownGateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const signed = await signedFor(ownGateway, offered.order, aWallet("the starved buyer"), {
+          nonce: "0x01",
+        });
+        release = paymentLayer.holdVerification();
+        const paying = ownGateway.payPurchase(
+          offered.order.priceOffer.stamp,
+          signed.payment,
+          signed.fingerprint,
+          undefined,
+          { itemId: card.id, params: {} },
+        );
+        await vi.waitFor(() => expect(paymentLayer.verifies).toHaveLength(1));
+        // The pool's one connection, taken while the payment is checked.
+        hog = await owner.pool.connect();
+        release();
+
+        expect(await paying).toStrictEqual({ step: "not_checked_now" });
+        expect(await store.orderById(offered.order.order.id)).toBeNull();
+        expect(await store.paymentClaimHolder(signed.fingerprint)).toBeNull();
+        expect(paymentLayer.settles).toStrictEqual([]);
+        await expect(own.claimPayment("fp-starved", "ord_starved")).rejects.toMatchObject({
+          passing: true,
+          nothingWritten: true,
+        });
+        expect(await store.paymentClaimHolder("fp-starved")).toBeNull();
+      } finally {
+        release?.();
+        hog?.release();
+        await owner.pool.end();
+      }
+    }, 30_000);
+
+    it("answers an admission busy when the merchant's row stays held past its lock wait", async () => {
+      const blocker = await pool.connect();
+      let release: (() => void) | undefined;
+      try {
+        await gateway.poll(A, 0);
+        const card = await store.publishCard(
+          A,
+          { ...syncCard, merchant_item_id: `held-row-${randomUUID()}`, fulfillment: "async" },
+          now,
+        );
+        const offered = await gateway.beginPurchase(card.id, {});
+        if (offered.step !== "pay") throw new Error("no price was offered");
+        const signed = await signedFor(gateway, offered.order, aWallet("the held-row buyer"), {
+          nonce: "0x01",
+        });
+        const before = {
+          verified: facilitator.verifies.length,
+          settled: facilitator.settles.length,
+        };
+        release = facilitator.holdVerification();
+        const paying = gateway.payPurchase(
+          offered.order.priceOffer.stamp,
+          signed.payment,
+          signed.fingerprint,
+          undefined,
+          { itemId: card.id, params: {} },
+        );
+        await vi.waitFor(() => expect(facilitator.verifies).toHaveLength(before.verified + 1));
+        await blocker.query("begin");
+        await blocker.query("select id from merchants where id = $1 for update", [A]);
+        release();
+
+        // Two seconds of lock wait, and room for a slow machine.
+        expect(await settledWithin(paying, 8_000)).toBe(true);
+        expect(await paying).toStrictEqual({ step: "payment_being_checked" });
+        expect(await store.orderById(offered.order.order.id)).toBeNull();
+        expect(await store.paymentClaimHolder(signed.fingerprint)).toBeNull();
+        expect(facilitator.settles).toHaveLength(before.settled);
+      } finally {
+        await blocker.query("rollback").catch(() => undefined);
+        blocker.release();
+        release?.();
+      }
+    }, 30_000);
+
     it("survives the connection holding the lock being terminated under it", async () => {
       // `runAlone` pins a connection and leaves it idle for the whole run, and
       // a checked-out client carries none of the pool's error listeners, so a

@@ -693,12 +693,18 @@ describe("a stamped price and an order born at payment", () => {
     expect(during).toStrictEqual(before);
   });
 
+  /** A store failure as the database adapter describes one that can pass by itself. */
+  const passing = (nothingWritten = false) =>
+    Object.assign(new Error("the store's call failed in the database"), {
+      passing: true,
+      nothingWritten,
+    });
+
   it("tells a payment Agentify failed to check before writing anything to come again", async () => {
     await started();
     const offer = await quote();
     const read = h.store.merchantById.bind(h.store);
-    h.store.merchantById = () =>
-      Promise.reject(new Error("timeout exceeded when trying to connect"));
+    h.store.merchantById = () => Promise.reject(passing());
     const refused = await pay(offer, "0x01");
     h.store.merchantById = read;
 
@@ -710,6 +716,36 @@ describe("a stamped price and an order born at payment", () => {
     const paid = await pay(offer, "0x01");
     expect(paid.status).toBe(200);
     expect(h.facilitator.settles).toHaveLength(1);
+  });
+
+  it("tells a payment whose admission could not get a connection to come again", async () => {
+    await started();
+    const offer = await quote();
+    const admit = h.store.admitOrder.bind(h.store);
+    h.store.admitOrder = () => Promise.reject(passing(true));
+    const refused = await pay(offer, "0x01");
+    h.store.admitOrder = admit;
+
+    expect(refused.status).toBe(503);
+    expect(refused.headers.get("retry-after")).toBe("2");
+    expect(refused.body).toMatchObject({ error: { code: "gateway_failed", retryable: true } });
+    expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
+    expect(h.facilitator.settles).toHaveLength(0);
+  });
+
+  it("refuses for good, saying nothing was charged, a payment Agentify fails on for a reason that will not pass", async () => {
+    await started();
+    const offer = await quote();
+    const read = h.store.merchantById.bind(h.store);
+    h.store.merchantById = () => Promise.reject(new TypeError("a defect, the same every time"));
+    const refused = await pay(offer, "0x01");
+    h.store.merchantById = read;
+
+    expect(refused.status).toBe(500);
+    expect(refused.headers.get("retry-after")).toBeNull();
+    expect(refused.body).toMatchObject({ error: { code: "gateway_failed", retryable: false } });
+    expect(JSON.stringify(refused.body)).toMatch(/nothing was charged/);
+    expect(h.facilitator.verifies).toHaveLength(0);
   });
 
   it("keeps a price valid when its card is published again unchanged", async () => {
