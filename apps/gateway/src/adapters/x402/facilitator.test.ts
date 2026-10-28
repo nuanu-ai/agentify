@@ -160,6 +160,71 @@ const namesNoOffer = (): string =>
     payload: signed(),
   } as unknown as PaymentPayload);
 
+describe("a refusal that does not say why, of a payment from a wallet that cannot pay", () => {
+  // The live facilitator refuses an empty wallet's payment with a code that
+  // names no cause. The payer's balance, read once, says whether funding the
+  // wallet is the way through.
+  const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+  /** The facilitator refusing with `code`, and a chain holding `held` for the payer. */
+  const refusedHolding = async (code: string | undefined, held: bigint | Error) => {
+    const read: (readonly [string, string])[] = [];
+    const answered = await new X402Facilitator(
+      new Answering({
+        verify: { isValid: false, ...(code === undefined ? {} : { invalidReason: code }) },
+      }),
+      recovery,
+      {
+        balance: async (token, wallet) => {
+          read.push([token, wallet]);
+          if (held instanceof Error) throw held;
+          return held;
+        },
+      },
+    ).verify(charge(honest()));
+    return { answered, read };
+  };
+
+  it.each([
+    "invalid_exact_evm_transaction_simulation_failed",
+    "a_code_nobody_has_documented",
+    undefined,
+  ])("names insufficient funds where the payer holds less than the price (%s)", async (code) => {
+    const { answered, read } = await refusedHolding(code, 79_999_999n);
+
+    expect(answered).toMatchObject({ verified: false, reason: "insufficient_funds" });
+    expect(read).toStrictEqual([[USDC_SEPOLIA, PAYER]]);
+  });
+
+  it("keeps the cause unknown where the payer holds the price", async () => {
+    const { answered } = await refusedHolding(
+      "invalid_exact_evm_transaction_simulation_failed",
+      80_000_000n,
+    );
+    expect(answered).toMatchObject({ verified: false, reason: "unexplained" });
+  });
+
+  it("keeps the cause unknown where the balance could not be read", async () => {
+    const { answered } = await refusedHolding(
+      "invalid_exact_evm_transaction_simulation_failed",
+      new Error("the chain endpoint did not answer"),
+    );
+    expect(answered).toMatchObject({ verified: false, reason: "unexplained" });
+  });
+
+  it.each([
+    ["invalid_exact_evm_payload_signature", { reason: "signature" }],
+    ["invalid_network", { verified: "unknown", cause: "refused_agentify" }],
+  ] as const)(
+    "reads no balance for a refusal whose code names its cause (%s)",
+    async (code, kept) => {
+      const { answered, read } = await refusedHolding(code, 0n);
+      expect(answered).toMatchObject(kept);
+      expect(read).toStrictEqual([]);
+    },
+  );
+});
+
 describe("verifying a payment", () => {
   it("saves the signed recovery profile and the time the chain search starts from", async () => {
     const client = new Answering();
