@@ -22,8 +22,10 @@ Postgres (ADR-0003 §3, §4), and pg-boss accepts a handle that runs one
 statement, so the job is inserted inside the store's transaction and commits or
 rolls back with the order. The store's port names four such writes: an
 envelope on a merchant's stream (a hand-over, a redelivery, a merchant event);
-a receipt, our own row keyed by its order; the deletion of the envelopes that
-carry a parcel's address (ADR-0032); and the reminder that a hand-over went
+a receipt, our own row keyed by its order; the deletion of an order's envelopes
+still waiting on its merchant's stream, which removes a parcel's address once
+it is no longer needed (ADR-0032) and withdraws repeats once the merchant takes
+the order on; and the reminder that a hand-over went
 unanswered, written with the record of that hand-over because nothing else
 would ever hand the order over again. Acceptance also retains the payment
 authorization's ownership in that transaction, so it can never pay another

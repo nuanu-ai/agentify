@@ -511,7 +511,8 @@ integration: for code against the SDK, every key by its label with when it was
 issued and last used, a working key with the action Disable; for a connected
 shop, its address, when it connected and the permissions it granted, and any
 order whose shop order is uncertain, which the merchant recovers from their
-own Orders. The fourth is the admission, with the action that changes it:
+own Orders. A sale whose shop never answered, so nothing was sent to it, is not
+listed there; the merchant creates it from their own Orders. The fourth is the admission, with the action that changes it:
 "Admit to live sales" for a merchant not admitted, behind a checkbox that
 names the consequence; for one admitted, when, and the action "Withdraw
 admission", which opens in place a required note, which the merchant reads on

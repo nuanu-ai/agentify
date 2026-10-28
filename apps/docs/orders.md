@@ -220,6 +220,10 @@ why an asynchronous handler takes the order on at once and does the work
 outside the handler, and why a synchronous handler slower than {{handler-answer}}
 has to expect the same order twice.
 
+Once your process takes an order on, a repeat of it still waiting to be handed
+to you is withdrawn. A repeat handed over before your acceptance reached us
+still arrives, and you answer it as you answer every repeat.
+
 ## Confirming a delivery with a separate call
 
 You finish an order you took on with `deliver`, once the delivery is done.
