@@ -56,10 +56,13 @@ request that finds no place within a short wait is refused with
 `seller_busy`, HTTP 429 and `Retry-After: 2`, before anything is charged, and
 the agent sends the same request with the same payment again. A payment
 signed by the paying wallet's own key, from a wallet holding less than the
-price, is refused at once with words telling the agent to fund it. A payment
-whose signature is not that wallet's own key, as a contract wallet's is, waits
-in a small line of its own, so a flood of payments nobody can vouch for never
-stands in front of a buyer whose wallet can pay. While one
+price, is refused at once with words telling the agent to fund it, and so is
+an authorization that is not valid yet, has been used, or carries a signature
+the token refuses. A payment whose signature is not that wallet's own key, as
+a contract wallet's is, and one whose wallet's balance could not be read, wait
+in a small line of their own. In either line one wallet holds at most one place
+and waits for at most one more, so holding several places in front of a buyer
+takes several wallets, each holding the price. While one
 request for a price is being checked, another for the same price is refused
 with `payment_not_taken`, marked retryable, with `Retry-After: 2`. That
 answer does not say whether the first request will be charged, so the agent
