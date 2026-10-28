@@ -17,6 +17,25 @@ export class SnapshotUnavailable extends Error {
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 const HTTP_LABELS = ["component", "route", "method", "status_class", "traffic"];
 
+/**
+ * From five milliseconds to two hundred seconds, so one scale reads a database
+ * write, a facilitator round trip and a payment made at the end of its price's
+ * term.
+ */
+const SERVICE_SECONDS = [
+  0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 20, 30, 60, 90, 120, 150, 180, 200,
+];
+
+/** Seconds of one kind of work, by labels whose values come from a short fixed list. */
+export interface Durations {
+  observe(labels: Readonly<Record<string, string>>, seconds: number): void;
+}
+
+/** Occurrences of one kind of event, by labels whose values come from a short fixed list. */
+export interface Occurrences {
+  inc(labels: Readonly<Record<string, string>>): void;
+}
+
 export class Telemetry {
   readonly registry = new Registry();
   readonly #now: () => number;
@@ -84,6 +103,48 @@ export class Telemetry {
       help: "Process start timestamp",
       registers: [this.registry],
     }).set((Date.now() - process.uptime() * 1_000) / 1_000);
+  }
+
+  /**
+   * A histogram of seconds on this registry. A value that cannot be recorded
+   * is dropped, so the work being measured never fails because of it.
+   */
+  durations(name: string, help: string, labelNames: readonly string[]): Durations {
+    const histogram = new Histogram({
+      name,
+      help,
+      labelNames: [...labelNames],
+      buckets: SERVICE_SECONDS,
+      registers: [this.registry],
+    });
+    return {
+      observe: (labels, seconds) => {
+        try {
+          histogram.observe({ ...labels }, seconds);
+        } catch {
+          /* Telemetry cannot break the work it measures. */
+        }
+      },
+    };
+  }
+
+  /** A counter on this registry, dropping what it cannot record as `durations` does. */
+  occurrences(name: string, help: string, labelNames: readonly string[]): Occurrences {
+    const counter = new Counter({
+      name,
+      help,
+      labelNames: [...labelNames],
+      registers: [this.registry],
+    });
+    return {
+      inc: (labels) => {
+        try {
+          counter.inc({ ...labels });
+        } catch {
+          /* Telemetry cannot break the work it counts. */
+        }
+      },
+    };
   }
 
   observeHttp(
