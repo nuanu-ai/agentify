@@ -167,7 +167,11 @@ describe("a refusal that does not say why, of a payment from a wallet that canno
   const USDC_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
 
   /** The facilitator refusing with `code`, and a chain holding `held` for the payer. */
-  const refusedHolding = async (code: string | undefined, held: bigint | Error) => {
+  const refusedHolding = async (
+    code: string | undefined,
+    held: bigint | Error,
+    returnsAPaidOrder = false,
+  ) => {
     const read: (readonly [string, string])[] = [];
     const answered = await new X402Facilitator(
       new Answering({
@@ -184,7 +188,7 @@ describe("a refusal that does not say why, of a payment from a wallet that canno
           throw new Error("not asked by the payment layer");
         },
       },
-    ).verify(charge(honest()));
+    ).verify({ ...charge(honest()), ...(returnsAPaidOrder ? { returnsAPaidOrder } : {}) });
     return { answered, read };
   };
 
@@ -197,6 +201,17 @@ describe("a refusal that does not say why, of a payment from a wallet that canno
 
     expect(answered).toMatchObject({ verified: false, reason: "insufficient_funds" });
     expect(read).toStrictEqual([[USDC_SEPOLIA, PAYER]]);
+  });
+
+  it("never tells a buyer getting back a paid order to fund the wallet", async () => {
+    // Getting a purchase back never depends on the wallet's balance.
+    const { answered, read } = await refusedHolding(
+      "invalid_exact_evm_transaction_simulation_failed",
+      0n,
+      true,
+    );
+    expect(answered).toMatchObject({ verified: false, reason: "unexplained" });
+    expect(read).toStrictEqual([]);
   });
 
   it("keeps the cause unknown where the payer holds the price", async () => {
