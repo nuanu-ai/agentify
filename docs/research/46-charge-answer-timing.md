@@ -59,13 +59,16 @@ merchant integration has to change.
 
 Nothing else on the synchronous path assumes a shorter wait. The HTTP client of
 `@x402/core` (version 2.23.0) times a facilitator call out after thirty seconds
-by default, and the gateway does not change that. Neither Caddy configuration
+by default. The gateway passes both of its timeouts explicitly: a charge gives
+up after thirty seconds, the library's default written down, and a payment
+check after ten, because a check holds one of its merchant's places for
+payment checks while it waits. Neither Caddy configuration
 in `deploy/` sets a proxy timeout, and the merchant's worker already holds a
 poll open for twenty-five seconds through the same proxies. Node's own HTTP
 server allows a request three hundred seconds, and the gateway sets no other
 limit. On an order paid before its goods the purchase call does not wait on
 the deadline at all: it waits for the facilitator's answer itself, bounded by
-that thirty-second client.
+the thirty seconds a charge is given.
 
 The authorisation an agent signs has to outlive the charge as well. The x402
 reference client signs one valid for the challenge's `maxTimeoutSeconds`,
