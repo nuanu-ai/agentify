@@ -704,7 +704,7 @@ async function answerPurchase(
         SERVICE_UNAVAILABLE,
         refusal(
           "gateway_failed",
-          "Agentify could not check this payment just now, so it was not used and nothing was charged for it; send the same request again in a few seconds",
+          "Agentify could not take this payment just now, so it was not used and nothing was charged for it; send the same request again in a few seconds",
           { retryable: true },
         ),
       );

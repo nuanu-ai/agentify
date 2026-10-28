@@ -357,8 +357,8 @@ export type PurchaseAttempt =
    */
   | { readonly step: "payment_being_checked" }
   /**
-   * The payment could not be checked because something on Agentify's side
-   * failed before anything was written; it was not used.
+   * The payment could not be checked or taken because something on Agentify's
+   * side failed for a moment before anything was written; it was not used.
    */
   | { readonly step: "not_checked_now" }
   /**
@@ -2435,6 +2435,8 @@ export class Gateway {
       case "busy":
       case "existing":
         return { step: "payment_being_checked" };
+      case "held_up":
+        return { step: "not_checked_now" };
       case "payment_already_spent":
         return { step: "payment_already_spent" };
       case "off_sale":

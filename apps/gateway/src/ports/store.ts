@@ -153,6 +153,8 @@ export type AdmissionResult =
   | { readonly kind: "existing"; readonly order: StoredOrder }
   /** Another admission of the same price holds it right now; nothing was written. */
   | { readonly kind: "busy" }
+  /** A merchant or card row it must hold stayed held elsewhere past its wait; nothing was written. */
+  | { readonly kind: "held_up" }
   | { readonly kind: "payment_already_spent" }
   /** The seller moved to the other integration, or `standing` said `off_sale`. */
   | { readonly kind: "off_sale" }
@@ -1019,8 +1021,8 @@ export interface Store {
    * connection commits nothing. Nothing slow happens inside it, and nothing
    * outside the database: the caller verifies before and charges after.
    * Where it never began, for want of a connection, it throws a failure
-   * saying nothing was written ({@link StoreFailureFacts}); where a lock it
-   * waits for is not granted in time, it answers busy.
+   * saying nothing was written ({@link StoreFailureFacts}); where a row lock
+   * it waits for is not granted in time, it answers held up.
    */
   admitOrder(accepted: AdmittedOrder): Promise<AdmissionResult>;
 

@@ -958,7 +958,7 @@ export class PostgresStore implements Store {
     try {
       result = await this.#db.transaction(async (tx): Promise<AdmissionResult> => {
         begun = true;
-        // A merchant or card row held elsewhere answers busy rather than
+        // A merchant or card row held elsewhere answers held up rather than
         // keeping the buyer, and this transaction's connection, waiting.
         await tx.execute(sql`set local lock_timeout = '2s'`);
         const held = await tx.execute<{ got: boolean }>(sql`
@@ -1032,7 +1032,7 @@ export class PostgresStore implements Store {
       });
     } catch (thrown) {
       if (!begun) throw notBegun(`admitting the order ${id}`, thrown);
-      if (serverCodeOf(thrown) === LOCK_NOT_GRANTED) return { kind: "busy" };
+      if (serverCodeOf(thrown) === LOCK_NOT_GRANTED) return { kind: "held_up" };
       const refused = uniquenessRefused(thrown);
       if (refused === null) throw thrown;
       if (refused.constraint === BUYER_KEY_TAKEN)
