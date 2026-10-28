@@ -1892,10 +1892,11 @@ export class Gateway {
     let reference: string | undefined;
     let unavailable = false;
     if (priceCheckOf(stored.card) === "merchant") {
-      const place = await this.#priceGate.enter(
+      const entered = await this.#priceGate.enter(
         stored.merchantId,
         Math.min(PRICE_PLACE_WAIT_MS, this.runtime.config.deadlines.quoteResponseMs / 2),
       );
+      const place = typeof entered === "function" ? entered : null;
       if (place === null) gateRefused("price");
       // A synchronous card with no place sells at its card price, as in a silence.
       if (place === null && order.mode.settle !== "after_fulfillment") {
@@ -2182,19 +2183,24 @@ export class Gateway {
 
   /**
    * Runs one check with the payment layer once this merchant has a place for
-   * it in `lane`, or answers null when no place came in time. Other
+   * it in `lane`, or answers the refusal for why no place came in time. Other
    * merchants' checks never take this merchant's places.
    */
-  async #checked<T>(
+  async #checked<T extends object>(
     merchantId: string,
     waits: { readonly lane: PaymentLane; readonly payer: string },
     check: () => Promise<T>,
-  ): Promise<T | null> {
+  ): Promise<T | { readonly refused: PurchaseAttempt }> {
     const gate = waits.lane === "proven" ? this.#paymentGate : this.#unprovenGate;
     const place = await gate.enter(merchantId, PAYMENT_PLACE_WAIT_MS, waits.payer);
-    if (place === null) {
+    if (typeof place !== "function") {
       gateRefused(waits.lane);
-      return null;
+      return {
+        refused: {
+          step: "seller_busy",
+          why: place === "payer" ? WALLETS_PAYMENT_BEING_CHECKED : PAYMENT_CHECKS_FULL,
+        },
+      };
     }
     try {
       return await check();
@@ -2344,7 +2350,7 @@ export class Gateway {
       const checked = await this.#checked(offer.merchantId, lane, () =>
         this.#verify(charge, lane.lane),
       );
-      if (checked === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
+      if ("refused" in checked) return checked.refused;
       if (checked.verified !== true) {
         logVerificationRefusal(checked, "price", offer.priceId);
         return verificationRefusal(checked);
@@ -2413,7 +2419,7 @@ export class Gateway {
     const verified = await this.#checked(offer.merchantId, lane, () =>
       this.#verify(charge, lane.lane),
     );
-    if (verified === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
+    if ("refused" in verified) return verified.refused;
     if (verified.verified !== true) {
       logVerificationRefusal(verified, "price", offer.priceId);
       return verificationRefusal(verified);
@@ -2621,7 +2627,7 @@ export class Gateway {
           )),
       };
     });
-    if (checked === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
+    if ("refused" in checked) return checked.refused;
     const { verified } = checked;
     const onlyReturns = checked.here || payTo.toLowerCase() !== payeeNow?.toLowerCase();
 
@@ -3743,6 +3749,13 @@ const MERCHANT_SAID_UNAVAILABLE =
 
 const PAYMENT_CHECKS_FULL =
   "this seller has as many payments being checked as Agentify checks at once, so this payment was not used and nothing was charged for it; send the same request with the same payment again in a few seconds";
+
+/**
+ * One wallet holds one place and one place in line at a seller, so its next
+ * payment waits on its own, however idle the seller is.
+ */
+const WALLETS_PAYMENT_BEING_CHECKED =
+  "this wallet already has a payment being checked at this seller, and Agentify checks one wallet's payments to a seller one after another, so this payment was not used and nothing was charged for it; send the same request with the same payment again once that payment has its answer";
 
 /** The adapter supplies safe diagnostics; its external refusal message can contain private payment bytes. */
 function logVerificationRefusal(

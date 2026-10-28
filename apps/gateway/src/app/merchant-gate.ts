@@ -24,6 +24,12 @@ interface Line {
   readonly waiting: Waiter[];
 }
 
+/**
+ * Why a caller got no place: the merchant's places and line stayed taken, or
+ * the payer it acts for already has a payment of its own in this line.
+ */
+export type NoPlace = "full" | "payer";
+
 export interface GateLimits {
   /** How many places one merchant may hold at once. */
   readonly atOnce: number;
@@ -42,13 +48,14 @@ export class MerchantGate {
   }
 
   /**
-   * A place for one piece of this merchant's work, or null when none came
-   * within `waitMs`. A payer already waiting in this line is turned away at
-   * once, and one holding a place waits until it gives that place back. The
+   * A place for one piece of this merchant's work, or why none came within
+   * `waitMs`. A payer already waiting in this line is turned away at once, and
+   * one holding a place waits until it gives that place back; either is the
+   * payer's refusal, unless the merchant's places were taken as well. The
    * function returned gives the place back; calling it twice gives back one
    * place.
    */
-  enter(merchantId: string, waitMs: number, payer?: string): Promise<(() => void) | null> {
+  enter(merchantId: string, waitMs: number, payer?: string): Promise<(() => void) | NoPlace> {
     const line = this.#lineOf(merchantId);
     const alreadyWaiting = payer !== undefined && line.waiting.some((one) => one.payer === payer);
     if (
@@ -58,9 +65,10 @@ export class MerchantGate {
     ) {
       return Promise.resolve(this.#admit(merchantId, line, payer));
     }
-    if (alreadyWaiting || waitMs <= 0 || line.waiting.length >= this.#limits.waitingAtMost) {
+    if (alreadyWaiting) return Promise.resolve("payer");
+    if (waitMs <= 0 || line.waiting.length >= this.#limits.waitingAtMost) {
       this.#forgetIfIdle(merchantId, line);
-      return Promise.resolve(null);
+      return Promise.resolve("full");
     }
     return new Promise((resolve) => {
       const waiter: Waiter = {
@@ -70,7 +78,7 @@ export class MerchantGate {
           const place = line.waiting.indexOf(waiter);
           if (place >= 0) line.waiting.splice(place, 1);
           this.#forgetIfIdle(merchantId, line);
-          resolve(null);
+          resolve(this.#admissible(line, undefined) ? "payer" : "full");
         }, waitMs),
       };
       line.waiting.push(waiter);

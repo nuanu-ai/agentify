@@ -198,7 +198,7 @@ export class PayerReads {
     const reader = this.#read();
     if (reader === undefined) return null;
     const place = await this.#places.enter(merchantId, PAYER_READ_PLACE_WAIT_MS);
-    if (place === null) {
+    if (typeof place !== "function") {
       gateRefused("payer_read");
       return null;
     }
