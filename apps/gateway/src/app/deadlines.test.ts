@@ -9,6 +9,7 @@ import {
   harness,
   workUntilStopped,
 } from "../testing/harness.js";
+import { SETTLE_REQUEST_MS } from "./payment-window.js";
 
 /** The buyer, for the one test here that turns on which wallet signed. */
 const BUYER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -303,6 +304,31 @@ describe("the wait for the charge", () => {
     const order = await state(harnessed, orderId);
     expect(order?.payment).toBe("settled");
     expect(order?.closure).toBeNull();
+  });
+});
+
+describe("a charge confirmed late in its request", () => {
+  it("counts on a card charged at purchase, which is then handed to the merchant", async () => {
+    // A charge request may take its full time; one confirmed just before that
+    // is a paid order the merchant fulfils, not one closed as unknown and
+    // reopened unfulfilled.
+    const harnessed = await started();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { orderId, stamp } = await priced(harnessed, asyncCard);
+    const release = harnessed.facilitator.holdSettle();
+    const paying = harnessed.gateway.payPurchase(stamp, "PAYMENT", "PAYMENT");
+    await vi.advanceTimersByTimeAsync(0);
+
+    harnessed.advance(SETTLE_REQUEST_MS - 1);
+    await vi.advanceTimersByTimeAsync(SETTLE_REQUEST_MS - 1);
+    release();
+    await paying;
+
+    const order = await state(harnessed, orderId);
+    expect(order?.payment).toBe("settled");
+    expect(order?.closure).toBeNull();
+    const handover = await harnessed.gateway.poll(harnessed.merchant.id, 0);
+    expect(handover.envelopes.map((envelope) => envelope.kind)).toStrictEqual(["order"]);
   });
 });
 

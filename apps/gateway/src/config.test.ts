@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { SETTLE_REQUEST_MS } from "./app/payment-window.js";
 import {
   isSandboxFacilitator,
   loadConfig,
@@ -501,6 +502,17 @@ describe("loadConfig", () => {
     expect(() =>
       loadConfig({ ...required, SYNC_RESPONSE_MS: "12000", SETTLE_RESPONSE_MS: "8000" }),
     ).not.toThrow();
+  });
+
+  it("refuses a wait for the charge before the goods that ends before the charge request can answer", () => {
+    // An order charged before its goods closes as unknown once this wait is
+    // over, and a charge confirmed after that leaves it paid and never handed
+    // to the merchant. The refusal names both numbers.
+    const refused = refusalFor({ SETTLE_BEFORE_GOODS_MS: "20000" });
+    for (const owed of ["charge", "20000ms", `${SETTLE_REQUEST_MS}ms`]) {
+      expect(refused, refused).toContain(owed);
+    }
+    expect(() => loadConfig(required)).not.toThrow();
   });
 
   it("refuses a synchronous answer too short to deliver an order a second time", () => {
