@@ -1,12 +1,35 @@
 /**
  * How long an agent's payment authorisation has to stay valid, worked out from
- * the deadlines in one place: for the challenge that asks for it, and for the
- * check that holds a presented payment to it.
+ * the deadlines and the waits on a payment's path in one place: for the
+ * challenge that asks for it, and for the check that holds a presented
+ * payment to it.
  */
 
 import type { GatewayConfig } from "../config.js";
 
 type Deadlines = Pick<GatewayConfig["deadlines"], "quoteTtlMs" | "syncResponseMs">;
+
+/**
+ * How long a wallet's balance read may take. It runs before a payment is
+ * checked, and again while a payment's refusal is on its way to the buyer,
+ * so it gives up early and the payment, or its refusal, goes on as it was.
+ */
+export const BALANCE_READ_MS = 2_000;
+
+/** How long a payment waits for a place among its merchant's checks before it is sent back. */
+export const PAYMENT_PLACE_WAIT_MS = 2_000;
+
+/**
+ * How long a payment check may take. It holds one of its merchant's places
+ * for payment checks while it waits, so it gives up well before a charge does.
+ */
+export const VERIFY_REQUEST_MS = 10_000;
+
+/**
+ * How long a charge may take: the library's own thirty seconds, which the
+ * charge deadlines in research 46 are set against, written down here.
+ */
+export const SETTLE_REQUEST_MS = 30_000;
 
 /**
  * How close to its end the exact-EVM facilitator lets an authorisation come: it

@@ -112,7 +112,7 @@ import {
   setServiceName,
 } from "./merchants.js";
 import { PayerReads, payerOf } from "./payer-proof.js";
-import { validityNeededAfterCheckMs } from "./payment-window.js";
+import { PAYMENT_PLACE_WAIT_MS, validityNeededAfterCheckMs } from "./payment-window.js";
 import {
   decodePriceStamp,
   orderIdForPrice,
@@ -190,9 +190,6 @@ const UNPROVEN_CHECKS_AT_ONCE = 2;
 
 /** How many such payments may wait in one merchant's line. */
 const UNPROVEN_CHECKS_WAITING_AT_MOST = 4;
-
-/** How long a payment waits for a place among its merchant's checks before it is sent back. */
-const PAYMENT_PLACE_WAIT_MS = 2_000;
 
 /**
  * How stale a key's last-used mark may get before a call refreshes it, so a

@@ -9,19 +9,13 @@ import {
   type Transport,
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
+import { BALANCE_READ_MS } from "../../app/payment-window.js";
 import type { PaymentChain, TokenBalances } from "../../ports/payment-chain.js";
 
 const EIP3009 = parseAbi([
   "function authorizationState(address authorizer, bytes32 nonce) view returns (bool)",
 ]);
 const ERC20 = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
-
-/**
- * How long a balance read may take. It runs while a payment's refusal is on
- * its way to the buyer, inside the merchant's place for payment checks, so it
- * gives up early and the refusal goes out as it was.
- */
-const BALANCE_READ_MS = 2_000;
 
 /**
  * The chain `network` read through `rpcUrl`, the endpoint payment recovery
