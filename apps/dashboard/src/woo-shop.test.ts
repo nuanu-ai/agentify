@@ -2338,6 +2338,129 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     expect(opened).toBe(9);
   });
 
+  it.each([
+    [
+      "WooCommerce's own rate limit",
+      () =>
+        Response.json(
+          { code: "rate_limit_exceeded", message: "Too many requests. Please wait and try again." },
+          { status: 429 },
+        ),
+    ],
+    ["a proxy's rate limit", () => new Response("<html>Too Many Requests</html>", { status: 429 })],
+    ["a firewall's page", () => new Response("<html>Access denied</html>", { status: 403 })],
+  ])("keeps a cart whose change was turned away before it ran: %s", async (_case, turnedAway) => {
+    let turned = false;
+    const shop = aShopOfSessions((path) => {
+      if (!path.endsWith("/add-item") || turned) return null;
+      turned = true;
+      return turnedAway();
+    });
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      memoryWooShops(),
+    );
+    expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false, again: true });
+    expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+    expect(shop.sessions()).toBe(1);
+  });
+
+  it("asks a paid question again in another cart when the shop refuses a cart's session", async () => {
+    const resources = memoryWooShops();
+    const shop = aShopOfSessions((path, token) =>
+      token === "rotated-away" && path !== "/wp-json/wc/store/v1/cart"
+        ? Response.json(
+            {
+              code: "woocommerce_rest_missing_nonce",
+              message: "Missing the Nonce header. This endpoint requires a valid nonce.",
+            },
+            { status: 401 },
+          )
+        : null,
+    );
+    const at = new Date();
+    await resources.startCartRuntime("https://woo.nuanu.ai", "earlier-worker");
+    for (const [slot, token] of [
+      [0, "rotated-away"],
+      [1, "session-1"],
+    ] as const) {
+      await resources.claimCart(
+        "https://woo.nuanu.ai",
+        "earlier-worker",
+        "paid",
+        slot,
+        `c${slot}`,
+        at,
+      );
+      await resources.finishCart(
+        "https://woo.nuanu.ai",
+        "earlier-worker",
+        "paid",
+        slot,
+        `c${slot}`,
+        {
+          token,
+          expiresAt: null,
+        },
+      );
+    }
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      resources,
+    );
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
+      ok: true,
+      rates: [{ cost: "5.00" }],
+    });
+    expect(
+      await resources.claimCart("https://woo.nuanu.ai", "next-worker", "paid", 0, "after", at),
+    ).toEqual({
+      kind: "stale",
+    });
+    await resources.startCartRuntime("https://woo.nuanu.ai", "next-worker");
+    expect(
+      await resources.claimCart("https://woo.nuanu.ai", "next-worker", "paid", 0, "after", at),
+    ).toMatchObject({ kind: "new" });
+  });
+
+  it("says a paid question is worth asking again when the shop refuses every cart's session", async () => {
+    const resources = memoryWooShops();
+    const shop = aShopOfSessions((path, token) =>
+      token !== null && path !== "/wp-json/wc/store/v1/cart"
+        ? Response.json(
+            { code: "woocommerce_rest_missing_nonce", message: "Missing the Nonce header." },
+            { status: 401 },
+          )
+        : null,
+    );
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      resources,
+    );
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
+      ok: false,
+      again: true,
+    });
+  });
+
+  it("says a paid question is worth asking again when a cart change met a page that is not the shop's", async () => {
+    const shop = aShopOfSessions((path) =>
+      path.endsWith("/add-item") ? new Response("<html>Not Found</html>", { status: 404 }) : null,
+    );
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      memoryWooShops(),
+    );
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
+      ok: false,
+      again: true,
+    });
+  });
+
   it("keeps concurrent cities in separate carts and cleans both before reuse", async () => {
     const carts = new Map<string, { held: boolean; city: string }>();
     const together = Promise.withResolvers<void>();
