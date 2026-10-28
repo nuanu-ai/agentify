@@ -26,8 +26,15 @@ import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { paymentChainOn } from "../adapters/x402/payment-chain.js";
-import { Gateway } from "../app/gateway.js";
-import { grantLiveApproval, issueKey, keyDigest, setServiceName } from "../app/merchants.js";
+import { Gateway, type PricedPurchase } from "../app/gateway.js";
+import {
+  grantLiveApproval,
+  issueKey,
+  keyDigest,
+  setSellerSite,
+  setServiceName,
+} from "../app/merchants.js";
+
 import type { Runtime } from "../app/runtime.js";
 import { type GatewayConfig, loadConfig } from "../config.js";
 import { buildApp } from "../http/server.js";
@@ -60,6 +67,7 @@ export const countedIds = (): Ids => {
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
   loadConfig({
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
     ...overrides,
   });
 
@@ -127,6 +135,8 @@ export async function harness(
     readonly ids?: Ids;
     /** What the chain says a payout would bring; none is asked by default. */
     readonly payoutCheck?: PayoutCheck;
+    /** Seeded merchants have a site unless a missing-site case requests null. */
+    readonly sellerSite?: string | null;
   } = {},
 ): Promise<Harness> {
   // Moves only on `advance`, so deadlines are arithmetic to check by eye. The
@@ -180,6 +190,9 @@ export async function harness(
     // about that moves the clock past the guard.
     await store.noteContact(made.id, now);
     await setServiceName(store, made.id, name, now);
+    if (options.sellerSite !== null) {
+      await setSellerSite(store, made.id, options.sellerSite ?? "https://shop.example", now);
+    }
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
     const wallet = aSeededWallet();
@@ -490,20 +503,15 @@ function encoded(
  */
 export async function signedFor(
   worked: { readonly runtime: Runtime },
-  order: StoredOrder,
+  order: StoredOrder | PricedPurchase,
   wallet: LocalAccount,
   terms: Omit<SignedTerms, "validBefore"> & { readonly validBefore?: number },
 ): Promise<{ readonly payment: string; readonly fingerprint: string }> {
   const { config, clock } = worked.runtime;
   const edge = new PaymentEdge(config);
-  const price = order.order.price;
-  if (price === null) throw new Error(`${order.order.id} has no price to sign for`);
-  // An order not paid yet has no address of its own, so the test names one.
-  const requirements = edge.requirementsFor(
-    price,
-    order.order.id,
-    order.payTo ?? terms.payTo ?? null,
-  );
+  const requirements = order.priceOffer?.requirements;
+  if (requirements === undefined)
+    throw new Error(`${order.order.id} has no saved offer to sign for`);
   const payment = await signedPayment(wallet, requirements, {
     validBefore: clock() + requirements.maxTimeoutSeconds * 1_000,
     ...terms,

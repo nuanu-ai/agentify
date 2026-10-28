@@ -172,6 +172,7 @@ describe("what delivering or refusing an order answers with", () => {
       "accepted",
       "delivered",
       "already_delivered",
+      "already_delivered_other_goods",
       "delivered_late",
       "refused",
       "purchase_already_closed",

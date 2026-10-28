@@ -80,7 +80,7 @@ const freshMerchant = async (harnessed: Harness): Promise<{ merchantId: string; 
 
 const name = async (served: Served, key: string): Promise<void> => {
   const named = await served.call("POST", "/v0/seller-name", {
-    body: { seller_name: "Their own shop" },
+    body: { seller_name: "Their own shop", seller_site: "https://shop.example" },
     headers: bearer(key),
   });
   expect(named.status, JSON.stringify(named.body)).toBe(200);
@@ -109,37 +109,6 @@ const existingCardWithoutApproval = async (
   await payTo(harnessed, merchantId);
   const stored = await harnessed.store.publishCard(merchantId, body, harnessed.now());
   return { itemId: stored.id, key, merchantId };
-};
-
-/**
- * An order accepted before approval existed, owned by a merchant the migration
- * left unapproved. The order machine makes the record; only its owner is
- * rewritten.
- */
-const acceptedOrderWithoutApproval = async (
-  harnessed: Harness,
-  served: Served,
-  body: Card,
-): Promise<{ readonly merchantId: string; readonly orderId: string }> => {
-  const published = await harnessed.gateway.publishCard(harnessed.merchant.id, body);
-  if (!published.ok) {
-    throw new Error("the approved fixture merchant could not publish the source card");
-  }
-  const offered = await harnessed.gateway.beginPurchase(published.id, {});
-  if (offered.step !== "pay") {
-    throw new Error("the source order was not accepted and priced");
-  }
-  const historical = await existingCardWithoutApproval(harnessed, served, body);
-  const orderId = harnessed.runtime.ids("ord");
-  await harnessed.store.addOrder({
-    ...offered.order,
-    merchantId: historical.merchantId,
-    itemId: historical.itemId,
-    merchantItemId: body.merchant_item_id,
-    buyerKey: harnessed.runtime.ids("bk"),
-    order: { ...offered.order.order, id: orderId },
-  });
-  return { merchantId: historical.merchantId, orderId };
 };
 
 describe("live publication before operator approval", () => {
@@ -250,68 +219,6 @@ describe("an existing card before operator approval", () => {
   });
 });
 
-describe("an order accepted before operator approval existed", () => {
-  it("still verifies payment, delivers, settles and writes its receipt", async () => {
-    const { served, harnessed } = await started();
-    const { merchantId, orderId } = await acceptedOrderWithoutApproval(
-      harnessed,
-      served,
-      card("accepted-room"),
-    );
-    expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
-
-    const worker = workUntilStopped(harnessed, {
-      merchantId,
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    const bought = await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    await worker.stop();
-
-    expect(bought.step).toBe("settled");
-    if (bought.step !== "settled") throw new Error("the accepted order did not settle");
-    expect(bought.order.order.state).toBe("delivered");
-    expect(bought.delivery).toStrictEqual({ access_code: "SESAME" });
-    expect(
-      (
-        (await harnessed.store.receipts(merchantId)).find(
-          (receipt) => receipt.order_id === orderId,
-        ) ?? null
-      )?.outcome,
-    ).toBe("delivered");
-    expect(harnessed.facilitator.verifies).toHaveLength(1);
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-    expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
-  });
-
-  it("still leaves a paid asynchronous order unfulfilled when it is refused", async () => {
-    const { served, harnessed } = await started();
-    const { merchantId, orderId } = await acceptedOrderWithoutApproval(
-      harnessed,
-      served,
-      asyncCard("accepted-esim"),
-    );
-    expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
-
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
-    await workOnce(harnessed, { merchantId, onOrder: () => ({ accepted: {} }) });
-    const refused = await harnessed.gateway.refuseOrder(merchantId, orderId, {
-      code: "out_of_stock",
-      message: "the supplier has none",
-    });
-
-    expect(refused).toStrictEqual({ ok: true, result: "refused" });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
-    expect(
-      (await harnessed.store.receipts(merchantId)).find(
-        (receipt) => receipt.order_id === orderId,
-      ) ?? null,
-    ).toBeNull();
-    expect(harnessed.facilitator.verifies).toHaveLength(1);
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-    expect((await harnessed.store.merchantById(merchantId))?.liveApprovedAt).toBeNull();
-  });
-});
-
 describe("a live approval the operator withdraws", () => {
   // A withdrawal is a pause of the merchant's live sales, not a cancellation:
   // nothing new is sold or published, and what was already sold plays out.
@@ -333,7 +240,13 @@ describe("a live approval the operator withdraws", () => {
     const offered = await harnessed.gateway.beginPurchase(seller.itemId, {});
     if (offered.step !== "pay") throw new Error("the approved seller's card offered no price");
     const openOrder = offered.order.order.id;
-    await harnessed.gateway.payPurchase(openOrder, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await workOnce(harnessed, { merchantId: seller.merchantId, onOrder: () => ({ accepted: {} }) });
     const never = await existingCardWithoutApproval(harnessed, served, asyncCard("an-esim"));
 
@@ -383,10 +296,9 @@ describe("a live approval the operator withdraws", () => {
     ["a pause of all selling", "pause" as const],
     ["a withdrawal", "withdraw" as const],
   ])(
-    "lets an order priced before %s be paid within its price window and sold",
+    "refuses an unconsumed offer priced before %s before verification or charge",
     async (_what, how) => {
-      // A withdrawal stops what is new exactly where a pause does; a buyer who
-      // already holds a price is not refused at payment by either.
+      // A stamped price has not opened an order; current admission still applies.
       const { served, harnessed } = await started();
       const seller = await approvedSeller(harnessed, served, card("a-room"));
       const offered = await harnessed.gateway.beginPurchase(seller.itemId, {});
@@ -399,14 +311,18 @@ describe("a live approval the operator withdraws", () => {
         onOrder: () => ({ delivered: { access_code: "SESAME" } }),
       });
       const bought = await harnessed.gateway.payPurchase(
-        offered.order.order.id,
+        offered.order.priceOffer.stamp,
         "PAYMENT",
         "PAYMENT",
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
       );
       await worker.stop();
 
-      expect(bought.step).toBe("settled");
-      expect(harnessed.facilitator.settles).toHaveLength(1);
+      expect(bought.step).toBe("not_selling");
+      expect(harnessed.facilitator.verifies).toHaveLength(0);
+      expect(harnessed.facilitator.settles).toHaveLength(0);
+      expect(await harnessed.store.orderById(offered.order.order.id)).toBeNull();
     },
   );
 

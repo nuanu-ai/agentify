@@ -20,12 +20,12 @@ import {
   durationInWords,
   HANDLER_ANSWER_MS,
   inWords,
-  LAPSED_KEPT_MS,
   ordinalInWords,
   percentOf,
   QUOTE_RESPONSE_MS,
   QUOTE_TTL_MS,
-  REDELIVERY_MAX_ATTEMPTS,
+  REDELIVERY_MAX_DELAY_MS,
+  REDELIVERY_WINDOW_MS,
   SETTLE_BEFORE_GOODS_MS,
   SETTLE_RESPONSE_MS,
   SILENT_AFTER_MS,
@@ -34,7 +34,6 @@ import {
   UNSERVED_AT_MOST,
   type Unit,
   unitsIn,
-  WAITING_FOR_PAYMENT_AT_MOST,
 } from "@agentify/core/published";
 import { ORDER_CALL_ERROR_CODES, ShipToSchema, SMALLEST_PRICE } from "@nuanu-ai/agentify-contracts";
 import {
@@ -73,18 +72,17 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "parcel-purchase": { text: JSON.stringify({ params: {}, ship_to: address }, null, 2) },
   "smallest-price": { text: SMALLEST_PRICE },
   "quote-response": { ms: QUOTE_RESPONSE_MS, unit: "second" },
-  "quote-ttl": { ms: QUOTE_TTL_MS, unit: "second" },
+  "quote-ttl": { ms: QUOTE_TTL_MS, unit: "minute" },
   "handler-answer": { ms: HANDLER_ANSWER_MS, unit: "second" },
   "sync-response": { ms: SYNC_RESPONSE_MS, unit: "second" },
   "sync-budget": { ms: SYNC_BUDGET_MS, unit: "second" },
   "settle-response": { ms: SETTLE_RESPONSE_MS, unit: "second" },
   "settle-before-goods": { ms: SETTLE_BEFORE_GOODS_MS, unit: "second" },
   "default-async-fulfillment": { ms: DEFAULT_ASYNC_FULFILLMENT_MS, unit: "day" },
-  "redelivery-max-attempts": { count: REDELIVERY_MAX_ATTEMPTS },
-  "waiting-for-payment-at-most": { count: WAITING_FOR_PAYMENT_AT_MOST },
+  "redelivery-window": { ms: REDELIVERY_WINDOW_MS, unit: "hour" },
+  "redelivery-max-delay": { ms: REDELIVERY_MAX_DELAY_MS, unit: "minute" },
   "unserved-at-most": { count: UNSERVED_AT_MOST },
   "silent-after": { ms: SILENT_AFTER_MS, unit: "minute" },
-  "lapsed-kept": { ms: LAPSED_KEPT_MS, unit: "day" },
   commission: {
     part: COMMISSION_RATE.commissionAllocation,
     total: COMMISSION_RATE.totalAllocation,
@@ -95,11 +93,15 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   },
 };
 
+/** A unit as a drawing abbreviates it. */
+const SHORT_UNIT = { second: "s", minute: "min" } as const;
+
 /**
  * A value as its sentence asks for it. With no form, a stretch of time is in
  * words with its unit and a rate is a percentage. A stretch of time also has
  * `number`, the count of its unit in words alone, and one counted in seconds
- * has `short`, digits as a drawing writes them, "30 s"; a count has
+ * or minutes has `short`, digits as a drawing writes them, "30 s" or
+ * "3 min"; a count has
  * `ordinal`, its place in a row, "tenth"; a rate has `words`, as a screen
  * reader reads it.
  */
@@ -107,9 +109,11 @@ function said(value: BuildValue, form: string | undefined): string {
   if ("ms" in value) {
     if (form === undefined) return durationInWords(value.ms, value.unit);
     if (form === "number") return inWords(unitsIn(value.ms, value.unit));
-    if (form === "short" && value.unit === "second") return `${unitsIn(value.ms, "second")} s`;
+    if (form === "short" && (value.unit === "second" || value.unit === "minute")) {
+      return `${unitsIn(value.ms, value.unit)} ${SHORT_UNIT[value.unit]}`;
+    }
     throw new Error(
-      "a stretch of time is written with no form or as :number, and one in seconds as :short",
+      "a stretch of time is written with no form or as :number, and one in seconds or minutes as :short",
     );
   }
   if ("part" in value) {

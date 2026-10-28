@@ -9,7 +9,7 @@
  * the path.
  */
 
-import { API_ROUTES, expandPath } from "@nuanu-ai/agentify-contracts";
+import { API_ROUTES, expandPath, type ShipTo } from "@nuanu-ai/agentify-contracts";
 import type { GatewayConfig } from "../config.js";
 
 type Configured = Pick<GatewayConfig, "publicBaseUrl">;
@@ -28,3 +28,12 @@ export const purchaseUrlOf = (config: Configured, itemId: string): string =>
  */
 export const statusUrlOf = (config: Configured, buyerKey: string): string =>
   `${config.publicBaseUrl}${expandPath(API_ROUTES.get_order_status.path, { buyer_key: buyerKey })}`;
+
+/** Field order has no bearing on the complete address frozen for a purchase. */
+export function sameShipTo(one: ShipTo, other: ShipTo): boolean {
+  const entries = Object.entries(one);
+  return (
+    entries.length === Object.keys(other).length &&
+    entries.every(([key, value]) => other[key as keyof ShipTo] === value)
+  );
+}

@@ -11,6 +11,7 @@ import {
   type RpcTransactionReceipt,
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
+import { authorizationIn } from "../../http/payment-authorization.js";
 import {
   type PaymentRecoveryContext,
   type PaymentRecoveryOutcome,
@@ -62,9 +63,10 @@ const ABI = parseAbi([
   "event Transfer(address indexed from, address indexed to, uint256 value)",
 ]);
 /**
- * How many blocks one poll reads. An authorization accepted here is valid for
- * about two minutes, some sixty Base blocks, so one poll usually covers it;
- * a longer one, from an older record, continues on the next poll.
+ * How many blocks one poll reads. An authorization accepted here can be valid
+ * for about four minutes counting the allowance for clocks, some 120 Base
+ * blocks, so reading all of it can take two polls, the second going on
+ * where the first stopped.
  */
 const BLOCKS_PER_POLL = 64n;
 const EXPIRED_UNUSED: PaymentRecoveryOutcome = {
@@ -75,6 +77,7 @@ const STILL_READING = "The blocks where the original authorization was valid are
 const NOT_FOUND =
   "The original authorization was used, but no transfer or cancellation of it was found in the blocks where it was valid.";
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+/** Stored recovery contexts are independently validated before chain reads. */
 const address = (value: unknown): value is string =>
   typeof value === "string" && /^0x[\da-f]{40}$/i.test(value);
 const integer = (value: unknown): value is string =>
@@ -82,18 +85,13 @@ const integer = (value: unknown): value is string =>
 const uint256 = (value: unknown): value is string => integer(value) && BigInt(value) < 1n << 256n;
 const nonce = (value: unknown): value is string =>
   typeof value === "string" && /^0x[\da-f]{64}$/i.test(value);
-const record = (value: unknown): Record<string, unknown> | null =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-
 /** Refuses payment shapes whose original outcome this gateway cannot prove. */
 export function authorizationOf(
   payload: PaymentPayload,
   requirements: PaymentRequirements,
 ): RecoveryAuthorization {
-  const signed = record(payload.payload);
-  const auth = record(signed?.authorization);
+  const signed = authorizationIn(payload);
+  const auth = signed?.authorization;
   const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, requirements.network);
   if (
     payload.x402Version !== 2 ||
@@ -104,16 +102,8 @@ export function authorizationOf(
     (requirements.extra?.assetTransferMethod !== undefined &&
       requirements.extra.assetTransferMethod !== "eip3009") ||
     !same(requirements.asset, network.usdc) ||
-    signed?.permit2Authorization !== undefined ||
-    typeof signed?.signature !== "string" ||
-    !/^0x(?:[\da-f]{2})*$/i.test(signed.signature) ||
-    !auth ||
-    !address(auth.from) ||
-    !address(auth.to) ||
-    !uint256(auth.value) ||
-    !uint256(auth.validAfter) ||
-    !uint256(auth.validBefore) ||
-    !nonce(auth.nonce) ||
+    signed === null ||
+    auth === undefined ||
     !same(auth.to, requirements.payTo) ||
     auth.value !== requirements.amount ||
     BigInt(auth.validBefore) <= BigInt(auth.validAfter)

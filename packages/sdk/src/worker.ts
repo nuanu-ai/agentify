@@ -65,7 +65,7 @@ const describeThrown = (cause: unknown): string => {
 
 /** What follows for an order nothing was answered for. */
 const COMES_AGAIN =
-  "it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered";
+  "it is sent again for a while after it was first handed over, as long as its deadline allows, and otherwise ends undelivered";
 
 /**
  * What follows from a failed answer for the order it was about. Only an
@@ -156,6 +156,13 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   DELIVERY_FIELD_DROPPED: "delivery_field_dropped",
   /** An acceptance was given an argument, which it does not carry. The order is taken on. */
   ACCEPTANCE_ARGUMENT_IGNORED: "acceptance_argument_ignored",
+  /**
+   * A delivery of an order already delivered carried goods that differ from
+   * the ones the buyer has, which are the first. The call succeeded and
+   * nothing changed; the two differ as documents, so what they share is for
+   * the merchant to check before revoking anything.
+   */
+  REPEAT_WITH_OTHER_GOODS: "repeat_with_other_goods",
 } as const);
 
 export type WorkerProblemKind = (typeof WORKER_PROBLEM_KINDS)[keyof typeof WORKER_PROBLEM_KINDS];
@@ -224,6 +231,21 @@ export const droppedFieldWarning = (
     message: `the delivery for order ${orderId} carried a field named ${PROTOTYPE_KEY_IS_DROPPED}, which is removed before anything can check it: the agent will not receive it, and no card can declare it`,
   };
 };
+
+/**
+ * The warning for a delivery answered `already_delivered_other_goods`, on both
+ * roads to the gateway. It names the order and never either goods, which can
+ * be secrets such as keys.
+ */
+export const otherGoodsWarning = (orderId: string, result: unknown): WorkerProblem | null =>
+  result === "already_delivered_other_goods"
+    ? {
+        kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
+        fatal: false,
+        subject: orderId,
+        message: `order ${orderId} was already delivered, and the goods this delivery carried differ from the goods its buyer has, which are the first ones delivered; nothing changed, and since the two differ as documents, check what they share before revoking anything`,
+      }
+    : null;
 
 /**
  * The warning reported when `accepted` or `accept` is given an argument.
@@ -551,10 +573,7 @@ const gaveUpOn = ({ envelope, phase }: Taken): WorkerProblem => {
       const id = envelope.payload.price_id;
 
       return phase === "sending"
-        ? problem(
-            id,
-            `${stopped} for the price for question ${id}, ${unconfirmed}; stock set aside under that identifier can be released once the question expires`,
-          )
+        ? problem(id, `${stopped} for the price for question ${id}, ${unconfirmed}`)
         : problem(
             id,
             `${stopped} before your price handler answered question ${id}, so no price was sent, which counts as a silent price check: a synchronous card sells at its own card price, and in the other modes the sale is refused`,
@@ -672,7 +691,11 @@ export const startWorker = (
         subject: order.id,
         message: `the answer for order ${order.id} was not accepted (${sent.document.error.code}): ${sent.document.error.message}`,
       });
+      return;
     }
+
+    const otherGoods = otherGoodsWarning(order.id, sent.document.result);
+    if (otherGoods !== null) tell(one, otherGoods);
   };
 
   /** See `droppedFieldWarning`. */
@@ -796,10 +819,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.ANSWER_FAILED,
         fatal: false,
         subject: question.price_id,
-        // The advice about stock is the same whichever reach this was: a price
-        // that was used produces an order before the question expires, so
-        // stock is released only once it has expired.
-        message: `the price for question ${question.price_id} was answered and ${whatIsKnown(sent.failure)}; stock set aside under that identifier can be released once the question expires, whichever of those it was: ${sent.failure.reason}`,
+        message: `the price for question ${question.price_id} was answered and ${whatIsKnown(sent.failure)}: ${sent.failure.reason}`,
       });
       return;
     }
@@ -809,7 +829,7 @@ export const startWorker = (
         kind: WORKER_PROBLEM_KINDS.QUOTE_ANSWER_UNUSED,
         fatal: false,
         subject: question.price_id,
-        message: `the price for question ${question.price_id} arrived too late to be used, or the question is no longer held; stock set aside under that identifier can be released`,
+        message: `the price for question ${question.price_id} arrived too late to be used, or the question is no longer held`,
       });
     }
   };

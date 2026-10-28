@@ -19,7 +19,13 @@ output
 /research
 /01-research
 /02-meetings
-/apps/web
+# The application shares this server-only encryption utility with the web service.
+/apps/web/*
+!/apps/web/lib
+/apps/web/lib/*
+!/apps/web/lib/server
+/apps/web/lib/server/*
+!/apps/web/lib/server/crypto.ts
 /apps/docs
 /packages/consent
 /apps/scanner-worker

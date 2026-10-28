@@ -334,6 +334,28 @@ describe("an order off the worker stream", () => {
     expect(problems[0]?.message).toMatch(/order_already_closed/);
   });
 
+  it("warns once, naming the order and never the goods, when a repeat carried other goods", async () => {
+    // The buyer keeps the goods first delivered; a merchant whose retries make
+    // new goods each time would otherwise record the wrong ones as used.
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(batch(envelopes.order)),
+        answer_order: () => ({ body: { ok: true, result: "already_delivered_other_goods" } }),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/second-key" } }) },
+    );
+
+    await waitUntil(() => problems.length > 0, "the warning to be reported");
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
+      fatal: false,
+      subject: envelopes.order.payload.id,
+    });
+    expect(problems[0]?.message).toContain(envelopes.order.payload.id);
+    expect(problems[0]?.message).not.toContain("second-key");
+  });
+
   it("leaves an order unanswered when nobody subscribed, and says so", async () => {
     // Orders still arrive at a process with only a price handler, and
     // swallowing them would look like a gateway fault.
@@ -446,8 +468,7 @@ describe("a price question off the same stream", () => {
   });
 
   it("tells the merchant when their price arrived too late to be used", async () => {
-    // The acknowledgement is the only notice that stock set aside can be
-    // released.
+    // The acknowledgement is the only notice that a price went unused.
     const problems: WorkerProblem[] = [];
 
     gateway = await startFakeGateway({
@@ -615,7 +636,7 @@ describe("a gateway newer than this package", () => {
     expect(problems[0]?.message).toContain(`contract version ${contractVersion}`);
     expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify may read it");
     expect(problems[0]?.message).not.toMatch(/agentify reads it/);
-    expect(problems[0]?.message).toMatch(/sent again while it has attempts left/);
+    expect(problems[0]?.message).toMatch(/sent again/);
   });
 
   it("takes the next order at once after one it cannot read, without the wait that follows a failed poll", async () => {
@@ -708,8 +729,8 @@ describe("a gateway newer than this package", () => {
   });
 
   it("leaves a price question that does not fit unanswered, names it, and says it counts as a silent price check", async () => {
-    // The merchant may have set stock aside under the question's identifier,
-    // and the consequence for the sale is the contract's, so both are said.
+    // The question goes unanswered and the consequence for the sale is the
+    // contract's, so both are said.
     const { problems } = await workerOver(
       {
         poll_worker: polling(

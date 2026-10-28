@@ -1,5 +1,7 @@
 # Recovering a purchase from the quickstart buyer
 
+> Historical, 2026-10-28. On the product owner's word of that day, the quickstart's resumable buyer described here was replaced by a short program that keeps no purchase file and resumes nothing.
+
 Date: 2026-10-27. The product owner selects the example-only fix for the
 lost-response finding. The gateway and ADR-0011 retain their recovery contract.
 
@@ -111,8 +113,8 @@ settlement or merchant hand-over. The initial unpaid setup checks stop on a
 wrong expected error code in the check script; this is corrected to the
 existing `seller_not_taking_orders` response before any payment is signed.
 
-The private local report, process logs, purchase journals and check script are
-under `2026-10-27-pr211-z3bhOy` in the operator's Agentify acceptance directory.
+The private local report, process logs, purchase journals and check script
+stay with the operator and are not in the repository.
 This is bounded TEST evidence. Mainnet, third-party wallets, npm installation,
 host power loss and upgrades of a remote merchant's service are untested.
 

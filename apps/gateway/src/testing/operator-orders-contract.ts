@@ -20,6 +20,7 @@ import {
 import type { Store, StoredCard, StoredOrder } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
+import { storeAcceptedOrder } from "./accepted-order.js";
 import { anOrder } from "./store-contract.js";
 
 export interface OrdersUnderTest {
@@ -93,11 +94,14 @@ function sold(
   const priced = change.priced ?? true;
   return {
     ...base,
+    paidBy: PAYER,
+    payment: SECRET_PAYMENT,
     itemId: item.id,
     merchantItemId: item.card.merchant_item_id,
     ...change.record,
     order: {
       ...base.order,
+      payment: "verified",
       ...(priced
         ? {
             price: { amount: "8.00", currency: "USD", asOf: at },
@@ -134,10 +138,10 @@ const RECEIPT: Receipt = {
 };
 
 /**
- * A channel of three merchants and eleven orders, at least one in every
+ * A channel of three merchants and ten orders, at least one in every
  * segment and several on its edges. Its counts, by segment:
  * payment unknown 2, unfulfilled 1, delivered not paid 1, in progress 2,
- * ended 4, lapsed 1, all 11.
+ * ended 4, all 10.
  */
 async function aChannel(store: Store): Promise<{ readonly eu: StoredCard }> {
   const none = { address: null, pending: null };
@@ -163,10 +167,6 @@ async function aChannel(store: Store): Promise<{ readonly eu: StoredCard }> {
   const vpn = await store.publishCard(B, card("vpn-month", "VPN for a month"), 7);
 
   const orders: StoredOrder[] = [
-    sold("ord_lapsed", "rejected", eu, t(1), {
-      priced: false,
-      order: { closure: { cause: "unavailable" } },
-    }),
     sold("ord_failed", "failed", vpn, t(2), {
       order: { closure: { cause: "merchant_refused", code: "out_of_stock", message: "Sold out" } },
     }),
@@ -233,7 +233,7 @@ async function aChannel(store: Store): Promise<{ readonly eu: StoredCard }> {
       order: { payment: "settle_failed" },
       record: { delivery: { access_url: SECRET_GOODS }, paidBy: PAYER },
     }),
-    sold("ord_progress", "quoted", vpn, t(7)),
+    sold("ord_progress", "paid", vpn, t(7)),
     sold("ord_settling", "paid", eu, t(8), {
       order: { ...ON_PURCHASE, payment: "settling" },
       timestamps: { settleStartedAt: t(8) + 2 },
@@ -272,7 +272,7 @@ async function aChannel(store: Store): Promise<{ readonly eu: StoredCard }> {
         paidBy: PAYER,
       },
     }),
-    sold("ord_held", "quoted", eu, t(11), {
+    sold("ord_held", "paid", eu, t(11), {
       order: PARCEL,
       record: {
         params: { size: SECRET_PARAM },
@@ -286,7 +286,7 @@ async function aChannel(store: Store): Promise<{ readonly eu: StoredCard }> {
       },
     }),
   ];
-  for (const order of orders) await store.addOrder(order);
+  for (const order of orders) await storeAcceptedOrder(store, order);
   await store.putReceipt(A, { ...RECEIPT, item_id: eu.id });
   return { eu };
 }
@@ -297,7 +297,6 @@ const ZERO: Readonly<Record<OrdersShown, number>> = {
   delivered_unpaid: 0,
   in_progress: 0,
   ended: 0,
-  lapsed: 0,
   all: 0,
 };
 
@@ -339,10 +338,9 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
           delivered_unpaid: 1,
           in_progress: 2,
           ended: 4,
-          lapsed: 1,
-          all: 11,
+          all: 10,
         });
-        expect(ORDER_SEGMENTS.reduce((sum, segment) => sum + page.counts[segment], 0)).toBe(11);
+        expect(ORDER_SEGMENTS.reduce((sum, segment) => sum + page.counts[segment], 0)).toBe(10);
       });
 
       it("lists each segment's orders and no other, newest first", async () => {
@@ -361,8 +359,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
           "ord_delivered",
           "ord_failed",
         ]);
-        expect(await listed("lapsed")).toStrictEqual(["ord_lapsed"]);
-        expect((await listed("all")).length).toBe(11);
+        expect((await listed("all")).length).toBe(10);
       });
 
       it("names on a row the facts the list draws", async () => {
@@ -382,13 +379,6 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
           payment: "paid",
           segment: "ended",
           test: true,
-        });
-        const lapsed = (await orders.orders({ shown: "lapsed" })).rows[0];
-        expect(lapsed).toMatchObject({
-          pricedAt: null,
-          price: null,
-          status: "rejected",
-          payment: "not_paid",
         });
         const unknown = (await orders.orders({ shown: "payment_unknown" })).rows[0];
         expect(unknown).toMatchObject({ status: "payment_unresolved", payment: "unresolved" });
@@ -437,7 +427,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
           idsOf((await orders.orders({ shown: "all", search })).rows);
 
         expect(await found("  ORD_DELIVERED ")).toStrictEqual(["ord_delivered"]);
-        expect((await found("europe")).length).toBe(7);
+        expect((await found("europe")).length).toBe(6);
         expect(await found("VPN-MONTH")).toStrictEqual([
           "ord_parcel",
           "ord_progress",
@@ -448,7 +438,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
           "ord_delivered",
         ]);
         expect(await found(HINT_TX.slice(0, 20))).toStrictEqual(["ord_unknown"]);
-        expect(await found("   ")).toHaveLength(11);
+        expect(await found("   ")).toHaveLength(10);
       });
 
       it("counts a search that matches nothing as zero in every segment", async () => {
@@ -479,7 +469,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         for (let step = 1; step <= 53; step += 1) {
           const id = `ord_p${String(step).padStart(2, "0")}`;
           // The cut falls between two orders made in the same millisecond.
-          await store.addOrder(sold(id, "quoted", eu, t(step === 3 ? 4 : step)));
+          await storeAcceptedOrder(store, sold(id, "paid", eu, t(step === 3 ? 4 : step)));
         }
 
         const first = await orders.orders({ shown: "in_progress" });
@@ -519,8 +509,9 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
         const made = async (step: number) =>
-          await store.addOrder(
-            sold(`ord_n${String(step).padStart(3, "0")}`, "quoted", eu, t(step)),
+          await storeAcceptedOrder(
+            store,
+            sold(`ord_n${String(step).padStart(3, "0")}`, "paid", eu, t(step)),
           );
         for (let step = 1; step <= 120; step += 1) await made(step);
 
@@ -552,11 +543,12 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
         for (let step = 1; step <= 60; step += 1) {
-          await store.addOrder(
-            sold(`ord_g${String(step).padStart(2, "0")}`, "quoted", eu, t(step)),
+          await storeAcceptedOrder(
+            store,
+            sold(`ord_g${String(step).padStart(2, "0")}`, "paid", eu, t(step)),
           );
         }
-        await store.addOrder(sold("ord_ended", "delivered", eu, t(30) + 500));
+        await storeAcceptedOrder(store, sold("ord_ended", "delivered", eu, t(30) + 500));
         const left = { createdAt: t(30) + 500, id: "ord_ended" };
         const gone = { createdAt: t(30) + 500, id: "ord_gone" };
 
@@ -583,7 +575,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
         for (const id of ["ord_tie_a", "ord_tie_B", "ord_tie_b"]) {
-          await store.addOrder(sold(id, "quoted", eu, t(5)));
+          await storeAcceptedOrder(store, sold(id, "paid", eu, t(5)));
         }
         const at = (id: string) => ({ createdAt: t(5), id });
 
@@ -604,7 +596,7 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         const { store, orders } = await open();
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
-        await store.addOrder(sold("ord_only", "quoted", eu, t(1)));
+        await storeAcceptedOrder(store, sold("ord_only", "paid", eu, t(1)));
 
         const older = await orders.orders({
           shown: "all",
@@ -624,8 +616,9 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
         await store.addMerchant({ id: A, name: "Merchant A" }, 1);
         const eu = await store.publishCard(A, card("esim-eu", "eSIM Europe"), 2);
         for (let step = 1; step <= 50; step += 1) {
-          await store.addOrder(
-            sold(`ord_q${String(step).padStart(2, "0")}`, "quoted", eu, t(step)),
+          await storeAcceptedOrder(
+            store,
+            sold(`ord_q${String(step).padStart(2, "0")}`, "paid", eu, t(step)),
           );
         }
 
@@ -668,7 +661,6 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
             status: "delivered",
             payment_status: "paid",
             onOpenList: false,
-            lapsed: false,
           },
           receipt: { ...RECEIPT, item_id: eu.id },
           withheld: { buyerEntered: true, address: null, goods: true },
@@ -864,7 +856,8 @@ export function describeOperatorOrders(name: string, open: () => Promise<OrdersU
 
         expect(await orders.find(SPLIT_A2.address, LANDS)).toStrictEqual([]);
 
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           sold("ord_into_new_split", "paid", eu, t(12), {
             order: { payment: "verified" },
             record: { payTo: SPLIT_A2.address, paidBy: PAYER },

@@ -539,6 +539,12 @@ release that tag. Restoring its restore point would lose every order and
 receipt written since, and the command refuses to move production backwards
 from the revision `current` names.
 
+The release whose WooCommerce prices travel with the buyer cannot be rolled
+back past its dashboard migrations `0025_stateless_woo_quotes` and
+`0026_woo_cart_resources`: the first drops the connector's quote ledger, which
+every earlier revision writes at each price question, so an earlier revision
+started on that database fails its first WooCommerce sale.
+
 ## Collecting the commission
 
 Agentify's commission ([Money](https://agentify.ad/docs/money#what-we-take))
@@ -750,13 +756,21 @@ The environment file, `/etc/agentify/<channel>.env`, owned by root with mode
 image: activation records the images per checkout. On both channels it names
 `AGENTIFY_PUBLIC_ORIGIN`, `AGENTIFY_COOKIE_SECURE`, `AGENTIFY_SURFACE_MODE`,
 `AGENTIFY_PAYMENT_NETWORK`, `AGENTIFY_FACILITATOR_URL`,
-`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`,
+`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `PRICE_STAMP_KEY`,
 `AGENTIFY_AUTH_SECRET`, `TOKEN_HMAC_SECRET`,
 `EMAIL_ENCRYPTION_KEY` and `REPORT_IDENTITY_SECRET`, the last at least 32
 characters of its own (`openssl rand -base64 32`): the scanner presents it to
 the dashboard's private route, and the preflight refuses a channel where any
 other service holds it or it opens any other door. TEST adds
 `AGENTIFY_TEST_LISTEN_ADDRESS`, the private address its door binds on.
+`PRICE_STAMP_KEY` is a separate random secret of at least 32 bytes
+(`openssl rand -base64 32`), stable across releases and unique to this channel.
+To rotate, move the current value into `PRICE_STAMP_PREVIOUS_KEY`, install a
+new current key, and deploy. Remove the previous key only after all outstanding
+price terms have elapsed. Paid recovery uses the exact saved offer and remains
+available after either signing key is retired. Neither value belongs in logs,
+health responses or a merchant configuration.
+
 PRODUCTION adds `AGENTIFY_DB_PASSWORD`, `MAIL_URL`, `MAIL_API_KEY` and
 `MAIL_FROM`. TEST may name the three mail settings too, and does where its
 sign-in links and rate notices are to reach real mailboxes, as an acceptance
@@ -764,27 +778,35 @@ run needs; without them its dashboard writes every message to the
 application's log instead of sending it.
 
 The channel overlays use free public Base RPC: `https://sepolia.base.org` on
-TEST and `https://mainnet.base.org` on PRODUCTION. Two things read it. Payment
-recovery reads it in the background, as below. The dashboard's Settings reads
-it each time it draws a merchant's payout: an `eth_chainId` and one
-`eth_call`, a dry run of the payout that names what it would bring, kept for
-five seconds per payout. Both share the endpoint, and a free public endpoint
-limits requests per address, so a busy dashboard can use up what recovery
-needs. An RPC provider's endpoint named in `AGENTIFY_PAYMENT_RPC_URL` is
-limited by the provider's plan instead. A page
-waits for the chain for at most half its deadline, and after a read it gave
-up on, the pages about that payout say for five seconds that the chain did
-not answer, without asking it.
+TEST and `https://mainnet.base.org` on PRODUCTION. Several things read it. The
+gateway reads a paying wallet's balance and the authorization's nonce before
+the payment is checked, a wallet's balance when the facilitator refuses a
+payment without naming a cause, and a returning payment's nonce when a buyer
+gets a paid purchase back. Payment recovery reads it in the background, as
+below. The dashboard's Settings reads it each time it draws a merchant's
+payout: an `eth_chainId` and one `eth_call`, a dry run of the payout that names
+what it would bring, kept for five seconds per payout. All of them share the
+endpoint, and a free public endpoint limits requests per address, so a busy
+dashboard or a flood of payments can use up what recovery needs, and a payment
+whose wallet could not be read waits in the smaller line for payments nobody
+can vouch for. An RPC provider's endpoint named in `AGENTIFY_PAYMENT_RPC_URL`
+is limited by the provider's plan instead, and production should have one. A
+page waits for the chain for at most half its deadline, and after a read it
+gave up on, the pages about that payout say for five seconds that the chain
+did not answer, without asking it.
 
 `AGENTIFY_PAYMENT_RPC_URL` replaces that address. Setting it explicitly to an
-empty value disables chain checks: recovery is off, and every Settings panel
-with a payout says it could not read from the network what the payout would
-bring, while still giving the transaction. The gateway receives it as
+empty value disables chain checks: recovery is off, every payment that would
+charge waits in the smaller line, and every Settings panel with a payout says
+it could not read from the network what the payout would bring, while still
+giving the transaction. The gateway receives it as
 `PAYMENT_RPC_URL`. Local Compose and the standalone gateway have no default
 RPC.
 
 RPC is read only. Recovery calls it for unanswered payments after their
-response deadline, never for ordinary verification or settlement. The gateway asks the
+response deadline; the reads before a payment's check decide only where it
+waits or refuse what the token would refuse, and verification and settlement
+stay with the facilitator. The gateway asks the
 endpoint for its chain id at start-up, and the log's first lines say whether it
 serves the channel's network; it asks again on every recovery poll, so an
 endpoint that did not answer at start-up is used as soon as it does, without a
@@ -797,7 +819,7 @@ Recovery reads the finalized block and the USDC nonce state there. When the
 nonce was used and no transaction hash is known, it finds the first block at or
 after the moment the payment was verified by bisecting block times, then reads
 the receipts of the blocks up to the authorization's expiry, which for a
-payment accepted here is about two minutes of blocks. It sends no log queries:
+payment accepted here is about four minutes of blocks. It sends no log queries:
 Base mainnet's public endpoint refuses them and Base Sepolia's caps them at 200
 blocks. The endpoint must therefore support `eth_chainId`,
 `eth_getBlockByNumber`, `eth_call`, `eth_getBlockReceipts` and

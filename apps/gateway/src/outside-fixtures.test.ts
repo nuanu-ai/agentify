@@ -41,6 +41,7 @@ const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 async function aGatewayOnAPort() {
   const ids = () => randomUUID();
   const config = loadConfig({
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     PAY_TO_ADDRESS: PAY_TO,
   });
@@ -301,18 +302,34 @@ describe("a purchase from the outside", () => {
   it("walks an asynchronous sale from the catalog to the receipt", async () => {
     const gateway = await aGatewayOnAPort();
     try {
-      const published = await gateway.call("POST", "/v0/catalog/publish", {
-        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
-        body: {
-          merchant_item_id: "esim-7-days",
-          title: "A seven day eSIM",
-          description: "Seven days of data, activated by code",
-          price: { amount: "12.50", currency: "USD" },
-          result: { activation_code: { type: "string" } },
-          fulfillment: "async",
-          fulfill_deadline_seconds: 86_400,
+      const card = {
+        merchant_item_id: "esim-7-days",
+        title: "A seven day eSIM",
+        description: "Seven days of data, activated by code",
+        price: { amount: "12.50", currency: "USD" },
+        result: { activation_code: { type: "string" } },
+        fulfillment: "async",
+        fulfill_deadline_seconds: 86_400,
+      };
+      const publish = () =>
+        gateway.call("POST", "/v0/catalog/publish", {
+          headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+          body: card,
+        });
+      const missingSite = await publish();
+      expect(missingSite.status).toBe(422);
+      expect(missingSite.body).toMatchObject({
+        error: {
+          problems: expect.arrayContaining([expect.objectContaining({ code: "no_seller_site" })]),
         },
       });
+      expect(await gateway.store.cards("mch_the_walk")).toHaveLength(0);
+      const site = await gateway.call("POST", "/v0/seller-name", {
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+        body: { seller_site: "https://shop.example" },
+      });
+      expect(site.status).toBe(200);
+      const published = await publish();
       expect(published.status).toBe(200);
       const itemId = (published.body as { id: string }).id;
 
@@ -425,8 +442,8 @@ describe("a purchase from the outside", () => {
 
       // A repeat of that call is safe, and charges nothing a second time. This
       // one carries a different code from the first, which is the case the
-      // buyer's copy of the goods depends on: the answer is the same either
-      // way, so nothing but the stored order can tell whether it was honoured.
+      // buyer's copy of the goods depends on: the answer says the goods differ,
+      // and the buyer still collects the first.
       const again = await gateway.call(
         "POST",
         `/v0/orders/${encodeURIComponent(orderId)}/deliver`,
@@ -435,7 +452,7 @@ describe("a purchase from the outside", () => {
           headers: { authorization: `Bearer ${MERCHANT_KEY}` },
         },
       );
-      expect(again.body).toStrictEqual({ ok: true, result: "already_delivered" });
+      expect(again.body).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
       expect(gateway.facilitator.settles).toHaveLength(1);
       const collected = await gateway.call("GET", new URL(started.status_url).pathname);
       expect(collected.status).toBe(200);

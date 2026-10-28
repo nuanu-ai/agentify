@@ -11,6 +11,7 @@ import {
 } from "@agentify/core";
 import * as published from "@agentify/core/published";
 import { z } from "zod";
+import { CHARGE_RECORDED_WITHIN_MS, SETTLE_REQUEST_MS } from "./app/payment-window.js";
 import {
   PAYOUT_SPLIT_NETWORKS,
   type PayoutSplitNetwork,
@@ -193,9 +194,11 @@ const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
 /**
  * The environment is an external boundary like any request, so it is parsed
  * here and a bad value stops the process at startup rather than at the first
- * payment. The defaults are sandbox defaults; only `DATABASE_URL` has none.
+ * payment. Storage and the channel price-signing key have no safe default.
  */
 const environmentSchema = z.object({
+  PRICE_STAMP_KEY: z.string({ error: absentOrWrong("must be a string") }).min(32),
+  PRICE_STAMP_PREVIOUS_KEY: emptyIsAbsent(z.string().min(32)),
   /** One Postgres for everything: orders, receipts and the queue. */
   DATABASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
@@ -225,7 +228,7 @@ const environmentSchema = z.object({
   /** How long we wait for the merchant to say what the goods cost. */
   QUOTE_RESPONSE_MS: durationMs(published.QUOTE_RESPONSE_MS),
   /**
-   * How long a price holds, and with it the unpaid order it was named for. The
+   * How long a price stamped in a payment challenge can be paid. The
    * authorisation a payment challenge asks for lasts this long and more, so
    * that one signed as soon as the price is named and presented as it runs out
    * still outlives a charge sent after the goods (`app/payment-window.ts`).
@@ -276,8 +279,12 @@ const environmentSchema = z.object({
     .transform(Number)
     .refine((value) => value >= 1, "must be at least 1")
     .default(2),
-  REDELIVERY_MAX_DELAY_MS: durationMs(30_000),
-  REDELIVERY_MAX_ATTEMPTS: countAbove(published.REDELIVERY_MAX_ATTEMPTS),
+  REDELIVERY_MAX_DELAY_MS: durationMs(published.REDELIVERY_MAX_DELAY_MS),
+  /**
+   * How long after its first hand-over an order nobody answers is handed over
+   * again, within its own deadline. The portal publishes this number.
+   */
+  REDELIVERY_WINDOW_MS: durationMs(published.REDELIVERY_WINDOW_MS),
 
   /**
    * How long a handler has to answer a delivery before it is reported
@@ -429,7 +436,7 @@ interface RedeliveryConfig {
   readonly baseDelayMs: number;
   readonly factor: number;
   readonly maxDelayMs: number;
-  readonly maxAttempts: number;
+  readonly windowMs: number;
 }
 
 interface WorkerConfig {
@@ -446,6 +453,7 @@ export interface PaymentConfig {
 }
 
 export interface GatewayConfig {
+  readonly priceStampKeys: { readonly current: string; readonly previous?: string };
   readonly databaseUrl: string;
   /** A key seeded into the database at startup, or null to seed nothing. */
   readonly sandboxMerchantKey: string | null;
@@ -496,7 +504,7 @@ export interface GatewayConfig {
  */
 function arithmeticProblems(deadlines: DeadlineConfig): string[] {
   const problems: string[] = [];
-  const { syncResponseMs, settleResponseMs, syncBudgetMs } = deadlines;
+  const { syncResponseMs, settleResponseMs, settleBeforeGoodsMs, syncBudgetMs } = deadlines;
 
   // In the synchronous mode the agent's worst case is the merchant's answer
   // plus the charge: the goods come back on the first clock and the money
@@ -506,6 +514,18 @@ function arithmeticProblems(deadlines: DeadlineConfig): string[] {
     problems.push(
       `the synchronous budget is ${syncBudgetMs}ms and the answer (${syncResponseMs}ms) and ` +
         `the charge (${settleResponseMs}ms) inside it come to ${worstCase}ms`,
+    );
+  }
+
+  // An order charged before its goods closes as unknown when this wait runs
+  // out, so it has to outlast the charge request and the recording of its
+  // answer; a charge confirmed later is paid and never reaches the merchant.
+  const chargeAnswered = SETTLE_REQUEST_MS + CHARGE_RECORDED_WITHIN_MS;
+  if (settleBeforeGoodsMs < chargeAnswered) {
+    problems.push(
+      `the wait for a charge before the goods is ${settleBeforeGoodsMs}ms, shorter than the ` +
+        `charge request's ${SETTLE_REQUEST_MS}ms and ${CHARGE_RECORDED_WITHIN_MS}ms to record ` +
+        `its answer, ${chargeAnswered}ms in all`,
     );
   }
 
@@ -711,6 +731,12 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   const derivedEnvironment = environmentOf(network);
 
   return {
+    priceStampKeys: {
+      current: environmentValues.PRICE_STAMP_KEY,
+      ...(environmentValues.PRICE_STAMP_PREVIOUS_KEY === undefined
+        ? {}
+        : { previous: environmentValues.PRICE_STAMP_PREVIOUS_KEY }),
+    },
     databaseUrl: environmentValues.DATABASE_URL,
     sandboxMerchantKey: environmentValues.SANDBOX_MERCHANT_KEY,
     publicBaseUrl: environmentValues.PUBLIC_BASE_URL,
@@ -725,7 +751,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
       baseDelayMs: environmentValues.REDELIVERY_BASE_DELAY_MS,
       factor: environmentValues.REDELIVERY_FACTOR,
       maxDelayMs: environmentValues.REDELIVERY_MAX_DELAY_MS,
-      maxAttempts: environmentValues.REDELIVERY_MAX_ATTEMPTS,
+      windowMs: environmentValues.REDELIVERY_WINDOW_MS,
     },
     worker: {
       pollWaitMs: environmentValues.WORKER_POLL_WAIT_MS,

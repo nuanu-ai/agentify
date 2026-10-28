@@ -31,16 +31,23 @@ const REVISION = "AGENTIFY_SOURCE_REVISION";
 /** The value a build that was given no revision writes. */
 const NO_REVISION = "unknown";
 
+/** The source revision the build provides, or null where it provides none. */
+export function sourceRevisionOf(
+  environment: Readonly<Record<string, string | undefined>>,
+): string | null {
+  const revision = environment[REVISION]?.trim() ?? "";
+  return revision === "" || revision === NO_REVISION ? null : revision;
+}
+
 export function gatewayHealthFacts(
   config: Pick<GatewayConfig, "surfaceMode" | "payment">,
   environment: Readonly<Record<string, string | undefined>>,
 ): GatewayHealthFacts {
-  const revision = environment[REVISION]?.trim() ?? "";
   const { rpcUrl } = config.payment;
   return {
     surface: config.surfaceMode,
     network: config.payment.network,
-    revision: revision === "" || revision === NO_REVISION ? null : revision,
+    revision: sourceRevisionOf(environment),
     recovery:
       rpcUrl === undefined
         ? { configured: false }

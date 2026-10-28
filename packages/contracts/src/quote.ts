@@ -46,9 +46,9 @@ export const QuoteRequestSchema = z.strictObject({
   ship_to: ShipToLocalitySchema.optional(),
 
   /**
-   * The identifier of this question, which comes back attached to the order.
-   * It is good for one order: a merchant who set stock aside under it can
-   * release it when the order arrives or when the price expires.
+   * The identifier of this question, which comes back on the order if a buyer
+   * pays this price. Answer without setting goods aside for it: most prices
+   * are never paid, and nothing tells the merchant when one will not be.
    */
   price_id: IdentifierSchema,
 
@@ -77,6 +77,17 @@ export const QuoteResponseSchema = z.discriminatedUnion("available", [
     price: MoneySchema.meta({
       description: `Held to the rule a card's price meets at publication: at least ${SMALLEST_PRICE}, in USD or USDC, with two to six digits after the dot ("5.00", "0.015"); an answer that breaks it is refused and prices nothing.`,
     }),
+    quote_reference: z
+      .string()
+      .regex(
+        /^[\x20-\x7e]{1,512}$/,
+        "quote_reference must contain 1 to 512 printable ASCII characters",
+      )
+      .optional()
+      .meta({
+        description:
+          "Opaque merchant confirmation of this calculation, returned unchanged on the order. It travels in the buyer-visible 402 and is authenticated by Agentify. Never put secrets or personal data in it.",
+      }),
     as_of: TimestampSchema,
   }),
   z.strictObject({

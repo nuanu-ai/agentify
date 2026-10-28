@@ -135,6 +135,31 @@ describe("a database failure leaving the store or the queue", () => {
     expect((told as Error).message).toContain("ECONNREFUSED");
   });
 
+  it.each([
+    ["no connection could be had", new Error("timeout exceeded when trying to connect")],
+    ["the connection was lost", new Error("Connection terminated unexpectedly")],
+    [
+      "the database refused a connection",
+      Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), { code: "ECONNREFUSED" }),
+    ],
+    ["a lock was not granted in time", Object.assign(refusedRow(), { code: "55P03" })],
+    ["the database is shutting down", Object.assign(refusedRow(), { code: "57P01" })],
+  ])("says a failure can pass by itself where %s", (_why, cause) => {
+    const told = withoutValues(new DrizzleQueryError("select …", [BUYER], cause), "a read");
+
+    expect(told).toMatchObject({ passing: true });
+  });
+
+  it.each([
+    ["a check the row broke", refusedRow()],
+    ["a table that is missing", Object.assign(refusedRow(), { code: "42P01" })],
+    ["something else the driver threw", new TypeError("cannot serialize a value")],
+  ])("does not say a failure will pass where it was %s", (_why, cause) => {
+    const told = withoutValues(new DrizzleQueryError("select …", [BUYER], cause), "a read");
+
+    expect(told).toMatchObject({ passing: false });
+  });
+
   it("leaves a failure that is not the database's exactly as it was", () => {
     // The negative control: the store runs a caller's decision inside its
     // transaction, and what that decision throws is the caller's own words.

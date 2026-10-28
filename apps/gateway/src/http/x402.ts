@@ -4,12 +4,9 @@
  * middleware is not used because it verifies and settles around one request,
  * and the order machine needs the two apart.
  *
- * The order's identifier travels in the requirements' `extra` and comes back
- * inside the payment. It is a hint, never an authority: a payment is checked
- * against the price on our own order, and an order belongs to the payer bound
- * to its first verified payment. The requirements go to the payment
- * facilitator and a discovery listing can publish them, so they carry nothing
- * that opens an order: the buyer's key is never in them.
+ * The authenticated price travels in the requirements' extra and returns in
+ * the payment. Only the gateway's verified stamp or its exact saved offer is
+ * authoritative. Requirements may be published; no buyer key is in them.
  */
 
 import { createHash } from "node:crypto";
@@ -35,6 +32,7 @@ import { getDefaultAsset } from "@x402/evm";
 import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { purchaseUrlOf } from "../app/addresses.js";
 import { authorisationSecondsOf } from "../app/payment-window.js";
+import { decodePriceStamp, orderIdForPrice, stampPrice } from "../app/price-stamp.js";
 import type { GatewayConfig } from "../config.js";
 import { randomIds } from "../ports/clock.js";
 
@@ -53,8 +51,8 @@ export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
  */
 export const CLOCK_SKEW_SECONDS = 30;
 
-/** Where in the requirements' `extra` the order's identifier is written. */
-export const ORDER_IN_EXTRA = "order_id";
+/** Where the opaque authenticated price travels through the x402 retry. */
+export const PRICE_STAMP_IN_EXTRA = "price_stamp";
 
 /**
  * A price in the token's smallest unit, written out exactly; money never
@@ -74,6 +72,12 @@ export function atomicUnits(amount: string, decimals: number): string {
   return written;
 }
 
+/** An amount in USDC's smallest unit as dollars, with every digit it has and at least two. */
+export function inUsdc(units: bigint): string {
+  const digits = units.toString().padStart(7, "0");
+  return `${digits.slice(0, -6)}.${digits.slice(-6).replace(/0{1,4}$/, "")}`;
+}
+
 const PARCEL_LISTED =
   "this is a parcel: the price shown is for the goods alone, and a purchase that names an address is priced for it with shipping and any tax for it included";
 
@@ -83,14 +87,14 @@ const PARCEL_PRICED =
 /**
  * Every reason a challenge gives for not returning the resource. A challenge
  * carries no other, so the widest a card's challenge can be is measured with
- * each of them.
+ * each of them; a reason longer than the longest here makes cards already
+ * published at the header limit answer wider than they were measured.
  */
 export const CHALLENGE_REASONS = {
   probe: "payment required",
   paymentOnAGet: "this GET is not read for payment: the purchase is a POST with a JSON body",
   unreadablePayment: "the payment could not be read, so here is a fresh price",
-  noHeldOrder:
-    "the payment did not name an order this gateway is holding, so here is a fresh price",
+  signedForTheListing: "the payment was for the listing and charged nothing; here is its price",
 } as const;
 
 export type ChallengeReason = (typeof CHALLENGE_REASONS)[keyof typeof CHALLENGE_REASONS];
@@ -114,7 +118,32 @@ const widestListingName = (): string => {
 const WIDEST = {
   price: { amount: `${"9".repeat(18)}.${"9".repeat(PAYABLE_DECIMALS)}`, currency: "USD" },
   itemId: randomIds("item"),
-  orderId: randomIds("ord"),
+  orderId: stampPrice(
+    {
+      version: 1,
+      priceId: randomIds("prc"),
+      itemId: randomIds("item"),
+      merchantId: randomIds("mer"),
+      integration: "woocommerce",
+      cardDigest: "f".repeat(64),
+      paramsDigest: "f".repeat(64),
+      placeDigest: "f".repeat(64),
+      amount: `${"9".repeat(18)}.999999`,
+      currency: "USDC",
+      source: "merchant_answer",
+      asOf: 8_640_000_000_000_000,
+      quotedAt: 8_639_999_999_999_999,
+      expiresAt: 8_640_000_000_000_000,
+      network: "eip155:84532",
+      payTo: `0x${"f".repeat(40)}`,
+      asset: `0x${"f".repeat(40)}`,
+      assetName: "USDC",
+      assetVersion: "2",
+      quoteReference: "\\".repeat(512),
+      maxTimeoutSeconds: 2_147_483_647,
+    },
+    "challenge-sizing-key-never-used-for-sales",
+  ),
   payTo: `0x${"f".repeat(40)}`,
   serviceName: widestListingName(),
 } as const;
@@ -132,10 +161,8 @@ export class PaymentEdge {
   }
 
   /**
-   * What an agent is asked to pay, to whom, and for which order, named by its
-   * identifier; `null` names none, for a price with no order behind it. The address is the one given, unchanged: the card's merchant's
-   * recorded split for a challenge, and the order's own address at
-   * verification and at the charge, never anything from our configuration.
+   * The ordinary x402 amount, asset and payee, with a purchase stamp when one
+   * exists. A null stamp is a listing probe, which creates no order.
    *
    * No address is refused, in every mode, never defaulted: the configured
    * address is the operator's, and standing it in would send a merchant's
@@ -175,7 +202,7 @@ export class PaymentEdge {
         name: asset.name,
         version: asset.version,
         // A challenge for a card alone, with no order behind it, names none.
-        ...(orderId === null ? {} : { [ORDER_IN_EXTRA]: orderId }),
+        ...(orderId === null ? {} : { [PRICE_STAMP_IN_EXTRA]: orderId }),
       },
     };
   }
@@ -200,6 +227,7 @@ export class PaymentEdge {
       readonly payTo: string | null;
     },
     why?: ChallengeReason,
+    requirements?: PaymentRequirements,
   ): string {
     const declared = bazaarDeclarationOf(listed.card, {
       // The configured base, never the request's: behind the proxy the request
@@ -232,7 +260,7 @@ export class PaymentEdge {
         // A copy, not a cast: the contract's tags are read-only.
         ...(declared.resource.tags === undefined ? {} : { tags: [...declared.resource.tags] }),
       },
-      accepts: [this.requirementsFor(price, orderId, listed.payTo)],
+      accepts: [requirements ?? this.requirementsFor(price, orderId, listed.payTo)],
       extensions: discoveryExtensionOf(declared),
     };
     return encodePaymentRequiredHeader(challenge);
@@ -451,6 +479,7 @@ export function presentedPayment(headers: Record<string, string | string[] | und
       readonly raw: string;
       readonly payload: PaymentPayload;
       readonly orderId: string | null;
+      readonly stamp: string | null;
     }
   | "unreadable"
   | null {
@@ -468,8 +497,14 @@ export function presentedPayment(headers: Record<string, string | string[] | und
     return "unreadable";
   }
 
-  const named = payload.accepted?.extra?.[ORDER_IN_EXTRA];
-  return { raw: header, payload, orderId: typeof named === "string" ? named : null };
+  const named = payload.accepted?.extra?.[PRICE_STAMP_IN_EXTRA];
+  const offer = typeof named === "string" ? decodePriceStamp(named) : null;
+  return {
+    raw: header,
+    payload,
+    stamp: typeof named === "string" ? named : null,
+    orderId: offer === null ? null : orderIdForPrice(offer),
+  };
 }
 
 function headerValue(

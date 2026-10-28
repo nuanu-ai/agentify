@@ -115,6 +115,33 @@ export function transition(order: Order, event: OrderEvent): TransitionResult {
 }
 
 function transitionIn(order: Order, event: OrderEvent): TransitionResult {
+  if (event.kind === "payment_presented") {
+    const quotedAt = order.timestamps.quotedAt;
+    if (
+      order.state !== "quoted" ||
+      order.payment !== "none" ||
+      quotedAt === null ||
+      event.at < quotedAt ||
+      event.at >= quotedAt + order.policy.deadlines.quoteTtlMs
+    ) {
+      return reject(
+        order,
+        event,
+        "event_not_applicable",
+        "a payment request is admitted only while the quoted price holds",
+      );
+    }
+    if (order.timestamps.paymentPresentedAt !== null) return ok(order);
+    return ok({
+      ...order,
+      timestamps: {
+        ...order.timestamps,
+        createdAt: event.at,
+        paymentPresentedAt: event.at,
+      },
+    });
+  }
+
   if (event.kind === "close_called") {
     if (order.state === "delivered") {
       return answer(order, { ok: false, error: "fulfillment_complete", retryable: false });
@@ -238,6 +265,18 @@ function notApplicable(order: Order, event: OrderEvent): TransitionResult {
 
 function answer(order: Order, merchantAnswer: MerchantAnswer): TransitionResult {
   return ok(order, [{ kind: "answer_merchant", answer: merchantAnswer }]);
+}
+
+/**
+ * A delivery of an order that already has its goods: nothing is delivered or
+ * charged again and the buyer keeps the first goods. A merchant whose repeat
+ * carried other goods is told so, since those are not the ones the buyer has.
+ */
+function repeatedDelivery(order: Order, event: { readonly otherGoods?: true }): TransitionResult {
+  return answer(order, {
+    ok: true,
+    result: event.otherGoods === true ? "already_delivered_other_goods" : "already_delivered",
+  });
 }
 
 /**
@@ -455,6 +494,7 @@ function redeliver(
   const decision = nextRedelivery({
     attempts: order.dispatch.attempts,
     now: at,
+    firstHandedOverAt: order.timestamps.firstDispatchedAt,
     deadlineAt,
     policy: order.policy.redelivery,
   });
@@ -687,7 +727,7 @@ function dispatchedOrder(order: Order, at: number): Order {
     ...order,
     state: "dispatched",
     dispatch: { attempts: order.dispatch.attempts + 1, accepted: false },
-    timestamps: { ...order.timestamps, dispatchedAt: at },
+    timestamps: { ...order.timestamps, dispatchedAt: at, firstDispatchedAt: at },
   };
 }
 
@@ -741,15 +781,13 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // gateway also clears the hand-over it was waiting on, but that is not
       // enough: a handler can take longer than our wait to accept, so a repeat
       // decided on in the meantime is already on the merchant's stream when
-      // this lands. That repeat is still handed over, since delivery is at
-      // least once and the merchant tells it apart by the order's identifier,
-      // but the silence after it must not count. A parcel's repeat is the
-      // exception: its address went with this acceptance, and `transition`
-      // refuses to hand it over empty.
-      return answer(
-        { ...order, dispatch: { ...order.dispatch, accepted: true } },
-        { ok: true, result: "accepted" },
-      );
+      // this lands, and its pause can run to minutes. So the acceptance
+      // withdraws whatever is still waiting there. A repeat already drawn
+      // still reaches him, and the silence after it must not count.
+      return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [
+        { kind: "withdraw_hand_overs" },
+        { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
+      ]);
     case "handler_delivered":
       return overdueSynchronousGoods(order, event) ?? deliverGoods(order, event.at);
     case "handler_refused":
@@ -806,9 +844,8 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // At-least-once delivery: the same order landing again is ordinary, and
       // the counter is what the backoff counts from. But this event is also
       // how the record of a hand-over we already learned about from the
-      // merchant finally reaches us, and that one hand-over is counted once —
-      // the counter is what the backoff and the attempt cap read, so counting
-      // it twice costs the order a retry.
+      // merchant finally reaches us, and that one hand-over is counted once,
+      // since counting it twice would lengthen the next pause for nothing.
       const alreadyRecorded = order.timestamps.dispatchedAt !== null;
       return ok({
         ...order,
@@ -816,7 +853,11 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
           ...order.dispatch,
           attempts: alreadyRecorded ? order.dispatch.attempts + 1 : order.dispatch.attempts,
         },
-        timestamps: { ...order.timestamps, dispatchedAt: event.at },
+        timestamps: {
+          ...order.timestamps,
+          dispatchedAt: event.at,
+          firstDispatchedAt: order.timestamps.firstDispatchedAt ?? event.at,
+        },
       });
     }
     case "purchase_repeated":
@@ -853,7 +894,7 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
         : notApplicable(order, event);
     case "deliver_called":
     case "handler_delivered":
-      return answer(order, { ok: true, result: "already_delivered" });
+      return repeatedDelivery(order, event);
     case "refuse_called":
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.
@@ -883,7 +924,7 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
     case "handler_delivered":
       // Idempotent by the order's own identifier: the same success, no second
       // fulfillment and no second charge.
-      return answer(order, { ok: true, result: "already_delivered" });
+      return repeatedDelivery(order, event);
     case "handler_accepted":
       // A worker taking on an order that is already delivered. Deliveries are
       // at least once, so this is ordinary rather than a fault, and the answer
@@ -954,7 +995,7 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
         : notApplicable(order, event);
     case "deliver_called":
     case "handler_delivered":
-      return answer(order, { ok: true, result: "already_delivered" });
+      return repeatedDelivery(order, event);
     case "refuse_called":
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.

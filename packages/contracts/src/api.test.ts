@@ -588,19 +588,22 @@ describe("the status an agent reads", () => {
   it("says why an order ended where Agentify and not its merchant decided it", () => {
     // A word to branch on and a sentence saying what to do; an unknown word
     // falls through to the sentence.
-    const priceGone = {
+    const timedOut = {
       ...status,
       status: "expired",
-      reason: { code: "price_expired", message: "The price ran out; start a new purchase." },
+      reason: {
+        code: "merchant_timed_out",
+        message: "The seller did not deliver in time; nothing was charged.",
+      },
     };
-    const unknownWord = { ...priceGone, reason: { code: "a_later_word", message: "Ask again." } };
+    const unknownWord = { ...timedOut, reason: { code: "a_later_word", message: "Ask again." } };
 
-    expect(AgentOrderStatusSchema.parse(priceGone)).toStrictEqual(priceGone);
+    expect(AgentOrderStatusSchema.parse(timedOut)).toStrictEqual(timedOut);
     expect(AgentOrderStatusSchema.parse(unknownWord).reason?.code).toBe("a_later_word");
     expect(
       AgentOrderStatusSchema.safeParse({
-        ...priceGone,
-        reason: { code: "price_expired", message: " " },
+        ...timedOut,
+        reason: { code: "merchant_timed_out", message: " " },
       }).success,
     ).toBe(false);
   });
@@ -614,7 +617,7 @@ describe("the status an agent reads", () => {
     const listed = reason?.properties.code.anyOf.flatMap((branch) => branch.enum ?? []);
 
     expect(listed).toStrictEqual(
-      expect.arrayContaining(["deadline_passed", "refused", "price_expired"]),
+      expect.arrayContaining(["deadline_passed", "refused", "merchant_timed_out"]),
     );
     const owing = {
       ...status,

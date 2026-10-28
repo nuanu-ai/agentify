@@ -18,3 +18,23 @@ export interface PaymentChain {
    */
   used(token: string, wallet: string, nonce: string): Promise<boolean>;
 }
+
+/** How much of a token a wallet holds, read from the chain. */
+export interface TokenBalances {
+  /**
+   * `wallet`'s balance of `token`, in the token's smallest unit, read once and
+   * quickly. It throws when the chain could not be asked, or when the endpoint
+   * serves another chain, neither of which is an answer.
+   */
+  balance(token: string, wallet: string): Promise<bigint>;
+  /**
+   * `wallet`'s balance of `token`, and whether the token has marked its
+   * EIP-3009 authorization `nonce` used or cancelled, read together in one
+   * request and quickly. It throws as `balance` does.
+   */
+  payerState(
+    token: string,
+    wallet: string,
+    nonce: string,
+  ): Promise<{ readonly held: bigint; readonly used: boolean }>;
+}

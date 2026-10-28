@@ -25,7 +25,10 @@ import { IdentifierSchema } from "./primitives.js";
  * `accepted`: a handler took the order on, and the goods will follow through
  * `deliver`. `delivered`: the sale closed. `already_delivered`: a retry landed
  * twice; nothing is delivered or charged twice, so treat it as success, not as
- * a failure because it is not `delivered`. `delivered_late`: the
+ * a failure because it is not `delivered`. `already_delivered_other_goods`:
+ * the same, where the repeat's goods differ, as documents, from the goods the
+ * order keeps; the buyer has the first goods, so check what the two share
+ * before revoking anything. `delivered_late`: the
  * delivery deadline had passed and the goods went out anyway. `refused`: the refusal took effect.
  * `purchase_already_closed`: a synchronous handler answered after its
  * deadline; the work exists and a repeat purchase will collect it.
@@ -38,6 +41,7 @@ export const ORDER_CALL_RESULTS = Object.freeze([
   "accepted",
   "delivered",
   "already_delivered",
+  "already_delivered_other_goods",
   "delivered_late",
   "refused",
   "purchase_already_closed",
@@ -96,7 +100,7 @@ export const ProblemSchema = z
      */
     code: z.string().regex(/\S/, "a finding carries a code").meta({
       description:
-        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Four are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the merchant\'s share of sales to arrive at, asked for wherever a payment settles), "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change) and "no_seller_site" (no site set for the merchant\'s shop, asked for on a parcel\'s card alone, because a parcel that does not arrive is a question its buyer takes there).',
+        'What kind of finding it is, for the program that reads it. The set is open: a finding about a field of what was sent carries the name the check gave it. Four are promised, always with an empty path, and each says the merchant rather than the card is missing something, so no edit to the card clears it: "no_seller_name" (no name set for buyers to read), "no_payout_wallet" (no wallet set for the merchant\'s share of sales to arrive at, asked for wherever a payment settles), "no_operator_approval" (the operator has not admitted this merchant to the live catalog, which only the operator can change) and "no_seller_site" (no site set for the merchant\'s shop, required for an asynchronous or parcel card, so the buyer can read the merchant\'s terms before paying and ask about an unfulfilled purchase).',
     }),
 
     /** The same finding in words, for the person who has to fix the card. */
@@ -124,7 +128,7 @@ export const CallErrorSchema = z.strictObject({
     // The promised codes travel in the description, so that a client generated
     // from the JSON Schema export learns them.
     description:
-      "Why the call did not go through. Codes are open strings. card_rejected means publication failed and error.problems names every finding, including the merchant's missing name, payout wallet, live approval or parcel shop site. Order calls promise fulfillment_closed (the merchant stopped future Agentify fulfillment), fulfillment_complete (closing was asked of an order already delivered or shipped, and nothing changed), nothing_to_close (closing was asked of an order that ended without a charge, and nothing changed), order_already_closed (the call cannot change the order's ending), not_applicable_in_mode (the mode has no such call or answer), delivery_does_not_match_card (the goods do not match the card sold with the order; problems names the fields, and retryable is true only while delivery can still be corrected), and shipment_already_recorded (a different shipment is recorded and cannot be replaced; repeating the same one succeeds). No code establishes a refund or settlement.",
+      "Why the call did not go through. Codes are open strings. card_rejected means publication failed and error.problems names every finding, including the merchant's missing name, payout wallet, live approval or the shop site required for asynchronous and parcel cards. Order calls promise fulfillment_closed (the merchant stopped future Agentify fulfillment), fulfillment_complete (closing was asked of an order already delivered or shipped, and nothing changed), nothing_to_close (closing was asked of an order that ended without a charge, and nothing changed), order_already_closed (the call cannot change the order's ending), not_applicable_in_mode (the mode has no such call or answer), delivery_does_not_match_card (the goods do not match the card sold with the order; problems names the fields, and retryable is true only while delivery can still be corrected), and shipment_already_recorded (a different shipment is recorded and cannot be replaced; repeating the same one succeeds). No code establishes a refund or settlement.",
   }),
   message: z.string().regex(/\S/, "an error carries an explanation a person can read"),
   retryable: z.boolean(),
@@ -153,7 +157,8 @@ export const CARD_REJECTED = "card_rejected";
  * key of the merchant's code may say where the money goes.
  * `no_operator_approval`: the operator has not admitted the merchant to the
  * live catalog, which only the operator can change. `no_seller_site`: on a
- * parcel's card only, no site for the merchant's shop, set where the name is.
+ * card paid before delivery or shipment, no site for the merchant's shop, set
+ * where the name is.
  */
 export const MERCHANT_FINDINGS = Object.freeze({
   NO_SELLER_NAME: "no_seller_name",

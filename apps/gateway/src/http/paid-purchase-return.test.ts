@@ -141,6 +141,26 @@ const codeOf = (body: unknown): string | undefined =>
   (body as { error?: { code?: string } }).error?.code;
 
 describe("a purchase already paid for", () => {
+  it.each(["sync", "async"] as const)(
+    "keeps %s purchase and recovery replies out of caches",
+    async (fulfillment) => {
+      const sale = await aPaidSale({ ...card, fulfillment }, { delivers: fulfillment === "sync" });
+      const recovered = await sale.present(
+        await signedPayment(BUYER, sale.requirements, sale.fresh("0x02")),
+      );
+
+      for (const answered of [sale.paid, recovered]) {
+        expect(answered.status).toBe(200);
+        expect(answered.body).toMatchObject({
+          order_id: sale.orderId,
+          status_url: expect.any(String),
+        });
+        expect(answered.headers.get("cache-control")).toBe("no-store");
+      }
+      expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
+    },
+  );
+
   it("comes back to its payer's fresh signature while the chain endpoint does not answer", async () => {
     // The claims decide whether an authorization was taken; the chain is only
     // a second guard, and its silence must not send the buyer to the payment
@@ -261,7 +281,7 @@ describe("a purchase already paid for", () => {
     ["a signature of nothing at all", `0x${"ab".repeat(65)}` as const],
     ["a signature that is not hex", "0xsigned" as `0x${string}`],
     ["no signature", "0x" as const],
-  ])("is not returned to %s, and the payment layer is not asked", async (_what, signature) => {
+  ])("reveals no purchase or goods to %s and charges nothing more", async (_what, signature) => {
     const sale = await aPaidSale();
 
     const forged = await sale.present(
@@ -271,7 +291,10 @@ describe("a purchase already paid for", () => {
     expect(forged.status).toBe(409);
     expect(codeOf(forged.body)).toBe("payment_not_verified");
     expect(JSON.stringify(forged.body)).toMatch(/if this purchase was already paid for/);
-    expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
+    expect((forged.body as { order_id?: string }).order_id).toBeUndefined();
+    expect((forged.body as { status_url?: string }).status_url).toBeUndefined();
+    expect(JSON.stringify(forged.body)).not.toContain("SESAME");
+    expect(sale.harnessed.facilitator.settles).toHaveLength(1);
   });
 
   it("is not returned to another wallet's signature written over the payer's address", async () => {

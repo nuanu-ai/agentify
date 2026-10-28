@@ -1,6 +1,7 @@
 /**
  * The queue: each merchant's stream of envelopes, and the reminders the gateway
- * leaves itself. Behind it is pg-boss; do not hand-roll a queue here.
+ * leaves itself. Orders, events and reminders are durable; price questions
+ * live only in this process until their caller stops waiting.
  *
  * A drawn envelope never returns to the stream on its own. For orders that is
  * deliberate: an unanswered delivery comes back as a reminder, and only the
@@ -79,14 +80,17 @@ export interface Queue {
     gone?: AbortSignal,
   ): Promise<readonly DrawnEnvelope[]>;
 
+  /** Drops a price question and any delivery of it once its caller stops waiting. */
+  forgetPrice(merchantId: string, priceId: string): Promise<void>;
+
   /** This delivery has been answered. A handle is only unique on its stream. */
   finish(merchantId: string, handle: string): Promise<void>;
 
   /**
    * Whether this merchant's stream still holds an undrawn order envelope for
    * this order, a delayed redelivery included. The sweep asks before sending
-   * an order again, because every hand-over counts towards the attempt cap and
-   * reaching it stops delivery attempts.
+   * an order again, because a needless hand-over puts a second copy on the
+   * merchant's stream and lengthens the pause before the next.
    *
    * An envelope already drawn looks the same as one never written; that gap is
    * covered by `sweepDispatchGraceMs`, not by this.

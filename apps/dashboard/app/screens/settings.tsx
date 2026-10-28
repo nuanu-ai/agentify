@@ -65,7 +65,8 @@ function WhatBuyersSee({ view }: Readonly<{ view: SettingsView }>) {
           <>
             <p className={styles.purpose}>
               Agents give buyers this address for what an order can't answer: a delivery that didn't
-              arrive, a return, your terms.
+              arrive, a return, your terms. Set it before publishing products paid before delivery
+              or shipment.
             </p>
             <Field
               label="Shop's site"

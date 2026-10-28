@@ -22,6 +22,8 @@ type Answer =
   | "unavailable";
 
 let running: Server | null = null;
+/** How many HTTP requests the endpoint has answered, a batch counting once. */
+let requestsServed = 0;
 
 afterEach(async () => {
   await new Promise<void>((resolve) => (running ? running.close(() => resolve()) : resolve()));
@@ -39,26 +41,35 @@ async function anEndpoint(
   chainId: number,
   call: Answer | ((question: RpcQuestion) => Answer),
 ): Promise<string> {
+  requestsServed = 0;
+  const answerTo = (asked: RpcQuestion): Answer =>
+    asked.method === "eth_chainId"
+      ? { result: `0x${chainId.toString(16)}` }
+      : typeof call === "function"
+        ? call(asked)
+        : call;
   running = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => {
       body += chunk;
     });
     request.on("end", () => {
-      const asked = JSON.parse(body) as RpcQuestion;
-      const answer: Answer =
-        asked.method === "eth_chainId"
-          ? { result: `0x${chainId.toString(16)}` }
-          : typeof call === "function"
-            ? call(asked)
-            : call;
-      if (answer === "unavailable") {
+      requestsServed += 1;
+      const parsed = JSON.parse(body) as RpcQuestion | RpcQuestion[];
+      const questions = Array.isArray(parsed) ? parsed : [parsed];
+      const answers = questions.map((asked) => ({ asked, answer: answerTo(asked) }));
+      if (answers.some(({ answer }) => answer === "unavailable")) {
         response.statusCode = 503;
         response.end("Service Unavailable");
         return;
       }
+      const written = answers.map(({ asked, answer }) => ({
+        jsonrpc: "2.0",
+        id: asked.id,
+        ...(answer as Exclude<Answer, "unavailable">),
+      }));
       response.setHeader("content-type", "application/json");
-      response.end(JSON.stringify({ jsonrpc: "2.0", id: asked.id, ...answer }));
+      response.end(JSON.stringify(Array.isArray(parsed) ? written : written[0]));
     });
   });
   await new Promise<void>((resolve) => running?.listen(0, "127.0.0.1", resolve));
@@ -169,5 +180,82 @@ describe("whether an authorization was used, on the chain", () => {
     const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, "unavailable"));
 
     await expect(reader?.used(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).rejects.toThrow();
+  });
+});
+
+describe("a wallet's balance of the token, on the chain", () => {
+  const USDC_ON_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+  it("is read in one request to the endpoint", async () => {
+    // ERC-20 balanceOf(address), independently encoded on the wire.
+    const data = `0x70a08231${"0".repeat(24)}${WALLET.slice(2)}`;
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(84532, (asked) => {
+        const [transaction] = asked.params ?? [];
+        return asked.method === "eth_call" &&
+          transaction?.to?.toLowerCase() === USDC_ON_BASE_SEPOLIA.toLowerCase() &&
+          transaction.data === data
+          ? { result: `0x${1_234_567n.toString(16).padStart(64, "0")}` }
+          : { error: { code: -32602, message: "wrong balance query" } };
+      }),
+    );
+
+    expect(await reader?.balance(USDC_ON_BASE_SEPOLIA, WALLET)).toBe(1_234_567n);
+    expect(requestsServed).toBe(1);
+  });
+
+  it("is not read from an endpoint serving another chain", async () => {
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(8453, { result: `0x${"0".repeat(64)}` }),
+    );
+
+    await expect(reader?.balance(USDC_ON_BASE_SEPOLIA, WALLET)).rejects.toThrow(/does not answer/);
+  });
+
+  it("is not read from an endpoint that does not answer it", async () => {
+    const reader = paymentChainOn(SEPOLIA, await anEndpoint(84532, "unavailable"));
+
+    await expect(reader?.balance(USDC_ON_BASE_SEPOLIA, WALLET)).rejects.toThrow();
+  });
+});
+
+describe("a payer's wallet on the chain, as a payment is about to wait for its check", () => {
+  const USDC_ON_BASE_SEPOLIA = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+  const NONCE = `0x${"22".repeat(32)}`;
+
+  it("reads what it holds and whether the authorization was used, in one request", async () => {
+    const balanceData = `0x70a08231${"0".repeat(24)}${WALLET.slice(2)}`;
+    const stateData = `0xe94a0102${"0".repeat(24)}${WALLET.slice(2)}${NONCE.slice(2)}`;
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(84532, (asked) => {
+        const [transaction] = asked.params ?? [];
+        if (transaction?.to?.toLowerCase() !== USDC_ON_BASE_SEPOLIA.toLowerCase())
+          return { error: { code: -32602, message: "wrong token" } };
+        if (transaction.data === balanceData)
+          return { result: `0x${42n.toString(16).padStart(64, "0")}` };
+        if (transaction.data === stateData) return { result: `0x${"0".repeat(63)}1` };
+        return { error: { code: -32602, message: "wrong query" } };
+      }),
+    );
+
+    expect(await reader?.payerState(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).toStrictEqual({
+      held: 42n,
+      used: true,
+    });
+    expect(requestsServed).toBe(1);
+  });
+
+  it("is not read from an endpoint serving another chain", async () => {
+    const reader = paymentChainOn(
+      SEPOLIA,
+      await anEndpoint(8453, { result: `0x${"0".repeat(64)}` }),
+    );
+
+    await expect(reader?.payerState(USDC_ON_BASE_SEPOLIA, WALLET, NONCE)).rejects.toThrow(
+      /does not answer/,
+    );
   });
 });

@@ -22,14 +22,9 @@ import {
   isOpen,
   onTheMerchantsOpenList,
   outcomeFor,
+  transition,
 } from "@agentify/core";
-import {
-  durationInWords,
-  LAPSED_KEPT_MS,
-  SILENT_AFTER_MS,
-  UNSERVED_AT_MOST,
-  WAITING_FOR_PAYMENT_AT_MOST,
-} from "@agentify/core/published";
+import { SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
 import {
   type Acceptance,
   CARD_REJECTED,
@@ -40,6 +35,7 @@ import {
   type Delivery,
   deliveryCheckFor,
   type HandlerAnswer,
+  listedPurchaseOf,
   localityOf,
   MERCHANT_FINDINGS,
   type MerchantCard,
@@ -69,6 +65,7 @@ import {
   type WorkerEnvelope,
   type WorkerPollResponse,
 } from "@nuanu-ai/agentify-contracts";
+import type { PaymentRequirements } from "@x402/core/types";
 import { isAddress } from "viem";
 import type {
   AnalyticsEvent,
@@ -78,32 +75,33 @@ import type {
 } from "../analytics/events.js";
 import type { Announcement, AskedInTheDashboard } from "../announcements.js";
 import { failureNamed } from "../failure-named.js";
-import { PaymentEdge } from "../http/x402.js";
+import { atomicUnits, CLOCK_SKEW_SECONDS, inUsdc, PaymentEdge } from "../http/x402.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
-import type { NoVerdict } from "../ports/facilitator.js";
+import type { Charge, NoVerdict, VerifyOutcome } from "../ports/facilitator.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
-import type {
-  AnalyticsOf,
-  Integration,
-  IntegrationSwitch,
-  LapsedPage,
-  PayoutWalletRead,
-  PayoutWalletWrite,
-  RecordedPayoutSplit,
-  Store,
-  StoredCard,
-  StoredKey,
-  StoredMerchant,
-  StoredOrder,
-  StoredPayoutWallet,
-  WalletWritten,
+import {
+  type AdmissionStanding,
+  type AnalyticsOf,
+  type Integration,
+  type IntegrationSwitch,
+  type PayoutWalletRead,
+  type PayoutWalletWrite,
+  type RecordedPayoutSplit,
+  type StoredCard,
+  type StoredKey,
+  type StoredMerchant,
+  type StoredOrder,
+  type StoredPayoutWallet,
+  storeFailureFactsOf,
+  type WalletWritten,
 } from "../ports/store.js";
 import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
 import type { NotAPayoutWallet } from "../split/wallet-rule.js";
-import { purchaseUrlOf } from "./addresses.js";
+import { purchaseUrlOf, sameShipTo as sameAddress } from "./addresses.js";
 import { orderCallResponseOf } from "./answers.js";
+import { MerchantGate } from "./merchant-gate.js";
 import {
   issueKey,
   keyDigest,
@@ -113,7 +111,24 @@ import {
   setSellerSite,
   setServiceName,
 } from "./merchants.js";
-import { validityNeededAfterCheckMs } from "./payment-window.js";
+import { PayerReads, payerOf } from "./payer-proof.js";
+import { PAYMENT_PLACE_WAIT_MS, validityNeededAfterCheckMs } from "./payment-window.js";
+import {
+  decodePriceStamp,
+  orderIdForPrice,
+  type PriceOffer,
+  priceFactsDigest,
+  stampPrice,
+  verifyPriceStamp,
+} from "./price-stamp.js";
+import {
+  admissionTimed,
+  gateRefused,
+  type PaymentLane,
+  paymentArrived,
+  priceAnswered,
+  verifyTimed,
+} from "./purchase-metrics.js";
 import {
   journal,
   recordMissingSplits,
@@ -141,7 +156,40 @@ import {
   sellableBy,
   sellingFor,
 } from "./runtime.js";
+import { canonical, sameGoods } from "./same-goods.js";
 import { purchaseOf, Waiting } from "./waiting.js";
+
+/** Price questions one merchant may have open at once; its worker handles four messages at a time. */
+const PRICE_QUESTIONS_AT_ONCE = 4;
+
+/** A loose bound on how fast questions reach one merchant, whatever the pace of its answers. */
+const PRICE_QUESTIONS_PER_SECOND = 16;
+
+/**
+ * How long a price question waits for a place before the agent is told the
+ * seller is busy. It is spent inside the question's own answer window, so it
+ * never takes more than half of that.
+ */
+const PRICE_PLACE_WAIT_MS = 2_000;
+
+/** How many price questions may wait in one merchant's line for a place. */
+const PRICE_QUESTIONS_WAITING_AT_MOST = 16;
+
+/** Payments of one merchant's checked with the payment layer at once. */
+const PAYMENT_CHECKS_AT_ONCE = 4;
+
+/** How many payments may wait in one merchant's line for a check. */
+const PAYMENT_CHECKS_WAITING_AT_MOST = 16;
+
+/**
+ * Places for payments whose signature is not the key of the wallet they name:
+ * a contract wallet's, or noise. They wait behind each other and never in
+ * front of a buyer whose key signed.
+ */
+const UNPROVEN_CHECKS_AT_ONCE = 2;
+
+/** How many such payments may wait in one merchant's line. */
+const UNPROVEN_CHECKS_WAITING_AT_MOST = 4;
 
 /**
  * How stale a key's last-used mark may get before a call refreshes it, so a
@@ -230,15 +278,6 @@ export interface IssuedMerchantKey {
 /** The queue's name for the daily sweep of claims on payments. */
 const SWEEP_CLAIMS = "agentify_forget_old_claims";
 
-/** The queue's name for the daily work that forgets attempts that lapsed unpaid. */
-const FORGET_LAPSED = "agentify_forget_lapsed_attempts";
-
-/**
- * How many lapsed attempts one statement forgets, so a run over a long
- * backlog is many short statements rather than one that holds the table.
- */
-const LAPSED_FORGOTTEN_AT_ONCE = 500;
-
 /**
  * A price answer the door turned away, and what stands between its price and a
  * sale. Nothing moved: a question it named that is still held stays open, and
@@ -273,15 +312,31 @@ export interface PaidRequest {
   readonly params?: Readonly<Record<string, unknown>>;
 }
 
+/** A priced snapshot held only in this response, with no order stored yet. */
+export type PricedPurchase = Pick<
+  StoredOrder,
+  "order" | "merchantId" | "itemId" | "merchantItemId" | "params" | "result" | "priceId"
+> & { readonly through: Integration; readonly priceOffer: NonNullable<StoredOrder["priceOffer"]> };
+
 /** What a purchase attempt came to. */
 export type PurchaseAttempt =
-  /** The order is priced and waiting to be paid for: here is what it costs. */
-  | { readonly step: "pay"; readonly order: StoredOrder }
+  /** A priced purchase, with no stored order: here is what payment must satisfy. */
+  | { readonly step: "pay"; readonly order: PricedPurchase }
   /** The purchase is over, one way or another. */
-  | { readonly step: "settled"; readonly order: StoredOrder; readonly delivery: Delivery | null }
+  | {
+      readonly step: "settled";
+      readonly order: StoredOrder;
+      readonly delivery: Delivery | null;
+      readonly seller?: Seller;
+    }
   /** The purchase is under way and the agent is not waiting on it. */
-  | { readonly step: "under_way"; readonly order: StoredOrder }
+  | { readonly step: "under_way"; readonly order: StoredOrder; readonly seller?: Seller }
   | { readonly step: "no_such_item" }
+  /**
+   * The card's own example purchase, which holds stand-in values: it is
+   * answered as the listing is, and its merchant is asked nothing.
+   */
+  | { readonly step: "listed_example"; readonly itemId: string }
   | { readonly step: "params_rejected"; readonly problems: readonly Problem[] }
   /** A parcel's purchase without an address, or another purchase with one. */
   | { readonly step: "ship_to_rejected"; readonly message: string }
@@ -290,8 +345,32 @@ export type PurchaseAttempt =
   /** A payment sent at another product's address, or with other parameters, than its order's. */
   | { readonly step: "another_purchase" }
   | { readonly step: "not_selling"; readonly message: string }
-  /** As many of the seller's purchases as the limit allows already wait for payment. */
-  | { readonly step: "seller_busy" }
+  /**
+   * The merchant could not be asked or did not answer in time, or has as many
+   * payments being checked as it may; nothing was charged, and the same call
+   * may go through in a moment. `why` says which, in the agent's words.
+   */
+  | {
+      readonly step: "seller_busy";
+      readonly why: string;
+      /** How long the agent is asked to wait, where it is not the usual two seconds. */
+      readonly retryAfterSeconds?: number;
+    }
+  /**
+   * Another request for this price is being checked right now; this one was
+   * not taken, and the same request answers once that check is over.
+   */
+  | { readonly step: "payment_being_checked" }
+  /**
+   * The payment could not be checked or taken because something on Agentify's
+   * side failed for a moment before anything was written; it was not used.
+   */
+  | { readonly step: "not_checked_now" }
+  /**
+   * Something on Agentify's side failed before anything was written, for a
+   * reason that will not pass by itself; the payment was not used.
+   */
+  | { readonly step: "failed_before_charge" }
   /**
    * The seller's own process has not polled for longer than
    * `SILENT_AFTER_MS`; nothing was charged.
@@ -311,6 +390,15 @@ export type PurchaseAttempt =
   /** Another payer's payment owns this order, and this payment is not it. */
   | { readonly step: "not_this_purchase" };
 
+/** What the steps of one payment share: when it arrived, and how far it got. */
+interface Paying {
+  readonly arrivedAt: number;
+  /** Set just before the first write, after which a failure may have changed something. */
+  readonly progress: { wrote: boolean };
+  /** Lets another request for this price be checked; called once this one is past its check. */
+  readonly leave: () => void;
+}
+
 /**
  * How many envelopes one poll draws past without handing anything out before
  * it answers empty. It is few enough that a poll which can record nothing,
@@ -322,6 +410,7 @@ const PASSED_AT_MOST = 32;
 interface HowTheySell {
   readonly selling: MerchantSelling;
   readonly sellable: boolean;
+  readonly sellerSite: string | null;
   readonly integration: Integration;
   /** Whether they have as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
@@ -333,6 +422,8 @@ interface HowTheySell {
 const saleFactsOf = (stored: StoredCard, theirs: HowTheySell): SaleFacts => ({
   selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
   price: stored.card.price,
+  fulfillment: stored.card.fulfillment,
+  sellerSite: theirs.sellerSite,
   unserved: theirs.unserved,
   through: theirs.integration,
   lastContact: theirs.lastContact,
@@ -366,7 +457,8 @@ export const silentAt = (polled: number | null, at: number): boolean =>
  * itself; the catalogue and a purchase turn it away all the same.
  */
 export type OffSale =
-  | { readonly code: "not_selling" | "seller_not_fulfilling"; readonly transient: false }
+  | { readonly code: "not_selling"; readonly transient: false; readonly message?: string }
+  | { readonly code: "seller_not_fulfilling"; readonly transient: false }
   | { readonly code: "seller_not_taking_orders"; readonly transient: true };
 
 /** What decides whether one card can be bought now. */
@@ -375,6 +467,8 @@ interface SaleFacts {
   readonly selling: MerchantSelling;
   /** The card's price as stored, held to the price rule as it stands now. */
   readonly price: Card["price"];
+  readonly fulfillment: Card["fulfillment"];
+  readonly sellerSite: string | null;
   /** Whether its seller has as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
   /** The integration its seller sells through. */
@@ -397,13 +491,16 @@ interface SaleFacts {
  * mode: a synchronous purchase would charge nothing, but nobody would draw
  * its order, so it could only lapse after the buyer had signed and waited. A
  * shop sold through the connector is never silent, since the connector runs
- * inside Agentify. A seller at the limit of purchases waiting for payment is
- * not off sale: a place frees within a minute, and anybody can fill the limit
- * without paying, so it must not empty a seller's listing.
+ * inside Agentify. A seller whose price questions or payment checks are full
+ * is not off sale: places free within seconds, and anybody can fill them
+ * without paying, so they must not empty a seller's listing.
  */
 const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
   if (facts.selling !== "open" || priceProblemsOf(facts.price).length > 0) {
     return { code: "not_selling", transient: false };
+  }
+  if (siteRequiredFor(facts.fulfillment) && facts.sellerSite === null) {
+    return { code: "not_selling", transient: false, message: SELLER_SITE_REQUIRED };
   }
   if (facts.unserved) return { code: "seller_not_fulfilling", transient: false };
   if (facts.through === "api" && silentAt(facts.lastContact, at)) {
@@ -414,6 +511,17 @@ const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
 
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
+
+/** The same, told to an agent that has signed a payment for it. */
+const NOT_ON_SALE_PAID =
+  "this product is not on sale at the moment, so this payment was not taken and nothing was charged";
+
+/** A buyer pays before receiving goods, so needs somewhere to read the merchant's terms. */
+const siteRequiredFor = (fulfillment: unknown): boolean =>
+  fulfillment === "async" || fulfillment === "ship";
+
+const SELLER_SITE_REQUIRED =
+  "this seller has not provided the site of their shop, so this purchase cannot take a payment before delivery or shipment; nothing was charged";
 
 /**
  * Why a publish through the integration not in use is refused. About the
@@ -588,12 +696,35 @@ export class Gateway {
   /** Purchases parked on a price question, by the identifier of the question. */
   readonly quotes = new Waiting<QuoteResponse>();
   /**
-   * Which order each open price question belongs to, and whose it is. A price
+   * Which merchant each transient price question belongs to. A price
    * identifier is not a secret — it travels on a stream and lands in a receipt
    * — so the answer is checked against the merchant too, or anyone holding one
    * from a log could set the price of somebody else's purchase.
    */
-  readonly #questions = new Map<string, { orderId: string; merchantId: string }>();
+  readonly #questions = new Map<string, { merchantId: string; currency: string; until: number }>();
+  readonly #priceGate = new MerchantGate({
+    atOnce: PRICE_QUESTIONS_AT_ONCE,
+    perSecond: PRICE_QUESTIONS_PER_SECOND,
+    waitingAtMost: PRICE_QUESTIONS_WAITING_AT_MOST,
+  });
+  readonly #paymentGate = new MerchantGate({
+    atOnce: PAYMENT_CHECKS_AT_ONCE,
+    waitingAtMost: PAYMENT_CHECKS_WAITING_AT_MOST,
+  });
+  readonly #unprovenGate = new MerchantGate({
+    atOnce: UNPROVEN_CHECKS_AT_ONCE,
+    waitingAtMost: UNPROVEN_CHECKS_WAITING_AT_MOST,
+  });
+  readonly #payers = new PayerReads(
+    () => this.runtime.balances,
+    () => this.runtime.clock(),
+  );
+  /**
+   * The order of each price whose payment this process is checking. Held in
+   * memory because one process takes a channel's payments; the admission's
+   * lock in the store still decides every write.
+   */
+  readonly #beingChecked = new Set<string>();
   /**
    * The polls held open right now, by merchant, with the key each came in on,
    * so revoking a key in this process ends their waiting at once rather than
@@ -603,8 +734,6 @@ export class Gateway {
   readonly #held = new Map<string, Set<HeldPoll>>();
   /** When this process last wrote each merchant's poll down (`CONTACT_WRITTEN_EVERY_MS`). */
   readonly #contactWritten = new Map<string, number>();
-  /** When this process last logged each merchant's refusals for waiting purchases. */
-  readonly #busyLogged = new Map<string, number>();
   /** When this process last logged each merchant's refusals for unserved orders. */
   readonly #unservedLogged = new Map<string, number>();
   readonly #edge: PaymentEdge;
@@ -649,7 +778,6 @@ export class Gateway {
     await this.runtime.queue.everyDay(SWEEP_CLAIMS, () => this.forgetOldClaims());
     // Forgetting is the same whichever run gets there, so a job handled twice
     // is harmless.
-    await this.runtime.queue.everyDay(FORGET_LAPSED, () => this.forgetLapsedAttempts());
 
     // What the orders are still owed is swept the same way. Two gateways can
     // run it at once, because pg-boss re-offers a job that outlives its
@@ -700,26 +828,6 @@ export class Gateway {
     );
     if (gone > 0) {
       console.log(`[gateway] forgot ${gone} claims on payments older than the retention`);
-    }
-    return gone;
-  }
-
-  /**
-   * Forgets every attempt that lapsed unpaid longer than `LAPSED_KEPT_MS` ago,
-   * a batch at a time, and returns how many went.
-   */
-  async forgetLapsedAttempts(): Promise<number> {
-    const before = this.runtime.clock() - LAPSED_KEPT_MS;
-    let gone = 0;
-    for (;;) {
-      const batch = await this.runtime.store.forgetLapsedBefore(before, LAPSED_FORGOTTEN_AT_ONCE);
-      gone += batch;
-      if (batch < LAPSED_FORGOTTEN_AT_ONCE) break;
-    }
-    if (gone > 0) {
-      console.log(
-        `[gateway] forgot ${gone} purchases that lapsed unpaid over ${durationInWords(LAPSED_KEPT_MS, "day")} ago`,
-      );
     }
     return gone;
   }
@@ -821,18 +929,17 @@ export class Gateway {
     // somebody can be told what is missing.
     const missing = missingFrom(merchant, this.runtime.config, this.runtime.clock());
 
-    // A parcel's card asks one more thing of its merchant: the site of their
-    // shop, where a buyer takes a parcel that did not arrive. It is checked on
-    // the card as sent, so a card refused for something else still names it.
-    const parcelWithoutSite =
+    // Check the mode as sent so a malformed prepaid card still names the
+    // missing merchant setting together with its own findings.
+    const prepaidWithoutSite =
       typeof body === "object" &&
       body !== null &&
-      (body as { readonly fulfillment?: unknown }).fulfillment === "ship" &&
+      siteRequiredFor((body as { readonly fulfillment?: unknown }).fulfillment) &&
       merchant.sellerSite === null
         ? [MERCHANT_FINDINGS.NO_SELLER_SITE]
         : [];
     if (!parsed.success) {
-      return cardRejected([...missing, ...parcelWithoutSite], findingsOf(parsed.error.issues));
+      return cardRejected([...missing, ...prepaidWithoutSite], findingsOf(parsed.error.issues));
     }
     // Asked of the parsed card, so a price written as one string meets the same
     // rule in the same words as one written as two fields.
@@ -840,7 +947,7 @@ export class Gateway {
       ...priceProblemsOf(parsed.data.price),
       ...oversizedChallenge(this.runtime.widestChallenge(parsed.data)),
     ];
-    const lacking = [...missing, ...parcelWithoutSite];
+    const lacking = [...missing, ...prepaidWithoutSite];
     if (lacking.length > 0 || unsellable.length > 0) {
       return cardRejected(lacking, unsellable);
     }
@@ -888,6 +995,8 @@ export class Gateway {
               {
                 selling: entry.selling,
                 price: entry.card.card.price,
+                fulfillment: entry.card.card.fulfillment,
+                sellerSite: entry.sellerSite,
                 unserved: stopped.has(entry.card.merchantId),
                 through: entry.integration,
                 lastContact: entry.lastContact,
@@ -971,6 +1080,7 @@ export class Gateway {
     return {
       selling: merchant.selling,
       sellable: sellableBy(merchant, this.runtime.config, at),
+      sellerSite: merchant.sellerSite,
       integration: merchant.integration,
       unserved: await this.#unserved(merchant.id),
       lastContact: await this.runtime.store.lastContact(merchant.id),
@@ -1073,7 +1183,6 @@ export class Gateway {
     } | null;
     readonly liveApproved: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
-    readonly busy: boolean;
     readonly unserved: boolean;
     readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
   }> {
@@ -1094,13 +1203,6 @@ export class Gateway {
           : { address: wallet.pending.address, takesEffectAt: wallet.pending.takesEffectAt },
       liveApproved: merchant.liveApprovedAt !== null,
       outOfTouch: await this.#refusedForSilence(merchant, at),
-      busy:
-        merchant.selling === "open" &&
-        (await this.runtime.store.waitingForPayment(
-          merchant.id,
-          at,
-          WAITING_FOR_PAYMENT_AT_MOST,
-        )) >= WAITING_FOR_PAYMENT_AT_MOST,
       // Read while paused too, so a seller learns of it before resuming into it.
       unserved: await this.#unserved(merchant.id),
       withdrawn: await this.#standingWithdrawal(merchant),
@@ -1720,10 +1822,8 @@ export class Gateway {
   // --- buying ---------------------------------------------------------------
 
   /**
-   * The first half of a purchase: an order is opened, the merchant is asked
-   * what the goods cost if his card says to ask, and the agent is told what to
-   * pay — or told the purchase is already over, which is what a card that is
-   * out of stock comes to.
+   * Prices a purchase without durable state. The merchant is asked only when
+   * the card calls for a check; the answer becomes a buyer-held stamped offer.
    */
   async beginPurchase(
     itemId: string,
@@ -1733,6 +1833,9 @@ export class Gateway {
     const stored = await this.runtime.store.cardById(itemId);
     if (stored === null) {
       return { step: "no_such_item" };
+    }
+    if (this.#isListedExample(stored, params, shipTo)) {
+      return { step: "listed_example", itemId };
     }
 
     const fit = purchaseCheckFor(stored.card).safeParse(params);
@@ -1760,9 +1863,10 @@ export class Gateway {
     const at = this.runtime.clock();
     const theirs = await this.#howTheySell(stored.merchantId);
     // Before the order is written or the price asked, and in every mode.
-    switch (offSaleNow(saleFactsOf(stored, theirs), at)?.code) {
+    const off = offSaleNow(saleFactsOf(stored, theirs), at);
+    switch (off?.code) {
       case "not_selling":
-        return { step: "not_selling", message: NOT_ON_SALE };
+        return { step: "not_selling", message: off.message ?? NOT_ON_SALE };
       case "seller_not_fulfilling":
         this.#sayUnserved(stored.merchantId, at);
         return { step: "seller_not_fulfilling" };
@@ -1772,58 +1876,537 @@ export class Gateway {
         break;
     }
 
+    const priceId = this.runtime.ids("prc");
     const created = createOrder({
-      id: this.runtime.ids("ord"),
+      id: orderIdForPrice({ priceId, itemId, merchantId: stored.merchantId }),
       at,
       mode: modeForCard(stored.card),
       policy: policyFor(stored.card, this.runtime.config),
       priceCheck: priceCheckOf(stored.card),
-      cardPrice: {
-        amount: stored.card.price.amount,
-        currency: stored.card.price.currency,
-        asOf: stored.asOf,
-      },
-      // Whether the money that pays for this is real, which only the chain's
-      // environment decides. The receipt copies it from the order, so this is
-      // the one place it is set.
+      cardPrice: { ...stored.card.price, asOf: stored.asOf },
       test: this.runtime.config.environment === "test",
-      // The merchant's switch, the card's own pause, whether the card's
-      // integration is the one the merchant sells through, and whether the
-      // merchant could make a sale at all (a payout wallet, a name), folded
-      // into one word the machine refuses on before an order exists.
       selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
     });
+    if (!created.ok) return { step: "not_selling", message: created.rejection.message };
+    let order = created.order;
+    let reference: string | undefined;
+    let unavailable = false;
+    if (priceCheckOf(stored.card) === "merchant") {
+      const entered = await this.#priceGate.enter(
+        stored.merchantId,
+        Math.min(PRICE_PLACE_WAIT_MS, this.runtime.config.deadlines.quoteResponseMs / 2),
+      );
+      const place = typeof entered === "function" ? entered : null;
+      if (place === null) gateRefused("price");
+      // A synchronous card with no place sells at its card price, as in a silence.
+      if (place === null && order.mode.settle !== "after_fulfillment") {
+        return { step: "seller_busy", why: QUESTIONS_FULL };
+      }
+      let answer: QuoteResponse | null = null;
+      if (place !== null) {
+        const asked = this.runtime.clock();
+        try {
+          answer = await this.#askThePrice(
+            stored,
+            fit.data as Readonly<Record<string, unknown>>,
+            priceId,
+            at,
+            shipTo,
+          );
+        } finally {
+          place();
+        }
+        priceAnswered(
+          answer === null ? "silent" : answer.available ? "answered" : "unavailable",
+          stored.integration,
+          this.runtime.clock() - asked,
+        );
+      }
+      unavailable = answer?.available === false;
+      const pricedAt = this.runtime.clock();
+      const event =
+        answer === null
+          ? { kind: "quote_silent" as const, at: pricedAt }
+          : answer.available
+            ? {
+                kind: "quote_answered" as const,
+                at: pricedAt,
+                available: true as const,
+                price: { ...answer.price, asOf: Date.parse(answer.as_of) },
+              }
+            : { kind: "quote_answered" as const, at: pricedAt, available: false as const };
+      const priced = transition(order, event);
+      if (!priced.ok) return { step: "not_selling", message: priced.rejection.message };
+      order = priced.order;
+      if (answer?.available) reference = answer.quote_reference;
+    }
+    if (order.price === null || order.timestamps.quotedAt === null || order.quoteSource === null) {
+      return unavailable
+        ? { step: "not_selling", message: MERCHANT_SAID_UNAVAILABLE }
+        : {
+            step: "seller_busy",
+            why: NO_PRICE_IN_TIME,
+            retryAfterSeconds: SILENT_PRICE_RETRY_AFTER_SECONDS,
+          };
+    }
+    const merchant = await this.runtime.store.merchantById(stored.merchantId);
+    const payTo =
+      merchant === null ? null : payToAt(merchant, this.runtime.config, this.runtime.clock());
+    if (payTo === null) return { step: "not_selling", message: NOT_ON_SALE };
+    const terms = this.#edge.requirementsFor(order.price, null, payTo);
+    const key = this.runtime.config.priceStampKeys.current;
+    const offer: PriceOffer = {
+      version: 1,
+      priceId,
+      itemId,
+      merchantId: stored.merchantId,
+      integration: stored.integration,
+      cardDigest: priceFactsDigest(this.#cardFacts(stored), key, "card"),
+      paramsDigest: priceFactsDigest(fit.data as Readonly<Record<string, unknown>>, key, "params"),
+      placeDigest: priceFactsDigest(shipTo === undefined ? null : localityOf(shipTo), key, "place"),
+      amount: order.price.amount,
+      currency: order.price.currency as "USD" | "USDC",
+      source: order.quoteSource,
+      asOf: order.price.asOf,
+      quotedAt: order.timestamps.quotedAt,
+      expiresAt: order.timestamps.quotedAt + order.policy.deadlines.quoteTtlMs,
+      network: terms.network,
+      payTo: terms.payTo,
+      asset: terms.asset,
+      assetName: String(terms.extra?.name),
+      assetVersion: String(terms.extra?.version),
+      maxTimeoutSeconds: terms.maxTimeoutSeconds,
+      ...(reference === undefined ? {} : { quoteReference: reference }),
+    };
+    const stamp = stampPrice(offer, key);
+    return {
+      step: "pay",
+      order: {
+        order,
+        merchantId: stored.merchantId,
+        itemId,
+        merchantItemId: stored.card.merchant_item_id,
+        params: fit.data as Readonly<Record<string, unknown>>,
+        through: stored.integration,
+        ...(stored.card.result === undefined ? {} : { result: stored.card.result }),
+        priceId: order.quoteSource === "merchant_answer" ? priceId : null,
+        priceOffer: {
+          stamp,
+          expiresAt: offer.expiresAt,
+          requirements: this.#requirementsOf(offer, stamp),
+        },
+      },
+    };
+  }
 
-    if (!created.ok) {
-      return { step: "not_selling", message: created.rejection.message };
+  /**
+   * Whether a purchase body is the card's own listed example, where that
+   * example holds a stand-in no buyer sends: the word naming a string
+   * parameter's type, or the schema's sample address. A discovery catalog
+   * replays it after a payment goes through. A stand-in for a number or a
+   * boolean, zero or false, is a value buyers send, so an example made only of
+   * those is a purchase like any other.
+   */
+  #isListedExample(
+    stored: StoredCard,
+    params: Readonly<Record<string, unknown>>,
+    shipTo: ShipTo | undefined,
+  ): boolean {
+    const { card } = stored;
+    const standsIn =
+      card.fulfillment === "ship" ||
+      Object.values(card.params ?? {}).some((field) => field.type === "string");
+    return (
+      standsIn &&
+      canonical({ params, ...(shipTo === undefined ? {} : { ship_to: shipTo }) }) ===
+        canonical(listedPurchaseOf(card))
+    );
+  }
+
+  /**
+   * What a price depends on in its card: the published terms, the policy they
+   * give, and the integration that sells them. Not when the card was last
+   * published, since publishing it again unchanged changes no price.
+   */
+  #cardFacts(stored: StoredCard): unknown {
+    return {
+      card: stored.card,
+      integration: stored.integration,
+      policy: policyFor(stored.card, this.runtime.config),
+    };
+  }
+
+  #requirementsOf(offer: PriceOffer, stamp: string) {
+    return {
+      scheme: "exact",
+      network: offer.network as `${string}:${string}`,
+      asset: offer.asset,
+      amount: atomicUnits(offer.amount, 6),
+      payTo: offer.payTo,
+      maxTimeoutSeconds: offer.maxTimeoutSeconds,
+      extra: { name: offer.assetName, version: offer.assetVersion, price_stamp: stamp },
+    };
+  }
+
+  /**
+   * Presents a payment against a stamped price. What follows is the machine's, and
+   * how long the agent waits for it depends on the mode — a synchronous
+   * purchase is answered with the goods, so the agent stays on the call until
+   * the order has an answer or the promised ceiling runs out.
+   *
+   * The stamp is authenticated before anything is read or waited for, so a
+   * forged one costs at most the read of the order it names. A stamp signed
+   * under a key since retired is taken only as the exact saved price of the
+   * order it already bought.
+   */
+  async payPurchase(
+    stamp: string,
+    payment: string,
+    fingerprint: string,
+    shipTo?: ShipTo,
+    asked?: PaidRequest,
+    arrivedAt = this.runtime.clock(),
+  ): Promise<PurchaseAttempt> {
+    const progress = { wrote: false };
+    let leave = (): void => undefined;
+    try {
+      const authenticated = verifyPriceStamp(stamp, this.runtime.config.priceStampKeys);
+      const offer = authenticated?.offer ?? (await this.#savedPriceOf(stamp));
+      if (offer === null) return unknownPrice();
+      const orderId = orderIdForPrice(offer);
+      if (this.#beingChecked.has(orderId)) return { step: "payment_being_checked" };
+      this.#beingChecked.add(orderId);
+      leave = () => {
+        this.#beingChecked.delete(orderId);
+        leave = () => undefined;
+      };
+      const before = await this.runtime.store.orderById(orderId);
+      if (before === null) {
+        return authenticated === null
+          ? unknownPrice()
+          : await this.#admit(authenticated, stamp, payment, fingerprint, shipTo, asked, {
+              arrivedAt,
+              progress,
+              leave: () => leave(),
+            });
+      }
+      const saved = before.priceOffer;
+      if (saved?.stamp !== stamp) return unknownPrice();
+      return await this.#payAgain(before, saved, payment, fingerprint, shipTo, asked, {
+        arrivedAt,
+        progress,
+        leave: () => leave(),
+      });
+    } catch (thrown) {
+      // Before the first write, and where that write never began, nothing was
+      // written and nothing charged. Only a failure that can pass by itself is
+      // worth the same request again; a defect would answer the same forever.
+      const facts = storeFailureFactsOf(thrown);
+      if (progress.wrote && !facts.nothingWritten) throw thrown;
+      console.error(
+        `[gateway] a payment could not be checked, and nothing was written for it: ${failureNamed(thrown)}`,
+      );
+      return facts.passing ? { step: "not_checked_now" } : { step: "failed_before_charge" };
+    } finally {
+      leave();
+    }
+  }
+
+  /** The decoded price of a stamp that is, byte for byte, the saved price of an existing order. */
+  async #savedPriceOf(stamp: string): Promise<PriceOffer | null> {
+    const decoded = decodePriceStamp(stamp);
+    if (decoded === null) return null;
+    const saved = await this.runtime.store.orderById(orderIdForPrice(decoded));
+    return saved?.priceOffer?.stamp === stamp ? decoded : null;
+  }
+
+  /**
+   * Where a payment waits for its check, and for whom, or its refusal here
+   * for what the token would refuse anyway. A payment its wallet's own key
+   * signed, from a wallet the chain shows holds the price, waits in the
+   * merchant's lane for buyers. Any other waits in the lane nobody can vouch
+   * for: a contract wallet's, noise, and a key's payment whose wallet could
+   * not be read. In either lane the payer is one wallet, so holding more
+   * places takes more wallets. A return of a paid order is never held to the
+   * wallet's balance.
+   */
+  async #laneOf(
+    merchantId: string,
+    payment: string,
+    requirements: PaymentRequirements,
+    charges: boolean,
+  ): Promise<
+    { readonly lane: PaymentLane; readonly payer: string } | { readonly refused: PurchaseAttempt }
+  > {
+    const proof = await payerOf(payment, requirements);
+    const now = BigInt(Math.floor(this.runtime.clock() / 1_000));
+    if (proof.validAfter !== null && proof.validAfter > now + BigInt(CLOCK_SKEW_SECONDS)) {
+      return { refused: signedWrongly("the signed authorization is not valid yet") };
+    }
+    if (!proof.signedByKey) return { lane: "unproven", payer: proof.claimed };
+    const payer = proof.wallet.toLowerCase();
+    if (!proof.lowS) {
+      return {
+        refused: signedWrongly(
+          "the signature is the high-s form, which the token refuses; sign again with the wallet's own signer",
+        ),
+      };
+    }
+    if (!charges) return { lane: "proven", payer };
+    const asked = BigInt(requirements.amount);
+    const state = await this.#payers.stateOf(
+      merchantId,
+      requirements.asset,
+      proof.wallet,
+      proof.nonce,
+      asked,
+    );
+    if (state === null) return { lane: "unproven", payer };
+    if (state.used) {
+      return {
+        refused: signedWrongly(
+          "the signed authorization has already been used, and each payment needs one of its own",
+        ),
+      };
+    }
+    if (state.held < asked) {
+      return {
+        refused: verificationRefusal({
+          verified: false,
+          reason: "insufficient_funds",
+          message: `the paying wallet holds ${inUsdc(state.held)} USDC on ${requirements.network}, less than the ${inUsdc(asked)} USDC this price asks`,
+        }),
+      };
+    }
+    return { lane: "proven", payer };
+  }
+
+  /**
+   * Runs one check with the payment layer once this merchant has a place for
+   * it in `lane`, or answers the refusal for why no place came in time. Other
+   * merchants' checks never take this merchant's places.
+   */
+  async #checked<T extends object>(
+    merchantId: string,
+    waits: { readonly lane: PaymentLane; readonly payer: string },
+    check: () => Promise<T>,
+  ): Promise<T | { readonly refused: PurchaseAttempt }> {
+    const gate = waits.lane === "proven" ? this.#paymentGate : this.#unprovenGate;
+    const place = await gate.enter(merchantId, PAYMENT_PLACE_WAIT_MS, waits.payer);
+    if (typeof place !== "function") {
+      gateRefused(waits.lane);
+      return {
+        refused: {
+          step: "seller_busy",
+          why: place === "payer" ? WALLETS_PAYMENT_BEING_CHECKED : PAYMENT_CHECKS_FULL,
+        },
+      };
+    }
+    try {
+      return await check();
+    } finally {
+      place();
+    }
+  }
+
+  /** One check by the payment layer, timed for the operator by the lane it waited in. */
+  #verify(charge: Charge, lane: PaymentLane): Promise<VerifyOutcome> {
+    return verifyTimed(
+      () => this.runtime.clock(),
+      lane,
+      () => this.runtime.facilitator.verify(charge),
+    );
+  }
+
+  /**
+   * Whether a stamped price can still be bought, judged on the merchant and
+   * card as they stand. Asked when the payment arrives and again inside its
+   * admission, so a change gets the same answer whenever it lands.
+   */
+  #standingOf(
+    offer: PriceOffer,
+    key: string,
+    merchant: StoredMerchant | null,
+    card: StoredCard | null,
+    at: number,
+  ): AdmissionStanding {
+    if (
+      merchant === null ||
+      card === null ||
+      merchant.id !== offer.merchantId ||
+      card.merchantId !== offer.merchantId ||
+      card.id !== offer.itemId ||
+      card.integration !== offer.integration
+    ) {
+      return "off_sale";
+    }
+    const selling = sellingFor(
+      merchant.selling,
+      card,
+      sellableBy(merchant, this.runtime.config, at),
+      merchant.integration,
+    );
+    if (
+      selling !== "open" ||
+      priceProblemsOf(card.card.price).length > 0 ||
+      (siteRequiredFor(card.card.fulfillment) && merchant.sellerSite === null)
+    ) {
+      return "off_sale";
+    }
+    if (
+      priceFactsDigest(this.#cardFacts(card), key, "card") !== offer.cardDigest ||
+      payToAt(merchant, this.runtime.config, at)?.toLowerCase() !== offer.payTo.toLowerCase()
+    ) {
+      return "changed";
+    }
+    return "stands";
+  }
+
+  /**
+   * The first payment for a stamped price: checked against the price and the
+   * card as they stand, verified with no database connection held, then
+   * admitted in one short transaction, and only then charged.
+   */
+  async #admit(
+    authenticated: NonNullable<ReturnType<typeof verifyPriceStamp>>,
+    stamp: string,
+    payment: string,
+    fingerprint: string,
+    shipTo: ShipTo | undefined,
+    asked: PaidRequest | undefined,
+    paying: Paying,
+  ): Promise<PurchaseAttempt> {
+    const { offer } = authenticated;
+    const { arrivedAt } = paying;
+    const keys = this.runtime.config.priceStampKeys;
+    const key = authenticated.key === "current" ? keys.current : keys.previous;
+    if (key === undefined) throw new Error("a price authenticated under a key that is not held");
+    paymentArrived(arrivedAt - offer.quotedAt);
+    if (arrivedAt < offer.quotedAt || arrivedAt >= offer.expiresAt) {
+      return {
+        step: "payment_not_taken",
+        why: "nothing was charged: this price has expired; request a new price before signing",
+        retryable: false,
+      };
+    }
+    const stored = await this.runtime.store.cardById(offer.itemId);
+    const merchant = await this.runtime.store.merchantById(offer.merchantId);
+    if (stored === null || merchant === null)
+      return { step: "not_selling", message: NOT_ON_SALE_PAID };
+    // Asked before the standing, so a reason it names, such as a missing
+    // seller site, reaches the buyer in its own words.
+    const off = offSaleNow(
+      saleFactsOf(stored, await this.#theirsOf(merchant, arrivedAt)),
+      arrivedAt,
+    );
+    switch (off?.code) {
+      case "not_selling":
+        return { step: "not_selling", message: off.message ?? NOT_ON_SALE_PAID };
+      case "seller_not_fulfilling":
+        this.#sayUnserved(merchant.id, arrivedAt);
+        return { step: "seller_not_fulfilling" };
+      case "seller_not_taking_orders":
+        return { step: "seller_not_taking_orders" };
+      case undefined:
+        break;
+    }
+    const standing = this.#standingOf(offer, key, merchant, stored, arrivedAt);
+    if (standing === "off_sale") return { step: "not_selling", message: NOT_ON_SALE_PAID };
+    if (standing === "changed") return offerChanged();
+
+    const fit = purchaseCheckFor(stored.card).safeParse(asked?.params ?? {});
+    if (!fit.success) return { step: "params_rejected", problems: findingsOf(fit.error.issues) };
+    if (stored.card.fulfillment === "ship" && shipTo === undefined)
+      return {
+        step: "ship_to_rejected",
+        message: "this parcel needs its complete ship_to address repeated with payment",
+      };
+    if (stored.card.fulfillment !== "ship" && shipTo !== undefined)
+      return {
+        step: "ship_to_rejected",
+        message: "this product is not shipped, so its purchase takes no ship_to",
+      };
+    const orderId = orderIdForPrice(offer);
+    const requirements = this.#requirementsOf(offer, stamp);
+    const charge = {
+      orderId,
+      requirements,
+      amount: offer.amount,
+      currency: offer.currency,
+      payment,
+      payTo: offer.payTo,
+    };
+    const lane = await this.#laneOf(offer.merchantId, payment, requirements, true);
+    if ("refused" in lane) return lane.refused;
+    const anotherPurchase =
+      (asked !== undefined && asked.itemId !== offer.itemId) ||
+      priceFactsDigest(fit.data as Readonly<Record<string, unknown>>, key, "params") !==
+        offer.paramsDigest;
+    const anotherPlace =
+      priceFactsDigest(shipTo === undefined ? null : localityOf(shipTo), key, "place") !==
+      offer.placeDigest;
+    if (anotherPurchase || anotherPlace) {
+      // Even a mismatch is private: a published offer must not become an address/parameter oracle.
+      const checked = await this.#checked(offer.merchantId, lane, () =>
+        this.#verify(charge, lane.lane),
+      );
+      if ("refused" in checked) return checked.refused;
+      if (checked.verified !== true) {
+        logVerificationRefusal(checked, "price", offer.priceId);
+        return verificationRefusal(checked);
+      }
+      return anotherPurchase ? { step: "another_purchase" } : { step: "ship_to_changed" };
     }
 
-    // The price question is named before the order is written, because a
-    // parcel's order keeps the name: the question carries where the parcel
-    // goes, and it leaves the queue with the rest of the address.
-    const asksThePrice = created.effects.some((effect) => effect.kind === "request_quote");
-    const priceQuestion = asksThePrice ? this.runtime.ids("prc") : null;
-
+    const policy = policyFor(stored.card, this.runtime.config);
+    const born = createOrder({
+      id: orderId,
+      at: offer.quotedAt,
+      mode: modeForCard(stored.card),
+      policy: {
+        ...policy,
+        deadlines: { ...policy.deadlines, quoteTtlMs: offer.expiresAt - offer.quotedAt },
+      },
+      priceCheck: offer.source === "merchant_answer" ? "merchant" : "none",
+      // The card's price as it was named, which an identical republish leaves unchanged.
+      cardPrice: {
+        ...stored.card.price,
+        asOf: offer.source === "card_snapshot" ? offer.asOf : stored.asOf,
+      },
+      selling: "open",
+      test: this.runtime.config.environment === "test",
+    });
+    if (!born.ok) return { step: "not_selling", message: born.rejection.message };
+    let order = born.order;
+    if (offer.source === "merchant_answer") {
+      const priced = transition(order, {
+        kind: "quote_answered",
+        at: offer.quotedAt,
+        available: true,
+        price: { amount: offer.amount, currency: offer.currency, asOf: offer.asOf },
+      });
+      if (!priced.ok) return { step: "not_selling", message: priced.rejection.message };
+      order = priced.order;
+    }
+    const presented = transition(order, { kind: "payment_presented", at: arrivedAt });
+    if (!presented.ok) return { step: "not_selling", message: presented.rejection.message };
     const record: StoredOrder = {
-      order: created.order,
-      // Settled here and never again: this puts the order on the card's
-      // merchant's stream, and every later read of it is checked against it.
+      order: presented.order,
       merchantId: stored.merchantId,
       itemId: stored.id,
       merchantItemId: stored.card.merchant_item_id,
       buyerKey: this.runtime.ids("bk"),
-      // What the agent was promised, kept with the order so a card republished
-      // since cannot change what this sale is held to. A parcel's card declares
-      // none: its order is held to a shipment.
       ...(stored.card.result === undefined ? {} : { result: stored.card.result }),
-      params: { ...params },
-      ...(shipTo === undefined ? {} : { shipTo }),
-      ...(shipTo === undefined || priceQuestion === null ? {} : { priceQuestion }),
-      priceId: null,
+      params: fit.data as Readonly<Record<string, unknown>>,
+      priceId: offer.source === "merchant_answer" ? offer.priceId : null,
+      priceOffer: {
+        stamp,
+        requirements,
+        expiresAt: offer.expiresAt,
+        ...(offer.quoteReference === undefined ? {} : { reference: offer.quoteReference }),
+      },
       delivery: null,
       payment: null,
-      // Set when a payment is verified and not before: the merchant may still
-      // move their wallet between now and the moment an agent pays.
       payTo: null,
       paidBy: null,
       settlement: null,
@@ -1832,51 +2415,107 @@ export class Gateway {
       openDeliveryId: null,
       through: stored.integration,
     };
-    // Written only while the merchant still sells through the card's
-    // integration, since a switch landing between the word above and this
-    // write would leave an order nothing will draw, and only while the
-    // seller's purchases waiting for payment are fewer than the limit. Both
-    // are decided before the price question below is asked. The limit keeps
-    // anyone from loading a seller's shop with price questions for purchases
-    // nobody pays; while somebody holds that many open, the seller's sales
-    // through Agentify wait, though their shop does not.
-    const born = await this.runner.create(record, created.effects, {
-      through: stored.integration,
-      waitingAtMost: WAITING_FOR_PAYMENT_AT_MOST,
-    });
-    if (born === "switched_away") {
-      return { step: "not_selling", message: NOT_ON_SALE };
-    }
-    if (born === "too_many_waiting") {
-      await this.#sayBusy(stored.merchantId, at);
-      return { step: "seller_busy" };
-    }
 
-    if (priceQuestion !== null) {
-      await this.#askThePrice(record, stored, priceQuestion);
+    const verified = await this.#checked(offer.merchantId, lane, () =>
+      this.#verify(charge, lane.lane),
+    );
+    if ("refused" in verified) return verified.refused;
+    if (verified.verified !== true) {
+      logVerificationRefusal(verified, "price", offer.priceId);
+      return verificationRefusal(verified);
     }
+    const checkedAt = this.runtime.clock();
+    const needed = validityNeededAfterCheckMs(record.order.policy.deadlines);
+    if (
+      record.order.mode.settle === "after_fulfillment" &&
+      verified.validUntil !== null &&
+      verified.validUntil < checkedAt + needed
+    )
+      return {
+        step: "payment_not_verified",
+        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; ${
+          checkedAt < offer.expiresAt
+            ? "sign the payment again and send it at once, while its price holds"
+            : "its price has lapsed since, so request a new price and sign that at once"
+        }`,
+        retryable: false,
+      };
+    const prepared = this.runner.preparePurchase(
+      record,
+      walletThatPaid(verified.payer) ?? fingerprint,
+      payment,
+      offer.payTo,
+      checkedAt,
+      {
+        fingerprint,
+        standing: (current, card) =>
+          this.#standingOf(offer, key, current, card, this.runtime.clock()),
+        ...(shipTo === undefined ? {} : { shipTo }),
+        ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }),
+      },
+    );
+    if (!prepared.ok)
+      return {
+        step: "payment_not_taken",
+        why: prepared.rejection.message,
+        retryable: prepared.rejection.retryable,
+      };
 
-    return this.#wherePurchaseStands(record.order.id);
+    paying.progress.wrote = true;
+    const admitted = await admissionTimed(
+      () => this.runtime.clock(),
+      () => this.runtime.store.admitOrder(prepared.prepared.accept),
+    );
+    switch (admitted.kind) {
+      case "busy":
+      case "existing":
+        return { step: "payment_being_checked" };
+      case "held_up":
+        return { step: "not_checked_now" };
+      case "payment_already_spent":
+        return { step: "payment_already_spent" };
+      case "off_sale":
+        return { step: "not_selling", message: NOT_ON_SALE_PAID };
+      case "offer_changed":
+        return offerChanged();
+      case "admitted":
+        break;
+    }
+    paying.leave();
+    const owner = prepared.prepared.accept.record.paidBy;
+    if (owner === null) throw new Error("an admitted purchase has no verified owner");
+    const parkedKey = purchaseOf(orderId, owner);
+    const parked =
+      record.order.mode.settle === "after_fulfillment"
+        ? this.runner.purchases.wait(parkedKey, this.runtime.config.deadlines.syncBudgetMs)
+        : null;
+    await this.runner.finishAdmission(prepared.prepared);
+    if (parked !== null) {
+      const settled = await this.runtime.store.orderById(orderId);
+      if (settled !== null && outcomeFor(settled.order) !== "in_progress")
+        this.runner.purchases.giveUp(parkedKey);
+      await parked;
+      await this.#closeOverdueSynchronously(orderId);
+    }
+    return this.#wherePurchaseStands(orderId, merchant);
   }
 
   /**
-   * The second half: the agent has paid. What follows is the machine's, and
-   * how long the agent waits for it depends on the mode — a synchronous
-   * purchase is answered with the goods, so the agent stays on the call until
-   * the order has an answer or the promised ceiling runs out.
+   * A payment for a price whose order already exists: a buyer getting back a
+   * purchase it paid for, or paying for one whose first answer it lost.
+   * Checked against the terms saved on the order, never the card as it stands.
    */
-  async payPurchase(
-    orderId: string,
+  async #payAgain(
+    found: StoredOrder,
+    saved: NonNullable<StoredOrder["priceOffer"]>,
     payment: string,
     fingerprint: string,
-    shipTo?: ShipTo,
-    asked?: PaidRequest,
+    shipTo: ShipTo | undefined,
+    asked: PaidRequest | undefined,
+    { arrivedAt, progress, leave }: Paying,
   ): Promise<PurchaseAttempt> {
-    let before = await this.runtime.store.orderById(orderId);
-    if (before === null) {
-      return { step: "no_such_item" };
-    }
-
+    const orderId = found.order.id;
+    let before = found;
     if (unresolvedPayment(before.order)) return noPaymentTakenFor(before.order);
 
     // An order that is over with no goods held takes no payment and is not
@@ -1889,37 +2528,9 @@ export class Gateway {
       return noPaymentTakenFor(before.order);
     }
 
-    // The timer that closes an order whose price lapsed can fire late, so a
-    // payment arriving after the lapse closes the order as the timer would
-    // have, before anything is verified or claimed. A payment that arrives in
-    // time and is still being checked when the price runs out is not covered:
-    // the timer can close that order first.
-    const arrivedAt = this.runtime.clock();
-    const lapsed = deadlines(before.order).find(
-      (deadline) => deadline.kind === "quote_expiry" && deadline.at <= arrivedAt,
-    );
-    if (lapsed !== undefined) {
-      await this.runner.apply(orderId, {
-        kind: "deadline_expired",
-        at: lapsed.at,
-        deadline: lapsed.kind,
-      });
-      const after = await this.runtime.store.orderById(orderId);
-      if (after === null) {
-        return { step: "no_such_item" };
-      }
-      if (overWithNothingHeld(after)) {
-        return noPaymentTakenFor(after.order);
-      }
-      // Another payment took the order between the read above and the lapse,
-      // so the price did not lapse on it, and this payment is checked as any
-      // payment for an order that is under way.
-      before = after;
-    }
-
     // An address sent for a product that is not shipped is refused at once:
     // the card says as much to anyone.
-    if (shipTo !== undefined && before.shipTo === undefined) {
+    if (shipTo !== undefined && before.order.mode.parcel !== true) {
       return {
         step: "ship_to_rejected",
         message: "this product is not shipped, so a payment for it carries no ship_to",
@@ -1927,20 +2538,10 @@ export class Gateway {
     }
 
     const price = before.order.price;
-    if (price === null) {
-      // Challenges are issued only for priced orders, so this payment is for
-      // the wrong order or was built without a challenge.
-      return {
-        step: "payment_not_verified",
-        why: "this order has no price for a payment to be checked against",
-        retryable: false,
-      };
-    }
+    if (price === null) throw new Error(`the order ${orderId} keeps a saved price and no price`);
 
-    // The payment is verified before any lock is taken, because verifying is a
-    // network round trip. A payment that does not verify closes and claims
-    // nothing, so a stranger's junk cannot spend the life of somebody else's
-    // order; the order stays open until its own deadline.
+    // An existing purchase is verified outside its row lock. No owner or
+    // address comparison from before that lock can decide acceptance.
     // Used authorizations and signatures can be read from the chain, so even
     // the exact saved payment is no private credential for an order or goods.
     //
@@ -1955,27 +2556,24 @@ export class Gateway {
     // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
 
-    // Asked again before the payment is verified, so a price named before the
-    // seller was stopped is not charged after. Only a purchase being paid for
-    // the first time is refused: a payment for goods already made and held
-    // buys an order that was served.
+    // A new payment for an order paid before its goods needs the seller's
+    // site, as the first one did. Paid recovery and payments already accepted
+    // for execution continue.
     if (
-      payingMerchant !== null &&
-      before.order.state === "quoted" &&
-      (await this.#stoppedForUnserved(payingMerchant.id, arrivedAt))
+      payingMerchant?.sellerSite === null &&
+      before.order.mode.settle === "on_purchase" &&
+      takesANewPayment(before.order)
     ) {
-      return { step: "seller_not_fulfilling" };
+      return { step: "not_selling", message: SELLER_SITE_REQUIRED };
     }
 
-    // Asked again here, before the payment is verified, because a price named
-    // just before the seller went quiet holds on into the silence. A purchase
-    // being paid for the first time is refused in every mode, since nobody
-    // would draw its order; a repeat of a synchronous one that releases goods
-    // already made is not.
+    // A new payment for an order paid before its goods is refused while the
+    // seller is silent, since nobody would draw the order; a repeat of a
+    // synchronous one that releases goods already made is not.
     if (
       payingMerchant !== null &&
-      (before.order.state === "quoted" ||
-        (before.order.mode.settle === "on_purchase" && takesANewPayment(before.order))) &&
+      before.order.mode.settle === "on_purchase" &&
+      takesANewPayment(before.order) &&
       (await this.#outOfTouch(payingMerchant.id, payingMerchant.integration, arrivedAt))
     ) {
       return { step: "seller_not_taking_orders" };
@@ -1987,7 +2585,7 @@ export class Gateway {
         : payToAt(payingMerchant, this.runtime.config, this.runtime.clock());
     const paidFor =
       before.paidBy !== null && before.payTo !== null && !takesANewPayment(before.order);
-    const payTo = paidFor ? before.payTo : payeeNow;
+    const payTo = saved.requirements.payTo;
 
     // A payment for an order already paid is never charged, so it is checked
     // here and not by the payment layer, which would refuse a wallet that
@@ -1995,71 +2593,52 @@ export class Gateway {
     // left in the wallet that paid for it. Only a wallet can sign again, so an
     // order owned by a payment's fingerprint, where the payment layer named no
     // payer, is still checked there.
-    const checkedHere =
-      paidFor && before.paidBy !== null && isAddress(before.paidBy)
-        ? await returningPayment(
-            payment,
-            { ...before, orderId, price },
+    const paidBy = before.paidBy;
+    const lane = await this.#laneOf(before.merchantId, payment, saved.requirements, !paidFor);
+    if ("refused" in lane) return lane.refused;
+    const checked = await this.#checked(before.merchantId, lane, async () => {
+      const here =
+        paidFor && paidBy !== null && isAddress(paidBy)
+          ? await returningPayment(
+              payment,
+              { orderId, priceOffer: saved },
+              {
+                now: this.runtime.clock(),
+                claimHolder: (held) => this.runtime.store.paymentClaimHolder(held),
+                ...(this.runtime.chain === undefined ? {} : { chain: this.runtime.chain }),
+              },
+            )
+          : null;
+      return {
+        here: here !== null,
+        verified:
+          here ??
+          (await this.#verify(
             {
-              edge: this.#edge,
-              now: this.runtime.clock(),
-              claimHolder: (held) => this.runtime.store.paymentClaimHolder(held),
-              ...(this.runtime.chain === undefined ? {} : { chain: this.runtime.chain }),
+              orderId,
+              requirements: saved.requirements,
+              amount: price.amount,
+              currency: price.currency,
+              payment,
+              payTo,
+              ...(paidFor ? { returnsAPaidOrder: true } : {}),
             },
-          )
-        : null;
-    const onlyReturns = checkedHere !== null || payTo?.toLowerCase() !== payeeNow?.toLowerCase();
-    const verified =
-      checkedHere ??
-      (await this.runtime.facilitator.verify({
-        orderId,
-        amount: price.amount,
-        currency: price.currency,
-        payment,
-        payTo,
-      }));
+            lane.lane,
+          )),
+      };
+    });
+    if ("refused" in checked) return checked.refused;
+    const { verified } = checked;
+    const onlyReturns = checked.here || payTo.toLowerCase() !== payeeNow?.toLowerCase();
 
+    if (verified.verified !== true) logVerificationRefusal(verified, "order", orderId);
+    leave();
     const current = await this.runtime.store.orderById(orderId);
     if (current === null) return { step: "no_such_item" };
     if (unresolvedPayment(current.order)) return noPaymentTakenFor(current.order);
     before = current;
 
-    if (verified.verified !== true) {
-      // A refusal says what to do next, since that depends on why the payment
-      // failed and nothing else tells the agent, and it says whether anything
-      // was charged. On an order already paid for, the payer is most likely
-      // presenting a payment it already used, having lost the answer.
-      // Anyone holding the payment request can make up a payment that is
-      // refused, so its answer never says whether the order was paid, only
-      // what this payment did.
-      const why =
-        verified.verified === "unknown"
-          ? NO_VERDICT_WORDS[verified.cause]
-          : `this payment charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`;
-      // A refusal's words go to the agent and not the log: they can quote the
-      // payment presented, and a mismatch is described with what the payer's
-      // client put in it, newlines included. The log keeps the payment layer's
-      // code, a machine word, so a code nobody has given a meaning can be
-      // found. A silence is the other way round:
-      // what failed is the operator's to fix, and says nothing a buyer can use.
-      console.warn(
-        `[gateway] a payment for order ${orderId} did not verify: ${
-          verified.verified === false
-            ? `refused as ${verified.reason}${verified.code === undefined ? "" : ` (${verified.code})`}`
-            : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
-        }`,
-      );
-      return {
-        step: "payment_not_verified",
-        why,
-        // Only a silence may pass on a second try. A check that turns
-        // Agentify away, a seller who cannot be paid or a check that
-        // contradicts the payment meets the same payment the same way, and
-        // "false" means the same payment will not pass, though a corrected
-        // one still may.
-        retryable: verified.verified === "unknown" && verified.cause === "no_answer",
-      };
-    }
+    if (verified.verified !== true) return verificationRefusal(verified);
 
     // The owner is who the payment layer says paid, or whose signature this
     // gateway checked, never the address the payment declares of itself.
@@ -2115,32 +2694,10 @@ export class Gateway {
     // is true, and keeps the order's status address.
     const checkedOutAt = this.runtime.clock();
 
-    // A purchase delivered in the answer is charged after its goods, so where
-    // the goods are still to be made its authorisation has to outlast the
-    // merchant's answer and the facilitator's margin at the charge. One that
-    // would not is refused here, before the claim and before the merchant is
-    // asked for anything, or the goods would be made for a charge the
-    // facilitator then refuses. A payment whose end is not read here (a
-    // spelling no reference client sends) goes on to the facilitator, which
-    // refuses it at the charge if it has run out: a merchant's work, and no
-    // money, is what that can cost.
-    const needed = validityNeededAfterCheckMs(before.order.policy.deadlines);
-    if (
-      before.order.mode.settle === "after_fulfillment" &&
-      before.order.state === "quoted" &&
-      verified.validUntil !== null &&
-      verified.validUntil < checkedOutAt + needed
-    ) {
-      return {
-        step: "payment_not_verified",
-        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; sign the payment again and send it at once, while its price holds`,
-        retryable: false,
-      };
-    }
-
     // One authorisation buys one order, which ownership by payer cannot ensure
     // since the same wallet would own both. It is claimed after verification,
     // so a payment that never checked out never burns a claim.
+    progress.wrote = true;
     const claim = await this.runtime.store.claimPayment(fingerprint, orderId);
     if (!claim.claimed) {
       return { step: "payment_already_spent" };
@@ -2166,6 +2723,7 @@ export class Gateway {
       {
         fingerprint,
         onlyReturns,
+        ...(shipTo === undefined ? {} : { shipTo }),
         ...(verified.recovery === undefined ? {} : { recovery: verified.recovery }),
       },
     );
@@ -2179,15 +2737,25 @@ export class Gateway {
       await this.runtime.store.releaseClaim(fingerprint, orderId);
       return { step: "no_such_item" };
     }
+    if (taken.kind === "switched_away" || taken.kind === "ship_to_required") {
+      this.runner.purchases.giveUp(key);
+      await this.runtime.store.releaseClaim(fingerprint, orderId);
+      return taken.kind === "switched_away"
+        ? { step: "not_selling", message: NOT_ON_SALE_PAID }
+        : {
+            step: "ship_to_rejected",
+            message: "this parcel needs the complete ship_to address with payment",
+          };
+    }
     if (taken.kind === "not_owner") {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
-      // The merchant may have closed an unpaid order while this payment was
-      // being checked, and nobody owns it: it is over, not somebody else's.
-      const now = await this.runtime.store.orderById(orderId);
-      return now !== null && overWithNothingHeld(now)
-        ? noPaymentTakenFor(now.order)
-        : { step: "not_this_purchase" };
+      return { step: "not_this_purchase" };
+    }
+    if (taken.kind === "ship_to_changed") {
+      this.runner.purchases.giveUp(key);
+      await this.runtime.store.releaseClaim(fingerprint, orderId);
+      return { step: "ship_to_changed" };
     }
     if (taken.kind === "only_returns") {
       this.runner.purchases.giveUp(key);
@@ -2195,7 +2763,7 @@ export class Gateway {
       // What this payment is told if it is presented again, now that the order
       // takes a new charge: checked by the payment layer, against where the
       // merchant is paid today.
-      const moved = payTo?.toLowerCase() !== payeeNow?.toLowerCase();
+      const moved = payTo.toLowerCase() !== payeeNow?.toLowerCase();
       return {
         step: "payment_not_verified",
         why: `nothing was charged: ${NEXT_STEP_AFTER[moved ? "price_stale" : "signature"]}`,
@@ -2223,7 +2791,7 @@ export class Gateway {
       await this.#closeOverdueSynchronously(orderId);
     }
 
-    return this.#wherePurchaseStands(orderId);
+    return this.#wherePurchaseStands(orderId, payingMerchant);
   }
 
   /**
@@ -2373,28 +2941,6 @@ export class Gateway {
   }
 
   /**
-   * Logs that this merchant's purchases are being refused for those waiting,
-   * with how many wait, at most once a minute per merchant: anybody can hold
-   * a seller's places, and nothing else tells the operator it is happening.
-   * Nothing about the buyer goes in it.
-   */
-  async #sayBusy(merchantId: string, at: number): Promise<void> {
-    const said = this.#busyLogged.get(merchantId);
-    if (said !== undefined && at - said < SELLER_REFUSALS_LOGGED_EVERY_MS) {
-      return;
-    }
-    this.#busyLogged.set(merchantId, at);
-    const waiting = await this.runtime.store.waitingForPayment(
-      merchantId,
-      at,
-      WAITING_FOR_PAYMENT_AT_MOST,
-    );
-    console.warn(
-      `[gateway] ${merchantId} has ${waiting} purchases waiting for payment, so new purchases of theirs are refused as seller_busy`,
-    );
-  }
-
-  /**
    * Whether as many of this merchant's paid orders are left unserved as the
    * door allows. Only an order a buyer paid for counts, so nobody can stop a
    * seller's sales without paying, and nothing is stored: a late delivery or a
@@ -2404,18 +2950,6 @@ export class Gateway {
     return (
       (await this.runtime.store.unservedOrders(merchantId, UNSERVED_AT_MOST)) >= UNSERVED_AT_MOST
     );
-  }
-
-  /**
-   * Whether this merchant's purchases are refused for their unserved orders,
-   * said in the log while they are (`#sayUnserved`).
-   */
-  async #stoppedForUnserved(merchantId: string, at: number): Promise<boolean> {
-    if (!(await this.#unserved(merchantId))) {
-      return false;
-    }
-    this.#sayUnserved(merchantId, at);
-    return true;
   }
 
   /**
@@ -2570,6 +3104,17 @@ export class Gateway {
         continue;
       }
       if (delivery.envelope.kind !== "order") {
+        if (delivery.envelope.kind === "quote_request") {
+          const question = this.#questions.get(delivery.envelope.payload.price_id);
+          if (
+            question === undefined ||
+            question.merchantId !== merchantId ||
+            question.until <= clock()
+          ) {
+            finished.push(delivery.handle);
+            continue;
+          }
+        }
         handing.push(delivery.envelope);
         finished.push(delivery.handle);
         continue;
@@ -2646,7 +3191,6 @@ export class Gateway {
         continue;
       }
 
-      await this.#remindMeIfNobodyAnswers(applied.order, handOver, at);
       handing.push(delivery.envelope);
       finished.push(delivery.handle);
     }
@@ -2671,10 +3215,12 @@ export class Gateway {
     const { envelope } = delivery;
     if (envelope.kind === "order") {
       await this.#putBack(merchantId, envelope, this.runtime.clock(), 0);
-    } else if (envelope.kind === "quote_request" && envelope.payload.ship_to !== undefined) {
+    } else if (envelope.kind === "quote_request") {
       const asked = this.#questions.get(envelope.payload.price_id);
       if (asked !== undefined) {
-        await this.runner.sendWhileTheAddressIsHeld(asked.orderId, () => envelope);
+        if (asked.until > this.runtime.clock()) {
+          await this.runtime.queue.publish(merchantId, envelope);
+        }
       }
     } else {
       await this.runtime.queue.publish(merchantId, envelope);
@@ -2704,8 +3250,7 @@ export class Gateway {
   }
 
   /**
-   * The price and availability for a question that came off the stream. The
-   * acknowledgement is the merchant's cue to release stock he set aside, so
+   * The price and availability for a question that came off the stream.
    * `used` means the machine took this answer as the purchase's price, not
    * merely that the question was still held: our own clock can close it a
    * moment before the answer lands. A price no payment can be taken at is
@@ -2716,7 +3261,7 @@ export class Gateway {
     merchantId: string,
     priceId: string,
     response: QuoteResponse,
-    by?: Caller,
+    _by?: Caller,
   ): Promise<QuoteAnswerAck | QuoteAnswerRefused> {
     const unsellable = response.available ? priceProblemsOf(response.price) : [];
     if (unsellable.length > 0) {
@@ -2731,31 +3276,25 @@ export class Gateway {
     }
 
     const at = this.runtime.clock();
-    const applied = await this.runner.apply(
-      asked.orderId,
-      response.available
-        ? {
-            kind: "quote_answered",
-            at,
-            available: true,
-            price: {
-              amount: response.price.amount,
-              currency: response.price.currency,
-              asOf: Date.parse(response.as_of),
-            },
-          }
-        : { kind: "quote_answered", at, available: false },
-      { priceId },
-      actingAs(merchantId, by),
-    );
-
-    // Finished either way: a second answer could only be told the same, and
-    // whoever is parked on the purchase now has a price or nothing left to
-    // wait for.
+    if (asked.until <= at) {
+      this.#questions.delete(priceId);
+      this.quotes.giveUp(priceId);
+      return { used: false };
+    }
+    if (response.available && response.price.currency !== asked.currency) {
+      return {
+        refused: [
+          {
+            path: ["price", "currency"],
+            code: "currency_mismatch",
+            message: "the answer must use the currency of this card",
+          },
+        ],
+      };
+    }
     this.#questions.delete(priceId);
     this.quotes.answer(priceId, response);
-
-    return { used: applied.outcome === "moved" };
+    return { used: true };
   }
 
   /**
@@ -2834,7 +3373,7 @@ export class Gateway {
       parcel &&
       applied.outcome === "moved" &&
       applied.order.delivery !== null &&
-      !sameShipment(applied.order.delivery, delivery)
+      !sameGoods(applied.order.delivery, delivery, true)
     ) {
       return {
         ok: false,
@@ -2927,39 +3466,12 @@ export class Gateway {
     return this.#answerFor(applied, "accepted");
   }
 
-  /**
-   * This merchant's orders, or with `open` only the ones a restarted worker
-   * should walk. That list is narrower than the store's open flag: an unpaid
-   * quote is not work the merchant owes, and listing it would have a restart
-   * deliver goods for a purchase that never happened. With `leaveOutLapsed`,
-   * the purchases that lapsed unpaid are not read, for the screens that list
-   * them apart (`lapsedAttempts`); the merchant's API lists every order.
-   */
-  async orders(
-    merchantId: string,
-    open: boolean | undefined,
-    { leaveOutLapsed = false }: { readonly leaveOutLapsed?: boolean } = {},
-  ): Promise<readonly StoredOrder[]> {
-    const records = await this.runtime.store.orders(merchantId, {
-      ...(open === undefined ? {} : { open }),
-      leaveOutLapsed,
-    });
-    if (open !== true) {
-      return records;
-    }
-    return records.filter((record) => onTheMerchantsOpenList(record.order));
-  }
-
-  /**
-   * One page of this merchant's purchases that lapsed unpaid, priced or not,
-   * newest first, and how many there are, for the screen that lists them
-   * apart from the rest.
-   */
-  async lapsedAttempts(
-    merchantId: string,
-    page: Parameters<Store["lapsedAttempts"]>[1],
-  ): Promise<LapsedPage> {
-    return this.runtime.store.lapsedAttempts(merchantId, page);
+  /** This merchant's accepted orders; open means fulfillment a restarted worker may resume. */
+  async orders(merchantId: string, open: boolean | undefined): Promise<readonly StoredOrder[]> {
+    const records = await this.runtime.store.orders(merchantId, open === undefined ? {} : { open });
+    return open === true
+      ? records.filter((record) => onTheMerchantsOpenList(record.order))
+      : records;
   }
 
   // --- the parts the flows above lean on ------------------------------------
@@ -2968,59 +3480,41 @@ export class Gateway {
    * Puts the price question to the merchant and waits out our own patience for
    * it; whatever comes back, silence included, reaches the machine as an event.
    */
-  async #askThePrice(record: StoredOrder, stored: StoredCard, priceId: string): Promise<void> {
+  async #askThePrice(
+    stored: StoredCard,
+    params: Readonly<Record<string, unknown>>,
+    priceId: string,
+    at: number,
+    shipTo?: ShipTo,
+  ): Promise<QuoteResponse | null> {
     const { queue, ids, clock, config } = this.runtime;
-    const orderId = record.order.id;
-    const askedAt = clock();
-
-    // Registered and parked before the question goes out: a worker on a poll
-    // is woken by the publish, and a fast answer would otherwise find nobody
-    // listening and be thrown away.
-    this.#questions.set(priceId, { orderId, merchantId: record.merchantId });
-    const parked = this.quotes.wait(priceId, config.deadlines.quoteResponseMs);
-
-    const question: WorkerEnvelope = {
-      kind: "quote_request",
-      id: ids("env"),
-      sent_at: asTimestamp(askedAt),
-      payload: {
-        merchant_item_id: stored.card.merchant_item_id,
-        params: { ...record.params },
-        // Where a parcel goes, as a place and nothing about who: this question
-        // reaches the merchant for purchases that are never made, and a
-        // shipping rate needs the place alone.
-        ...(record.shipTo === undefined || "erasedAt" in record.shipTo
-          ? {}
-          : { ship_to: localityOf(record.shipTo) }),
-        price_id: priceId,
-        purpose: "purchase",
-        // Until when the named price will be honoured, which is what the
-        // merchant holds stock against, not how long we wait for the answer.
-        // The price's life starts when the answer lands, so this is an upper
-        // bound: a later answer is refused, and erring long only holds stock a
-        // little longer, while erring short oversells.
-        expires_at: asTimestamp(
-          askedAt + config.deadlines.quoteResponseMs + config.deadlines.quoteTtlMs,
-        ),
-      },
-    };
-
-    if (record.shipTo === undefined) {
-      await queue.publish(record.merchantId, question);
-    } else {
-      // A parcel's question carries its place, so it is written under the hold
-      // on the order: a slow stream could otherwise land it after the order
-      // ended and its address was erased.
-      await this.runner.sendWhileTheAddressIsHeld(orderId, () => question);
-    }
-
-    const answered = await parked;
-    this.#questions.delete(priceId);
-
-    if (answered === null) {
-      // Nobody named a price; the machine decides by mode whether the card's
-      // own price sells.
-      await this.runner.apply(orderId, { kind: "quote_silent", at: clock() });
+    const until = at + config.deadlines.quoteResponseMs;
+    if (until <= clock()) return null;
+    this.#questions.set(priceId, {
+      merchantId: stored.merchantId,
+      currency: stored.card.price.currency,
+      until,
+    });
+    const parked = this.quotes.wait(priceId, until - clock());
+    try {
+      await queue.publish(stored.merchantId, {
+        kind: "quote_request",
+        id: ids("env"),
+        sent_at: asTimestamp(clock()),
+        payload: {
+          merchant_item_id: stored.card.merchant_item_id,
+          params: { ...params },
+          ...(shipTo === undefined ? {} : { ship_to: localityOf(shipTo) }),
+          price_id: priceId,
+          purpose: "purchase",
+          expires_at: asTimestamp(until + config.deadlines.quoteTtlMs),
+        },
+      });
+      return await parked;
+    } finally {
+      this.#questions.delete(priceId);
+      this.quotes.giveUp(priceId);
+      await queue.forgetPrice(stored.merchantId, priceId);
     }
   }
 
@@ -3125,35 +3619,27 @@ export class Gateway {
   }
 
   /**
-   * Leaves a reminder that this delivery has gone unanswered, but never one
-   * that would land after the order's own deadline has closed it.
+   * Where a paid purchase stands, with its seller as read before the payment
+   * was checked, so an answer after a charge rests on as few reads as it can.
    */
-  async #remindMeIfNobodyAnswers(record: StoredOrder, handOver: string, at: number): Promise<void> {
-    const { config, queue } = this.runtime;
-    const deadline = fulfillmentDeadline(record.order)[0];
-    const untilDeadline = deadline === undefined ? Number.POSITIVE_INFINITY : deadline.at - at;
-    const wait = Math.min(config.deadlines.handlerAnswerMs, untilDeadline);
-
-    if (wait <= 0) {
-      return;
-    }
-    await queue.remind({ kind: "delivery_unanswered", orderId: record.order.id, handOver }, wait);
-  }
-
-  async #wherePurchaseStands(orderId: string): Promise<PurchaseAttempt> {
+  async #wherePurchaseStands(
+    orderId: string,
+    merchant: StoredMerchant | null,
+  ): Promise<PurchaseAttempt> {
     const record = await this.runtime.store.orderById(orderId);
     if (record === null) {
       return { step: "no_such_item" };
     }
+    const seller =
+      merchant === null
+        ? {}
+        : { seller: { name: merchant.serviceName, site: merchant.sellerSite } };
 
     if (outcomeFor(record.order) !== "in_progress") {
-      return { step: "settled", order: record, delivery: record.delivery };
+      return { step: "settled", order: record, delivery: record.delivery, ...seller };
     }
 
-    // Priced and unpaid is the agent's move; everything else in progress is
-    // ours or the merchant's to finish.
-    const waitingToBePaid = record.order.price !== null && record.order.payment === "none";
-    return waitingToBePaid ? { step: "pay", order: record } : { step: "under_way", order: record };
+    return { step: "under_way", order: record, ...seller };
   }
 
   /**
@@ -3202,11 +3688,11 @@ function briefly(said: string): string {
 /** What a buyer is told for a payment that got no verdict, by why. */
 const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
   no_answer:
-    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again while this order's price holds",
+    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again, which for a new purchase has to arrive while its price holds",
   refused_agentify:
     "this payment charged nothing and was not checked: the payment check turned away Agentify itself or the terms Agentify asked it to check, so Agentify cannot check payments right now and no payment can be taken until it can",
   seller_cannot_be_paid:
-    "this payment charged nothing and was not checked: the seller cannot be paid for this order right now, so no payment for it can be taken",
+    "this payment charged nothing and was not checked: the seller cannot be paid for this purchase right now, so no payment for it can be taken",
   payer_contradicted:
     "this payment charged nothing: the payment check vouched for it but named a different payer from the wallet that signed it, so Agentify did not accept it",
 };
@@ -3214,11 +3700,11 @@ const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
 /** What an agent whose payment was refused does next, by why it was refused. */
 const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   price_stale:
-    "the offer it was made against no longer stands — the price moved, or the seller changed where they are paid — so start a new purchase for a fresh price and pay against that",
-  insufficient_funds: "fund the paying wallet and pay this order again while its price holds",
-  signature: "sign a new payment for this order and present it while its price holds",
+    "the offer it was made against no longer stands, because the price moved or the seller changed where they are paid, so start a new purchase for a fresh price and pay against that",
+  insufficient_funds: "fund the paying wallet and pay again for the same price while it holds",
+  signature: "sign a new payment for the same price and present it while the price holds",
   amount_not_payable:
-    "the payment network will not carry a payment of this amount, which is the order's own price, so neither a new signature nor a new purchase at this price will pass",
+    "the payment network will not carry a payment of this amount, which is this purchase's own price, so neither a new signature nor a new purchase at this price will pass",
   wallet_refused:
     "the payment network refused this payment from the wallet that signed it, as that wallet stands",
   unexplained:
@@ -3226,6 +3712,84 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
   unrecognised:
     "the payment layer refused it for a reason this system does not recognise, so Agentify cannot tell whether signing again, funding the wallet or a new purchase would help",
 };
+
+/** A payment refused here for what the token would refuse in its signature. */
+const signedWrongly = (said: string): PurchaseAttempt =>
+  verificationRefusal({ verified: false, reason: "signature", message: said });
+
+/** A stamp Agentify did not sign, or one changed since, that is no saved price either. */
+const unknownPrice = (): PurchaseAttempt => ({
+  step: "payment_not_verified",
+  why: "nothing was charged: the price this payment was signed for is not one Agentify recognises now, because it was changed or was issued under a key Agentify no longer holds; request a new price and sign that",
+  retryable: false,
+});
+
+/** The card's terms or the seller's payee changed after the price was named, whenever that was noticed. */
+const offerChanged = (): PurchaseAttempt => ({
+  step: "payment_not_taken",
+  why: "nothing was charged: this product's terms or where its seller is paid changed after this price was named, so the price no longer stands; request a new price and sign that",
+  retryable: false,
+});
+
+const QUESTIONS_FULL =
+  "this seller is answering as many price questions as it can right now, so this purchase was not started and nothing was charged; ask again in a few seconds";
+
+const NO_PRICE_IN_TIME =
+  "the seller's price check did not name a price in time, so this purchase was not started and nothing was charged; it may go through if asked again, and if this repeats, the seller's price check is not answering";
+
+/**
+ * How long an agent is asked to wait after the seller's price check was asked
+ * and named no price. Unlike a full gate it may be down for good: a handler
+ * that always times out, or a shop whose keys are gone.
+ */
+const SILENT_PRICE_RETRY_AFTER_SECONDS = 10;
+
+const MERCHANT_SAID_UNAVAILABLE =
+  "the merchant answered that this product is unavailable; nothing was charged";
+
+const PAYMENT_CHECKS_FULL =
+  "this seller has as many payments being checked as Agentify checks at once, so this payment was not used and nothing was charged for it; send the same request with the same payment again in a few seconds";
+
+/**
+ * One wallet holds one place and one place in line at a seller, so its next
+ * payment waits on its own, however idle the seller is.
+ */
+const WALLETS_PAYMENT_BEING_CHECKED =
+  "this wallet already has a payment being checked at this seller, and Agentify checks one wallet's payments to a seller one after another, so this payment was not used and nothing was charged for it; send the same request with the same payment again once that payment has its answer";
+
+/** The adapter supplies safe diagnostics; its external refusal message can contain private payment bytes. */
+function logVerificationRefusal(
+  verified: Exclude<VerifyOutcome, { readonly verified: true }>,
+  kind: "order" | "price",
+  id: string,
+): void {
+  const code =
+    verified.verified === false &&
+    verified.code !== undefined &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(verified.code)
+      ? ` (${verified.code})`
+      : "";
+  console.warn(
+    `[gateway] a payment for ${kind} ${id} did not verify: ${
+      verified.verified === false
+        ? `refused as ${verified.reason}${code}`
+        : `the payment layer gave no verdict (${verified.cause}): ${verified.failure}`
+    }`,
+  );
+}
+
+function verificationRefusal(
+  verified: Exclude<VerifyOutcome, { readonly verified: true }>,
+): PurchaseAttempt {
+  return {
+    step: "payment_not_verified",
+    why:
+      verified.verified === "unknown"
+        ? NO_VERDICT_WORDS[verified.cause]
+        : `this request charged nothing: ${NEXT_STEP_AFTER[verified.reason]}; it was refused, saying: ${briefly(verified.message)}; if this purchase was already paid for, a fresh payment for the same payment request from the wallet that signed it returns it without a second charge`,
+    retryable: verified.verified === "unknown" && verified.cause === "no_answer",
+  };
+}
 
 const unresolvedPayment = (order: Order): boolean =>
   order.payment === "settling" || order.payment === "outcome_unknown";
@@ -3385,36 +3949,6 @@ function misfitsIn(findings: readonly Problem[]): string {
 }
 
 /**
- * Whether two addresses are the same address: the same fields with the same
- * words, whatever order they were written in.
- */
-function sameAddress(one: ShipTo, other: ShipTo): boolean {
-  return canonical(one) === canonical(other);
-}
-
-/**
- * Whether a shipment sent now is the one already recorded: what the merchant
- * said, field for field, whatever order it was written in, and setting aside
- * the instant the gateway stamped on the recorded one.
- */
-function sameShipment(recorded: Delivery, sent: Delivery): boolean {
-  const { shipped_at: _stamped, ...said } = recorded;
-  const { shipped_at: _echoed, ...saying } = sent;
-  return canonical(said) === canonical(saying);
-}
-
-/** A document as one string, its keys sorted at every depth, so order says nothing. */
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, inner: unknown) =>
-    inner !== null && typeof inner === "object" && !Array.isArray(inner)
-      ? Object.fromEntries(
-          Object.entries(inner as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)),
-        )
-      : inner,
-  );
-}
-
-/**
  * The most bytes a card's payment challenge header may take. Node's HTTP client
  * and fetch read at most 16 KiB of a response's headers in all; taking half is
  * a margin, chosen rather than measured, for the other headers and for
@@ -3470,7 +4004,7 @@ const MERCHANT_WORDS: Readonly<Record<MerchantFinding, string>> = {
   no_seller_name: "no seller name",
   no_payout_wallet: "no payout wallet",
   no_operator_approval: "no operator approval for the live catalog",
-  no_seller_site: "no site for their shop, which a parcel's card needs",
+  no_seller_site: "no site for their shop, needed for a purchase paid before delivery or shipment",
 };
 
 /** The body of the line: the merchant's missing settings, then the card's findings. */
@@ -3537,9 +4071,9 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
     path: [],
     code: MERCHANT_FINDINGS.NO_SELLER_SITE,
     message:
-      "this merchant has not set the site of their shop, and a parcel's card is published only" +
-      " with one: a parcel that does not arrive is a question its buyer takes to the seller, and" +
-      " the site is where this system sends them; set it with POST /v0/seller-name and publish" +
+      "this merchant has not set the site of their shop, and an asynchronous or parcel card" +
+      " is published only with one: the buyer needs it to read the merchant's terms and ask" +
+      " about an unfulfilled purchase; set it with POST /v0/seller-name and publish" +
       " this card again",
   },
 };

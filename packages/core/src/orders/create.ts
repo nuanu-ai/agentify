@@ -79,9 +79,11 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
     timestamps: {
       createdAt: input.at,
       quotedAt: null,
+      paymentPresentedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
+      firstDispatchedAt: null,
     },
   };
 

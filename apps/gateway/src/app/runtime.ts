@@ -11,7 +11,7 @@ import { type GatewayConfig, isSandboxFacilitator } from "../config.js";
 import type { Announcer } from "../ports/announcer.js";
 import type { Clock, Ids } from "../ports/clock.js";
 import type { Facilitator } from "../ports/facilitator.js";
-import type { PaymentChain } from "../ports/payment-chain.js";
+import type { PaymentChain, TokenBalances } from "../ports/payment-chain.js";
 import type { PayoutCheck } from "../ports/payout-check.js";
 import type { Queue } from "../ports/queue.js";
 import type {
@@ -46,6 +46,12 @@ export interface Runtime {
    * such an order then goes to the payment layer like any other payment.
    */
   readonly chain?: PaymentChain;
+  /**
+   * Wallets' balances on the payment chain, read through the same endpoint,
+   * absent where none is configured. A payment from a wallet that cannot pay
+   * is refused before it waits for a check.
+   */
+  readonly balances?: TokenBalances;
   /**
    * What a merchant's payout would bring if sent now, read through the same
    * endpoint, absent where none is configured. Only the dashboard's payout

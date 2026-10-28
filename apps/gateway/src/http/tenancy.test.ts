@@ -11,6 +11,7 @@
  */
 
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
+import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buyOverHttp,
@@ -21,6 +22,8 @@ import {
   serve,
   workOnce,
 } from "../testing/harness.js";
+
+import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
@@ -317,9 +320,11 @@ describe("what a key can do", () => {
     const challenged = await purchase;
     expect(challenged.status).toBe(402);
     const orders = await served.call("GET", "/v0/orders", { headers: keyOf(b) });
-    expect(
-      (orders.body as { orders: { price: { amount: string } }[] }).orders[0]?.price.amount,
-    ).toBe("90.00");
+    expect((orders.body as { orders: unknown[] }).orders).toStrictEqual([]);
+    const requirements = decodePaymentRequiredHeader(
+      challenged.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    expect(requirements?.amount).toBe("90000000");
   });
 
   it("keeps one merchant's stop-selling off the other's catalog", async () => {

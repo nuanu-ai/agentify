@@ -28,16 +28,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { JOURNAL_ACTIONS, JOURNAL_REASON_MAX } from "../../ports/journal.js";
-import { type StoredOrder, WAITING_FOR_PAYMENT } from "../../ports/store.js";
-
-/**
- * The states a purchase waits for payment in, written into the SQL itself:
- * the planner uses a partial index only for a predicate it can see is the
- * index's own.
- */
-export const WAITING_STATES = sql.raw(
-  `(${WAITING_FOR_PAYMENT.map((state) => `'${state}'`).join(", ")})`,
-);
+import type { ConsumedPriceOffer, StoredOrder } from "../../ports/store.js";
 
 /**
  * An unfulfilled order its merchant answers for (`StoredOrder#answerable`),
@@ -220,11 +211,6 @@ export const orders = pgTable(
     state: text("state").notNull(),
     /** Whether this order is still owed work or money. */
     open: boolean("open").notNull(),
-    /**
-     * Whether this order is an attempt that lapsed unpaid (`lapsedAttempt`),
-     * which the merchant's screens list apart and the daily work forgets.
-     */
-    lapsed: boolean("lapsed").notNull().default(false),
     /** Written from the document, like `state` and `open`. */
     merchantId: text("merchant_id")
       .notNull()
@@ -232,6 +218,7 @@ export const orders = pgTable(
     itemId: text("item_id").notNull(),
     merchantItemId: text("merchant_item_id").notNull(),
     record: jsonb("record").$type<StoredOrder>().notNull(),
+    priceOffer: jsonb("price_offer").$type<ConsumedPriceOffer>(),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
@@ -246,17 +233,6 @@ export const orders = pgTable(
     index("orders_unresolved_payment_idx")
       .on(table.id)
       .where(sql`${table.record} -> 'order' ->> 'payment' in ('settling', 'outcome_unknown')`),
-    // A merchant's orders without the attempts that lapsed unpaid, and those
-    // attempts a page at a time, newest first.
-    index("orders_lapsed_merchant_idx").on(table.merchantId, table.lapsed, table.createdAt),
-    // The attempts that lapsed unpaid, the oldest first, for the daily work
-    // that forgets them.
-    index("orders_lapsed_idx").on(table.updatedAt).where(sql`${table.lapsed}`),
-    // A merchant's purchases waiting for payment, counted at the birth of
-    // every purchase of theirs.
-    index("orders_waiting_idx")
-      .on(table.merchantId)
-      .where(sql`${table.state} in ${WAITING_STATES}`),
     // A merchant's unfulfilled orders they answer for, counted at the birth
     // and the payment of every purchase of theirs and for the catalogue.
     index("orders_unserved_idx").on(table.merchantId).where(answeredFor(table.state, table.record)),

@@ -14,7 +14,14 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import { SANDBOX_FACILITATOR } from "../config.js";
-import { type Harness, harness, type Served, serve, statusPathOf } from "../testing/harness.js";
+import {
+  type Harness,
+  harness,
+  type Served,
+  serve,
+  statusPathOf,
+  workUntilStopped,
+} from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -34,7 +41,7 @@ const cardFor = (merchantItemId: string, title: string): Card => ({
 let open: { harnessed: Harness; served: Served } | null = null;
 
 const started = async (overrides: Record<string, string> = {}) => {
-  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO, ...overrides });
+  const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO, ...overrides }, { sellerSite: null });
   const served = await serve(harnessed);
   open = { harnessed, served };
   return open;
@@ -301,6 +308,11 @@ describe("the site of a merchant's own shop", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
 
     const catalog = await served.call("GET", "/x402/catalog");
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await harnessed.gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT");
+    await worker.stop();
     const status = await served.call("GET", await statusPathOf(harnessed, offered.order.order.id));
     const own = await served.call("GET", "/v0/seller-name", {
       headers: bearer(harnessed.merchant.key),
@@ -366,6 +378,11 @@ describe("the site of a merchant's own shop", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
 
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    await harnessed.gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT");
+    await worker.stop();
     const status = await served.call("GET", await statusPathOf(harnessed, offered.order.order.id));
 
     expect(status.status, JSON.stringify(status.body)).toBe(200);

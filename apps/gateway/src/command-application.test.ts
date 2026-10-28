@@ -12,7 +12,10 @@ import { openCommandApplication, openReadingApplication } from "./command-applic
 import { loadConfig } from "./config.js";
 
 /** A loopback port nothing listens on, so a connection there is refused at once. */
-const NOTHING_ANSWERS = loadConfig({ DATABASE_URL: "postgres://agentify@127.0.0.1:1/agentify" });
+const NOTHING_ANSWERS = loadConfig({
+  PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+  DATABASE_URL: "postgres://agentify@127.0.0.1:1/agentify",
+});
 
 describe("the application a command opens", () => {
   it("reaches no database while it opens where the command only reads, so no queue housekeeping starts", async () => {

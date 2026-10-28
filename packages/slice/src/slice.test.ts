@@ -446,18 +446,7 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     }
   }, 20_000);
 
-  it("gives the merchant the gateway's own reason for an order it will not describe", async () => {
-    // The whole road, with nothing stubbed on it: a real gateway refuses a
-    // real SDK call in words of its own, and the merchant reads those words.
-    //
-    // The order is one that closed before anybody named a price for it — the
-    // card is price-checked and this merchant's desk does not price it, so the
-    // honest answer is "there is none" and the purchase ends there. The
-    // merchant's own read of that order cannot come back in the shape it
-    // promises, because that shape carries a sale price and this sale has
-    // none. What the gateway sends instead is a refusal with a reason in it,
-    // and a merchant told only that we could not parse something would go
-    // reading our schemas about an order that is simply over.
+  it("refuses an unavailable price without creating an order or asking for payment", async () => {
     const unpriceable: CardInput = {
       ...EUROPE_ESIM,
       merchant_item_id: "esim-eu-no-desk-prices-it",
@@ -474,22 +463,18 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     const bought = await buyer.buy(listed, { email: "buyer@example.com" });
 
-    // The purchase is over before any money moved, and it says so in the same
-    // document a purchase that worked would have used.
     expect(bought.status).toBe(409);
-    const refusedPurchase = AgentOrderStatusSchema.parse(bought.body);
-    expect(refusedPurchase.status).toBe("rejected");
-    expect(refusedPurchase.price).toBeNull();
+    expect(bought.body).toMatchObject({
+      error: {
+        code: "not_selling",
+        message: expect.stringMatching(/unavailable.*nothing was charged/i),
+      },
+    });
+    expect(bought.body).not.toHaveProperty("order_id");
+    expect(bought.statusUrl).toBeNull();
+    expect(facilitator.verifies).toStrictEqual([]);
     expect(facilitator.settles).toStrictEqual([]);
-
-    const said = await merchant.client.orders.get(refusedPurchase.order_id).then(
-      () => null,
-      (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
-    );
-
-    expect(said).toContain("order_closed_before_it_was_priced");
-    expect(said).toContain("no sale to describe");
-    expect(said).not.toContain("is not the document it promises");
+    expect(await merchant.client.orders.list()).toHaveLength(0);
   }, 20_000);
 
   it("a refused payment moves no money and hands over no goods: the synchronous refusal is free", async () => {

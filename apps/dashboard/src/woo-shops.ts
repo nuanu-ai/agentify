@@ -7,12 +7,28 @@
  * party's credentials, stored as issued.
  */
 
+import { createHash } from "node:crypto";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
-import { accounts, wooGrants, wooOrders, wooQuotes, wooRates, wooShops } from "./schema.js";
+import { decryptSensitiveValue, encryptSensitiveValue } from "../../web/lib/server/crypto.js";
+import {
+  accounts,
+  wooCartResourceRows,
+  wooGrants,
+  wooOrders,
+  wooRates,
+  wooShops,
+} from "./schema.js";
+import {
+  emptyCartResources,
+  ownsCartResources,
+  type WooCartResourceState,
+  type WooCartResources,
+  wooCartResources,
+} from "./woo-cart-resources.js";
 import type { ShopDecimals } from "./woo-money.js";
 
 /** The currency a shop sells in, and the Number of decimals it writes its amounts at. */
@@ -82,19 +98,6 @@ export interface RateEntry {
 
 export type SavedRate = RateEntry & { readonly version: number };
 
-/** What an accepted price answer binds its `price_id` to. */
-export interface QuoteBinding {
-  readonly fingerprint: string;
-  /** What the shop's order is held to, in the shop's currency at its decimals. */
-  readonly inTheShop: Money;
-  /** The US dollars answered, which the buyer pays. */
-  readonly paid: Money;
-  /** Null where the shop sells in US dollars. */
-  readonly rate: AppliedRate | null;
-}
-
-type QuoteToBind = Omit<QuoteBinding, "rate"> & { readonly rateVersion: number | null };
-
 /**
  * A sale from a shop in another currency, as its ledger keeps it beside the
  * dollars paid: the amount the shop's order was held to and the rate the
@@ -148,7 +151,7 @@ interface ParcelToFollow {
 interface WooRecoveryOrder {
   readonly orderId: string;
   readonly accountId: string;
-  readonly phase: "precreate_refused" | "create_unknown" | "placed";
+  readonly phase: "precreate_refused" | "shop_silent" | "create_unknown" | "placed";
   readonly facts: WooOrderFacts;
   readonly placed: {
     readonly id: string;
@@ -168,6 +171,8 @@ interface WooRecoveryOrder {
 type OrderClaim =
   | { readonly kind: "ours" }
   | { readonly kind: "precreate_refused" }
+  /** Asked when the shop was silent; nothing was sent to it, so a later hand-over goes on. */
+  | { readonly kind: "shop_silent" }
   | {
       readonly kind: "placed";
       readonly id: string;
@@ -178,14 +183,15 @@ type OrderClaim =
   | { readonly kind: "placed_parcel"; readonly id: string; readonly number: string }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
-// The ledger only moves forward: absent may become precreate_refused or
-// create_unknown; only its merchant's create moves precreate_refused to
-// create_unknown, before the request is sent; only validated binding moves
+// The ledger only moves forward: absent may become shop_silent, precreate_refused
+// or create_unknown; shop_silent may become either of the other two; only its
+// merchant's create moves precreate_refused to create_unknown, before the
+// request is sent; only validated binding moves
 // create_unknown to placed; a placed download never changes, and a placed
 // parcel moves once more, to shipped or closed. The store methods below are
 // the only transitions.
 
-export interface WooShops {
+export interface WooShops extends WooCartResources {
   /**
    * Records a product analytics event of the connector's that has no write of
    * its own, such as an import's result, outside any transaction. It never
@@ -238,24 +244,6 @@ export interface WooShops {
   saveRate(accountId: string, shopOrigin: string, entry: RateEntry): Promise<SavedRate>;
   currentRate(accountId: string, shopOrigin: string, currency: string): Promise<SavedRate | null>;
   /**
-   * A price id already bound to anything else is not moved: the order is held
-   * to what it was first bound to.
-   */
-  recordQuote(
-    accountId: string,
-    priceId: string,
-    merchantItemId: string,
-    binding: QuoteToBind,
-    expiresAt: Date,
-    now: Date,
-  ): Promise<boolean>;
-  quotedSale(
-    accountId: string,
-    priceId: string,
-    merchantItemId: string,
-  ): Promise<QuoteBinding | null>;
-
-  /**
    * Writing the claim is the act, not a check before one: a redelivery arriving
    * while the first attempt is in flight must not also come back `ours`, and
    * the database's uniqueness settles that rather than a read followed by a
@@ -275,6 +263,16 @@ export interface WooShops {
   ): Promise<OrderClaim>;
   knownOrder(orderId: string): Promise<Exclude<OrderClaim, { kind: "ours" }> | null>;
   recordPrecreateRefusal(
+    accountId: string,
+    orderId: string,
+    facts: WooOrderFacts,
+    now: Date,
+  ): Promise<void>;
+  /**
+   * Keeps a sale whose shop did not answer, so its merchant can still create
+   * the shop's order once the order's hand-overs are over.
+   */
+  recordShopSilence(
     accountId: string,
     orderId: string,
     facts: WooOrderFacts,
@@ -324,8 +322,10 @@ export interface WooShops {
   uncertainOrders(): Promise<number>;
   /**
    * Reopens a definite pre-create refusal as `create_unknown`, and only under a
-   * different grant: a connection revision other than the one that refused.
-   * The compare-and-set is what keeps two presses to one request to the shop.
+   * different grant: a connection revision other than the one that refused. A
+   * sale whose shop was only silent reopens under any grant, since nothing
+   * refused it. The compare-and-set is what keeps two presses to one request
+   * to the shop.
    */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
 }
@@ -339,7 +339,14 @@ export interface WooShops {
  * the merchant may create once from the recovery page; or a download that can
  * no longer be delivered.
  */
-type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "refused" | "unrecoverable";
+type HeldSale =
+  | "parcel"
+  | "unplaced_parcel"
+  | "recoverable"
+  | "refused"
+  /** The shop never answered and nothing was sent to it; its merchant can create the order. */
+  | "silent"
+  | "unrecoverable";
 
 /** A sale whose sold facts were never written cannot be recovered: nothing says what to deliver. */
 const heldSaleOf = (
@@ -355,9 +362,11 @@ const heldSaleOf = (
       ? "unrecoverable"
       : phase === "precreate_refused"
         ? "refused"
-        : phase === "create_unknown" || (phase === "placed" && withFile)
-          ? "recoverable"
-          : "unrecoverable";
+        : phase === "shop_silent"
+          ? "silent"
+          : phase === "create_unknown" || (phase === "placed" && withFile)
+            ? "recoverable"
+            : "unrecoverable";
 
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
 
@@ -398,6 +407,7 @@ const claimOf = (row: {
   readonly attemptedAt: Date;
 }): Exclude<OrderClaim, { kind: "ours" }> => {
   if (row.phase === "precreate_refused") return { kind: "precreate_refused" };
+  if (row.phase === "shop_silent") return { kind: "shop_silent" };
   if (row.wooOrderId !== null && row.wooOrderNumber !== null) {
     if (row.result !== null) {
       return {
@@ -446,47 +456,81 @@ const savedRateOfRow = (row: typeof wooRates.$inferSelect): SavedRate => ({
   confirmed: row.confirmed,
 });
 
-/**
- * Null for a row that bound no amount, or whose rate version names no rate of
- * this account: neither is anything an order can be held to.
- */
-const bindingOf = (
-  quote: {
-    readonly productFingerprint: string;
-    readonly shopAmount: string | null;
-    readonly shopCurrency: string | null;
-    readonly dollars: string | null;
-    readonly rateVersion: number | null;
-  },
-  rate: AppliedRate | null,
-): QuoteBinding | null => {
-  if (quote.shopAmount === null || quote.shopCurrency === null || quote.dollars === null) {
-    return null;
-  }
-  if (
-    quote.rateVersion !== null &&
-    (rate?.version !== quote.rateVersion || rate.currency !== quote.shopCurrency)
-  ) {
-    return null;
-  }
-  return {
-    fingerprint: quote.productFingerprint,
-    inTheShop: { amount: quote.shopAmount, currency: quote.shopCurrency },
-    paid: { amount: quote.dollars, currency: "USD" },
-    rate:
-      quote.rateVersion === null || rate === null
-        ? null
-        : { version: rate.version, currency: rate.currency, rate: rate.rate, setAt: rate.setAt },
-  };
-};
-
-const sameMoney = (one: Money, other: Money): boolean =>
-  one.amount === other.amount && one.currency === other.currency;
-
-export const postgresWooShops = (pool: Pool): WooShops => {
+export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
   const db = drizzle(pool);
+  const cartKey = createHash("sha256")
+    .update("Agentify WooCommerce cart identities\0")
+    .update(authSecret)
+    .digest();
+  const cartResources = wooCartResources(async (origin, change, fence) =>
+    db.transaction(async (tx) => {
+      if (fence === undefined) {
+        const initial = emptyCartResources();
+        await tx
+          .insert(wooCartResourceRows)
+          .values({
+            shopOrigin: origin,
+            owner: initial.owner,
+            nextCreationAt: new Date(0),
+            slots: initial.slots,
+          })
+          .onConflictDoNothing();
+      }
+      const [row] = await tx
+        .select()
+        .from(wooCartResourceRows)
+        .where(eq(wooCartResourceRows.shopOrigin, origin))
+        .for("update");
+      if (row === undefined) {
+        if (fence !== undefined) return fence.stale;
+        throw new Error("The WooCommerce cart registry could not be locked.");
+      }
+      const state: WooCartResourceState = {
+        owner: row.owner,
+        nextCreationAt: row.nextCreationAt.getTime(),
+        slots: structuredClone(row.slots),
+      };
+      if (fence !== undefined && !ownsCartResources(state, fence)) return fence.stale;
+      const sealed = row.slots.map((slot) => slot.token);
+      for (const slot of state.slots) {
+        if (slot.token === null) continue;
+        try {
+          slot.token = decryptSensitiveValue(slot.token, cartKey);
+        } catch {
+          // Sealed under a key since rotated: the session cannot be reached, so
+          // the slot opens a new one as if it had never opened.
+          slot.token = null;
+          slot.state = "empty";
+          slot.claim = null;
+          slot.expiresAt = null;
+          slot.initialized = false;
+        }
+      }
+      const opened = state.slots.map((slot) => slot.token);
+      const before = JSON.stringify(state);
+      const result = change(state);
+      // Most calls only confirm ownership; rewriting the row for them would
+      // seal every token again under new nonces many times a minute.
+      if (JSON.stringify(state) === before) return result;
+      const slots = state.slots.map((slot, at) => ({
+        ...slot,
+        token:
+          slot.token === null
+            ? null
+            : slot.token === opened[at]
+              ? (sealed[at] ?? null)
+              : encryptSensitiveValue(slot.token, cartKey),
+      }));
+      await tx
+        .update(wooCartResourceRows)
+        .set({ owner: state.owner, nextCreationAt: new Date(state.nextCreationAt), slots })
+        .where(eq(wooCartResourceRows.shopOrigin, origin));
+      return result;
+    }),
+  );
 
   return {
+    ...cartResources,
     recordAnalytics: (event, at) => recordObserved(db, event, at),
 
     async beginGrant(grant) {
@@ -702,57 +746,15 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       return row === undefined ? null : savedRateOfRow(row);
     },
 
-    async recordQuote(accountId, priceId, merchantItemId, binding, expiresAt, now) {
-      await db
-        .insert(wooQuotes)
-        .values({
-          accountId,
-          priceId,
-          merchantItemId,
-          productFingerprint: binding.fingerprint,
-          shopAmount: binding.inTheShop.amount,
-          shopCurrency: binding.inTheShop.currency,
-          dollars: binding.paid.amount,
-          rateVersion: binding.rateVersion,
-          expiresAt,
-          createdAt: now,
-        })
-        .onConflictDoNothing({ target: wooQuotes.priceId });
-      const [row] = await db.select().from(wooQuotes).where(eq(wooQuotes.priceId, priceId));
-      return (
-        row?.accountId === accountId &&
-        row.merchantItemId === merchantItemId &&
-        row.productFingerprint === binding.fingerprint &&
-        row.shopAmount === binding.inTheShop.amount &&
-        row.shopCurrency === binding.inTheShop.currency &&
-        row.dollars === binding.paid.amount &&
-        row.rateVersion === binding.rateVersion
-      );
-    },
-
-    async quotedSale(accountId, priceId, merchantItemId) {
-      const [row] = await db
-        .select({ quote: wooQuotes, rate: wooRates })
-        .from(wooQuotes)
-        .leftJoin(
-          wooRates,
-          and(eq(wooRates.version, wooQuotes.rateVersion), eq(wooRates.accountId, accountId)),
-        )
-        .where(
-          and(
-            eq(wooQuotes.priceId, priceId),
-            eq(wooQuotes.accountId, accountId),
-            eq(wooQuotes.merchantItemId, merchantItemId),
-          ),
-        );
-      return row === undefined ? null : bindingOf(row.quote, row.rate);
-    },
-
     async claimOrder(accountId, orderId, facts, now) {
       const [claimed] = await db
         .insert(wooOrders)
         .values({ orderId, accountId, facts, attemptedAt: now })
-        .onConflictDoNothing({ target: wooOrders.orderId })
+        .onConflictDoUpdate({
+          target: wooOrders.orderId,
+          set: { phase: "create_unknown", facts, attemptedAt: now },
+          setWhere: eq(wooOrders.phase, "shop_silent"),
+        })
         .returning();
       if (claimed !== undefined) {
         return { kind: "ours" };
@@ -777,6 +779,17 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       await db
         .insert(wooOrders)
         .values({ orderId, accountId, phase: "precreate_refused", facts, attemptedAt: now })
+        .onConflictDoUpdate({
+          target: wooOrders.orderId,
+          set: { phase: "precreate_refused", facts, attemptedAt: now },
+          setWhere: eq(wooOrders.phase, "shop_silent"),
+        });
+    },
+
+    async recordShopSilence(accountId, orderId, facts, now) {
+      await db
+        .insert(wooOrders)
+        .values({ orderId, accountId, phase: "shop_silent", facts, attemptedAt: now })
         .onConflictDoNothing({ target: wooOrders.orderId });
     },
 
@@ -807,6 +820,7 @@ export const postgresWooShops = (pool: Pool): WooShops => {
       if (row === undefined || row.facts === null) return null;
       if (
         row.phase !== "precreate_refused" &&
+        row.phase !== "shop_silent" &&
         row.phase !== "create_unknown" &&
         row.phase !== "placed"
       ) {
@@ -935,8 +949,13 @@ export const postgresWooShops = (pool: Pool): WooShops => {
         .where(
           and(
             eq(wooOrders.orderId, orderId),
-            eq(wooOrders.phase, "precreate_refused"),
-            ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
+            or(
+              eq(wooOrders.phase, "shop_silent"),
+              and(
+                eq(wooOrders.phase, "precreate_refused"),
+                ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
+              ),
+            ),
           ),
         )
         .returning({ orderId: wooOrders.orderId });
@@ -956,20 +975,33 @@ export const postgresWooShops = (pool: Pool): WooShops => {
 export const memoryWooShops = (): WooShops & {
   readonly recordedAnalytics: readonly { readonly event: AnalyticsEvent; readonly at: Date }[];
 } => {
+  const cartRows = new Map<string, WooCartResourceState>();
+  const cartResources = wooCartResources(async (origin, change, fence) => {
+    let state = cartRows.get(origin);
+    if (fence !== undefined && (state === undefined || !ownsCartResources(state, fence)))
+      return fence.stale;
+    if (state === undefined) {
+      state = emptyCartResources();
+      cartRows.set(origin, state);
+    }
+    return change(state);
+  });
   const analytics: { event: AnalyticsEvent; at: Date }[] = [];
   const grants = new Map<string, WooGrant>();
   const shops = new Map<string, WooConnection>();
-  const quotes = new Map<
-    string,
-    { accountId: string; merchantItemId: string; binding: QuoteToBind }
-  >();
   const rates: (SavedRate & { accountId: string; shopOrigin: string })[] = [];
   const orders = new Map<
     string,
     {
       accountId: string;
       attemptedAt: Date;
-      phase: "precreate_refused" | "create_unknown" | "placed" | "shipped" | "closed";
+      phase:
+        | "precreate_refused"
+        | "shop_silent"
+        | "create_unknown"
+        | "placed"
+        | "shipped"
+        | "closed";
       facts: WooOrderFacts;
       placedAt?: Date;
       /** What the shop's order totals, once placed. */
@@ -995,6 +1027,7 @@ export const memoryWooShops = (): WooShops & {
   });
 
   return {
+    ...cartResources,
     get recordedAnalytics() {
       return [...analytics];
     },
@@ -1103,43 +1136,9 @@ export const memoryWooShops = (): WooShops & {
       return saved;
     },
 
-    async recordQuote(accountId, priceId, merchantItemId, binding) {
-      const found = quotes.get(priceId);
-      if (found === undefined) {
-        quotes.set(priceId, { accountId, merchantItemId, binding });
-        return true;
-      }
-      return (
-        found.accountId === accountId &&
-        found.merchantItemId === merchantItemId &&
-        found.binding.fingerprint === binding.fingerprint &&
-        sameMoney(found.binding.inTheShop, binding.inTheShop) &&
-        sameMoney(found.binding.paid, binding.paid) &&
-        found.binding.rateVersion === binding.rateVersion
-      );
-    },
-
-    async quotedSale(accountId, priceId, merchantItemId) {
-      const found = quotes.get(priceId);
-      if (found?.accountId !== accountId || found.merchantItemId !== merchantItemId) return null;
-      const rate = rates.find(
-        (one) => one.version === found.binding.rateVersion && one.accountId === accountId,
-      );
-      return bindingOf(
-        {
-          productFingerprint: found.binding.fingerprint,
-          shopAmount: found.binding.inTheShop.amount,
-          shopCurrency: found.binding.inTheShop.currency,
-          dollars: found.binding.paid.amount,
-          rateVersion: found.binding.rateVersion,
-        },
-        rate ?? null,
-      );
-    },
-
     async claimOrder(accountId, orderId, facts, now) {
       const found = orders.get(orderId);
-      if (found === undefined) {
+      if (found === undefined || found.phase === "shop_silent") {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
@@ -1159,7 +1158,7 @@ export const memoryWooShops = (): WooShops & {
 
     async recordPrecreateRefusal(accountId, orderId, facts, now) {
       const found = orders.get(orderId);
-      if (found === undefined) {
+      if (found === undefined || found.phase === "shop_silent") {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
@@ -1168,6 +1167,17 @@ export const memoryWooShops = (): WooShops & {
           placed: null,
         });
       }
+    },
+
+    async recordShopSilence(accountId, orderId, facts, now) {
+      if (orders.has(orderId)) return;
+      orders.set(orderId, {
+        accountId,
+        attemptedAt: now,
+        phase: "shop_silent",
+        facts,
+        placed: null,
+      });
     },
 
     async recordOrder(orderId, placed, now) {
@@ -1249,8 +1259,10 @@ export const memoryWooShops = (): WooShops & {
       const found = orders.get(orderId);
       if (
         found === undefined ||
-        found.phase !== "precreate_refused" ||
-        found.facts.connectionRevision === revision
+        !(
+          found.phase === "shop_silent" ||
+          (found.phase === "precreate_refused" && found.facts.connectionRevision !== revision)
+        )
       ) {
         return false;
       }

@@ -6,7 +6,6 @@
  * beyond what the order's record says.
  */
 
-import { durationInWords, LAPSED_KEPT_MS } from "@agentify/core/published";
 import type {
   Found,
   OperatorOrder,
@@ -25,9 +24,6 @@ import { dayOf, moment } from "../moments.js";
 import { type MomentView, merchantOrderWord, momentView, PAYMENT_WORDS, spanOf } from "../views.js";
 import { FULFILLMENT_WORDS, money, ORDER_WORDS, type Word } from "../words.js";
 
-/** How long the gateway keeps a lapsed attempt, as the notes say it. */
-const LAPSED_KEPT = durationInWords(LAPSED_KEPT_MS, "day");
-
 /** The segments in the order the list shows them, with their names. */
 const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
   ["payment_unknown", "Payment unknown"],
@@ -35,7 +31,6 @@ const SEGMENTS: readonly (readonly [OrdersShown, string])[] = [
   ["delivered_unpaid", "Held for payment"],
   ["in_progress", "In progress"],
   ["ended", "Ended"],
-  ["lapsed", "Lapsed"],
   ["all", "All"],
 ];
 
@@ -46,7 +41,6 @@ const SEGMENT_NAMES: Readonly<Record<OrderSegment, string>> = {
   delivered_unpaid: "those held for payment",
   in_progress: "those in progress",
   ended: "those that ended",
-  lapsed: "the lapsed attempts",
 };
 
 const EMPTY_SEGMENT: Readonly<Record<OrderSegment, string>> = {
@@ -55,10 +49,9 @@ const EMPTY_SEGMENT: Readonly<Record<OrderSegment, string>> = {
   delivered_unpaid: "No order holds goods for payment.",
   in_progress: "No order is in progress.",
   ended: "No order has ended.",
-  lapsed: `No lapsed attempt is kept: the gateway forgets them after ${LAPSED_KEPT}.`,
 };
 
-export const ORDERS_NOTE = `States are written as the merchant's dashboard writes them; each order's page shows the agent's word beside it. Payment is the original payment: paid, not paid or unknown. Lapsed attempts ended with nothing charged; anybody can make one, and the gateway forgets them after ${LAPSED_KEPT}. Nothing on this list can be changed from here.`;
+export const ORDERS_NOTE = `States are written as the merchant's dashboard writes them; each order's page shows the agent's word beside it. Payment is the original payment: paid, not paid or unknown. Nothing on this list can be changed from here.`;
 
 export const BOUNDARY =
   "Agentify does not change an order's outcome from here. The merchant closes fulfillment, and a payment's outcome comes from the facilitator or the chain; an operator repeats the order's own word about its payment, never their own reading of the chain.";
@@ -597,8 +590,6 @@ function merchantSideOf(order: OperatorOrder, merchant: string): OrderView["merc
     lines.push(
       "Their list leaves it out: it has no price. Read by its identifier, it says what became of it.",
     );
-  } else if (reads.lapsed) {
-    lines.push("Listed apart, among the attempts that lapsed unpaid.");
   }
   lines.push(
     reads.onOpenList

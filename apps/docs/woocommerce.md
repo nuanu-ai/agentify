@@ -1,7 +1,7 @@
 # Selling through a WooCommerce shop
 
-You run a WooCommerce shop and want buyers — programs buying on a person's
-behalf — to buy from it without anybody writing code. The WooCommerce page of
+You run a WooCommerce shop and want buyers, which are programs buying on a
+person's behalf, to buy from it without anybody writing code. The WooCommerce page of
 your dashboard connects the shop, imports its products, and from then on the
 shop takes the paid orders. This page is what each of those steps does to your
 shop, your products on Agentify and your money.
@@ -39,9 +39,49 @@ the reason. A product also needs a name and a description in plain text,
 because the description is what a buyer reads before it decides to buy.
 
 At every purchase the connector asks your shop for the product's price, and
-for a parcel the shipping rate, and your shop has four seconds to answer. A
+for a parcel the shipping rate, and your shop has a second less than
+{{quote-response}} to answer, the time Agentify waits for a price. A
 shop slower than that loses that sale before any payment, and only the
 connector's own log, which your dashboard does not show, records why.
+
+A parcel's shipping and tax are worked out in your shop's own cart, the way a
+visitor's would be: the connector puts the product in a guest cart, enters the
+buyer's city, region and postal code, reads the total and empties the cart
+again. It keeps sixteen of these carts and uses them over and over. Eight
+answer price questions from buyers who have not paid yet, and the other eight
+are kept for orders somebody has paid for, so a rush of questions never takes
+the carts a paid order needs. Downloads use no cart, so nothing that happens to
+the carts stops a download or changes its price.
+
+If none of the paid carts can be used at the moment a parcel's order needs one,
+for example because your shop's cart is not answering, Agentify tries the
+order again a little later, as it does when your shop does not answer at all.
+It keeps trying, with pauses that grow to {{redelivery-max-delay}}, for up to
+{{redelivery-window}} after the first hand-over, so a cart that comes free or
+is replaced in that time takes the order.
+
+Each cart is a guest session stored in your shop's database. The connector
+stops using a cart when it cannot tell whether your shop made its last change,
+because the answer was lost or could not be read, and when your shop stops
+accepting the cart's session, which happens to every cart at once when a
+security plugin changes your site's secret keys. It opens a new cart in its
+place by itself, but never more than one every ten minutes for your shop, even
+when you reconnect or Agentify restarts, so replacing several carts takes
+several ten-minute steps. A cart whose session is about to expire is renewed
+without that wait, because its old session ends as the new one starts.
+WooCommerce keeps a guest session for two days unless your shop sets another
+length, so your shop holds sixteen or fewer of the connector's sessions while
+nothing goes wrong, and about 300 at most. Expired sessions leave your database
+when your shop's own cleanup removes them. A cart can keep the last city,
+region and postal code it priced until its session expires; a price question
+never sends a buyer's name, street address or phone number.
+
+If your shop will not open a cart for a visitor at all, its parcels cannot be
+priced. A security plugin or firewall that keeps visitors away from
+`/wp-json/wc/store/v1/cart` does this. The import then holds each parcel back
+under To fix, naming the HTTP status your shop answered and what
+to allow, and once visitors can reach the cart, importing again publishes
+them.
 
 The buyer gets a download through Agentify: once your shop has created the
 order, the order the buyer reads from us carries your shop's private download
@@ -49,8 +89,8 @@ address for the file, the file's name and the order's number in your shop, and
 the file itself comes from your shop at that address.
 
 Each order is created in your shop with your own dashboard email as the
-customer's, so the shop's customer emails — the confirmation, the download
-link — come to you and never to the buyer, and the shop's reports name you as
+customer's, so the shop's customer emails, the confirmation and the download
+link, come to you and never to the buyer, and the shop's reports name you as
 the customer of every sale.
 
 An order your shop totals at what the buyer paid, or within a cent of it, is
@@ -169,7 +209,7 @@ it back taxes every shipped order by the place it goes to, so a customer whose
 order goes somewhere taxed otherwise than that address pays the tax of where
 it goes.
 Its price question also asks your cart about your own address, within the same
-four seconds.
+time.
 
 The import also leaves in your shop every product of a shop whose catalogue
 shows prices otherwise than they are entered (Display prices in the shop),
@@ -305,9 +345,9 @@ Read/Write switch nothing either, because every purchase through them would be
 refused; the page asks you to connect again and approve Read/Write.
 
 Connect and Sell through this shop are refused while an order from your code
-is still open, and each such order has to end first. A purchase its buyer has
-not paid yet ends within a minute, paid or lapsed, so the page asks you to try
-again then. An order your code took on ends when your code delivers or refuses
+is still open, and each such order has to end first. An order whose charge has
+not gone through yet ends within a minute, so the page asks you to try again
+then. An order your code took on ends when your code delivers or refuses
 it, or when its time runs out; the page names those orders and links to them on
 Orders. If you paused all sales on Products to keep new orders from arriving
 meanwhile, selling stays paused after the switch until you resume it there.
@@ -343,6 +383,13 @@ Settings, and the wallet your share is paid out to on a channel where payments
 settle: without them every product would be refused, so Import stays unavailable
 and says which of them to set. A shop priced in another currency imports
 nothing until its rate is set, which the page asks for first.
+
+Every product imported from WooCommerce is paid for before it is delivered or
+shipped, so buyers need your shop's site to read your cancellation, refund and
+support terms before they pay. Set the site in Settings before you import:
+products are not published without it. Products already published without a
+site leave the catalogue and refuse new purchases until you set one, and orders
+already paid go ahead as usual.
 
 The result lists every product it read under one of these headings, in this
 order:
@@ -387,13 +434,10 @@ and what you do for the buyer if it does not, are yours and your shop's.
    your shop holds a paid order for it, do not ship that order: Agentify could
    not confirm it with your shop. Close fulfillment of it on Orders with an
    explanation for the buyer, and settle the shop order by your own policy.
-6. A parcel is published only once your shop's site is set in
-   Settings, because the site is where a buyer asks about a parcel that did not
-   arrive.
 
 To stop Agentify accepting delivery for an order, use **Orders → Order details
 → Close fulfillment** ([what closing does](/money#if-the-buyer-did-not-get-the-goods)).
-It changes nothing in your shop — no setting, no cancellation, no refund — so
+It changes nothing in your shop, no setting, no cancellation and no refund, so
 stop the shop's own work on that order yourself. Your explanation, if you give
 one, is shown to the buyer as your words.
 
@@ -405,11 +449,16 @@ order. The recovery page shows the Agentify order ID, the product, the amount
 and the shop the sale came from.
 
 When the connector refused a download before it sent anything to your shop,
-your shop holds no order for it. This happens, for example, when the shop did
-not answer the product check at the time of the sale, or when the product had
-changed since its price was given. Connect the same shop again on the WooCommerce page, put
-the product back the way it was sold if it changed, and press **Create shop
-order** on the recovery page. Agentify then makes the order in your shop once,
+your shop holds no order for it. This happens, for example, when the product
+had changed since its price was given, or when the shop's answer to the product
+check could not be read. A shop that does not answer at all is asked again each
+time Agentify hands the order over, for up to {{redelivery-window}} after the first hand-over.
+If it is still silent then, the download stays undelivered until its deadline,
+and from then on this page offers to create its shop order without connecting
+the shop again, since nothing refused it; the create goes through once the shop
+answers. For a refused download, connect the same shop again on the
+WooCommerce page, put the product back the way it was sold if it changed, and
+press **Create shop order** on the recovery page. Agentify then makes the order in your shop once,
 at the price the buyer paid, and delivers the download when the shop places
 it. If the shop refuses before anything is sent, the page says why, and you can
 press again once that is fixed. If the shop's answer to the create does not
@@ -449,8 +498,8 @@ it there.
 
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked
-Completed in WooCommerce, an unpaid purchase when its buyer pays or lets it
-lapse, any of them when its time runs out, and a paid one when you close
+Completed in WooCommerce, an order whose charge has not gone through yet
+within a minute, any of them when its time runs out, and a paid one when you close
 fulfillment of it on Orders. A parcel
 already unfulfilled is no longer followed after you disconnect, so marking it
 Completed then records no shipment in Agentify.

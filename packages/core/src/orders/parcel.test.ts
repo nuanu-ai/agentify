@@ -2,7 +2,7 @@
  * A parcel's address, as the order machine keeps track of it.
  *
  * A buyer's address is held only while the merchant still needs it from us:
- * from the priced request until the merchant takes the order on, records its
+ * from the first verified payment until the merchant takes the order on, records its
  * shipment, or the order closes or becomes a refund owed without having been
  * taken on. The machine says the moment that happens, once, so the gateway
  * erases its copy; and an order whose copy is gone is never handed to a handler
@@ -86,10 +86,15 @@ describe("a parcel's address", () => {
     });
   });
 
-  it("is held from the priced request until the merchant has it", () => {
+  it("is held only after the first verified payment and until the merchant has it", () => {
     expect(parcel().state).toBe("created");
-    expect(holdsShipTo(parcel())).toBe(true);
-    expect(holdsShipTo(walk(parcel(), [PRICED]))).toBe(true);
+    expect(holdsShipTo(parcel())).toBe(false);
+    const quoted = walk(parcel(), [PRICED]);
+    expect(holdsShipTo(quoted)).toBe(false);
+    const admitted = must(quoted, { kind: "payment_presented", at: T0 + 2 }).order;
+    expect(holdsShipTo(admitted)).toBe(false);
+    const verified = must(admitted, { kind: "payment_verified", at: T0 + 3 }).order;
+    expect(holdsShipTo(verified)).toBe(true);
     expect(holdsShipTo(paid(parcel()))).toBe(true);
     expect(holdsShipTo(handedOver(parcel()))).toBe(true);
   });
@@ -136,7 +141,7 @@ describe("a parcel's address", () => {
     }
   });
 
-  it("is let go when the order closes before any money moved", () => {
+  it("retains no address to erase when an unverified order closes", () => {
     const unavailable = must(parcel(), { kind: "quote_answered", at: T0 + 1, available: false });
     const silent = must(parcel(), {
       kind: "deadline_expired",
@@ -152,7 +157,7 @@ describe("a parcel's address", () => {
     expect(unavailable.order.state).toBe("rejected");
     for (const { order, effects } of [unavailable, silent, stale]) {
       expect(holdsShipTo(order)).toBe(false);
-      expect(erasures(effects)).toBe(1);
+      expect(erasures(effects)).toBe(0);
     }
   });
 
@@ -252,7 +257,9 @@ describe("a parcel whose address is gone", () => {
 describe("every parcel the machine can reach", () => {
   const ORDINARY = modeOf("async");
   const LONG_AFTER = 1_000_000_000;
-  const REDELIVERY_CAP = TEST_POLICY.redelivery.maxAttempts;
+  // Past the attempt whose pause reaches the ceiling, every count decides alike.
+  const { baseDelayMs, factor, maxDelayMs } = TEST_POLICY.redelivery;
+  const PAUSES_SETTLE = Math.ceil(Math.log(maxDelayMs / baseDelayMs) / Math.log(factor)) + 1;
 
   const eventsAt = (at: number): readonly OrderEvent[] => [
     ...ORDER_EVENT_KINDS.filter((kind) => kind !== "deadline_expired").map((kind) => ({
@@ -277,8 +284,8 @@ describe("every parcel the machine can reach", () => {
       order.payment,
       order.dispatch.accepted,
       // A repeat already on the stream is handed over and counted without
-      // limit, so past the cap on redeliveries one count reads as another.
-      Math.min(order.dispatch.attempts, REDELIVERY_CAP + 1),
+      // limit, so past the ceiling on pauses one count reads as another.
+      Math.min(order.dispatch.attempts, PAUSES_SETTLE + 1),
       order.heldFulfillment,
       order.closure?.cause ?? null,
       order.timestamps.dispatchedAt === null,
@@ -315,18 +322,22 @@ describe("every parcel the machine can reach", () => {
   const where = (move: Move): string =>
     `${move.event.kind} in ${move.before.state}${move.before.dispatch.accepted ? " (taken on)" : ""}`;
 
-  it("lets the address go exactly once, and never takes it back", () => {
+  it("acquires the address only at first verification, then releases it exactly once", () => {
     const lettingGoFrom = new Set(
       moves
         .filter((move) => move.after !== null && erasures(move.effects) > 0)
         .map((move) => move.before.state),
     );
-    expect([...lettingGoFrom].sort()).toEqual(["created", "dispatched", "paid", "quoted"]);
+    expect([...lettingGoFrom].sort()).toEqual(["dispatched", "paid", "quoted"]);
     for (const move of moves) {
       if (move.after === null) continue;
       const letGo = holdsShipTo(move.before) && !holdsShipTo(move.after);
 
-      expect(holdsShipTo(move.after) && !holdsShipTo(move.before), where(move)).toBe(false);
+      if (holdsShipTo(move.after) && !holdsShipTo(move.before)) {
+        expect(move.before.state, where(move)).toBe("quoted");
+        expect(move.before.payment, where(move)).toBe("none");
+        expect(move.event.kind, where(move)).toBe("payment_verified");
+      }
       expect(erasures(move.effects), where(move)).toBe(letGo ? 1 : 0);
     }
   });

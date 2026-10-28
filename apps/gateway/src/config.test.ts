@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { SETTLE_REQUEST_MS } from "./app/payment-window.js";
 import {
   isSandboxFacilitator,
   loadConfig,
@@ -13,7 +14,10 @@ import { startGateway } from "./start.js";
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
 /** The one variable that has no sensible default and must always be given. */
-const required = { DATABASE_URL: database };
+const required = {
+  PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+  DATABASE_URL: database,
+};
 
 /**
  * What the gateway said when it refused to start on this environment. Refusals
@@ -30,6 +34,20 @@ const refusalFor = (overrides: Record<string, string>): string => {
 };
 
 describe("loadConfig", () => {
+  it.each([undefined, "", "short"])("refuses an absent or weak price signing key (%s)", (key) => {
+    expect(() => loadConfig({ ...required, PRICE_STAMP_KEY: key })).toThrow(/PRICE_STAMP_KEY/);
+  });
+  it("refuses a weak rotation key and accepts separate stable channel keys", () => {
+    expect(() => loadConfig({ ...required, PRICE_STAMP_PREVIOUS_KEY: "short" })).toThrow(
+      /PRICE_STAMP_PREVIOUS_KEY/,
+    );
+    expect(
+      loadConfig({
+        ...required,
+        PRICE_STAMP_PREVIOUS_KEY: "p".repeat(32),
+      }).priceStampKeys.previous,
+    ).toBe("p".repeat(32));
+  });
   it("reads the environment and fills in the sandbox defaults", () => {
     const config = loadConfig(required);
 
@@ -44,10 +62,10 @@ describe("loadConfig", () => {
     const { deadlines, redelivery } = loadConfig(required);
 
     expect(deadlines).toStrictEqual({
-      quoteResponseMs: 5_000,
-      quoteTtlMs: 30_000,
+      quoteResponseMs: 10_000,
+      quoteTtlMs: 180_000,
       settleResponseMs: 10_000,
-      settleBeforeGoodsMs: 15_000,
+      settleBeforeGoodsMs: 35_000,
       syncResponseMs: 10_000,
       syncBudgetMs: 20_000,
       defaultAsyncFulfillmentMs: 86_400_000,
@@ -63,8 +81,8 @@ describe("loadConfig", () => {
     expect(redelivery).toStrictEqual({
       baseDelayMs: 500,
       factor: 2,
-      maxDelayMs: 30_000,
-      maxAttempts: 5,
+      maxDelayMs: 15 * 60_000,
+      windowMs: 3 * 60 * 60_000,
     });
   });
 
@@ -74,7 +92,7 @@ describe("loadConfig", () => {
       QUOTE_RESPONSE_MS: "1000",
       QUOTE_TTL_MS: "2000",
       SETTLE_RESPONSE_MS: "3000",
-      SETTLE_BEFORE_GOODS_MS: "3500",
+      SETTLE_BEFORE_GOODS_MS: "36000",
       SYNC_RESPONSE_MS: "4000",
       SYNC_BUDGET_MS: "9000",
       DEFAULT_ASYNC_FULFILLMENT_MS: "7000",
@@ -82,13 +100,13 @@ describe("loadConfig", () => {
       REDELIVERY_BASE_DELAY_MS: "10",
       REDELIVERY_FACTOR: "3",
       REDELIVERY_MAX_DELAY_MS: "100",
-      REDELIVERY_MAX_ATTEMPTS: "9",
+      REDELIVERY_WINDOW_MS: "9000",
     });
 
     expect(config.deadlines.quoteResponseMs).toBe(1000);
     expect(config.deadlines.quoteTtlMs).toBe(2000);
     expect(config.deadlines.settleResponseMs).toBe(3000);
-    expect(config.deadlines.settleBeforeGoodsMs).toBe(3500);
+    expect(config.deadlines.settleBeforeGoodsMs).toBe(36000);
     expect(config.deadlines.syncResponseMs).toBe(4000);
     expect(config.deadlines.syncBudgetMs).toBe(9000);
     expect(config.deadlines.defaultAsyncFulfillmentMs).toBe(7000);
@@ -97,7 +115,7 @@ describe("loadConfig", () => {
       baseDelayMs: 10,
       factor: 3,
       maxDelayMs: 100,
-      maxAttempts: 9,
+      windowMs: 9000,
     });
   });
 
@@ -435,8 +453,8 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...required, SETTLE_RESPONSE_MS: "1.5" })).toThrowError(
       /SETTLE_RESPONSE_MS.*milliseconds.*zero/s,
     );
-    expect(() => loadConfig({ ...required, REDELIVERY_MAX_ATTEMPTS: "-1" })).toThrowError(
-      /REDELIVERY_MAX_ATTEMPTS.*zero/s,
+    expect(() => loadConfig({ ...required, REDELIVERY_WINDOW_MS: "0" })).toThrowError(
+      /REDELIVERY_WINDOW_MS.*milliseconds.*zero/s,
     );
     expect(() => loadConfig({ ...required, REDELIVERY_FACTOR: "0.5" })).toThrowError(
       /REDELIVERY_FACTOR.*1/s,
@@ -486,6 +504,17 @@ describe("loadConfig", () => {
     ).not.toThrow();
   });
 
+  it("refuses a wait for the charge before the goods that ends before the charge request can answer", () => {
+    // An order charged before its goods closes as unknown once this wait is
+    // over, and a charge confirmed after that leaves it paid and never handed
+    // to the merchant. The refusal names both numbers.
+    const refused = refusalFor({ SETTLE_BEFORE_GOODS_MS: "20000" });
+    for (const owed of ["charge", "20000ms", `${SETTLE_REQUEST_MS}ms`]) {
+      expect(refused, refused).toContain(owed);
+    }
+    expect(() => loadConfig(required)).not.toThrow();
+  });
+
   it("refuses a synchronous answer too short to deliver an order a second time", () => {
     // Merchants are told to throw on a temporary failure so the order comes
     // again. In the synchronous mode that needs the first answer's wait, the
@@ -515,6 +544,7 @@ describe("loadConfig", () => {
     // Nothing answers at this database, so a gateway that skipped the check
     // would fail on the connection instead, in other words.
     const cramped = loadConfig({
+      ...required,
       DATABASE_URL: "postgres://agentify:secret@127.0.0.1:1/agentify",
       HANDLER_ANSWER_MS: "9000",
       REDELIVERY_BASE_DELAY_MS: "500",

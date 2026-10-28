@@ -137,12 +137,12 @@ moved to the screen where its subject is:
 | `facilitator-key` and `smoke:listing` | Check now, on Health; both stay as engineering's checks too |
 | `pnpm forget <email>`, on the test channel | Forget this account, on the test channel's admin only |
 
-Two commands are not carried over, and are deleted with the rest.
-`woo:recover` binds an existing WooCommerce order to its sale acting as the
-merchant, and the merchant already has their own recovery page reached from
-their Orders; the admin shows that such an order waits and says that the
-merchant recovers it there. `listed-as` sets a merchant's seller name for them
-or takes it away. The seller name is the merchant's own, and the admin does not
+Two commands were not carried over and were deleted with the rest.
+`woo:recover` bound an existing WooCommerce order to its sale acting as the
+merchant; the merchant recovers such a sale on their own recovery page, reached
+from their Orders, and the admin shows that the order waits and says that the
+merchant recovers it there. `listed-as` set a merchant's seller name for them
+or took it away. The seller name is the merchant's own, and the admin does not
 touch it: the one lever the operator holds over a merchant is the admission. A
 merchant whose name, cards or conduct do not belong on the live channel has
 their admission withdrawn with a note that tells them why, and is admitted
@@ -511,7 +511,8 @@ integration: for code against the SDK, every key by its label with when it was
 issued and last used, a working key with the action Disable; for a connected
 shop, its address, when it connected and the permissions it granted, and any
 order whose shop order is uncertain, which the merchant recovers from their
-own Orders. The fourth is the admission, with the action that changes it:
+own Orders. A sale whose shop never answered, so nothing was sent to it, is not
+listed there; the merchant creates it from their own Orders. The fourth is the admission, with the action that changes it:
 "Admit to live sales" for a merchant not admitted, behind a checkbox that
 names the consequence; for one admitted, when, and the action "Withdraw
 admission", which opens in place a required note, which the merchant reads on

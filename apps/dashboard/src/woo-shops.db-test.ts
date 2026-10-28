@@ -81,6 +81,144 @@ if (databaseUrl === null) {
   };
 
   describe("a shop connection on postgres", () => {
+    it("does not let an old owner with an old encryption key retire or rewrite the current owner's cart", async () => {
+      const origin = "https://stale-cart-owner.example.com";
+      const at = new Date("2026-10-28T10:00:00Z");
+      const expiresAt = new Date("2026-10-30T10:00:00Z");
+      const old = postgresWooShops(pool, "old-auth-secret-with-thirty-two-bytes");
+      const current = postgresWooShops(pool, "new-auth-secret-with-thirty-two-bytes");
+      await old.startCartRuntime(origin, "old-owner");
+      await old.claimCart(origin, "old-owner", "paid", 0, "old-claim", at);
+      await current.startCartRuntime(origin, "current-owner");
+      await current.claimCart(origin, "current-owner", "paid", 0, "current-empty", at);
+      await current.finishCart(origin, "current-owner", "paid", 0, "current-empty", {
+        token: "current-private-token",
+        expiresAt,
+      });
+      expect(
+        await current.claimCart(origin, "current-owner", "paid", 0, "current-active", at),
+      ).toEqual({ kind: "reuse", token: "current-private-token", expiresAt });
+      const before = await pool.query(
+        "select owner, next_creation_at, slots from dashboard_woo_cart_resources where shop_origin = $1",
+        [origin],
+      );
+
+      expect(await old.finishCart(origin, "old-owner", "paid", 0, "old-claim", null)).toBe(false);
+      expect(
+        await current.finishCart(origin, "current-owner", "paid", 0, "superseded-claim", null),
+      ).toBe(false);
+      expect(await old.claimCart(origin, "old-owner", "quote", 0, "stale-new-claim", at)).toEqual({
+        kind: "stale",
+      });
+      const after = await pool.query(
+        "select owner, next_creation_at, slots from dashboard_woo_cart_resources where shop_origin = $1",
+        [origin],
+      );
+      expect(after.rows).toEqual(before.rows);
+
+      expect(
+        await current.finishCart(origin, "current-owner", "paid", 0, "current-active", {
+          token: "current-private-token",
+          expiresAt,
+        }),
+      ).toBe(true);
+      expect(await current.claimCart(origin, "current-owner", "paid", 0, "next-use", at)).toEqual({
+        kind: "reuse",
+        token: "current-private-token",
+        expiresAt,
+      });
+    });
+
+    it("keeps an idle cart token encrypted while a reconstructed store can reuse it", async () => {
+      const origin = "https://encrypted-carts.example.com";
+      const secret = "cart-test-auth-secret-with-thirty-two-bytes";
+      const first = postgresWooShops(pool, secret);
+      const at = new Date("2026-10-28T10:00:00Z");
+      const expiresAt = new Date("2026-10-30T10:00:00Z");
+      await first.startCartRuntime(origin, "before-restart");
+      await first.claimCart(origin, "before-restart", "paid", 0, "clean", at);
+      await first.finishCart(origin, "before-restart", "paid", 0, "clean", {
+        token: "private-shop-cart-token",
+        expiresAt,
+      });
+      const stored = await pool.query(
+        "select slots from dashboard_woo_cart_resources where shop_origin = $1",
+        [origin],
+      );
+      expect(JSON.stringify(stored.rows)).not.toContain("private-shop-cart-token");
+      const restored = postgresWooShops(pool, secret);
+      await restored.startCartRuntime(origin, "after-restart");
+      expect(await restored.claimCart(origin, "after-restart", "paid", 0, "again", at)).toEqual({
+        kind: "reuse",
+        token: "private-shop-cart-token",
+        expiresAt,
+      });
+    });
+
+    it("rewrites nothing a registry call left unchanged, and seals again only the tokens it changed", async () => {
+      const origin = "https://idle-carts.example.com";
+      const shops = postgresWooShops(pool, "cart-test-auth-secret-with-thirty-two-bytes");
+      const at = new Date("2026-10-28T10:00:00Z");
+      const expiresAt = new Date("2026-10-30T10:00:00Z");
+      const stored = async () =>
+        (
+          await pool.query(
+            // A new row version is what a rewrite costs, whatever it writes.
+            "select xmin::text as version, owner, next_creation_at, slots from dashboard_woo_cart_resources where shop_origin = $1",
+            [origin],
+          )
+        ).rows[0] as { slots: { token: string | null }[] };
+      await shops.startCartRuntime(origin, "worker");
+      for (const slot of [0, 1]) {
+        await shops.claimCart(origin, "worker", "paid", slot, `open-${slot}`, at);
+        await shops.finishCart(origin, "worker", "paid", slot, `open-${slot}`, {
+          token: `session-${slot}`,
+          expiresAt,
+        });
+      }
+      const idle = await stored();
+      await shops.claimCart(origin, "worker", "paid", 0, "in-use", at);
+      const claimed = await stored();
+      expect(claimed.slots[1]?.token).toBe(idle.slots[1]?.token);
+      expect(claimed.slots[0]?.token).toBe(idle.slots[0]?.token);
+
+      expect(
+        await shops.registerCartIdentity(origin, "worker", "paid", 0, "in-use", "session-0"),
+      ).toBe(true);
+      await shops.startCartRuntime(origin, "worker");
+      expect(await stored()).toEqual(claimed);
+    });
+
+    it("opens every cart whose token a rotated key cannot read as one never opened", async () => {
+      const origin = "https://rotated-key.example.com";
+      const before = postgresWooShops(pool, "auth-secret-before-the-rotation-32b");
+      const after = postgresWooShops(pool, "auth-secret-after-the-rotation-3-2b");
+      const at = new Date("2026-10-28T10:00:00Z");
+      await before.startCartRuntime(origin, "before-rotation");
+      for (const lane of ["paid", "quote"] as const)
+        for (let slot = 0; slot < 8; slot += 1) {
+          await before.claimCart(origin, "before-rotation", lane, slot, `${lane}-${slot}`, at);
+          await before.finishCart(origin, "before-rotation", lane, slot, `${lane}-${slot}`, {
+            token: `${lane}-session-${slot}`,
+            expiresAt: new Date("2026-10-30T10:00:00Z"),
+          });
+        }
+
+      await after.startCartRuntime(origin, "after-rotation");
+      for (const lane of ["paid", "quote"] as const)
+        for (let slot = 0; slot < 8; slot += 1)
+          expect(
+            await after.claimCart(
+              origin,
+              "after-rotation",
+              lane,
+              slot,
+              `again-${lane}-${slot}`,
+              at,
+            ),
+          ).toEqual({ kind: "new" });
+    });
+
     it("is refused when it is written without its revision", async () => {
       await pool.query("delete from dashboard_woo_shops");
       const account = await anAccount();
@@ -98,13 +236,13 @@ if (databaseUrl === null) {
   wooShopsContract("on postgres", async () => {
     // Every row gone, so one case cannot read another's; the accounts too,
     // since they are made per case.
+    await pool.query("delete from dashboard_woo_cart_resources");
     await pool.query("delete from dashboard_woo_orders");
-    await pool.query("delete from dashboard_woo_quotes");
     await pool.query("delete from dashboard_woo_shops");
     await pool.query("delete from dashboard_woo_grants");
     await pool.query("delete from dashboard_accounts");
     return {
-      shops: postgresWooShops(pool),
+      shops: postgresWooShops(pool, "woo-shops-contract-auth-secret"),
       accounts: { one: await anAccount(), other: await anAccount() },
       close: async () => {},
     };
@@ -132,7 +270,7 @@ if (databaseUrl === null) {
 
     it("records the connection with the merchant the account names, and a late callback as blocked", async () => {
       await pool.query("delete from commerce_analytics_events");
-      const shops = postgresWooShops(pool);
+      const shops = postgresWooShops(pool, "woo-shops-contract-auth-secret");
       const prompt = await accountOf("mch_woo_prompt");
       const late = await accountOf("mch_woo_late");
       for (const [token, accountId] of [

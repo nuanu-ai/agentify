@@ -78,7 +78,6 @@ import {
   closedForGood,
   drawnClosedForGood,
   type FrameView,
-  lapsedPageIn,
   type OrdersView,
   ordersPlace,
   ordersView,
@@ -1066,23 +1065,18 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
     query: URLSearchParams,
   ): Promise<Outcome<OrdersView>> => {
     const gateway = gatewayAs(person);
-    // The purchases that lapsed unpaid are read only where their segment is
-    // asked for, a page of them; everywhere else they are only counted.
-    const lapsedPage = lapsedPageIn(query);
     // The open list is read beside the whole one, never after it, since
     // which orders are open is the gateway's to say.
-    const [cards, read, open, paidInto, lapsed] = await Promise.all([
+    const [cards, read, open, paidInto] = await Promise.all([
       gateway.cards(),
       gateway.ordersWithRecords(),
       gateway.orders(true),
       gateway.paidIntoSplits(),
-      lapsedPage === null ? gateway.lapsedCount() : gateway.lapsedAttempts(lapsedPage.from),
     ]);
     if (!cards.ok) return problemOf(cards);
     if (!read.ok) return problemOf(read);
     if (!open.ok) return problemOf(open);
     if (!paidInto.ok) return problemOf(paidInto);
-    if (!lapsed.ok) return problemOf(lapsed);
     const { orders, records } = read.document;
     // How a late delivery can still reach each unfulfilled order depends on
     // whether the shop connector holds its sale, whatever the merchant sells
@@ -1107,15 +1101,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
       query,
       records,
       paidInto.document,
-      typeof lapsed.document === "number"
-        ? { page: null, of: lapsed.document }
-        : {
-            page: lapsed.document.attempts,
-            of: lapsed.document.of,
-            newer: lapsed.document.newer,
-            previous: lapsed.document.previous,
-            next: lapsed.document.next,
-          },
       shopTotals,
       connector,
       new Set(
@@ -1623,7 +1608,6 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 },
                 {
                   selling: standing.value.selling,
-                  busy: standing.value.busy,
                   ...(standing.value.pendingPayoutWallet === null
                     ? {}
                     : {

@@ -14,6 +14,7 @@ import { environmentOfKeyPrefix, keyPrefixFor, SITES } from "@agentify/core";
 import { telemetry } from "@agentify/observability/source";
 import {
   type AuthMode,
+  CONTRACT_VERSION,
   type ErrorCode,
   type ErrorEnvelope,
   type HttpMethod,
@@ -28,6 +29,7 @@ import type { ZodType } from "zod";
 import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
 import { failureNamed } from "../failure-named.js";
+import { sourceRevisionOf } from "../health-facts.js";
 import { FAILED, GATEWAY_FAILED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
 import { presentedPayment } from "./x402.js";
@@ -96,7 +98,12 @@ export function buildApp(gateway: Gateway): Express {
   app.use(express.json({ limit: BODY_LIMIT }));
 
   app.get("/healthz", (_request, response) => {
-    response.json({ ok: true });
+    response.setHeader("Cache-Control", "no-store");
+    response.json({
+      ok: true,
+      revision: sourceRevisionOf(process.env),
+      contract_version: CONTRACT_VERSION,
+    });
   });
 
   // An agent given only the site tries the storefront's root first. The
@@ -543,9 +550,6 @@ export function hold(schema: ZodType, value: unknown): Held {
 const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   gateway_failed: true,
 
-  // Not yet priced, and the same call returns the document once it is.
-  order_not_priced_yet: true,
-
   body_too_large: false,
   body_undecodable: false,
   charset_unsupported: false,
@@ -566,8 +570,9 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // The merchant may put it back, but that is not the retry working.
   not_selling: false,
 
-  // The seller's purchases waiting for payment lapse within a minute, and the
-  // same call goes through once one has.
+  // The seller's price questions or payment checks are full for a moment, or
+  // its price did not come in time; nothing was charged, and the same call
+  // goes through once a place frees.
   seller_busy: true,
   // The seller's own process comes back by itself, after a restart or a lost
   // connection, and the same call goes through at its first poll; nobody has
@@ -577,7 +582,6 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // unserved, and nothing tells a buyer when that will be.
   seller_not_fulfilling: false,
 
-  order_closed_before_it_was_priced: false,
   payment_already_spent: false,
   not_this_purchase: false,
 

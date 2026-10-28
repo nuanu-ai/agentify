@@ -56,7 +56,13 @@ describe("the figures' pages", () => {
     if (!published.ok) throw new Error("the product was refused");
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("the purchase was refused");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     const html = (await operator.get("/admin")).html;
     const page = documentOf(html);
     const tile = (label: string) =>

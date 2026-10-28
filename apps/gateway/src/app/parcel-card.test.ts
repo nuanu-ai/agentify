@@ -75,7 +75,7 @@ describe("a card for a parcel", () => {
   it("is refused without the shop's site, as a finding about the merchant", async () => {
     // A parcel that does not arrive is a question its buyer takes to the
     // seller, and the site is the one place this system can send them.
-    open = await harness();
+    open = await harness({}, { sellerSite: null });
 
     const published = await open.gateway.publishCard(open.merchant.id, parcelCard);
 
@@ -86,7 +86,7 @@ describe("a card for a parcel", () => {
   });
 
   it("names the missing site even when the card is refused for something else", async () => {
-    open = await harness();
+    open = await harness({}, { sellerSite: null });
 
     const published = await open.gateway.publishCard(open.merchant.id, {
       ...parcelCard,
@@ -99,8 +99,8 @@ describe("a card for a parcel", () => {
     );
   });
 
-  it("asks no site of a merchant publishing anything but a parcel", async () => {
-    open = await harness();
+  it("asks no site of a merchant publishing a synchronous card", async () => {
+    open = await harness({}, { sellerSite: null });
 
     const published = await open.gateway.publishCard(open.merchant.id, {
       merchant_item_id: "room-101",
@@ -146,8 +146,8 @@ describe("a card for a parcel", () => {
   });
 
   it("waits for its charge as long as every order paid before its goods", () => {
-    const config = testConfig({ SETTLE_RESPONSE_MS: "2000", SETTLE_BEFORE_GOODS_MS: "15000" });
+    const config = testConfig({ SETTLE_RESPONSE_MS: "2000", SETTLE_BEFORE_GOODS_MS: "40000" });
 
-    expect(policyFor(parcelCard, config).deadlines.settleResponseMs).toBe(15_000);
+    expect(policyFor(parcelCard, config).deadlines.settleResponseMs).toBe(40_000);
   });
 });

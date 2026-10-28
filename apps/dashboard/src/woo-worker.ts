@@ -33,6 +33,7 @@ import type { Acting, GatewayClient } from "./gateway.js";
 import type { Identity } from "./identity.js";
 import { productIdFromMerchantItem } from "./woo-catalog.js";
 import { dollarsAt, minorOf, sumOf, withinOneUnit } from "./woo-money.js";
+import { type QuotedSale, quoteReferenceOf, saleFromQuoteReference } from "./woo-quoted-sale.js";
 import {
   type CartPrice,
   type Converted,
@@ -52,15 +53,9 @@ import {
   type ShopKeys,
   type SoldItem,
   shipmentInTheShop,
-  shippingRatesInTheShop,
+  WooShopRuntime,
 } from "./woo-shop.js";
-import type {
-  QuoteBinding,
-  WooConnection,
-  WooOrderFacts,
-  WooPermission,
-  WooShops,
-} from "./woo-shops.js";
+import type { WooConnection, WooOrderFacts, WooPermission, WooShops } from "./woo-shops.js";
 
 /**
  * A shop as a log line names it. Its address is kept as the merchant typed it,
@@ -70,6 +65,8 @@ const shopNamed = (shopUrl: string): string => new URL(shopUrl).origin;
 
 export interface Filling {
   readonly shops: WooShops;
+  /** The worker loop retains one runtime across turns for the connected shop. */
+  readonly shopRuntime?: WooShopRuntime;
   readonly now: () => Date;
   /**
    * Injectable so this file's decisions can be tested without a WooCommerce; a
@@ -94,38 +91,17 @@ export interface Filling {
   readonly quoteWithinMs?: number;
   /** A deployment passes nothing. */
   readonly placeParcel?: (keys: ShopKeys, sold: ParcelSold) => Promise<ParcelMade>;
-  /** Test seam for the durable quote binding; production reads `WooShops`. */
-  readonly quotedSale?: (
-    connection: WooConnection,
-    priceId: string,
-    merchantItemId: string,
-  ) => Promise<QuoteBinding | null>;
 }
 
 const sameMoney = (one: Money, other: Money): boolean =>
   one.amount === other.amount && one.currency === other.currency;
 
-/**
- * The price an order's `price_id` was bound to. A binding that converts a shop
- * in US dollars, or holds a shop in another currency to no rate, is not one
- * this connector writes, and is read as none.
- */
-const boundSale = async (
-  connection: WooConnection,
-  order: Order,
-  parts: Filling,
-): Promise<QuoteBinding | null> => {
-  if (order.price_id === undefined) return null;
-  const bound = await (parts.quotedSale === undefined
-    ? parts.shops.quotedSale(connection.accountId, order.price_id, order.merchant_item_id)
-    : parts.quotedSale(connection, order.price_id, order.merchant_item_id));
-  return bound === null || (bound.inTheShop.currency === "USD") !== (bound.rate === null)
-    ? null
-    : bound;
-};
+/** The paid order echoes the exact reference authenticated in its price stamp. */
+const boundSale = (order: Order): QuotedSale | null =>
+  saleFromQuoteReference(order.quote_reference);
 
 /** What the ledger keeps of a converted sale beside the dollars paid. */
-const convertedFacts = (bound: QuoteBinding | null): Pick<WooOrderFacts, "converted"> =>
+const convertedFacts = (bound: QuotedSale | null): Pick<WooOrderFacts, "converted"> =>
   bound?.rate == null
     ? {}
     : {
@@ -139,7 +115,7 @@ const convertedFacts = (bound: QuoteBinding | null): Pick<WooOrderFacts, "conver
         },
       };
 
-const conversionOf = (order: Order, bound: QuoteBinding): Converted | undefined =>
+const conversionOf = (order: Order, bound: QuotedSale): Converted | undefined =>
   bound.rate === null
     ? undefined
     : { paid: { amount: order.price.amount, currency: order.price.currency }, rate: bound.rate };
@@ -206,10 +182,11 @@ export const fillFromTheShop = async (
   if (known?.kind === "unknown") {
     return unknownCreation(order.id, connection.shopUrl, known.attemptedAt);
   }
+  const bound = boundSale(order);
+  if (bound === null) return await refusedUnquoted(order, connection, parts);
   const inspected = await productInTheShop(connection, order.merchant_item_id, parts);
   const eligible = inspected.ok ? inspected.product : null;
-  const bound = await boundSale(connection, order, parts);
-  const quoted = bound?.fingerprint ?? null;
+  const quoted = bound.fingerprint;
   const facts: WooOrderFacts = {
     shopOrigin: new URL(connection.shopUrl).origin,
     connectionRevision: connection.revision,
@@ -220,32 +197,33 @@ export const fillFromTheShop = async (
       productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ??
       "",
     // Recovery must restore the product the buyer accepted, never bless the
-    // changed product that caused this refusal; with no accepted quote no
-    // fingerprint can satisfy recovery.
-    productFingerprint: quoted ?? "unbound-price-id",
+    // changed product that caused this refusal.
+    productFingerprint: quoted,
     amount: order.price.amount,
     currency: order.price.currency,
     ...convertedFacts(bound),
   };
+  // A shop that did not answer said nothing about the product, and the order
+  // is handed over again for hours, so it waits for the shop.
+  if (!inspected.ok && inspected.again) {
+    console.error(`[dashboard] order ${order.id} waits: ${inspected.why}`);
+    // Kept so that a shop silent for longer than the hand-overs last leaves a
+    // sale its merchant can still finish.
+    await parts.shops.recordShopSilence(connection.accountId, order.id, facts, parts.now());
+    return null;
+  }
   if (eligible === null) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
-    // Refused either way, with the true reason: a shop that did not answer, or
-    // whose answer could not be read, has said nothing about the product.
-    const silent = !inspected.ok && inspected.again;
-    const cutOff = !inspected.ok && inspected.again && inspected.cutOff === true;
-    const unread = !inspected.ok && !inspected.again && !inspected.saidNo;
+    // An answer that could not be read says nothing about the product either,
+    // but it is an answer, and the shop would give it again.
+    const unread = !inspected.ok && !inspected.saidNo;
     if (!inspected.ok && unread) unreadable(order.id, inspected.why);
     return {
       refused: {
         code: "cannot_fulfill",
-        message: cutOff
-          ? "The shop's answer to the product check broke off and could not be read when this" +
-            " order was placed, so no WooCommerce order was created."
-          : silent
-            ? "The shop did not answer when this order was placed, so no WooCommerce order was created."
-            : unread
-              ? UNREADABLE_PRODUCT
-              : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
+        message: unread
+          ? UNREADABLE_PRODUCT
+          : "This shop product is no longer a supported single-file download, so no WooCommerce order was created.",
       },
     };
   }
@@ -262,10 +240,7 @@ export const fillFromTheShop = async (
   // The shop is held to the amount bound to the price, and the payment to the
   // dollars answered for it; a rate the merchant changed since does not move
   // either, because the buyer has paid at the one bound.
-  if (
-    !sameMoney(eligible.price, bound?.inTheShop ?? order.price) ||
-    (bound !== null && !sameMoney(order.price, bound.paid))
-  ) {
+  if (!sameMoney(eligible.price, bound.inTheShop) || !sameMoney(order.price, bound.paid)) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
@@ -275,7 +250,7 @@ export const fillFromTheShop = async (
       },
     };
   }
-  if (bound === null || quoted !== eligible.fingerprint) {
+  if (quoted !== eligible.fingerprint) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
@@ -490,10 +465,11 @@ const fillParcelFromTheShop = async (
       known.kind === "unknown" ? known.attemptedAt : parts.now(),
     );
   }
+  const bound = boundSale(order);
+  if (bound === null) return await refusedUnquoted(order, connection, parts);
   const address = ShipToSchema.safeParse(order.ship_to);
   const productId = productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id);
-  const bound = await boundSale(connection, order, parts);
-  const quoted = bound?.fingerprint ?? null;
+  const quoted = bound.fingerprint;
   const facts: WooOrderFacts = {
     kind: "parcel",
     shopOrigin: new URL(connection.shopUrl).origin,
@@ -501,7 +477,7 @@ const fillParcelFromTheShop = async (
     merchantItemId: order.merchant_item_id,
     priceId: order.price_id ?? "unbound-price-id",
     productId: productId ?? "",
-    productFingerprint: quoted ?? "unbound-price-id",
+    productFingerprint: quoted,
     amount: order.price.amount,
     currency: order.price.currency,
     ...convertedFacts(bound),
@@ -515,11 +491,12 @@ const fillParcelFromTheShop = async (
       "This paid parcel's order names no address or no product in this shop, so no WooCommerce order was created.",
     );
   }
+  const shopRuntime = parts.shopRuntime ?? new WooShopRuntime(connection);
   const askRates = (where: ShipToLocality) =>
     (
       parts.shippingRates ??
-      ((keys: WooConnection, id: string, at: ShipToLocality) =>
-        shippingRatesInTheShop(keys.shopUrl, id, at))
+      ((_keys: WooConnection, id: string, at: ShipToLocality) =>
+        shopRuntime.paidShippingRates(id, at))
     )(connection, productId, where);
   const inspection = productInTheShop(connection, order.merchant_item_id, parts);
   const [inspected, rates, atBase] = await Promise.all([
@@ -544,7 +521,7 @@ const fillParcelFromTheShop = async (
     );
   }
   const product = inspected.product;
-  if (bound === null || quoted !== product.fingerprint || !sameMoney(order.price, bound.paid)) {
+  if (quoted !== product.fingerprint || !sameMoney(order.price, bound.paid)) {
     return await refuse(
       "The shop's product changed after this purchase was quoted, so no WooCommerce order was created.",
     );
@@ -704,6 +681,43 @@ const fillParcelFromTheShop = async (
   return unknownCreation(order.id, connection.shopUrl, parts.now());
 };
 
+/**
+ * An order paid before its price travelled with the buyer carries no
+ * reference, and one that cannot be read is no better; nothing the shop says
+ * now can tell what that price was.
+ */
+const refusedUnquoted = async (
+  order: Order,
+  connection: WooConnection,
+  parts: Filling,
+): Promise<HandlerAnswer> => {
+  await parts.shops.recordPrecreateRefusal(
+    connection.accountId,
+    order.id,
+    {
+      ...(order.ship_to === undefined ? {} : { kind: "parcel" as const }),
+      shopOrigin: new URL(connection.shopUrl).origin,
+      connectionRevision: connection.revision,
+      merchantItemId: order.merchant_item_id,
+      priceId: order.price_id ?? "unbound-price-id",
+      productId: productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ?? "",
+      // No fingerprint can satisfy recovery without the price it was quoted at.
+      productFingerprint: "unbound-price-id",
+      amount: order.price.amount,
+      currency: order.price.currency,
+    },
+    parts.now(),
+  );
+  return {
+    refused: {
+      code: "cannot_fulfill",
+      message:
+        "This order carries no record of the shop's quoted price that the connector can read, so" +
+        " the shop cannot be held to that price and no WooCommerce order was created.",
+    },
+  };
+};
+
 /** Written only where there is one, so a dollar shop's sale carries none. */
 const withConversion = (converted: Converted | undefined): { converted?: Converted } =>
   converted === undefined ? {} : { converted };
@@ -793,7 +807,9 @@ type ScheduleEnvelope = (envelope: WorkerEnvelope, answer: () => Promise<void>) 
 export const turnOnce = async (
   connection: WooConnection,
   parts: WorkingParts,
-  schedule: ScheduleEnvelope = async (_envelope, answer) => answer(),
+  schedule: ScheduleEnvelope = async (_envelope, answer) => {
+    await answer();
+  },
 ): Promise<number> => {
   const person = await parts.identity.byId(connection.accountId);
   if (person === null || person.merchant === null) {
@@ -910,6 +926,8 @@ export const quoteFromTheShop = async (
     );
     return unavailable;
   };
+  const signal = AbortSignal.timeout(parts.quoteWithinMs ?? QUOTE_WITHIN_MS);
+  const shopRuntime = parts.shopRuntime ?? new WooShopRuntime(connection);
   const productId = productIdFromMerchantItem(connection.shopUrl, question.merchant_item_id);
   const place = question.ship_to;
   const askRates = (where: ShipToLocality) =>
@@ -917,12 +935,15 @@ export const quoteFromTheShop = async (
       ? Promise.resolve(null)
       : (
           parts.shippingRates ??
-          ((keys: WooConnection, id: string, at: ShipToLocality) =>
-            shippingRatesInTheShop(keys.shopUrl, id, at))
+          ((_keys: WooConnection, id: string, at: ShipToLocality) =>
+            shopRuntime.shippingRates(id, at, signal))
         )(connection, productId, where);
   // Asked together with the product, because both must fit in the time a price
   // question has; the shop's own address as soon as the product check names it.
-  const inspection = productInTheShop(connection, question.merchant_item_id, parts);
+  const inspection =
+    parts.inspectProduct === undefined
+      ? shopRuntime.inspectForQuote(question.merchant_item_id)
+      : parts.inspectProduct(connection, question.merchant_item_id);
   const read = await inTime(
     Promise.all([
       inspection,
@@ -1001,20 +1022,17 @@ export const quoteFromTheShop = async (
   const dollars = rate === null ? price.amount : dollarsAt(price.amount, rate.rate);
   if (dollars === null) return unpriced("the shop's amount is not one the rate converts");
   const paid = { amount: dollars, currency: "USD" };
-  const recorded = await parts.shops.recordQuote(
-    connection.accountId,
-    question.price_id,
-    question.merchant_item_id,
-    {
+  return {
+    available: true,
+    price: paid,
+    as_of: at.toISOString(),
+    quote_reference: quoteReferenceOf({
       fingerprint: product.fingerprint,
       inTheShop: price,
       paid,
-      rateVersion: rate?.version ?? null,
-    },
-    new Date(question.expires_at),
-    at,
-  );
-  return recorded ? { available: true, price: paid, as_of: at.toISOString() } : unavailable;
+      rate,
+    }),
+  };
 };
 
 /** Where an inclusive shop's parcel is also asked about: the shop's own address. */
@@ -1129,6 +1147,12 @@ export interface WooWorker {
 }
 
 const BETWEEN_TURNS_MS = 1_000;
+/**
+ * How long another worker keeps a shop's carts before this one takes them
+ * back. Taking them back at once would fight a worker that is still running,
+ * as during a deploy, where the older one stops within seconds.
+ */
+const CARTS_TAKEN_BACK_AFTER_MS = 600_000;
 // shortcut: four unfinished envelopes per shop; revisit on measured saturation.
 const HANDLERS_AT_ONCE = 4;
 
@@ -1145,7 +1169,56 @@ export const startWooWorker = (
   parts: WorkingParts & { readonly betweenTurnsMs?: number; readonly shipmentsEveryMs?: number },
 ): WooWorker => {
   const turning = new Map<string, { stop: () => boolean; done: Promise<void> }>();
+  const runtimes = new Map<
+    string,
+    { shop: WooShopRuntime; connections: Map<string, { shop: WooShopRuntime; revision: string }> }
+  >();
+  const draining = new Set<Promise<void>>();
   let running = true;
+
+  /** A runtime let go still finishes the cart cleanup it started. */
+  const letGo = (origin: string, shop: WooShopRuntime) => {
+    runtimes.delete(origin);
+    const drained: Promise<void> = shop.drain().finally(() => draining.delete(drained));
+    draining.add(drained);
+  };
+  /** Drops this account's readers at other shops, and a shop's runtime once nobody reads it. */
+  const forget = (accountId: string, except?: string) => {
+    for (const [origin, runtime] of runtimes) {
+      if (origin === except || !runtime.connections.delete(accountId)) continue;
+      if (runtime.connections.size === 0) letGo(origin, runtime.shop);
+    }
+  };
+  const readerFor = (connection: WooConnection): WooShopRuntime => {
+    const origin = new URL(connection.shopUrl).origin;
+    forget(connection.accountId, origin);
+    let runtime = runtimes.get(origin);
+    const deadSince = runtime?.shop.deadSince ?? null;
+    if (
+      runtime !== undefined &&
+      deadSince !== null &&
+      Date.now() - deadSince >= CARTS_TAKEN_BACK_AFTER_MS
+    ) {
+      letGo(origin, runtime.shop);
+      runtime = undefined;
+    }
+    if (runtime === undefined) {
+      runtime = {
+        shop: new WooShopRuntime(connection, undefined, parts.shops),
+        connections: new Map(),
+      };
+      runtimes.set(origin, runtime);
+    }
+    let reader = runtime.connections.get(connection.accountId);
+    if (reader === undefined) {
+      reader = { shop: runtime.shop.forConnection(connection), revision: connection.revision };
+      runtime.connections.set(connection.accountId, reader);
+    } else if (reader.revision !== connection.revision) {
+      reader.shop.updateKeys(connection);
+      reader.revision = connection.revision;
+    }
+    return reader.shop;
+  };
 
   const loopFor = (accountId: string) => {
     let alive = true;
@@ -1197,7 +1270,11 @@ export const startWooWorker = (
             );
             continue;
           }
-          const filled = await turnOnce(connection, parts, schedule);
+          const filled = await turnOnce(
+            connection,
+            { ...parts, shopRuntime: readerFor(connection) },
+            schedule,
+          );
           if (filled === 0) {
             // A turn that drew nothing waits, so a gateway answering polls at
             // once (refused, or a zero wait) is not hammered; a turn that
@@ -1245,6 +1322,7 @@ export const startWooWorker = (
             // Reconnect must wait for the old poll and accepted work to finish.
             void loop.done.then(() => {
               if (turning.get(accountId) === loop) turning.delete(accountId);
+              forget(accountId);
             });
           }
         }
@@ -1292,6 +1370,8 @@ export const startWooWorker = (
       await following;
       await watching;
       await Promise.all([...turning.values()].map((loop) => loop.done));
+      await Promise.all([...runtimes.values()].map(({ shop }) => shop.drain()));
+      await Promise.all(draining);
       turning.clear();
     },
   };

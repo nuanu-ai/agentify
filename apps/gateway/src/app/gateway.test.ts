@@ -1,4 +1,3 @@
-import { outcomeFor } from "@agentify/core";
 import type { Card, ShipTo } from "@nuanu-ai/agentify-contracts";
 import {
   CARD_REJECTED,
@@ -234,9 +233,11 @@ describe("a synchronous purchase", () => {
       },
     });
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
 
@@ -281,9 +282,11 @@ describe("a synchronous purchase", () => {
       },
     });
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
 
@@ -338,9 +341,11 @@ describe("a synchronous purchase", () => {
       },
     });
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
 
@@ -363,9 +368,11 @@ describe("a synchronous purchase", () => {
       onOrder: () => ({ refused: { code: "out_of_stock", message: "the room is taken" } }),
     });
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
 
@@ -379,7 +386,7 @@ describe("a synchronous purchase", () => {
     ).toBeNull();
   });
 
-  it("takes nothing, and leaves the order open, when a payment does not check out", async () => {
+  it("takes nothing and leaves the price available when a payment does not check out", async () => {
     // A stranger's junk must not spend the life of an order somebody else was
     // issued a challenge for, so it closes and claims nothing, and the buyer
     // may still present a corrected payment while the quote stands.
@@ -390,9 +397,11 @@ describe("a synchronous purchase", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     if (offered.step !== "pay") throw new Error("no price was offered");
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
 
     expect(bought.step).toBe("payment_not_verified");
@@ -400,9 +409,8 @@ describe("a synchronous purchase", () => {
     expect(bought.why).toContain("the wallet is empty");
     expect(bought.retryable).toBe(false);
 
-    const stillOpen = await harnessed.store.orderById(offered.order.order.id);
-    expect(stillOpen?.order.state).toBe("quoted");
-    expect(stillOpen?.paidBy).toBeNull();
+    expect(await harnessed.store.orderById(offered.order.order.id)).toBeNull();
+    expect(await harnessed.store.paymentClaimHolder("PAYMENT")).toBeNull();
     expect(harnessed.facilitator.settles).toHaveLength(0);
     // The junk payment never even claimed its fingerprint against the order.
     expect(harnessed.facilitator.verifies).toHaveLength(1);
@@ -418,9 +426,11 @@ describe("a synchronous purchase", () => {
       onOrder: () => ({ delivered: { access_code: "CORRECTED" } }),
     });
     const boughtAfterCorrection = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       fixed.payment,
       fixed.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
     expect(boughtAfterCorrection.step).toBe("settled");
@@ -444,9 +454,11 @@ describe("a synchronous purchase", () => {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
 
@@ -478,7 +490,13 @@ describe("a synchronous purchase", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
 
     // The charge's deadline declared the silence in the word that keeps "nobody
@@ -516,7 +534,13 @@ describe("a synchronous purchase", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "fp_late");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "fp_late",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await vi.waitFor(
       async () => {
         expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("outcome_unknown");
@@ -558,9 +582,11 @@ describe("an asynchronous purchase", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
 
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
 
     expect(bought.step).toBe("under_way");
@@ -608,7 +634,13 @@ describe("an asynchronous purchase", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
 
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     const whenTheMoneyMoved = harnessed.now();
 
     harnessed.advance(6 * 60 * 60 * 1_000);
@@ -633,18 +665,32 @@ describe("an asynchronous purchase", () => {
     const second = await harnessed.gateway.beginPurchase(itemId, {});
     if (first.step !== "pay" || second.step !== "pay") throw new Error("no price was offered");
 
-    const bought = await harnessed.gateway.payPurchase(first.order.order.id, "SIGNED", "SIGNED");
+    const bought = await harnessed.gateway.payPurchase(
+      first.order.priceOffer.stamp,
+      "SIGNED",
+      "SIGNED",
+      undefined,
+      { itemId: first.order.itemId, params: first.order.params },
+    );
     expect(bought.step).toBe("under_way");
 
-    const replayed = await harnessed.gateway.payPurchase(second.order.order.id, "SIGNED", "SIGNED");
+    const replayed = await harnessed.gateway.payPurchase(
+      second.order.priceOffer.stamp,
+      "SIGNED",
+      "SIGNED",
+      undefined,
+      { itemId: second.order.itemId, params: second.order.params },
+    );
 
     expect(replayed.step).toBe("payment_already_spent");
     // The replay is checked with the payment layer — the claim guard comes after
     // verification, so a payment that fails to check out never burns a claim —
     // but the claim stops it before it can own a second order or be charged.
     expect(harnessed.facilitator.settles).toHaveLength(1);
-    expect((await harnessed.store.orderById(second.order.order.id))?.order.state).toBe("quoted");
-    expect((await harnessed.store.orderById(second.order.order.id))?.paidBy).toBeNull();
+    expect(await harnessed.store.orderById(second.order.order.id)).toBeNull();
+    expect((await harnessed.store.paymentClaimHolder("SIGNED"))?.orderId).toBe(
+      first.order.order.id,
+    );
   });
 
   it("returns an in-progress paid order to its payer presenting a fresh signed authorization", async () => {
@@ -658,7 +704,7 @@ describe("an asynchronous purchase", () => {
     const wallet = aWallet("paid order returning buyer");
     const original = await signedFor(harnessed, offered.order, wallet, { nonce: "0x01", payTo });
     await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       original.payment,
       original.fingerprint,
     );
@@ -666,10 +712,11 @@ describe("an asynchronous purchase", () => {
     if (!paid) throw new Error("no paid order");
     const fresh = await signedFor(harnessed, paid, wallet, { nonce: "0x02" });
     const again = await harnessed.gateway.payPurchase(
-      paid.order.id,
+      offered.order.priceOffer.stamp,
       fresh.payment,
       fresh.fingerprint,
     );
+
     expect(again.step).toBe("under_way");
     expect(harnessed.facilitator.settles).toHaveLength(1);
     expect((await harnessed.store.orderById(paid.order.id))?.payment).toBe(original.payment);
@@ -698,14 +745,22 @@ describe("an asynchronous purchase", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      first.payment,
+      first.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("delivered_unpaid");
 
     const repeated = await harnessed.gateway.payPurchase(
-      orderId,
+      offered.order.priceOffer.stamp,
       second.payment,
       second.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
 
     expect(repeated.step).toBe("settled");
@@ -738,7 +793,13 @@ describe("an asynchronous purchase", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "X" } }),
     });
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
 
     const record = await harnessed.store.orderById(orderId);
@@ -774,16 +835,24 @@ describe("an asynchronous purchase", () => {
     // machine refuses rather than being turned away as a stranger's.
     const first = authorisation(harnessed, ALICE, "0x01");
     const second = authorisation(harnessed, ALICE, "0x02");
-    await harnessed.gateway.payPurchase(orderId, first.payment, first.fingerprint);
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      first.payment,
+      first.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
 
     const stuck = await harnessed.store.orderById(orderId);
     expect(stuck?.order.payment).toBe("outcome_unknown");
 
     const refused = await harnessed.gateway.payPurchase(
-      orderId,
+      offered.order.priceOffer.stamp,
       second.payment,
       second.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
 
     expect(refused.step).toBe("payment_not_taken");
@@ -802,7 +871,13 @@ describe("an asynchronous purchase", () => {
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
 
     const answered = await harnessed.gateway.refuseOrder(
@@ -838,7 +913,13 @@ describe("an asynchronous purchase", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.refuseOrder(harnessed.merchant.id, orderId, {
       code: "out_of_stock",
       message: "none",
@@ -869,7 +950,13 @@ describe("an asynchronous purchase", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.refuseOrder(harnessed.merchant.id, orderId, {
       code: "cannot_fulfill",
       message: "late",
@@ -903,7 +990,13 @@ describe("the goods against the card that sold them", () => {
   const paidOrder = async (harnessed: Harness, itemId: string, payment: string) => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, payment, payment);
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      payment,
+      payment,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     return offered.order.order.id;
   };
 
@@ -944,7 +1037,13 @@ describe("the goods against the card that sold them", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
     harnessed.advance(harnessed.runtime.config.deadlines.syncResponseMs);
 
@@ -980,38 +1079,19 @@ describe("the goods against the card that sold them", () => {
     expect((await harnessed.store.orderById(orderId))?.delivery).toBeNull();
   });
 
-  it("holds an order written before it kept its own promise to the card as it stands", async () => {
-    // An order stored without a promise of its own is held to the card as it
-    // stands, so a delivery to the current card closes it.
-    const harnessed = await started();
-    const itemId = await published(harnessed, asyncCard);
-    const offered = await harnessed.gateway.beginPurchase(itemId, {});
-    if (offered.step !== "pay") throw new Error("no price was offered");
-    const { result: _kept, ...older } = offered.order;
-    const oldId = "ord_written_before_the_promise";
-    await harnessed.store.addOrder({
-      ...older,
-      buyerKey: harnessed.runtime.ids("bk"),
-      order: { ...older.order, id: oldId },
-    });
-    await harnessed.gateway.payPurchase(oldId, "OLD", "OLD");
-    await published(harnessed, { ...asyncCard, result: { license_key: { type: "string" } } });
-
-    const current = await harnessed.gateway.deliverOrder(harnessed.merchant.id, oldId, {
-      license_key: "K",
-    });
-
-    expect(current?.ok).toBe(true);
-    expect((await harnessed.store.orderById(oldId))?.order.state).toBe("delivered");
-  });
-
   it("does not close an order on goods the card never promised", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const answered = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {});
 
@@ -1054,7 +1134,13 @@ describe("the goods against the card that sold them", () => {
     const itemId = await published(harnessed, wide);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const answered = await harnessed.gateway.deliverOrder(
       harnessed.merchant.id,
@@ -1119,7 +1205,7 @@ describe("the goods against the card that sold them", () => {
       });
       const offered = await harnessed.gateway.beginPurchase(itemId, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
-      await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+      await harnessed.gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT");
       const goods: Record<string, unknown> = !wide && flood ? { activation_code: "LPA:1$OK" } : {};
       if (flood)
         for (let i = 0; i < 300; i++)
@@ -1144,7 +1230,10 @@ describe("the goods against the card that sold them", () => {
 
     const wrongType = await harnessed.gateway.beginPurchase(itemId, {});
     if (wrongType.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(wrongType.order.order.id, "ONE", "ONE");
+    await harnessed.gateway.payPurchase(wrongType.order.priceOffer.stamp, "ONE", "ONE", undefined, {
+      itemId: wrongType.order.itemId,
+      params: wrongType.order.params,
+    });
     const numeric = await harnessed.gateway.deliverOrder(
       harnessed.merchant.id,
       wrongType.order.order.id,
@@ -1160,7 +1249,10 @@ describe("the goods against the card that sold them", () => {
     // delivery it cannot have been expecting.
     const extra = await harnessed.gateway.beginPurchase(itemId, {});
     if (extra.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(extra.order.order.id, "TWO", "TWO");
+    await harnessed.gateway.payPurchase(extra.order.priceOffer.stamp, "TWO", "TWO", undefined, {
+      itemId: extra.order.itemId,
+      params: extra.order.params,
+    });
     const surprised = await harnessed.gateway.deliverOrder(
       harnessed.merchant.id,
       extra.order.order.id,
@@ -1181,7 +1273,13 @@ describe("the goods against the card that sold them", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
 
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
 
     const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
@@ -1215,7 +1313,7 @@ describe("the goods against the card that sold them", () => {
     const again = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       delivered: { access_code: "SOMETHING ELSE" },
     });
-    expect(again).toStrictEqual({ ok: true, result: "already_delivered" });
+    expect(again).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
     expect((await harnessed.store.orderById(orderId))?.delivery).toStrictEqual({
       access_code: "X",
     });
@@ -1230,7 +1328,13 @@ describe("the goods against the card that sold them", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const first = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
       activation_code: "LPA:1$FIRST",
@@ -1244,14 +1348,20 @@ describe("the goods against the card that sold them", () => {
     });
 
     expect(first).toStrictEqual({ ok: true, result: "delivered" });
-    expect(again).toStrictEqual({ ok: true, result: "already_delivered" });
+    expect(again).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
 
     const kept = await harnessed.store.orderById(orderId);
     expect(kept?.delivery).toStrictEqual({ activation_code: "LPA:1$FIRST" });
     const handlerRepeat = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       delivered: { activation_code: "LPA:1$THIRD" },
     });
-    expect(handlerRepeat).toEqual({ ok: true, result: "already_delivered" });
+    expect(handlerRepeat).toEqual({ ok: true, result: "already_delivered_other_goods" });
+    // The goods kept, sent again, are an ordinary repeat.
+    expect(
+      await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+        activation_code: "LPA:1$FIRST",
+      }),
+    ).toStrictEqual({ ok: true, result: "already_delivered" });
     const afterHandlerRepeat = await harnessed.store.orderById(orderId);
     expect(afterHandlerRepeat?.delivery).toEqual({ activation_code: "LPA:1$FIRST" });
     expect(afterHandlerRepeat?.order).toEqual(delivered?.order);
@@ -1272,7 +1382,13 @@ describe("the goods against the card that sold them", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
       activation_code: "LPA:1$FIRST",
     });
@@ -1281,7 +1397,7 @@ describe("the goods against the card that sold them", () => {
       nothing_the_card_declared: true,
     });
 
-    expect(junk).toStrictEqual({ ok: true, result: "already_delivered" });
+    expect(junk).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
     expect((await harnessed.store.orderById(orderId))?.delivery).toStrictEqual({
       activation_code: "LPA:1$FIRST",
     });
@@ -1297,7 +1413,13 @@ describe("the goods against the card that sold them", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.refuseOrder(harnessed.merchant.id, orderId, {
       code: "out_of_stock",
       message: "none",
@@ -1370,7 +1492,13 @@ describe("a payment the payment layer would not vouch for", () => {
       const offered = await harnessed.gateway.beginPurchase(itemId, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
 
-      const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+      const bought = await harnessed.gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        "P",
+        "P",
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
 
       if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
       expect(bought.why).toContain(said);
@@ -1378,7 +1506,8 @@ describe("a payment the payment layer would not vouch for", () => {
       expect(bought.why).toMatch(next);
       expect(bought.retryable).toBe(false);
       expect(harnessed.facilitator.settles).toHaveLength(0);
-      expect((await harnessed.store.orderById(offered.order.order.id))?.paidBy).toBeNull();
+      expect(await harnessed.store.orderById(offered.order.order.id)).toBeNull();
+      expect(await harnessed.store.paymentClaimHolder("P")).toBeNull();
       if (reason === "amount_not_payable")
         expect(bought.why).toMatch(/neither.*signature.*purchase.*(?:pass|work)/i);
     });
@@ -1398,7 +1527,13 @@ describe("a payment the payment network refused from the wallet that signed it",
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
 
-    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+    const bought = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "P",
+      "P",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
     expect(bought.retryable).toBe(false);
@@ -1422,7 +1557,13 @@ describe("a refused payment's words, when the payment layer says a great deal", 
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
 
-    const bought = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+    const bought = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "P",
+      "P",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     if (bought.step !== "payment_not_verified") throw new Error("a bad payment was taken");
     const diagnosticAt = bought.why.indexOf("transfer amount exceeds balance");
@@ -1450,15 +1591,43 @@ describe("a price's life", () => {
     const orderId = offered.order.order.id;
     harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs);
 
-    const paid = await harnessed.gateway.payPurchase(orderId, "LATE", "LATE");
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "LATE",
+      "LATE",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect(paid.step).toBe("payment_not_taken");
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+    expect(await harnessed.store.orderById(orderId)).toBeNull();
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect(harnessed.facilitator.settles).toHaveLength(0);
-    const again = await harnessed.gateway.payPurchase(orderId, "LATER", "LATER");
+    const again = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "LATER",
+      "LATER",
+    );
     expect(again.step).toBe("payment_not_taken");
     expect(harnessed.facilitator.verifies).toHaveLength(0);
+  });
+
+  it("holds a price for three minutes, so an agent can show it to a person before paying", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, asyncCard);
+    const offered = await harnessed.gateway.beginPurchase(itemId, {});
+    if (offered.step !== "pay") throw new Error("no price was offered");
+    harnessed.advance(3 * 60_000 - 1);
+
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "SHOWN-FIRST",
+      "SHOWN-FIRST",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
+
+    expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 
   it("takes a payment that arrives a moment before the price lapses", async () => {
@@ -1466,10 +1635,15 @@ describe("a price's life", () => {
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    const orderId = offered.order.order.id;
     harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs - 1);
 
-    await harnessed.gateway.payPurchase(orderId, "IN-TIME", "IN-TIME");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "IN-TIME",
+      "IN-TIME",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
@@ -1477,12 +1651,6 @@ describe("a price's life", () => {
 
 describe("two payments racing one order", () => {
   it("lets exactly one own it, charges exactly one, and hands the goods to the winner alone", async () => {
-    // Two verified payments for one order reach the ownership check at once.
-    // If each read a stale "nobody owns it yet", both would take it, and one
-    // charge would fail on a merchant who handed over goods for nothing. The
-    // check reads the order under the store's lock.
-    // The budget is far wider than the deadlines on purpose: it is a real wait
-    // racing a real timer, and a narrow margin makes the test flaky.
     const harnessed = await started({
       QUOTE_RESPONSE_MS: "50",
       SYNC_RESPONSE_MS: "300",
@@ -1493,82 +1661,67 @@ describe("two payments racing one order", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-
-    const worker = workUntilStopped(harnessed, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-
-    // Held and released together, so what decides between the two is the
-    // in-lock guard and not the order they happened to verify in.
-    const alice = aWallet("racing Alice"),
-      bob = aWallet("racing Bob");
+    const alice = aWallet("racing Alice");
+    const bob = aWallet("racing Bob");
     const payTo = (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split
       ?.address;
     if (!payTo) throw new Error("no split");
     const hers = await signedFor(harnessed, offered.order, alice, { nonce: "0x01", payTo });
     const his = await signedFor(harnessed, offered.order, bob, { nonce: "0x01", payTo });
-    const claimed = Promise.withResolvers<void>();
-    const claim = harnessed.store.claimPayment.bind(harnessed.store);
-    const realClaims: string[] = [];
-    harnessed.store.claimPayment = async (fingerprint, claimedOrder) => {
-      const result = await claim(fingerprint, claimedOrder);
-      if (claimedOrder === orderId) {
-        expect(result.claimed).toBe(true);
-        realClaims.push(fingerprint);
-        if (realClaims.length === 2) claimed.resolve();
-        await claimed.promise;
-      }
-      return result;
-    };
-    const release = harnessed.facilitator.holdVerification();
-    const race = Promise.all([
-      harnessed.gateway.payPurchase(orderId, hers.payment, hers.fingerprint),
-      harnessed.gateway.payPurchase(orderId, his.payment, his.fingerprint),
-    ]);
-    for (let i = 0; i < 2_000 && harnessed.facilitator.verifies.length < 2; i += 1) {
-      await Promise.resolve();
-    }
-    expect(harnessed.facilitator.verifies).toHaveLength(2);
-    release();
-
-    const [a, b] = await race;
-    await worker.stop();
-
-    // Without the in-lock guard both are treated as the owner and both come
-    // away with the goods.
-    const winners = [a, b].filter((result) => result.step === "settled");
-    const refused = [a, b].filter((result) => result.step === "not_this_purchase");
-    expect(winners).toHaveLength(1);
-    expect(refused).toHaveLength(1);
-    const winner = winners[0];
-    if (winner?.step !== "settled") throw new Error("nobody won the race");
-    expect(winner.delivery).toStrictEqual({ access_code: "SESAME" });
-
-    // One owner, one charge, and the charge was the owner's payment. The owner
-    // is a wallet — the address the winning authorisation was signed from — and
-    // the charge carries that authorisation itself.
-    const owned = await harnessed.store.orderById(orderId);
-    expect(owned?.order.state).toBe("delivered");
-    expect([alice.address.toLowerCase(), bob.address.toLowerCase()]).toContain(owned?.paidBy);
-    expect(new Set(realClaims)).toEqual(new Set([hers.fingerprint, his.fingerprint]));
-    expect(harnessed.facilitator.settles).toHaveLength(1);
-    expect(harnessed.facilitator.settles[0]?.payment).toBe(
-      owned?.paidBy === alice.address.toLowerCase() ? hers.payment : his.payment,
-    );
-    harnessed.store.claimPayment = claim;
-    const losing = owned?.paidBy === alice.address.toLowerCase() ? his : hers;
-    const otherItem = await published(harnessed, {
-      ...asyncCard,
-      merchant_item_id: "race-authorization-reuse",
-      price: syncCard.price,
+    const present = (payment: typeof hers) =>
+      harnessed.gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        payment.payment,
+        payment.fingerprint,
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    const next = await harnessed.gateway.beginPurchase(otherItem, {});
-    if (next.step !== "pay") throw new Error("no next offer");
-    expect(
-      (await harnessed.gateway.payPurchase(next.order.order.id, losing.payment, losing.fingerprint))
-        .step,
-    ).toBe("under_way");
-    expect(harnessed.facilitator.settles.at(-1)?.payment).toBe(losing.payment);
+    const release = harnessed.facilitator.holdVerification();
+    const paying = present(hers);
+    try {
+      await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
+      expect(await present(his)).toStrictEqual({ step: "payment_being_checked" });
+      expect(await harnessed.store.orderById(orderId)).toBeNull();
+      expect(await harnessed.store.paymentClaimHolder(his.fingerprint)).toBeNull();
+      release();
+      const winner = await paying;
+      if (winner.step !== "settled") throw new Error("the admitted payment did not finish");
+      expect(winner.delivery).toStrictEqual({ access_code: "SESAME" });
+      expect(await present(his)).toStrictEqual({ step: "not_this_purchase" });
+      const owned = await harnessed.store.orderById(orderId);
+      expect(owned?.order.state).toBe("delivered");
+      expect(owned?.paidBy).toBe(alice.address.toLowerCase());
+      expect(harnessed.facilitator.settles.map((charge) => charge.payment)).toStrictEqual([
+        hers.payment,
+      ]);
+      expect(await harnessed.store.paymentClaimHolder(his.fingerprint)).toBeNull();
+      const otherItem = await published(harnessed, {
+        ...asyncCard,
+        merchant_item_id: "race-authorization-reuse",
+        price: syncCard.price,
+      });
+      const next = await harnessed.gateway.beginPurchase(otherItem, {});
+      if (next.step !== "pay") throw new Error("no next offer");
+      expect(
+        (
+          await harnessed.gateway.payPurchase(
+            next.order.priceOffer.stamp,
+            his.payment,
+            his.fingerprint,
+            undefined,
+            { itemId: next.order.itemId, params: next.order.params },
+          )
+        ).step,
+      ).toBe("under_way");
+      expect(harnessed.facilitator.settles.at(-1)?.payment).toBe(his.payment);
+    } finally {
+      release();
+      await paying;
+      await worker.stop();
+    }
   });
 
   it("in the scripted sandbox, does not make two payments that name no payer into one buyer", async () => {
@@ -1587,14 +1740,22 @@ describe("two payments racing one order", () => {
     const mine = paymentNamingNoPayer(harnessed);
     const theirs = paymentNamingNoPayer(harnessed);
 
-    const bought = await harnessed.gateway.payPurchase(orderId, mine.payment, mine.fingerprint);
+    const bought = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      mine.payment,
+      mine.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect(bought.step).toBe("under_way");
 
     // Somebody else's payment, equally anonymous, is not this order's.
     const meddling = await harnessed.gateway.payPurchase(
-      orderId,
+      offered.order.priceOffer.stamp,
       theirs.payment,
       theirs.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     expect(meddling.step).toBe("not_this_purchase");
     expect((await harnessed.store.orderById(orderId))?.paidBy).toBe(mine.fingerprint);
@@ -1602,7 +1763,13 @@ describe("two payments racing one order", () => {
     // And the other half, or the rule above would be a way of locking a buyer
     // out of their own order: the same anonymous payment presented again is the
     // same buyer, because it fingerprints the same.
-    const again = await harnessed.gateway.payPurchase(orderId, mine.payment, mine.fingerprint);
+    const again = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      mine.payment,
+      mine.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect(again.step).not.toBe("not_this_purchase");
   });
 
@@ -1615,22 +1782,25 @@ describe("two payments racing one order", () => {
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    const orderId = offered.order.order.id;
 
     const nameless = authorisation(harnessed, "", "0x01");
     const alsoNameless = authorisation(harnessed, "", "0x02");
 
     const took = await harnessed.gateway.payPurchase(
-      orderId,
+      offered.order.priceOffer.stamp,
       nameless.payment,
       nameless.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     expect(took.step).toBe("under_way");
 
     const meddling = await harnessed.gateway.payPurchase(
-      orderId,
+      offered.order.priceOffer.stamp,
       alsoNameless.payment,
       alsoNameless.fingerprint,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     expect(meddling.step).toBe("not_this_purchase");
   });
@@ -1681,7 +1851,13 @@ describe("the price question", () => {
 
     harnessed.advance(90_000);
     const paid = harnessed.now();
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const record = await harnessed.store.orderById(orderId);
     if (record === null) throw new Error("the order went missing");
@@ -1755,32 +1931,22 @@ describe("the price question", () => {
     expect(offered.order.order.quoteSource).toBe("merchant_answer");
   });
 
-  it("tells the agent why, where the merchant's price check said there is none", async () => {
-    // A bare "rejected" is a product that is gone, a price check that went
-    // unanswered and a charge that failed, and the agent's next step differs
-    // between them. Where the ending was ours to name, the status names it,
-    // in a code to branch on and a sentence that says what to do next.
+  it("does not sell what the merchant says is gone", async () => {
     const harnessed = await started();
     const itemId = await published(harnessed, livePriced(syncCard));
+
     const worker = workUntilStopped(harnessed, {
       onQuote: () => ({ available: false, as_of: "2026-08-26T12:00:00.000Z" }),
     });
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     await worker.stop();
-    if (offered.step !== "settled") throw new Error("the order was not closed");
 
-    const status = agentOrderStatusOf(
-      offered.order,
-      { name: null, site: null },
-      harnessed.runtime.config,
-    );
-
-    expect(status.status).toBe("rejected");
-    expect(offered.order.order.state).toBe("rejected");
-    expect(offered.order.order.closure).toEqual({ cause: "unavailable" });
-    expect(status.reason?.code).toBe("unavailable");
-    expect(status.reason?.message).toMatch(/\S/);
-    expect(status.refusal).toBeUndefined();
+    expect(offered.step).toBe("not_selling");
+    if (offered.step !== "not_selling") throw new Error("an unavailable item offered a price");
+    expect(offered.message).toMatch(/unavailable|not available/i);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
   it("gives a merchant's own refusal no reason of ours beside it", async () => {
@@ -1791,7 +1957,13 @@ describe("the price question", () => {
     });
     const offered = await harnessed.gateway.beginPurchase(itemId, { nights: 1 });
     if (offered.step !== "pay") throw new Error("no price was offered");
-    const paid = await harnessed.gateway.payPurchase(offered.order.order.id, "P", "P");
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "P",
+      "P",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
     if (paid.step !== "settled") throw new Error("the purchase did not end");
 
@@ -1820,36 +1992,18 @@ describe("the price question", () => {
     expect(offered.order.order.quoteSource).toBe("card_snapshot");
   });
 
-  it("will not start an asynchronous purchase the merchant went silent on", async () => {
+  it("will not start an asynchronous purchase the merchant went silent on, and says to ask again", async () => {
     // On an asynchronous card the money moves at the purchase, so selling at an
     // unknown stock level manufactures debts to buyers, and a lost sale is
-    // cheaper than a debt.
+    // cheaper than a debt. A silence is not the merchant's "there is none", so
+    // the agent is told the seller is busy rather than that it is off sale.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "1" });
     const itemId = await published(harnessed, livePriced(asyncCard));
 
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
 
-    expect(offered.step).toBe("settled");
-    if (offered.step !== "settled") throw new Error("the order was not closed");
-    expect(offered.order.order.state).toBe("rejected");
-    expect(offered.order.order.closure).toStrictEqual({ cause: "quote_silent" });
-  });
-
-  it("reports the silence itself when there is no reminder to fall back on", async () => {
-    // Two things notice that a price never came: the wait inside the purchase,
-    // and the clock the machine armed when the order was created. They carry
-    // the same fact and normally race, so this test takes the second one away
-    // — the queue is told to forget its reminders — and holds the first one to
-    // the same answer on its own.
-    const harnessed = await started({ QUOTE_RESPONSE_MS: "10" });
-    harnessed.queue.remind = async () => undefined;
-    const itemId = await published(harnessed, livePriced(asyncCard));
-
-    const offered = await harnessed.gateway.beginPurchase(itemId, {});
-
-    expect(offered.step).toBe("settled");
-    if (offered.step !== "settled") throw new Error("the order was not closed");
-    expect(offered.order.order.closure).toStrictEqual({ cause: "quote_silent" });
+    expect(offered.step).toBe("seller_busy");
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
   it.each(["accepted", "timed_out"] as const)(
@@ -1913,6 +2067,33 @@ describe("the price question", () => {
     await buying;
   });
 
+  it("gives a merchant ten seconds to answer, enough for a shop to price a parcel through several calls", async () => {
+    const harnessed = await started();
+    const itemId = await published(harnessed, livePriced(asyncCard));
+
+    const buying = harnessed.gateway.beginPurchase(itemId, {});
+    const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 200);
+    const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
+    if (question?.kind !== "quote_request") throw new Error("nobody was asked the price");
+
+    harnessed.advance(10_000 - 1);
+
+    const acknowledged = await harnessed.gateway.answerQuote(
+      harnessed.merchant.id,
+      question.payload.price_id,
+      {
+        available: true,
+        price: { amount: "9.00", currency: "USD" },
+        as_of: "2026-08-26T12:00:00.000Z",
+      },
+    );
+
+    expect(acknowledged).toStrictEqual({ used: true });
+    const offered = await buying;
+    if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
+    expect(offered.order.order.price?.amount).toBe("9.00");
+  });
+
   it("tells a merchant his answer priced nothing when the machine would not take it", async () => {
     // Somebody is still parked on the question, so an acknowledgement built
     // out of "was anybody listening" would say yes, while the order closed a
@@ -1925,13 +2106,7 @@ describe("the price question", () => {
     const question = drawn.envelopes.find((envelope) => envelope.kind === "quote_request");
     if (question?.kind !== "quote_request") throw new Error("nobody was asked the price");
 
-    // The clock on our own patience gets there first and closes the order.
-    const orders = await harnessed.store.orders(harnessed.merchant.id);
-    const orderId = orders[0]?.order.id ?? "";
-    await harnessed.gateway.runner.apply(orderId, {
-      kind: "quote_silent",
-      at: harnessed.now(),
-    });
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteResponseMs);
 
     const acknowledged = await harnessed.gateway.answerQuote(
       harnessed.merchant.id,
@@ -1944,7 +2119,7 @@ describe("the price question", () => {
     );
 
     expect(acknowledged).toStrictEqual({ used: false });
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("rejected");
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     await buying;
   });
 
@@ -1969,7 +2144,13 @@ describe("the price question", () => {
     const orderId = offered.order.order.id;
     expect(offered.order.order.quoteSource).toBe("card_snapshot");
 
-    const bought = await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const bought = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
     if (bought.step !== "settled") throw new Error("the purchase did not settle");
 
@@ -2023,7 +2204,13 @@ describe("the worker's stream", () => {
     const itemId = await published(harnessed, asyncCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
@@ -2041,7 +2228,13 @@ describe("the worker's stream", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.refuseOrder(harnessed.merchant.id, orderId, {
       code: "out_of_stock",
       message: "none",
@@ -2060,7 +2253,13 @@ describe("the worker's stream", () => {
 
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect((await parked).envelopes).toHaveLength(1);
   });
@@ -2076,7 +2275,13 @@ describe("the worker's stream", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.refuseOrder(harnessed.merchant.id, orderId, {
       code: "out_of_stock",
       message: "the supplier has none",
@@ -2117,7 +2322,13 @@ describe("the worker's stream", () => {
     const orderId = offered.order.order.id;
 
     // The agent's call parks while the merchant works.
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const handed = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
     expect(handed.envelopes.filter((each) => each.kind === "order")).toHaveLength(1);
@@ -2159,7 +2370,13 @@ describe("the merchant's calls", () => {
 
     // The purchase is left open on purpose: the separate call only means
     // anything while the order is still with the merchant.
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
 
     const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
@@ -2195,7 +2412,13 @@ describe("the merchant's calls", () => {
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
 
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 200)).envelopes).toHaveLength(1);
 
     const refused = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
@@ -2214,7 +2437,7 @@ describe("the merchant's calls", () => {
     expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
-  it("does not tell a merchant a live order is closed", async () => {
+  it("reveals no order for a price alone and identifies a genuinely closed paid order", async () => {
     // The contract promises "order_already_closed" means an ending no call
     // reopens, so a live order in the wrong state is refused under another
     // code.
@@ -2231,14 +2454,18 @@ describe("the merchant's calls", () => {
       },
     );
 
-    expect(refused?.ok).toBe(false);
-    if (refused?.ok !== false) throw new Error("the call was taken");
-    expect(refused.error.code).toBe("event_not_applicable");
-    expect(refused.error.message).toContain("quoted");
+    expect(refused).toBeNull();
+    expect(await harnessed.store.orderById(offered.order.order.id)).toBeNull();
 
     // And an order that really is closed still says so, under the code the
     // contract promises means exactly that.
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, offered.order.order.id, {
       activation_code: "A",
     });
@@ -2272,7 +2499,13 @@ describe("the merchant's calls", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.poll(harnessed.merchant.id, 0);
 
     const answered = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
@@ -2299,7 +2532,13 @@ describe("the merchant's calls", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await harnessed.gateway.poll(harnessed.merchant.id, 0);
     await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, { accepted: {} });
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, { activation_code: "A" });
@@ -2321,7 +2560,13 @@ describe("the merchant's calls", () => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await workOnce(harnessed, { onOrder: () => ({ accepted: {} }) });
     await harnessed.gateway.refuseOrder(harnessed.merchant.id, orderId, {
       code: "out_of_stock",
@@ -2345,13 +2590,19 @@ describe("the claims on payments", () => {
 
     const old = await harnessed.gateway.beginPurchase(itemId, {});
     if (old.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(old.order.order.id, "OLD", "OLD");
+    await harnessed.gateway.payPurchase(old.order.priceOffer.stamp, "OLD", "OLD", undefined, {
+      itemId: old.order.itemId,
+      params: old.order.params,
+    });
 
     harnessed.advance(90_000);
 
     const fresh = await harnessed.gateway.beginPurchase(itemId, {});
     if (fresh.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(fresh.order.order.id, "FRESH", "FRESH");
+    await harnessed.gateway.payPurchase(fresh.order.priceOffer.stamp, "FRESH", "FRESH", undefined, {
+      itemId: fresh.order.itemId,
+      params: fresh.order.params,
+    });
 
     expect(await harnessed.gateway.forgetOldClaims()).toBe(0);
 
@@ -2361,11 +2612,27 @@ describe("the claims on payments", () => {
     if (takingOld.step !== "pay" || takingFresh.step !== "pay") {
       throw new Error("no price was offered");
     }
-    expect((await harnessed.gateway.payPurchase(takingOld.order.order.id, "OLD", "OLD")).step).toBe(
-      "payment_already_spent",
-    );
     expect(
-      (await harnessed.gateway.payPurchase(takingFresh.order.order.id, "FRESH", "FRESH")).step,
+      (
+        await harnessed.gateway.payPurchase(
+          takingOld.order.priceOffer.stamp,
+          "OLD",
+          "OLD",
+          undefined,
+          { itemId: takingOld.order.itemId, params: takingOld.order.params },
+        )
+      ).step,
+    ).toBe("payment_already_spent");
+    expect(
+      (
+        await harnessed.gateway.payPurchase(
+          takingFresh.order.priceOffer.stamp,
+          "FRESH",
+          "FRESH",
+          undefined,
+          { itemId: takingFresh.order.itemId, params: takingFresh.order.params },
+        )
+      ).step,
     ).toBe("payment_already_spent");
   });
 });
@@ -2397,7 +2664,13 @@ describe("an order sent out again", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    const buying = harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const buying = harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await vi.waitFor(
       async () =>
         expect((await harnessed.store.orderById(orderId))?.order.payment).toBe("settling"),
@@ -2439,13 +2712,25 @@ describe("the merchant's list of orders", () => {
     const second = await harnessed.gateway.beginPurchase(itemId, {});
     if (first.step !== "pay" || second.step !== "pay") throw new Error("no price was offered");
 
-    await harnessed.gateway.payPurchase(first.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      first.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: first.order.itemId, params: first.order.params },
+    );
     await harnessed.gateway.deliverOrder(harnessed.merchant.id, first.order.order.id, {
       activation_code: "A",
     });
     // A second authorisation. Reusing the first would leave this order unpaid,
     // and an unpaid quote is not what this list is for.
-    await harnessed.gateway.payPurchase(second.order.order.id, "PAYMENT-2", "PAYMENT-2");
+    await harnessed.gateway.payPurchase(
+      second.order.priceOffer.stamp,
+      "PAYMENT-2",
+      "PAYMENT-2",
+      undefined,
+      { itemId: second.order.itemId, params: second.order.params },
+    );
 
     expect(await harnessed.gateway.orders(harnessed.merchant.id, undefined)).toHaveLength(2);
     expect(
@@ -2455,16 +2740,20 @@ describe("the merchant's list of orders", () => {
 
   it("does not put an unpaid quote beside an order the merchant has taken on", async () => {
     // A restarted worker walks this list to find what it still owes. An order
-    // that was priced and never paid never reached the handler; delivering
-    // against it makes goods for a purchase that did not happen. The buyer's
-    // word for that order stays `in_progress` — the purchase is not finished —
-    // and that word is not an instruction to the merchant.
+    // that was priced and never paid never reached the handler and creates no
+    // order. Delivering against it would make goods for a purchase that did not happen.
     const harnessed = await started();
     const itemId = await published(harnessed, asyncCard);
     const unpaid = await harnessed.gateway.beginPurchase(itemId, {});
     const taken = await harnessed.gateway.beginPurchase(itemId, {});
     if (unpaid.step !== "pay" || taken.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(taken.order.order.id, "PAYMENT-TAKEN", "PAYMENT-TAKEN");
+    await harnessed.gateway.payPurchase(
+      taken.order.priceOffer.stamp,
+      "PAYMENT-TAKEN",
+      "PAYMENT-TAKEN",
+      undefined,
+      { itemId: taken.order.itemId, params: taken.order.params },
+    );
     expect(
       await harnessed.gateway.acceptOrder(harnessed.merchant.id, taken.order.order.id, {}),
     ).toStrictEqual({ ok: true });
@@ -2479,8 +2768,8 @@ describe("the merchant's list of orders", () => {
       harnessed.merchant.id,
       unpaid.order.order.id,
     );
-    expect(stillThere).not.toBeNull();
-    expect(outcomeFor(stillThere?.order ?? taken.order.order)).toBe("in_progress");
+    expect(stillThere).toBeNull();
+    expect(await harnessed.store.orderById(unpaid.order.order.id)).toBeNull();
   });
 });
 
@@ -2500,9 +2789,11 @@ describe("the test mark on an order and its receipt", () => {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
     const bought = await harnessed.gateway.payPurchase(
-      offered.order.order.id,
+      offered.order.priceOffer.stamp,
       "PAYMENT",
       "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
     );
     await worker.stop();
     if (bought.step !== "settled") throw new Error("the purchase did not settle");
@@ -2574,7 +2865,13 @@ describe("a poll on a key revoked before it was held", () => {
     });
     const offered = await harnessed.gateway.beginPurchase(coded, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect((await held).envelopes).toStrictEqual([]);
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toHaveLength(1);
@@ -2618,7 +2915,13 @@ describe("a held poll whose key is revoked by another process", () => {
   const paidFor = async (harnessed: Harness, itemId: string): Promise<string> => {
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     return offered.order.order.id;
   };
 
@@ -2770,8 +3073,7 @@ describe("a held poll whose key is revoked by another process", () => {
     expect((await held).envelopes).toStrictEqual([]);
     const offered = await buying;
     expect(offered.step).not.toBe("pay");
-    const [order] = await harnessed.store.orders(harnessed.merchant.id);
-    expect(order?.shipTo !== undefined && "erasedAt" in order.shipTo).toBe(true);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(next.envelopes.filter((envelope) => envelope.kind === "quote_request")).toStrictEqual(
       [],
@@ -2788,22 +3090,14 @@ describe("a held poll whose key is revoked by another process", () => {
     ).id;
     const { held } = await pollWaitingForEnvelope(harnessed);
     revokedAtTheNextRead(harnessed, async () => {
-      const [order] = await harnessed.store.orders(harnessed.merchant.id);
-      if (order === undefined) throw new Error("no order was opened");
       harnessed.advance(501);
-      await harnessed.gateway.runner.apply(order.order.id, {
-        kind: "deadline_expired",
-        deadline: "quote_response",
-        at: order.order.timestamps.createdAt + 500,
-      });
       return harnessed.store.keysOf(harnessed.merchant.id);
     });
 
     const buying = harnessed.gateway.beginPurchase(parcel, {}, address);
 
     expect((await held).envelopes).toStrictEqual([]);
-    const [order] = await harnessed.store.orders(harnessed.merchant.id);
-    expect(order?.shipTo !== undefined && "erasedAt" in order.shipTo).toBe(true);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     const next = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(next.envelopes.filter((envelope) => envelope.kind === "quote_request")).toStrictEqual(
       [],
@@ -2820,7 +3114,13 @@ describe("a held poll whose key is revoked by another process", () => {
     const worker = workUntilStopped(harnessed, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
     revokedAtTheNextRead(harnessed);
 
@@ -2951,7 +3251,6 @@ describe("a merchant's standing in one read", () => {
       pendingPayoutWallet: null,
       liveApproved: false,
       outOfTouch: null,
-      busy: false,
       unserved: false,
       withdrawn: null,
     };
@@ -3011,7 +3310,13 @@ describe("one integration at a time", () => {
 
     const offered = await harnessed.gateway.beginPurchase(imported, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     const id = harnessed.merchant.id;
     expect((await harnessed.gateway.poll(id, 0)).envelopes).toStrictEqual([]);
@@ -3070,15 +3375,22 @@ describe("one integration at a time", () => {
     const harnessed = await started();
     const coded = await published(harnessed, asyncCard);
     const { store } = harnessed;
-    const write = store.addOrder.bind(store);
-    store.addOrder = async (record, through) => {
+    const verify = harnessed.facilitator.verify.bind(harnessed.facilitator);
+    harnessed.facilitator.verify = async (charge) => {
+      const verified = await verify(charge);
       await store.switchIntegration(harnessed.merchant.id, "woocommerce");
-      return await write(record, through);
+      return verified;
     };
 
     const offered = await harnessed.gateway.beginPurchase(coded, {});
+    if (offered.step !== "pay") throw new Error("the card offered no price");
+    const paid = await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+    );
 
-    expect(offered.step).toBe("not_selling");
+    expect(paid.step).toBe("not_selling");
     expect(await store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 

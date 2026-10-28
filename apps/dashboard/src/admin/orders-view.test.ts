@@ -40,7 +40,7 @@ describe("the orders list", () => {
     const view = ordersListView(asked(), null, READ_AT);
 
     expect(view.result).toStrictEqual({ kind: "unread" });
-    expect(view.segments.map((segment) => segment.count)).toStrictEqual(Array(7).fill(null));
+    expect(view.segments.map((segment) => segment.count)).toStrictEqual(Array(6).fill(null));
     expect(view.merchants).toBeNull();
   });
 
@@ -55,19 +55,12 @@ describe("the orders list", () => {
       said: "No order matches “esim”.",
       clear: "/admin/orders",
     });
-    expect(
-      ordersListView(asked("segment=lapsed"), aPage({ counts: counts({ ended: 3 }) }), READ_AT)
-        .result,
-    ).toMatchObject({
-      kind: "none",
-      said: "No lapsed attempt is kept: the gateway forgets them after thirty days.",
-    });
   });
 
   it("lists the segments in the note's order with their counts, the one shown marked, each keeping the search", () => {
     const view = ordersListView(
       asked("segment=unfulfilled&q=esim&merchant=mch_a"),
-      aPage({ counts: counts({ payment_unknown: 2, unfulfilled: 1, ended: 50, lapsed: 6 }) }),
+      aPage({ counts: counts({ payment_unknown: 2, unfulfilled: 1, ended: 50 }) }),
       READ_AT,
     );
 
@@ -77,13 +70,12 @@ describe("the orders list", () => {
       ["Held for payment", 0, false],
       ["In progress", 0, false],
       ["Ended", 50, false],
-      ["Lapsed", 6, false],
-      ["All", 59, false],
+      ["All", 53, false],
     ]);
     expect(view.segments[0]?.to).toBe(
       "/admin/orders?segment=payment-unknown&q=esim&merchant=mch_a",
     );
-    expect(view.segments[6]?.to).toBe("/admin/orders?q=esim&merchant=mch_a");
+    expect(view.segments[5]?.to).toBe("/admin/orders?q=esim&merchant=mch_a");
   });
 
   it("says which rows of how many it shows, and leads on to the older ones and back to the newer", () => {
@@ -155,10 +147,10 @@ describe("the orders list", () => {
     const view = ordersListView(
       asked(),
       aPage({
-        counts: counts({ payment_unknown: 1, lapsed: 1 }),
+        counts: counts({ payment_unknown: 1, ended: 1 }),
         rows: [
           aRow("ord_u", { status: "payment_unresolved", payment: "unresolved" }),
-          aRow("ord_l", { status: "rejected", payment: "not_paid", price: null, pricedAt: null }),
+          aRow("ord_r", { status: "rejected", payment: "not_paid" }),
         ],
       }),
       READ_AT,
@@ -173,8 +165,8 @@ describe("the orders list", () => {
       {
         state: { text: "Refused", tone: "quiet" },
         payment: { text: "Not paid", tone: "quiet" },
-        amount: null,
-        priced: null,
+        amount: "12.00\u00a0USD",
+        priced: expect.any(Object),
       },
     ]);
   });

@@ -1,0 +1,1 @@
+DROP TABLE "dashboard_woo_quotes" CASCADE;

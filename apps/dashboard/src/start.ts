@@ -83,7 +83,7 @@ export function dashboardFor(
 ): Dashboard {
   const pool = connect(config.databaseUrl);
   const identity = identityFor(config, { pool });
-  const wooShops = postgresWooShops(pool);
+  const wooShops = postgresWooShops(pool, config.authSecret);
   return {
     tell: tellerFor(config, identity, postmanFor(config), rate),
     start: (application) => started(config, application, { pool, identity, wooShops }, pages),

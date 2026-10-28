@@ -1,3 +1,4 @@
+import { storeAcceptedOrder } from "../../testing/accepted-order.js";
 /**
  * The analytics the Postgres store records with an order's own writes: the
  * order's birth in the transaction that inserts it, and what a change to it
@@ -13,10 +14,17 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { AnalyticsEvent, OrderCreated } from "../../analytics/index.js";
 import { OrderRunner } from "../../app/runner.js";
-import type { Birth, StoredOrder } from "../../ports/store.js";
+import type { Integration, StoredOrder } from "../../ports/store.js";
 import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "../../testing/database.js";
-import { buyOverHttp, countedIds, harness, loggedWhile, serve } from "../../testing/harness.js";
-import { anOrder } from "../../testing/store-contract.js";
+import {
+  buyOverHttp,
+  countedIds,
+  harness,
+  loggedWhile,
+  serve,
+  signedFor,
+} from "../../testing/harness.js";
+import { aWallet } from "../../testing/signed-payment.js";
 import { connect, PostgresStore } from "./store.js";
 
 const wanted = (() => {
@@ -43,12 +51,12 @@ const created = (order: StoredOrder): OrderCreated => ({
   fields: { integration: "api", money_mode: "test", network: "base_sepolia" },
 });
 
-const expired = (order: StoredOrder): AnalyticsEvent => ({
+const unfulfilled = (order: StoredOrder): AnalyticsEvent => ({
   name: "agc_order_outcome_changed",
   actor: "system",
   source: "gateway",
   refs: { order: order.order.id, merchant: order.merchantId },
-  fields: { outcome: "expired", payment_state: "not_paid", money_mode: "test" },
+  fields: { outcome: "unfulfilled", payment_state: "paid", money_mode: "test" },
 });
 
 if (databaseUrl === null) {
@@ -89,47 +97,91 @@ if (databaseUrl === null) {
       )
     ).rows;
 
-  const BIRTH: Birth = { through: "api", waitingAtMost: 20 };
-
-  const anOrderOf = (id: string): StoredOrder => ({
-    ...anOrder(id, "quoted", { merchantId: MERCHANT, createdAt: 5_000 }),
-    itemId: "item_1",
-  });
+  // A real accepted purchase supplies the history restored into each isolated database case.
+  const ids = countedIds();
+  const original = await harness({}, { ids: (kind) => (kind === "mch" ? MERCHANT : ids(kind)) });
+  let acceptedHistory: StoredOrder;
+  try {
+    const published = await original.gateway.publishCard(MERCHANT, {
+      merchant_item_id: "analytics-history",
+      title: "A digital guide",
+      description: "A digital guide delivered after payment",
+      price: { amount: "5.00", currency: "USD" },
+      result: { access_url: { type: "string" } },
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3600,
+    });
+    if (!published.ok) throw new Error("The analytics history card was refused.");
+    const offer = await original.gateway.beginPurchase(published.id, {});
+    if (offer.step !== "pay") throw new Error("The analytics history was not priced.");
+    const signed = await signedFor(original, offer.order, aWallet("the analytics history buyer"), {
+      nonce: "0x01",
+    });
+    await original.gateway.payPurchase(
+      offer.order.priceOffer.stamp,
+      signed.payment,
+      signed.fingerprint,
+      undefined,
+      { itemId: published.id, params: {} },
+    );
+    const accepted = await original.store.orderById(offer.order.order.id);
+    if (accepted?.paidBy === null || accepted === null || accepted.order.state !== "paid")
+      throw new Error("The analytics history was not paid.");
+    acceptedHistory = accepted;
+  } finally {
+    await original.stop();
+  }
+  const ORDER = acceptedHistory.order.id;
+  const CREATED_AT = Date.parse("2026-08-26T12:00:00.000Z");
+  const anOrderOf = (): StoredOrder => structuredClone(acceptedHistory);
+  const admitWithCreationEvent = async (order: StoredOrder, through: Integration = "api") => {
+    const fingerprint = order.paymentFingerprint;
+    if (fingerprint === undefined) throw new Error("The accepted history has no verified payment.");
+    const admitted = await store.admitOrder({
+      record: order,
+      standing: () => "stands",
+      birth: { through },
+      fingerprint,
+      alongside: [],
+      analytics: [{ event: created(order), at: CREATED_AT }],
+    });
+    return admitted.kind === "admitted"
+      ? "written"
+      : admitted.kind === "existing"
+        ? "exists"
+        : admitted.kind;
+  };
 
   describe("the birth of an order", () => {
     it("records its event in the insert's transaction, dated when the order was made", async () => {
-      const order = anOrderOf("ord_1");
+      const order = anOrderOf();
 
-      expect(await store.addOrder(order, BIRTH, created(order))).toBe("written");
+      expect(await admitWithCreationEvent(order)).toBe("written");
 
       expect(await outbox()).toStrictEqual([
         {
           name: "agc_order_created",
-          occurred_at: new Date(5_000),
+          occurred_at: new Date(CREATED_AT),
           actor_type: "buyer_agent",
-          refs: { order: "ord_1", merchant: MERCHANT, item: "item_1" },
+          refs: { order: ORDER, merchant: MERCHANT, item: acceptedHistory.itemId },
           properties: { integration: "api", money_mode: "test", network: "base_sepolia" },
         },
       ]);
     });
 
     it("records nothing when the merchant no longer sells through the order's integration", async () => {
-      const order = anOrderOf("ord_1");
+      const order = anOrderOf();
 
-      expect(
-        await store.addOrder(order, { ...BIRTH, through: "woocommerce" }, created(order)),
-      ).toBe("switched_away");
+      expect(await admitWithCreationEvent(order, "woocommerce")).toBe("off_sale");
 
       expect(await outbox()).toStrictEqual([]);
     });
 
     it("records nothing for an order that is already written down", async () => {
-      const order = anOrderOf("ord_1");
-      await store.addOrder(order, BIRTH, created(order));
+      const order = anOrderOf();
+      await admitWithCreationEvent(order);
 
-      await expect(store.addOrder(order, BIRTH, created(order))).rejects.toThrow(
-        "already written down",
-      );
+      await expect(admitWithCreationEvent(order)).resolves.toBe("exists");
 
       expect(await outbox()).toHaveLength(1);
     });
@@ -137,37 +189,40 @@ if (databaseUrl === null) {
 
   describe("a change to an order", () => {
     it("records what the change amounts to, read off the order as found and as saved", async () => {
-      const order = anOrderOf("ord_1");
-      await store.addOrder(order);
+      const order = anOrderOf();
+      await storeAcceptedOrder(store, order);
       const seen: string[] = [];
 
       await store.withOrder(
-        "ord_1",
-        (found) => ({ save: { ...found, order: { ...found.order, state: "expired" } }, result: 1 }),
+        ORDER,
+        (found) => ({
+          save: { ...found, order: { ...found.order, state: "unfulfilled" } },
+          result: 1,
+        }),
         undefined,
         (before, after) => {
           seen.push(`${before.order.state} -> ${after.order.state}`);
-          return [{ event: expired(after), at: 7_000 }];
+          return [{ event: unfulfilled(after), at: CREATED_AT + 2_000 }];
         },
       );
 
-      expect(seen).toStrictEqual(["quoted -> expired"]);
+      expect(seen).toStrictEqual(["paid -> unfulfilled"]);
       expect(await outbox()).toMatchObject([
-        { name: "agc_order_outcome_changed", occurred_at: new Date(7_000) },
+        { name: "agc_order_outcome_changed", occurred_at: new Date(CREATED_AT + 2_000) },
       ]);
     });
 
     it("asks for nothing when the change saves nothing", async () => {
-      await store.addOrder(anOrderOf("ord_1"));
+      await storeAcceptedOrder(store, anOrderOf());
       let asked = 0;
 
       await store.withOrder(
-        "ord_1",
+        ORDER,
         () => ({ result: 1 }),
         undefined,
         (_before, after) => {
           asked += 1;
-          return [{ event: expired(after), at: 7_000 }];
+          return [{ event: unfulfilled(after), at: CREATED_AT + 2_000 }];
         },
       );
 
@@ -176,23 +231,23 @@ if (databaseUrl === null) {
     });
 
     it("records nothing when the change's own writes roll back", async () => {
-      await store.addOrder(anOrderOf("ord_1"));
+      await storeAcceptedOrder(store, anOrderOf());
 
       await expect(
         store.withOrder(
-          "ord_1",
+          ORDER,
           (found) => ({
-            save: { ...found, order: { ...found.order, state: "expired" } },
-            alongside: [{ kind: "retain_payment", fingerprint: "nobody's", orderId: "ord_1" }],
+            save: { ...found, order: { ...found.order, state: "unfulfilled" } },
+            alongside: [{ kind: "retain_payment", fingerprint: "nobody's", orderId: ORDER }],
             result: 1,
           }),
           undefined,
-          (_before, after) => [{ event: expired(after), at: 7_000 }],
+          (_before, after) => [{ event: unfulfilled(after), at: CREATED_AT + 2_000 }],
         ),
       ).rejects.toThrow("the payment claim no longer belongs to this order");
 
       expect(await outbox()).toStrictEqual([]);
-      expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+      expect((await store.orderById(ORDER))?.order.state).toBe("paid");
     });
   });
 
@@ -211,15 +266,15 @@ if (databaseUrl === null) {
     };
 
     it("still writes the order a purchase made, and says so without naming it", async () => {
-      const order = anOrderOf("ord_1");
+      const order = anOrderOf();
 
       const said = await awayWhile(async () => {
-        expect(await store.addOrder(order, BIRTH, created(order))).toBe("written");
+        expect(await admitWithCreationEvent(order)).toBe("written");
       });
 
-      expect((await store.orderById("ord_1"))?.order.state).toBe("quoted");
+      expect((await store.orderById(ORDER))?.order.state).toBe("paid");
       expect(said).toMatch(/analytics event could not be recorded/);
-      expect(said).not.toContain("ord_1");
+      expect(said).not.toContain(ORDER);
     });
 
     it("completes an actual unresolved payment and writes its receipt while the analytics outbox is unavailable", async () => {
@@ -250,7 +305,7 @@ if (databaseUrl === null) {
           { id: running.merchant.id, name: "Restored merchant" },
           running.now(),
         );
-        await store.addOrder(submitted);
+        await storeAcceptedOrder(store, submitted);
         const runner = new OrderRunner({ ...running.runtime, store });
         const attemptId = submitted.paymentAttempt.id;
         const transaction = `0x${"ab".repeat(32)}`;

@@ -14,10 +14,12 @@ describe("a stretch of time, said in words", () => {
     expect(durationInWords(600_000, "minute")).toBe("ten minutes");
     expect(durationInWords(30 * 86_400_000, "day")).toBe("thirty days");
     expect(durationInWords(48_000, "second")).toBe("forty-eight seconds");
+    expect(durationInWords(10_800_000, "hour")).toBe("three hours");
   });
 
   it("is one of its unit as a sentence says one", () => {
     expect(durationInWords(86_400_000, "day")).toBe("a day");
+    expect(durationInWords(3_600_000, "hour")).toBe("an hour");
   });
 
   it("is refused where it is no whole number of its unit, rather than rounded", () => {

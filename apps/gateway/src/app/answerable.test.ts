@@ -17,9 +17,8 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import type { Integration } from "../ports/store.js";
 import { type Harness, harness, workOnce, workUntilStopped } from "../testing/harness.js";
-import { anOrder } from "../testing/store-contract.js";
 
-/** A card charged at the purchase, its goods to follow within a second. */
+/** A card charged at the purchase, its goods to follow within a minute. */
 const prepaidCard: Card = CardSchema.parse({
   merchant_item_id: "esim-30d",
   title: "A thirty day eSIM",
@@ -27,7 +26,7 @@ const prepaidCard: Card = CardSchema.parse({
   price: { amount: "25.00", currency: "USD" },
   result: { activation_code: { type: "string" } },
   fulfillment: "async",
-  fulfill_deadline_seconds: 1,
+  fulfill_deadline_seconds: 60,
 });
 
 /** A parcel whose price its shop is asked, shipped within a day. */
@@ -84,7 +83,7 @@ const paidOrder = async (harnessed: Harness, card: Card, through: Integration): 
   if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
   const orderId = offered.order.order.id;
   await harnessed.gateway.payPurchase(
-    orderId,
+    offered.order.priceOffer.stamp,
     `PAYMENT-${orderId}`,
     `fp-${orderId}`,
     parcel ? address : undefined,
@@ -99,7 +98,7 @@ const handOver = async (harnessed: Harness, through: Integration): Promise<void>
 
 /** The order's deadline to deliver or ship passes. */
 const missed = async (harnessed: Harness, orderId: string, parcel = false): Promise<void> => {
-  harnessed.advance(parcel ? 86_401_000 : 2_000);
+  harnessed.advance(parcel ? 86_401_000 : 61_000);
   await harnessed.gateway.runner.apply(orderId, {
     kind: "deadline_expired",
     at: harnessed.now(),
@@ -165,54 +164,6 @@ describe("a merchant's own code", () => {
     await missed(harnessed, orderId);
 
     const record = await stored(harnessed, orderId);
-    expect(record.order.state).toBe("unfulfilled");
-    expect(record.answerable).toBe(false);
-  });
-
-  it("is not decided for an order that was unfulfilled before the fact was kept, whatever happens to it later", async () => {
-    // Such an order counts for nobody: what made it unfulfilled is no longer
-    // on hand to decide by.
-    const harnessed = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = (await harnessed.store.publishCard(merchantId, prepaidCard, harnessed.now())).id;
-    const base = anOrder("ord_before", "unfulfilled", { merchantId });
-    await harnessed.store.addOrder({
-      ...base,
-      itemId,
-      order: {
-        ...base.order,
-        payment: "settled",
-        closure: { cause: "merchant_refused", ...REFUSAL },
-        timestamps: { ...base.order.timestamps, dispatchedAt: 2_000 },
-      },
-    });
-
-    await harnessed.gateway.refuseOrder(merchantId, "ord_before", REFUSAL);
-
-    expect((await stored(harnessed, "ord_before")).answerable).toBeUndefined();
-  });
-
-  it("does not answer for an order born before its integration was kept on it", async () => {
-    // Nothing on such an order says which integration sold it, and the
-    // decision is not made by reading its card while the order is held.
-    const harnessed = await started();
-    const merchantId = harnessed.merchant.id;
-    const itemId = (await harnessed.store.publishCard(merchantId, prepaidCard, harnessed.now())).id;
-    const base = anOrder("ord_older", "paid", { merchantId });
-    await harnessed.store.addOrder({
-      ...base,
-      itemId,
-      order: {
-        ...base.order,
-        mode: { settle: "on_purchase" },
-        payment: "settled",
-        price: { amount: "25.00", currency: "USD", asOf: 0 },
-      },
-    });
-
-    await harnessed.gateway.refuseOrder(merchantId, "ord_older", REFUSAL);
-
-    const record = await stored(harnessed, "ord_older");
     expect(record.order.state).toBe("unfulfilled");
     expect(record.answerable).toBe(false);
   });

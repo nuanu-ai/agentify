@@ -137,7 +137,7 @@ const COUNTS: MerchantCounts = {
   admitted: 1,
   waitingForAdmission: 1,
 };
-const ORDERS: RecentOrders = { readAt: AT, count: 17, delivered: 13, paymentUnknown: 2, lapsed: 5 };
+const ORDERS: RecentOrders = { readAt: AT, count: 17, delivered: 13, paymentUnknown: 2 };
 
 const cents = (amount: string): number => Math.round(Number(amount) * 100);
 const dollarsOf = (sum: number): string => (sum / 100).toFixed(2);
@@ -493,7 +493,7 @@ export const FIGURES_STATES: readonly AdminGalleryState[] = [
             admitted: 0,
             waitingForAdmission: 0,
           }),
-          orders: read({ readAt: AT, count: 0, delivered: 0, paymentUnknown: 0, lapsed: 0 }),
+          orders: read({ readAt: AT, count: 0, delivered: 0, paymentUnknown: 0 }),
           week: read(money("7d", EMPTY_SALES)),
           sales: read(EMPTY_SALES),
           funnel: read({

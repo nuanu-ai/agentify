@@ -19,7 +19,7 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import type { WrittenOrderStatus } from "../../app/written.js";
 import type { PageFrom } from "../paging.js";
-import { lapsedAttempt, type OrderPlace, type StoredOrder } from "../store.js";
+import type { OrderPlace, StoredOrder } from "../store.js";
 
 export interface OperatorOrders {
   /**
@@ -55,7 +55,6 @@ export const ORDER_SEGMENTS = [
   "delivered_unpaid",
   "in_progress",
   "ended",
-  "lapsed",
 ] as const;
 
 export type OrderSegment = (typeof ORDER_SEGMENTS)[number];
@@ -171,8 +170,6 @@ interface MerchantReads {
   readonly merchant_closure?: { readonly closed_at: string; readonly message?: string };
   /** Whether a restarted worker's open list carries it. */
   readonly onOpenList: boolean;
-  /** Whether it is listed apart, as an attempt that lapsed unpaid. */
-  readonly lapsed: boolean;
 }
 
 /**
@@ -286,8 +283,7 @@ export const IN_PROGRESS_STATES: readonly OrderState[] = ORDER_STATES.filter(
 export const ENDED_STATES: readonly OrderState[] = ORDER_STATES.filter((state) => !isOpen(state));
 
 // Each segment below leaves out the orders whose payment is unknown, which
-// that segment holds whatever their state; `ENDED` also leaves out the lapsed
-// attempts, which have a segment of their own. Their Postgres twins carry the
+// that segment holds whatever their state. Their Postgres twins carry the
 // same name in capitals in `adapters/postgres/operator/predicates.ts`.
 
 /** Paid with no delivery recorded, open to late fulfillment. */
@@ -302,12 +298,11 @@ export const inProgress = (record: StoredOrder): boolean =>
   IN_PROGRESS_STATES.includes(record.order.state) && !paymentUnknown(record);
 
 export const endedOrder = (record: StoredOrder): boolean =>
-  ENDED_STATES.includes(record.order.state) && !paymentUnknown(record) && !lapsedAttempt(record);
+  ENDED_STATES.includes(record.order.state) && !paymentUnknown(record);
 
-/** The one segment an order is in. Lapsed attempts are `lapsedAttempt`, the orders table's `lapsed`. */
+/** The one segment an order is in. */
 export function segmentOf(record: StoredOrder): OrderSegment {
   if (paymentUnknown(record)) return "payment_unknown";
-  if (lapsedAttempt(record)) return "lapsed";
   if (unfulfilledOrder(record)) return "unfulfilled";
   if (deliveredNotPaid(record)) return "delivered_unpaid";
   if (inProgress(record)) return "in_progress";

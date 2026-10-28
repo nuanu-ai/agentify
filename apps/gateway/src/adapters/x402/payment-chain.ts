@@ -9,11 +9,13 @@ import {
   type Transport,
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
-import type { PaymentChain } from "../../ports/payment-chain.js";
+import { BALANCE_READ_MS } from "../../app/payment-window.js";
+import type { PaymentChain, TokenBalances } from "../../ports/payment-chain.js";
 
 const EIP3009 = parseAbi([
   "function authorizationState(address authorizer, bytes32 nonce) view returns (bool)",
 ]);
+const ERC20 = parseAbi(["function balanceOf(address account) view returns (uint256)"]);
 
 /**
  * The chain `network` read through `rpcUrl`, the endpoint payment recovery
@@ -22,7 +24,10 @@ const EIP3009 = parseAbi([
  * wallet would look like one that does not exist and every authorization
  * like one never used.
  */
-export function paymentChainOn(network: string, rpcUrl?: string): PaymentChain | undefined {
+export function paymentChainOn(
+  network: string,
+  rpcUrl?: string,
+): (PaymentChain & TokenBalances) | undefined {
   if (!rpcUrl) return undefined;
   const chain = network === "eip155:8453" ? base : baseSepolia;
   const host = new URL(rpcUrl).host;
@@ -50,6 +55,22 @@ export function paymentChainOn(network: string, rpcUrl?: string): PaymentChain |
     return { client, heard };
   };
 
+  /**
+   * A client whose reads made together go out as one batch with the chain's
+   * identity, so they are one request and an answer from another chain is
+   * never taken (`servesThisChain`).
+   */
+  const batching = () =>
+    createPublicClient({
+      chain,
+      transport: http(rpcUrl, { timeout: BALANCE_READ_MS, retryCount: 0, batch: true }),
+    });
+  const servesThisChain = (serves: number): void => {
+    if (serves !== chain.id) {
+      throw new Error(`the chain endpoint at ${host} does not answer for ${network}`);
+    }
+  };
+
   return {
     async accepts(wallet, digest, signature) {
       const { client, heard } = await asking();
@@ -69,6 +90,40 @@ export function paymentChainOn(network: string, rpcUrl?: string): PaymentChain |
         throw new Error(`the chain endpoint at ${host} did not answer`);
       }
       return valid;
+    },
+    async balance(token, wallet) {
+      const client = batching();
+      const [serves, held] = await Promise.all([
+        client.getChainId(),
+        client.readContract({
+          address: token as Address,
+          abi: ERC20,
+          functionName: "balanceOf",
+          args: [wallet as Address],
+        }),
+      ]);
+      servesThisChain(serves);
+      return held;
+    },
+    async payerState(token, wallet, nonce) {
+      const client = batching();
+      const [serves, held, used] = await Promise.all([
+        client.getChainId(),
+        client.readContract({
+          address: token as Address,
+          abi: ERC20,
+          functionName: "balanceOf",
+          args: [wallet as Address],
+        }),
+        client.readContract({
+          address: token as Address,
+          abi: EIP3009,
+          functionName: "authorizationState",
+          args: [wallet as Address, nonce as Hex],
+        }),
+      ]);
+      servesThisChain(serves);
+      return { held, used };
     },
     async used(token, wallet, nonce) {
       const { client } = await asking();

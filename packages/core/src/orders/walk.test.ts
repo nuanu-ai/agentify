@@ -78,7 +78,7 @@ const POLICY: OrderPolicy = {
     syncResponseMs: 8_000,
     asyncFulfillmentMs: 20_000,
   },
-  redelivery: { baseDelayMs: 500, factor: 3, maxDelayMs: 20_000, maxAttempts: 4 },
+  redelivery: { baseDelayMs: 500, factor: 3, maxDelayMs: 20_000, windowMs: 60_000 },
 };
 
 const PRICE: Price = { amount: "12.00", currency: "USD", asOf: 500_000 };

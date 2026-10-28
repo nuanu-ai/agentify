@@ -31,7 +31,6 @@ import { CDP_FACILITATOR_URL, isTestnetChain, PUBLIC_X402_FACILITATOR_URL } from
 import {
   type Facilitator,
   type GatewayConfig,
-  PaymentEdge,
   recoveryOn,
   type StoredOrder,
   X402Facilitator,
@@ -182,7 +181,6 @@ export async function verdictOnPurchase(
 
 /** The real facilitator, built from the loaded config exactly as production does. */
 export async function realFacilitator(config: GatewayConfig): Promise<Facilitator> {
-  const edge = new PaymentEdge(config);
   const { cdpApiKeyId, cdpApiKeySecret } = config.payment;
   const client = new HTTPFacilitatorClient({
     url: config.payment.facilitatorUrl,
@@ -200,7 +198,7 @@ export async function realFacilitator(config: GatewayConfig): Promise<Facilitato
   });
   const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
   console.log(started.said);
-  return new X402Facilitator(client, edge, started.recovery);
+  return new X402Facilitator(client, started.recovery);
 }
 
 async function main(): Promise<void> {

@@ -546,6 +546,27 @@ describe("closing an order the merchant took on", () => {
     expect(result).toStrictEqual({ ok: true, result: "delivered" });
   });
 
+  it("warns, naming the order and never the goods, when a deliver repeated with other goods", async () => {
+    const problems: WorkerProblem[] = [];
+    const agentify = await gatewayServing({
+      deliver_order: () => ({ body: { ok: true, result: "already_delivered_other_goods" } }),
+    });
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    const result = await agentify.orders
+      .forId("order-1")
+      .deliver({ access_url: "https://example.com/second-key" });
+
+    expect(result).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
+      fatal: false,
+      subject: "order-1",
+    });
+    expect(problems[0]?.message).not.toContain("second-key");
+  });
+
   it("says when an acceptance is given something it does not carry, on both roads", async () => {
     // An acceptance carries nothing; TypeScript refuses an argument, but a
     // merchant writing JavaScript can still pass one, the removed eta_seconds
@@ -769,25 +790,19 @@ describe("closing an order the merchant took on", () => {
 
 describe("a refusal the gateway put into words", () => {
   /**
-   * The refusal the real gateway answers `get_order` with for an order that
-   * closed before a price was named, as `apps/gateway/src/http/routes.ts`
-   * writes it. Scripted as text, because it is not the route's document.
+   * The refusal the real gateway answers `get_order` with for an order it does
+   * not hold, as `apps/gateway/src/http/merchant-answers.ts` writes it.
+   * Scripted as text, because it is not the route's document.
    */
-  const closedBeforePriced = JSON.stringify({
-    error: {
-      code: "order_closed_before_it_was_priced",
-      message:
-        "this order ended as rejected before anybody named a price for it, so there is no sale to describe",
-      retryable: false,
-      status: "rejected",
-    },
+  const notHeld = JSON.stringify({
+    error: { code: "no_such_order", message: "there is no such order", retryable: false },
   });
 
   it("tells the merchant what the gateway said, not that we could not parse it", async () => {
     // The promise: a refusal reaches the caller in the gateway's own words,
-    // not as "not the document it promises" about an order that is over.
+    // not as "not the document it promises" about an order it does not hold.
     const agentify = await gatewayServing({
-      get_order: () => ({ status: 409, text: closedBeforePriced }),
+      get_order: () => ({ status: 404, text: notHeld }),
     });
 
     const refused = await agentify.orders.get("order-1").then(
@@ -795,8 +810,8 @@ describe("a refusal the gateway put into words", () => {
       (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
     );
 
-    expect(refused).toContain("order_closed_before_it_was_priced");
-    expect(refused).toContain("no sale to describe");
+    expect(refused).toContain("no_such_order");
+    expect(refused).toContain("there is no such order");
     expect(refused).not.toContain("is not the document it promises");
   });
 

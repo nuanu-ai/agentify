@@ -323,6 +323,7 @@ describe("a refusal the merchant made", () => {
     });
 
     expect(bought.status).toBe(409);
+    expect(bought.headers.get("cache-control")).toBe("no-store");
     expect(harnessed.facilitator.settles).toHaveLength(0);
     const refused = bought.body as AgentOrderStatus;
     expect(refused.status).toBe("rejected");
@@ -444,10 +445,7 @@ describe("a paid order left unfulfilled", () => {
     // to the merchant. If it later turns out to have gone through, the buyer is
     // owed the price, but no time for any goods ever ran: the sentence for
     // goods that came late would describe a purchase that did not happen.
-    const { served, harnessed } = await started({
-      SETTLE_BEFORE_GOODS_MS: "50",
-      DEFAULT_ASYNC_FULFILLMENT_MS: "80",
-    });
+    const { served, harnessed } = await started({ DEFAULT_ASYNC_FULFILLMENT_MS: "80" });
     const itemId = await publish(served, {
       ...laterCard,
       fulfill_deadline_seconds: undefined,
@@ -455,13 +453,15 @@ describe("a paid order left unfulfilled", () => {
     harnessed.facilitator.willSettle({ settled: "unknown", reason: "the facilitator timed out" });
     const silent = await buyOverHttp(harnessed, served, itemId, {});
     const reported = (silent.body as AgentOrderStatus).order_id;
-    // Wait for the response silence to close the order before the late result.
-    await vi.waitFor(
-      async () =>
-        expect((await harnessed.store.orderById(reported))?.order.closure?.cause).toBe(
-          "payment_outcome_unknown",
-        ),
-      { timeout: 2_000, interval: 5 },
+    // The wait for the charge runs out and closes the order before the late result.
+    harnessed.advance(harnessed.runtime.config.deadlines.settleBeforeGoodsMs);
+    await harnessed.gateway.runner.apply(reported, {
+      kind: "deadline_expired",
+      deadline: "settle_response",
+      at: harnessed.now(),
+    });
+    expect((await harnessed.store.orderById(reported))?.order.closure?.cause).toBe(
+      "payment_outcome_unknown",
     );
     expect(((await statusOf(served, reported)).body as AgentOrderStatus).status).toBe(
       "payment_unresolved",
@@ -578,7 +578,7 @@ describe("what the answer carries", () => {
     ]);
     expect((answered.body as { seller: unknown }).seller).toStrictEqual({
       name: "Not the harness's own seller",
-      site: null,
+      site: "https://shop.example",
     });
     // The name is there in `seller` and nowhere else; which merchant account
     // it is, what they call the product, and which card it came from are all
@@ -730,7 +730,7 @@ describe("the goods as the merchant wrote them", () => {
       // Only this field tells a test order from a real one; every other field
       // reads the same whether the charge was real or not.
       test: true,
-      seller: { name: "The merchant", site: null },
+      seller: { name: "The merchant", site: "https://shop.example" },
     });
   });
 });

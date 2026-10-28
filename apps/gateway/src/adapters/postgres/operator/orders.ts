@@ -18,7 +18,6 @@ import {
   DELIVERED_NOT_PAID,
   ENDED,
   IN_PROGRESS,
-  LAPSED,
   PAYMENT_UNKNOWN,
   UNFULFILLED,
 } from "./predicates.js";
@@ -31,7 +30,6 @@ const SHOWN: Readonly<Record<OrdersShown, SQL>> = {
   delivered_unpaid: DELIVERED_NOT_PAID,
   in_progress: IN_PROGRESS,
   ended: ENDED,
-  lapsed: LAPSED,
   all: sql`true`,
 };
 
@@ -162,7 +160,6 @@ export const postgresOperatorOrders = ({ read, network }: OperatorScope): Operat
             delivered_unpaid: counted(DELIVERED_NOT_PAID),
             in_progress: counted(IN_PROGRESS),
             ended: counted(ENDED),
-            lapsed: counted(LAPSED),
             all: sql<number>`count(*)::int`,
             ahead: counted(sql`${shown} and ${ahead}`),
           })

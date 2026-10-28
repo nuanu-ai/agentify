@@ -42,16 +42,25 @@ export const OrderSchema = z.strictObject({
 
   /**
    * The identifier of the price question this sale came out of, absent when no
-   * question was asked. A merchant who set stock aside under this identifier
-   * can release it here.
+   * question was asked. It matches the order to the answer the merchant gave.
    */
   price_id: IdentifierSchema.optional(),
 
+  quote_reference: z
+    .string()
+    .regex(/^[\x20-\x7e]{1,512}$/)
+    .optional()
+    .meta({
+      description:
+        "The merchant's own confirmation of how they calculated this price, as they returned it with their price answer, authenticated by Agentify and returned unchanged; absent where they returned none. The buyer can read it in the payment challenge, so the merchant must put no secret and no personal data in it.",
+    }),
+
   /**
    * Where a parcel goes, present on a parcel's order only, in one of three
-   * shapes as the order goes along. Before payment, the locality the price was
-   * asked for and nothing about who receives it. Once paid, the whole address,
-   * which the merchant stores before taking the order on. Once Agentify no
+   * shapes as the order goes along. Until its payment has gone through, the
+   * locality the price was asked for and nothing about who receives it. Once
+   * paid, the whole address, which the merchant stores before taking the
+   * order on. Once Agentify no
    * longer needs it (the order taken on, its shipment recorded, or the order
    * ended or unfulfilled without being taken on), only the moment Agentify
    * erased its copy from its database; from then on the merchant has the

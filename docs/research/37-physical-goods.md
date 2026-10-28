@@ -6,7 +6,10 @@ ADR-0034 (the seller's name and site), and records how their field names were
 chosen; the names themselves are fixed in the decisions. Its passages on a
 refund owed and a recorded refund (`refund_due`, `refunded`) describe rules
 since replaced: an overdue parcel reads `unfulfilled`, and the merchant closes
-fulfillment rather than recording a refund (ADR-0028). The pilot has no
+fulfillment rather than recording a refund (ADR-0028). On 2026-10-28 three
+numbers below changed: an order nobody answers is handed over again for three
+hours instead of five times, a card's `fulfill_deadline_seconds` runs from a
+minute to thirty days, and a price check has ten seconds. The pilot has no
 merchant who sells parcels; the product owner's word is to lay the foundation
 anyway, far enough for a demonstration, because merchants will not come to a
 path that does not exist.
@@ -520,5 +523,5 @@ what the role is.
   destination" and "out of stock" are two answers to the agent.
 - Whether the rest of `params` should follow the address's retention.
 - The connector's rate is three or four calls to the shop's Store API inside
-  the price check's five seconds, and each leaves the locality in a guest
-  session there.
+  the nine seconds it gives a price check, and each leaves the locality in a
+  guest session there.

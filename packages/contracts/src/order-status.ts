@@ -24,14 +24,12 @@ export const ORDER_STATUSES = Object.freeze([
    */
   "shipped",
   /**
-   * Closed, and the buyer's money is known not to have moved: the product was
-   * gone, the merchant's price check gave no price the purchase could use, the
-   * charge came back failed, or a synchronous handler refused. On a parcel,
-   * "gone" can also mean the merchant does not ship to that place or the
-   * address lacks what their carrier needs. Parameters that do not fit the
-   * card, and a payment that fails its check, are refused on the call itself
-   * and end no order this way: the first opens none, and after the second the
-   * order stays open until its price runs out and then reads `expired`.
+   * Closed, and the buyer's money is known not to have moved: the charge came
+   * back failed, or a synchronous handler refused. An order exists only once
+   * a payment has been verified, so parameters that do not fit the card, a
+   * price the merchant would not name, a product it said is gone and a
+   * payment that fails its check are refused on the call itself and open no
+   * order.
    *
    * Where the merchant refused, the agent's status document carries their
    * `refusal` beside this word: a short code to branch on and a sentence to
@@ -48,10 +46,7 @@ export const ORDER_STATUSES = Object.freeze([
    * looking at its wallet.
    */
   "payment_unresolved",
-  /**
-   * A deadline passed with nothing charged: the price lapsed before the
-   * payment, or the synchronous delivery did not arrive in time.
-   */
+  /** A deadline passed with nothing charged: the synchronous delivery did not arrive in time. */
   "expired",
   /**
    * The original payment completed and fulfillment did not. The reason says
@@ -97,25 +92,12 @@ export type PaymentStatus = z.infer<typeof PaymentStatusSchema>;
  */
 export const ORDER_ENDING_REASONS = Object.freeze([
   /**
-   * `rejected`: the merchant's price check said there is none, and gave no
-   * reason. On a parcel that can also mean the merchant does not ship to the
-   * address given; nothing here can say which.
-   */
-  "unavailable",
-  /**
-   * `rejected`: the merchant's price check gave no price this purchase could
-   * use — it did not answer in time, or its answer could not be accepted.
-   */
-  "price_check_unanswered",
-  /**
    * `rejected`: the payment layer said the charge did not go through. The
    * same on `delivered_unpaid`, which is not an ending: the merchant made the
    * goods, Agentify holds them, and a payment for this same purchase from the
    * wallet that signed it releases them.
    */
   "payment_not_settled",
-  /** `expired`: the price ran out before a payment for it was taken. */
-  "price_expired",
   /** `expired`: the merchant did not answer a synchronous purchase in time. */
   "merchant_timed_out",
   /**

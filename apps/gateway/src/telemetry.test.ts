@@ -20,7 +20,7 @@ const reach = (state: OrderState): Order => {
         syncResponseMs: 10_000,
         asyncFulfillmentMs: 10_000,
       },
-      redelivery: { baseDelayMs: 1_000, factor: 2, maxDelayMs: 10_000, maxAttempts: 2 },
+      redelivery: { baseDelayMs: 1_000, factor: 2, maxDelayMs: 10_000, windowMs: 60_000 },
     },
   });
   if (!made.ok) throw new Error("test order refused");

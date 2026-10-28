@@ -26,7 +26,7 @@ import {
   secondAttemptProblem,
 } from "./config.js";
 import { buildApp } from "./http/server.js";
-import { PaymentEdge, widestChallengeOn } from "./http/x402.js";
+import { widestChallengeOn } from "./http/x402.js";
 import type { Announcer } from "./ports/announcer.js";
 import { randomIds, systemClock } from "./ports/clock.js";
 import type { Facilitator } from "./ports/facilitator.js";
@@ -53,7 +53,7 @@ const QUEUE_POLL_INTERVAL_MS = 250;
  * the same: an RPC that does not answer this chain is reported, and recovery
  * asks it again on every poll.
  */
-export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Promise<Facilitator> {
+export async function paymentLayer(config: GatewayConfig): Promise<Facilitator> {
   if (isSandboxFacilitator(config.payment.facilitatorUrl)) {
     return new ScriptedFacilitator();
   }
@@ -65,7 +65,11 @@ export async function paymentLayer(config: GatewayConfig, edge: PaymentEdge): Pr
   }
   const started = await recoveryOn(config.payment.network, config.payment.rpcUrl);
   (started.broken ? console.error : console.log)(`[gateway] ${started.said}`);
-  return new X402Facilitator(client, edge, started.recovery);
+  return new X402Facilitator(
+    client,
+    started.recovery,
+    paymentChainOn(config.payment.network, config.payment.rpcUrl),
+  );
 }
 
 /**
@@ -198,6 +202,9 @@ export interface RunningGateway {
   stop(): Promise<void>;
 }
 
+/** How long a request waits for a free database connection before it fails. */
+const DATABASE_CONNECTION_WAIT_MS = 3_000;
+
 /**
  * Starts the order machine and the surface, or throws saying why it could not.
  * `announcer` is the dashboard's way of telling a merchant of a change to their
@@ -213,8 +220,12 @@ export async function startGateway(
   if (cramped !== null) {
     throw new Error(`the gateway will not start: ${cramped}`);
   }
-  const { db, pool } = connect(config.databaseUrl);
-  const edge = new PaymentEdge(config);
+  // A request that finds every connection taken fails after this wait rather
+  // than queueing behind the pool for as long as the others take; a payment
+  // that fails before anything is written says so and is sent again.
+  const { db, pool } = connect(config.databaseUrl, {
+    connectionTimeoutMillis: DATABASE_CONNECTION_WAIT_MS,
+  });
   const queue = queueOn(config.databaseUrl, {
     pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
     reminders: {
@@ -224,6 +235,7 @@ export async function startGateway(
   });
 
   announceTheEnvironment(config);
+  const chain = paymentChainOn(config.payment.network, config.payment.rpcUrl);
 
   const runtime: Runtime = {
     config,
@@ -232,14 +244,15 @@ export async function startGateway(
     // works only because the queue and the store share one Postgres.
     store: PostgresStore.over(db, config.payment.network, randomIds, queue.envelopes()),
     queue,
-    facilitator: await paymentLayer(config, edge),
+    facilitator: await paymentLayer(config),
     clock: systemClock,
     ids: randomIds,
     // The gateway announces only on the live deployment; elsewhere a change
     // applies at once and nobody is told.
     announcer,
     widestChallenge: widestChallengeOn(config),
-    chain: paymentChainOn(config.payment.network, config.payment.rpcUrl),
+    chain,
+    balances: chain,
     payoutCheck: payoutCheckOn(config.payoutSplit, config.payment.rpcUrl),
   };
 

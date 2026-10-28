@@ -270,10 +270,16 @@ describe("the shop's order for a sale converted at the merchant's rate", () => {
 
 describe("the shop's cart, priced in rupiah", () => {
   it("names the currency it priced in, and its rates at no decimals", async () => {
-    const cart: WooRequest = async (url, init) => {
-      if ((init?.method ?? "GET") === "GET") {
-        return Response.json({}, { headers: { "Cart-Token": "cart-1" } });
-      }
+    let held = false;
+    const cart: WooRequest = async (url) => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/add-item")) held = true;
+      if (path.endsWith("/remove-item")) held = false;
+      if (!held)
+        return Response.json(
+          { items: [], errors: [], needs_shipping: false, shipping_rates: [] },
+          { headers: { "Cart-Token": "cart-1" } },
+        );
       return Response.json(
         {
           items: [{ key: "line-41", id: 41, quantity: 1 }],
@@ -335,6 +341,21 @@ const QUESTION = {
   expires_at: "2026-10-21T12:00:30.000Z",
 };
 
+const REFERENCE = Buffer.from(
+  JSON.stringify(["sarong-in-rupiah", "240000", "IDR", "13.34", 1, "18000", SET.toISOString()]),
+).toString("base64url");
+const PARCEL_REFERENCE = Buffer.from(
+  JSON.stringify([
+    "sarong-parcel-in-rupiah",
+    "264000",
+    "IDR",
+    "14.67",
+    1,
+    "18000",
+    SET.toISOString(),
+  ]),
+).toString("base64url");
+
 const anOrder = (overrides: Partial<Order> = {}): Order => ({
   id: "ord_idr",
   merchant_item_id: ITEM,
@@ -346,6 +367,7 @@ const anOrder = (overrides: Partial<Order> = {}): Order => ({
     as_of: NOW.toISOString(),
   },
   price_id: "prc_idr",
+  quote_reference: REFERENCE,
   test: true,
   ...overrides,
 });
@@ -382,12 +404,17 @@ describe("a price question for a card from a shop priced in rupiah", () => {
       available: true,
       price: { amount: "13.34", currency: "USD" },
       as_of: NOW.toISOString(),
-    });
-    expect(await shops.quotedSale("acc_1", "prc_idr", ITEM)).toEqual({
-      fingerprint: "sarong-in-rupiah",
-      inTheShop: { amount: "240000", currency: "IDR" },
-      paid: { amount: "13.34", currency: "USD" },
-      rate: { version: rate.version, currency: "IDR", rate: "18000", setAt: SET },
+      quote_reference: Buffer.from(
+        JSON.stringify([
+          "sarong-in-rupiah",
+          "240000",
+          "IDR",
+          "13.34",
+          rate.version,
+          "18000",
+          SET.toISOString(),
+        ]),
+      ).toString("base64url"),
     });
   });
 
@@ -397,7 +424,6 @@ describe("a price question for a card from a shop priced in rupiah", () => {
     const answer = await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
 
     expect(answer).toEqual({ available: false, as_of: NOW.toISOString() });
-    expect(await shops.quotedSale("acc_1", "prc_idr", ITEM)).toBeNull();
   });
 
   it("is not available once the shop sells in another currency than its rate was set for", async () => {
@@ -439,9 +465,7 @@ describe("a price question for a card from a shop priced in rupiah", () => {
 
     // 264000 / 18000 = 14.6666…, rounded up.
     expect(answer).toMatchObject({ available: true, price: { amount: "14.67", currency: "USD" } });
-    expect(await shops.quotedSale("acc_1", "prc_idr", ITEM)).toMatchObject({
-      inTheShop: { amount: "264000", currency: "IDR" },
-    });
+    expect(answer).toMatchObject({ quote_reference: PARCEL_REFERENCE });
   });
 });
 
@@ -477,7 +501,6 @@ describe("a parcel's price where the shop's cart answers in another currency tha
 describe("a paid order for a card from a shop priced in rupiah", () => {
   const quoted = async (shops: WooShops) => {
     await shops.saveRate("acc_1", SHOP, RATE);
-    await quoteFromTheShop(CONNECTION, QUESTION, NOW, parts(shops));
   };
 
   it("makes the shop's order at the rupiah amount bound to the price, and records the rate in the ledger", async () => {
@@ -588,11 +611,10 @@ describe("a paid order for a card from a shop priced in rupiah", () => {
         return { ok: true, id: "78", number: "78", total: sold.total.amount };
       },
     };
-    await quoteFromTheShop(CONNECTION, { ...QUESTION, ship_to: place }, NOW, filling);
-
     const answer = await fillFromTheShop(
       anOrder({
         price: { ...anOrder().price, amount: "14.67" },
+        quote_reference: PARCEL_REFERENCE,
         ship_to: {
           name: "Nuanu Reception",
           line_one: "Jl. Raya Kediri, Beraban",
@@ -658,11 +680,10 @@ describe("a parcel's paid order whose payment is not the dollars bound to its pr
         return { ok: true, id: "78", number: "78", total: sold.total.amount };
       },
     };
-    await quoteFromTheShop(CONNECTION, { ...QUESTION, ship_to: place }, NOW, filling);
-
     const answer = await fillFromTheShop(
       anOrder({
         price: { ...anOrder().price, amount: "14.66" },
+        quote_reference: PARCEL_REFERENCE,
         ship_to: {
           name: "Nuanu Reception",
           line_one: "Jl. Raya Kediri, Beraban",
@@ -684,23 +705,14 @@ describe("a parcel's paid order whose payment is not the dollars bound to its pr
 describe("a paid order whose price bound a rupiah amount to no rate", () => {
   it("is refused before the shop is asked, since nothing converted its dollars", async () => {
     const shops = memoryWooShops();
-    await shops.recordQuote(
-      "acc_1",
-      "prc_idr",
-      ITEM,
-      {
-        fingerprint: "sarong-in-rupiah",
-        inTheShop: { amount: "240000", currency: "IDR" },
-        paid: { amount: "13.34", currency: "USD" },
-        rateVersion: null,
-      },
-      NOW,
-      NOW,
-    );
     const placed: SoldItem[] = [];
 
     const answer = await fillFromTheShop(
-      anOrder(),
+      anOrder({
+        quote_reference: Buffer.from(
+          JSON.stringify(["sarong-in-rupiah", "240000", "IDR", "13.34"]),
+        ).toString("base64url"),
+      }),
       CONNECTION,
       EMAIL,
       parts(shops, A_DOWNLOAD, placed),

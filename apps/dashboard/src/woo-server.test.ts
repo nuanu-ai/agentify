@@ -11,7 +11,13 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
 import type { AnalyticsEvent, SetupResult } from "@agentify/gateway/analytics";
-import { type Harness, harness, type Served, serve } from "@agentify/gateway/testing";
+import {
+  type Harness,
+  harness,
+  type Served,
+  serve,
+  workUntilStopped,
+} from "@agentify/gateway/testing";
 import { CONTRACT_VERSION, MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +38,7 @@ import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
   catalogueOf,
+  guestCartRefusedWith,
   inspectProductInTheShop,
   inspectProductsInTheShop,
   type OrderMade,
@@ -159,6 +166,8 @@ interface Standing {
    * `inspectProduct`.
    */
   readonly shop?: WooRequest;
+  /** The shop's guest cart, which opens where a test does not say. */
+  readonly cart?: WooRequest;
   readonly inspectProduct?: (
     keys: Parameters<typeof inspectProductInTheShop>[0],
     merchantItemId: string,
@@ -183,9 +192,10 @@ interface Standing {
   readonly channel?: Channel;
   /**
    * A merchant just registered through the gateway rather than the harness's
-   * ready seller: no wallet, and a seller name only where asked.
+   * ready seller: no wallet, with a name and site only where asked.
    */
   readonly fresh?: "named" | "unnamed";
+  readonly sellerSite?: string | null;
   /** The prefix the dashboard is mounted under; none where a test does not say. */
   readonly base?: string;
 }
@@ -208,7 +218,7 @@ const LIVE_GATEWAY_ONLY = {
 const registered = async (application: Gateway, named: boolean): Promise<string> => {
   const made = await application.registerMerchant();
   if (named) {
-    await application.setSellerName(made, { seller_name: "Their own shop" });
+    await application.setSellerName(made, { seller_name: "Their own shop", seller_site: SHOP });
   }
   return made;
 };
@@ -226,10 +236,10 @@ const SILENT_FOR_MS = 50;
 
 const started = async (standing: Standing = {}): Promise<Running> => {
   const channel = standing.channel ?? "sandbox";
-  const harnessed = await harness({
-    ...CHANNELS[channel],
-    ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}),
-  });
+  const harnessed = await harness(
+    { ...CHANNELS[channel], ...(channel === "live" ? LIVE_GATEWAY_ONLY : {}) },
+    { sellerSite: standing.sellerSite },
+  );
   const gateway = await serve(harnessed);
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere:5432/unused",
@@ -347,6 +357,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           : await standing.catalogue(shopUrl);
       },
       inspectProduct,
+      guestCart: (shopUrl) =>
+        guestCartRefusedWith(
+          shopUrl,
+          standing.cart ??
+            (async () => Response.json({ items: [] }, { headers: { "Cart-Token": "guest" } })),
+        ),
       inspectProducts: async (keys, merchantItemIds) =>
         standing.shop === undefined
           ? await Promise.all(merchantItemIds.map((id) => inspectProduct(keys, id)))
@@ -917,6 +933,7 @@ describe("importing the catalogue", () => {
     // site is where a buyer asks about a parcel that did not come. The import
     // says so and never fills the site in for the merchant.
     const running = await started({
+      sellerSite: null,
       catalogue: async () => ({
         ok: true,
         products: [aProduct({ virtual: false, downloadable: false, downloads: [] })],
@@ -952,6 +969,77 @@ describe("importing the catalogue", () => {
     expect(listed).toHaveLength(1);
     expect(listed[0]?.card).toMatchObject({ fulfillment: "ship", ship_within_seconds: 604_800 });
     expect(listed[0]?.card.result).toBeUndefined();
+  });
+
+  it.each([
+    [
+      "holds a parcel back from a shop that will not open a cart for a visitor, and says why",
+      // What a plugin that turns the REST API off for visitors answers.
+      () =>
+        Response.json(
+          {
+            code: "rest_cannot_access",
+            message: "Only authenticated users can access the REST API.",
+          },
+          { status: 401 },
+        ),
+      ["async"],
+    ],
+    [
+      "publishes a parcel from a shop whose cart was only too busy to answer",
+      () => new Response("<html>Service Unavailable</html>", { status: 503 }),
+      ["ship", "async"],
+    ],
+  ] as const)("%s", async (_case, cart, published) => {
+    const running = await started({
+      catalogue: async () => ({
+        ok: true,
+        products: [
+          aProduct({ virtual: false, downloadable: false, downloads: [] }),
+          aProduct({ id: 12, name: "Guide to the tote" }),
+        ],
+      }),
+      inspectProduct: async (_keys, merchantItemId) =>
+        merchantItemId.endsWith("_11")
+          ? {
+              ok: true,
+              product: {
+                kind: "parcel",
+                productId: "11",
+                price: { amount: "25.00", currency: "USD" },
+                fingerprint: "accepted-parcel-fingerprint",
+                tax: { mode: "off" as const },
+              },
+            }
+          : {
+              ok: true,
+              product: {
+                kind: "download",
+                productId: "12",
+                downloadId: "dl_guide",
+                fileName: "Guide",
+                price: { amount: "25.00", currency: "USD" },
+                fingerprint: "accepted-download-fingerprint",
+                tax: { mode: "off" as const },
+              },
+            },
+      cart: async () => cart(),
+    });
+    await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
+      seller_site: SHOP,
+    });
+    await connected(running);
+
+    const imported = await running.post("/woocommerce/import");
+
+    expect(imported.status).toBe(200);
+    const listed = (await cardsOf(running)) as unknown as readonly {
+      card: { fulfillment: string };
+    }[];
+    expect(listed.map((one) => one.card.fulfillment)).toEqual(published);
+    expect(readable(imported.html).includes("would not open a cart for a visitor (HTTP 401)")).toBe(
+      published.length === 1,
+    );
   });
 
   it("keeps imported cards when the merchant forgets the shop", async () => {
@@ -2113,6 +2201,7 @@ describe("merchant delivery recovery", () => {
     accountId = running.accountId,
     placed = false,
     neverAsked = false,
+    shopSilent = false,
   ) => {
     const merchantItemId = merchantItemIdFor(SHOP, "11");
     const published = await running.harnessed.gateway.publishCard(running.harnessed.merchant.id, {
@@ -2121,6 +2210,7 @@ describe("merchant delivery recovery", () => {
       description: "The merchant's own downloadable product",
       price: { amount: "25.00", currency: "USD" },
       fulfillment: "async",
+      price_check: "handler",
       result: {
         download_url: { type: "string" },
         file_name: { type: "string" },
@@ -2128,15 +2218,28 @@ describe("merchant delivery recovery", () => {
       },
     });
     if (!published.ok) throw new Error("the recovery test's card was refused");
+    const quoteReference = Buffer.from(
+      JSON.stringify(["accepted-download-fingerprint", "25.00", "USD", "25.00"]),
+    ).toString("base64url");
+    const worker = workUntilStopped(running.harnessed, {
+      onQuote: () => ({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: new Date(running.harnessed.now()).toISOString(),
+        quote_reference: quoteReference,
+      }),
+    });
     const offered = await running.harnessed.gateway.beginPurchase(published.id, {});
+    await worker.stop();
     if (offered.step !== "pay") throw new Error("the recovery test's sale was not priced");
     const orderId = offered.order.order.id;
-    await running.harnessed.gateway.payPurchase(orderId, "PAYMENT", `payment_${orderId}`);
-    const priceId = `prc_${orderId}`;
-    await running.harnessed.store.withOrder(orderId, (found) => ({
-      save: { ...found, priceId },
-      result: null,
-    }));
+    await running.harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      `payment_${orderId}`,
+    );
+    const priceId = offered.order.priceId;
+    if (priceId === null) throw new Error("the recovery sale has no named price");
     await running.harnessed.gateway.refuseOrder(running.harnessed.merchant.id, orderId, {
       code: "cannot_fulfill",
       message: "The shop's creation response was not received.",
@@ -2152,20 +2255,8 @@ describe("merchant delivery recovery", () => {
       amount: "25.00",
       currency: "USD",
     };
-    await running.shops.recordQuote(
-      accountId,
-      priceId,
-      merchantItemId,
-      {
-        fingerprint: facts.productFingerprint,
-        inTheShop: { amount: facts.amount, currency: "USD" },
-        paid: { amount: facts.amount, currency: "USD" },
-        rateVersion: null,
-      },
-      new Date(now.getTime() + 3600000),
-      now,
-    );
-    if (neverAsked) await running.shops.recordPrecreateRefusal(accountId, orderId, facts, now);
+    if (shopSilent) await running.shops.recordShopSilence(accountId, orderId, facts, now);
+    else if (neverAsked) await running.shops.recordPrecreateRefusal(accountId, orderId, facts, now);
     else await running.shops.claimOrder(accountId, orderId, facts, now);
     await running.shops.connect({
       accountId,
@@ -2174,8 +2265,9 @@ describe("merchant delivery recovery", () => {
       consumerSecret: "cs_recovery",
       permissions: "read_write",
       // A shop connected again since the refusal: the one condition under
-      // which its merchant's recovery page creates the order.
-      revision: neverAsked ? "grant_again" : "grant_recovery",
+      // which its merchant's recovery page creates the order. A shop that was
+      // only silent stays under the grant of the sale.
+      revision: neverAsked && !shopSilent ? "grant_again" : "grant_recovery",
       connectedAt: now,
       currency: null,
     });
@@ -2258,6 +2350,30 @@ describe("merchant delivery recovery", () => {
     expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
   });
 
+  it("leads from own Orders to creating a download whose shop never answered, with no reconnect", async () => {
+    const sold: SoldItem[] = [];
+    const running = await started({
+      placeOrder: async (item) => {
+        sold.push(item);
+        return {
+          ok: true,
+          id: "13",
+          number: "WOO-13",
+          orderKey: "wc_order_13",
+          downloadId: "dl_guide",
+          total: "25.00",
+        };
+      },
+    });
+    await running.signIn();
+    const own = await sale(running, running.accountId, false, false, true);
+    expect((await running.get("/orders")).html).toContain(`href="${own.path}"`);
+
+    expect((await running.post(own.path)).status).toBe(200);
+    expect(sold).toHaveLength(1);
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
+  });
+
   it("creates nothing from a create form drawn for another address", async () => {
     let asked = 0;
     const running = await started({
@@ -2332,7 +2448,11 @@ describe("one integration at a time", () => {
   const paidFor = async (running: Running, itemId: string): Promise<string> => {
     const offered = await running.harnessed.gateway.beginPurchase(itemId, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    await running.harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await running.harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+    );
     return offered.order.order.id;
   };
 
@@ -2493,7 +2613,7 @@ describe("one integration at a time", () => {
     expect((await theCodePolls(running)).status).toBe(200);
   });
 
-  it("refuses to replace or disconnect a shop while an order still waits on it", async () => {
+  it("refuses to replace or disconnect a shop while a paid order still waits on it", async () => {
     const running = await started({
       catalogue: async () => ({ ok: true, products: [aProduct()] }),
     });
@@ -2502,28 +2622,36 @@ describe("one integration at a time", () => {
     await running.post("/woocommerce/import");
     const [imported] = await onSale(running);
     if (imported === undefined) throw new Error("nothing was imported");
-    // The shop's card asks its price at purchase, and nothing answers it here,
-    // so the order waits on the shop for as long as this test needs.
-    const asking = running.harnessed.gateway.beginPurchase(imported, {}).catch(() => undefined);
-    const merchantId = running.harnessed.merchant.id;
-    await vi.waitFor(async () =>
-      expect(await running.harnessed.store.orders(merchantId)).toHaveLength(1),
+    const worker = workUntilStopped(running.harnessed, {
+      through: "woocommerce",
+      onQuote: () => ({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: new Date(running.harnessed.now()).toISOString(),
+        quote_reference: Buffer.from(
+          JSON.stringify(["accepted-download-fingerprint", "25.00", "USD", "25.00"]),
+        ).toString("base64url"),
+      }),
+    });
+    const offered = await running.harnessed.gateway
+      .beginPurchase(imported, {})
+      .finally(() => worker.stop());
+    if (offered.step !== "pay") throw new Error("the shop did not price the purchase");
+    await running.harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "shop-pending-payment",
     );
-    const [order] = await running.harnessed.store.orders(merchantId);
+    const orderId = offered.order.order.id;
+    const order = await running.harnessed.store.orderById(orderId);
+    if (order?.order.payment !== "settled") throw new Error("the pending shop order was not paid");
 
     const refused = await disconnectAsDrawn(running);
 
-    // A purchase still waiting for its price ends in seconds, so the merchant
-    // is told to try again shortly rather than handed its ID to chase.
-    if (order === undefined) throw new Error("the purchase made no order");
     expect(refused.status).toBe(409);
     expect(refused.html).toMatch(/<p class="problem">[^<]+<\/p>/);
     expect(formTo(refused.html, "post", "/woocommerce/disconnect")?.presses).toHaveLength(1);
-    // Not priced yet, it is not on the open list, so nothing is claimed of it:
-    // neither its ID, nor a count, nor that it is in progress.
-    expect(refused.html).not.toContain(order.order.id);
-    expect(readable(refused.html)).not.toMatch(/\b\d+ orders?\b/);
-    expect(readable(refused.html)).not.toMatch(/in progress/i);
+    expect(refused.html).toContain(orderId);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 
     const replaced = await running.post("/woocommerce/connect", {
@@ -2534,7 +2662,6 @@ describe("one integration at a time", () => {
     expect(replaced.to).toBeNull();
     expect((await running.shops.connectionOf(running.accountId))?.shopUrl).toBe(SHOP);
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
-    void asking;
   });
 
   it("requires disconnecting before connecting a different shop even with no open orders", async () => {
@@ -2824,6 +2951,19 @@ describe("the analytics of a shop's connection and its imports", () => {
       }),
       inspectProduct: parcelsAndDownloads,
     });
+    // A prior API card owns this product identifier, so importing it is refused.
+    await running.harnessed.store.publishCard(
+      running.harnessed.merchant.id,
+      {
+        merchant_item_id: merchantItemIdFor(SHOP, "12"),
+        title: "Coffee beans",
+        description: "Coffee beans sold through the merchant's code",
+        price: { amount: "25.00", currency: "USD" },
+        fulfillment: "sync",
+        result: { access_code: { type: "string" } },
+      },
+      running.harnessed.now(),
+    );
     await connectedFor(running);
 
     await running.post("/woocommerce/import");
@@ -2845,7 +2985,9 @@ describe("the analytics of a shop's connection and its imports", () => {
         },
       },
     ]);
-    const [published] = await running.harnessed.store.cards(merchant);
+    const published = (await running.harnessed.store.cards(merchant)).find(
+      (stored) => stored.integration === "woocommerce",
+    );
     expect(publications(running)).toStrictEqual([
       {
         name: "agc_card_publish_result",
@@ -2862,7 +3004,7 @@ describe("the analytics of a shop's connection and its imports", () => {
         fields: {
           integration: "woocommerce",
           outcome: "blocked",
-          reason_code: "seller_site_missing",
+          reason_code: "integration_mismatch",
         },
       },
     ]);
@@ -2895,6 +3037,7 @@ describe("the analytics of a shop's connection and its imports", () => {
 
   it("records an import with every card refused as blocked by the first card's reason", async () => {
     const running = await started({
+      sellerSite: null,
       catalogue: async () => ({
         ok: true,
         products: [aProduct({ id: 12, virtual: false, downloadable: false, downloads: [] })],

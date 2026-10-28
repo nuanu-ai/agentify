@@ -601,7 +601,7 @@ goods reads `rejected` and `not_paid`.
 closes the connection without an answer. The gateway's client meets a closed
 connection and the gateway keeps the order's payment as still running until its
 own wait for the charge runs out, ten seconds on a synchronous purchase and
-fifteen on one paid before its goods (`SETTLE_RESPONSE_MS` and
+thirty-five on one paid before its goods (`SETTLE_RESPONSE_MS` and
 `SETTLE_BEFORE_GOODS_MS`). From then the order reads `payment_unresolved` with
 `payment_status` `unresolved`, for the buyer, for the merchant and on the
 dashboard, where it says the payment outcome is unknown. With payment recovery
@@ -609,13 +609,15 @@ off it stays that way, since nothing on the local stack can ever settle it.
 
 `--fault settle-late` holds the chosen settle and then answers it settled, as
 a counted transfer in the model. The hold is what makes it late, and only a
-hold longer than the gateway's own wait for the charge, ten or fifteen seconds
-as above, does: a shorter one is merely slow. When the wait runs out the order
-reads `payment_unresolved`, and the success that comes after it is applied to
-the order. A synchronous order then releases its goods and reads `delivered`
-and `paid`; an order paid before its goods and not handed to the merchant reads
-`unfulfilled` and `paid`. A merchant's closure sent during the hold was taken at
-once, two and six seconds into it, and the late success then left the order
+hold longer than the gateway's own wait for the charge does: a shorter one is
+merely slow. That makes it a fault of synchronous purchases, whose wait is ten
+seconds. On an order paid before its goods the wait of thirty-five seconds
+outlasts the facilitator client below, so a hold long enough to be late there
+never reaches the gateway. When the wait runs out the order reads
+`payment_unresolved`, and the success that comes after it is applied to the
+order, which releases its goods and reads `delivered` and `paid`. A
+merchant's closure sent during the hold was taken at once, two and six seconds
+into it, and the late success then left the order
 `fulfillment_closed` and `paid`, back on the merchant's open orders as paid
 after closure. The gateway's facilitator client gives up on its own after thirty
 seconds, measured with `@x402/core` 2.23.0 and counted from before the call

@@ -16,6 +16,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecordingAnnouncer } from "./adapters/memory/announcer.js";
 import { PgBossQueue } from "./adapters/pgboss/queue.js";
 import { connect } from "./adapters/postgres/store.js";
+import type { PricedPurchase } from "./app/gateway.js";
+import { decodePriceStamp } from "./app/price-stamp.js";
 import { SWEEP_EFFECTS } from "./app/runner.js";
 import type { Reminder } from "./ports/queue.js";
 import type { StoredCard } from "./ports/store.js";
@@ -76,19 +78,20 @@ afterEach(async () => {
   open = null;
 });
 
-/** An order priced and waiting for its payment. */
-const quoted = async (harnessed: Harness): Promise<string> => {
+/** A buyer-held price, before a payment creates its order. */
+const quoted = async (harnessed: Harness): Promise<PricedPurchase> => {
   const published = await harnessed.gateway.publishCard(harnessed.merchant.id, asyncCard);
   if (!published.ok) throw new Error("the card would not publish");
   const offered = await harnessed.gateway.beginPurchase(published.id, {});
   if (offered.step !== "pay") throw new Error("no price was offered");
-  return offered.order.order.id;
+  return offered.order;
 };
 
 /** An order paid for and waiting on the merchant's stream. */
 const paid = async (harnessed: Harness): Promise<string> => {
-  const orderId = await quoted(harnessed);
-  await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+  const offer = await quoted(harnessed);
+  const orderId = offer.order.id;
+  await harnessed.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "PAYMENT");
   const state = (await harnessed.store.orderById(orderId))?.order.state;
   if (state !== "paid") throw new Error(`the order is ${state}, not paid`);
   return orderId;
@@ -143,25 +146,30 @@ describe("a failure in the gateway's log", () => {
     expectNothingCarried(written);
   });
 
-  it("names the order and why a payment was refused, and none of the payment layer's words", async () => {
+  it("names the price and why an unaccepted payment was refused, and none of the payment layer's words", async () => {
     // The layer's words can quote the payment presented, and a mismatch is
     // described with what the payer's own client put in it.
     const harnessed = await started();
-    const orderId = await quoted(harnessed);
+    const offer = await quoted(harnessed);
+    const orderId = offer.order.id;
     harnessed.facilitator.willRefuseVerification("insufficient_funds", `${SECRET}${FORGED}`);
 
     const written = await loggedWhile(() =>
-      harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT"),
+      harnessed.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "PAYMENT"),
     );
 
-    expectTheOrderNamed(written, orderId);
+    const price = decodePriceStamp(offer.priceOffer.stamp);
+    if (price === null) throw new Error("the buyer held no price");
+    expect(written).toContain(`price ${price.priceId}`);
+    expect(written).not.toContain(`order ${orderId}`);
+    expect(await harnessed.store.orderById(orderId)).toBeNull();
     expect(written).toContain("insufficient_funds");
     expectNothingCarried(written);
   });
 
   it("names the payment layer's code for a refusal, so a code nobody has given a meaning can be found", async () => {
     const harnessed = await started();
-    const orderId = await quoted(harnessed);
+    const offer = await quoted(harnessed);
     harnessed.facilitator.willVerify({
       verified: false,
       reason: "unrecognised",
@@ -170,7 +178,7 @@ describe("a failure in the gateway's log", () => {
     });
 
     const written = await loggedWhile(() =>
-      harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT"),
+      harnessed.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "PAYMENT"),
     );
 
     expect(written).toContain("unrecognised");
@@ -181,11 +189,12 @@ describe("a failure in the gateway's log", () => {
   it("names the order whose charge went unanswered, and keeps the layer's words on the order alone", async () => {
     // Diagnostics name the affected order without exposing the payment layer's words.
     const harnessed = await started();
-    const orderId = await quoted(harnessed);
+    const offer = await quoted(harnessed);
+    const orderId = offer.order.id;
     harnessed.facilitator.willSettle({ settled: "unknown", reason: `${SECRET}${FORGED}` });
 
     const written = await loggedWhile(() =>
-      harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT"),
+      harnessed.gateway.payPurchase(offer.priceOffer.stamp, "PAYMENT", "PAYMENT"),
     );
 
     expectTheOrderNamed(written, orderId);

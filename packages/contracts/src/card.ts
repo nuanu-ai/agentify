@@ -48,6 +48,15 @@ export const FulfillmentSchema = z
 const SHIP_WITHIN_AT_MOST_SECONDS = 2_592_000;
 
 /**
+ * The range a delivery deadline may name: a minute at least, since a shorter
+ * one closes paid orders before the merchant's process can answer, and at
+ * most the thirty days a parcel may take to ship.
+ */
+const DELIVER_WITHIN_AT_LEAST_SECONDS = 60;
+const DELIVER_WITHIN_AT_MOST_SECONDS = SHIP_WITHIN_AT_MOST_SECONDS;
+const DELIVER_WITHIN_RANGE = `fulfill_deadline_seconds is a whole number of seconds from ${DELIVER_WITHIN_AT_LEAST_SECONDS} (a minute) to ${DELIVER_WITHIN_AT_MOST_SECONDS} (thirty days)`;
+
+/**
  * How the price and availability of this card are asked for at purchase.
  * `"handler"` is the one way: the question travels the same outgoing channel
  * as the orders to the merchant's price handler, registered with
@@ -333,6 +342,30 @@ const declarationWrittenOut = (value: unknown): unknown =>
 const writtenShort = <Declaration extends z.ZodType>(declaration: Declaration) =>
   z.preprocess(declarationWrittenOut, declaration);
 
+/** The rules between a card's mode and its fields, as JSON Schema; refinements keep publication errors specific. */
+const MODE_RULES_AS_SCHEMA = {
+  allOf: [
+    {
+      if: { properties: { fulfillment: { const: "ship" } }, required: ["fulfillment"] },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
+      then: {
+        required: ["ship_within_seconds", "price_check"],
+        properties: {
+          result: false,
+          fulfill_deadline_seconds: false,
+          params: { type: "object", not: { required: ["ship_to"] } },
+        },
+      },
+      else: { required: ["result"], properties: { ship_within_seconds: false } },
+    },
+    {
+      if: { properties: { fulfillment: { const: "sync" } }, required: ["fulfillment"] },
+      // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
+      then: { properties: { fulfill_deadline_seconds: false } },
+    },
+  ],
+} satisfies z.core.JSONSchema.BaseSchema;
+
 const CardFieldsSchema = z
   .strictObject({
     /** The merchant's own key for this product, the one their database uses. */
@@ -378,8 +411,15 @@ const CardFieldsSchema = z
 
     price_check: PriceCheckSchema.optional(),
 
-    /** How long the merchant may take to deliver an order it has accepted. */
-    fulfill_deadline_seconds: z.int().positive().optional(),
+    /**
+     * How long the merchant may take to deliver an order it has accepted,
+     * from a minute to thirty days.
+     */
+    fulfill_deadline_seconds: z
+      .int({ error: DELIVER_WITHIN_RANGE })
+      .min(DELIVER_WITHIN_AT_LEAST_SECONDS, { error: DELIVER_WITHIN_RANGE })
+      .max(DELIVER_WITHIN_AT_MOST_SECONDS, { error: DELIVER_WITHIN_RANGE })
+      .optional(),
 
     /**
      * On a parcel's card, how long the merchant may take to hand it to a
@@ -388,29 +428,16 @@ const CardFieldsSchema = z
      */
     ship_within_seconds: z.int().positive().max(SHIP_WITHIN_AT_MOST_SECONDS).optional(),
   })
-  .meta({
-    // Refinements keep publication errors specific; metadata carries the same mode rules to JSON Schema.
-    allOf: [
-      {
-        if: { properties: { fulfillment: { const: "ship" } }, required: ["fulfillment"] },
-        // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
-        then: {
-          required: ["ship_within_seconds", "price_check"],
-          properties: {
-            result: false,
-            fulfill_deadline_seconds: false,
-            params: { type: "object", not: { required: ["ship_to"] } },
-          },
-        },
-        else: { required: ["result"], properties: { ship_within_seconds: false } },
-      },
-      {
-        if: { properties: { fulfillment: { const: "sync" } }, required: ["fulfillment"] },
-        // biome-ignore lint/suspicious/noThenProperty: JSON Schema names its conditional branch "then".
-        then: { properties: { fulfill_deadline_seconds: false } },
-      },
-    ],
-  } satisfies z.core.JSONSchema.BaseSchema);
+  .meta(MODE_RULES_AS_SCHEMA);
+
+/**
+ * The same fields as a card is stored and read back. A delivery deadline is
+ * held to its range at publication only, so a card stored before the range
+ * reads back as it was stored.
+ */
+const StoredCardFieldsSchema = CardFieldsSchema.extend({
+  fulfill_deadline_seconds: z.int().positive().optional(),
+}).meta(MODE_RULES_AS_SCHEMA);
 
 /**
  * The rules between a card's fields. Every deadline is shown to the agent
@@ -581,12 +608,13 @@ const PLAIN_TEXT_IN_WORDS =
 
 /**
  * The card as it is stored and as its merchant reads it back: every rule a
- * publish holds it to except plain text, which is applied when a card is
- * written. Held on reading, it would let one stored card carrying markup fail
- * the merchant's whole list and the catalog page it sits on.
+ * publish holds it to except plain text and the range of a delivery deadline,
+ * which are applied when a card is written. Held on reading, either would let
+ * one stored card fail the merchant's whole list and the catalog page it sits
+ * on.
  */
-const StoredCardSchema = CardFieldsSchema.superRefine(cardRules).meta({
-  description: `A product in the catalog, as it is stored and as its merchant reads it back. ${CARD_RULES_IN_WORDS} The requirement for at least one result field that arrives every time and case-insensitive tag uniqueness remain runtime checks described on their fields. A publish also holds the title, the description and each declared field's title to plain text; reading a card back does not, so a card stored before that rule is read back exactly as it was stored.`,
+const StoredCardSchema = StoredCardFieldsSchema.superRefine(cardRules).meta({
+  description: `A product in the catalog, as it is stored and as its merchant reads it back. ${CARD_RULES_IN_WORDS} The requirement for at least one result field that arrives every time and case-insensitive tag uniqueness remain runtime checks described on their fields. A publish also holds the title, the description and each declared field's title to plain text, and fulfill_deadline_seconds to a minute to thirty days; reading a card back does not, so a card stored before those rules is read back exactly as it was stored.`,
 });
 
 /**
@@ -983,6 +1011,16 @@ const listedAnswerOf = (card: Card): Record<string, unknown> => {
 };
 
 /**
+ * The example purchase a card's listing declares, in the shape this gateway
+ * takes one: each parameter's stand-in, and for a parcel the address
+ * schema's own example.
+ */
+export const listedPurchaseOf = (card: Card): Record<string, unknown> => ({
+  params: exampleOf(card.params ?? {}),
+  ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
+});
+
+/**
  * The card as a discovery catalog reads it. The two things a card cannot know
  * are passed in: the address this resource answers at, pinned by whoever runs
  * the gateway, and the name its seller is listed under. A seller with no name
@@ -1000,10 +1038,7 @@ export const bazaarDeclarationOf = (
     ...(listed.serviceName === null ? {} : { serviceName: listed.serviceName }),
     ...(card.tags === undefined ? {} : { tags: card.tags }),
   },
-  input: {
-    params: exampleOf(card.params ?? {}),
-    ...(card.fulfillment === "ship" ? { ship_to: LISTED_SHIP_TO } : {}),
-  },
+  input: listedPurchaseOf(card),
   inputSchema: purchaseBodySchemaOf(card),
   output: { example: listedAnswerOf(card) },
 });

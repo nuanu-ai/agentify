@@ -451,18 +451,7 @@ describe("a paid order left unfulfilled", () => {
     });
     const html = served(() => (
       <OrdersScreen
-        view={ordersView(
-          cards,
-          two,
-          two,
-          undefined,
-          {},
-          {},
-          undefined,
-          {},
-          {},
-          new Set(["ord_counted"]),
-        )}
+        view={ordersView(cards, two, two, undefined, {}, {}, {}, {}, new Set(["ord_counted"]))}
       />
     ));
 

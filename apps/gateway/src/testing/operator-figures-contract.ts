@@ -18,6 +18,7 @@ import type { OperatorSplits } from "../ports/operator/splits.js";
 import type { PaymentAttempt, Store, StoredOrder } from "../ports/store.js";
 import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "../split/networks.js";
 import { payoutSplitFor } from "../split/parameters.js";
+import { storeAcceptedOrder } from "./accepted-order.js";
 import { anOrder } from "./store-contract.js";
 
 /** The channel the stores are opened for. */
@@ -210,7 +211,6 @@ export function describeOperatorFigures(
           count: 0,
           delivered: 0,
           paymentUnknown: 0,
-          lapsed: 0,
         });
         const nothing = { amount: "0.00", count: 0 };
         expect(await figures.money(LIVE, "all")).toStrictEqual({
@@ -261,14 +261,27 @@ export function describeOperatorFigures(
         // other's; an order still settling, unanswered or refused is not a sale.
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_delivered", { amount: "10.00" }));
-        await store.addOrder(aSale("ord_unfulfilled", { amount: "2.50", state: "unfulfilled" }));
-        await store.addOrder(aSale("ord_closed", { amount: "1.25", state: "fulfillment_closed" }));
-        await store.addOrder(aSale("ord_settling", { payment: "settling", state: "paid" }));
-        await store.addOrder(
+        await storeAcceptedOrder(store, aSale("ord_delivered", { amount: "10.00" }));
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_unfulfilled", { amount: "2.50", state: "unfulfilled" }),
+        );
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_closed", { amount: "1.25", state: "fulfillment_closed" }),
+        );
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_settling", { payment: "settling", state: "paid" }),
+        );
+        await storeAcceptedOrder(
+          store,
           aSale("ord_unknown", { payment: "outcome_unknown", state: "dispatched" }),
         );
-        await store.addOrder(aSale("ord_failed", { payment: "settle_failed", state: "rejected" }));
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_failed", { payment: "settle_failed", state: "rejected" }),
+        );
 
         const money = await reader.figures.money(LIVE, "7d");
 
@@ -284,7 +297,8 @@ export function describeOperatorFigures(
         const { store, reader } = await open();
         await ready(store, A);
         await ready(store, B);
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           aSale("ord_u1", {
             payment: "outcome_unknown",
             state: "dispatched",
@@ -292,7 +306,8 @@ export function describeOperatorFigures(
             settleStartedAt: NOW - 3 * HOUR,
           }),
         );
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           aSale("ord_u2", {
             payment: "settling",
             state: "paid",
@@ -300,7 +315,8 @@ export function describeOperatorFigures(
             settleStartedAt: NOW - HOUR,
           }),
         );
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           aSale("ord_u3", {
             merchantId: B,
             payment: "outcome_unknown",
@@ -330,12 +346,13 @@ export function describeOperatorFigures(
         // the day: the order's own word is the one every screen reads.
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           aSale("ord_chain", { paidAt: NOW - HOUR, onChainAt: TODAY - 10 * DAY + HOUR }),
         );
-        await store.addOrder(aSale("ord_receipt", { paidAt: TODAY - 3 * DAY + HOUR }));
+        await storeAcceptedOrder(store, aSale("ord_receipt", { paidAt: TODAY - 3 * DAY + HOUR }));
         await store.putReceipt(A, aReceipt("ord_receipt", TODAY - DAY + HOUR));
-        await store.addOrder(aSale("ord_order", { paidAt: TODAY - DAY + HOUR }));
+        await storeAcceptedOrder(store, aSale("ord_order", { paidAt: TODAY - DAY + HOUR }));
 
         const days = (await reader.figures.salesByDay(LIVE)).days;
         const counted = Object.fromEntries(
@@ -350,8 +367,8 @@ export function describeOperatorFigures(
       it("with no moment recorded are counted in all time and apart, and in no day or period", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_dated", { amount: "1.00" }));
-        await store.addOrder(aSale("ord_undated", { amount: "2.00", paidAt: null }));
+        await storeAcceptedOrder(store, aSale("ord_dated", { amount: "1.00" }));
+        await storeAcceptedOrder(store, aSale("ord_undated", { amount: "2.00", paidAt: null }));
 
         const ever = await reader.figures.money(LIVE, "all");
         const week = await reader.figures.money(LIVE, "7d");
@@ -368,8 +385,8 @@ export function describeOperatorFigures(
       it("fail the read when one carries an amount that is not in dollars, rather than adding it in", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_dollars", { amount: "10.00" }));
-        await store.addOrder(aSale("ord_euros", { amount: "10.00", currency: "EUR" }));
+        await storeAcceptedOrder(store, aSale("ord_dollars", { amount: "10.00" }));
+        await storeAcceptedOrder(store, aSale("ord_euros", { amount: "10.00", currency: "EUR" }));
 
         await expect(reader.figures.money(LIVE, "all")).rejects.toThrow(/EUR/);
         await expect(reader.figures.salesByDay(LIVE)).rejects.toThrow(/EUR/);
@@ -378,7 +395,7 @@ export function describeOperatorFigures(
       it("fail the read when one carries no price, rather than counting it as nothing", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_unpriced", { priced: false }));
+        await storeAcceptedOrder(store, aSale("ord_unpriced", { priced: false }));
 
         await expect(reader.figures.money(LIVE, "all")).rejects.toThrow(/ord_unpriced/);
       });
@@ -388,11 +405,24 @@ export function describeOperatorFigures(
       it("are today and the days before it, in UTC, so a period and its bars add to one number", async () => {
         const { store, reader } = await open();
         await ready(store, A, NOW - 60 * DAY);
-        await store.addOrder(aSale("ord_today", { paidAt: TODAY + HOUR, amount: "1.00" }));
-        await store.addOrder(aSale("ord_d6", { paidAt: TODAY - 6 * DAY, amount: "2.00" }));
-        await store.addOrder(aSale("ord_d7", { paidAt: TODAY - 7 * DAY + HOUR, amount: "4.00" }));
-        await store.addOrder(aSale("ord_d29", { paidAt: TODAY - 29 * DAY, amount: "8.00" }));
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_today", { paidAt: TODAY + HOUR, amount: "1.00" }),
+        );
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_d6", { paidAt: TODAY - 6 * DAY, amount: "2.00" }),
+        );
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_d7", { paidAt: TODAY - 7 * DAY + HOUR, amount: "4.00" }),
+        );
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_d29", { paidAt: TODAY - 29 * DAY, amount: "8.00" }),
+        );
+        await storeAcceptedOrder(
+          store,
           aSale("ord_d30", { paidAt: TODAY - 30 * DAY + HOUR, amount: "16.00" }),
         );
 
@@ -420,9 +450,9 @@ export function describeOperatorFigures(
         // wallet, and nothing of it was ever Agentify's.
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_split", { amount: "100.00" }));
-        await store.addOrder(aSale("ord_split_2", { amount: "18.50" }));
-        await store.addOrder(aSale("ord_wallet", { amount: "353.00", payTo: W1 }));
+        await storeAcceptedOrder(store, aSale("ord_split", { amount: "100.00" }));
+        await storeAcceptedOrder(store, aSale("ord_split_2", { amount: "18.50" }));
+        await storeAcceptedOrder(store, aSale("ord_wallet", { amount: "353.00", payTo: W1 }));
 
         const money = await reader.figures.money(LIVE, "all");
 
@@ -435,7 +465,7 @@ export function describeOperatorFigures(
       it("is rounded down to the millionth, as the split rounds it", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_tiny", { amount: "0.000999" }));
+        await storeAcceptedOrder(store, aSale("ord_tiny", { amount: "0.000999" }));
 
         expect((await reader.figures.money(LIVE, "all")).commission).toBe("0.00");
       });
@@ -443,7 +473,8 @@ export function describeOperatorFigures(
       it("matches a split whichever spelling the order wrote its address in", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           aSale("ord_lower", { amount: "10.00", payTo: splitOf(A, W1).address.toLowerCase() }),
         );
 
@@ -455,14 +486,17 @@ export function describeOperatorFigures(
       it("are one row each, and an old split keeps what settled into it after its merchant moved wallets", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_old", { amount: "20.00" }));
+        await storeAcceptedOrder(store, aSale("ord_old", { amount: "20.00" }));
         await store.setPayoutWallet(
           A,
           { address: W1, pending: null },
           { address: W2, split: splitOf(A, W2), pending: null },
           NOW - DAY,
         );
-        await store.addOrder(aSale("ord_new", { amount: "5.00", payTo: splitOf(A, W2).address }));
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_new", { amount: "5.00", payTo: splitOf(A, W2).address }),
+        );
 
         const read = await reader.splits.splits(LIVE);
 
@@ -533,7 +567,8 @@ export function describeOperatorFigures(
           },
           NOW - HOUR,
         );
-        await store.addOrder(
+        await storeAcceptedOrder(
+          store,
           aSale("ord_other", { merchantId: B, amount: "5.00", payTo: splitOf(A, W3).address }),
         );
 
@@ -684,27 +719,33 @@ export function describeOperatorFigures(
     });
 
     describe("the orders of the last seven days", () => {
-      it("leave the attempts that lapsed unpaid apart", async () => {
+      it("count accepted expired orders alongside delivered and unknown payments", async () => {
         const { store, reader } = await open();
         await ready(store, A);
-        await store.addOrder(aSale("ord_delivered", { createdAt: NOW - 2 * DAY }));
-        await store.addOrder(
+        await storeAcceptedOrder(store, aSale("ord_delivered", { createdAt: NOW - 2 * DAY }));
+        await storeAcceptedOrder(
+          store,
           aSale("ord_unknown", {
             createdAt: NOW - DAY,
             payment: "outcome_unknown",
             state: "dispatched",
           }),
         );
-        await store.addOrder(
-          anOrder("ord_lapsed", "expired", { merchantId: A, createdAt: NOW - DAY }),
+        await storeAcceptedOrder(
+          store,
+          aSale("ord_expired", {
+            state: "expired",
+            payment: "verified",
+            paidAt: null,
+            createdAt: NOW - DAY,
+          }),
         );
-        await store.addOrder(aSale("ord_old", { createdAt: TODAY - 7 * DAY }));
+        await storeAcceptedOrder(store, aSale("ord_old", { createdAt: TODAY - 7 * DAY }));
 
         expect(without(await reader.figures.recentOrders(LIVE))).toStrictEqual({
-          count: 2,
+          count: 3,
           delivered: 1,
           paymentUnknown: 1,
-          lapsed: 1,
         });
       });
     });
@@ -717,7 +758,7 @@ export function describeOperatorFigures(
         await store.addKey({ id: "key_a", merchantId: A, label: "k", digest: "d".repeat(64) }, NOW);
         await store.noteContact(A, NOW - 60_000);
         await store.publishCard(A, aCard("sku-1"), NOW - DAY);
-        await store.addOrder(aSale("ord_a"));
+        await storeAcceptedOrder(store, aSale("ord_a"));
         // Connected a shop, which only the dashboard knows, and was admitted.
         await ready(store, B);
         // A key and nothing else: stops at the first step.

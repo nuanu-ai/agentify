@@ -160,6 +160,24 @@ describe("service telemetry", () => {
     expect(first).not.toMatch(/^agentify_queue_size /m);
   });
 
+  it("records durations and occurrences by their labels, and drops what it cannot record without failing the caller", async () => {
+    const metrics = new Telemetry();
+    const durations = metrics.durations("agentify_test_seconds", "Test work", ["outcome"]);
+    const occurrences = metrics.occurrences("agentify_test_total", "Test events", ["kind"]);
+    durations.observe({ outcome: "done" }, 190);
+    occurrences.inc({ kind: "full" });
+
+    expect(() => durations.observe({ outcome: "done" }, Number.NaN)).not.toThrow();
+    expect(() => durations.observe({ unexpected: "label" }, 1)).not.toThrow();
+    expect(() => occurrences.inc({ unexpected: "label" })).not.toThrow();
+    const exported = await metrics.metrics();
+    expect(exported).toContain('agentify_test_seconds_bucket{le="180",outcome="done"} 0');
+    expect(exported).toContain('agentify_test_seconds_bucket{le="200",outcome="done"} 1');
+    expect(exported).toContain('agentify_test_seconds_count{outcome="done"} 1');
+    expect(exported).toContain('agentify_test_total{kind="full"} 1');
+    expect(exported).not.toContain("unexpected");
+  });
+
   it("serves only the private metrics resource and reports an unknown local revision", async () => {
     const metrics = new Telemetry({ revision: "not-a-source-sha" });
     const origin = await listening(metricsServer(metrics));

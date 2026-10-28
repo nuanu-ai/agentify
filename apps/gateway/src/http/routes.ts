@@ -14,18 +14,19 @@ import type {
   OrderListQuery,
   PurchaseRequest,
   RouteName,
-  Seller,
   SellerNameRequest,
   WorkerPollRequest,
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema, WorkerPollRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Caller, Gateway, OffSale, PurchaseAttempt } from "../app/gateway.js";
+import { retryAfterAnswered } from "../app/purchase-metrics.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 import {
   BAD_REQUEST,
   bodyRefused,
   CONFLICT,
+  FAILED,
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
@@ -49,11 +50,14 @@ import {
 } from "./x402.js";
 
 /**
- * How long an agent refused for a seller's purchases waiting for payment is
- * told to wait before trying again: long enough not to knock at once, short
- * against the half minute a price holds.
+ * How long an agent turned away for a moment is told to wait before sending
+ * the same request: long enough not to knock at once, short against the half
+ * minute a price holds.
  */
-const SELLER_BUSY_RETRY_AFTER_SECONDS = 5;
+const BUSY_RETRY_AFTER_SECONDS = 2;
+
+/** Agentify could not do it now and did nothing; the same call may work in a moment. */
+const SERVICE_UNAVAILABLE = 503;
 
 /**
  * The merchant whose key opened this call. The mounting loop answers 401
@@ -432,7 +436,16 @@ async function probeAnswer(
   // refused. One off sale for a moment still answers it (`OffSale`).
   const off = offered.offSale;
   if (off !== null && !off.transient) {
-    return written(response, CONFLICT, refusal(off.code, OFF_SALE_WORDS[off.code]));
+    return written(
+      response,
+      CONFLICT,
+      refusal(
+        off.code,
+        off.code === "not_selling"
+          ? (off.message ?? OFF_SALE_WORDS[off.code])
+          : OFF_SALE_WORDS[off.code],
+      ),
+    );
   }
   response.setHeader(
     PAYMENT_REQUIRED_HEADER,
@@ -477,17 +490,20 @@ const isEmptyDocument = (body: unknown): boolean =>
  * malformed document is refused with its fields before the agent signs
  * anything.
  *
- * A POST with the purchase document and no payment opens and prices an order
- * and answers with the challenge. With a payment it drives the order the
- * payment names; a payment naming no order we hold gets a fresh challenge, so
- * the agent pays against a price we actually issued.
+ * An unpaid purchase receives a stamped price without creating an order.
+ * A payment signed against a listing has no stamp and receives a purchase
+ * price to sign. A paid request repeats the body and stamp; an invalid stamp
+ * is refused before any charge.
  */
 async function purchase(
   gateway: Gateway,
   edge: PaymentEdge,
   { params, body, request, response }: RouteCall,
 ): Promise<RouteAnswer> {
+  // Purchase and recovery replies can contain the private order address and goods.
+  response.setHeader("Cache-Control", "no-store");
   const itemId = params.item_id ?? "";
+  const arrivedAt = gateway.runtime.clock();
   const presented = presentedPayment(request.headers);
 
   if (request.method === "GET") {
@@ -523,42 +539,29 @@ async function purchase(
 
   const held = hold(PurchaseRequestSchema, body);
 
-  if (presented !== null && presented !== "unreadable" && presented.orderId !== null) {
-    const named = await gateway.orderById(presented.orderId);
-    if (named !== null) {
-      // A paid request's body is read only for the parameters and address sent
-      // again, which must be the ones the order was priced for. A malformed one
-      // is refused, or the payment would go through for something the agent did
-      // not mean.
-      if (!held.ok && carriesWhatWasPriced(body)) {
-        return written(
-          response,
-          BAD_REQUEST,
-          refusal(
-            "malformed_body",
-            "this call's body is not the document this call takes, and the problems say which fields and why",
-            { problems: held.problems },
-          ),
-        );
-      }
-      // Read before the payment: a failure after the money moved would leave a
-      // paid agent with an error and no address to come back to.
-      const seller = await gateway.sellerOf(named.merchantId);
+  if (presented !== null && presented !== "unreadable") {
+    if (!held.ok) {
+      return written(
+        response,
+        BAD_REQUEST,
+        refusal("malformed_body", "repeat the purchase JSON body with payment", {
+          problems: held.problems,
+        }),
+      );
+    }
+    if (presented.stamp !== null) {
       return answerPurchase(
         gateway,
         edge,
         response,
         await gateway.payPurchase(
-          named.order.id,
+          presented.stamp,
           presented.raw,
           paymentFingerprint(presented.payload, edge.token()),
-          held.ok ? (held.value as PurchaseRequest).ship_to : undefined,
-          {
-            itemId,
-            ...(held.ok ? { params: (held.value as PurchaseRequest).params } : {}),
-          },
+          (held.value as PurchaseRequest).ship_to,
+          { itemId, params: (held.value as PurchaseRequest).params },
+          arrivedAt,
         ),
-        seller,
       );
     }
   }
@@ -585,23 +588,16 @@ async function purchase(
     edge,
     response,
     attempt,
-    // No payment on this path; where an answer carries an order's status,
-    // the seller is read there.
-    null,
-    // Why this call did not return the resource. An unreadable payment must
-    // be said, or the agent cannot tell its encoding is at fault and retries
-    // the same header.
+    // Why this call did not return the resource. A payment must be said to
+    // have gone unused, or the agent cannot tell this price from a payment
+    // that failed: an unreadable one retries the same header, and an x402
+    // client does not sign a second challenge by itself.
     presented === null
       ? undefined
       : presented === "unreadable"
         ? CHALLENGE_REASONS.unreadablePayment
-        : CHALLENGE_REASONS.noHeldOrder,
+        : CHALLENGE_REASONS.signedForTheListing,
   );
-}
-
-/** Whether a body that did not read as a purchase was trying to say what was bought. */
-function carriesWhatWasPriced(body: unknown): boolean {
-  return typeof body === "object" && body !== null && ("ship_to" in body || "params" in body);
 }
 
 async function answerPurchase(
@@ -609,12 +605,14 @@ async function answerPurchase(
   edge: PaymentEdge,
   response: RouteCall["response"],
   attempt: PurchaseAttempt,
-  seller: Seller | null,
   why?: ChallengeReason,
 ): Promise<RouteAnswer> {
   switch (attempt.step) {
     case "no_such_item":
       return refusedWith(response, NO_SUCH_ITEM);
+
+    case "listed_example":
+      return probeAnswer(gateway, edge, response, attempt.itemId, why ?? CHALLENGE_REASONS.probe);
 
     case "params_rejected":
       return written(
@@ -669,15 +667,43 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
-      // A purchase waiting for payment lapses with its price, so a place comes
-      // free within a minute and usually much sooner.
-      response.setHeader("retry-after", String(SELLER_BUSY_RETRY_AFTER_SECONDS));
+      comeAgain(response, "seller_busy", attempt.retryAfterSeconds ?? BUSY_RETRY_AFTER_SECONDS);
+      return written(response, TOO_MANY_REQUESTS, refusal("seller_busy", attempt.why));
+
+    case "payment_being_checked":
+      // Neutral on purpose: the first request may still be charged, so this
+      // one is told neither that nothing was charged nor to buy again.
+      comeAgain(response, "payment_being_checked", BUSY_RETRY_AFTER_SECONDS);
       return written(
         response,
-        TOO_MANY_REQUESTS,
+        CONFLICT,
         refusal(
-          "seller_busy",
-          "this seller has too many purchases waiting for payment right now, so this one was not started and nothing was charged; try again in a few seconds",
+          "payment_not_taken",
+          "another request for this price is being checked right now, so this one was not taken; send the same request again in a few seconds to learn how the purchase stands, without starting a new purchase",
+          { retryable: true },
+        ),
+      );
+
+    case "failed_before_charge":
+      return written(
+        response,
+        FAILED,
+        refusal(
+          "gateway_failed",
+          "Agentify failed before it could check this payment, so it was not used and nothing was charged; this is a fault on Agentify's side, and sending the same request again is not expected to help until it is fixed",
+          { retryable: false },
+        ),
+      );
+
+    case "not_checked_now":
+      comeAgain(response, "not_checked_now", BUSY_RETRY_AFTER_SECONDS);
+      return written(
+        response,
+        SERVICE_UNAVAILABLE,
+        refusal(
+          "gateway_failed",
+          "Agentify could not take this payment just now, so it was not used and nothing was charged for it; send the same request again in a few seconds",
+          { retryable: true },
         ),
       );
 
@@ -696,12 +722,12 @@ async function answerPurchase(
       );
 
     case "not_this_purchase":
-      // The order already belongs to another payer. Its identifier is in every
-      // challenge for it and a listing can publish it, so holding it proves
-      // nothing; the wording says nothing about how far along it is. Nothing
-      // was charged, and the payer may be the buyer who lost the race to pay
-      // or the buyer itself signing again from another of its wallets, so the
-      // words tell each what to do without telling them apart.
+      // The order already belongs to another payer. Its stamped price is in
+      // the challenge and in every payment made against it, so holding it
+      // proves nothing; the wording says nothing about how far along it is.
+      // Nothing was charged, and the payer may be the buyer who lost the race
+      // to pay or the buyer itself signing again from another of its wallets,
+      // so the words tell each what to do without telling them apart.
       return written(
         response,
         CONFLICT,
@@ -712,7 +738,7 @@ async function answerPurchase(
       );
 
     case "payment_not_verified":
-      // Nothing was touched; the order ends on its own deadline.
+      // Nothing was touched, and nothing is written for a payment that does not verify.
       return written(
         response,
         CONFLICT,
@@ -748,7 +774,7 @@ async function answerPurchase(
         PAYMENT_REQUIRED_HEADER,
         edge.challengeFor(
           price,
-          attempt.order.order.id,
+          attempt.order.priceOffer.stamp,
           {
             itemId: offered.stored.id,
             card: offered.stored.card,
@@ -756,6 +782,7 @@ async function answerPurchase(
             payTo: offered.payTo,
           },
           why,
+          attempt.order.priceOffer.requirements,
         ),
       );
       return written(response, PAYMENT_REQUIRED, {});
@@ -775,7 +802,7 @@ async function answerPurchase(
         status: attempt.order.order.mode.settle === "after_fulfillment" ? CONFLICT : OK,
         document: agentOrderStatusOf(
           attempt.order,
-          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
+          attempt.seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
           gateway.runtime.config,
         ),
       };
@@ -786,7 +813,7 @@ async function answerPurchase(
         status: ["delivered", "shipped"].includes(outcomeFor(attempt.order.order)) ? OK : CONFLICT,
         document: agentOrderStatusOf(
           attempt.order,
-          seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
+          attempt.seller ?? (await gateway.sellerOf(attempt.order.merchantId)),
           gateway.runtime.config,
         ),
       };
@@ -811,6 +838,16 @@ function sayWhatPaid(
     PAYMENT_RESPONSE_HEADER,
     edge.receiptHeader({ success: true, transaction, network: network as `${string}:${string}` }),
   );
+}
+
+/** Tells the buyer to send the same request again after `seconds`, counted for the operator. */
+function comeAgain(
+  response: RouteCall["response"],
+  answer: "seller_busy" | "payment_being_checked" | "not_checked_now",
+  seconds: number,
+): void {
+  response.setHeader("retry-after", String(seconds));
+  retryAfterAnswered(answer, seconds);
 }
 
 function written(response: RouteCall["response"], status: number, document: unknown): RouteAnswer {

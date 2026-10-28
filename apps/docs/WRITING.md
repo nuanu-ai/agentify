@@ -194,10 +194,10 @@ page may write in place, since the contract is its file. `{{smallest-price}}`
 is the smallest price the contracts' price rule sells at, written `0.01`. Every number Agentify publishes about
 its own behaviour is read from the constants the gateway runs,
 `@agentify/core/published`, so a page names it rather than typing it:
-`{{quote-ttl}}` is how long a price holds, written "thirty seconds".
-`{{quote-ttl:short}}` writes it "30 s" for a drawing, which only a wait counted
-in seconds can be, and `{{quote-ttl:number}}` writes "thirty" where the
-sentence already names the unit. A count such as `{{unserved-at-most}}` writes
+`{{quote-ttl}}` is how long a price holds, written "three minutes".
+`{{quote-ttl:short}}` writes it "3 min" for a drawing, which only a wait counted
+in seconds or minutes can be, and `{{quote-ttl:number}}` writes "three" where
+the sentence already names the unit. A count such as `{{unserved-at-most}}` writes
 "ten", and `{{unserved-at-most:ordinal}}` "tenth". `{{commission}}` is
 Agentify's share of a payment, written "0.1%", and `{{commission:words}}`
 writes "0.1 percent" for a description a screen reader reads aloud. A name

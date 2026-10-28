@@ -42,6 +42,9 @@ describe("a number a page names", () => {
     expect(writtenIn("Note over A,G: the price holds {{price-holds:short}}", VALUES)).toBe(
       "Note over A,G: the price holds 30 s",
     );
+    expect(writtenIn("Note over S,G: silent {{silent-after:short}}", VALUES)).toBe(
+      "Note over S,G: silent 10 min",
+    );
     expect(writtenIn("and the facilitator's {{price-holds:number}} fit", VALUES)).toBe(
       "and the facilitator's thirty fit",
     );
@@ -91,7 +94,7 @@ describe("the build stops", () => {
     expect(() => writtenIn("{{waiting-at-most:number}}", VALUES)).toThrow(/waiting-at-most:number/);
     expect(() => writtenIn("{{price-holds:long}}", VALUES)).toThrow(/price-holds:long/);
     expect(() => writtenIn("{{price-holds:ordinal}}", VALUES)).toThrow(/price-holds:ordinal/);
-    expect(() => writtenIn("{{silent-after:short}}", VALUES)).toThrow(/silent-after:short/);
+    expect(() => writtenIn("{{default-deadline:short}}", VALUES)).toThrow(/default-deadline:short/);
   });
 
   it("on a name neither the build nor a deployment knows, in a code block as anywhere else", () => {

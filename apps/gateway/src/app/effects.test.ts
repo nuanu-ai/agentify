@@ -1,3 +1,5 @@
+import { admitVerifiedOrder } from "../testing/accepted-order.js";
+import type { PricedPurchase } from "./gateway.js";
 /**
  * The effects written down with the order, and the sweep that finds what
  * slipped anyway.
@@ -11,17 +13,14 @@
  * on a second run, for a reason in the data rather than in a memory of having
  * run: the receipt is still there, the overdue order is closed, the envelope is
  * still waiting on the stream. A second envelope is legal on the wire but not
- * free: every hand-over counts against the order's attempt cap, so the tests
- * follow the count as well as the stream.
+ * free: every hand-over lengthens the order's pause before the next, so the
+ * tests follow the count as well as the stream.
  */
 
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Harness, harness, workOnce } from "../testing/harness.js";
 import { SWEEP_EFFECTS, type Swept } from "./runner.js";
-
-/** The address the payments below were verified against; its value does not matter here. */
-const PAID_AT = "0x0000000000000000000000000000000000000009";
 
 const asyncCard: Card = {
   merchant_item_id: "esim-7d",
@@ -51,12 +50,15 @@ const published = async (harnessed: Harness, card: Card): Promise<string> => {
   return result.id;
 };
 
-/** An order priced and waiting for a payment. */
-const quoted = async (harnessed: Harness, card: Card): Promise<string> => {
+/** A price held locally until the test presents its verified payment. */
+const quoted = async (
+  harnessed: Harness,
+  card: Card,
+): Promise<{ readonly orderId: string; readonly offer: PricedPurchase }> => {
   const itemId = await published(harnessed, card);
   const offered = await harnessed.gateway.beginPurchase(itemId, {});
   if (offered.step !== "pay") throw new Error("no price was offered");
-  return offered.order.order.id;
+  return { orderId: offered.order.order.id, offer: offered.order };
 };
 
 /**
@@ -82,7 +84,7 @@ describe("an effect that could not be written down", () => {
     // merchant, and no retry repairs it: the state is already past the
     // transition that emits the dispatch.
     const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
 
     const stage = harnessed.queue.stage.bind(harnessed.queue);
     harnessed.queue.stage = async () => {
@@ -90,26 +92,22 @@ describe("an effect that could not be written down", () => {
     };
 
     await expect(
-      harnessed.gateway.runner.presentVerifiedPayment(
-        orderId,
-        "alice",
-        "PAY-A",
-        PAID_AT,
-        harnessed.now(),
-      ),
+      admitVerifiedOrder(harnessed.gateway, offer, {
+        owner: "alice",
+        payment: "PAY-A",
+        fingerprint: `verified-fixture:${orderId}`,
+      }),
     ).rejects.toThrow("the queue would not take the envelope");
 
     const after = await harnessed.store.orderById(orderId);
     expect(after?.order.state).not.toBe("paid");
     harnessed.queue.stage = stage;
-    const healthyOrder = await quoted(harnessed, asyncCard);
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      healthyOrder,
-      "alice",
-      "PAY-B",
-      PAID_AT,
-      harnessed.now(),
-    );
+    const { orderId: healthyOrder, offer: healthyOffer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, healthyOffer, {
+      owner: "alice",
+      payment: "PAY-B",
+      fingerprint: `verified-fixture:${healthyOrder}`,
+    });
     expect((await harnessed.store.orderById(healthyOrder))?.order.state).toBe("paid");
     expect(
       (await harnessed.queue.draw(harnessed.merchant.id, 10, 0)).map((row) => row.envelope.kind),
@@ -120,14 +118,12 @@ describe("an effect that could not be written down", () => {
     // A merchant reconciles a wallet against receipts, so a delivered order
     // without one is a sale invisible to them.
     const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      orderId,
-      "alice",
-      "PAY-A",
-      PAID_AT,
-      harnessed.now(),
-    );
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, offer, {
+      owner: "alice",
+      payment: "PAY-A",
+      fingerprint: `verified-fixture:${orderId}`,
+    });
 
     harnessed.store.putReceipt = async () => {
       throw new Error("the receipt would not be written");
@@ -148,21 +144,27 @@ describe("the sweep of what an order is still owed", () => {
     // that kept throwing leaves an order nothing will close and a buyer nothing
     // will refund.
     const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("quoted");
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, offer, {
+      owner: "alice",
+      payment: "PAY-A",
+      fingerprint: `verified-fixture:${orderId}`,
+    });
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("paid");
 
-    // Past the life of the price. The reminder armed when the order was made
-    // waits on real time, none of which passed, so nothing has fired.
-    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs + 1_000);
+    // The payment completed, but its fulfillment reminder has not fired.
+    const paid = await harnessed.store.orderById(orderId);
+    if (paid === null) throw new Error("the paid order went missing");
+    harnessed.advance(paid.order.policy.deadlines.asyncFulfillmentMs + 1_000);
 
     expect((await sweep(harnessed)).rearmed).toBe(1);
     await vi.waitFor(async () => {
-      expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+      expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
     });
 
     // The order is closed, so the second run has nothing to ask about it.
     expect((await sweep(harnessed)).rearmed).toBe(0);
-    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("expired");
+    expect((await harnessed.store.orderById(orderId))?.order.state).toBe("unfulfilled");
   });
 
   it("leaves alone a clock that is still running", async () => {
@@ -170,10 +172,17 @@ describe("the sweep of what an order is still owed", () => {
     // early expiry, so the cost is invisible: a queue full of work that can only
     // be refused.
     const harnessed = await started();
-    await quoted(harnessed, asyncCard);
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, offer, {
+      owner: "alice",
+      payment: "PAY-A",
+      fingerprint: `verified-fixture:${orderId}`,
+    });
 
-    // Still inside the life of the price, unlike the case above.
-    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs - 1_000);
+    // The paid order's fulfillment clock still has a second to run.
+    const paid = await harnessed.store.orderById(orderId);
+    if (paid === null) throw new Error("the paid order went missing");
+    harnessed.advance(paid.order.policy.deadlines.asyncFulfillmentMs - 1_000);
 
     expect(await sweep(harnessed)).toStrictEqual({
       dispatched: 0,
@@ -200,18 +209,16 @@ describe("the sweep of what an order is still owed", () => {
   });
 
   it("leaves alone an order whose envelope is still waiting to be drawn", async () => {
-    // Each hand-over counts against the attempt cap, so with a second envelope
-    // a merchant merely between polls would find two deliveries spent without
-    // having failed one.
+    // Each hand-over lengthens the pause before the next, so with a second
+    // envelope a merchant merely between polls would get the order twice and
+    // wait longer for a retry without having failed one.
     const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      orderId,
-      "alice",
-      "PAY-A",
-      PAID_AT,
-      harnessed.now(),
-    );
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, offer, {
+      owner: "alice",
+      payment: "PAY-A",
+      fingerprint: `verified-fixture:${orderId}`,
+    });
 
     // Long past the grace period, with the envelope still on the stream.
     harnessed.advance(harnessed.runtime.config.sweepDispatchGraceMs * 10);
@@ -228,14 +235,12 @@ describe("the sweep of what an order is still owed", () => {
     // A drawn envelope is off the stream, and the worker holding it may simply
     // be working on it. That is what the grace period is for.
     const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      orderId,
-      "alice",
-      "PAY-A",
-      PAID_AT,
-      harnessed.now(),
-    );
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, offer, {
+      owner: "alice",
+      payment: "PAY-A",
+      fingerprint: `verified-fixture:${orderId}`,
+    });
     expect(await harnessed.queue.draw(harnessed.merchant.id, 10, 0)).toHaveLength(1);
     expect((await harnessed.store.orderById(orderId))?.order.state).toBe("paid");
 
@@ -250,14 +255,12 @@ describe("the sweep of what an order is still owed", () => {
     // A handler is told to expect a repeated order, not a repeated event, and a
     // debt announced twice is a second refund somebody may act on.
     const harnessed = await started();
-    const orderId = await quoted(harnessed, asyncCard);
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      orderId,
-      "alice",
-      "PAY-A",
-      PAID_AT,
-      harnessed.now(),
-    );
+    const { orderId, offer } = await quoted(harnessed, asyncCard);
+    await admitVerifiedOrder(harnessed.gateway, offer, {
+      owner: "alice",
+      payment: "PAY-A",
+      fingerprint: `verified-fixture:${orderId}`,
+    });
 
     // The fulfillment deadline runs out, so the money is owed back and the
     // merchant is told once.
@@ -359,14 +362,12 @@ describe("the sweep of what an order is still owed", () => {
  * with the order and cannot be made to skip it.
  */
 async function paidWithNothingOnTheStream(harnessed: Harness): Promise<string> {
-  const orderId = await quoted(harnessed, asyncCard);
-  await harnessed.gateway.runner.presentVerifiedPayment(
-    orderId,
-    "alice",
-    "PAY-A",
-    PAID_AT,
-    harnessed.now(),
-  );
+  const { orderId, offer } = await quoted(harnessed, asyncCard);
+  await admitVerifiedOrder(harnessed.gateway, offer, {
+    owner: "alice",
+    payment: "PAY-A",
+    fingerprint: `verified-fixture:${orderId}`,
+  });
   const lost = await harnessed.queue.draw(harnessed.merchant.id, 10, 0);
   expect(lost).toHaveLength(1);
 

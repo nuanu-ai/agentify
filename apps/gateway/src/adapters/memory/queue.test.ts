@@ -14,6 +14,38 @@ const envelope = (id: string): WorkerEnvelope => ({
   },
 });
 
+/** An order envelope: what carries the whole address once a parcel is paid. */
+const handOver = (id: string, orderId: string): WorkerEnvelope => ({
+  kind: "order",
+  id,
+  sent_at: "2026-08-26T00:00:00.000Z",
+  payload: {
+    id: orderId,
+    merchant_item_id: "beans-1kg",
+    params: {},
+    price: {
+      amount: "21.00",
+      currency: "USD",
+      at: "2026-08-26T00:00:00.000Z",
+      as_of: "2026-08-26T00:00:00.000Z",
+    },
+    test: true,
+  },
+});
+
+/** A price question: what carries the place the parcel goes. */
+const question = (id: string, priceId: string): WorkerEnvelope => ({
+  kind: "quote_request",
+  id,
+  sent_at: "2026-08-26T00:00:00.000Z",
+  payload: {
+    merchant_item_id: "beans-1kg",
+    price_id: priceId,
+    purpose: "purchase",
+    expires_at: "2026-08-26T00:10:00.000Z",
+  },
+});
+
 /** Whose stream: there is one per merchant, so every call names one. */
 const A = "mch_a";
 const B = "mch_b";
@@ -76,6 +108,51 @@ describe("MemoryQueue delivery", () => {
 
     expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_1", "env_2"]);
     expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_3"]);
+  });
+
+  it("hands ready orders out before price questions, preserving arrival order within each", async () => {
+    const queue = await started();
+    await queue.publish(A, question("env_q1", "prc_1"));
+    await queue.publish(A, handOver("env_o1", "ord_1"));
+    await queue.publish(A, question("env_q2", "prc_2"));
+    await queue.publish(A, envelope("env_event"));
+    await queue.publish(A, handOver("env_o2", "ord_2"));
+
+    expect((await queue.draw(A, 2, 0)).map((d) => d.envelope.id)).toStrictEqual([
+      "env_o1",
+      "env_event",
+    ]);
+    expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
+      "env_o2",
+      "env_q1",
+      "env_q2",
+    ]);
+  });
+
+  it("forgets an unanswered price question before a worker can draw it, including a delayed copy", async () => {
+    const queue = await started();
+    await queue.publish(A, question("env_ready", "prc_1"));
+    await queue.publish(A, question("env_delayed", "prc_1"), 1_000);
+    await queue.publish(A, question("env_other", "prc_2"));
+    await queue.publish(B, question("env_b", "prc_1"));
+
+    await queue.forgetPrice(A, "prc_1");
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_other"]);
+    expect((await queue.draw(B, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_b"]);
+  });
+
+  it("does not hand out old price questions after the queue stops and starts", async () => {
+    const queue = await started();
+    await queue.publish(A, question("env_ready", "prc_1"));
+    await queue.publish(A, question("env_delayed", "prc_2"), 1_000);
+
+    await queue.stop();
+    await queue.start();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(await queue.draw(A, 10, 0)).toStrictEqual([]);
   });
 
   it("keeps a delayed envelope back until its time", async () => {
@@ -172,39 +249,7 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     vi.useRealTimers();
   });
 
-  /** An order envelope: what carries the whole address once a parcel is paid. */
-  const handOver = (id: string, orderId: string): WorkerEnvelope => ({
-    kind: "order",
-    id,
-    sent_at: "2026-08-26T00:00:00.000Z",
-    payload: {
-      id: orderId,
-      merchant_item_id: "beans-1kg",
-      params: {},
-      price: {
-        amount: "21.00",
-        currency: "USD",
-        at: "2026-08-26T00:00:00.000Z",
-        as_of: "2026-08-26T00:00:00.000Z",
-      },
-      test: true,
-    },
-  });
-
-  /** A price question: what carries the place the parcel goes. */
-  const question = (id: string, priceId: string): WorkerEnvelope => ({
-    kind: "quote_request",
-    id,
-    sent_at: "2026-08-26T00:00:00.000Z",
-    payload: {
-      merchant_item_id: "beans-1kg",
-      price_id: priceId,
-      purpose: "purchase",
-      expires_at: "2026-08-26T00:10:00.000Z",
-    },
-  });
-
-  it("forgets an order's hand-overs and its price question wherever they wait, and nothing else", async () => {
+  it("forgets an order's hand-overs wherever they wait, and nothing else", async () => {
     // Once the merchant has the address, no envelope carrying any of it may
     // still reach a worker, a hand-over waiting out a delay included. Events
     // about the order carry no address and stay, as does everybody else's work.
@@ -216,13 +261,14 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     await queue.publish(A, question("env_q2", "prc_2"));
     await queue.publish(A, handOver("env_o2", "ord_2"));
 
-    queue.forget(A, "ord_1", "prc_1");
+    queue.forget(A, "ord_1");
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
       "env_event",
-      "env_q2",
       "env_o2",
+      "env_q1",
+      "env_q2",
     ]);
     expect(await queue.holdsOrder(A, "ord_1")).toBe(false);
   });
@@ -233,7 +279,7 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     const queue = await started();
     await queue.publish(B, handOver("env_b", "ord_1"));
 
-    queue.forget(A, "ord_1", null);
+    queue.forget(A, "ord_1");
 
     expect((await queue.draw(B, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_b"]);
   });
@@ -334,10 +380,9 @@ describe("MemoryQueue holding an order", () => {
 
   it("counts an envelope waiting out a delay, which is one that will be handed over", async () => {
     // The sweep resends a paid order only when the stream holds nothing for
-    // it, since every hand-over counts against the attempt cap. The poll puts
-    // an envelope back with a wait when it meets a charge in flight; missed
-    // here, the sweep would spend one of the order's attempts on a hand-over
-    // already on its way.
+    // it, since every hand-over lengthens the pause before the next. The poll
+    // puts an envelope back with a wait when it meets a charge in flight;
+    // missed here, the sweep would hand over again an order already on its way.
     const queue = await started();
     await queue.publish(A, orderEnvelope("env_1", "ord_waiting"), 60_000);
 

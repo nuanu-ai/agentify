@@ -46,7 +46,11 @@ Host metrics describe CPU, memory, filesystem, disks and network; the collector'
 own metrics describe scrape and write status. Three same-host public checks remain
 under `job="agentify/health"`. `/api/health`
 also checks the scanner worker, database, queue and analytics outbox.
-`/healthz` and `/dashboard/healthz` check their respective listeners. These
+`/healthz` and `/dashboard/healthz` check their respective listeners. The gateway's
+`/healthz` also returns `revision`, the commit CI wrote into the image, and
+`contract_version`, the shared wire-contract version. `revision` is `null` when
+the image has none, as with a local build. The response sends
+`Cache-Control: no-store` to tell caches not to retain the response. These
 requests do not make purchases or start scans. A public probe can fail because
 of the producer's egress as well as the application itself; this is not an
 independent external uptime service. TEST shares a machine with other
@@ -232,8 +236,9 @@ sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stac
 ```
 
 On TEST the path and the channel are `test`. No row means no order in the
-database has that identifier now: an attempt that lapsed unpaid is deleted
-thirty days after it ended. The query selects no record column, because the
+database has that identifier: an order is written only once a verified payment
+arrives, so a purchase nobody paid for has none. The query selects no record
+column, because the
 record holds the buyer's key, and the key stays out of anything shared, this
 log stack included.
 
