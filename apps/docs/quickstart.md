@@ -384,97 +384,47 @@ holds against a repeat is proved by the purchase on the next step.
 You make the first purchase yourself, buying your own card on the test channel
 with an ordinary x402 client, the payment protocol agents pay with. Keep the
 process from step 4 running while you buy: without it the card is not in the
-catalogue, and a purchase is refused with `seller_not_taking_orders`. The buyer
-needs a wallet of its own: a fresh private key you keep for test purchases and
-nothing else, holding test USDC on Base Sepolia. It needs no ETH, because the
-payment is an authorisation the buyer signs and the facilitator executes.
+catalogue, and a purchase is refused with `seller_not_taking_orders`.
 
-Install the x402 client and the library that signs with the key:
+In the directory with the `.env` from step 2, install the x402 client and the
+library that makes and uses the buyer's wallet key:
 
 ```sh
-npm install @x402/core@2.23.0 @x402/evm@2.23.0 viem@2.47.0
+npm install @x402/fetch@2.23.0 @x402/evm@2.23.0 viem@2.47.0
 ```
 
-Make the buyer's wallet key with that library, in the same directory. The command
-prints a fresh private key, as the line `.env` takes, and the address it
-controls:
-
-```sh
-node --input-type=module -e "
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-const key = generatePrivateKey()
-console.log('BUYER_PRIVATE_KEY=' + key)
-console.log('address:', privateKeyToAccount(key).address)
-"
-```
-
-Then open [Circle's faucet](https://faucet.circle.com), choose USDC and Base
-Sepolia, and paste the address: the faucet sends test USDC to it, and that is
-all the buyer needs.
-
-Now buy the card by the catalogue identifier step 3 returned. The program
-below is TypeScript whose types Node 24 can simply erase, so save it as
-`buyer.mts` beside the `.env` from step 2, whose `AGENTIFY_URL` it buys from,
-and run it with `node --env-file=.env buyer.mts`. It needs two more lines in
-`.env`, the first of them the one the command above printed:
-
-```sh
-BUYER_PRIVATE_KEY=0x...
-ITEM_ID=item_...
-```
+Add the catalogue identifier step 3 returned to `.env` as a line of its own,
+`ITEM_ID=item_...`. Then save the program below as `buyer.mts` beside `.env`
+and run it with `node --env-file=.env buyer.mts`. It is TypeScript whose types
+Node 24 simply erases, so it runs as it is.
 
 <<< @/programs/buyer.mts
 
-The program keeps one purchase in `purchase.json`, in the directory where you
-run it. If that file exists, running the same command resumes its purchase.
-To buy again, choose a different filename:
+The first run makes the buyer a wallet of its own and stops without buying.
+It prints a `BUYER_PRIVATE_KEY=` line to add to `.env` and the address of that
+wallet. Open [Circle's faucet](https://faucet.circle.com), choose USDC and Base
+Sepolia, and paste the address: the faucet sends test USDC to it. The wallet
+needs no ETH, because the payment is an authorisation the buyer signs and the
+facilitator executes. Use this key for test purchases and nothing else.
 
-```sh
-node --env-file=.env buyer.mts second-purchase.json
-```
+The next run buys the card. The program finds it in the catalogue, posts to
+its purchase address, signs the payment request that comes back and prints the
+order. The parameters in the program are the email the card from step 3 asks
+for; change them to what your card asks, or to `{}` for a card that asks for
+none. The program sends no address, so it cannot buy a parcel. It signs only
+on Base Sepolia and for no more than the price on the card. The x402 client
+refuses any payment above 1 USD unless it is given a limit, and the program
+sets that limit to the card's price, so a price check that asks more is
+refused before anything is signed. While the order reads `in_progress`, the
+program reads it again every five seconds for a minute, and then prints the
+order as it stands; an order still in progress can be read later at the
+`status_url` it printed.
 
-For a new purchase, the program finds the card in the catalogue and posts to
-its purchase address. The parameters in the program are the email the card
-from step 3 asks for; change them to what your card asks, or to `{}` for a
-card that asks for none. These edits apply to new purchases. A saved purchase
-keeps its original parameters. The program sends no address and buys no parcel.
-
-The first answer is a 402 with the payment requirements. Before signing or
-sending a payment, the program saves those requirements with the purchase
-address, parameters, wallet address and price limit. If saving fails, no
-payment is sent. It signs only on Base Sepolia and for no more than the price
-on the card. A price check that asks more is refused unsigned; to try that
-price, change the price limit in the program and use a new purchase file.
-
-If the payment answer is lost, keep the file and run the same command with
-the same `.env`. The program signs the saved requirements again from the
-same wallet to recover that order. An already paid order is returned without
-another charge. This recovery signature still authorizes a payment for the
-full amount; Agentify uses it as proof of wallet control when returning an
-already paid purchase. An unknown payment outcome stays unknown, and the
-program stops without starting another purchase. An expired price also stops
-the purchase; a fresh price requires a different file.
-
-An order can come back with HTTP 409 when it ended without the goods. Once
-any order comes back, the program saves its `status_url`. Later runs read
-that address without a payment signature or a catalogue lookup, so the
-purchase remains readable if its card goes off sale. A changed site, product
-or wallet in `.env`, or a damaged purchase file, stops the program without
-replacing the saved purchase.
-
-The status address opens the order and its goods. The program keeps the file
-readable and writable only by its owner, correcting its permissions if it
-already exists, and never prints the address. Keep purchase files out of git.
-Keep them through a lost response or unfinished order: deleting a file loses
-the program's way back, and running with a filename that does not exist
-starts a new purchase. The buyer's private wallet key stays in `.env`.
-
-While an order reads `in_progress`, the program reads it every five seconds
-for up to five minutes. A failed read is printed, and reading continues. It
-then prints the order with its goods, excluding the status address, and exits
-with `0` for `delivered`. Other results exit non-zero and keep the purchase
-file. Running again continues reading the saved order. If no order answer
-has arrived yet, it retries that same saved purchase.
+If the answer to the purchase is lost, for example because the connection
+broke, look for the order on the Orders screen of your dashboard. Running the
+program again does not find that order: it buys the card a second time and
+pays its price in test USDC again. How an agent gets back an answer it lost is
+on [Telling a repeat apart](/orders#telling-a-repeat-apart).
 
 It all came together if the order reached your handler, the buyer received the
 goods — `delivered` here, with the `access_url` your handler returned — and the

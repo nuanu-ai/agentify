@@ -6,28 +6,18 @@
  *
  * The program buys from the real gateway on its real HTTP surface, booted in
  * this process with an in-memory store and a scripted facilitator, from a
- * merchant on the real SDK. The network between them breaks the way
- * `buyer-program-faults.ts` says, which also keeps every call on this machine
- * and shortens the program's waits between reads.
+ * merchant on the real SDK. `buyer-program-faults.ts` keeps every call on this
+ * machine, shortens the program's waits between reads and can move a payment
+ * request onto another chain.
  *
- * Each test holds one promise the page makes to the person running it: a
- * purchase ends in the goods or in plain words and a non-zero exit, the
- * order's address is kept in a file and never printed, a failed read is not
- * an order's state, and a restart resumes the saved purchase. Each run signs
- * at most once, only on the channel's chain and up to the saved price limit.
+ * Each test holds one promise the page makes to the person running it: the
+ * first run makes a wallet key and buys nothing, the next one ends in the
+ * goods or in the merchant's own answer, and the program signs only on the
+ * channel's chain and up to the card's price.
  */
 
 import { spawn } from "node:child_process";
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-} from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -35,8 +25,8 @@ import { fileURLToPath } from "node:url";
 import { ScriptedFacilitator } from "@agentify/gateway";
 import { type AgentifyClient, createClient, type LiveOrder } from "@nuanu-ai/agentify";
 import type { CardInput } from "@nuanu-ai/agentify-contracts";
-import { generatePrivateKey } from "viem/accounts";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type Booted, bootGateway } from "./gateway-harness.js";
 
 const PROGRAM = fileURLToPath(new URL("../../../apps/docs/programs/buyer.mts", import.meta.url));
@@ -77,22 +67,12 @@ const REFUSED = {
   merchant_item_id: "access-monthly-refused",
 } satisfies CardInput;
 
-/** The file the program writes each order's address to, beside itself. */
-const PURCHASE = "purchase.json";
-
-/** What the fault preload prints for each read of an order it lets through. */
-const READ_MARK = "[faults] order read";
-
 const goodsOf = (orderId: string) => ({ access_url: `https://example.com/a/${orderId}` });
 
 interface Faults {
-  readonly statusReads?: readonly number[];
-  readonly losePaidAnswer?: boolean;
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
   readonly waitMs?: number;
-  readonly stopBeforePayment?: boolean;
-  readonly failDirectorySync?: boolean;
 }
 
 interface Run {
@@ -154,7 +134,6 @@ describe("the quickstart's test buyer", () => {
     card: CardInput,
     faults: Faults = {},
     env: Readonly<Record<string, string | null>> = {},
-    file = PURCHASE,
   ): Promise<Run> => {
     const lines = {
       AGENTIFY_URL: booted.baseUrl,
@@ -168,14 +147,10 @@ describe("the quickstart's test buyer", () => {
         .flatMap(([name, value]) => (value === null ? [] : [`${name}=${value}`]))
         .join("\n"),
     );
-    const child = spawn(
-      process.execPath,
-      ["--import", FAULTS, "--env-file=.env", "buyer.mts", file],
-      {
-        cwd: directory,
-        env: { BUYER_FAULTS: JSON.stringify(faults) },
-      },
-    );
+    const child = spawn(process.execPath, ["--import", FAULTS, "--env-file=.env", "buyer.mts"], {
+      cwd: directory,
+      env: { BUYER_FAULTS: JSON.stringify(faults) },
+    });
     let printed = "";
     child.stdout.on("data", (chunk) => {
       printed += chunk;
@@ -185,14 +160,6 @@ describe("the quickstart's test buyer", () => {
     });
     const code = await new Promise<number | null>((done) => child.on("close", done));
     return { code, printed };
-  };
-
-  const readsIn = (printed: string): number => printed.split(READ_MARK).length - 1;
-
-  /** The order's address as the program wrote it, or undefined where it wrote none. */
-  const keptAddress = (): string | undefined => {
-    const file = join(directory, PURCHASE);
-    return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).statusUrl : undefined;
   };
 
   /**
@@ -211,236 +178,49 @@ describe("the quickstart's test buyer", () => {
     return order;
   };
 
-  it("delivers the goods of a synchronous purchase and keeps the order's address in a file only its owner reads", async () => {
+  it("makes a wallet key when .env has none, buys nothing, and buys with the line it printed", async () => {
+    const first = await run(AT_ONCE, {}, { BUYER_PRIVATE_KEY: null });
+
+    expect(first.code, first.printed).toBe(0);
+    const key = /^BUYER_PRIVATE_KEY=(0x[0-9a-f]{64})$/m.exec(first.printed)?.[1] as
+      | `0x${string}`
+      | undefined;
+    expect(key, first.printed).toBeDefined();
+    // The faucet funds the address printed, so it has to be the key's own.
+    expect(first.printed).toContain(privateKeyToAccount(key ?? "0x").address);
+    expect(await merchant.orders.list()).toHaveLength(0);
+
+    const bought = await run(AT_ONCE, {}, { BUYER_PRIVATE_KEY: key ?? null });
+    expect(bought.code, bought.printed).toBe(0);
+    expect(bought.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
+  });
+
+  it("buys a card priced above 1 USD and prints its goods", async () => {
     const bought = await run(AT_ONCE);
 
     expect(bought.code, bought.printed).toBe(0);
     expect(bought.printed).toMatch(/https:\/\/example\.com\/a\/\S+/);
-    const statusUrl = keptAddress();
-    expect(statusUrl, bought.printed).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/x402\/orders\//);
-    // The address opens the order, so it is kept in the file and not printed.
-    expect(bought.printed).not.toContain(statusUrl);
-    expect(statSync(join(directory, PURCHASE)).mode & 0o777).toBe(0o600);
+    expect(bought.printed).toContain('"delivered"');
     expect(facilitator.settles).toHaveLength(1);
   });
 
   it("reads an asynchronous order at its address until the goods arrive", async () => {
     // Waits long enough between reads for the merchant to take the order and deliver.
-    const running = run(LATER, { waitMs: 200 });
+    const running = run(LATER, { waitMs: 1_000 });
     const order = await onlyHeld();
     await order.deliver(goodsOf(order.id));
     const finished = await running;
 
     expect(finished.code, finished.printed).toBe(0);
     expect(finished.printed).toContain(goodsOf(order.id).access_url);
-    expect(readsIn(finished.printed)).toBeGreaterThan(0);
-    expect(finished.printed).not.toContain(keptAddress());
     expect(facilitator.settles).toHaveLength(1);
   });
 
-  it("stops when the reads run out, with the order's address kept and not printed", async () => {
-    const waiting = await run(LATER);
-
-    expect(waiting.code, waiting.printed).not.toBe(0);
-    expect(readsIn(waiting.printed)).toBe(60);
-    expect(waiting.printed).toContain(PURCHASE);
-    const statusUrl = keptAddress();
-    expect(statusUrl, waiting.printed).toBeDefined();
-    expect(waiting.printed).not.toContain(statusUrl);
-  });
-
-  it("keeps the order a refused purchase answers with a 409, prints no address and exits non-zero", async () => {
+  it("prints the merchant's refusal and charges nothing", async () => {
     const refused = await run(REFUSED);
 
-    expect(refused.code, refused.printed).not.toBe(0);
     expect(refused.printed).toContain("out_of_stock");
-    expect(refused.printed).toContain(PURCHASE);
-    const statusUrl = keptAddress();
-    expect(statusUrl, refused.printed).toBeDefined();
-    expect(refused.printed).not.toContain(statusUrl);
     expect(facilitator.settles).toHaveLength(0);
-  });
-
-  it("reports a read of the order that failed and reads on until the goods arrive", async () => {
-    const running = run(LATER, { statusReads: [503], waitMs: 200 });
-    const order = await onlyHeld();
-    await order.deliver(goodsOf(order.id));
-    const finished = await running;
-
-    expect(finished.code, finished.printed).toBe(0);
-    expect(finished.printed).toContain("503");
-    expect(finished.printed).toContain(goodsOf(order.id).access_url);
-    expect(finished.printed).not.toContain(keptAddress());
-  });
-
-  it("stops with the order's address kept and not printed when every read fails", async () => {
-    const unread = await run(LATER, { statusReads: Array(60).fill(503) });
-
-    expect(unread.code, unread.printed).not.toBe(0);
-    expect(unread.printed).toContain("503");
-    expect(unread.printed).toContain(PURCHASE);
-    expect(readsIn(unread.printed)).toBe(0);
-    const statusUrl = keptAddress();
-    expect(statusUrl, unread.printed).toBeDefined();
-    expect(unread.printed).not.toContain(statusUrl);
-  });
-
-  it.each([
-    [
-      "the charge for goods already made failed",
-      { settled: false, reason: "the wallet did not hold the price" },
-    ],
-    [
-      "nobody knows whether the charge went through",
-      { settled: "unknown", reason: "the payment network did not answer" },
-    ],
-  ] as const)("signs once and stops when %s", async (_what, settlement) => {
-    facilitator.willSettle(settlement);
-
-    const stopped = await run(AT_ONCE);
-
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(stopped.printed).toContain(PURCHASE);
-    expect(keptAddress()).toBeDefined();
-    expect(facilitator.verifies).toHaveLength(1);
-    expect(facilitator.settles).toHaveLength(1);
-  });
-
-  it("resumes a paid purchase after losing its answer and restarting, without another order or charge", async () => {
-    const lost = await run(AT_ONCE, { losePaidAnswer: true });
-
-    expect(lost.code, lost.printed).not.toBe(0);
-    expect(keptAddress()).toBeUndefined();
-    expect(facilitator.verifies).toHaveLength(1);
-    expect(facilitator.settles).toHaveLength(1);
-    const orderId = facilitator.settles[0]?.orderId;
-    const resumed = await run(AT_ONCE);
-    expect(resumed.code, resumed.printed).toBe(0);
-    expect(resumed.printed).toContain(goodsOf(orderId ?? "").access_url);
-    expect(keptAddress()).toBeDefined();
-    expect(facilitator.settles).toHaveLength(1);
-    expect(await merchant.orders.list()).toHaveLength(1);
-  });
-
-  it("reads the saved order after its card leaves the catalog", async () => {
-    const bought = await run(AT_ONCE);
-    const address = keptAddress();
-    expect(bought.code, bought.printed).toBe(0);
-    await fetch(`${booted.baseUrl}/v0/cards/${ids.get(AT_ONCE.merchant_item_id)}/pause`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${booted.merchantKey}` },
-    });
-    const resumed = await run(AT_ONCE);
-    expect(resumed.code, resumed.printed).toBe(0);
-    expect(keptAddress()).toBe(address);
-    expect(facilitator.verifies).toHaveLength(1);
-    expect(facilitator.settles).toHaveLength(1);
-    expect(await merchant.orders.list()).toHaveLength(1);
-  });
-
-  it("starts a distinct purchase only when given a different file and keeps the first purchase", async () => {
-    const first = await run(AT_ONCE);
-    expect(first.code, first.printed).toBe(0);
-    const saved = readFileSync(join(directory, PURCHASE), "utf8");
-    const second = await run(AT_ONCE, {}, {}, "second-purchase.json");
-    expect(second.code, second.printed).toBe(0);
-    expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe(saved);
-    expect(facilitator.settles).toHaveLength(2);
-    expect(await merchant.orders.list()).toHaveLength(2);
-  });
-
-  it("pays nothing when its purchase cannot be saved", async () => {
-    const stopped = await run(AT_ONCE, {}, {}, "missing/purchase.json");
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(facilitator.verifies).toHaveLength(0);
-    expect(facilitator.settles).toHaveLength(0);
-  });
-
-  it("pays nothing if it cannot persist the purchase's directory entry", async () => {
-    const stopped = await run(AT_ONCE, { failDirectorySync: true });
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(facilitator.verifies).toHaveLength(0);
-    expect(facilitator.settles).toHaveLength(0);
-    const resumed = await run(AT_ONCE, { failDirectorySync: true });
-    expect(resumed.code, resumed.printed).not.toBe(0);
-    expect(facilitator.settles).toHaveLength(0);
-  });
-
-  it("does not treat a command-line option as permission to buy", async () => {
-    const stopped = await run(AT_ONCE, {}, {}, "--help");
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(await merchant.orders.list()).toHaveLength(0);
-    expect(facilitator.settles).toHaveLength(0);
-  });
-
-  it("does not charge two concurrent runs using the same purchase file twice", async () => {
-    const results = await Promise.all([run(AT_ONCE), run(AT_ONCE)]);
-    expect(
-      results.some((result) => result.code === 0),
-      JSON.stringify(results),
-    ).toBe(true);
-    expect(facilitator.settles).toHaveLength(1);
-    expect(keptAddress()).toBeDefined();
-  });
-
-  it("refuses a damaged purchase file before opening or paying an order", async () => {
-    await writeFile(join(directory, PURCHASE), "{broken");
-    const stopped = await run(AT_ONCE);
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(await merchant.orders.list()).toHaveLength(0);
-    expect(facilitator.settles).toHaveLength(0);
-    expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe("{broken");
-  });
-
-  it.each([
-    ["wallet", { BUYER_PRIVATE_KEY: generatePrivateKey() }],
-    ["site", { AGENTIFY_URL: "http://127.0.0.1:9" }],
-    ["product", { ITEM_ID: "item_another" }],
-  ])("does not spend or replace a saved purchase after its %s changes", async (_what, env) => {
-    await run(AT_ONCE, { losePaidAnswer: true });
-    const saved = readFileSync(join(directory, PURCHASE), "utf8");
-    const stopped = await run(AT_ONCE, {}, env);
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(facilitator.settles).toHaveLength(1);
-    expect(await merchant.orders.list()).toHaveLength(1);
-    expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe(saved);
-  });
-
-  it("does not start another purchase while the original payment outcome is unknown", async () => {
-    facilitator.willSettle({ settled: "unknown", reason: "the payment network did not answer" });
-    await run(AT_ONCE, { losePaidAnswer: true });
-    const stopped = await run(AT_ONCE);
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(facilitator.settles).toHaveLength(1);
-    expect(await merchant.orders.list()).toHaveLength(1);
-  });
-
-  it("does not replace an expired saved price with a new purchase", async () => {
-    const stopped = await run(AT_ONCE, { stopBeforePayment: true });
-    expect(stopped.code, stopped.printed).not.toBe(0);
-    expect(await merchant.orders.list()).toHaveLength(0);
-    const saved = readFileSync(join(directory, PURCHASE), "utf8");
-    const later = Date.now() + booted.config.deadlines.quoteTtlMs + 1_000;
-    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
-    try {
-      const resumed = await run(AT_ONCE);
-      expect(resumed.code, resumed.printed).not.toBe(0);
-      expect(facilitator.verifies).toHaveLength(0);
-      expect(facilitator.settles).toHaveLength(0);
-      expect(await merchant.orders.list()).toHaveLength(0);
-      expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe(saved);
-    } finally {
-      clock.mockRestore();
-    }
-  });
-
-  it("makes an existing readable purchase file private before using it", async () => {
-    await run(AT_ONCE);
-    chmodSync(join(directory, PURCHASE), 0o644);
-    const resumed = await run(AT_ONCE);
-    expect(resumed.code, resumed.printed).toBe(0);
-    expect(statSync(join(directory, PURCHASE)).mode & 0o777).toBe(0o600);
-    expect(facilitator.settles).toHaveLength(1);
   });
 
   it("signs no payment request on a chain other than the channel's", async () => {
@@ -453,7 +233,6 @@ describe("the quickstart's test buyer", () => {
 
     expect(refused.code, refused.printed).not.toBe(0);
     expect(refused.printed).toContain("eip155:8453");
-    expect(keptAddress()).toBeUndefined();
     expect(facilitator.verifies).toHaveLength(0);
   });
 
@@ -461,31 +240,8 @@ describe("the quickstart's test buyer", () => {
     const refused = await run(PRICED);
 
     expect(refused.code, refused.printed).not.toBe(0);
-    expect(keptAddress()).toBeUndefined();
     expect(facilitator.verifies).toHaveLength(0);
   });
-
-  it.each([
-    ["no wallet key", { BUYER_PRIVATE_KEY: null }, /BUYER_PRIVATE_KEY/],
-    ["no card", { ITEM_ID: null }, /ITEM_ID/],
-    ["no channel", { AGENTIFY_URL: null }, /AGENTIFY_URL/],
-    [
-      "a channel that does not answer",
-      { AGENTIFY_URL: "http://127.0.0.1:9" },
-      /reach|connect|answer|channel/i,
-    ],
-  ] as const)(
-    "stops in plain words, without a stack trace, given %s",
-    async (_what, env, guidance) => {
-      const stopped = await run(AT_ONCE, {}, env);
-
-      expect(stopped.code, stopped.printed).not.toBe(0);
-      expect(stopped.printed).not.toMatch(/^\s+at /m);
-      expect(stopped.printed).not.toContain("undefined");
-      expect(stopped.printed).toMatch(guidance);
-      expect(keptAddress()).toBeUndefined();
-    },
-  );
 
   it("is installed at the release of the x402 client and viem it is tested with", () => {
     // The page's install line would otherwise take whatever npm has today,
@@ -497,10 +253,10 @@ describe("the quickstart's test buyer", () => {
       fileURLToPath(new URL("../../../apps/docs/quickstart.md", import.meta.url)),
       "utf8",
     );
-    const installed = /^npm install (@x402\/core\S*.*)$/m.exec(quickstart)?.[1]?.split(" ") ?? [];
+    const installed = /^npm install (@x402\/\S+ .*)$/m.exec(quickstart)?.[1]?.split(" ") ?? [];
 
     expect(installed.sort()).toStrictEqual(
-      ["@x402/core", "@x402/evm", "viem"]
+      ["@x402/evm", "@x402/fetch", "viem"]
         .map((name) => `${name}@${tested.devDependencies[name]}`)
         .sort(),
     );

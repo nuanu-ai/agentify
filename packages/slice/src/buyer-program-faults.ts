@@ -1,39 +1,26 @@
 /**
  * Loaded with `--import` into the process that runs the quickstart's buyer
- * program to exercise network and storage failures without changing the
- * program itself.
+ * program, so a test can drive it without changing the program itself.
  *
  * It refuses every address that is not on this machine, so the program cannot
  * reach the real test channel from `pnpm test`.
  *
- * It prints a line for every read of an order it lets through, so a test can
- * count them.
- *
  * It plays the faults named in `BUYER_FAULTS`, a JSON object:
- * `statusReads`, the HTTP statuses the first reads of an order answer with
- * instead of reaching the gateway; `losePaidAnswer`, which lets a paid purchase
- * reach the gateway and then drops its answer as a broken connection would;
- * `stopBeforePayment`, which drops the request before it reaches the gateway;
- * `failDirectorySync`, which refuses the journal's directory flush;
- * and `challengeNetwork` with `challengeAsset`, which move a payment request
- * onto another chain and that chain's token.
+ * `challengeNetwork` with `challengeAsset` move a payment request onto another
+ * chain and that chain's token.
  *
- * And it makes the program's waits between reads take a millisecond, or the
- * `waitMs` the faults name, by handing the program, and only the program, its
- * own `node:timers/promises`. Every other timer in the process, the HTTP
- * client's included, keeps real time.
+ * And it makes the program's waits between reads of an order take a
+ * millisecond, or the `waitMs` the faults name, by handing the program, and
+ * only the program, its own `node:timers/promises`. Every other timer in the
+ * process, the HTTP client's included, keeps real time.
  */
 
 import { registerHooks } from "node:module";
 
 interface Faults {
-  readonly statusReads?: readonly number[];
-  readonly losePaidAnswer?: boolean;
   readonly challengeNetwork?: string;
   readonly challengeAsset?: string;
   readonly waitMs?: number;
-  readonly stopBeforePayment?: boolean;
-  readonly failDirectorySync?: boolean;
 }
 
 const faults = JSON.parse(process.env.BUYER_FAULTS ?? "{}") as Faults;
@@ -44,42 +31,14 @@ const QUICK_WAITS = `data:text/javascript,${encodeURIComponent(
   `export const setTimeout = (_ms, value) => new Promise((done) => globalThis.setTimeout(() => done(value), ${faults.waitMs ?? 1}));`,
 )}`;
 
-const REFUSED_DIRECTORY_SYNC = `data:text/javascript,${encodeURIComponent(`
-  export * from 'node:fs';
-  import { fsyncSync as flush, fstatSync } from 'node:fs';
-  export const fsyncSync = (fd) => {
-    if (fstatSync(fd).isDirectory()) throw new Error('disk refused directory sync');
-    flush(fd);
-  };
-`)}`;
-
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (
-      specifier === "node:fs" &&
-      faults.failDirectorySync &&
-      PROGRAM.test(context.parentURL ?? "")
-    ) {
-      return { url: REFUSED_DIRECTORY_SYNC, shortCircuit: true };
-    }
     if (specifier === "node:timers/promises" && PROGRAM.test(context.parentURL ?? "")) {
       return { url: QUICK_WAITS, shortCircuit: true };
     }
     return nextResolve(specifier, context);
   },
 });
-
-const unavailable = (status: number): Response =>
-  new Response(
-    JSON.stringify({
-      error: {
-        code: "unavailable",
-        message: "The service is unavailable for a moment.",
-        retryable: true,
-      },
-    }),
-    { status, headers: { "content-type": "application/json" } },
-  );
 
 /** A payment request with every requirement moved onto another chain and its token. */
 const onAnotherChain = (header: string, network: string, asset: string): string => {
@@ -94,27 +53,15 @@ const onAnotherChain = (header: string, network: string, asset: string): string 
 };
 
 const reachable = globalThis.fetch;
-const failedReads = [...(faults.statusReads ?? [])];
 
 globalThis.fetch = async (input, init) => {
-  const url = new URL(input instanceof Request ? input.url : input);
+  const request = new Request(input, init);
+  const url = new URL(request.url);
   if (url.hostname !== "127.0.0.1") {
     throw new TypeError(`fetch failed: ${url.origin} is not on this machine`);
   }
 
-  const reading = (init?.method ?? "GET") === "GET" && url.pathname.startsWith("/x402/orders/");
-  const failed = reading ? failedReads.shift() : undefined;
-  if (failed !== undefined) return unavailable(failed);
-
-  if (reading) console.error("[faults] order read");
-  const paid = new Headers(init?.headers).has("payment-signature");
-  if (paid && faults.stopBeforePayment) throw new TypeError("payment was not sent");
-  const answer = await reachable(input, init);
-  if (paid && faults.losePaidAnswer === true) {
-    await answer.body?.cancel();
-    throw new TypeError("fetch failed: the connection closed before the answer arrived");
-  }
-
+  const answer = await reachable(request);
   const challenge = answer.headers.get("payment-required");
   const { challengeNetwork, challengeAsset } = faults;
   if (challenge === null || challengeNetwork === undefined || challengeAsset === undefined) {
