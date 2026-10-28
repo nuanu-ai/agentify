@@ -28,8 +28,10 @@ the ending reasons `unavailable`, `price_check_unanswered` and `price_expired`.
 
 The stamp is authenticated before any gate is entered; one that does not
 authenticate is taken only as the byte-for-byte saved price of an existing
-order, so a paid return outlives a retired signing key. The 30-second term is
-judged by when the complete paid request arrives. One price names one order.
+order, so a paid return outlives a retired signing key. A price holds for three
+minutes, "at least three minutes" in the product owner's word of 2026-10-28,
+because an agent may show the price to a person; the term is judged by when the
+complete paid request arrives. One price names one order.
 
 Inside the gateway process one request per price is checked at a time; another
 gets a retryable `payment_not_taken` with `Retry-After: 2` that neither says
