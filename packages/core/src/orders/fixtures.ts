@@ -1,8 +1,8 @@
 /**
  * Order fixtures for this package's tests, deliberately not exported from the
  * package index: a builder that guesses defaults has no place next to real
- * purchases. Every number here is a test value; the real deadlines and attempt
- * counts are the gateway's configuration.
+ * purchases. Every number here is a test value; the real deadlines and
+ * redelivery window are the gateway's configuration.
  */
 
 import type { CreateOrderInput, MerchantSelling, PriceCheck } from "./create.js";
@@ -35,7 +35,7 @@ export const TEST_POLICY: OrderPolicy = {
     baseDelayMs: 1_000,
     factor: 2,
     maxDelayMs: 60_000,
-    maxAttempts: 5,
+    windowMs: 90_000,
   },
 };
 

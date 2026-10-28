@@ -30,7 +30,7 @@ const impossible = (merchantId: string): StoredOrder => {
         syncResponseMs: 8_000,
         asyncFulfillmentMs: 86_400_000,
       },
-      redelivery: { baseDelayMs: 500, factor: 2, maxDelayMs: 30_000, maxAttempts: 5 },
+      redelivery: { baseDelayMs: 500, factor: 2, maxDelayMs: 30_000, windowMs: 10_800_000 },
     },
     cardPrice: { amount: "80.00", currency: "USD", asOf: 0 },
     price: { amount: "80.00", currency: "USD", asOf: 0 },
@@ -46,6 +46,7 @@ const impossible = (merchantId: string): StoredOrder => {
       settleStartedAt: null,
       paidAt: 0,
       dispatchedAt: 0,
+      firstDispatchedAt: 0,
     },
   };
 

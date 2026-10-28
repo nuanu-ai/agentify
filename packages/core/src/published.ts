@@ -32,8 +32,13 @@ export const SETTLE_RESPONSE_MS = 10_000;
 export const SETTLE_BEFORE_GOODS_MS = 35_000;
 /** What a card that names no delivery deadline of its own is held to. */
 export const DEFAULT_ASYNC_FULFILLMENT_MS = 86_400_000;
-/** How many times in all an order is handed to the merchant's process. */
-export const REDELIVERY_MAX_ATTEMPTS = 5;
+/**
+ * How long after an order first reaches the merchant's process it is handed
+ * over again while nobody answers it, within its own deadline.
+ */
+export const REDELIVERY_WINDOW_MS = 10_800_000;
+/** The longest pause between two hand-overs of an order nobody answered. */
+export const REDELIVERY_MAX_DELAY_MS = 900_000;
 
 /**
  * How many of a seller's paid orders may be taken on and left with nothing
@@ -112,11 +117,12 @@ export function ordinalInWords(count: number): string {
 }
 
 /** The units a published stretch of time is counted in. */
-export type Unit = "second" | "minute" | "day";
+export type Unit = "second" | "minute" | "hour" | "day";
 
 const UNIT_MS: Readonly<Record<Unit, number>> = {
   second: 1_000,
   minute: 60_000,
+  hour: 3_600_000,
   day: 86_400_000,
 };
 
@@ -132,7 +138,8 @@ export function unitsIn(ms: number, unit: Unit): number {
 /** A stretch of time in words, counted in the unit its sentence names: "thirty seconds", "a day". */
 export function durationInWords(ms: number, unit: Unit): string {
   const count = unitsIn(ms, unit);
-  return count === 1 ? `a ${unit}` : `${inWords(count)} ${unit}s`;
+  if (count !== 1) return `${inWords(count)} ${unit}s`;
+  return unit === "hour" ? "an hour" : `a ${unit}`;
 }
 
 /** Agentify's part of a payout split's total, and the total. */

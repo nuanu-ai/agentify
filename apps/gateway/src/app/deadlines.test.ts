@@ -691,34 +691,37 @@ describe("when a delivery goes unanswered", () => {
     expect(new Set(seen.map((each) => each.message)).size).toBe(seen.length);
   });
 
-  it("stops repeating once the attempts are spent, and leaves the order to its deadline", async () => {
-    // Running out of attempts is not running out of time: the merchant may
-    // still deliver until the deadline, and the debt comes from the deadline
-    // passing. The money moved at the purchase, so what is left is a debt
-    // rather than a free ending.
+  it("stops repeating once its window has passed, and leaves the order to its deadline", async () => {
+    // Out of repeats is not out of time: the merchant may still deliver until
+    // the deadline, and the debt comes from the deadline passing. The money
+    // moved at the purchase, so what is left is a debt rather than a free
+    // ending.
     const harnessed = await started({
-      HANDLER_ANSWER_MS: "10",
-      REDELIVERY_BASE_DELAY_MS: "5",
-      REDELIVERY_MAX_ATTEMPTS: "2",
-      DEFAULT_ASYNC_FULFILLMENT_MS: "400",
+      HANDLER_ANSWER_MS: "1000",
+      REDELIVERY_BASE_DELAY_MS: "100",
+      REDELIVERY_WINDOW_MS: "2500",
+      DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
     });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { orderId, stamp } = await priced(harnessed, asyncCard);
     await harnessed.gateway.payPurchase(stamp, "PAYMENT", "PAYMENT");
+    const pass = async (ms: number) => {
+      harnessed.advance(ms);
+      await vi.advanceTimersByTimeAsync(ms);
+    };
 
-    const silent = workUntilStopped(harnessed, {});
-    await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2),
-      { timeout: 2_000, interval: 5 },
-    );
+    // Hand-overs at 0, 1.1 s and 2.3 s; the next would land at 3.7 s, past 2.5 s.
+    for (let elapsed = 0; elapsed < 10_000; elapsed += 100) {
+      await harnessed.gateway.poll(harnessed.merchant.id, 0);
+      await pass(100);
+    }
+    expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(3);
     expect((await state(harnessed, orderId))?.state).toBe("dispatched");
-    await vi.waitFor(
-      async () => expect((await state(harnessed, orderId))?.state).toBe("unfulfilled"),
-      { timeout: 2_000, interval: 5 },
-    );
-    await silent.stop();
+    await pass(60_000);
 
     const owing = await state(harnessed, orderId);
-    expect(owing?.dispatch.attempts).toBe(2);
+    expect(owing?.state).toBe("unfulfilled");
+    expect(owing?.dispatch.attempts).toBe(3);
     expect(owing?.payment).toBe("settled");
     expect(owing?.closure).toStrictEqual({
       cause: "deadline_expired",
@@ -768,16 +771,14 @@ describe("when a delivery goes unanswered", () => {
   it("does not close an order on the silence after a repeat its merchant had already taken on", async () => {
     // A slow handler may accept after our answer wait has expired, and the repeat
     // sent for that silence is ordinary. The silence after the repeat must not
-    // count once he has accepted, or a slow but willing merchant runs out of
-    // deliveries and sees a paid order close into a refund while he fills it.
+    // count once he has accepted, or a slow but willing merchant is handed the
+    // order he is already filling again and again.
     // Each step is driven by hand so the order of events is the same every run.
     const harnessed = await started({
       // Long enough that the gateway's own reminders never fire: the two
       // silences below are the only input.
       HANDLER_ANSWER_MS: "60000",
       REDELIVERY_BASE_DELAY_MS: "5",
-      // Two deliveries, so counting the second silence would close the order.
-      REDELIVERY_MAX_ATTEMPTS: "2",
       DEFAULT_ASYNC_FULFILLMENT_MS: "60000",
     });
     const merchantId = harnessed.merchant.id;
@@ -835,9 +836,8 @@ describe("when a delivery goes unanswered", () => {
 
   it("spends one delivery on one silence, though the same reminder arrives twice", async () => {
     // The queue hands a reminder out again when whoever took it never completed
-    // it. Every hand-over counts against the attempt cap, and reaching the cap
-    // leaves a paid order unfulfilled, so a second arrival of the same
-    // reminder must spend no further attempt.
+    // it. One silence is worth one repeat, so a second arrival of the same
+    // reminder must put no second repeat on the stream.
     const harnessed = await started({
       // Long enough that the gateway's own reminder never fires: the two
       // arrivals below are the only input.
@@ -879,7 +879,7 @@ describe("when a delivery goes unanswered", () => {
     harnessed.advance(5);
     await vi.advanceTimersByTimeAsync(5);
 
-    // One silence, one repeat; two envelopes would spend two of his attempts.
+    // One silence, one repeat.
     const again = await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect(again.envelopes).toHaveLength(1);
     expect((await state(harnessed, orderId))?.dispatch.attempts).toBe(2);

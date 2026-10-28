@@ -32,7 +32,7 @@ const POLICY: OrderPolicy = {
     syncResponseMs: 10 * SECOND,
     asyncFulfillmentMs: 4 * HOUR,
   },
-  redelivery: { baseDelayMs: 2 * SECOND, factor: 4, maxDelayMs: 5 * MINUTE, maxAttempts: 6 },
+  redelivery: { baseDelayMs: 2 * SECOND, factor: 4, maxDelayMs: 5 * MINUTE, windowMs: 3 * HOUR },
 };
 
 /** What the card says the eSIM costs. */

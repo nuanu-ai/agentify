@@ -8,13 +8,31 @@ const policy = TEST_POLICY.redelivery;
  * A handler exception, a dead process and a broken connection are one thing:
  * the answer never came back. Such an order is delivered again rather than
  * closed, and the repeating stops before the mode's deadline instead of running
- * past it.
+ * past it, or once its window after the first hand-over is over.
  */
 describe("deciding whether to deliver an order again", () => {
   it("backs off further with every attempt", () => {
-    const first = nextRedelivery({ attempts: 1, now: 0, deadlineAt: null, policy });
-    const second = nextRedelivery({ attempts: 2, now: 0, deadlineAt: null, policy });
-    const third = nextRedelivery({ attempts: 3, now: 0, deadlineAt: null, policy });
+    const first = nextRedelivery({
+      attempts: 1,
+      now: 0,
+      firstHandedOverAt: 0,
+      deadlineAt: null,
+      policy,
+    });
+    const second = nextRedelivery({
+      attempts: 2,
+      now: 0,
+      firstHandedOverAt: 0,
+      deadlineAt: null,
+      policy,
+    });
+    const third = nextRedelivery({
+      attempts: 3,
+      now: 0,
+      firstHandedOverAt: 0,
+      deadlineAt: null,
+      policy,
+    });
 
     expect(first).toStrictEqual({ retry: true, attempt: 2, delayMs: 1_000 });
     expect(second).toStrictEqual({ retry: true, attempt: 3, delayMs: 2_000 });
@@ -26,38 +44,36 @@ describe("deciding whether to deliver an order again", () => {
     // seventh waits thirty-two seconds, the eighth would wait sixty-four. The
     // buyer sits through the wait, so the ceiling is the promise; the growth is
     // pinned on both sides of the attempt that crosses it and once well past.
-    const patient = { ...policy, maxAttempts: 100 };
     const madeSoFar = (attempts: number) =>
-      nextRedelivery({ attempts, now: 0, deadlineAt: null, policy: patient });
+      nextRedelivery({ attempts, now: 0, firstHandedOverAt: 0, deadlineAt: null, policy });
 
     expect(madeSoFar(6)).toStrictEqual({ retry: true, attempt: 7, delayMs: 32_000 });
     expect(madeSoFar(7)).toStrictEqual({ retry: true, attempt: 8, delayMs: policy.maxDelayMs });
     expect(madeSoFar(20)).toStrictEqual({ retry: true, attempt: 21, delayMs: policy.maxDelayMs });
   });
 
-  it("gives up once the policy's attempts are spent", () => {
-    const spent = nextRedelivery({
-      attempts: policy.maxAttempts,
-      now: 0,
-      deadlineAt: null,
-      policy,
-    });
-    const wellPast = nextRedelivery({ attempts: 20, now: 0, deadlineAt: null, policy });
-
-    expect(spent).toStrictEqual({ retry: false, reason: "attempts_exhausted" });
-    expect(wellPast).toStrictEqual({ retry: false, reason: "attempts_exhausted" });
-  });
-
   it("gives up when the next attempt would land past the mode's deadline", () => {
     // The worker does not start the handler after the deadline: a delivery
     // that would arrive too late is not attempted at all.
-    const decision = nextRedelivery({ attempts: 1, now: 500, deadlineAt: 1_000, policy });
+    const decision = nextRedelivery({
+      attempts: 1,
+      now: 500,
+      firstHandedOverAt: 0,
+      deadlineAt: 1_000,
+      policy,
+    });
 
     expect(decision).toStrictEqual({ retry: false, reason: "past_deadline" });
   });
 
   it("still tries when the next attempt fits inside the deadline", () => {
-    const decision = nextRedelivery({ attempts: 1, now: 500, deadlineAt: 5_000, policy });
+    const decision = nextRedelivery({
+      attempts: 1,
+      now: 500,
+      firstHandedOverAt: 0,
+      deadlineAt: 5_000,
+      policy,
+    });
 
     expect(decision).toStrictEqual({ retry: true, attempt: 2, delayMs: 1_000 });
   });
@@ -67,8 +83,20 @@ describe("deciding whether to deliver an order again", () => {
     // expiry claiming that same instant as due, so a handler started there
     // starts on an order already out of time. One millisecond earlier the
     // attempt is worth making.
-    const onTheDot = nextRedelivery({ attempts: 1, now: 0, deadlineAt: 1_000, policy });
-    const justInside = nextRedelivery({ attempts: 1, now: 0, deadlineAt: 1_001, policy });
+    const onTheDot = nextRedelivery({
+      attempts: 1,
+      now: 0,
+      firstHandedOverAt: 0,
+      deadlineAt: 1_000,
+      policy,
+    });
+    const justInside = nextRedelivery({
+      attempts: 1,
+      now: 0,
+      firstHandedOverAt: 0,
+      deadlineAt: 1_001,
+      policy,
+    });
 
     expect(onTheDot).toStrictEqual({ retry: false, reason: "past_deadline" });
     expect(justInside).toStrictEqual({ retry: true, attempt: 2, delayMs: 1_000 });
@@ -127,11 +155,12 @@ describe("handing an unanswered order over again for three hours", () => {
       { kind: "payment_settled", at: T0 + 2 },
       { kind: "order_dispatched", at: T0 + 3 },
     ]);
-    // Handed over again and again; the last time a minute before the silence.
+    // Handed over again and again, the last time ten minutes before the silence.
     for (const minutes of [30, 60, 120, 170])
       order = must(order, { kind: "order_dispatched", at: T0 + minutes * MINUTE }).order;
 
-    const silence = must(order, { kind: "handler_undelivered", at: T0 + 171 * MINUTE });
+    // The next pause, eight seconds, would end just past three hours after the first.
+    const silence = must(order, { kind: "handler_undelivered", at: T0 + 3 * HOUR - 5_000 });
 
     expect(silence.effects.filter((effect) => effect.kind === "redeliver_order")).toStrictEqual([]);
     expect(silence.order.state).toBe("dispatched");

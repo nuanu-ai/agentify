@@ -655,8 +655,11 @@ describe("an order that never reached the handler", () => {
       { kind: "payment_settled", at: T0 + 2 },
       { kind: "order_dispatched", at: T0 + 3 },
     ]);
-    const exhausted = { ...dispatched, dispatch: { attempts: 5, accepted: false } };
-    const silent = must(exhausted, { kind: "handler_undelivered", at: T0 + 4 });
+    // Silent once the window after the first hand-over has passed.
+    const silent = must(dispatched, {
+      kind: "handler_undelivered",
+      at: T0 + 3 + TEST_POLICY.redelivery.windowMs,
+    });
 
     expect(silent.order.state).toBe("dispatched");
     expect(silent.effects).toStrictEqual([]);

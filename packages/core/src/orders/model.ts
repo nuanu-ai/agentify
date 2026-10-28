@@ -306,7 +306,8 @@ export type RedeliveryPolicy = {
   readonly baseDelayMs: number;
   readonly factor: number;
   readonly maxDelayMs: number;
-  readonly maxAttempts: number;
+  /** How long after the first hand-over the order is handed over again. */
+  readonly windowMs: number;
 };
 
 export type OrderPolicy = {
@@ -537,7 +538,10 @@ type OrderTimestamps = {
    * was verified.
    */
   readonly paidAt: number | null;
+  /** The latest hand-over to the merchant's process. */
   readonly dispatchedAt: number | null;
+  /** The first hand-over, from which an unanswered order's repeats are counted. */
+  readonly firstDispatchedAt: number | null;
 };
 
 export type Order = {

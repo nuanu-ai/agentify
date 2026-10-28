@@ -202,9 +202,10 @@ fulfillment](#closing-fulfillment)).
 Those three answers are the whole set, and that matters for how you report a
 temporary failure. An exception in the handler, a process that fell over, a
 connection that broke: for us each of these means the order never reached
-you, so we send it again, after a delay, until the order's deadline runs out
-or we have delivered it {{redelivery-max-attempts}} times, whichever comes first. {{Redelivery-max-attempts}} is what this
-system is set to, and no card changes it. Once we stop sending it, the order
+you, so we send it again, soon at first and then after pauses that grow to
+{{redelivery-max-delay}}, until {{redelivery-window}} after we first handed it to you or until the
+order's deadline runs out, whichever comes first. These numbers are this
+system's, and no card changes them. Once we stop sending it, the order
 stays open until its deadline: an answer or a delivery that arrives before
 then still counts. A refusal we read the other way, as a final "this cannot be
 delivered", and we end the order on it. So a supplier that did not answer in
@@ -675,7 +676,7 @@ the two your card names.
 | --- | --- | --- | --- | --- |
 | Your price handler's answer | you | {{quote-response}} | the question is asked | a synchronous card sells at its own price; an asynchronous card or a parcel is refused before payment, with no order written |
 | The price offered to the agent | the agent | {{quote-ttl}} | your answer; on a synchronous card, the silence of your price check; on a card with no price check, the agent's request | the paid request must arrive before the term ends; otherwise the agent asks for a fresh price, and no order is written |
-| Each hand-over of an order to your process | you | {{handler-answer}} | the order is handed to your process | the order is sent again, up to {{redelivery-max-attempts}} deliveries in all, within its own deadline |
+| Each hand-over of an order to your process | you | {{handler-answer}} | the order is handed to your process | the order is sent again, after pauses that grow to {{redelivery-max-delay}}, for up to {{redelivery-window}} after its first hand-over and within its own deadline |
 | The goods of a synchronous order | you | {{sync-response}} | the payment checked out | nothing is charged (`expired`, `merchant_timed_out`); goods that arrive later are released if the same buyer repeats the purchase and pays, unless you closed fulfillment |
 | The facilitator's answer about the charge | Agentify | {{settle-response}} on a synchronous order; {{settle-before-goods:number}} where the charge comes before the goods | the charge is sent | `payment_unresolved` |
 | The delivery of an asynchronous order | you | the deadline your card names; without one, {{default-async-fulfillment}} | the charge at purchase | `unfulfilled` |

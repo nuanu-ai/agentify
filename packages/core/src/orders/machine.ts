@@ -494,6 +494,7 @@ function redeliver(
   const decision = nextRedelivery({
     attempts: order.dispatch.attempts,
     now: at,
+    firstHandedOverAt: order.timestamps.firstDispatchedAt,
     deadlineAt,
     policy: order.policy.redelivery,
   });
@@ -726,7 +727,7 @@ function dispatchedOrder(order: Order, at: number): Order {
     ...order,
     state: "dispatched",
     dispatch: { attempts: order.dispatch.attempts + 1, accepted: false },
-    timestamps: { ...order.timestamps, dispatchedAt: at },
+    timestamps: { ...order.timestamps, dispatchedAt: at, firstDispatchedAt: at },
   };
 }
 
@@ -845,9 +846,8 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // At-least-once delivery: the same order landing again is ordinary, and
       // the counter is what the backoff counts from. But this event is also
       // how the record of a hand-over we already learned about from the
-      // merchant finally reaches us, and that one hand-over is counted once —
-      // the counter is what the backoff and the attempt cap read, so counting
-      // it twice costs the order a retry.
+      // merchant finally reaches us, and that one hand-over is counted once,
+      // since counting it twice would lengthen the next pause for nothing.
       const alreadyRecorded = order.timestamps.dispatchedAt !== null;
       return ok({
         ...order,
@@ -855,7 +855,11 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
           ...order.dispatch,
           attempts: alreadyRecorded ? order.dispatch.attempts + 1 : order.dispatch.attempts,
         },
-        timestamps: { ...order.timestamps, dispatchedAt: event.at },
+        timestamps: {
+          ...order.timestamps,
+          dispatchedAt: event.at,
+          firstDispatchedAt: order.timestamps.firstDispatchedAt ?? event.at,
+        },
       });
     }
     case "purchase_repeated":

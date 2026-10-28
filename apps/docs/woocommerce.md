@@ -56,8 +56,9 @@ the carts stops a download or changes its price.
 If none of the paid carts can be used at the moment a parcel's order needs one,
 for example because your shop's cart is not answering, Agentify tries the
 order again a little later, as it does when your shop does not answer at all.
-Each of these tries counts toward the {{redelivery-max-attempts}} an order gets
-in all.
+It keeps trying, with pauses that grow to {{redelivery-max-delay}}, for up to
+{{redelivery-window}} after the first hand-over, so a cart that comes free or
+is replaced in that time takes the order.
 
 Each cart is a guest session stored in your shop's database. The connector
 stops using a cart when it cannot tell whether your shop made its last change,

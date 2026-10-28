@@ -257,7 +257,9 @@ describe("a parcel whose address is gone", () => {
 describe("every parcel the machine can reach", () => {
   const ORDINARY = modeOf("async");
   const LONG_AFTER = 1_000_000_000;
-  const REDELIVERY_CAP = TEST_POLICY.redelivery.maxAttempts;
+  // Past the attempt whose pause reaches the ceiling, every count decides alike.
+  const { baseDelayMs, factor, maxDelayMs } = TEST_POLICY.redelivery;
+  const PAUSES_SETTLE = Math.ceil(Math.log(maxDelayMs / baseDelayMs) / Math.log(factor)) + 1;
 
   const eventsAt = (at: number): readonly OrderEvent[] => [
     ...ORDER_EVENT_KINDS.filter((kind) => kind !== "deadline_expired").map((kind) => ({
@@ -282,8 +284,8 @@ describe("every parcel the machine can reach", () => {
       order.payment,
       order.dispatch.accepted,
       // A repeat already on the stream is handed over and counted without
-      // limit, so past the cap on redeliveries one count reads as another.
-      Math.min(order.dispatch.attempts, REDELIVERY_CAP + 1),
+      // limit, so past the ceiling on pauses one count reads as another.
+      Math.min(order.dispatch.attempts, PAUSES_SETTLE + 1),
       order.heldFulfillment,
       order.closure?.cause ?? null,
       order.timestamps.dispatchedAt === null,

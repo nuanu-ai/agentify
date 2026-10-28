@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { REDELIVERY_MAX_ATTEMPTS } from "../published.js";
+import { REDELIVERY_MAX_DELAY_MS, REDELIVERY_WINDOW_MS } from "../published.js";
 import { deadlines } from "./deadlines.js";
 import { must, newOrder, reach, T0, walk } from "./fixtures.js";
 import { transition } from "./machine.js";
@@ -96,22 +96,24 @@ function retryPromise(order: Order): void {
     attempt: order.dispatch.attempts + 1,
     delayMs: order.policy.redelivery.baseDelayMs,
   });
-  expect(order.policy.redelivery.maxAttempts).toBe(REDELIVERY_MAX_ATTEMPTS);
-  const policy = order.policy.redelivery;
-  const delays = [1, 2, 3].map((attempts) =>
-    nextRedelivery({ attempts, now: T0, deadlineAt: null, policy }),
+  // The page's numbers are the published ones, which the gateway runs by default.
+  const policy = {
+    ...order.policy.redelivery,
+    maxDelayMs: REDELIVERY_MAX_DELAY_MS,
+    windowMs: REDELIVERY_WINDOW_MS,
+  };
+  const after = (attempts: number, now = T0, deadlineAt: number | null = null) =>
+    nextRedelivery({ attempts, now, firstHandedOverAt: T0, deadlineAt, policy });
+  expect([1, 2, 3].map((attempts) => after(attempts))).toEqual(
+    [1, 2, 3].map((attempts) => ({
+      retry: true,
+      attempt: attempts + 1,
+      delayMs: policy.baseDelayMs * policy.factor ** (attempts - 1),
+    })),
   );
-  expect(delays.map((retry) => (retry.retry ? retry.delayMs : null))).toEqual([
-    policy.baseDelayMs,
-    policy.baseDelayMs * policy.factor,
-    policy.baseDelayMs * policy.factor ** 2,
-  ]);
-  expect(
-    nextRedelivery({ attempts: REDELIVERY_MAX_ATTEMPTS, now: T0, deadlineAt: null, policy }).retry,
-  ).toBe(false);
-  expect(
-    nextRedelivery({ attempts: 1, now: T0, deadlineAt: T0 + policy.baseDelayMs, policy }).retry,
-  ).toBe(false);
+  expect(after(40)).toMatchObject({ retry: true, delayMs: REDELIVERY_MAX_DELAY_MS });
+  expect(after(2, T0 + REDELIVERY_WINDOW_MS).retry).toBe(false);
+  expect(after(1, T0, T0 + policy.baseDelayMs).retry).toBe(false);
 }
 
 function paidAsync(): Order {
@@ -354,7 +356,9 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     const row = limitRow(2);
     expect(row[2]).toBe("{{handler-answer}}");
     expect(row[3]).toMatch(/handed to your process/i);
-    expect(row[4]).toMatch(/sent again.*{{redelivery-max-attempts}}.*deadline/i);
+    expect(row[4]).toMatch(
+      /sent again.*{{redelivery-max-delay}}.*{{redelivery-window}}.*deadline/i,
+    );
     retryPromise(reach("dispatched"));
     // An answer that did not come back is not an answer, so the agent is not
     // told his purchase failed: it is still going, and the order goes back to
@@ -597,7 +601,9 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
 
   it(`${FAILURES[2]}: the order comes again rather than closing`, () => {
     const row = failureRow(2);
-    expect(row[1]).toMatch(/pause.*grows.*{{redelivery-max-attempts}}.*deadline/i);
+    expect(row[1]).toMatch(
+      /pause.*grows.*{{redelivery-max-delay}}.*{{redelivery-window}}.*deadline/i,
+    );
     expect(row.slice(2, 4).every((cell) => /synchronous/.test(cell))).toBe(true);
     retryPromise(reach("dispatched"));
     // An exception is not an answer, so the agent is not told his purchase

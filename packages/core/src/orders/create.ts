@@ -83,6 +83,7 @@ export function createOrder(input: CreateOrderInput): CreateOrderResult {
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
+      firstDispatchedAt: null,
     },
   };
 

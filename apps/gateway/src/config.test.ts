@@ -453,8 +453,8 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...required, SETTLE_RESPONSE_MS: "1.5" })).toThrowError(
       /SETTLE_RESPONSE_MS.*milliseconds.*zero/s,
     );
-    expect(() => loadConfig({ ...required, REDELIVERY_MAX_ATTEMPTS: "-1" })).toThrowError(
-      /REDELIVERY_MAX_ATTEMPTS.*zero/s,
+    expect(() => loadConfig({ ...required, REDELIVERY_WINDOW_MS: "0" })).toThrowError(
+      /REDELIVERY_WINDOW_MS.*milliseconds.*zero/s,
     );
     expect(() => loadConfig({ ...required, REDELIVERY_FACTOR: "0.5" })).toThrowError(
       /REDELIVERY_FACTOR.*1/s,

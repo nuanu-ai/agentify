@@ -24,7 +24,8 @@ import {
   percentOf,
   QUOTE_RESPONSE_MS,
   QUOTE_TTL_MS,
-  REDELIVERY_MAX_ATTEMPTS,
+  REDELIVERY_MAX_DELAY_MS,
+  REDELIVERY_WINDOW_MS,
   SETTLE_BEFORE_GOODS_MS,
   SETTLE_RESPONSE_MS,
   SILENT_AFTER_MS,
@@ -78,7 +79,8 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "settle-response": { ms: SETTLE_RESPONSE_MS, unit: "second" },
   "settle-before-goods": { ms: SETTLE_BEFORE_GOODS_MS, unit: "second" },
   "default-async-fulfillment": { ms: DEFAULT_ASYNC_FULFILLMENT_MS, unit: "day" },
-  "redelivery-max-attempts": { count: REDELIVERY_MAX_ATTEMPTS },
+  "redelivery-window": { ms: REDELIVERY_WINDOW_MS, unit: "hour" },
+  "redelivery-max-delay": { ms: REDELIVERY_MAX_DELAY_MS, unit: "minute" },
   "unserved-at-most": { count: UNSERVED_AT_MOST },
   "silent-after": { ms: SILENT_AFTER_MS, unit: "minute" },
   commission: {
@@ -107,7 +109,7 @@ function said(value: BuildValue, form: string | undefined): string {
   if ("ms" in value) {
     if (form === undefined) return durationInWords(value.ms, value.unit);
     if (form === "number") return inWords(unitsIn(value.ms, value.unit));
-    if (form === "short" && value.unit !== "day") {
+    if (form === "short" && (value.unit === "second" || value.unit === "minute")) {
       return `${unitsIn(value.ms, value.unit)} ${SHORT_UNIT[value.unit]}`;
     }
     throw new Error(

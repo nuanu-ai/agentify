@@ -131,7 +131,7 @@ export const anOrder = (
         syncResponseMs: 1,
         asyncFulfillmentMs: 1,
       },
-      redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, maxAttempts: 1 },
+      redelivery: { baseDelayMs: 1, factor: 1, maxDelayMs: 1, windowMs: 1 },
     },
     payment:
       state === "delivered" || state === "unfulfilled" || state === "fulfillment_closed"
@@ -151,6 +151,7 @@ export const anOrder = (
       settleStartedAt: null,
       paidAt: at.createdAt ?? 1_000,
       dispatchedAt: null,
+      firstDispatchedAt: null,
     },
   },
   merchantId: at.merchantId ?? A,
