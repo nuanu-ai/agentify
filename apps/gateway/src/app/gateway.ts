@@ -322,6 +322,7 @@ const PASSED_AT_MOST = 32;
 interface HowTheySell {
   readonly selling: MerchantSelling;
   readonly sellable: boolean;
+  readonly sellerSite: string | null;
   readonly integration: Integration;
   /** Whether they have as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
@@ -333,6 +334,8 @@ interface HowTheySell {
 const saleFactsOf = (stored: StoredCard, theirs: HowTheySell): SaleFacts => ({
   selling: sellingFor(theirs.selling, stored, theirs.sellable, theirs.integration),
   price: stored.card.price,
+  fulfillment: stored.card.fulfillment,
+  sellerSite: theirs.sellerSite,
   unserved: theirs.unserved,
   through: theirs.integration,
   lastContact: theirs.lastContact,
@@ -366,7 +369,8 @@ export const silentAt = (polled: number | null, at: number): boolean =>
  * itself; the catalogue and a purchase turn it away all the same.
  */
 export type OffSale =
-  | { readonly code: "not_selling" | "seller_not_fulfilling"; readonly transient: false }
+  | { readonly code: "not_selling"; readonly transient: false; readonly message?: string }
+  | { readonly code: "seller_not_fulfilling"; readonly transient: false }
   | { readonly code: "seller_not_taking_orders"; readonly transient: true };
 
 /** What decides whether one card can be bought now. */
@@ -375,6 +379,8 @@ interface SaleFacts {
   readonly selling: MerchantSelling;
   /** The card's price as stored, held to the price rule as it stands now. */
   readonly price: Card["price"];
+  readonly fulfillment: Card["fulfillment"];
+  readonly sellerSite: string | null;
   /** Whether its seller has as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
   /** The integration its seller sells through. */
@@ -405,6 +411,9 @@ const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
   if (facts.selling !== "open" || priceProblemsOf(facts.price).length > 0) {
     return { code: "not_selling", transient: false };
   }
+  if (siteRequiredFor(facts.fulfillment) && facts.sellerSite === null) {
+    return { code: "not_selling", transient: false, message: SELLER_SITE_REQUIRED };
+  }
   if (facts.unserved) return { code: "seller_not_fulfilling", transient: false };
   if (facts.through === "api" && silentAt(facts.lastContact, at)) {
     return { code: "seller_not_taking_orders", transient: true };
@@ -414,6 +423,13 @@ const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
 
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
+
+/** A buyer pays before receiving goods, so needs somewhere to read the merchant's terms. */
+const siteRequiredFor = (fulfillment: unknown): boolean =>
+  fulfillment === "async" || fulfillment === "ship";
+
+const SELLER_SITE_REQUIRED =
+  "this seller has not provided the site of their shop, so this purchase cannot take a payment before delivery or shipment; nothing was charged";
 
 /**
  * Why a publish through the integration not in use is refused. About the
@@ -821,18 +837,17 @@ export class Gateway {
     // somebody can be told what is missing.
     const missing = missingFrom(merchant, this.runtime.config, this.runtime.clock());
 
-    // A parcel's card asks one more thing of its merchant: the site of their
-    // shop, where a buyer takes a parcel that did not arrive. It is checked on
-    // the card as sent, so a card refused for something else still names it.
-    const parcelWithoutSite =
+    // Check the mode as sent so a malformed prepaid card still names the
+    // missing merchant setting together with its own findings.
+    const prepaidWithoutSite =
       typeof body === "object" &&
       body !== null &&
-      (body as { readonly fulfillment?: unknown }).fulfillment === "ship" &&
+      siteRequiredFor((body as { readonly fulfillment?: unknown }).fulfillment) &&
       merchant.sellerSite === null
         ? [MERCHANT_FINDINGS.NO_SELLER_SITE]
         : [];
     if (!parsed.success) {
-      return cardRejected([...missing, ...parcelWithoutSite], findingsOf(parsed.error.issues));
+      return cardRejected([...missing, ...prepaidWithoutSite], findingsOf(parsed.error.issues));
     }
     // Asked of the parsed card, so a price written as one string meets the same
     // rule in the same words as one written as two fields.
@@ -840,7 +855,7 @@ export class Gateway {
       ...priceProblemsOf(parsed.data.price),
       ...oversizedChallenge(this.runtime.widestChallenge(parsed.data)),
     ];
-    const lacking = [...missing, ...parcelWithoutSite];
+    const lacking = [...missing, ...prepaidWithoutSite];
     if (lacking.length > 0 || unsellable.length > 0) {
       return cardRejected(lacking, unsellable);
     }
@@ -888,6 +903,8 @@ export class Gateway {
               {
                 selling: entry.selling,
                 price: entry.card.card.price,
+                fulfillment: entry.card.card.fulfillment,
+                sellerSite: entry.sellerSite,
                 unserved: stopped.has(entry.card.merchantId),
                 through: entry.integration,
                 lastContact: entry.lastContact,
@@ -971,6 +988,7 @@ export class Gateway {
     return {
       selling: merchant.selling,
       sellable: sellableBy(merchant, this.runtime.config, at),
+      sellerSite: merchant.sellerSite,
       integration: merchant.integration,
       unserved: await this.#unserved(merchant.id),
       lastContact: await this.runtime.store.lastContact(merchant.id),
@@ -1760,9 +1778,10 @@ export class Gateway {
     const at = this.runtime.clock();
     const theirs = await this.#howTheySell(stored.merchantId);
     // Before the order is written or the price asked, and in every mode.
-    switch (offSaleNow(saleFactsOf(stored, theirs), at)?.code) {
+    const off = offSaleNow(saleFactsOf(stored, theirs), at);
+    switch (off?.code) {
       case "not_selling":
-        return { step: "not_selling", message: NOT_ON_SALE };
+        return { step: "not_selling", message: off.message ?? NOT_ON_SALE };
       case "seller_not_fulfilling":
         this.#sayUnserved(stored.merchantId, at);
         return { step: "seller_not_fulfilling" };
@@ -1954,6 +1973,16 @@ export class Gateway {
     // Where that split is one the merchant has left, the payment is fit only
     // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
+
+    // Previously quoted purchases must meet the site rule before their first
+    // payment. Paid recovery and payments already accepted for execution continue.
+    if (
+      payingMerchant?.sellerSite === null &&
+      before.order.mode.settle === "on_purchase" &&
+      takesANewPayment(before.order)
+    ) {
+      return { step: "not_selling", message: SELLER_SITE_REQUIRED };
+    }
 
     // Asked again before the payment is verified, so a price named before the
     // seller was stopped is not charged after. Only a purchase being paid for
@@ -3470,7 +3499,7 @@ const MERCHANT_WORDS: Readonly<Record<MerchantFinding, string>> = {
   no_seller_name: "no seller name",
   no_payout_wallet: "no payout wallet",
   no_operator_approval: "no operator approval for the live catalog",
-  no_seller_site: "no site for their shop, which a parcel's card needs",
+  no_seller_site: "no site for their shop, needed for a purchase paid before delivery or shipment",
 };
 
 /** The body of the line: the merchant's missing settings, then the card's findings. */
@@ -3537,9 +3566,9 @@ const MERCHANT_PROBLEMS: Readonly<Record<MerchantFinding, Problem>> = {
     path: [],
     code: MERCHANT_FINDINGS.NO_SELLER_SITE,
     message:
-      "this merchant has not set the site of their shop, and a parcel's card is published only" +
-      " with one: a parcel that does not arrive is a question its buyer takes to the seller, and" +
-      " the site is where this system sends them; set it with POST /v0/seller-name and publish" +
+      "this merchant has not set the site of their shop, and an asynchronous or parcel card" +
+      " is published only with one: the buyer needs it to read the merchant's terms and ask" +
+      " about an unfulfilled purchase; set it with POST /v0/seller-name and publish" +
       " this card again",
   },
 };

@@ -67,7 +67,7 @@ const isSet = (value: string | null | Unknown): boolean | Unknown =>
 export function readinessOf(facts: MerchantFacts, surface: SurfaceMode): Readiness {
   // Keyed by every code there is, so a code added to the contract does not
   // compile until somebody says which fact answers it. A shop's site is asked
-  // of a parcel's card alone, never of a merchant on a surface, so the publish
+  // of async and parcel cards, never of a merchant on a surface, so the publish
   // door asks it with the card in hand and this rule does not hold it.
   const held: Readonly<Record<Exclude<MerchantFinding, "no_seller_site">, boolean | Unknown>> = {
     no_seller_name: isSet(facts.sellerName),

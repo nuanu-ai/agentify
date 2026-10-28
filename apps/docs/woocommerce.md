@@ -344,6 +344,12 @@ settle: without them every product would be refused, so Import stays unavailable
 and says which of them to set. A shop priced in another currency imports
 nothing until its rate is set, which the page asks for first.
 
+Every product imported through WooCommerce takes payment before delivery or
+shipment. Set your shop's site in Settings before importing: publication
+requires it, and buyers read your cancellation, refund and support terms there.
+Existing cards without a site leave the catalogue and refuse new purchases
+until you give one. Already paid orders continue to fulfillment.
+
 The result lists every product it read under one of these headings, in this
 order:
 
@@ -387,9 +393,6 @@ and what you do for the buyer if it does not, are yours and your shop's.
    your shop holds a paid order for it, do not ship that order: Agentify could
    not confirm it with your shop. Close fulfillment of it on Orders with an
    explanation for the buyer, and settle the shop order by your own policy.
-6. A parcel is published only once your shop's site is set in
-   Settings, because the site is where a buyer asks about a parcel that did not
-   arrive.
 
 To stop Agentify accepting delivery for an order, use **Orders → Order details
 → Close fulfillment** ([what closing does](/money#if-the-buyer-did-not-get-the-goods)).

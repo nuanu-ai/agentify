@@ -285,9 +285,12 @@ address lacks something your carrier needs; the agent is told the purchase did
 not happen. The price an agent pays does not cover duties the recipient may owe
 at the border, so say in the card's description where that can happen.
 
-One thing is asked of you rather than of the card. A parcel's card is
-published only once you have given the site of your shop, because a parcel
-that does not arrive is a question its buyer takes there (`no_seller_site`).
+An asynchronous or parcel card requires the site of your shop
+(`no_seller_site`). The buyer pays before delivery and needs somewhere to read
+your cancellation and refund terms and ask about an unfulfilled purchase.
+Set the site in your dashboard settings or with `POST /v0/seller-name`.
+Existing cards without a site leave the catalogue and refuse new purchases
+until you give one. Already paid orders continue to fulfillment.
 
 ## A price worked out at the moment of purchase
 
@@ -583,7 +586,7 @@ our list that no check on your side can see, and all of them are about you
 rather than the card: no name set for buyers to read (`no_seller_name`), no
 wallet set for your share of the sales wherever a payment settles
 (`no_payout_wallet`), on the live channel only, no approval from the operator
-yet (`no_operator_approval`), and on a parcel's card alone, no site set for
+yet (`no_operator_approval`), and on an asynchronous or parcel card, no site set for
 your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
 your side cannot measure the header a card is paid through either, so a card it
 passes can still be refused for its size ([how large a card may be](#how-large-a-card-may-be)).

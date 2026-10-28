@@ -54,8 +54,13 @@ the money there is real.
 
 ## A card, and the handler that fills the orders
 
-The card is the whole of what an agent reads before it buys: what you sell, at
-what price, and what the buyer receives. This one is complete.
+An asynchronous or parcel card takes payment before delivery, so publishing
+one requires your shop's site in the dashboard settings or through
+`POST /v0/seller-name` with `{"seller_site":"https://your-shop.example"}`.
+Buyers read your cancellation, refund and support terms there. A synchronous
+card can sell without a site.
+
+The card describes what you sell, at what price, and what the buyer receives.
 
 ```ts
 await agentify.catalog.publish({

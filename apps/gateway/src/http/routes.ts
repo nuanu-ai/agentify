@@ -432,7 +432,16 @@ async function probeAnswer(
   // refused. One off sale for a moment still answers it (`OffSale`).
   const off = offered.offSale;
   if (off !== null && !off.transient) {
-    return written(response, CONFLICT, refusal(off.code, OFF_SALE_WORDS[off.code]));
+    return written(
+      response,
+      CONFLICT,
+      refusal(
+        off.code,
+        off.code === "not_selling"
+          ? (off.message ?? OFF_SALE_WORDS[off.code])
+          : OFF_SALE_WORDS[off.code],
+      ),
+    );
   }
   response.setHeader(
     PAYMENT_REQUIRED_HEADER,

@@ -80,7 +80,7 @@ const freshMerchant = async (harnessed: Harness): Promise<{ merchantId: string; 
 
 const name = async (served: Served, key: string): Promise<void> => {
   const named = await served.call("POST", "/v0/seller-name", {
-    body: { seller_name: "Their own shop" },
+    body: { seller_name: "Their own shop", seller_site: "https://shop.example" },
     headers: bearer(key),
   });
   expect(named.status, JSON.stringify(named.body)).toBe(200);

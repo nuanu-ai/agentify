@@ -201,7 +201,7 @@ describe("the one line a refusal is read by", () => {
     ).error;
 
     // Every finding about the merchant but the shop's site, which is asked of
-    // a parcel's card alone.
+    // cards paid before delivery or shipment.
     expect(aboutTheMerchant(refusal)).toStrictEqual(
       Object.values(MERCHANT_FINDINGS).filter((finding) => finding !== "no_seller_site"),
     );
