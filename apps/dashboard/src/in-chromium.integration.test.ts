@@ -64,7 +64,7 @@ beforeAll(async () => {
   });
   await identity.make(PERSON, harnessed.merchant.id);
   // Cards enough to scroll a short window, published as the merchant's own
-  // code publishes them, and one price asked for and never paid, so the orders
+  // code publishes them, and one paid order awaiting delivery, so the orders
   // have a list to search and narrow.
   for (const room of [101, 102, 103, 104]) {
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
@@ -73,10 +73,23 @@ beforeAll(async () => {
       description: `One night in room ${room}`,
       price: { amount: "80.00", currency: "USD" },
       result: { access_code: { type: "string" } },
-      fulfillment: "sync",
+      ...(room === 101
+        ? { fulfillment: "async", fulfill_deadline_seconds: 3600 }
+        : { fulfillment: "sync" }),
     });
     if (!published.ok) throw new Error("the test's card was not published");
-    if (room === 101) await harnessed.gateway.beginPurchase(published.id, {});
+    if (room === 101) {
+      const offered = await harnessed.gateway.beginPurchase(published.id, {});
+      if (offered.step !== "pay") throw new Error("the room order was not priced");
+      const paid = await harnessed.gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        "ROOM_PAYMENT",
+        "ROOM_PAYMENT",
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
+      if (paid.step !== "under_way") throw new Error("the room payment was not accepted");
+    }
   }
   await identity.requestLink(PERSON, "default", ONE_CLIENT);
   const link = new URL(/(https?:\/\/\S+)/.exec(mails.at(-1)?.body ?? "")?.[1] ?? "");
@@ -695,7 +708,14 @@ it("closes fulfillment from a keyboard-accessible order form and preserves the m
   const offered = await harnessed.gateway.beginPurchase(published.id, {});
   if (offered.step !== "pay") throw new Error("the closure order was not priced");
   const id = offered.order.order.id;
-  await harnessed.gateway.payPurchase(id, "CLOSURE_PAYMENT", "CLOSURE_PAYMENT");
+  const paid = await harnessed.gateway.payPurchase(
+    offered.order.priceOffer.stamp,
+    "CLOSURE_PAYMENT",
+    "CLOSURE_PAYMENT",
+    undefined,
+    { itemId: offered.order.itemId, params: offered.order.params },
+  );
+  if (paid.step !== "under_way") throw new Error("the closure payment was not accepted");
   const page = await onTheCards({ width: 390, height: 844 }, true);
   try {
     await page.goto(`${origin}${BASE}/orders?q=${encodeURIComponent(id)}`);
