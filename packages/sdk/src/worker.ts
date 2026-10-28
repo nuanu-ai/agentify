@@ -65,7 +65,7 @@ const describeThrown = (cause: unknown): string => {
 
 /** What follows for an order nothing was answered for. */
 const COMES_AGAIN =
-  "it is sent again while it has attempts left and its deadline allows, and otherwise ends undelivered";
+  "it is sent again for a while after it was first handed over, as long as its deadline allows, and otherwise ends undelivered";
 
 /**
  * What follows from a failed answer for the order it was about. Only an

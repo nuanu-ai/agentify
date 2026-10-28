@@ -146,7 +146,8 @@ charges nothing either.
 An order your package cannot read, one carrying a field or an address shape
 that the contract version it speaks does not allow, goes the way of a handler
 that threw: it is not handed to your handler, nothing is answered, and it comes
-again within its attempts, while everything else on the subscription goes on.
+again for up to {{redelivery-window}} after it was first handed over, as long as
+its deadline allows, while everything else on the subscription goes on.
 Your problem handler receives an `unread` problem naming the order and the
 fields it could not read; a newer release of the package may read it ([When
 Agentify is newer than your

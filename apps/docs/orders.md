@@ -772,8 +772,9 @@ goods may already be issued. It waits eight seconds at most, which ends inside
 the ten seconds Docker allows a container to stop by default, and each message
 still unfinished then gets a `batch_abandoned` problem of its own, with the
 order or price question it is about as its `subject`. An order still waiting
-or still in your handler had nothing sent for it and comes again while it has
-attempts left and its deadline allows; whatever your handler returns after that
+or still in your handler had nothing sent for it and comes again for up to
+{{redelivery-window}} after it was first handed over, as long as its deadline
+allows; whatever your handler returns after that
 is not sent. An answer that was already on its way may have arrived, and
 nothing on your side knows whether it did, so the order may be closed by it or
 may come again. A process manager that kills your process sooner cuts the wait
@@ -873,8 +874,9 @@ next paragraphs say, so an order like this is outside the version your package
 speaks, and the problem says exactly that: the order carries something that
 version does not allow, and a newer release may read it, which is a
 possibility rather than a promise. Nothing is answered for that order, so it
-comes again while it has attempts left and its deadline allows, and otherwise
-ends undelivered; once paid, it stays on the open list.
+comes again for up to {{redelivery-window}} after it was first handed over, as
+long as its deadline allows, and otherwise ends undelivered; once paid, it stays
+on the open list.
 Read back, the same order fails `orders.get` with a thrown `AgentifyError`
 that names the fields. `orders.list` does not throw for it: it returns every
 order it can read and leaves such an order out, and your problem handler

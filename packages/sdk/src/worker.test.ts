@@ -636,7 +636,7 @@ describe("a gateway newer than this package", () => {
     expect(problems[0]?.message).toContain(`contract version ${contractVersion}`);
     expect(problems[0]?.message).toContain("a newer release of @nuanu-ai/agentify may read it");
     expect(problems[0]?.message).not.toMatch(/agentify reads it/);
-    expect(problems[0]?.message).toMatch(/sent again while it has attempts left/);
+    expect(problems[0]?.message).toMatch(/sent again/);
   });
 
   it("takes the next order at once after one it cannot read, without the wait that follows a failed poll", async () => {
