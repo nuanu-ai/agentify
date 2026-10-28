@@ -10,8 +10,8 @@ engineering consequences. His words of 2026-10-27 replace the limit of fifty
 purchases waiting for payment: "A request nobody paid for may use a moment of
 a merchant's capacity and holds nothing over time" and "Work that is paid for
 never waits behind work that is not"; one merchant's load must not slow
-another's either. The gates, lanes and numbers below are engineering choices,
-not measured capacity
+another's either. The gates, the lanes and their counts are engineering
+choices, not measured capacity
 ([research 90](../research/90-unpaid-price-questions-design.md)).
 
 ## Context
@@ -27,27 +27,28 @@ while the merchant's own process was down.
 ## Decision
 
 An unpaid purchase writes nothing (ADR-0049), so nothing is counted over time.
-A gate per merchant, shared by the SDK and WooCommerce, bounds price questions:
-four at once, sixteen started in any one second, sixteen waiting. A question
-waits for a place for two seconds at most, and never for more than half its
-answer window. Then a synchronous card sells at its card price, as when the
-merchant is silent, and a card paid before delivery answers `seller_busy`, HTTP
-429 with `Retry-After: 2`. A price check that goes unanswered on such a card
-answers `seller_busy` with `Retry-After: 10`, saying that nothing was charged
-and the price check may not be answering; a merchant's "unavailable" answers
-`not_selling`, not retryable. Ready paid orders and events reach the merchant
-ahead of price questions; a running handler is not interrupted.
+Each merchant has a gate for price questions, shared by the SDK and
+WooCommerce, and two lanes for payment checks, each with a few places and a
+short line; ready paid orders and events reach the merchant ahead of price
+questions. A merchant has ten seconds to answer a price question: "да, 10
+секунд нормально" (yes, ten seconds is fine), the product owner, 2026-10-28. A
+question with no place in time sells a synchronous card at its card price, as
+a silent merchant's does, and answers a card paid before delivery with
+`seller_busy`, HTTP 429 with `Retry-After: 2`; one left unanswered there gets
+`Retry-After: 10` and says the price check may not be answering. A merchant's
+"unavailable" answers `not_selling`, not retryable.
 
-Payments are checked per merchant in two lanes. One whose EIP-3009 signature
-recovers to the wallet it names waits in the buyer lane, four checks at once and
-sixteen waiting, after a cached balance read that refuses a wallet holding less
-than the price before it takes a place; a balance that cannot be read refuses
-nothing. Any other signature, a contract wallet's among them, waits in its own
-lane, two at once and four waiting, and never ahead of a buyer whose key signed.
-A payment that finds its line full, or no place within two seconds, gets
-`seller_busy` with `Retry-After: 2`. The facilitator still judges validity; a
-check gives up after 10 seconds and a charge after 30. One merchant's questions
-and checks never take another's places, and an idle merchant is forgotten.
+A payment whose EIP-3009 signature recovers to the wallet it names waits in
+the buyer lane. Any other, a contract wallet's among them, and a key's payment
+whose wallet the chain could not tell about, wait in a smaller lane, never
+ahead of a buyer whose key signed. In either lane one payer, the wallet that
+signed or else the one the payment names, holds at most one place and one place
+in line per merchant. What the token would refuse is refused before any lane:
+an authorization not valid yet, a key's high-s signature and, from the chain, a
+used nonce or a balance below the price; getting a paid purchase back is never
+judged by the balance. A full line, or no place within two seconds, answers
+`seller_busy` with `Retry-After: 2`. The facilitator still judges validity, and
+one merchant's work never takes another's places.
 
 These counts are kept in memory, which this decision once rejected because two
 processes, or two requests at once, would both pass such a limit. They now
@@ -59,28 +60,24 @@ Every purchase is refused with `seller_not_taking_orders` while no compatible
 process of the merchant's own code has polled for ten minutes, before pricing
 and again before its first payment is verified; a payment that releases goods
 already made goes through. Nothing is stored to resume: the first compatible
-poll lets the next purchase through, and paused cards stay paused. Contact is a
-poll speaking the gateway's contract (ADR-0006), recorded per merchant at most
-every thirty seconds per process and kept in the database, so a restart refuses
-nobody. A process whose handlers are all busy does not poll and counts as
-quiet. A WooCommerce connector runs inside Agentify and is never refused for
-this. The catalogue lists a card only where the door would price it, by one
-rule both read; a look at a silent merchant's card, the unpaid GET discovery
-crawlers read, still answers with its challenge, so an outside listing does not
-drop it (ADR-0012). A busy merchant's cards stay listed. `seller_busy` and
+poll lets the next purchase through. A WooCommerce connector runs inside
+Agentify and is never refused for this. The catalogue lists a card only where
+the door would price it, while a silent merchant's card still answers its
+unpaid GET with its challenge, so an outside listing keeps it (ADR-0012). A
+busy merchant's cards stay listed. `seller_busy` and
 `seller_not_taking_orders` are retryable and charge nothing.
 
 ## Alternatives rejected
 
 Fifty unpaid purchases per merchant: anyone could hold all fifty and stop sales
-without paying. A limit per buyer or per address: an agent has no identity at
-the door, and addresses are cheap. Stopping a silent merchant's selling as a
-pause: it would need resuming by hand after an ordinary restart. Recording
-contact on every call with the merchant's key: a publishing script would count
-as a running worker. A field on each catalogue card saying whether it can be
-bought now: it grows the public surface, when leaving the card out says the
-same. Fair shares between sources, a room for agents vetted by directories, a
-lane for agents that sign before the price, reserved worker capacity and
-Cloudflare in front: kept for when abuse or a merchant whose gate is often full
-is seen, and Cloudflare only with per-address limits, since its challenges
-refuse agents, which are programs.
+without paying. A limit per buyer or per address on price questions: an agent
+has no identity before it pays, and addresses are cheap. Stopping a silent
+merchant's selling as a pause: it would need resuming by hand after an ordinary
+restart. Recording contact on every call with the merchant's key: a publishing
+script would count as a running worker. A field on each catalogue card saying
+whether it can be bought now: it grows the public surface, when leaving the
+card out says the same. Fair shares between sources, a room for agents vetted
+by directories, a lane for agents that sign before the price, reserved worker
+capacity and Cloudflare in front: kept for when abuse or a merchant whose gate
+is often full is seen, and Cloudflare only with per-address limits, since its
+challenges refuse agents, which are programs.

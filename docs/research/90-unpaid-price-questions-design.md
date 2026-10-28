@@ -38,8 +38,10 @@ when payment arrives. The gateway keeps the merchant's price until its stated
 term and does not ask the merchant to price it again. A repeated saved
 challenge finds the same order. The term is judged when the complete paid
 request reaches Agentify, not when the buyer signs or the chain executes the
-payment. On 2026-10-28 he set the term at "at least three minutes", because an
-agent may show the price to a person.
+payment. On 2026-10-28 he set the term at three minutes, because an agent may
+show the price to a person: "нужно хотя бы три минуты" (at least three minutes
+are needed). The same day he accepted ten seconds for a merchant to answer a
+price question: "да, 10 секунд нормально" (yes, ten seconds is fine).
 
 One admission gate protects both SDK and WooCommerce merchants. Its bounds are
 loose code constants, with no new settings. The limit of fifty and the
@@ -137,6 +139,14 @@ A merchant with nothing under way and nobody waiting is forgotten, so the gate
 holds only merchants with live work, whatever identifiers callers present. One
 merchant's questions never take another's places.
 
+A merchant whose own code has not polled for ten minutes is refused before any
+of this (ADR-0043). Contact is a poll speaking the gateway's contract
+(ADR-0006), recorded per merchant at most every thirty seconds per process and
+kept in the database, so a restart refuses nobody. A process whose handlers
+are all busy does not poll and counts as quiet. Cards the merchant paused stay
+paused when contact returns, and the catalogue and the purchase door read one
+rule for whether a card can be priced now.
+
 ## Payments
 
 ### Before the payment is checked
@@ -162,23 +172,57 @@ request again to learn how the purchase stands.
 Payments are checked per merchant in two lanes. A payment whose EIP-3009
 signature is 65 bytes and recovers, here and without asking anybody, to the
 `from` address it names goes into the buyer lane: four checks at once and
-sixteen waiting. Before it takes a place there, the gateway reads the wallet's
-token balance; a wallet holding less than the price is refused at once with
-`payment_not_verified` and the balance named, and takes no place. Balances are
-kept for five seconds, for at most 1,024 wallets, the oldest dropped first, so
-one buyer's retries ask the chain once. A read that fails is not kept and
-refuses nothing.
+sixteen waiting. Any other signature goes into the unproven lane, two checks at
+once and four waiting: a contract wallet's, an ERC-6492 wrapper, or bytes that
+are no signature at all. Those payments wait behind each other and never in
+front of a buyer whose own key signed. A payment that finds its line full, or
+no place within two seconds, is answered `seller_busy`, HTTP 429, with
+`Retry-After: 2`, and the agent sends the same request with the same payment
+again. There is no cap across merchants in the process. The lanes decide only
+where a payment waits; the facilitator still decides whether it is valid.
 
-Any other signature goes into the unproven lane, two checks at once and four
-waiting: a contract wallet's, an ERC-6492 wrapper, or bytes that are no
-signature at all. Those payments wait behind each other and never in front of
-a buyer whose own key signed. A payment that finds its line full, or no place
-within two seconds, is answered `seller_busy`, HTTP 429, with `Retry-After: 2`,
-and the agent sends the same request with the same payment again. There is no
-cap across merchants in the process. Getting a paid purchase back uses the same
-lanes and skips the balance read, because a return charges nothing. The lanes
-decide only where a payment waits; the facilitator still decides whether it is
-valid.
+In each lane one payer holds at most one place and one place in line per
+merchant, so holding more places takes more wallets. A second payment from a
+payer already waiting is turned away at once, and one from a payer holding a
+place waits until that place is given back. In the buyer lane the payer is the
+wallet whose key signed. In the unproven lane it is the `from` the payment
+names, which nobody has proved, and every payment that names no wallet counts
+as one payer. This bound per payer is an engineering choice. It makes noise in
+the unproven lane spend a fresh claimed address per place, which costs nothing,
+so there it bounds nothing beyond the lane's own size.
+
+### What is refused before any lane
+
+Some payments the token itself would refuse at the charge, so the gateway
+refuses them before they take a place, from what the payment and the chain
+already say. An authorization whose `validAfter` lies more than thirty seconds
+past the gateway's clock is not valid yet. A signature by a wallet's own key in
+the high-s form, with `s` in the upper half of the curve's order, is refused,
+since the token accepts only the lower form. For a payment that charges, the
+gateway then reads, in one batched request to the chain endpoint, the chain's
+identifier, the wallet's token balance and the token's `authorizationState` for
+the authorization's nonce. A nonce the token already marks used or cancelled is
+refused, and so is a wallet holding less than the price, with
+`payment_not_verified` and the balance named. Each refusal says that nothing
+was charged.
+
+A balance read that could not be made sends the payment to the unproven lane
+and refuses nothing: an endpoint that failed or timed out after two seconds, no
+chain endpoint configured, or no place among the merchant's reads of payers'
+wallets. Those reads are bounded per merchant at two at once and eight waiting,
+and a payment waits a second at most for one, because the endpoint is shared
+with payment recovery and a flood at one merchant must not keep it busy. Reads
+about the same authorization at the same time are one read. A balance read is
+kept for five seconds, for at most 1,024 wallets, the oldest dropped first, and
+it stands only for a price it covers, so one buyer's retries ask the chain
+once, and a buyer who tops up a wallet that held too little can pay at once. A
+kept balance skips the nonce read, so a used nonce presented within those five
+seconds reaches the facilitator, which refuses it.
+
+Getting a paid purchase back charges nothing, so it is never judged by the
+wallet's balance: it uses the same lanes and skips the read. For the same
+reason a refusal of such a payment at the facilitator is never relabelled as an
+empty wallet (see "An empty wallet the facilitator does not name" below).
 
 The facilitator's check gives up after ten seconds and the charge after thirty,
 both set explicitly on the client, since a check holds one of the merchant's
@@ -194,10 +238,14 @@ and the card `for share`, checks the standing again (card terms, payee, the
 selling switch, the integration and, for a card paid before delivery, the
 seller's site), records the authorization's fingerprint, made from its payer
 and nonce, against this order alone, and writes the order, its jobs and its
-order-created analytics together. The transaction sets a lock timeout of two
-seconds; a lock not granted in time (PostgreSQL's 55P03) is answered busy before
-any write, which also turns away a legitimate edit's long lock. The charge runs
-after commit. A connection lost before commit leaves nothing written and
+order-created analytics together. A price whose lock another request holds is
+answered as a second request for it is, HTTP 409 `payment_not_taken`,
+retryable. The transaction sets a lock timeout of two seconds, and a row lock
+not granted in time (PostgreSQL's 55P03) ends the admission held up with
+nothing written: HTTP 503 `gateway_failed`, retryable, with `Retry-After: 2`,
+saying that the payment was not used and nothing was charged. That also turns
+away a payment while a legitimate edit holds the merchant's row or the card
+for longer. The charge runs after commit. A connection lost before commit leaves nothing written and
 charges nothing.
 
 Parameters or a locality other than the stamped ones are refused only after the
@@ -259,7 +307,8 @@ from the chain, `eth_chainId` and `balanceOf` in one request with a two-second
 limit and no retries. If the wallet holds less than the amount, the refusal is
 relabelled `insufficient_funds`, naming the balance and keeping the
 facilitator's words. A code that names a cause is never relabelled, nor is a
-refusal at settlement, and a balance from another chain is never taken. The
+refusal at settlement or of a payment that only gets a paid purchase back, and
+a balance from another chain is never taken. The
 balance pre-check in the buyer lane usually refuses such a wallet before the
 facilitator is asked. Whether CDP refuses an empty wallet at verification or
 only at settlement is open: the TEST observation was on Base Sepolia, and the
@@ -412,13 +461,26 @@ lifetime is not proof of expiry or cleanup.
 Stamps for fixed-price cards cost nothing to obtain, and unpaid floods and the
 reads of the card and the merchant before any gate are not bounded by a gate.
 Payers with contract wallets share a small lane with noise, and under a flood
-they get `seller_busy`. If the balance read fails, from a rate limit or an
-outage, payments signed by a wallet's own key go to the buyer lane unchecked,
-and each fresh wallet costs one read from the chain. The facilitator, the chain
-endpoint and the database are shared by every merchant. A lock held for more
-than two seconds answers busy even when a legitimate edit holds it. Two
-accounts connected to one shop share its carts. Several purchases from one
-wallet can pass verification against one balance on a synchronous card.
+they get `seller_busy`; since that lane's payer is only the address a payment
+claims, one place per payer does not slow a flood there. If the chain endpoint
+cannot be read, from a rate limit or an outage, every payment goes to that
+small lane, honest buyers' included, and each fresh wallet costs one read from
+the chain. The facilitator, the chain endpoint and the database are shared by
+every merchant. A lock held for more than two seconds answers HTTP 503 even
+when a legitimate edit holds it. Two accounts connected to one shop share its
+carts. Several purchases from one wallet can pass verification against one
+balance on a synchronous card.
+
+Both channels read the free public Base endpoints by default
+(`https://mainnet.base.org` on production), which limit requests per address.
+That one endpoint now carries the reads of payers' wallets before their checks,
+automatic payment recovery, the reads that check a payment presented to get a
+paid purchase back (a contract wallet's signature among them), the balance read behind a verification refusal that names no
+cause, and the payout figure on the merchant's Settings. A busy hour at one of
+them can use up what the others need, and the first to suffer is the buyer
+lane. Production should get a keyed endpoint from an RPC provider in
+`AGENTIFY_PAYMENT_RPC_URL` (`deploy/README.md`); this is a recommendation for
+the operator and has not been done.
 
 ## The alternatives, and why they lost
 
