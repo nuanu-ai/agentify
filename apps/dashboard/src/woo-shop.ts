@@ -1678,7 +1678,7 @@ export class WooShopRuntime {
             (Number(b.quarantined) + Number(b.uncertainMutation)),
         );
       for (const slot of untried) {
-        if (!this.#alive) break;
+        if (!this.#alive || signal?.aborted) break;
         if (slot.busy) continue;
         tried.add(slot);
         slot.busy = true;
