@@ -9,8 +9,38 @@
  */
 
 import { generateJwt } from "@coinbase/cdp-sdk/auth";
-import { HTTPFacilitatorClient } from "@x402/core/server";
+import { type FacilitatorConfig, HTTPFacilitatorClient } from "@x402/core/server";
+import type { PaymentPayload, PaymentRequirements, SettleResponse } from "@x402/core/types";
 import { isCdpFacilitator, type PaymentConfig } from "../../config.js";
+
+/**
+ * How long a payment check may take. It holds one of its merchant's places
+ * for payment checks while it waits, so it gives up well before a charge does.
+ */
+const VERIFY_REQUEST_MS = 10_000;
+
+/**
+ * How long a charge may take: the library's own thirty seconds, which the
+ * charge deadlines in research 46 are set against, written down here.
+ */
+const SETTLE_REQUEST_MS = 30_000;
+
+/** The facilitator's HTTP client, with a check's time for checks and a charge's for charges. */
+class TimedFacilitatorClient extends HTTPFacilitatorClient {
+  readonly #charges: HTTPFacilitatorClient;
+
+  constructor(config: Omit<FacilitatorConfig, "timeoutMs">) {
+    super({ ...config, timeoutMs: VERIFY_REQUEST_MS });
+    this.#charges = new HTTPFacilitatorClient({ ...config, timeoutMs: SETTLE_REQUEST_MS });
+  }
+
+  override settle(
+    payload: PaymentPayload,
+    requirements: PaymentRequirements,
+  ): Promise<SettleResponse> {
+    return this.#charges.settle(payload, requirements);
+  }
+}
 
 /**
  * The calls the client makes, and the method each is made on. A CDP token is
@@ -53,7 +83,7 @@ export function cdpAuthenticatedClient(
     })}`,
   });
 
-  return new HTTPFacilitatorClient({
+  return new TimedFacilitatorClient({
     url: facilitatorUrl,
     // Signed per call because each token is good for one request and expires
     // in about two minutes. The library asks for all three at once and picks
@@ -76,7 +106,7 @@ export function cdpAuthenticatedClient(
  */
 export function facilitatorClientFor(payment: PaymentConfig): HTTPFacilitatorClient {
   if (!isCdpFacilitator(payment.facilitatorUrl)) {
-    return new HTTPFacilitatorClient({ url: payment.facilitatorUrl });
+    return new TimedFacilitatorClient({ url: payment.facilitatorUrl });
   }
 
   const { cdpApiKeyId, cdpApiKeySecret } = payment;
