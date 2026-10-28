@@ -10,6 +10,11 @@ import {
 } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSellerSite, setServiceName } from "../app/merchants.js";
+import {
+  BALANCE_READ_MS,
+  PAYMENT_PLACE_WAIT_MS,
+  VERIFY_REQUEST_MS,
+} from "../app/payment-window.js";
 import { randomIds } from "../ports/clock.js";
 import { admitVerifiedOrder } from "../testing/accepted-order.js";
 import {
@@ -1328,6 +1333,59 @@ describe("a payment whose authorisation would run out before its charge", () => 
     expect(fresh.status, JSON.stringify(fresh.body)).toBe(200);
     expect((fresh.body as { status: string }).status).toBe("delivered");
     expect(made).toBe(1);
+  });
+
+  it("charges one signed as the price is named and presented as it runs out, however long its check waits", async () => {
+    // The reference client signs for maxTimeoutSeconds from the second it
+    // signs. The payment then waits for its wallet's balance, for a place
+    // among its merchant's checks and for the check itself, each as long as
+    // the gateway lets it, and the charge after the goods still fits.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const requirements = await priced(served, itemId);
+    const signedAt = Math.floor(harnessed.now() / 1_000) * 1_000;
+    const worker = workUntilStopped(harnessed, {
+      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
+    });
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs - 1);
+    const release = harnessed.facilitator.holdVerification();
+
+    const paying = paid(
+      served,
+      itemId,
+      requirements,
+      signedAt + requirements.maxTimeoutSeconds * 1_000,
+      "01",
+    );
+    await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
+    harnessed.advance(BALANCE_READ_MS + PAYMENT_PLACE_WAIT_MS + VERIFY_REQUEST_MS);
+    release();
+    const answered = await paying;
+    await worker.stop();
+
+    expect(answered.status, JSON.stringify(answered.body)).toBe(200);
+    expect((answered.body as { status: string }).status).toBe("delivered");
+  });
+
+  it("sends the agent to a new price, not to sign this one again, where the price lapsed during the check", async () => {
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const requirements = await priced(served, itemId);
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs - 1);
+    const release = harnessed.facilitator.holdVerification();
+
+    const paying = paid(served, itemId, requirements, harnessed.now() + needed(harnessed), "01");
+    await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
+    harnessed.advance(VERIFY_REQUEST_MS);
+    release();
+    const answered = await paying;
+
+    expect(answered.status).toBe(409);
+    const { error } = answered.body as { error: { code: string; message: string } };
+    expect(error.code).toBe("payment_not_verified");
+    expect(error.message).toMatch(/new price/i);
+    expect(error.message).not.toMatch(/while its price holds/i);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
   });
 
   it("takes the same short authorisation where the money moves at the purchase", async () => {
