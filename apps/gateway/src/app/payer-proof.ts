@@ -14,6 +14,7 @@ import { authorizationIn } from "../http/payment-authorization.js";
 import type { Clock } from "../ports/clock.js";
 import type { TokenBalances } from "../ports/payment-chain.js";
 import { MerchantGate } from "./merchant-gate.js";
+import { PAYER_READ_PLACE_WAIT_MS } from "./payment-window.js";
 import { gateRefused, payerReadTimed } from "./purchase-metrics.js";
 
 /** What a payment proves of who pays it. */
@@ -139,7 +140,6 @@ const BALANCES_KEPT_AT_MOST = 1_024;
  */
 const READS_AT_ONCE = 2;
 const READS_WAITING_AT_MOST = 8;
-const READ_PLACE_WAIT_MS = 1_000;
 
 /**
  * Payers' wallets as read from the chain, one batched request each. Reads
@@ -196,7 +196,7 @@ export class PayerReads {
   ): Promise<PayerState | null> {
     const reader = this.#read();
     if (reader === undefined) return null;
-    const place = await this.#places.enter(merchantId, READ_PLACE_WAIT_MS);
+    const place = await this.#places.enter(merchantId, PAYER_READ_PLACE_WAIT_MS);
     if (place === null) {
       gateRefused("payer_read");
       return null;

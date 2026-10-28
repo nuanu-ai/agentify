@@ -20,6 +20,12 @@ export const BALANCE_READ_MS = 2_000;
 export const PAYMENT_PLACE_WAIT_MS = 2_000;
 
 /**
+ * How long a payment waits for a place among its merchant's reads of payers'
+ * wallets before it goes on unread, to the line for payments nobody can vouch for.
+ */
+export const PAYER_READ_PLACE_WAIT_MS = 1_000;
+
+/**
  * How long a payment check may take. It holds one of its merchant's places
  * for payment checks while it waits, so it gives up well before a charge does.
  */
@@ -67,10 +73,11 @@ export const validityNeededAfterCheckMs = (deadlines: Pick<Deadlines, "syncRespo
 
 /**
  * The longest a payment that arrived in time may wait before its check
- * answers: the read of its wallet's balance, a place among its merchant's
- * checks, and the check itself.
+ * answers: a place among its merchant's wallet reads, the read of its
+ * wallet's balance, a place among its merchant's checks, and the check itself.
  */
-const WAITED_BEFORE_CHECK_MS = BALANCE_READ_MS + PAYMENT_PLACE_WAIT_MS + VERIFY_REQUEST_MS;
+const WAITED_BEFORE_CHECK_MS =
+  PAYER_READ_PLACE_WAIT_MS + BALANCE_READ_MS + PAYMENT_PLACE_WAIT_MS + VERIFY_REQUEST_MS;
 
 /**
  * How long a challenge asks an agent's authorisation to stay valid, in the

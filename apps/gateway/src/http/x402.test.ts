@@ -92,7 +92,7 @@ describe("what an agent is asked to pay", () => {
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       amount: "80000000",
       payTo: SELLERS_SPLIT,
-      maxTimeoutSeconds: 64,
+      maxTimeoutSeconds: 65,
       extra: { name: "USDC", version: "2", price_stamp: "ord_1" },
     });
   });

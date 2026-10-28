@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setSellerSite, setServiceName } from "../app/merchants.js";
 import {
   BALANCE_READ_MS,
+  PAYER_READ_PLACE_WAIT_MS,
   PAYMENT_PLACE_WAIT_MS,
   VERIFY_REQUEST_MS,
 } from "../app/payment-window.js";
@@ -552,6 +553,7 @@ describe("the payment challenge", () => {
           Math.ceil(
             (quoteTtlMs +
               syncResponseMs +
+              PAYER_READ_PLACE_WAIT_MS +
               BALANCE_READ_MS +
               PAYMENT_PLACE_WAIT_MS +
               VERIFY_REQUEST_MS) /
@@ -1369,7 +1371,9 @@ describe("a payment whose authorisation would run out before its charge", () => 
       "01",
     );
     await vi.waitFor(() => expect(harnessed.facilitator.verifies).toHaveLength(1));
-    harnessed.advance(BALANCE_READ_MS + PAYMENT_PLACE_WAIT_MS + VERIFY_REQUEST_MS);
+    harnessed.advance(
+      PAYER_READ_PLACE_WAIT_MS + BALANCE_READ_MS + PAYMENT_PLACE_WAIT_MS + VERIFY_REQUEST_MS,
+    );
     release();
     const answered = await paying;
     await worker.stop();

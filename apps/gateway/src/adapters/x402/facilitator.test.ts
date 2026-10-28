@@ -68,7 +68,7 @@ const edge = new PaymentEdge({
   },
   publicBaseUrl: "https://agentify.example",
   // A term that makes the offered timeout fifty seconds, which the cases below count from.
-  deadlines: { quoteTtlMs: 16_000, syncResponseMs: 10_000 },
+  deadlines: { quoteTtlMs: 15_000, syncResponseMs: 10_000 },
 });
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */
