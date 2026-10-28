@@ -198,6 +198,9 @@ export interface RunningGateway {
   stop(): Promise<void>;
 }
 
+/** How long a request waits for a free database connection before it fails. */
+const DATABASE_CONNECTION_WAIT_MS = 3_000;
+
 /**
  * Starts the order machine and the surface, or throws saying why it could not.
  * `announcer` is the dashboard's way of telling a merchant of a change to their
@@ -213,7 +216,12 @@ export async function startGateway(
   if (cramped !== null) {
     throw new Error(`the gateway will not start: ${cramped}`);
   }
-  const { db, pool } = connect(config.databaseUrl);
+  // A request that finds every connection taken fails after this wait rather
+  // than queueing behind the pool for as long as the others take; a payment
+  // that fails before anything is written says so and is sent again.
+  const { db, pool } = connect(config.databaseUrl, {
+    connectionTimeoutMillis: DATABASE_CONNECTION_WAIT_MS,
+  });
   const queue = queueOn(config.databaseUrl, {
     pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
     reminders: {
