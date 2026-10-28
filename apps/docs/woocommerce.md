@@ -43,22 +43,40 @@ for a parcel the shipping rate, and your shop has four seconds to answer. A
 shop slower than that loses that sale before any payment, and only the
 connector's own log, which your dashboard does not show, records why.
 
-Shipping calculations use separate cart pools for unpaid questions and paid
-orders. A slow free question cannot take an already-paid order's carts. If safe
-paid capacity is unavailable, the connector waits before taking another order;
-that wait uses no delivery attempt. The same worker also handles downloads,
-so a wait for safe paid capacity can delay its other work.
+A parcel's shipping and tax are worked out in your shop's own cart. The
+connector puts the product in a guest cart, as a visitor would, sets the
+buyer's city, region and postal code, reads the total and empties the cart
+again. It reuses a small set of these carts: eight answer price questions from
+buyers who have not paid yet, and eight more are kept for paid orders, so a
+burst of questions cannot take the carts of an order somebody has paid for. Downloads use no cart, so nothing
+that happens to the carts stops a download or its price.
 
-The connector reuses up to sixteen guest carts per shop. A cart with an unknown
-mutation outcome is retired permanently, and a replacement is opened at most
-once every ten minutes for that shop, even after reconnect or restart. At
-WooCommerce's standard two-day guest-session lifetime this means the pool plus
-about 288 replacements, or about 304 unexpired sessions. Actual removal of
-expired database rows depends on your shop's cleanup. If your shop changes the
-guest-session lifetime, that storage bound changes with it. A cart can retain
-the last priced city, region and postal code until its session expires; price
-calculations send no buyer name, street address or phone number. Recovery can
-take more than one interval when several replacements are needed.
+When none of the paid carts can be used at that moment, for example while your
+shop's cart is not answering, a parcel's order waits and Agentify hands it over
+again, as it does when your shop does not answer at all. Each hand-over counts
+toward the {{redelivery-max-attempts}} hand-overs an order gets in all.
+
+Each cart is a guest session in your shop's database. A cart whose last change
+your shop may or may not have made, because its answer was lost or could not be
+read, is never used again, and neither is one whose session your shop stops
+accepting, as can happen to every cart when a security plugin changes your
+site's secret keys. The connector replaces such a cart on its own, at most one
+every ten minutes for your shop, even across reconnects and restarts, so
+recovering several carts takes several of those intervals. A cart whose session
+is about to expire is renewed without that wait, since its old session lapses
+as the new one opens. At WooCommerce's standard two-day guest-session lifetime
+your shop therefore holds at most about 300 of the connector's unexpired guest
+sessions, and while nothing goes wrong sixteen or fewer. When expired sessions
+leave your database depends on your shop's own cleanup, and if your shop gives
+guest sessions another lifetime, that number changes with it. A cart can keep
+the last city, region and postal code it priced until its session expires;
+price questions send no buyer name, street address or phone number.
+
+If your shop will not open a cart for a visitor at all, its parcels cannot be
+priced. A security plugin or firewall that keeps visitors out of
+`/wp-json/wc/store/v1/cart` does this. The import then holds each parcel back
+with that reason, and once visitors can reach the cart, importing again
+publishes them.
 
 The buyer gets a download through Agentify: once your shop has created the
 order, the order the buyer reads from us carries your shop's private download
@@ -322,9 +340,9 @@ Read/Write switch nothing either, because every purchase through them would be
 refused; the page asks you to connect again and approve Read/Write.
 
 Connect and Sell through this shop are refused while an order from your code
-is still open, and each such order has to end first. A purchase its buyer has
-not paid yet ends within a minute, paid or lapsed, so the page asks you to try
-again then. An order your code took on ends when your code delivers or refuses
+is still open, and each such order has to end first. An order whose charge has
+not gone through yet ends within a minute, so the page asks you to try again
+then. An order your code took on ends when your code delivers or refuses
 it, or when its time runs out; the page names those orders and links to them on
 Orders. If you paused all sales on Products to keep new orders from arriving
 meanwhile, selling stays paused after the switch until you resume it there.
@@ -469,8 +487,8 @@ it there.
 
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked
-Completed in WooCommerce, an unpaid purchase when its buyer pays or lets it
-lapse, any of them when its time runs out, and a paid one when you close
+Completed in WooCommerce, an order whose charge has not gone through yet within a
+minute, any of them when its time runs out, and a paid one when you close
 fulfillment of it on Orders. A parcel
 already unfulfilled is no longer followed after you disconnect, so marking it
 Completed then records no shipment in Agentify.
