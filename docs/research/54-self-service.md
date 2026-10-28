@@ -161,6 +161,15 @@ before the ledger moves, so a closure can meet a create only between that read
 and the shop's answer. Parcels are not recovered here, because their address is
 erased; live-channel gates remain in force.
 
+A download whose shop did not answer its product check is never refused. The
+connector keeps the sale as `shop_silent` and answers nothing, so each
+hand-over, for three hours after the first, asks the shop again; a hand-over
+that reaches the shop takes the sale over, and the shop's own no makes it
+`precreate_refused`. A shop silent through every hand-over leaves the order to
+reach its deadline unfulfilled, and the page then creates the shop order once
+under the connection the shop already gave, with no new grant, since nothing
+refused it; the connection still has to be to the same shop and allow writing.
+
 A recorded shop order and delivery (`placed`) can retry the saved delivery
 after the shop is disconnected or the merchant switches to their own SDK
 integration. An unknown delivery result retains the shop-order binding and
@@ -179,9 +188,10 @@ settlement is submitted, so a restart does not submit again.
 With RPC configured, the existing queue checks overdue unanswered attempts
 every minute, including orders the merchant closed. Pending and unfamiliar
 facilitator failures remain unknown. A settlement can only land while its
-authorization is valid, so the search covers about two minutes of blocks: from
-thirty seconds before the payment was verified, the allowance for clock
-differences, to its `validBefore`. The start is the verification and not the
+authorization is valid, so the search covers about four minutes of blocks:
+from thirty seconds before the payment was verified, the allowance for clock
+differences, to its `validBefore`; a 402 asks for 215 seconds of validity at
+the default deadlines. The start is the verification and not the
 settlement attempt, because whoever holds a synchronous authorization can
 submit it between verification and the charge. Recovery finds the first block
 at or after that start by bisecting block timestamps, reads the receipts of
