@@ -4,10 +4,11 @@ Status: the product owner chose on 2026-10-27 a price that travels with the
 buyer under Agentify's stamp, an order written only once a payment verifies,
 the term judged by when the paid request arrives, a generic `quote_reference`
 the buyer can read, no support kept for the old `extra.order_id`, and the stamp
-in `extra`, where x402 sellers put their own data. How a payment is admitted,
-the exit trigger and the listed-example rule are engineering choices. The
-mechanics and every alternative with its source are in
-[research 90](../research/90-unpaid-price-questions-design.md).
+in `extra`, where x402 sellers put their own data. On 2026-10-28 the product
+owner decided that a change of the seller's site address voids no price already
+given. How a payment is admitted, the exit trigger and the listed-example rule
+are engineering choices. The mechanics and every alternative with its source
+are in [research 90](../research/90-unpaid-price-questions-design.md).
 
 ## Context
 
@@ -48,12 +49,14 @@ cross processes, and while the admission still makes one order of one price,
 both processes would verify the same payment.
 
 A price depends on the card's terms, policy, integration and payee, not on when
-the card was published, so republishing it unchanged keeps outstanding prices
-and a changed seller site voids none. A changed term or payee answers
-`payment_not_taken`, not retryable; a card off sale or a switched integration
-answers `not_selling` and says nothing was charged. Parameters or a locality
-other than the stamped ones are refused only after the payment verifies, so a
-published stamp cannot test guesses about them.
+the card was published, so republishing it unchanged keeps outstanding prices.
+A changed seller site voids none either: "выданная цена остается в силе" (the
+price given stays in force), in the product owner's word of 2026-10-28. A
+changed term or payee answers `payment_not_taken`, not retryable; a card off
+sale or a switched integration answers `not_selling` and says nothing was
+charged. Parameters or a locality other than the stamped ones are refused only
+after the payment verifies, so a published stamp cannot test guesses about
+them.
 
 A payment signed for the listing, with no stamp, gets a fresh priced 402 and
 nothing is verified or charged. A body equal to the card's own listed example,
