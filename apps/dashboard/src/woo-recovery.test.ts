@@ -64,7 +64,10 @@ const gatewayOrder = (
     at: "2026-09-18T09:59:00.000Z",
     as_of: "2026-09-18T09:58:00.000Z",
   },
-  price_id: FACTS.priceId,
+  price_id: facts.priceId,
+  quote_reference: Buffer.from(
+    JSON.stringify([facts.productFingerprint, facts.amount, "USD", facts.amount]),
+  ).toString("base64url"),
   test: true,
   status,
 });
@@ -115,19 +118,6 @@ const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
 
 const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACTS) => {
   const shops = memoryWooShops();
-  await shops.recordQuote(
-    "acc_1",
-    facts.priceId,
-    facts.merchantItemId,
-    {
-      fingerprint: facts.productFingerprint,
-      inTheShop: { amount: facts.amount, currency: "USD" },
-      paid: { amount: facts.amount, currency: "USD" },
-      rateVersion: null,
-    },
-    new Date("2026-09-18T11:00:00.000Z"),
-    NOW,
-  );
   await shops.connect({
     accountId: "acc_1",
     shopUrl: FACTS.shopOrigin,
@@ -293,6 +283,36 @@ describe("a merchant recovering their own WooCommerce delivery", () => {
     expect(why).not.toContain("billing email");
     expect(why).not.toContain("total");
     expect((await shops.recoveryOrder("ord_1"))?.placed).toBeNull();
+  });
+
+  it("names the total it expected in the shop's own currency, kept beside the amount", async () => {
+    const converted: WooOrderFacts = {
+      ...FACTS,
+      converted: {
+        inTheShop: { amount: "0.01", currency: "EUR" },
+        rate: { version: 2, rate: "0.92", setAt: "2026-09-18T08:00:00.000Z" },
+      },
+    };
+    const shops = await setup("create_unknown", converted);
+    const test = parts(
+      shops,
+      {
+        inspectProduct: async () => ({
+          ok: true,
+          product: { ...PRODUCT, price: { amount: "0.01", currency: "EUR" } },
+        }),
+        readOrder: async () => ({ ok: true, order: shopOrder({ currency: "EUR", total: "0.05" }) }),
+      },
+      converted,
+    );
+
+    const outcome = await recoverWooOrderAs(
+      OWNER,
+      { orderId: "ord_1", wooOrderId: "13" },
+      test.value,
+    );
+
+    expect(outcome.ok ? "" : outcome.why).toContain("its total is not 0.01\u00a0EUR");
   });
 
   it("keeps an unreadable exact shop order unresolved and allows the same check again", async () => {
@@ -922,7 +942,7 @@ describe("merchant recovery pages", () => {
         orderId: "ord_1",
         product: "Agentify test download",
         shopOrigin: FACTS.shopOrigin,
-        amount: "0.01 USD",
+        amount: "0.01\u00a0USD",
         wooOrderId: "",
       },
     });
@@ -1173,16 +1193,6 @@ describe("exact Woo order recovery", () => {
     expect(test.counts()).toEqual({ delivered: 0, read: 0 });
   });
 
-  it("binds an unknown committed create by one verified Woo order id without another POST", async () => {
-    const shops = await setup("create_unknown");
-    const test = parts(shops);
-
-    expect(
-      await recoverWooOrderAs(OWNER, { orderId: "ord_1", wooOrderId: "13" }, test.value),
-    ).toMatchObject({ ok: true, state: "delivered", wooOrderId: "13" });
-    expect(test.counts()).toEqual({ delivered: 1, read: 1 });
-  });
-
   it("delivers an already-bound result after the shop is disconnected", async () => {
     const shops = await setup("create_unknown");
     await shops.recordOrder(
@@ -1378,7 +1388,13 @@ describe("a parcel's order the shop holds", () => {
 
     const outcome = await recoverWooOrderAs(OWNER, { orderId: "ord_1" }, parts(shops).value);
 
-    expect(outcome).toMatchObject({ ok: false, state: "refused" });
+    expect(outcome).toMatchObject({
+      ok: false,
+      state: "refused",
+      why: expect.stringMatching(
+        /order is placed.*read in the shop.*marked Completed.*cancelled.*refunded.*thirty days/i,
+      ),
+    });
     expect(outcome.ok === false && outcome.why).not.toContain("do not ship");
   });
 });

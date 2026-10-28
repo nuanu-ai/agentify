@@ -22,16 +22,6 @@ const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.
   };
 };
 
-/**
- * The source file a published path is compiled from. The build is `tsc` from
- * `src` into `dist`, so `./dist/x.js` comes from `./src/x.ts` only; reversing
- * that checks the manifest against the tree without a build.
- */
-const sourceOf = (published: string): string =>
-  published.replace(/^\.\/dist\//, "./src/").replace(/\.d\.ts$|\.js$/, ".ts");
-
-const inPackage = (path: string): boolean => existsSync(new URL(`../${path}`, import.meta.url));
-
 describe("@nuanu-ai/agentify", () => {
   it("checks the contract version and refuses a foreign one", () => {
     // The promise: a contract version mismatch is found at worker startup, not
@@ -69,11 +59,7 @@ describe("@nuanu-ai/agentify", () => {
     // The tree a merchant gets is `@nuanu-ai/agentify-contracts` and `zod`,
     // nothing else. This is one half; the contracts package's test holds it to
     // zod alone.
-    const thirdParty = Object.entries(manifest.dependencies ?? {}).filter(
-      ([, range]) => !range.startsWith("workspace:"),
-    );
-
-    expect(thirdParty).toStrictEqual([]);
+    expect(Object.keys(manifest.dependencies ?? {})).toEqual(["@nuanu-ai/agentify-contracts"]);
   });
 
   it("advertises the command the documentation tells a merchant to run", () => {
@@ -92,34 +78,23 @@ describe("@nuanu-ai/agentify", () => {
     });
   });
 
-  it("names only published paths its own source can produce", () => {
-    // A renamed `src/cli.ts` or a moved entry point would leave the manifest
-    // advertising a file the build does not write, and the tarball would
-    // install and fail on first use.
-    const published = [
-      ...Object.values(manifest.publishConfig?.bin ?? {}),
-      ...Object.values(manifest.publishConfig?.exports ?? {}).flatMap((entry) =>
-        [entry.types, entry.default].filter((path) => path !== undefined),
-      ),
-    ];
-
-    expect(published.length).toBeGreaterThan(0);
-    expect(published.filter((path) => !inPackage(sourceOf(path)))).toStrictEqual([]);
-  });
-
   it("carries what npm needs to publish it, and builds before it is packed", () => {
     // `files` keeps the tests, fixtures and fake gateway out of a merchant's
     // production. Without `prepack`, packing a tree with no `dist` silently
     // produces a tarball holding only this manifest.
     expect(manifest.name).toBe("@nuanu-ai/agentify");
     expect(manifest.private).toBeUndefined();
+    expect(manifest.version).toMatch(/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/);
     expect(manifest.version).not.toBe("0.0.0");
     expect(manifest.files).toStrictEqual(["dist", "LICENSE", "NOTICE"]);
     expect(manifest.license).toBe("Apache-2.0");
-    expect(manifest.repository).toBeDefined();
-    expect(manifest.engines?.node).toBeDefined();
-    // Defined is not enough: it has to be the build.
-    expect(manifest.scripts?.prepack).toBe("pnpm run build");
+    expect(manifest.repository).toMatchObject({
+      type: "git",
+      url: "git+https://github.com/nuanu-ai/agentify.git",
+    });
+    expect(manifest.engines?.node).toMatch(/^>=\d+(?:\.\d+){0,2}$/);
+    expect(Number(manifest.engines?.node?.match(/^>=(\d+)/)?.[1])).toBeGreaterThanOrEqual(24);
+    // Actual prepack output and imports are exercised by `pnpm outside`.
     expect(manifest.publishConfig?.access).toBe("public");
     expect(existsSync(new URL("../README.md", import.meta.url))).toBe(true);
     expect(existsSync(new URL("../LICENSE", import.meta.url))).toBe(true);

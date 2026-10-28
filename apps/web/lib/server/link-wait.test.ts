@@ -41,11 +41,6 @@ describe("the wait in front of the next verification link", () => {
     expect(answer.retry_after_seconds).toBe(40);
     expect(answer.response.headers.get("Retry-After")).toBe("40");
     expect(answer.message).toContain("40 seconds");
-  });
-
-  it("does not dress a sub-minute wait as an hour or as too many requests", async () => {
-    const answer = await refusal(later(40_000), "unspecified", now);
-
     expect(answer.message).not.toMatch(/hour|too many/i);
     expect(answer.message).not.toMatch(/\b3600\b|\b60 minutes\b/);
   });
@@ -54,14 +49,16 @@ describe("the wait in front of the next verification link", () => {
     const answer = await refusal(later(40_000), "unspecified", now);
 
     // The dashboard's answer says when, never which of its two walls refused.
-    expect(answer.message).not.toMatch(/because/i);
+    expect(answer.message).toMatch(/no new link.*sent.*yet/i);
+    expect(answer.message).not.toMatch(/because|address|hour|limit|too many/i);
   });
 
   it("says the true thing about the one wall it does see", async () => {
     const spent = await refusal(later(12 * 60_000), "address_hour", now);
     const unknown = await refusal(later(12 * 60_000), "unspecified", now);
 
-    expect(spent.message).not.toBe(unknown.message);
+    expect(spent.message).toMatch(/this address.*all.*links.*hour/i);
+    expect(unknown.message).not.toMatch(/address.*hour/i);
     expect(spent.message).toContain("12 minutes");
     expect(spent.message).not.toMatch(/too many/i);
     expect(spent.retry_after_seconds).toBe(720);

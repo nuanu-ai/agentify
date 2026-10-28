@@ -1,5 +1,6 @@
 import "./sell-landing.css";
 
+import { keepUnits } from "@agentify/ui/units";
 import { Fragment } from "react";
 import { LANDING_SHARED_CONTENT } from "../content/landing";
 import type { SellLanding } from "../content/sell";
@@ -82,8 +83,8 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
                     <span className="scene-product__thumb">✦</span>
                     <div className="scene-product__copy">
                       <div>
-                        <b>{sale.product.name}</b>
-                        <strong>{sale.product.price}</strong>
+                        <b>{keepUnits(sale.product.name)}</b>
+                        <strong>{keepUnits(sale.product.price)}</strong>
                       </div>
                     </div>
                   </div>
@@ -98,7 +99,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
                   </span>
                   <div>
                     <small>{sale.paid.kind}</small>
-                    <strong>{sale.paid.amount}</strong>
+                    <strong>{keepUnits(sale.paid.amount)}</strong>
                     <span className="payment-result__note">{sale.paid.note}</span>
                   </div>
                   <span className="payment-result__check">✓</span>
@@ -228,7 +229,7 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
               <div className="payment-map__body">
                 <Wallet side={money.map.buyer} />
                 <div className="payment-flow">
-                  <span>{money.map.flow.amount}</span>
+                  <span>{keepUnits(money.map.flow.amount)}</span>
                   <i />
                   <small>{money.map.flow.note}</small>
                 </div>
@@ -238,47 +239,45 @@ export function SellLandingPage({ content }: Readonly<{ content: SellLanding }>)
             </section>
           </section>
 
-          {pricing.options.length > 0 ? (
-            <div className="pricing" id="pricing">
-              {pricing.options.map((tariff) => (
-                <section
-                  aria-labelledby={`pricing-${tariff.id}-title`}
-                  className="section"
-                  id={`pricing-${tariff.id}`}
-                  key={tariff.id}
-                >
-                  <div className="section-head">
-                    <p className="eyebrow">{pricing.eyebrow}</p>
-                    <h2 id={`pricing-${tariff.id}-title`}>{pricing.title}</h2>
+          <div className="pricing" id="pricing">
+            {pricing.options.map((tariff) => (
+              <section
+                aria-labelledby={`pricing-${tariff.id}-title`}
+                className="section"
+                id={`pricing-${tariff.id}`}
+                key={tariff.id}
+              >
+                <div className="section-head">
+                  <p className="eyebrow">{pricing.eyebrow}</p>
+                  <h2 id={`pricing-${tariff.id}-title`}>{pricing.title}</h2>
+                </div>
+                <div className="tariff__answer">
+                  <div className="tariff__offer">
+                    <h3>{tariff.name}</h3>
+                    <p className="tariff__price">{tariff.price}</p>
+                    {"per" in tariff ? <p className="tariff__per">{tariff.per}</p> : null}
+                    <p className="tariff__gist">{tariff.gist}</p>
+                    <ul className="tariff__terms">
+                      {tariff.terms.map((term) => (
+                        <li key={term}>{term}</li>
+                      ))}
+                    </ul>
+                    <a className="button button-primary" href={SIGN_IN}>
+                      {pricing.action}
+                    </a>
                   </div>
-                  <div className="tariff__answer">
-                    <div className="tariff__offer">
-                      <h3>{tariff.name}</h3>
-                      <p className="tariff__price">{tariff.price}</p>
-                      {"per" in tariff ? <p className="tariff__per">{tariff.per}</p> : null}
-                      <p className="tariff__gist">{tariff.gist}</p>
-                      <ul className="tariff__terms">
-                        {tariff.terms.map((term) => (
-                          <li key={term}>{term}</li>
-                        ))}
-                      </ul>
-                      <a className="button button-primary" href={SIGN_IN}>
-                        {pricing.action}
-                      </a>
-                    </div>
-                    <div className="tariff__includes">
-                      <p className="tariff__list-title">{pricing.includesTitle}</p>
-                      <ul>
-                        {tariff.includes.map((item) => (
-                          <li key={item}>{item}</li>
-                        ))}
-                      </ul>
-                    </div>
+                  <div className="tariff__includes">
+                    <p className="tariff__list-title">{pricing.includesTitle}</p>
+                    <ul>
+                      {tariff.includes.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
                   </div>
-                </section>
-              ))}
-            </div>
-          ) : null}
+                </div>
+              </section>
+            ))}
+          </div>
 
           <section aria-labelledby="dashboard" className="section dashboard-preview">
             <div className="dashboard-preview__copy">
@@ -360,9 +359,9 @@ function Wallet({
         </div>
       </div>
       {merchant ? (
-        <strong className="wallet__amount">{side.amount}</strong>
+        <strong className="wallet__amount">{keepUnits(side.amount)}</strong>
       ) : (
-        <span className="wallet__amount">{side.amount}</span>
+        <span className="wallet__amount">{keepUnits(side.amount)}</span>
       )}
     </div>
   );
@@ -424,7 +423,7 @@ function DashboardWindow({ view: shown }: Readonly<{ view: SellLanding["dashboar
                     <b>{name}</b>
                     <small>{id}</small>
                   </td>
-                  <td>{price}</td>
+                  <td>{keepUnits(price ?? "")}</td>
                   <td className="mini-app__when">{when}</td>
                   <td>
                     <span className={state === "On sale" ? "mini-app__on" : "mini-app__off"}>

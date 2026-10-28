@@ -31,6 +31,7 @@ export class MemoryQueue implements Queue {
   readonly #streams = new Map<string, Stream>();
   readonly #inFlight = new Map<string, { merchantId: string; envelope: WorkerEnvelope }>();
   readonly #timers = new Set<ReturnType<typeof setTimeout>>();
+  readonly #delayed = new Map<WorkerEnvelope, ReturnType<typeof setTimeout>>();
   #fire: ((reminder: Reminder) => Promise<void>) | null = null;
   #running = false;
   #handles = 0;
@@ -62,27 +63,24 @@ export class MemoryQueue implements Queue {
         return;
       }
       stream.held.add(envelope);
-      this.#later(() => {
+      const timer = this.#later(() => {
+        this.#delayed.delete(envelope);
         // Gone from `held` means forgotten while it waited: it must not arrive.
         if (stream.held.delete(envelope)) {
           this.#arrive(merchantId, envelope);
         }
       }, afterMs);
+      this.#delayed.set(envelope, timer);
     };
   }
 
   /**
-   * Drops every undrawn envelope on the stream that carries a parcel's address:
-   * the order's hand-overs and the named price question, delayed ones
-   * included. Events carry no address and stay. It cannot refuse; the store
-   * calls it with the write that records the address as erased.
+   * Drops the order's undrawn hand-overs, delayed ones included, when its
+   * parcel address is erased. Events carry no address and stay.
    */
-  forget(merchantId: string, orderId: string, priceQuestion: string | null): void {
+  forget(merchantId: string, orderId: string): void {
     const carries = (envelope: WorkerEnvelope): boolean =>
-      (envelope.kind === "order" && envelope.payload.id === orderId) ||
-      (envelope.kind === "quote_request" &&
-        priceQuestion !== null &&
-        envelope.payload.price_id === priceQuestion);
+      envelope.kind === "order" && envelope.payload.id === orderId;
 
     const stream = this.#streamOf(merchantId);
     const kept = stream.ready.filter((envelope) => !carries(envelope));
@@ -90,6 +88,26 @@ export class MemoryQueue implements Queue {
     for (const envelope of [...stream.held]) {
       if (carries(envelope)) {
         stream.held.delete(envelope);
+        this.#cancelDelayed(envelope);
+      }
+    }
+  }
+
+  async forgetPrice(merchantId: string, priceId: string): Promise<void> {
+    const matches = (envelope: WorkerEnvelope) =>
+      envelope.kind === "quote_request" && envelope.payload.price_id === priceId;
+    const stream = this.#streamOf(merchantId);
+    const kept = stream.ready.filter((envelope) => !matches(envelope));
+    stream.ready.splice(0, stream.ready.length, ...kept);
+    for (const envelope of stream.held) {
+      if (matches(envelope)) {
+        stream.held.delete(envelope);
+        this.#cancelDelayed(envelope);
+      }
+    }
+    for (const [handle, delivery] of this.#inFlight) {
+      if (delivery.merchantId === merchantId && matches(delivery.envelope)) {
+        this.#inFlight.delete(handle);
       }
     }
   }
@@ -101,8 +119,8 @@ export class MemoryQueue implements Queue {
   envelopes(): Envelopes {
     return {
       stage: (merchantId, envelope, afterMs) => this.stage(merchantId, envelope, afterMs),
-      forget: async (merchantId, orderId, priceQuestion) => () => {
-        this.forget(merchantId, orderId, priceQuestion);
+      forget: async (merchantId, orderId) => () => {
+        this.forget(merchantId, orderId);
       },
       remind: (reminder, afterMs) => this.remind(reminder, afterMs),
     };
@@ -194,7 +212,16 @@ export class MemoryQueue implements Queue {
       clearTimeout(timer);
     }
     this.#timers.clear();
+    this.#delayed.clear();
+    for (const [handle, delivery] of this.#inFlight) {
+      if (delivery.envelope.kind === "quote_request") this.#inFlight.delete(handle);
+    }
     for (const stream of this.#streams.values()) {
+      const kept = stream.ready.filter((envelope) => envelope.kind !== "quote_request");
+      stream.ready.splice(0, stream.ready.length, ...kept);
+      for (const envelope of stream.held) {
+        if (envelope.kind === "quote_request") stream.held.delete(envelope);
+      }
       for (const wake of stream.waiters) {
         wake();
       }
@@ -253,11 +280,20 @@ export class MemoryQueue implements Queue {
     });
   }
 
-  #later(run: () => void, afterMs: number): void {
+  #cancelDelayed(envelope: WorkerEnvelope): void {
+    const timer = this.#delayed.get(envelope);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.#timers.delete(timer);
+    this.#delayed.delete(envelope);
+  }
+
+  #later(run: () => void, afterMs: number): ReturnType<typeof setTimeout> {
     const timer = setTimeout(() => {
       this.#timers.delete(timer);
       run();
     }, afterMs);
     this.#timers.add(timer);
+    return timer;
   }
 }

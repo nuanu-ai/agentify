@@ -136,13 +136,39 @@ describe("Coinbase's side of the stand-in", () => {
     const upstream = await coinbase();
     const stand = await standIn(upstream.url);
 
-    const answer = await askRates(stand);
-
-    expect(answer.status).toBe(200);
-    expect(answer.headers.get("content-encoding")).toBe("gzip");
-    expect(await answer.json()).toEqual({
-      data: { currency: "USD", rates: { IDR: "16650.5" } },
+    const answer = await new Promise<{
+      status: number | undefined;
+      encoding: string | string[] | undefined;
+      bytes: Buffer;
+    }>((resolve, reject) => {
+      httpRequest(
+        at(stand.coinbasePort, RATES_PATH),
+        {
+          headers: {
+            accept: "application/json",
+            "accept-encoding": "gzip",
+            "x-forwarded-for": "172.18.0.5",
+            "x-forwarded-proto": "https",
+          },
+        },
+        (response) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (chunk: Buffer) => chunks.push(chunk));
+          response.on("end", () =>
+            resolve({
+              status: response.statusCode,
+              encoding: response.headers["content-encoding"],
+              bytes: Buffer.concat(chunks),
+            }),
+          );
+        },
+      )
+        .once("error", reject)
+        .end();
     });
+    expect(answer.status).toBe(200);
+    expect(answer.encoding).toBe("gzip");
+    expect(answer.bytes).toEqual(RATES);
     expect(upstream.received).toHaveLength(1);
     const [sent] = upstream.received;
     expect(sent?.method).toBe("GET");

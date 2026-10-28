@@ -73,6 +73,7 @@ export function describeWalletSpelling(
     const gatewayOn = (database: WalletSpellingDatabase, environment: Record<string, string>) => {
       const announcer = new RecordingAnnouncer();
       const config = loadConfig({
+        PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
         DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
         ...environment,
       });
@@ -191,11 +192,12 @@ export function describeWalletSpelling(
       const { gateway, announcer } = gatewayOn(database, LIVE);
       await gateway.start();
 
+      const before = (await database.store.merchantById(id))?.payoutWallet;
       const answered = await gateway.setPayoutWallet(id, W, SIGNED_IN);
 
       expect(announcer.announced).toStrictEqual([]);
-      expect(answered).toMatchObject({ pending: null });
-      expect((await database.store.merchantById(id))?.payoutWallet.pending).toBeNull();
+      expect(answered).toStrictEqual({ payout_wallet: W.toLowerCase(), pending: null });
+      expect((await database.store.merchantById(id))?.payoutWallet).toStrictEqual(before);
     });
   });
 }

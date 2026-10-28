@@ -27,6 +27,7 @@ import {
   workUntilStopped,
 } from "@agentify/gateway/testing";
 import type { Card } from "@nuanu-ai/agentify-contracts";
+import { decodeFunctionData, parseAbi } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatewayFor } from "./gateway.js";
 
@@ -78,7 +79,13 @@ const aPaidOrder = async (harnessed: Harness, merchantId: string): Promise<strin
   if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
   const offered = await harnessed.gateway.beginPurchase(published.id, {});
   if (offered.step !== "pay") throw new Error("no price was offered");
-  await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+  await harnessed.gateway.payPurchase(
+    offered.order.priceOffer.stamp,
+    `PAYMENT-${offered.order.order.id}`,
+    `PAYMENT-${offered.order.order.id}`,
+    undefined,
+    { itemId: offered.order.itemId, params: offered.order.params },
+  );
   return offered.order.order.id;
 };
 
@@ -288,24 +295,7 @@ describe("the orders a page reads", () => {
     await owner.deliverOrder(orderId, { activation_code: "LPA:1$X" });
     const key = (await harnessed.store.orderById(orderId))?.buyerKey ?? "";
     expect(key).not.toBe("");
-    // A purchase priced and never paid, ended when its price ran out: the
-    // Lapsed list reads it apart from the orders.
-    const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
-    if (!published.ok) throw new Error("the card was refused");
-    const offered = await harnessed.gateway.beginPurchase(published.id, {});
-    if (offered.step !== "pay") throw new Error("no price was offered");
-    const lapsedId = offered.order.order.id;
-    harnessed.advance(31_000);
-    await harnessed.gateway.runner.apply(lapsedId, {
-      kind: "deadline_expired",
-      at: harnessed.now(),
-      deadline: "quote_expiry",
-    });
-    const lapsedKey = (await harnessed.store.orderById(lapsedId))?.buyerKey ?? "";
-    expect(lapsedKey).not.toBe("");
-
     const read = JSON.stringify([
-      await owner.lapsedAttempts(null),
       await owner.orders(false),
       await owner.orders(true),
       await owner.getOrder(orderId),
@@ -315,9 +305,7 @@ describe("the orders a page reads", () => {
     ]);
 
     expect(read).toContain(orderId);
-    expect(read).toContain(lapsedId);
     expect(read).not.toContain(key);
-    expect(read).not.toContain(lapsedKey);
   });
 });
 
@@ -332,7 +320,13 @@ describe("the paid orders left unfulfilled", () => {
     const paid = async (payment: string) => {
       const offered = await harnessed.gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
-      await harnessed.gateway.payPurchase(offered.order.order.id, payment, payment);
+      await harnessed.gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        payment,
+        payment,
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
       return offered.order.order.id;
     };
     const refused = await paid("PAYMENT-1");
@@ -429,37 +423,40 @@ describe("a call that does not finish", () => {
 });
 
 describe("who asks", () => {
-  it("is named in the message about a wallet change by the account the session is signed in as", async () => {
-    const harnessed = await started(LIVE);
+  it.each(["wallet_change", "key_issued"] as const)(
+    "attributes %s to the signed-in account",
+    async (kind) => {
+      const harnessed = await started(LIVE);
 
-    const asked = await asTheOwner(harnessed).setPayoutWallet(A_WALLET);
+      const asked =
+        kind === "wallet_change"
+          ? await asTheOwner(harnessed).setPayoutWallet(A_WALLET)
+          : await asTheOwner(harnessed).issueKey("the stock worker");
+      await new Promise((settled) => setImmediate(settled));
 
-    expect(asked.ok).toBe(true);
-    expect(harnessed.announcer.announced).toMatchObject([
-      { kind: "wallet_change", asked_with: { kind: "signed_in", email: OWNER } },
-    ]);
-  });
-
-  it("is named in the message about a new key the same way", async () => {
-    const harnessed = await started(LIVE);
-
-    const issued = await asTheOwner(harnessed).issueKey("the stock worker");
-
-    expect(issued.ok).toBe(true);
-    // The message about a key is sent after it is issued and never waited on.
-    await new Promise((settled) => setImmediate(settled));
-    expect(harnessed.announcer.announced).toMatchObject([
-      { kind: "key_issued", asked_with: { kind: "signed_in", email: OWNER } },
-    ]);
-  });
+      expect(asked.ok).toBe(true);
+      expect(harnessed.announcer.announced).toMatchObject([
+        { kind, asked_with: { kind: "signed_in", email: OWNER } },
+      ]);
+    },
+  );
 
   it("holds no key, so it can disable the one the merchant's own code is calling with", async () => {
     const harnessed = await started();
 
+    const served = await serve(harnessed);
+    if (open !== null) open.served = served;
+    const headers = { authorization: `Bearer ${harnessed.merchant.key}` };
+    expect((await served.call("GET", "/v0/cards", { headers })).status).toBe(200);
     const disabled = await asTheOwner(harnessed).disableKey(harnessed.merchant.keyId);
 
     expect(disabled.ok).toBe(true);
     expect(disabled.ok ? disabled.document.disabled_at : null).not.toBeNull();
+    expect((await served.call("GET", "/v0/cards", { headers })).status).toBe(401);
+    expect(await asTheOwner(harnessed).cards()).toMatchObject({
+      ok: true,
+      document: { cards: [] },
+    });
   });
 });
 
@@ -468,8 +465,8 @@ describe("where an order's payment went", () => {
   // screens and the shop's order lines ask in-process for the split an order
   // was paid into, as the registry recorded it.
 
-  /** An order quoted and not paid yet. */
-  const aQuotedOrder = async (harnessed: Harness): Promise<string> => {
+  /** The future identifier of a priced purchase that has no order stored. */
+  const anUnpaidPurchase = async (harnessed: Harness): Promise<string> => {
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, AN_ESIM);
     if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
@@ -480,24 +477,15 @@ describe("where an order's payment went", () => {
   const splitInForce = async (harnessed: Harness) =>
     (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split ?? null;
 
-  it("names the split an order's payment was checked against, and none for one paid to the wallet itself", async () => {
+  it("names the recorded split the order's payment was checked against", async () => {
     const harnessed = await started();
     const intoTheSplit = await aPaidOrder(harnessed, harnessed.merchant.id);
-    // As a gateway of the release before splits kept it: the wallet itself.
-    const intoTheWallet = await aQuotedOrder(harnessed);
-    await harnessed.gateway.runner.presentVerifiedPayment(
-      intoTheWallet,
-      "alice",
-      "PAY-A",
-      harnessed.merchant.wallet,
-      harnessed.now(),
-    );
-    const split = await splitInForce(harnessed);
+    const split =
+      (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split ?? null;
     expect(split).not.toBeNull();
     const client = asTheOwner(harnessed);
 
     expect(await client.paidInto(intoTheSplit)).toStrictEqual({ ok: true, document: split });
-    expect(await client.paidInto(intoTheWallet)).toStrictEqual({ ok: true, document: null });
     expect(await client.paidIntoSplits()).toStrictEqual({
       ok: true,
       document: { [intoTheSplit]: split },
@@ -536,13 +524,15 @@ describe("where an order's payment went", () => {
     expect(await client.paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
   });
 
-  it("names no split for an order not paid yet", async () => {
+  it("finds no merchant order for an unpaid price and includes no split for it", async () => {
     const harnessed = await started();
-    const quoted = await aQuotedOrder(harnessed);
+    const quoted = await anUnpaidPurchase(harnessed);
 
     expect(await asTheOwner(harnessed).paidInto(quoted)).toStrictEqual({
-      ok: true,
-      document: null,
+      ok: false,
+      status: 404,
+      code: "no_such_order",
+      why: "there is no such order",
     });
     expect(await asTheOwner(harnessed).paidIntoSplits()).toStrictEqual({ ok: true, document: {} });
   });
@@ -562,75 +552,6 @@ describe("where an order's payment went", () => {
   });
 });
 
-describe("the orders a page reads", () => {
-  /** A room bought in the answer, priced for a purchase nobody paid for. */
-  const A_ROOM: Card = {
-    merchant_item_id: "room-101",
-    title: "A room for the night",
-    description: "One night in room 101",
-    price: { amount: "80.00", currency: "USD" },
-    result: { access_code: { type: "string" } },
-    fulfillment: "sync",
-  };
-
-  /** A purchase priced and never paid, ended when its price ran out. */
-  const lapsedUnpaid = async (harnessed: Harness, itemId: string): Promise<string> => {
-    const offered = await harnessed.gateway.beginPurchase(itemId, {});
-    if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
-    harnessed.advance(31_000);
-    await harnessed.gateway.runner.apply(offered.order.order.id, {
-      kind: "deadline_expired",
-      at: harnessed.now(),
-      deadline: "quote_expiry",
-    });
-    return offered.order.order.id;
-  };
-
-  it("leave out the purchases that lapsed unpaid, which are read apart a page at a time, newest first", async () => {
-    const harnessed = await started();
-    const client = asTheOwner(harnessed);
-    const paid = await aPaidOrder(harnessed, harnessed.merchant.id);
-    const room = await harnessed.gateway.publishCard(harnessed.merchant.id, A_ROOM);
-    if (!room.ok) throw new Error("the room was refused");
-    const older = await lapsedUnpaid(harnessed, room.id);
-    const newer = await lapsedUnpaid(harnessed, room.id);
-    // A purchase the merchant's price check refused, which never had a price.
-    const priced = await harnessed.gateway.publishCard(harnessed.merchant.id, {
-      ...A_ROOM,
-      merchant_item_id: "room-102",
-      price_check: "handler",
-    });
-    if (!priced.ok) throw new Error("the priced room was refused");
-    harnessed.advance(1_000);
-    const askedAt = new Date(harnessed.now()).toISOString();
-    const worker = workUntilStopped(harnessed, {
-      onQuote: () => ({ available: false, as_of: "2026-08-26T12:00:00.000Z" }),
-    });
-    const unpriced = await harnessed.gateway.beginPurchase(priced.id, {});
-    await worker.stop();
-    if (unpriced.step !== "settled")
-      throw new Error(`the refusal did not end it: ${unpriced.step}`);
-
-    const idsIn = (answer: Awaited<ReturnType<typeof client.orders>>) =>
-      answer.ok ? answer.document.orders.map((order) => order.id) : answer.why;
-    expect(idsIn(await client.orders(false))).toStrictEqual([paid]);
-    expect(idsIn(await client.orders(true))).toStrictEqual([paid]);
-    const page = await client.lapsedAttempts(null);
-    expect(page.ok ? page.document.of : page.why).toBe(3);
-    expect(page.ok ? page.document.attempts.map((attempt) => attempt.id) : []).toStrictEqual([
-      unpriced.order.order.id,
-      newer,
-      older,
-    ]);
-    expect(page.ok ? page.document.attempts[0]?.price : undefined).toBeNull();
-    // Asked for, and never priced: no moment stands in for the price's.
-    expect(page.ok ? page.document.attempts[0]?.asked_at : undefined).toBe(askedAt);
-    expect(page.ok ? page.document.attempts[0]?.priced_at : undefined).toBeNull();
-    expect(page.ok ? page.document.attempts[1]?.priced_at : undefined).toEqual(expect.any(String));
-    expect(await client.lapsedCount()).toStrictEqual({ ok: true, document: 3 });
-  });
-});
-
 describe("the payout a merchant is shown", () => {
   /** Saves a new wallet, as the test channel applies it at once, and sells once into its split. */
   const paidInto = async (harnessed: Harness, wallet: string): Promise<void> => {
@@ -640,7 +561,13 @@ describe("the payout a merchant is shown", () => {
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     // A payment of its own each time: a payment presented twice is a replay.
-    await harnessed.gateway.payPurchase(offered.order.order.id, `PAY-${wallet}`, `PAY-${wallet}`);
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      `PAY-${wallet}`,
+      `PAY-${wallet}`,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
   };
 
   /** The nth wallet, all digits so it is its own checksum. */
@@ -650,18 +577,51 @@ describe("the payout a merchant is shown", () => {
     const harnessed = await started();
     // The wallet the merchant started with was never paid into, so its split
     // holds nothing; each of these holds one sale.
+    const expected: string[] = [];
     for (let n = 1; n <= SPLITS_PER_PAYOUT; n += 1) {
       await paidInto(harnessed, walletNumber(n));
+      const split =
+        (await harnessed.store.merchantById(harnessed.merchant.id))?.payoutWallet.split ?? null;
+      if (split === null) throw new Error("the new wallet has no recorded split");
+      expected.push(split.address);
     }
 
+    const foreign = await harnessed.addMerchant();
+    await aPaidOrder(harnessed, foreign.id);
     const read = await asTheOwner(harnessed).payoutSplits();
 
     const payout = read.ok ? read.document.payout : null;
+    expect(new Set(expected).size).toBe(SPLITS_PER_PAYOUT);
+    if (typeof payout !== "object" || payout === null || !("transaction" in payout))
+      throw new Error("no payout transaction");
+    expect(payout.transaction.splits.map((split) => split.address).sort()).toStrictEqual(
+      [...expected].sort(),
+    );
     expect(
-      typeof payout === "object" && payout !== null && "transaction" in payout
-        ? payout.transaction.splits
-        : [],
-    ).toHaveLength(SPLITS_PER_PAYOUT);
+      payout.transaction.splits.every((split) => split.merchantId === harnessed.merchant.id),
+    ).toBe(true);
+    const decoded = decodeFunctionData({
+      abi: parseAbi([
+        "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)",
+      ]),
+      data: payout.transaction.data,
+    });
+    const distributions = decoded.args[0].filter((call) =>
+      expected.some((address) => address.toLowerCase() === call.target.toLowerCase()),
+    );
+    expect(distributions.map((call) => call.target.toLowerCase()).sort()).toStrictEqual(
+      expected.map((address) => address.toLowerCase()).sort(),
+    );
+    for (const call of distributions) {
+      expect(
+        decodeFunctionData({
+          abi: parseAbi([
+            "function distribute((address[] recipients, uint256[] allocations, uint256 totalAllocation, uint16 distributionIncentive) split, address token, address distributor)",
+          ]),
+          data: call.callData,
+        }).functionName,
+      ).toBe("distribute");
+    }
   });
 
   it("says how many there are, and builds no transaction, past the most one carries", async () => {
@@ -789,11 +749,22 @@ describe("what the payout a merchant is shown would bring", () => {
   });
 
   it("is not known once half the page's deadline has passed, even from a chain that ignores the time it was given", async () => {
-    // Sign-out-everywhere lives on the same page, which must never wait on a
-    // check that does not keep to its time.
     const harnessed = await started({}, aChain(() => new Promise(() => undefined)).check);
-
-    expect((await shown(harnessed, 400)).brings).toBe(UNKNOWN);
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      let complete = false;
+      const reading = shown(harnessed, 400).then((payout) => {
+        complete = true;
+        return payout;
+      });
+      await vi.advanceTimersByTimeAsync(199);
+      expect(complete).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(complete).toBe(true);
+      expect((await reading).brings).toBe(UNKNOWN);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("gets only what is left of half the page's deadline once the splits were read, so a slow database and a slow chain together still leave the page drawn", async () => {
@@ -805,14 +776,27 @@ describe("what the payout a merchant is shown would bring", () => {
       400,
     );
 
-    const read = await client.payoutSplits();
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      let result: Awaited<ReturnType<typeof client.payoutSplits>> | undefined;
+      const reading = client.payoutSplits().then((value) => {
+        result = value;
+        return value;
+      });
+      await vi.advanceTimersByTimeAsync(301);
+      expect(result).toBeDefined();
+      const read = await reading;
 
-    expect(read.ok).toBe(true);
-    expect(chain.given.every((ms) => ms <= 0)).toBe(true);
-    const payout = read.ok ? read.document.payout : null;
-    expect(
-      typeof payout === "object" && payout !== null && "brings" in payout && payout.brings,
-    ).toBe(UNKNOWN);
+      expect(read.ok).toBe(true);
+      // Skipping a chain query is permitted once its half-page budget is exhausted.
+      expect(chain.given.filter((ms) => ms > 0)).toStrictEqual([]);
+      const payout = read.ok ? read.document.payout : null;
+      expect(
+        typeof payout === "object" && payout !== null && "brings" in payout && payout.brings,
+      ).toBe(UNKNOWN);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("is not asked of the chain where there is no transaction to send", async () => {
@@ -844,7 +828,13 @@ describe("what an order's record says beside its document", () => {
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      `PAYMENT-${offered.order.order.id}`,
+      `PAYMENT-${offered.order.order.id}`,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     return offered.order.order.id;
   };
 
@@ -891,10 +881,24 @@ describe("what an order's record says beside its document", () => {
 
   it("are read in the same read as the orders they describe", async () => {
     const harnessed = await started();
-    const client = asTheOwner(harnessed);
     const id = await aPaidOrder(harnessed, harnessed.merchant.id);
 
-    const read = await client.ordersWithRecords();
+    let snapshot = 0;
+    const changing = new Proxy(harnessed.gateway, {
+      get(target, property, receiver) {
+        if (property === "orders")
+          return async (...args: Parameters<Gateway["orders"]>) => {
+            snapshot += 1;
+            return snapshot === 1 ? await target.orders(...args) : [];
+          };
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const read = await gatewayFor(changing, {
+      merchantId: harnessed.merchant.id,
+      email: OWNER,
+    }).ordersWithRecords();
 
     expect(read.ok ? read.document.orders.orders.map((order) => order.id) : read.why).toStrictEqual(
       [id],
@@ -924,7 +928,13 @@ describe("what an order's record says beside its document", () => {
     const offered = await harnessed.gateway.beginPurchase(room.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const checkedAt = harnessed.now();
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      `PAYMENT-${offered.order.order.id}`,
+      `PAYMENT-${offered.order.order.id}`,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
     await worker.stop();
     const id = offered.order.order.id;
     const receipts = await client.receipts();
@@ -1007,7 +1017,13 @@ describe("what an order's record says beside its document", () => {
     if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await harnessed.gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      `PAYMENT-${offered.order.order.id}`,
+      `PAYMENT-${offered.order.order.id}`,
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     expect((await recordsOf(client))[offered.order.order.id]?.soldThrough).toBe("woocommerce");
   });
@@ -1020,9 +1036,9 @@ describe("what an order's record says beside its document", () => {
       onOrder: () => ({ refused: { code: "out_of_stock", message: "none left" } }),
     });
     const delivered = await aPaidOrder(harnessed, harnessed.merchant.id);
-    await workOnce(harnessed, {
-      onOrder: () => ({ delivered: { activation_code: "LPA:1$example$CODE" } }),
-    });
+    expect(
+      await client.deliverOrder(delivered, { activation_code: "LPA:1$example$CODE" }),
+    ).toMatchObject({ ok: true });
 
     const read = await recordsOf(client);
 

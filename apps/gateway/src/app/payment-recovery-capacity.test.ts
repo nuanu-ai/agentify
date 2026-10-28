@@ -61,7 +61,13 @@ async function unanswered(count: number) {
         notBefore: String(Math.floor(h.now() / 1000) - 30),
       },
     });
-    await h.gateway.payPurchase(offered.order.order.id, `PAYMENT-${index}`, `fp-${index}`);
+    await h.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      `PAYMENT-${index}`,
+      `fp-${index}`,
+      undefined,
+      { itemId: item, params: { email: "buyer@example.com" } },
+    );
     const saved = await h.store.orderById(offered.order.order.id);
     if (saved === null) throw new Error("the purchase disappeared");
     records.push(saved);

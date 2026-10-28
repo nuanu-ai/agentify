@@ -1192,31 +1192,361 @@ const PricedCartSchema = z.looseObject({
 /** A Store API amount, which is written in the shop's smallest unit already. */
 const unitsOf = (minor: string): bigint | null => (/^\d+$/.test(minor) ? BigInt(minor) : null);
 
-/**
- * WooCommerce has no endpoint that calculates a rate, so this uses the Store
- * API cart as a browserless client can: a fresh cart whose token stands in for
- * a nonce, the product added, the place set, the rates read off the answer.
- * Every field of the place is sent, empty where the address has none, because a
- * field left out keeps the shop's own base location; nothing about who is sent,
- * and no key. The cart stays in the shop as a guest session, which WooCommerce
- * expires after two days.
- *
- * Rates come back in the shop's order with pickup left out. An empty list means
- * the shop does not ship there; a refusal is said apart, in our own words,
- * because the shop's message names the place.
- *
- * The cart's price for the cheapest rate comes back beside them. A cart totals
- * the rate the shop chose, which is its first; where that is not the cheapest
- * and the cart carries tax, the cheapest is chosen in the cart and the cart
- * read again, because the tax on a rate is rounded with the rest and cannot be
- * swapped by arithmetic. A cart with no tax at all is priced as its goods and
- * the rate, which is what it would total.
- */
-export const shippingRatesInTheShop = async (
+interface CartSlot {
+  token: string | null;
+  busy: boolean;
+  quarantined: boolean;
+  uncertainMutation: boolean;
+  observedEmpty: boolean;
+  expiresAt: number | null;
+  keys: string[];
+}
+const CartContentsSchema = z.looseObject({
+  items: z.array(z.looseObject({ key: z.string().min(1) })).max(16),
+  needs_shipping: z.boolean(),
+  shipping_rates: z.array(z.unknown()),
+});
+/** Only a cart acknowledgement or a structured shop rejection establishes a POST outcome. */
+const recordCartMutationOutcome = (
+  slot: CartSlot,
+  outcome?: { readonly status: number; readonly body: string },
+): boolean => {
+  let known = false;
+  if (outcome !== undefined && outcome.status !== 408 && outcome.status < 500) {
+    try {
+      const document: unknown = JSON.parse(outcome.body);
+      known =
+        outcome.status === 200 || outcome.status === 201
+          ? CartContentsSchema.safeParse(document).success
+          : outcome.status >= 400 &&
+            z
+              .object({
+                code: z.string().regex(/^(?:woocommerce_rest_|rest_)/),
+                message: z.string(),
+              })
+              .safeParse(document).success;
+    } catch {
+      /* A proxy's malformed body establishes no completed mutation. */
+    }
+  }
+  if (!known) {
+    slot.quarantined = true;
+    slot.uncertainMutation = true;
+  }
+  return known;
+};
+
+/** The issuing shop supplies this token; decoding its expiry does not verify a JWT signature. */
+const keepCartToken = (slot: CartSlot, token: string): void => {
+  slot.token = token;
+  slot.expiresAt = null;
+  if (token.length > 8_192) return;
+  const parts = token.split(".");
+  if (parts.length !== 3 || !/^[A-Za-z0-9_-]+$/.test(parts[1] ?? "")) return;
+  try {
+    const claims: unknown = JSON.parse(Buffer.from(parts[1] ?? "", "base64url").toString("utf8"));
+    const exp =
+      typeof claims === "object" && claims !== null && "exp" in claims ? claims.exp : undefined;
+    if (typeof exp === "number" && Number.isSafeInteger(exp * 1_000) && exp * 1_000 > Date.now())
+      slot.expiresAt = exp * 1_000;
+  } catch {
+    /* An opaque token has no declared expiry this client can use. */
+  }
+};
+
+const CART_PATH = "/wp-json/wc/store/v1/cart";
+const CART_UNAVAILABLE: NotSellable = {
+  ok: false,
+  again: true,
+  why: "The shop's reusable carts are busy or could not be cleaned safely.",
+};
+interface CachedShopRead {
+  until: number;
+  readonly pending: Promise<Answered>;
+}
+
+/** Read caches and four exclusive cart sessions belong to one connected shop. */
+export class WooShopRuntime {
+  #keys: ShopKeys;
+  readonly #request: WooRequest;
+  readonly #reads = new Map<string, CachedShopRead>();
+  readonly #carts: CartSlot[] = Array.from({ length: 4 }, () => ({
+    token: null,
+    busy: false,
+    quarantined: false,
+    uncertainMutation: false,
+    observedEmpty: false,
+    expiresAt: null,
+    keys: [],
+  }));
+  #retry = 0;
+  readonly #active = new Set<Promise<RatesRead>>();
+
+  constructor(keys: ShopKeys, request: WooRequest = wooRequest) {
+    this.#keys = keys;
+    this.#request = request;
+  }
+
+  /** Same-origin credential renewal keeps the existing cart identities. */
+  updateKeys(keys: ShopKeys): void {
+    if (keys.shopUrl !== this.#keys.shopUrl)
+      throw new Error("A WooCommerce runtime belongs to one shop origin.");
+    this.#reads.clear();
+    this.#keys = keys;
+  }
+
+  async inspectForQuote(merchantItemId: string): Promise<ProductInspection> {
+    const keys = this.#keys;
+    const productId = productIdFromMerchantItem(keys.shopUrl, merchantItemId);
+    if (productId === null) return OF_ANOTHER_SHOP;
+    const answers = await Promise.all([
+      this.#cached(keys, `/wp-json/wc/v3/products/${productId}`, 5_000),
+      ...SETTING_PATHS.map((path) => this.#cached(keys, path, 180_000)),
+    ]);
+    return judged(keys, productId, answers, this.#request);
+  }
+
+  async #cached(keys: ShopKeys, path: string, ttl: number): Promise<Answered> {
+    const existing = this.#reads.get(path);
+    if (existing !== undefined && existing.until > Date.now()) return existing.pending;
+    this.#reads.delete(path);
+    // Settings have eleven paths; at most 128 product documents are retained.
+    if (this.#reads.size >= 139) {
+      const oldest = [...this.#reads].find(([, entry]) => Number.isFinite(entry.until));
+      if (oldest !== undefined) this.#reads.delete(oldest[0]);
+      else return askedTheShop(keys, path, this.#request);
+    }
+    const entry: CachedShopRead = {
+      until: Infinity,
+      pending: askedTheShop(keys, path, this.#request).then((read) => {
+        let valid = false;
+        if (read?.response.ok && read.body !== null) {
+          try {
+            const document: unknown = JSON.parse(read.body);
+            const id = path.split("/").at(-1);
+            if (path.startsWith("/wp-json/wc/v3/products/")) {
+              const parsed = ProductSchema.safeParse(document);
+              valid = parsed.success && String(parsed.data.id) === id;
+            } else if (path.endsWith("/tax") || path.endsWith("/general")) {
+              valid = SettingsGroupSchema.safeParse(document).success;
+            } else {
+              const parsed = SettingSchema.safeParse(document);
+              valid = parsed.success && parsed.data.id === id;
+            }
+          } catch {
+            valid = false;
+          }
+        }
+        if (valid) entry.until = Date.now() + ttl;
+        else if (this.#reads.get(path) === entry) this.#reads.delete(path);
+        return read;
+      }),
+    };
+    this.#reads.set(path, entry);
+    return entry.pending;
+  }
+
+  shippingRates(
+    productId: string,
+    place: ShipToLocality,
+    signal?: AbortSignal,
+  ): Promise<RatesRead> {
+    const work = this.#price(productId, place, signal);
+    this.#active.add(work);
+    void work.then(
+      () => this.#active.delete(work),
+      () => this.#active.delete(work),
+    );
+    return work;
+  }
+
+  /** Waits for cart ownership and cleanup that outlived a price question's reply. */
+  async drain(): Promise<void> {
+    while (this.#active.size > 0) await Promise.allSettled(this.#active);
+  }
+
+  async #price(productId: string, place: ShipToLocality, signal?: AbortSignal): Promise<RatesRead> {
+    if (!/^[1-9]\d*$/.test(productId) || !Number.isSafeInteger(Number(productId))) {
+      return {
+        ok: false,
+        again: false,
+        saidNo: true,
+        why: "The card names no product in a WooCommerce shop.",
+      };
+    }
+    if (signal?.aborted) return CART_UNAVAILABLE;
+    let slot = this.#carts.find((cart) => !cart.busy && !cart.quarantined);
+    if (slot === undefined) {
+      const candidates = this.#carts.filter((cart) => !cart.busy && !cart.uncertainMutation);
+      slot = candidates[this.#retry % Math.max(1, candidates.length)];
+      this.#retry += 1;
+      if (slot === undefined) return CART_UNAVAILABLE;
+      slot.busy = true;
+      if (!(await this.#clean(slot))) {
+        slot.busy = false;
+        return CART_UNAVAILABLE;
+      }
+      slot.quarantined = false;
+    } else slot.busy = true;
+    if (
+      slot.observedEmpty &&
+      !slot.quarantined &&
+      slot.expiresAt !== null &&
+      slot.expiresAt <= Date.now()
+    ) {
+      slot.token = null;
+      slot.expiresAt = null;
+      slot.observedEmpty = false;
+      slot.keys = [];
+    }
+    let answer: RatesRead = CART_UNAVAILABLE;
+    try {
+      if (slot.token === null) {
+        const opened = await this.#open(slot);
+        if (opened !== true) return opened;
+      }
+      slot.observedEmpty = false;
+      const within = signal ?? AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS);
+      answer = await ratesInCart(this.#keys.shopUrl, productId, place, this.#request, slot, within);
+    } finally {
+      // Price cancellation cannot cancel the removal or release the slot early.
+      const clean = slot.token !== null && (await this.#clean(slot));
+      slot.quarantined = slot.quarantined || !clean;
+      slot.busy = false;
+    }
+    return slot.quarantined && answer.ok ? CART_UNAVAILABLE : answer;
+  }
+
+  async #open(slot: CartSlot): Promise<true | NotSellable> {
+    let response: Response;
+    try {
+      response = await this.#request(`${this.#keys.shopUrl}${CART_PATH}`, {
+        headers: { accept: "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
+      });
+    } catch {
+      return { ok: false, again: true, why: `The shop's cart did not answer at ${CART_PATH}.` };
+    }
+    const issued = response.headers.get("cart-token");
+    if (issued) keepCartToken(slot, issued);
+    const where = `at ${CART_PATH} (HTTP ${response.status})`;
+    if (!response.ok) {
+      return worthAskingAgain(response.status)
+        ? { ok: false, again: true, why: `The shop's cart was too busy to answer ${where}.` }
+        : {
+            ok: false,
+            again: false,
+            saidNo: false,
+            why: `The shop's cart refused the question ${where}.`,
+          };
+    }
+    if (!slot.token)
+      return {
+        ok: false,
+        again: false,
+        saidNo: false,
+        why: `The shop's cart gave no cart token ${where}.`,
+      };
+    let document: unknown;
+    try {
+      document = await response.json();
+    } catch {
+      return { ok: false, again: true, why: `The shop's cart answer broke off ${where}.` };
+    }
+    const contents = CartContentsSchema.safeParse(document);
+    return contents.success &&
+      contents.data.items.length === 0 &&
+      !contents.data.needs_shipping &&
+      contents.data.shipping_rates.length === 0
+      ? true
+      : {
+          ok: false,
+          again: false,
+          saidNo: false,
+          why: `The shop's cart did not open empty ${where}.`,
+        };
+  }
+
+  async #clean(slot: CartSlot): Promise<boolean> {
+    if (slot.token === null) return false;
+    const signal = AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS);
+    let mutationInFlight = false;
+    const ask = async (key?: string): Promise<Response> => {
+      if (key !== undefined) mutationInFlight = true;
+      const response = await this.#request(
+        `${this.#keys.shopUrl}${CART_PATH}${key === undefined ? "" : "/remove-item"}`,
+        {
+          method: key === undefined ? "GET" : "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            "cart-token": slot.token ?? "",
+          },
+          ...(key === undefined ? {} : { body: JSON.stringify({ key }) }),
+          redirect: "manual",
+          signal,
+        },
+      );
+      const token = response.headers.get("cart-token");
+      if (token) keepCartToken(slot, token);
+      return response;
+    };
+    try {
+      let removalCertain = true;
+      if (slot.keys.length === 0) {
+        const response = await ask();
+        if (!response.ok) return false;
+        const contents = CartContentsSchema.safeParse(await response.json());
+        if (!contents.success) return false;
+        slot.keys = contents.data.items.map((item) => item.key);
+      }
+      for (const key of slot.keys) {
+        const removed = await ask(key);
+        // 400 can mean that an earlier removal succeeded but its reply was lost.
+        if (!removed.ok && removed.status !== 400) removalCertain = false;
+        const body = await removed.text();
+        if (!recordCartMutationOutcome(slot, { status: removed.status, body }))
+          removalCertain = false;
+        mutationInFlight = false;
+      }
+      const response = await ask();
+      if (!response.ok) return false;
+      const contents = CartContentsSchema.safeParse(await response.json());
+      const empty =
+        contents.success &&
+        contents.data.items.length === 0 &&
+        !contents.data.needs_shipping &&
+        contents.data.shipping_rates.length === 0;
+      slot.observedEmpty = empty;
+      if (empty) slot.keys = [];
+      return removalCertain && empty;
+    } catch {
+      if (mutationInFlight) recordCartMutationOutcome(slot);
+      return false;
+    }
+  }
+}
+
+/** One-off pricing uses the same cleanup discipline as the worker's reusable runtime. */
+export const shippingRatesInTheShop = (
   shopUrl: string,
   productId: string,
   place: ShipToLocality,
   request: WooRequest = wooRequest,
+): Promise<RatesRead> =>
+  new WooShopRuntime({ shopUrl, consumerKey: "", consumerSecret: "" }, request).shippingRates(
+    productId,
+    place,
+  );
+
+const ratesInCart = async (
+  shopUrl: string,
+  productId: string,
+  place: ShipToLocality,
+  request: WooRequest,
+  slot: CartSlot,
+  signal: AbortSignal,
 ): Promise<RatesRead> => {
   const product = Number(productId);
   if (!Number.isSafeInteger(product) || product <= 0) {
@@ -1234,6 +1564,8 @@ export const shippingRatesInTheShop = async (
   ): Promise<
     { readonly ok: true; readonly response: Response; readonly body: string } | NotSellable
   > => {
+    if (signal.aborted)
+      return { ok: false, again: true, why: "The price question ended before the next cart step." };
     let response: Response;
     try {
       response = await request(`${shopUrl}${path}`, {
@@ -1242,6 +1574,7 @@ export const shippingRatesInTheShop = async (
         signal: AbortSignal.timeout(SHOP_ANSWERS_WITHIN_MS),
       });
     } catch {
+      if (init.method === "POST") recordCartMutationOutcome(slot);
       return { ok: false, why: `The shop's cart did not answer at ${path}.`, again: true };
     }
     const answered = `at ${path} (HTTP ${response.status})`;
@@ -1249,8 +1582,20 @@ export const shippingRatesInTheShop = async (
     try {
       body = await response.text();
     } catch {
+      if (init.method === "POST") recordCartMutationOutcome(slot);
       return { ok: false, why: `The shop's cart answer broke off ${answered}.`, again: true };
     }
+    if (
+      init.method === "POST" &&
+      !recordCartMutationOutcome(slot, { status: response.status, body })
+    ) {
+      const why = `The shop's cart mutation has no confirmed outcome ${answered}.`;
+      return worthAskingAgain(response.status)
+        ? { ok: false, why, again: true }
+        : { ok: false, why, again: false, saidNo: false };
+    }
+    const rotated = response.headers.get("cart-token");
+    if (rotated) keepCartToken(slot, rotated);
     if (worthAskingAgain(response.status)) {
       return { ok: false, why: `The shop's cart was too busy to answer ${answered}.`, again: true };
     }
@@ -1280,23 +1625,10 @@ export const shippingRatesInTheShop = async (
     return { ok: true, response, body };
   };
 
-  const opened = await ask(cart, { headers: { accept: "application/json" } });
-  if (!opened.ok) return opened;
-  const token = opened.response.headers.get("cart-token");
-  if (token === null || token === "") {
-    return {
-      ok: false,
-      why:
-        `The shop's cart gave no cart token at ${cart} (HTTP ${opened.response.status}), and` +
-        " without one it takes no question from us.",
-      again: false,
-      saidNo: false,
-    };
-  }
   const headers = {
     accept: "application/json",
     "content-type": "application/json",
-    "cart-token": token,
+    "cart-token": slot.token ?? "",
   };
   const added = await ask(`${cart}/add-item`, {
     method: "POST",
@@ -1304,6 +1636,18 @@ export const shippingRatesInTheShop = async (
     body: JSON.stringify({ id: product, quantity: 1 }),
   });
   if (!added.ok) return added;
+  try {
+    const addedCart = CartContentsSchema.safeParse(JSON.parse(added.body));
+    if (addedCart.success) slot.keys = addedCart.data.items.map((item) => item.key);
+  } catch {
+    return {
+      ok: false,
+      again: false,
+      saidNo: false,
+      why: "The cart mutation acknowledgement could not be read.",
+    };
+  }
+
   const placing = `${cart}/update-customer`;
   const placed = await ask(placing, {
     method: "POST",

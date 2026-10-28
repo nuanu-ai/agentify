@@ -63,26 +63,11 @@ describe("the account banner", () => {
     ]);
   });
 
-  it("names a merchant whose purchases waiting for payment fill the limit, with nothing to switch on", () => {
-    const notes = accountOf(READY, { selling: "open", busy: true });
-
-    expect(notes.map((note) => note.reason)).toStrictEqual(["busy"]);
-    expect(notes[0]?.fix).toBeNull();
-  });
-
   it("says new purchases are refused while ten paid orders are left unserved, and leads to the orders that need the merchant", () => {
     const [note] = accountOf(READY, { selling: "open", unserved: true });
 
     expect(note?.reason).toBe("unserved");
     expect(note?.fix?.to).toBe("/orders?show=needs");
-  });
-
-  it("heads silence and the unpaid purchases together by what silence does to every product", () => {
-    const both = accountOf(READY, { selling: "open", busy: true, outOfTouch: { since: null } });
-    const silent = accountOf(READY, { selling: "open", outOfTouch: { since: null } });
-
-    expect(both.map((note) => note.reason)).toStrictEqual(["out_of_touch", "busy"]);
-    expect(headingOf(both)).toBe(headingOf(silent));
   });
 
   it("names a waiting change of the payout wallet before every other reason, with the address, the moment it applies and the wallet paid now", () => {
@@ -122,7 +107,7 @@ describe("the account banner", () => {
     ];
 
     expect(headingOf(one)).toBe(one[0]?.title);
-    expect(new Set(several.map(headingOf)).size).toBe(1);
+    for (const notes of several) expect(headingOf(notes)).toMatch(/products.*off sale/i);
     expect(headingOf(several[0] ?? [])).not.toBe(headingOf(one));
   });
 

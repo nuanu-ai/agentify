@@ -38,35 +38,22 @@ describe("@nuanu-ai/agentify-contracts as a published package", () => {
     });
   });
 
-  it("names published paths its own source can produce", () => {
-    // The build compiles `src` into `dist`, so `./dist/index.js` can only come
-    // from `./src/index.ts`; a renamed entry would promise a file the build
-    // never writes.
-    const published = Object.values(manifest.publishConfig?.exports ?? {}).flatMap((entry) =>
-      [entry.types, entry.default].filter((path) => path !== undefined),
-    );
-
-    expect(published.length).toBeGreaterThan(0);
-
-    for (const path of published) {
-      const source = path.replace(/^\.\/dist\//, "./src/").replace(/\.d\.ts$|\.js$/, ".ts");
-
-      expect(existsSync(new URL(`../${source}`, import.meta.url))).toBe(true);
-    }
-  });
-
   it("carries what npm needs to publish it, and builds before it is packed", () => {
     // Without `prepack`, packing a tree with no `dist` silently produces a
     // tarball holding only this manifest.
     expect(manifest.name).toBe("@nuanu-ai/agentify-contracts");
     expect(manifest.private).toBeUndefined();
+    expect(manifest.version).toMatch(/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/);
     expect(manifest.version).not.toBe("0.0.0");
     expect(manifest.files).toStrictEqual(["dist", "LICENSE", "NOTICE"]);
     expect(manifest.license).toBe("Apache-2.0");
-    expect(manifest.repository).toBeDefined();
-    expect(manifest.engines?.node).toBeDefined();
-    // Defined is not enough: it has to be the build.
-    expect(manifest.scripts?.prepack).toBe("pnpm run build");
+    expect(manifest.repository).toMatchObject({
+      type: "git",
+      url: "git+https://github.com/nuanu-ai/agentify.git",
+    });
+    expect(manifest.engines?.node).toMatch(/^>=\d+(?:\.\d+){0,2}$/);
+    expect(Number(manifest.engines?.node?.match(/^>=(\d+)/)?.[1])).toBeGreaterThanOrEqual(24);
+    // Actual prepack output and imports are exercised by `pnpm outside`.
     expect(manifest.publishConfig?.access).toBe("public");
     expect(existsSync(new URL("../README.md", import.meta.url))).toBe(true);
     expect(existsSync(new URL("../LICENSE", import.meta.url))).toBe(true);

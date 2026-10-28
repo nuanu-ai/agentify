@@ -18,5 +18,6 @@ describe("TurnstileChallenge", () => {
     );
 
     expect(html).not.toContain("data-sitekey");
+    expect(html).toMatch(/challenge.*not configured.*retry.*configured deployment/i);
   });
 });

@@ -99,7 +99,6 @@ if (databaseUrl === null) {
     // Every row gone, so one case cannot read another's; the accounts too,
     // since they are made per case.
     await pool.query("delete from dashboard_woo_orders");
-    await pool.query("delete from dashboard_woo_quotes");
     await pool.query("delete from dashboard_woo_shops");
     await pool.query("delete from dashboard_woo_grants");
     await pool.query("delete from dashboard_accounts");

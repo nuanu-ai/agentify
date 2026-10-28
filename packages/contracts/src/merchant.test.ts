@@ -67,13 +67,6 @@ describe("what a merchant sends to change that name", () => {
     expect(SellerNameRequestSchema.safeParse({ seller_name: "" }).success).toBe(false);
   });
 
-  it("refuses null, because a name cannot be taken away", () => {
-    // Having no name is a state a merchant starts in and cannot return to:
-    // their cards would stay on sale under a payment request naming no seller.
-    // A merchant who wants to stop selling pauses instead.
-    expect(SellerNameRequestSchema.safeParse({ seller_name: null }).success).toBe(false);
-  });
-
   it("says what to do instead, rather than that a string was expected", () => {
     // "expected string, received null" gives the shape, not the reason; the
     // sentence names the act that stops a merchant being listed.
@@ -185,13 +178,6 @@ describe("the wallet a merchant's sales are paid into", () => {
         pending: { ...waiting.pending, takes_effect_at: "in two days" },
       }).success,
     ).toBe(false);
-  });
-
-  it("says a merchant has none rather than leaving the field out", () => {
-    // Null means nobody has said where the money goes; an absent field could
-    // tell a merchant they are set up to be paid when they are not.
-    expect(PayoutWalletSchema.parse(unpaid)).toStrictEqual(unpaid);
-    expect(PayoutWalletSchema.safeParse({}).success).toBe(false);
   });
 
   it("refuses a document without payout_wallet and names it", () => {

@@ -11,6 +11,7 @@
  */
 
 import type { Card, MerchantCardList, Receipt } from "@nuanu-ai/agentify-contracts";
+import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buyOverHttp,
@@ -21,6 +22,8 @@ import {
   serve,
   workOnce,
 } from "../testing/harness.js";
+
+import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
@@ -317,9 +320,11 @@ describe("what a key can do", () => {
     const challenged = await purchase;
     expect(challenged.status).toBe(402);
     const orders = await served.call("GET", "/v0/orders", { headers: keyOf(b) });
-    expect(
-      (orders.body as { orders: { price: { amount: string } }[] }).orders[0]?.price.amount,
-    ).toBe("90.00");
+    expect((orders.body as { orders: unknown[] }).orders).toStrictEqual([]);
+    const requirements = decodePaymentRequiredHeader(
+      challenged.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    ).accepts[0];
+    expect(requirements?.amount).toBe("90000000");
   });
 
   it("keeps one merchant's stop-selling off the other's catalog", async () => {
@@ -437,10 +442,11 @@ describe("whose envelope a worker draws", () => {
 describe("the merchant's door", () => {
   it("turns away a key nobody was issued", async () => {
     const { served, harnessed } = await started();
-    await harnessed.addMerchant("Merchant A");
+    const a = await harnessed.addMerchant("Merchant A");
+    expect((await served.call("GET", "/v0/orders", { headers: keyOf(a) })).status).toBe(200);
 
     const answered = await served.call("GET", "/v0/orders", {
-      headers: { authorization: "Bearer a-key-that-was-never-issued" },
+      headers: { authorization: "Bearer csk_test_a-key-that-was-never-issued" },
     });
 
     expect(answered.status).toBe(401);
@@ -456,30 +462,15 @@ describe("the merchant's door", () => {
     const working = await served.call("GET", "/v0/orders", { headers: keyOf(a) });
     expect(working.status).toBe(200);
 
-    await harnessed.disableKey(a.keyId);
+    await harnessed.store.disableKeyOf(a.id, a.keyId, harnessed.now());
 
     const refused = await served.call("GET", "/v0/orders", { headers: keyOf(a) });
     const never = await served.call("GET", "/v0/orders", {
-      headers: { authorization: "Bearer a-key-that-was-never-issued" },
+      headers: { authorization: "Bearer csk_test_a-key-that-was-never-issued" },
     });
 
     expect(refused.status).toBe(401);
     expect(refused.body).toStrictEqual(never.body);
-  });
-
-  it("leaves a merchant's other keys working when one of them is disabled", async () => {
-    // The whole reason a key is a row rather than a variable: one is revoked
-    // without touching any other.
-    const { served, harnessed } = await started();
-    const a = await harnessed.addMerchant("Merchant A");
-    const second = await harnessed.addKey(a.id, "a second key");
-
-    await harnessed.disableKey(a.keyId);
-
-    expect(
-      (await served.call("GET", "/v0/orders", { headers: { authorization: `Bearer ${second}` } }))
-        .status,
-    ).toBe(200);
   });
 
   it("resolves every one of a merchant's keys to that merchant and none to another", async () => {

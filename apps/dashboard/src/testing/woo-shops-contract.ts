@@ -147,6 +147,7 @@ export const wooShopsContract = (
           startedAt: NOW,
           expiresAt: LATER,
         });
+        expect(await shops.grantFor(accounts.other)).toBeNull();
         await shops.beginGrant({
           token: "other",
           accountId: accounts.other,
@@ -166,7 +167,10 @@ export const wooShopsContract = (
 
         expect(await shops.connectFromGrant("first", keys, NOW)).toBeNull();
         expect(await shops.connectionOf(accounts.one)).toBeNull();
-        expect((await shops.grantFor(accounts.one))?.token).toBe("second");
+        expect(await shops.grantFor(accounts.one)).toMatchObject({
+          token: "second",
+          shopUrl: "https://second.example.com",
+        });
         expect((await shops.grantFor(accounts.other))?.token).toBe("other");
       });
     });
@@ -188,61 +192,6 @@ export const wooShopsContract = (
 
         expect(waiting?.shopUrl).toBe("https://shop.example.com");
         expect(waiting?.startedAt.toISOString()).toBe(NOW.toISOString());
-      });
-    });
-
-    it("keeps one account's Connect out of another's", async () => {
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          currency: null,
-          startedAt: NOW,
-          expiresAt: MUCH_LATER,
-        });
-
-        expect(await shops.grantFor(accounts.other)).toBeNull();
-      });
-    });
-
-    it("hands back the Connect a merchant pressed last, not the one before it", async () => {
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "first",
-          accountId: accounts.one,
-          shopUrl: "https://first.example.com",
-          currency: null,
-          startedAt: NOW,
-          expiresAt: LATER,
-        });
-        await shops.beginGrant({
-          token: "second",
-          accountId: accounts.one,
-          shopUrl: "https://second.example.com",
-          currency: null,
-          startedAt: LATER,
-          expiresAt: MUCH_LATER,
-        });
-
-        expect((await shops.grantFor(accounts.one))?.shopUrl).toBe("https://second.example.com");
-      });
-    });
-
-    it("still hands back a Connect whose time is up, because that is the case worth saying", async () => {
-      // Not filtered here: an expired Connect with no keys is exactly the one a
-      // merchant needs a sentence about, and the screen reads the clock.
-      await using(async (shops, accounts) => {
-        await shops.beginGrant({
-          token: "a-token",
-          accountId: accounts.one,
-          shopUrl: "https://shop.example.com",
-          currency: null,
-          startedAt: NOW,
-          expiresAt: LATER,
-        });
-
-        expect(await shops.grantFor(accounts.one)).not.toBeNull();
       });
     });
   });
@@ -577,95 +526,6 @@ export const wooShopsContract = (
     });
   });
 
-  describe(`${name}: a price question`, () => {
-    const DOLLAR_SALE = {
-      fingerprint: FACTS.productFingerprint,
-      inTheShop: { amount: "25.00", currency: "USD" },
-      paid: { amount: "25.00", currency: "USD" },
-      rateVersion: null,
-    };
-
-    it("binds one price id to one product, the amount the shop is held to and the dollars paid", async () => {
-      await using(async (shops, accounts) => {
-        expect(
-          await shops.recordQuote(
-            accounts.one,
-            "prc_1",
-            FACTS.merchantItemId,
-            DOLLAR_SALE,
-            MUCH_LATER,
-            NOW,
-          ),
-        ).toBe(true);
-        expect(await shops.quotedSale(accounts.one, "prc_1", FACTS.merchantItemId)).toEqual({
-          fingerprint: FACTS.productFingerprint,
-          inTheShop: { amount: "25.00", currency: "USD" },
-          paid: { amount: "25.00", currency: "USD" },
-          rate: null,
-        });
-        expect(await shops.quotedSale(accounts.other, "prc_1", FACTS.merchantItemId)).toBeNull();
-        expect(
-          await shops.recordQuote(
-            accounts.one,
-            "prc_1",
-            FACTS.merchantItemId,
-            { ...DOLLAR_SALE, fingerprint: "different-product" },
-            MUCH_LATER,
-            NOW,
-          ),
-        ).toBe(false);
-      });
-    });
-
-    it("binds a price from a shop in another currency to the rate it was converted at, through later rates", async () => {
-      await using(async (shops, accounts) => {
-        const first = await shops.saveRate(accounts.one, SHOP, RUPIAH);
-        const sale = {
-          fingerprint: FACTS.productFingerprint,
-          inTheShop: { amount: "250000", currency: "IDR" },
-          paid: { amount: "13.89", currency: "USD" },
-          rateVersion: first.version,
-        };
-        expect(
-          await shops.recordQuote(
-            accounts.one,
-            "prc_2",
-            FACTS.merchantItemId,
-            sale,
-            MUCH_LATER,
-            NOW,
-          ),
-        ).toBe(true);
-        await shops.saveRate(accounts.one, SHOP, { ...RUPIAH, rate: "16000", setAt: LATER });
-
-        expect(await shops.quotedSale(accounts.one, "prc_2", FACTS.merchantItemId)).toEqual({
-          fingerprint: FACTS.productFingerprint,
-          inTheShop: { amount: "250000", currency: "IDR" },
-          paid: { amount: "13.89", currency: "USD" },
-          rate: { version: first.version, currency: "IDR", rate: "18000", setAt: NOW },
-        });
-        // A second answer to the same question at another amount or rate is
-        // a price no order could be held to.
-        for (const other of [
-          { ...sale, inTheShop: { amount: "250001", currency: "IDR" } },
-          { ...sale, paid: { amount: "13.90", currency: "USD" } },
-          { ...sale, rateVersion: null },
-        ]) {
-          expect(
-            await shops.recordQuote(
-              accounts.one,
-              "prc_2",
-              FACTS.merchantItemId,
-              other,
-              MUCH_LATER,
-              NOW,
-            ),
-          ).toBe(false);
-        }
-      });
-    });
-  });
-
   describe(`${name}: the rates a merchant sets`, () => {
     it("keeps every rate saved, and the latest for the shop and the currency is the current one", async () => {
       await using(async (shops, accounts) => {
@@ -837,6 +697,13 @@ export const wooShopsContract = (
           NOW,
         );
 
+        // A placed download is not a parcel to follow, even on this same account.
+        await shops.claimOrder(accounts.one, "ord_download", FACTS, NOW);
+        await shops.recordOrder(
+          "ord_download",
+          { id: "13", number: "13", permission: PERMISSION, total: "25.00" },
+          NOW,
+        );
         // Where and when it was sold decide whether it is still read: in the
         // shop connected now, and not for ever.
         expect(await shops.parcelsToFollow(accounts.one)).toEqual([

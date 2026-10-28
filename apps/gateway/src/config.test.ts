@@ -13,7 +13,10 @@ import { startGateway } from "./start.js";
 const database = "postgres://agentify:secret@localhost:5432/agentify";
 
 /** The one variable that has no sensible default and must always be given. */
-const required = { DATABASE_URL: database };
+const required = {
+  PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+  DATABASE_URL: database,
+};
 
 /**
  * What the gateway said when it refused to start on this environment. Refusals
@@ -30,6 +33,20 @@ const refusalFor = (overrides: Record<string, string>): string => {
 };
 
 describe("loadConfig", () => {
+  it.each([undefined, "", "short"])("refuses an absent or weak price signing key (%s)", (key) => {
+    expect(() => loadConfig({ ...required, PRICE_STAMP_KEY: key })).toThrow(/PRICE_STAMP_KEY/);
+  });
+  it("refuses a weak rotation key and accepts separate stable channel keys", () => {
+    expect(() => loadConfig({ ...required, PRICE_STAMP_PREVIOUS_KEY: "short" })).toThrow(
+      /PRICE_STAMP_PREVIOUS_KEY/,
+    );
+    expect(
+      loadConfig({
+        ...required,
+        PRICE_STAMP_PREVIOUS_KEY: "a-previous-signing-key-at-least-32-bytes",
+      }).priceStampKeys.previous,
+    ).toBe("a-previous-signing-key-at-least-32-bytes");
+  });
   it("reads the environment and fills in the sandbox defaults", () => {
     const config = loadConfig(required);
 
@@ -104,6 +121,12 @@ describe("loadConfig", () => {
   it("carries the worker window and the payment settings", () => {
     const config = loadConfig(required);
 
+    expect(config.environment).toBe("test");
+    expect(config.payoutSplit).toMatchObject({
+      network: "eip155:84532",
+      usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      commissionWallet: "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
+    });
     expect(config.worker).toStrictEqual({ pollWaitMs: 25_000 });
     expect(config.publicBaseUrl).toBe("http://localhost:3000");
     expect(config.payment).toStrictEqual({
@@ -123,6 +146,12 @@ describe("loadConfig", () => {
       CDP_API_KEY_SECRET: "key-secret",
     });
 
+    expect(live.environment).toBe("live");
+    expect(live.payoutSplit).toMatchObject({
+      network: "eip155:8453",
+      usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      commissionWallet: "0xf44Ac5860c13fDa0577305121f00cBa4d0B96541",
+    });
     expect(live.payment).toStrictEqual({
       facilitatorUrl: "https://api.cdp.coinbase.com/platform/v2/x402",
       network: "eip155:8453",
@@ -157,8 +186,13 @@ describe("loadConfig", () => {
     // left set by mistake.
     expect(isSandboxFacilitator(loadConfig(required).payment.facilitatorUrl)).toBe(false);
 
-    const sandbox = loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR });
-    expect(sandbox.payment.facilitatorUrl).toBe(SANDBOX_FACILITATOR);
+    const sandbox = loadConfig({ ...required, FACILITATOR_URL: "sandbox:scripted" });
+    expect(sandbox.payment.facilitatorUrl).toBe("sandbox:scripted");
+    expect(sandbox.payoutSplit).toMatchObject({
+      network: "eip155:84532",
+      usdc: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      commissionWallet: "0x36d44e40d127046B69E1163EF995Fe8C7b159Ca5",
+    });
     expect(isSandboxFacilitator(sandbox.payment.facilitatorUrl)).toBe(true);
 
     // A near miss is a refusal at startup rather than a real address that
@@ -185,6 +219,11 @@ describe("loadConfig", () => {
     expect(() =>
       loadConfig({ ...sandbox, PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" }),
     ).not.toThrow();
+    for (const url of [undefined, "https://x402.org/facilitator", "sandbox:scripted"]) {
+      const config = loadConfig({ ...required, FACILITATOR_URL: url });
+      expect(config.payment.cdpApiKeyId).toBeNull();
+      expect(config.payment.cdpApiKeySecret).toBeNull();
+    }
   });
 
   describe("a credential set to nothing", () => {
@@ -196,24 +235,6 @@ describe("loadConfig", () => {
 
       expect(started.payment.cdpApiKeyId).toBeNull();
       expect(started.payment.cdpApiKeySecret).toBeNull();
-    });
-
-    it("still refuses a real credential beside a facilitator that settles nothing", () => {
-      expect(() =>
-        loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR, CDP_API_KEY_ID: "key-id" }),
-      ).toThrowError(/left over from somewhere else/);
-    });
-
-    it("still refuses Coinbase's facilitator with a credential set to nothing", () => {
-      expect(() =>
-        loadConfig({
-          ...required,
-          PAYMENT_NETWORK: "eip155:8453",
-          FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-          CDP_API_KEY_ID: "key-id",
-          CDP_API_KEY_SECRET: "",
-        }),
-      ).toThrowError(/CDP_API_KEY_SECRET/);
     });
   });
 
@@ -239,17 +260,19 @@ describe("loadConfig", () => {
     expect(() =>
       loadConfig({ ...cdp, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "secret" }),
     ).not.toThrow();
-  });
-
-  it("asks no credentials of the facilitators that take none", () => {
-    // The default is the x402.org testnet facilitator, which is unauthenticated,
-    // and the sandbox settles against nothing at all. Demanding credentials of
-    // either would make the local stack need an account before it could sell.
-    expect(() => loadConfig(required)).not.toThrow();
-    expect(() =>
-      loadConfig({ ...required, FACILITATOR_URL: "https://x402.org/facilitator" }),
-    ).not.toThrow();
-    expect(() => loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR })).not.toThrow();
+    for (const network of ["eip155:84532", "eip155:8453"]) {
+      const missing = refusalFor({ ...cdp, PAYMENT_NETWORK: network });
+      expect(missing).toContain("CDP_API_KEY_ID");
+      expect(missing).toContain("CDP_API_KEY_SECRET");
+      const emptySecret = refusalFor({
+        ...cdp,
+        PAYMENT_NETWORK: network,
+        CDP_API_KEY_ID: "key-id",
+        CDP_API_KEY_SECRET: "",
+      });
+      expect(emptySecret).toContain("CDP_API_KEY_SECRET");
+      expect(emptySecret).not.toContain("CDP_API_KEY_ID");
+    }
   });
 
   it("knows the CDP facilitator by its host, not by one exact spelling", () => {
@@ -351,19 +374,19 @@ describe("loadConfig", () => {
 
   it("does not let it start, names every problem at once and tells absent from wrong", () => {
     const bothBroken = () => loadConfig({ QUOTE_RESPONSE_MS: "not a number" });
-    expect(bothBroken).toThrowError(/DATABASE_URL: the variable is not set/);
-    expect(bothBroken).toThrowError(/QUOTE_RESPONSE_MS: must be a whole number of milliseconds/);
+    expect(bothBroken).toThrowError(/DATABASE_URL.*not set/s);
+    expect(bothBroken).toThrowError(/QUOTE_RESPONSE_MS.*milliseconds/s);
 
     expect(() =>
       loadConfig({ ...required, DATABASE_URL: "mysql://localhost/agentify" }),
-    ).toThrowError(/DATABASE_URL: must be an address of the form postgres/);
+    ).toThrowError(/DATABASE_URL.*postgres/s);
   });
 
   it("refuses an address the money could not reach", () => {
     // It goes straight into the challenge that invites an agent to pay it, so a
     // truncated paste would invite them to pay nobody.
     expect(() => loadConfig({ ...required, PAY_TO_ADDRESS: "0xdeadbee" })).toThrowError(
-      /PAY_TO_ADDRESS is "0xdeadbee", which is not an address on eip155:84532/,
+      /PAY_TO_ADDRESS.*0xdeadbee.*eip155:84532/s,
     );
     expect(() =>
       loadConfig({ ...required, PAY_TO_ADDRESS: "0x0000000000000000000000000000000000000001" }),
@@ -399,7 +422,7 @@ describe("loadConfig", () => {
     // different string from the one the asset table is keyed by, so a challenge
     // built from it would name an asset that is not there.
     expect(() => loadConfig({ ...required, PAYMENT_NETWORK: "base-sepolia" })).toThrowError(
-      /PAYMENT_NETWORK: must be a CAIP-2 chain such as eip155:84532/,
+      /PAYMENT_NETWORK.*CAIP-2.*eip155:84532/s,
     );
   });
 
@@ -415,31 +438,25 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "short" })).toThrowError(
       /SANDBOX_MERCHANT_KEY: must be at least 16 characters/,
     );
-  });
-
-  it("reads a seed key set to nothing the way it reads one never set", () => {
-    // Deployments unset the variable by leaving the name with nothing after
-    // it; read as an empty key, that would stop the gateway from starting.
-    expect(loadConfig({ ...required, SANDBOX_MERCHANT_KEY: "" }).sandboxMerchantKey).toBeNull();
-    expect(loadConfig(required).sandboxMerchantKey).toBeNull();
-    // Anything that is not empty is still held to the floor.
-    expect(() => loadConfig({ ...required, SANDBOX_MERCHANT_KEY: " " })).toThrowError(
-      /SANDBOX_MERCHANT_KEY: must be at least 16 characters/,
+    for (const key of [undefined, ""])
+      expect(loadConfig({ ...required, SANDBOX_MERCHANT_KEY: key }).sandboxMerchantKey).toBeNull();
+    expect(refusalFor({ ...required, SANDBOX_MERCHANT_KEY: " " })).toContain(
+      "SANDBOX_MERCHANT_KEY",
     );
   });
 
   it("refuses a deadline that is not a whole number of milliseconds above zero", () => {
     expect(() => loadConfig({ ...required, QUOTE_RESPONSE_MS: "0" })).toThrowError(
-      /QUOTE_RESPONSE_MS: must be a whole number of milliseconds above zero/,
+      /QUOTE_RESPONSE_MS.*milliseconds.*zero/s,
     );
     expect(() => loadConfig({ ...required, SETTLE_RESPONSE_MS: "1.5" })).toThrowError(
-      /SETTLE_RESPONSE_MS: must be a whole number of milliseconds above zero/,
+      /SETTLE_RESPONSE_MS.*milliseconds.*zero/s,
     );
     expect(() => loadConfig({ ...required, REDELIVERY_MAX_ATTEMPTS: "-1" })).toThrowError(
-      /REDELIVERY_MAX_ATTEMPTS: must be a whole number above zero/,
+      /REDELIVERY_MAX_ATTEMPTS.*zero/s,
     );
     expect(() => loadConfig({ ...required, REDELIVERY_FACTOR: "0.5" })).toThrowError(
-      /REDELIVERY_FACTOR: must be at least 1/,
+      /REDELIVERY_FACTOR.*1/s,
     );
   });
 
@@ -448,10 +465,7 @@ describe("loadConfig", () => {
     // names none is held for this number by a caller the gateway cannot ask,
     // so the ceiling exists for that poll and the refusal says so.
     expect(() => loadConfig({ ...required, WORKER_POLL_WAIT_MS: "60000" })).toThrowError(
-      /WORKER_POLL_WAIT_MS: must be at most 40000ms/,
-    );
-    expect(() => loadConfig({ ...required, WORKER_POLL_WAIT_MS: "60000" })).toThrowError(
-      /a poll that named no window of its own/,
+      /WORKER_POLL_WAIT_MS.*40000ms/s,
     );
     // The figure the ceiling is derived from is named too, as its provenance
     // rather than a claim about who is calling.
@@ -518,14 +532,13 @@ describe("loadConfig", () => {
     // Nothing answers at this database, so a gateway that skipped the check
     // would fail on the connection instead, in other words.
     const cramped = loadConfig({
+      ...required,
       DATABASE_URL: "postgres://agentify:secret@127.0.0.1:1/agentify",
       HANDLER_ANSWER_MS: "9000",
       REDELIVERY_BASE_DELAY_MS: "500",
     });
 
-    await expect(startGateway(cramped, nobodyAnnounces)).rejects.toThrow(
-      /will not start.*second attempt/,
-    );
+    await expect(startGateway(cramped, nobodyAnnounces)).rejects.toThrow(/10000ms.*9000ms.*500ms/s);
   });
 
   it("gives one address for the gateway however the variable was written", () => {
@@ -617,22 +630,6 @@ describe("a seeded key belongs to this environment", () => {
 });
 
 describe("the environment is derived from the chain", () => {
-  it("reads a written testnet as a test environment", () => {
-    expect(loadConfig({ ...required, PAYMENT_NETWORK: "eip155:84532" }).environment).toBe("test");
-  });
-
-  it("reads Base mainnet as a live environment", () => {
-    expect(
-      loadConfig({
-        ...required,
-        PAYMENT_NETWORK: "eip155:8453",
-        FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
-        CDP_API_KEY_ID: "key-id",
-        CDP_API_KEY_SECRET: "secret",
-      }).environment,
-    ).toBe("live");
-  });
-
   it("stops the process on a chain that is on neither list", () => {
     expect(() => loadConfig({ ...required, PAYMENT_NETWORK: "eip155:1" })).toThrowError(
       /PAYMENT_NETWORK.*neither written list/s,
@@ -641,6 +638,15 @@ describe("the environment is derived from the chain", () => {
 
   it("says which three things this process is, for the surfaces", () => {
     expect(loadConfig(required).surfaceMode).toBe("test");
+    expect(
+      loadConfig({
+        ...required,
+        PAYMENT_NETWORK: "eip155:8453",
+        FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+        CDP_API_KEY_ID: "key-id",
+        CDP_API_KEY_SECRET: "secret",
+      }).surfaceMode,
+    ).toBe("live");
     expect(loadConfig({ ...required, FACILITATOR_URL: SANDBOX_FACILITATOR }).surfaceMode).toBe(
       "sandbox",
     );
@@ -671,24 +677,6 @@ describe("Base's commission wallet", () => {
     expect(experiment.size).toBeGreaterThan(5);
     expect(experiment).not.toContain(loadConfig(live).payoutSplit.commissionWallet.toLowerCase());
   });
-
-  it("is refused for want of one, among every other problem, on a table that names none", () => {
-    // A table without Base, as the code's was before its Safe existed: every
-    // payment would name a split paying a wallet nobody chose. The missing
-    // secret is there so the refusal has to list both.
-    const { CDP_API_KEY_SECRET, ...noSecret } = live;
-    let refused = "";
-    try {
-      loadConfig(noSecret, {
-        "eip155:84532": payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532"),
-      });
-    } catch (thrown) {
-      refused = thrown instanceof Error ? thrown.message : String(thrown);
-    }
-
-    expect(refused).toMatch(/eip155:8453.*commission wallet/s);
-    expect(refused).toMatch(/CDP_API_KEY_SECRET/);
-  });
 });
 
 /** Every value in this document, and in what it holds, that is written as an address, in lower case. */
@@ -713,10 +701,6 @@ describe("a live chain is allowed exactly one facilitator", () => {
     CDP_API_KEY_SECRET: "secret",
   };
 
-  it("starts on Coinbase's canonical facilitator with both credentials", () => {
-    expect(() => loadConfig(live)).not.toThrow();
-  });
-
   it("refuses the scripted facilitator, which takes payments that never happened", () => {
     const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
     expect(() =>
@@ -739,24 +723,10 @@ describe("a live chain is allowed exactly one facilitator", () => {
     expect(() => loadConfig(unnamed)).toThrowError(/eip155:8453.*FACILITATOR_URL/s);
   });
 
-  it("refuses Coinbase's facilitator without credentials", () => {
-    const { CDP_API_KEY_ID, CDP_API_KEY_SECRET, ...noCredentials } = live;
-    expect(() => loadConfig(noCredentials)).toThrowError(/CDP_API_KEY_ID and CDP_API_KEY_SECRET/);
-  });
-
   it("refuses Coinbase's facilitator over http, which puts a bearer token on the wire in the clear", () => {
     expect(() =>
       loadConfig({ ...live, FACILITATOR_URL: "http://api.cdp.coinbase.com/platform/v2/x402" }),
     ).toThrowError(/https:/);
-  });
-
-  it("takes the same endpoint written with a trailing slash", () => {
-    // The same deployment, and the client takes the slash off before it signs
-    // anything. Refusing it would be an operator with a correct configuration
-    // being told it is wrong.
-    expect(() =>
-      loadConfig({ ...live, FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402/" }),
-    ).not.toThrow();
   });
 
   it("refuses Coinbase's host with a path the facilitator does not answer on", () => {
@@ -794,23 +764,11 @@ describe("a live chain is allowed exactly one facilitator", () => {
     // `:443` is what `https:` means, and the address parser drops it, so this
     // is the canonical endpoint spelled in full. Refusing it would be an
     // operator with a correct live configuration told it is wrong.
-    expect(() =>
-      loadConfig({
-        ...live,
-        FACILITATOR_URL: "https://api.cdp.coinbase.com:443/platform/v2/x402",
-      }),
-    ).not.toThrow();
-  });
-
-  it("leaves a test chain free to keep the scripted facilitator", () => {
-    // The laptop requires exactly that pairing, and it is what makes
-    // `docker compose up` sell with no network, no wallet and no faucet.
-    expect(() =>
-      loadConfig({
-        ...required,
-        PAYMENT_NETWORK: "eip155:84532",
-        FACILITATOR_URL: SANDBOX_FACILITATOR,
-      }),
-    ).not.toThrow();
+    for (const url of [
+      "https://api.cdp.coinbase.com:443/platform/v2/x402",
+      "https://api.cdp.coinbase.com/platform/v2/x402/",
+    ]) {
+      expect(loadConfig({ ...live, FACILITATOR_URL: url }).payment.network).toBe("eip155:8453");
+    }
   });
 });

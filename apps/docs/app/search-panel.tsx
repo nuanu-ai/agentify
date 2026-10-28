@@ -33,7 +33,7 @@ const loadIndex = (): Promise<MiniSearch> => {
 };
 
 /** Where the last query is kept; a browser that keeps nothing simply forgets it. */
-const KEPT = "agentify-docs-search";
+export const KEPT = "agentify-docs-search";
 
 const keptQuery = (): string => {
   try {
@@ -87,7 +87,8 @@ export function excerptOf(text: string, terms: readonly string[]): ReactNode[] {
   const to = Math.min(text.length, Math.max(first, 0) + AROUND);
   const end =
     to === text.length ? to : text.indexOf(" ", to) === -1 ? text.length : text.indexOf(" ", to);
-  const window = `${from > 0 ? "… " : ""}${text.slice(from, end)}${end < text.length ? " …" : ""}`;
+  // The marks of a cut stay on the line of the word beside them.
+  const window = `${from > 0 ? "…\u00a0" : ""}${text.slice(from, end)}${end < text.length ? "\u00a0…" : ""}`;
   return window.split(pattern).map((part, at) =>
     // biome-ignore lint/suspicious/noArrayIndexKey: the parts of one excerpt never move, so a part's place is its identity
     at % 2 === 1 ? <mark key={at}>{part}</mark> : part,
@@ -168,29 +169,26 @@ export default function SearchPanel({ onClose }: Close) {
         onKeyDown={onInputKey}
       />
       <div className="search-results" id="search-results" role="listbox" aria-label="Results">
+        {/* Each result is the link itself, so no control stands inside another. */}
         {results.map((hit, at) => (
-          <div
+          <Link
             key={hit.id}
             id={`search-result-${at}`}
             role="option"
-            tabIndex={-1}
             aria-selected={at === active}
+            to={inside(hit.id)}
+            onClick={() => {
+              focusWithin(hit.id);
+              onClose(false);
+            }}
+            tabIndex={-1}
           >
-            <Link
-              to={inside(hit.id)}
-              onClick={() => {
-                focusWithin(hit.id);
-                onClose(false);
-              }}
-              tabIndex={-1}
-            >
-              {hit.titles.length > 0 ? (
-                <span className="search-path">{hit.titles.join(" › ")}</span>
-              ) : null}
-              <span className="search-title">{hit.title}</span>
-              <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
-            </Link>
-          </div>
+            {hit.titles.length > 0 ? (
+              <span className="search-path">{hit.titles.join(" › ")}</span>
+            ) : null}
+            <span className="search-title">{hit.title}</span>
+            <span className="search-excerpt">{excerptOf(hit.text, hit.terms)}</span>
+          </Link>
         ))}
       </div>
       <p className="search-none" role="status">

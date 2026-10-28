@@ -118,8 +118,8 @@ export interface Challenge {
  * what this costs" and for "your payment was rejected, and here is why" — the
  * `error` field is the whole of the difference. So a header with a reason in it
  * is a verdict; a header without one is a challenge and says nothing about the
- * payment; and no header at all on the leg that carried a signature means the
- * exchange did not get as far as anybody having an opinion.
+ * payment; and no header at all on the leg that carried a signature leaves no
+ * facilitator verdict to read.
  *
  * Folded into one nullable string, the middle case reads as the last, and a
  * gateway that answered with a price would be reported as a gateway that never
@@ -357,6 +357,13 @@ export function whatBecameOfThePayment(outcome: PurchaseOutcome, network: string
     };
   }
 
+  if (outcome.status >= 500) {
+    return {
+      paid: "unresolved",
+      why: `the gateway answered ${outcome.status} without a settlement, so whether this was charged is not known here`,
+    };
+  }
+
   if (outcome.status >= 400) {
     // A bare 402 with an empty body: the verdict sits in a header.
     return {
@@ -403,7 +410,7 @@ function said(word: FacilitatorWord): string {
     case "no reason":
       return "the PAYMENT-REQUIRED header it sent back carried no reason, so it reads as a fresh challenge rather than as a verdict on the payment";
     case "nothing":
-      return "no PAYMENT-REQUIRED header came back with it, so this never got as far as the facilitator";
+      return "no PAYMENT-REQUIRED header came back, so there is no facilitator verdict to read";
   }
 }
 
@@ -440,7 +447,7 @@ function statusWordOf(body: unknown): string | null {
  * but after the purchase, by a settlement whose transaction is not a
  * transaction, having cost nothing.
  */
-export function couldEverBeListed(
+function couldEverBeListed(
   challenge: Challenge,
 ): { readonly ok: true } | { readonly ok: false; readonly why: string } {
   if (!challenge.resourceUrl.toLowerCase().startsWith("https://")) {
@@ -457,7 +464,7 @@ export function couldEverBeListed(
 }
 
 /** Whether the buyer would be paying itself, which the facilitator refuses. */
-export function isSelfSend(payTo: string, buyer: string): boolean {
+function isSelfSend(payTo: string, buyer: string): boolean {
   return payTo.trim().toLowerCase() === buyer.trim().toLowerCase();
 }
 
@@ -1093,6 +1100,12 @@ export function overTheNetwork(
     const signed =
       request.headers.get("payment-signature") !== null ||
       request.headers.get("x-payment") !== null;
+    const leg: { readonly signed: boolean; word: FacilitatorWord } = {
+      signed,
+      word: { heard: "nothing" },
+    };
+    // A signed request may be accepted even when its response never arrives.
+    legs.push(leg);
     const answered = await fetch(request);
 
     let word: FacilitatorWord = { heard: "nothing" };
@@ -1108,7 +1121,7 @@ export function overTheNetwork(
         };
       }
     }
-    legs.push({ signed, word });
+    leg.word = word;
     return answered;
   };
 
@@ -1214,14 +1227,6 @@ export function overTheNetwork(
           : { kind: "client_refused", why };
       }
 
-      const text = await answered.text();
-      let body: unknown;
-      try {
-        body = text === "" ? null : JSON.parse(text);
-      } catch {
-        body = text;
-      }
-
       const receipt = answered.headers.get("payment-response");
       let settlement: Extract<PurchaseOutcome, { kind: "answered" }>["settlement"] = null;
       if (receipt !== null) {
@@ -1232,6 +1237,25 @@ export function overTheNetwork(
         }
       }
 
+      let text = "";
+      try {
+        text = await answered.text();
+      } catch (thrown) {
+        // A readable receipt establishes the payment even if its body is lost.
+        if (settlement === null) {
+          const why = messageOf(thrown);
+          return legs.some((leg) => leg.signed)
+            ? { kind: "unreachable", why }
+            : { kind: "client_refused", why };
+        }
+      }
+      let body: unknown;
+      try {
+        body = text === "" ? null : JSON.parse(text);
+      } catch {
+        body = text;
+      }
+
       return {
         kind: "answered",
         status: answered.status,
@@ -1239,8 +1263,7 @@ export function overTheNetwork(
         settlement,
         // The word from the leg that carried a signature, which is the only leg
         // whose PAYMENT-REQUIRED is about a payment rather than about the price.
-        // No such leg at all is the same news as a leg with no header on it:
-        // nothing here got as far as the facilitator.
+        // No such leg, or a leg with no header, carries no facilitator verdict.
         facilitatorSaid: legs.filter((leg) => leg.signed).at(-1)?.word ?? { heard: "nothing" },
       };
     },

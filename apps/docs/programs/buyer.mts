@@ -174,8 +174,8 @@ async function buy(): Promise<void> {
     const required = payer.getPaymentRequiredResponse((name) =>
       name.toLowerCase() === 'payment-required' ? purchase.paymentRequired : null,
     )
-    if (!required.accepts?.every((offer) => typeof offer.extra?.order_id === 'string')) {
-      throw new Error(`${FILE} has no order to resume. Nothing was paid.`)
+    if (!required.accepts?.every((offer) => typeof offer.extra?.price_stamp === 'string')) {
+      throw new Error(`${FILE} has no stamped price to resume. Nothing was paid.`)
     }
     // A fresh signature returns an already paid order. Reusing the signature
     // that paid is refused because that signature is public on the chain.
@@ -213,6 +213,8 @@ async function buy(): Promise<void> {
 }
 
 await buy().catch((error: Error) => {
-  console.error(`The purchase stopped. ${error.message}`)
+  console.error(
+    `The purchase stopped. ${error instanceof TypeError ? 'The channel did not return a readable answer. Check AGENTIFY_URL and your connection. If the payment was sent, its outcome may be unknown; check any saved order address before buying again.' : error.message}`,
+  )
   process.exitCode = 1
 })

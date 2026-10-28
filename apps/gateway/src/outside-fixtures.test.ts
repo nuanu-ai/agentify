@@ -16,7 +16,7 @@ import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { MemoryQueue } from "./adapters/memory/queue.js";
 import { MemoryStore } from "./adapters/memory/store.js";
 import { Gateway } from "./app/gateway.js";
-import { keyDigest, setPayoutWallet, setServiceName } from "./app/merchants.js";
+import { keyDigest, setServiceName } from "./app/merchants.js";
 import { loadConfig } from "./config.js";
 import { buildApp } from "./http/server.js";
 import { widestChallengeOn } from "./http/x402.js";
@@ -41,6 +41,7 @@ const SIGNED_IN = { kind: "signed_in", email: "owner@example.com" } as const;
 async function aGatewayOnAPort() {
   const ids = () => randomUUID();
   const config = loadConfig({
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
     PAY_TO_ADDRESS: PAY_TO,
   });
@@ -54,7 +55,6 @@ async function aGatewayOnAPort() {
   // Without the name or the payout address the first publish would be refused.
   await store.addMerchant({ id: "mch_the_walk", name: "The merchant of this walk" }, Date.now());
   await setServiceName(store, "mch_the_walk", "The walk's own shop", Date.now());
-  await setPayoutWallet(store, config.payoutSplit, "mch_the_walk", THE_WALKS_WALLET, Date.now());
   await store.addKey(
     {
       id: "mk_the_walk",
@@ -77,6 +77,10 @@ async function aGatewayOnAPort() {
     widestChallenge: widestChallengeOn(config),
   });
   await gateway.start();
+  await gateway.setPayoutWallet("mch_the_walk", THE_WALKS_WALLET, {
+    kind: "signed_in",
+    email: "owner@example.com",
+  });
 
   // Bound to the address it is called at: a wildcard bind can share its port
   // number with another process's server on 127.0.0.1, which then gets the calls.
@@ -353,7 +357,12 @@ describe("a purchase from the outside", () => {
         headers: { "payment-signature": payFor(challenged.headers.get("payment-required") ?? "") },
       });
       expect(bought.status).toBe(200);
-      const started = bought.body as { order_id: string; status: string; delivered: null };
+      const started = bought.body as {
+        order_id: string;
+        status: string;
+        delivered: null;
+        status_url: string;
+      };
       expect(started.status).toBe("in_progress");
       expect(started.delivered).toBeNull();
       expect(gateway.facilitator.settles).toHaveLength(1);
@@ -403,7 +412,11 @@ describe("a purchase from the outside", () => {
       expect((empty.body as { error: { message: string } }).error.message).toContain(
         "activation_code",
       );
-      expect(await gateway.store.receiptForOrder(orderId)).toBeNull();
+      const beforeReceipts = await gateway.call("GET", "/v0/receipts", {
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
+      expect(beforeReceipts.status).toBe(200);
+      expect((beforeReceipts.body as { receipts: unknown[] }).receipts).toStrictEqual([]);
 
       // And the order is still one of the merchant's open ones: he can fix his
       // handler and deliver, which is the whole reason that refusal is not an
@@ -441,12 +454,22 @@ describe("a purchase from the outside", () => {
       );
       expect(again.body).toStrictEqual({ ok: true, result: "already_delivered" });
       expect(gateway.facilitator.settles).toHaveLength(1);
-      expect((await gateway.store.orderById(orderId))?.delivery).toStrictEqual({
-        activation_code: "LPA:1$rsp.example$AB12",
+      const collected = await gateway.call("GET", new URL(started.status_url).pathname);
+      expect(collected.status).toBe(200);
+      expect(collected.body).toMatchObject({
+        order_id: orderId,
+        status: "delivered",
+        delivered: { activation_code: "LPA:1$rsp.example$AB12" },
       });
 
       // The receipt is written and the order is closed.
-      const receipt = await gateway.store.receiptForOrder(orderId);
+      const receiptList = await gateway.call("GET", "/v0/receipts", {
+        headers: { authorization: `Bearer ${MERCHANT_KEY}` },
+      });
+      expect(receiptList.status).toBe(200);
+      const receipt = (receiptList.body as { receipts: { order_id: string }[] }).receipts.find(
+        (receipt) => receipt.order_id === orderId,
+      );
       expect(receipt).toMatchObject({
         order_id: orderId,
         outcome: "delivered",

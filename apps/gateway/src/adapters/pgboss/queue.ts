@@ -27,6 +27,7 @@ import {
   type ReminderPatience,
 } from "../../ports/queue.js";
 import { failingWithoutValues, withoutValues } from "../database-failure.js";
+import { MemoryQueue } from "../memory/queue.js";
 import type { Envelopes } from "../postgres/store.js";
 
 /**
@@ -74,6 +75,8 @@ export interface PgBossQueueOptions {
 export class PgBossQueue implements Queue {
   readonly #boss: PgBoss;
   readonly #options: PgBossQueueOptions;
+  readonly #prices = new MemoryQueue();
+  #stopped = false;
   readonly #waiters = new Map<string, Set<() => void>>();
   /**
    * The streams this process has already asked pg-boss to make. Asking twice is
@@ -108,11 +111,15 @@ export class PgBossQueue implements Queue {
   }
 
   async publish(merchantId: string, envelope: WorkerEnvelope, afterMs?: number): Promise<void> {
+    if (envelope.kind === "quote_request") {
+      await this.#prices.publish(merchantId, envelope, afterMs);
+      this.#wakeEverybody(streamOf(merchantId));
+      return;
+    }
     const stream = await this.#stream(merchantId);
     const sent = await this.#boss.send(stream, envelope as unknown as object, {
       // Retries are the order machine's to decide, so the queue keeps none.
       retryLimit: 0,
-      priority: envelope.kind === "quote_request" ? 0 : 1,
       ...(afterMs === undefined || afterMs <= 0
         ? {}
         : { startAfter: new Date(Date.now() + afterMs) }),
@@ -144,10 +151,12 @@ export class PgBossQueue implements Queue {
     envelope: WorkerEnvelope,
     afterMs?: number,
   ): Promise<void> {
+    if (envelope.kind === "quote_request") {
+      throw new Error("price questions cannot be published inside an order transaction");
+    }
     const stream = await this.#stream(merchantId);
     const sent = await this.#boss.send(stream, envelope as unknown as object, {
       retryLimit: 0,
-      priority: envelope.kind === "quote_request" ? 0 : 1,
       ...(afterMs === undefined || afterMs <= 0
         ? {}
         : { startAfter: new Date(Date.now() + afterMs) }),
@@ -163,8 +172,8 @@ export class PgBossQueue implements Queue {
 
   /**
    * Deletes, inside the caller's transaction, every job on the stream that
-   * carries a parcel's address: the order's hand-overs and the named price
-   * question, in any state. Finished jobs count, because pg-boss keeps them
+   * carries a parcel's address: the order's hand-overs in any state.
+   * Finished jobs count, because pg-boss keeps them
    * for days. They are gone exactly when the erasure commits. Finishing a
    * deleted job later does nothing.
    */
@@ -172,22 +181,13 @@ export class PgBossQueue implements Queue {
     tx: DrizzleTransactionLike,
     merchantId: string,
     orderId: string,
-    priceQuestion: string | null,
   ): Promise<void> {
     const stream = await this.#stream(merchantId);
     const db = fromDrizzle(tx, sql);
-    const carrying = [
-      ...(await this.#boss.findJobs(stream, {
-        data: { kind: "order", payload: { id: orderId } },
-        db,
-      })),
-      ...(priceQuestion === null
-        ? []
-        : await this.#boss.findJobs(stream, {
-            data: { kind: "quote_request", payload: { price_id: priceQuestion } },
-            db,
-          })),
-    ];
+    const carrying = await this.#boss.findJobs(stream, {
+      data: { kind: "order", payload: { id: orderId } },
+      db,
+    });
     if (carrying.length > 0) {
       await this.#boss.deleteJob(
         stream,
@@ -212,8 +212,7 @@ export class PgBossQueue implements Queue {
     return {
       within: (tx, merchantId, envelope, afterMs) =>
         this.publishWithin(tx, merchantId, envelope, afterMs),
-      forgetWithin: (tx, merchantId, orderId, priceQuestion) =>
-        this.forgetWithin(tx, merchantId, orderId, priceQuestion),
+      forgetWithin: (tx, merchantId, orderId) => this.forgetWithin(tx, merchantId, orderId),
       remindWithin: (tx, reminder, afterMs) => this.remindWithin(tx, reminder, afterMs),
       committed: (merchantIds) => {
         this.envelopesCommitted(merchantIds);
@@ -228,27 +227,31 @@ export class PgBossQueue implements Queue {
     gone?: AbortSignal,
   ): Promise<readonly DrawnEnvelope[]> {
     const stream = await this.#stream(merchantId);
-    if (gone?.aborted) {
+    if (gone?.aborted || this.#stopped) {
       return [];
     }
-    const first = await this.#take(stream, max);
+    const first = await this.#take(merchantId, stream, max);
     if (first.length > 0 || waitMs <= 0) {
       return first;
     }
 
     const until = Date.now() + waitMs;
-    while (Date.now() < until) {
+    while (!this.#stopped && Date.now() < until) {
       await this.#park(stream, Math.min(this.#options.pollIntervalMs, until - Date.now()), gone);
       // A worker that left takes nothing; what arrives stays for the next poll.
-      if (gone?.aborted) {
+      if (gone?.aborted || this.#stopped) {
         return [];
       }
-      const drawn = await this.#take(stream, max);
+      const drawn = await this.#take(merchantId, stream, max);
       if (drawn.length > 0) {
         return drawn;
       }
     }
     return [];
+  }
+
+  async forgetPrice(merchantId: string, priceId: string): Promise<void> {
+    await this.#prices.forgetPrice(merchantId, priceId);
   }
 
   async holdsOrder(merchantId: string, orderId: string): Promise<boolean> {
@@ -271,6 +274,10 @@ export class PgBossQueue implements Queue {
   }
 
   async finish(merchantId: string, handle: string): Promise<void> {
+    if (handle.startsWith("price:")) {
+      await this.#prices.finish(merchantId, handle.slice("price:".length));
+      return;
+    }
     // Naming the queue means a handle cannot finish another merchant's job.
     await this.#boss.complete(streamOf(merchantId), handle);
   }
@@ -346,6 +353,7 @@ export class PgBossQueue implements Queue {
    * application instead.
    */
   async startWriter(): Promise<void> {
+    this.#stopped = false;
     await this.#boss.start();
     await this.#boss.createQueue(REMINDERS);
   }
@@ -356,6 +364,7 @@ export class PgBossQueue implements Queue {
       throw new Error("the queue has nowhere to put reminders and will not start");
     }
 
+    this.#stopped = false;
     await this.#boss.start();
     // Merchant streams are made on first use. Both kinds of queue run on
     // pg-boss's defaults, including the fifteen minutes a job may be held
@@ -403,6 +412,8 @@ export class PgBossQueue implements Queue {
 
   async stop(): Promise<void> {
     this.#running = false;
+    this.#stopped = true;
+    await this.#prices.stop();
     for (const stream of [...this.#waiters.keys()]) {
       this.#wakeEverybody(stream);
     }
@@ -418,16 +429,14 @@ export class PgBossQueue implements Queue {
     return name;
   }
 
-  async #take(stream: string, max: number): Promise<DrawnEnvelope[]> {
-    const jobs = await this.#boss.fetch<WorkerEnvelope>(stream, {
-      batchSize: Math.max(max, 1),
-    });
-    // pg-boss selects by priority, but UPDATE RETURNING does not order the
-    // selected batch. Keep orders ahead of questions in the returned batch too.
-    jobs.sort(
-      (a, b) => Number(a.data.kind === "quote_request") - Number(b.data.kind === "quote_request"),
-    );
-    return jobs.map((job) => ({ envelope: job.data, handle: job.id }));
+  async #take(merchantId: string, stream: string, max: number): Promise<DrawnEnvelope[]> {
+    if (max <= 0) return [];
+    const jobs = await this.#boss.fetch<WorkerEnvelope>(stream, { batchSize: max });
+    const prices = await this.#prices.draw(merchantId, max - jobs.length, 0);
+    return [
+      ...jobs.map((job) => ({ envelope: job.data, handle: job.id })),
+      ...prices.map(({ envelope, handle }) => ({ envelope, handle: `price:${handle}` })),
+    ];
   }
 
   #park(stream: string, waitMs: number, gone?: AbortSignal): Promise<void> {

@@ -16,6 +16,7 @@
  * future, so no test here waits on wall time to reach its assertion.
  */
 
+import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { type Environment, keyPrefixFor } from "@agentify/core";
@@ -32,7 +33,6 @@ import {
   randomIds,
   SEEDED_MERCHANT,
   seedSandboxKey,
-  setPayoutWallet,
   systemClock,
   widestChallengeOn,
 } from "@agentify/gateway";
@@ -89,6 +89,7 @@ export interface Booted {
 export function sliceEnv(overrides: Record<string, string> = {}): Record<string, string> {
   const settings = {
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    PRICE_STAMP_KEY: randomBytes(32).toString("base64url"),
     PAY_TO_ADDRESS: SLICE_PAY_TO,
     // Short enough that an idle poll parks briefly rather than for the
     // production window, so the merchant's loop picks up work promptly and the
@@ -226,13 +227,10 @@ export async function bootGateway(
     // gateway rather than to the merchants selling on it; writing it onto a
     // merchant there would pay their sales to the operator.
     if (config.payment.payTo !== null) {
-      await setPayoutWallet(
-        store,
-        config.payoutSplit,
-        SEEDED_MERCHANT.id,
-        config.payment.payTo,
-        systemClock(),
-      );
+      await gateway.setPayoutWallet(SEEDED_MERCHANT.id, config.payment.payTo, {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
     }
 
     server.on("request", buildApp(gateway));

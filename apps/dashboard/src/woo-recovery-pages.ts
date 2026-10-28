@@ -2,6 +2,7 @@
  * Merchant recovery stays inside the connector. It creates a shop order only
  * for a download its shop never received, and only once.
  */
+import { keepUnits } from "@agentify/ui/units";
 import type { OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
@@ -137,7 +138,7 @@ const viewOf = (
   const mode = modeOf(known);
   return {
     orderId: known.record.orderId,
-    product: known.title,
+    product: keepUnits(known.title),
     shopOrigin: known.record.facts.shopOrigin,
     amount: money({ amount: known.record.facts.amount, currency: known.record.facts.currency }),
     mode,
@@ -228,7 +229,8 @@ export function wooRecoveryPagesFor(parts: WooRecoveryPageParts): WooRecoveryPag
           parts,
         );
         if (!outcome.ok) {
-          said = outcome.typed === true ? { typedRefusal: outcome.why } : { message: outcome.why };
+          const why = keepUnits(outcome.why);
+          said = outcome.typed === true ? { typedRefusal: why } : { message: why };
           status = outcome.state === "unresolved" ? 503 : 409;
         }
       } catch {

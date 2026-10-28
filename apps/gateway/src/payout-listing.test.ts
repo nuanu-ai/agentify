@@ -10,7 +10,7 @@
 
 import { deadlines } from "@agentify/core";
 import type { Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecordingAnnouncer } from "./adapters/memory/announcer.js";
 import { ScriptedFacilitator } from "./adapters/memory/facilitator.js";
 import { MemoryQueue } from "./adapters/memory/queue.js";
@@ -21,11 +21,7 @@ import { loadConfig } from "./config.js";
 import { widestChallengeOn } from "./http/x402.js";
 import { type PayoutListing, payoutListing } from "./payout-listing.js";
 import { DISTRIBUTOR } from "./split/fixture.js";
-import {
-  PAYOUT_SPLIT_NETWORKS,
-  type PayoutSplitNetworks,
-  payoutSplitNetworkOf,
-} from "./split/networks.js";
+import { PAYOUT_SPLIT_NETWORKS, payoutSplitNetworkOf } from "./split/networks.js";
 import { payoutSplitFor } from "./split/parameters.js";
 import { operatorPayouts } from "./split/payout.js";
 import { countedIds } from "./testing/harness.js";
@@ -34,15 +30,6 @@ const NOW = Date.parse("2026-10-14T12:00:00.000Z");
 
 const T1 = PAYOUT_SPLIT_NETWORKS;
 const T1_TEST = payoutSplitNetworkOf(T1, "eip155:84532");
-
-const card: Card = {
-  merchant_item_id: "a-room",
-  title: "A room",
-  description: "A room sold by the merchant who published this card",
-  price: { amount: "80.00", currency: "USD" },
-  result: { access_code: { type: "string" } },
-  fulfillment: "sync",
-};
 
 /** Goods that arrive after the purchase, so the payment is taken before anything is delivered. */
 const lateGoods: Card = {
@@ -72,13 +59,13 @@ const aDatabase = (network = T1_TEST.network) => {
 /** A gateway over that database, made and never started, as a command makes one. */
 const aGatewayOver = (
   database: ReturnType<typeof aDatabase>,
-  table: PayoutSplitNetworks = T1,
   environment: Record<string, string> = {},
 ): Gateway => {
-  const config = loadConfig(
-    { DATABASE_URL: "postgres://agentify@localhost:5432/agentify", ...environment },
-    table,
-  );
+  const config = loadConfig({
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+    DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    ...environment,
+  });
   running = new Gateway({
     config,
     store: database.store,
@@ -103,7 +90,7 @@ const aMerchantPaidAt = async (
 ): Promise<string> => {
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
-  await database.store.setSellerSite(id, "https://shop.example", NOW);
+  await database.store.setSellerSite(id, "https://shop.example.com", NOW);
   await database.store.noteContact(id, NOW);
   await database.store.setPayoutWallet(
     id,
@@ -138,6 +125,10 @@ describe("the operator's payout, listed", () => {
     const listing = await payoutListing(gateway);
 
     expect(splits).toHaveLength(2);
+    expect(listing).toMatchObject({
+      kind: "listed",
+      chain: { id: "eip155:84532", name: "Base Sepolia" },
+    });
     expect(
       partsIn(listing).map(({ to, value, data, splits: paid }) => ({ to, value, data, paid })),
     ).toStrictEqual(
@@ -209,7 +200,10 @@ describe("the operator's payout, listed", () => {
     await gateway.poll(merchant, 0);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
     const first = payoutSplitFor(T1_TEST, merchant, walletNumber(1));
     await database.store.setPayoutWallet(
       merchant,
@@ -259,7 +253,7 @@ describe("the operator's payout, listed", () => {
   it("refuses in the sandbox, where nothing settles and no split is ever deployed", async () => {
     const database = aDatabase();
     await aMerchantPaidAt(database, "mch_a", walletNumber(1));
-    const gateway = aGatewayOver(database, T1, { FACILITATOR_URL: "sandbox:scripted" });
+    const gateway = aGatewayOver(database, { FACILITATOR_URL: "sandbox:scripted" });
 
     expect(await payoutListing(gateway)).toStrictEqual({ kind: "sandbox" });
   });
@@ -268,41 +262,41 @@ describe("the operator's payout, listed", () => {
     const database = aDatabase();
     const merchant = await aMerchantPaidAt(database, "mch_a", walletNumber(1));
     const gateway = aGatewayOver(database);
-    const stored = await database.store.publishCard(merchant, card, NOW);
+    const stored = await database.store.publishCard(merchant, lateGoods, NOW);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    const due = deadlines(offered.order.order).find((deadline) => deadline.kind === "quote_expiry");
-    if (due === undefined) throw new Error("the order waits on no price that can lapse");
-    const before = (await database.store.orderById(offered.order.order.id))?.order.state;
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
+    const record = await database.store.orderById(offered.order.order.id);
+    if (record === null) throw new Error("the paid purchase wrote no order");
+    const due = deadlines(record.order).find((deadline) => deadline.kind === "async_fulfillment");
+    if (due === undefined) throw new Error("the paid order has no fulfillment deadline");
+    const before = record.order.state;
 
-    await payoutListing(gateway);
-    await database.queue.remind(
-      { kind: "deadline", deadline: due.kind, at: due.at, orderId: offered.order.order.id },
-      0,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    vi.useFakeTimers();
+    try {
+      await payoutListing(gateway);
+      await database.queue.remind(
+        { kind: "deadline", deadline: due.kind, at: due.at, orderId: offered.order.order.id },
+        0,
+      );
+      await vi.advanceTimersByTimeAsync(2 * 24 * 60 * 60 * 1_000);
 
-    expect((await database.store.orderById(offered.order.order.id))?.order.state).toBe(before);
+      expect((await database.store.orderById(offered.order.order.id))?.order.state).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
 describe("the chain it names", () => {
   // The person sending what it prints chooses a network in a wallet by its
   // name, and the same transaction on another chain pays nothing out.
-  it("is Base Sepolia in words beside its identifier, as the one chain to send on", async () => {
-    const database = aDatabase();
-    await aMerchantPaidAt(database, "mch_a", walletNumber(1));
-
-    const listing = await payoutListing(aGatewayOver(database));
-
-    expect("chain" in listing ? listing.chain : null).toStrictEqual({
-      id: "eip155:84532",
-      name: "Base Sepolia",
-    });
-  });
 
   it("is Base in words on Base", async () => {
-    const gateway = aGatewayOver(aDatabase("eip155:8453"), T1, {
+    const gateway = aGatewayOver(aDatabase("eip155:8453"), {
       PAYMENT_NETWORK: "eip155:8453",
       FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
       CDP_API_KEY_ID: "key-id",
@@ -333,7 +327,10 @@ describe("a payout over a split that would hand a share to an address no wallet 
     await gateway.poll(merchant, 0);
     const offered = await gateway.beginPurchase(stored.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-    await gateway.payPurchase(offered.order.order.id, "PAYMENT", "PAYMENT");
+    await gateway.payPurchase(offered.order.priceOffer.stamp, "PAYMENT", "PAYMENT", undefined, {
+      itemId: offered.order.itemId,
+      params: offered.order.params,
+    });
     const moved = await database.store.setPayoutWallet(
       merchant,
       { address: T1_TEST.multicall3, pending: null },
@@ -352,7 +349,9 @@ describe("a payout over a split that would hand a share to an address no wallet 
     const listing = await payoutListing(gateway);
 
     expect(partsIn(listing)).toStrictEqual([]);
+    expect(listing.kind).toBe("refused");
     expect(whyIn(listing)).toContain(T1_TEST.multicall3);
+    expect(whyIn(listing)).toContain(merchant);
   });
 });
 
@@ -361,38 +360,25 @@ describe("a payout the gateway would refuse to start with", () => {
     // A bundle built from splits the code disagrees with is a transaction
     // somebody pays for that may pay out another contract.
     const database = aDatabase();
-    await aMerchantPaidAt(database, "mch_a", walletNumber(1));
-    const gateway = aGatewayOver(database, {
-      ...T1,
-      "eip155:84532": { ...T1_TEST, commissionWallet: DISTRIBUTOR },
-    });
-
-    const listing = await payoutListing(gateway);
-
-    expect(partsIn(listing)).toStrictEqual([]);
-    expect(whyIn(listing)).toMatch(/no longer what this code makes/);
-  });
-
-  it("is not listed where a recorded split pays a wallet the wallet rule refuses, and the refusal names its merchant", async () => {
-    // Such a row was recorded before wallets found at a start were held to
-    // the rule; paid out, the merchant's share would go where it could never
-    // come back from.
-    const database = aDatabase();
-    await database.store.addMerchant({ id: "mch_refused", name: "mch_refused" }, NOW);
-    await database.store.recordPayoutSplits(
-      [payoutSplitFor(T1_TEST, "mch_refused", T1_TEST.multicall3)],
+    await database.store.addMerchant({ id: "mch_a", name: "merchant" }, NOW);
+    const historical = payoutSplitFor(
+      { ...T1_TEST, commissionWallet: DISTRIBUTOR },
+      "mch_a",
+      walletNumber(1),
+    );
+    await database.store.setPayoutWallet(
+      "mch_a",
+      { address: null, pending: null },
+      { address: walletNumber(1), split: historical, pending: null },
       NOW,
     );
-    await database.store.writeWalletWithoutSplit("mch_refused", {
-      address: T1_TEST.multicall3,
-      pending: null,
-    });
     const gateway = aGatewayOver(database);
 
     const listing = await payoutListing(gateway);
 
     expect(partsIn(listing)).toStrictEqual([]);
-    expect(whyIn(listing)).toContain("mch_refused");
+    expect(listing.kind).toBe("refused");
+    expect(whyIn(listing)).toContain(historical.address);
   });
 
   it("is not listed on a database whose splits belong to another network", async () => {
@@ -409,7 +395,8 @@ describe("a payout the gateway would refuse to start with", () => {
     const listing = await payoutListing(gateway);
 
     expect(partsIn(listing)).toStrictEqual([]);
-    expect(whyIn(listing)).toMatch(/records payout splits on eip155:8453/);
+    expect(listing.kind).toBe("refused");
+    expect(whyIn(listing)).toContain("eip155:8453");
   });
 });
 

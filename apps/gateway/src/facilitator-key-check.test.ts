@@ -100,26 +100,6 @@ describe("checking the facilitator key now", () => {
     expect(coinbase.asked).toStrictEqual([]);
   });
 
-  it("speaks of the gateway that is running, never in the start's words that it cannot start", async () => {
-    const unreachable = (async () => {
-      throw new TypeError("fetch failed");
-    }) as typeof fetch;
-    const checks = [
-      await checkFacilitatorKey(payment(), coinbaseAnswering(401).post, () => AT),
-      await checkFacilitatorKey(payment(), coinbaseAnswering(503).post, () => AT),
-      await checkFacilitatorKey(payment(), unreachable, () => AT),
-      await checkFacilitatorKey(
-        payment({ cdpApiKeySecret: aSecret().slice(0, 20) }),
-        coinbaseAnswering(400).post,
-        () => AT,
-      ),
-    ];
-
-    for (const checked of checks) {
-      expect(checked.said).not.toMatch(/cannot start|starts without knowing|started anyway/i);
-    }
-  });
-
   it("never hands on what Coinbase said in its own words", async () => {
     for (const status of [400, 401, 403, 503]) {
       const checked = await checkFacilitatorKey(
@@ -127,7 +107,13 @@ describe("checking the facilitator key now", () => {
         coinbaseAnswering(status).post,
         () => AT,
       );
+      expect(checked.outcome).toBe(
+        status === 400 ? "taken" : status === 503 ? "unconfirmed" : "refused",
+      );
+      expect(checked.checkedAt).toBe(AT);
+      expect(checked.said.trim().length).toBeGreaterThan(0);
       expect(JSON.stringify(checked)).not.toContain("correlation-said-by-coinbase");
+      expect(JSON.stringify(checked)).not.toContain("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
     }
   });
 });

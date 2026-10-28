@@ -7,7 +7,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { type Harness, harness } from "@agentify/gateway/testing";
+import { type Harness, harness, workUntilStopped } from "@agentify/gateway/testing";
 import type { SendDataCopyRequest } from "@agentify/scanner-contracts/report-identity";
 import type { Card } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -32,6 +32,7 @@ const SECRETS = {
   wooKey: "ck_the-shops-consumer-key",
   wooSecret: "cs_the-shops-consumer-secret",
   payment: "the-buyers-signed-authorisation",
+  goods: "a-private-code-only-the-buyer-may-receive",
 };
 
 const A_CODE: Card = {
@@ -144,7 +145,24 @@ async function aChannel() {
   if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
   const offered = await harnessed.gateway.beginPurchase(published.id, { email: BUYER });
   if (offered.step !== "pay") throw new Error("no price was offered");
-  const order = offered.order;
+  // Keep real private payment and goods on the stored order: the export must omit them.
+  harnessed.facilitator.willSettle({ settled: false, reason: "payment failed" });
+  const worker = workUntilStopped(harnessed, {
+    onOrder: () => ({ delivered: { code: SECRETS.goods } }),
+  });
+  try {
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      SECRETS.payment,
+      "fp-data-copy-buyer",
+      undefined,
+      { itemId: published.id, params: { email: BUYER } },
+    );
+  } finally {
+    await worker.stop();
+  }
+  const order = await harnessed.store.orderById(offered.order.order.id);
+  if (order === null) throw new Error("the paid purchase wrote no order");
   await harnessed.store.recordJournal({
     at: AT.getTime(),
     actor: { kind: "account", id: "acc_the_operator" },
@@ -293,19 +311,28 @@ describe("a copy of an address's data", () => {
     }
   });
 
-  it("never holds a secret or a credential: no session token, password, Google token, API key or shop key", async () => {
+  it("excludes stored credentials, the buyer's authorization, key and received goods", async () => {
     const channel = await aChannel();
+    const { harnessed, order } = channel;
+    const stored = await harnessed.store.orderById(order.order.id);
+    expect(stored).toMatchObject({
+      payment: SECRETS.payment,
+      delivery: { code: SECRETS.goods },
+      order: { state: "delivered_unpaid" },
+      buyerKey: expect.any(String),
+    });
+    if (stored === null) throw new Error("the buyer's order was not persisted");
+    expect(stored.buyerKey).not.toBe("");
 
     await channel.copy();
 
     const { text } = attachedCopy(channel.mails);
-    const stored = await channel.harnessed.store.orderById(channel.order.order.id);
     for (const secret of [
       ...Object.values(SECRETS),
       channel.harnessed.merchant.key,
       // What the key table keeps of it.
       createHash("sha256").update(channel.harnessed.merchant.key).digest("hex"),
-      stored?.buyerKey ?? "the buyer's key",
+      stored.buyerKey,
     ]) {
       expect(text, secret).not.toContain(secret);
     }
@@ -342,9 +369,8 @@ describe("a copy of an address's data", () => {
     expect(journal.total).toBe(JOURNAL_ROWS_MAX + 2);
   });
 
-  it("is one message to the provider on every try of one request, named by the request", async () => {
-    // A try whose answer was lost may have been mailed; the provider sends a
-    // repeat with the same key and the same message only once.
+  it("submits the same complete provider message and key when an unchanged request is retried", async () => {
+    // The provider's deduplication requires the same key and the whole message.
     const channel = await aChannel();
     // The second try a minute after the first, by the wall clock: nothing in
     // the message may move with it.
@@ -358,10 +384,10 @@ describe("a copy of an address's data", () => {
       vi.useRealTimers();
     }
 
+    expect(channel.mails).toHaveLength(2);
     const [first, second] = channel.mails;
     expect(first?.idempotencyKey).toBe(`data-copy/${REQUEST}`);
-    expect(second?.idempotencyKey).toBe(first?.idempotencyKey);
-    expect(second?.attachments).toEqual(first?.attachments);
+    expect(second).toEqual(first);
   });
 
   it.each([

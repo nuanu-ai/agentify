@@ -19,7 +19,8 @@ COPY pnpm-lock.yaml ./
 RUN pnpm fetch
 
 COPY . .
-RUN pnpm install --frozen-lockfile --offline --filter "@agentify/docs..."
+# The documentation reads SDK constants from source, which resolves its own dependencies.
+RUN pnpm install --frozen-lockfile --offline --filter "@agentify/docs..." --filter "@nuanu-ai/agentify..."
 RUN pnpm --filter @agentify/docs build && rm -rf apps/docs/dist/client/.vite
 
 FROM caddy:2.10.0-alpine@sha256:ae4458638da8e1a91aafffb231c5f8778e964bca650c8a8cb23a7e8ac557aa3c

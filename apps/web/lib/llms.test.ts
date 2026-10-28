@@ -50,12 +50,25 @@ describe("llms.txt", () => {
       '{"params":',
       "PAYMENT-REQUIRED",
       "PAYMENT-SIGNATURE",
+      "extra.price_stamp",
       "status_url",
       "delivered",
       "order_id",
     ]) {
       expect(selling, name).toContain(name);
     }
+    const instructions = selling.replaceAll("`", "");
+    for (const required of [
+      /to buy, POST.*params.*purchase_url/i,
+      /first answer.*402.*PAYMENT-REQUIRED/i,
+      /sign and send.*PAYMENT-SIGNATURE.*same POST/i,
+      /goods.*delivered.*status_url.*in_progress/i,
+      /status_url.*buyer.*key.*keep that address to yourself/i,
+      /order_id is not a secret/i,
+      /answer is lost.*same payment requirements again.*same wallet.*no second charge/i,
+      /without.*kept payment requirements.*new purchase.*charged again/i,
+    ])
+      expect(instructions).toMatch(required);
   });
 
   it("shows a parcel's purchase with its address, as the purchase contract takes it", () => {
@@ -132,6 +145,7 @@ describe("llms.txt", () => {
 
       expect(first).toMatch(/^# /);
       expect(first).toMatch(/sandbox/i);
+      expect(first).toMatch(/no payment.*real/i);
       expect(first).toContain(LIVE);
     },
   );

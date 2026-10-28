@@ -10,7 +10,7 @@ export function serializeResumeIntent(intent: ResumeIntent, now: number) {
   return JSON.stringify({ intent, expires_at: now + RESUME_INTENT_TTL_MS });
 }
 
-export function parseResumeIntent(raw: string | null, now: number): ResumeIntent | null {
+function parseResumeIntent(raw: string | null, now: number): ResumeIntent | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as {

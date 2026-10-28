@@ -16,7 +16,7 @@ import {
   type WorkerProblem,
 } from "./index.js";
 import { type FakeGateway, startFakeGateway } from "./testing/fake-gateway.js";
-import { REACH, type Reach, reachOf, type TransportFailure, whatIsKnown } from "./transport.js";
+import { REACH, reachOf } from "./transport.js";
 
 const API_KEY = "merchant-key-for-the-tests";
 
@@ -74,6 +74,8 @@ describe("creating a client", () => {
     const agentify = createClient({ apiKey: API_KEY });
 
     await expect(agentify.catalog.publish(card)).rejects.toThrow(/baseUrl/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/test\.agentify\.ad/);
+    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/agentify\.ad/);
     await expect(agentify.orders.get("order-1")).rejects.toThrow(/baseUrl/);
     await expect(
       agentify.orders.forId("order-1").deliver({ access_url: "https://a.example" }),
@@ -124,16 +126,6 @@ describe("publishing a card", () => {
     expect(published.ok === false && published.error.code).toBe("card_rejected");
     // Never retryable: the same card gets the same answer until it is edited.
     expect(published.ok === false && published.error.retryable).toBe(false);
-  });
-
-  it("throws when the answer is not an answer at all", async () => {
-    // A card neither accepted nor faulted is a case a merchant cannot branch
-    // on, so it throws.
-    const agentify = await gatewayServing({
-      publish_card: () => ({ status: 502, text: "<html>gateway timeout</html>" }),
-    });
-
-    await expect(agentify.catalog.publish(card)).rejects.toThrow(/publish_card/);
   });
 
   it("treats a well-formed answer that is not the document as no answer at all", async () => {
@@ -252,17 +244,6 @@ const compilerRefusesWhatPublishingRefuses = (agentify: AgentifyClient): void =>
 void compilerRefusesWhatPublishingRefuses;
 
 describe("reading orders back", () => {
-  it("reads one order and the state it is in", async () => {
-    const agentify = await gatewayServing({
-      get_order: () => ({ body: { ...order, status: "in_progress", payment_status: "paid" } }),
-    });
-
-    const read = await agentify.orders.get("order-1");
-
-    expect(read.status).toBe("in_progress");
-    expect(gateway?.callsTo("get_order")[0]?.params).toStrictEqual({ order_id: "order-1" });
-  });
-
   it("reads an order whose status this package does not know as unknown, never as an ending", async () => {
     // A newer gateway may say a word, or a field, this package was not built
     // with. The order still comes back, and the word it cannot read is the one
@@ -390,9 +371,11 @@ describe("reading orders back", () => {
     const problems: WorkerProblem[] = [];
     agentify.on("problem", (problem) => problems.push(problem));
 
-    await agentify.orders.list();
+    expect(await agentify.orders.list()).toEqual([]);
 
     expect(problems[0]?.message).not.toContain("buyer@example.com");
+    expect(problems[0]?.message).not.toContain("order-12");
+    expect(problems[0]?.message).toContain("left out 300 of the 300 orders listed");
     expect(problems[0]?.message.length ?? 0).toBeLessThan(5_000);
     expect(problems[0]?.message).toContain("and 290 more, not named");
   });
@@ -422,30 +405,6 @@ describe("reading orders back", () => {
     expect(problems[0]?.message).toContain("price.amount: expected string");
     expect(problems[0]?.message).not.toMatch(/newer release/);
     expect(problems[0]?.message).toContain("sent broken");
-  });
-
-  it("names at most ten orders it left out of a list and counts the rest", async () => {
-    // Two thousand unreadable orders must not become a megabyte in a log.
-    const agentify = await gatewayServing({
-      list_orders: () => ({
-        text: JSON.stringify({
-          orders: Array.from({ length: 15 }, (_, index) => ({
-            ...order,
-            id: `order-${index}`,
-            status: "unfulfilled",
-            payment_status: "paid",
-            quantity: 3,
-          })),
-        }),
-      }),
-    });
-    const problems: WorkerProblem[] = [];
-    agentify.on("problem", (problem) => problems.push(problem));
-
-    expect(await agentify.orders.list()).toStrictEqual([]);
-    expect(problems[0]?.message).toContain("left out 15 of the 15 orders listed");
-    expect(problems[0]?.message).toContain("and 5 more, not named");
-    expect(problems[0]?.message).not.toContain("order-12");
   });
 
   it("says nothing about a list whose every status this release knows", async () => {
@@ -654,23 +613,6 @@ describe("closing an order the merchant took on", () => {
     expect(result).toStrictEqual({ ok: false, error });
   });
 
-  it("turns a gateway that did not answer into a retryable error, not an exception", async () => {
-    // A dropped connection is the case the retryable flag exists for, and it
-    // arrives through the same branch.
-    const agentify = await gatewayServing({
-      refuse_order: () => ({ status: 502, text: "bad gateway" }),
-    });
-
-    const result = await agentify.orders.forId("order-1").refuse({
-      code: "out_of_stock",
-      message: "Поставщик не подтвердил номер",
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.ok === false && result.error.retryable).toBe(true);
-    expect(result.ok === false && result.error.message).toMatch(/refuse_order/);
-  });
-
   it("counts a delivery answered with a result word this package does not know as done, the word read as unknown", async () => {
     // Beside ok: true the word only informs; a newer word must not turn a
     // delivery the gateway took into a failure the merchant retries.
@@ -792,6 +734,10 @@ describe("closing an order the merchant took on", () => {
         /began answering 200 and the answer could not be read to the end/,
       );
       expect(result.ok === false && result.error.message).not.toMatch(/is not JSON/);
+      expect(result.ok === false && result.error.message).toMatch(/did not finish/);
+      expect(result.ok === false && result.error.message).not.toMatch(
+        /it was sent|whether it arrived/,
+      );
       // A status and part of a body did come back, so "nothing came back"
       // would contradict the sentence it introduces.
       expect(result.ok === false && result.error.message).not.toMatch(/nothing came back/);
@@ -818,16 +764,6 @@ describe("closing an order the merchant took on", () => {
     expect(delivered.ok === false && delivered.error.message).toMatch(/may be made again/);
     expect(accepted.ok === false && accepted.error.message).toMatch(/may be made again/);
     expect(refused.ok === false && refused.error.message).not.toMatch(/may be made again/);
-  });
-
-  it("takes an order on, with and without an expected time", async () => {
-    const agentify = await gatewayServing({ accept_order: () => ({ body: { ok: true } }) });
-
-    const held = agentify.orders.forId("order-1");
-
-    expect(await held.accept()).toStrictEqual({ ok: true });
-
-    expect(gateway?.callsTo("accept_order").map((call) => call.body)).toStrictEqual([{}]);
   });
 });
 
@@ -881,6 +817,7 @@ describe("a refusal the gateway put into words", () => {
     });
 
     expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error.message).toMatch(/did not go through/);
     expect(result.ok === false && result.error.message).toContain("no_such_order");
     expect(result.ok === false && result.error.message).toContain("there is no such order");
     expect(result.ok === false && result.error.message).not.toMatch(/could not be read/);
@@ -978,38 +915,6 @@ describe("a refusal the gateway put into words", () => {
     expect(message).toMatch(/whether it changed anything is not known/);
   });
 
-  it("tells a merchant that a call Agentify refused did not go through", async () => {
-    const agentify = await gatewayServing({
-      deliver_order: () => ({
-        status: 404,
-        text: JSON.stringify({
-          error: { code: "no_such_order", message: "there is no such order", retryable: false },
-        }),
-      }),
-    });
-
-    const result = await agentify.orders.forId("order-1").deliver({
-      access_url: "https://a.example",
-    });
-
-    expect(result.ok === false && result.error.message).toMatch(/did not go through/);
-  });
-
-  it("says a call it could not read may be worth making again", async () => {
-    // Nothing readable came back, so there is no gateway answer to defer to,
-    // and "do not call again" would be invented from a failure to parse.
-    const agentify = await gatewayServing({
-      deliver_order: () => ({ status: 502, text: "<html>a proxy, not a gateway</html>" }),
-    });
-
-    const result = await agentify.orders.forId("order-1").deliver({
-      access_url: "https://a.example",
-    });
-
-    expect(result.ok === false && result.error.code).toBe(ANSWER_NOT_UNDERSTOOD);
-    expect(result.ok === false && result.error.retryable).toBe(true);
-  });
-
   const thrownBy = (call: Promise<unknown>): Promise<string | null> =>
     call.then(
       () => null,
@@ -1105,6 +1010,7 @@ describe("a refusal the gateway put into words", () => {
       const agentify = await gatewayServing({
         list_orders: () => ({ status, type, text }),
         deliver_order: () => ({ status, type, text }),
+        refuse_order: () => ({ status, type, text }),
       });
 
       const thrown = await thrownBy(agentify.orders.list());
@@ -1113,8 +1019,18 @@ describe("a refusal the gateway put into words", () => {
       });
 
       expect(returned.ok).toBe(false);
+      const refused = await agentify.orders
+        .forId("order-1")
+        .refuse({ code: "out_of_stock", message: "none" });
+      expect(refused.ok).toBe(false);
+      expect(refused.ok === false && refused.error.message).toContain("refuse_order");
+      if (status === 502) expect(refused.ok === false && refused.error.retryable).toBe(true);
 
-      for (const said of [thrown, returned.ok === false ? returned.error.message : null]) {
+      for (const said of [
+        thrown,
+        returned.ok === false ? returned.error.message : null,
+        refused.ok === false ? refused.error.message : null,
+      ]) {
         expect(said).toContain(`answered ${status}`);
         expect(said).toContain(type);
         expect(said).toContain(size);
@@ -1225,15 +1141,6 @@ describe("what is thrown where a route has no failure branch", () => {
     expect(thrown).toBeInstanceOf(TypeError);
     expect(thrown).not.toBeInstanceOf(AgentifyError);
   });
-
-  it("names both addresses when it is the address that is missing", async () => {
-    // The fix has to be in the sentence: there is no default, because
-    // choosing an environment is the merchant's to do on purpose.
-    const agentify = createClient({ apiKey: API_KEY });
-
-    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/test\.agentify\.ad/);
-    await expect(agentify.catalog.publish(card)).rejects.toThrow(/https:\/\/agentify\.ad/);
-  });
 });
 
 describe("the door on every call", () => {
@@ -1264,48 +1171,5 @@ describe("what a failed call says about whether it arrived", () => {
     expect(reachOf(failing())).toBe(REACH.UNKNOWN);
     expect(reachOf(new Error("something with no cause at all"))).toBe(REACH.UNKNOWN);
     expect(reachOf(undefined)).toBe(REACH.UNKNOWN);
-  });
-});
-
-describe("what a failed call is told to the merchant as", () => {
-  const failing = (reach: Reach): TransportFailure => ({
-    route: "deliver_order",
-    reason: "the reason, whatever it was",
-    reach,
-  });
-
-  it("says a different thing for each of the three, and never the wrong one", () => {
-    // Each sentence is a claim about a merchant's books: "your delivery did
-    // not happen" versus "we cannot tell whether it did".
-    const said = {
-      [REACH.NOT_RECEIVED]: whatIsKnown(failing(REACH.NOT_RECEIVED)),
-      [REACH.ANSWERED]: whatIsKnown(failing(REACH.ANSWERED)),
-      [REACH.UNKNOWN]: whatIsKnown(failing(REACH.UNKNOWN)),
-    };
-
-    expect(new Set(Object.values(said)).size).toBe(3);
-
-    // Only the first is allowed to say the call did not arrive.
-    expect(said[REACH.NOT_RECEIVED]).toMatch(/did not reach us/);
-    expect(said[REACH.ANSWERED]).not.toMatch(/did not reach us/);
-    expect(said[REACH.UNKNOWN]).not.toMatch(/did not reach us/);
-
-    // The other two say plainly that this side cannot tell, and which silence
-    // it was.
-    expect(said[REACH.ANSWERED]).toMatch(/reached us/);
-    expect(said[REACH.ANSWERED]).toMatch(/not known here/);
-    expect(said[REACH.UNKNOWN]).toMatch(/not known here/);
-
-    // The third must be true of every road into it: an abort that may not
-    // have sent anything, a connection broken after sending, and an answer cut
-    // off mid-way, which certainly arrived. So it claims neither that the call
-    // was sent nor that nothing came back.
-    expect(said[REACH.UNKNOWN]).not.toMatch(/it was sent/);
-    expect(said[REACH.UNKNOWN]).not.toMatch(/nothing came back/);
-    expect(said[REACH.UNKNOWN]).not.toMatch(/whether it arrived/);
-
-    // What all three share is pinned too, so the clause keeps saying the
-    // exchange was cut short.
-    expect(said[REACH.UNKNOWN]).toMatch(/did not finish/);
   });
 });

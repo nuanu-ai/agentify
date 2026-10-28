@@ -18,13 +18,10 @@
  * as the quickstart's test buyer, is compiled with them. That one is a buyer's
  * program rather than a merchant's, written against the x402 client a
  * merchant installs to buy their own card, and is compiled against the same
- * release of that client the repository's own test buyer uses, which
- * `packages/slice/src/quickstart-buyer.test.ts` runs it with. The count of
- * fences per page is asserted,
- * so a new example cannot slip past: when it fails, decide how the new fence is
- * compiled. The compiler's own list of the files it read is held against the
- * examples too, since a pass that reads none of them is as green as one that
- * reads them all.
+ * release of that client the repository's own test buyer uses. Every page
+ * must supply actual nonempty examples, and the compiler must read all of
+ * them. The README publication example also runs against an independent
+ * shared card fixture, so a blank stand-in cannot satisfy the witness.
  */
 
 import { execFileSync } from "node:child_process";
@@ -32,6 +29,8 @@ import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
+import { CardSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -101,19 +100,15 @@ const asCardResult = (body: string): string =>
 
 interface Page {
   readonly file: string;
-  /** How many ```ts fences the page carries. Raised only with a decision. */
-  readonly fences: number;
-  /** How many whole programs the page includes from `apps/docs/programs`. */
-  readonly programs?: number;
   /** The fences that are a piece of something rather than a program. */
   readonly pieces?: Readonly<Record<number, (body: string) => string>>;
 }
 
 const PAGES: readonly Page[] = [
-  { file: "apps/docs/quickstart.md", fences: 6, programs: 1 },
-  { file: "apps/docs/orders.md", fences: 6 },
-  { file: "apps/docs/cards.md", fences: 2, pieces: { 0: asCardResult } },
-  { file: README, fences: 4 },
+  { file: "apps/docs/quickstart.md" },
+  { file: "apps/docs/orders.md" },
+  { file: "apps/docs/cards.md", pieces: { 0: asCardResult } },
+  { file: README },
 ];
 
 /**
@@ -256,7 +251,12 @@ describe("the portal's TypeScript examples", () => {
     // compiler pass for all pages, since starting `tsc` is most of the cost;
     // each file is named for its page and fence, so the output says which
     // example broke.
-    const examples = PAGES.flatMap((page) => [...examplesOf(page), ...programsOf(page)]);
+    const examples = PAGES.flatMap((page) => {
+      const found = [...examplesOf(page), ...programsOf(page)];
+      expect(found.length, `${page.file} must provide a runnable example`).toBeGreaterThan(0);
+      for (const example of found) expect(example.source.trim(), example.name).not.toBe("");
+      return found;
+    });
     const compiled = compile(examples);
 
     expect(compiled.ok, compiled.output).toBe(true);
@@ -264,83 +264,27 @@ describe("the portal's TypeScript examples", () => {
     // read every one of them as a program of its own.
     expect([...compiled.read].sort()).toEqual(examples.map((example) => example.name).sort());
   });
-
-  it.each(PAGES)("has the examples this harness knows about on $file", (page) => {
-    // A new example has to be compiled too; raising this number is the moment
-    // to decide how.
-    expect(examplesOf(page)).toHaveLength(page.fences);
-    expect(programsOf(page)).toHaveLength(page.programs ?? 0);
-  });
-
-  it("compiles the pages' own code and not a blank stand-in for it", () => {
-    // Empty fences compile too. This checks that the compiler is given the
-    // merchant's whole promised surface, method by method, so it fails if the
-    // harness stops reading the pages or a page stops documenting a call.
-    const everything = PAGES.flatMap((page) => examplesOf(page))
-      .map((example) => example.source)
-      .join("\n");
-
-    for (const promised of [
-      "createClient",
-      "agentify.catalog.publish",
-      "agentify.on('order'",
-      "agentify.on('quote'",
-      "agentify.start()",
-      "order.delivered(",
-      "order.refused(",
-      "order.accepted(",
-      "order.deliver(",
-      "order.refuse(",
-      "agentify.orders.forId(",
-      "agentify.orders.get",
-      "agentify.orders.list",
-    ]) {
-      expect(everything).toContain(promised);
-    }
-  });
 });
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** A value as the front page writes it: strings quoted, a record on one line. */
-const inlineOf = (value: unknown): string => {
-  if (typeof value === "string") return `'${value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-
-  if (isRecord(value)) {
-    const fields = Object.entries(value).map(([name, child]) => `${name}: ${inlineOf(child)}`);
-
-    return `{ ${fields.join(", ")} }`;
-  }
-
-  return String(value);
-};
-
-/** The card, as the call that publishes it — which is what the fence has to be. */
-const publishCallFor = (card: Record<string, unknown>): string =>
-  [
-    "await agentify.catalog.publish({",
-    ...Object.entries(card).map(([name, value]) => `  ${name}: ${inlineOf(value)},`),
-    "})",
-  ].join("\n");
 
 /** Where on the page that call is: the second `ts` fence, counting from zero. */
 const CARD_FENCE = 1;
 
 describe("the card on the SDK's npm front page", () => {
-  it("is the card the portal's examples hold, rendered as the call that publishes it", () => {
-    // npm cannot render a file by reference, so the README holds a copy of the
-    // card, and this keeps the copy safe: the fence is compared against text
-    // rendered from the fixture itself, the same fixture the landing page
-    // renders and `portal-fixtures.test.ts` holds to `CardSchema`. If this
-    // fails, change the fixture, not the fence.
-    const card: unknown = JSON.parse(readFileSync(join(repoRoot, CARD), "utf8"));
-
-    expect(isRecord(card), `${CARD} is not an object`).toBe(true);
-
+  it("publishes the shared portal card from the actual npm README example", async () => {
+    const expected: unknown = JSON.parse(readFileSync(join(repoRoot, CARD), "utf8"));
     const fence = fencesOf(readFileSync(join(repoRoot, README), "utf8"), "ts")[CARD_FENCE];
-
-    expect(fence, `${README} has no card fence where this test looks for one`).toBeDefined();
-    expect(fence).toBe(publishCallFor(card as Record<string, unknown>));
+    expect(fence, `${README} must contain its publication example`).toBeDefined();
+    const published: unknown[] = [];
+    await runInNewContext(`(async () => { ${fence} })()`, {
+      agentify: {
+        catalog: {
+          publish: async (card: unknown) => {
+            published.push(card);
+          },
+        },
+      },
+    });
+    expect(published).toHaveLength(1);
+    expect(CardSchema.parse(published[0])).toEqual(CardSchema.parse(expected));
   });
 });

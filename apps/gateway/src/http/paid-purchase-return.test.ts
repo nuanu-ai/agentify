@@ -106,11 +106,12 @@ async function aPaidSale(
 
   return {
     harnessed,
+    served,
+    paid,
     requirements,
     fresh,
     present,
     paying,
-    paid,
     orderId,
     anotherOrder,
     anotherSale,
@@ -187,6 +188,14 @@ describe("a purchase already paid for", () => {
       order_id: sale.orderId,
       delivered: { access_code: "SESAME" },
     });
+    const original = (sale.paid.body as { status_url: string }).status_url;
+    expect((again.body as { status_url: string }).status_url).toBe(original);
+    const collected = await sale.served.call("GET", new URL(original).pathname);
+    expect(collected.status).toBe(200);
+    expect(collected.body).toMatchObject({
+      order_id: sale.orderId,
+      delivered: { access_code: "SESAME" },
+    });
     expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
   });
 
@@ -205,12 +214,27 @@ describe("a purchase already paid for", () => {
 
   it("is not returned to the payment that paid it, which can be read from the chain", async () => {
     const sale = await aPaidSale();
+    const paid = await sale.harnessed.store.orderById(sale.orderId);
+    expect(paid?.buyerKey).toMatch(/\S/);
+    expect(sale.paid.body).toMatchObject({ delivered: { access_code: "SESAME" } });
 
     const replayed = await sale.present(sale.paying);
 
     expect(replayed.status).toBe(409);
-    expect(codeOf(replayed.body)).toBe("payment_not_verified");
-    expect(JSON.stringify(replayed.body)).not.toContain(sale.orderId);
+    expect(replayed.body).toEqual({
+      error: {
+        code: "payment_not_verified",
+        retryable: false,
+        message: expect.stringMatching(/already.*used/i),
+      },
+    });
+    const publicRefusal = JSON.stringify(replayed.body);
+    for (const secret of [sale.orderId, paid?.buyerKey, "SESAME"]) {
+      expect(secret).toMatch(/\S/);
+      expect(publicRefusal).not.toContain(secret);
+    }
+    expect(publicRefusal).not.toMatch(/nothing was charged/i);
+    expect(publicRefusal).toMatch(/if.*already paid.*fresh payment.*without a second charge/i);
     expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
   });
 

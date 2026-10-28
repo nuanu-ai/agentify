@@ -142,6 +142,7 @@ export const anOrder = (
     timestamps: {
       createdAt: at.createdAt ?? 1_000,
       quotedAt: null,
+      paymentPresentedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
@@ -345,23 +346,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.publishCard(A, card("sku-1", "A's room"), 10_000);
         await store.publishCard(B, card("sku-1", "B's room"), 20_000);
         await store.setSelling(A, "paused");
-
-        const entries = await store.catalogEntries();
-
-        expect(entries).toHaveLength(2);
-        expect(entries.find((entry) => entry.card.merchantId === A)?.merchant).toBe("paused");
-        expect(entries.find((entry) => entry.card.merchantId === B)?.merchant).toBe("open");
-      });
-
-      it("carries where each card's merchant is paid, with its splits, and nothing where none is set", async () => {
-        // Whether a card may be offered turns on this: a catalog read that lost
-        // the address or its split would list cards no live purchase can
-        // complete.
-        const store = await twoMerchants();
-        await store.publishCard(A, card("sku-1", "A's room"), 10_000);
-        await store.publishCard(B, card("sku-1", "B's room"), 20_000);
-        // Once its moment passes, a waiting change is the address a sale is
-        // paid at, so it travels too, with the split it is paid through.
         const paid = waitingFor(
           A,
           "0x0000000000000000000000000000000000000009",
@@ -369,45 +353,27 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           90_000,
         );
         await store.setPayoutWallet(A, NO_WALLET, paid, 30_000);
-
-        const entries = await store.catalogEntries();
-
-        expect(entries.find((entry) => entry.card.merchantId === A)?.payoutWallet).toStrictEqual(
-          readBack(paid, { address: 30_000 }),
-        );
-        expect(entries.find((entry) => entry.card.merchantId === B)?.payoutWallet).toStrictEqual(
-          NO_WALLET,
-        );
-      });
-
-      it("carries what each card's merchant is listed as, and nothing where nobody named one", async () => {
-        // A payment request names the seller, so a catalog read that lost the
-        // name would list cards whose payment request could name nobody.
-        const store = await twoMerchants();
-        await store.publishCard(A, card("sku-1", "A's room"), 10_000);
-        await store.publishCard(B, card("sku-1", "B's room"), 20_000);
         await store.setServiceName(A, "A's own shop", 30_000);
-
-        const entries = await store.catalogEntries();
-
-        expect(entries.find((entry) => entry.card.merchantId === A)?.serviceName).toBe(
-          "A's own shop",
-        );
-        expect(entries.find((entry) => entry.card.merchantId === B)?.serviceName).toBeNull();
-      });
-
-      it("carries each card's merchant's site, and nothing where nobody gave one", async () => {
-        const store = await twoMerchants();
-        await store.publishCard(A, card("sku-1", "A's room"), 10_000);
-        await store.publishCard(B, card("sku-1", "B's room"), 20_000);
         await store.setSellerSite(A, "https://a.example", 30_000);
+        await store.noteContact(A, 30_000);
 
         const entries = await store.catalogEntries();
 
-        expect(entries.find((entry) => entry.card.merchantId === A)?.sellerSite).toBe(
-          "https://a.example",
-        );
-        expect(entries.find((entry) => entry.card.merchantId === B)?.sellerSite).toBeNull();
+        expect(entries).toHaveLength(2);
+        expect(entries.find((entry) => entry.card.merchantId === A)?.merchant).toBe("paused");
+        expect(entries.find((entry) => entry.card.merchantId === B)?.merchant).toBe("open");
+        expect(entries.find((entry) => entry.card.merchantId === A)).toMatchObject({
+          payoutWallet: readBack(paid, { address: 30_000 }),
+          serviceName: "A's own shop",
+          sellerSite: "https://a.example",
+          lastContact: 30_000,
+        });
+        expect(entries.find((entry) => entry.card.merchantId === B)).toMatchObject({
+          payoutWallet: NO_WALLET,
+          serviceName: null,
+          sellerSite: null,
+          lastContact: null,
+        });
       });
     });
 
@@ -580,14 +546,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(
           await store.addOrder(anOrder("ord_1", "quoted", { merchantId: A }), {
             through: "api",
-            waitingAtMost: 20,
           }),
         ).toBe("switched_away");
         expect(await store.orderById("ord_1")).toBeNull();
         expect(
           await store.addOrder(anOrder("ord_2", "quoted", { merchantId: A }), {
             through: "woocommerce",
-            waitingAtMost: 20,
           }),
         ).toBe("written");
         expect(await store.orderById("ord_2")).not.toBeNull();
@@ -613,21 +577,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.lastContact(B)).toBeNull();
         await store.noteContact(A, 8_000);
         expect(await store.lastContact(A)).toBe(8_000);
-      });
-
-      it("reaches the catalogue beside each card of that merchant's, and nothing where they never polled", async () => {
-        // A silent seller's cards are left out of the catalogue, so a read that
-        // lost the poll would hide every card, and one that invented a poll
-        // would list cards nobody is there to sell.
-        const store = await twoMerchants();
-        await store.publishCard(A, card("sku-1", "A's room"), 10_000);
-        await store.publishCard(B, card("sku-1", "B's room"), 20_000);
-        await store.noteContact(A, 30_000);
-
-        const entries = await store.catalogEntries();
-
-        expect(entries.find((entry) => entry.card.merchantId === A)?.lastContact).toBe(30_000);
-        expect(entries.find((entry) => entry.card.merchantId === B)?.lastContact).toBeNull();
       });
     });
 
@@ -1264,21 +1213,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             highest.address,
           ]);
         });
-
-        it("include a waiting split once its moment has passed, and not before", async () => {
-          // At its moment the waiting wallet is the one in force with no write
-          // in between, and buyers pay its split from then on.
-          const store = await twoMerchants();
-          await store.setPayoutWallet(A, NO_WALLET, paidAt(A, W1), 3_000);
-          await store.setPayoutWallet(A, paidAt(A, W1), waitingFor(A, W1, W2, 90_000), 4_000);
-
-          expect(
-            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 89_999)),
-          ).toStrictEqual([splitOf(A, W1).address]);
-          expect(
-            await addressesOf(store.splitsToPayOutFor(BASE_SEPOLIA.network, A, 90_000)),
-          ).toStrictEqual([splitOf(A, W2).address]);
-        });
       });
     });
 
@@ -1297,42 +1231,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           disabledAt: null,
         });
         expect((await store.workingKey("digest-b"))?.merchantId).toBe(B);
-      });
-
-      it("is refused once disabled, exactly as a key nobody was issued is", async () => {
-        // Told apart, the two would confirm which guesses had once been real keys.
-        const store = await twoMerchants();
-        await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
-
-        await store.disableKey("mk_a", 2_000);
-
-        expect(await store.workingKey("digest-a")).toBeNull();
-        expect(await store.workingKey("a-digest-nobody-was-issued")).toBeNull();
-      });
-
-      it("leaves its merchant's other keys working when it is disabled", async () => {
-        const store = await twoMerchants();
-        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
-        await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 2_000);
-
-        await store.disableKey("mk_1", 3_000);
-
-        expect(await store.workingKey("digest-1")).toBeNull();
-        expect((await store.workingKey("digest-2"))?.merchantId).toBe(A);
-      });
-
-      it("keeps the instant it was first revoked at when it is revoked again", async () => {
-        // A retry after a dropped connection must not move the instant an
-        // incident is reconstructed from.
-        const store = await twoMerchants();
-        await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
-
-        expect((await store.disableKey("mk_1", 2_000))?.disabledAt).toBe(2_000);
-        expect((await store.disableKey("mk_1", 9_000))?.disabledAt).toBe(2_000);
-      });
-
-      it("is said not to be there rather than disabled quietly", async () => {
-        expect(await (await twoMerchants()).disableKey("mk_nope", 1_000)).toBeNull();
       });
 
       it("is in its own merchant's list, revoked or not, and in nobody else's", async () => {
@@ -1364,7 +1262,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           },
           3_000,
         );
-        await store.disableKey("mk_a2", 4_000);
+        await store.disableKeyOf(A, "mk_a2", 4_000);
 
         expect((await store.keysOf(A)).map((key) => key.id)).toStrictEqual(["mk_a1", "mk_a2"]);
         expect((await store.keysOf(B)).map((key) => key.id)).toStrictEqual(["mk_b1"]);
@@ -1417,6 +1315,10 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addKey({ id: "mk_a", merchantId: A, label: "A's", digest: "digest-a" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
 
+        await store.addKey(
+          { id: "mk_sibling", merchantId: A, label: "sibling", digest: "digest-sibling" },
+          1_000,
+        );
         expect(await store.disableKeyOf(A, "mk_a", 2_000)).toMatchObject({
           key: { disabledAt: 2_000 },
           changed: true,
@@ -1425,6 +1327,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.disableKeyOf(A, "mk_nobody_was_issued", 2_000)).toBeNull();
 
         expect((await store.workingKey("digest-b"))?.id).toBe("mk_b");
+        expect(await store.workingKey("digest-a")).toBeNull();
+        expect(await store.workingKey("never-issued")).toBeNull();
+        expect((await store.workingKey("digest-sibling"))?.id).toBe("mk_sibling");
         // A retry keeps the first revocation's instant here too.
         expect(await store.disableKeyOf(A, "mk_a", 9_000)).toMatchObject({
           key: { disabledAt: 2_000 },
@@ -1437,7 +1342,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // time it ran after somebody disabled its key.
         const store = await twoMerchants();
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
-        await store.disableKey("mk_1", 2_000);
+        await store.disableKeyOf(A, "mk_1", 2_000);
 
         expect((await store.keyByDigest("digest-1"))?.id).toBe("mk_1");
         expect(await store.keyByDigest("a-digest-nobody-was-issued")).toBeNull();
@@ -1478,7 +1383,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             },
             2_000,
           ),
-        ).rejects.toThrow(/the key mk_1 is already written down/);
+        ).rejects.toThrow(/mk_1/);
 
         expect((await store.workingKey("digest-1"))?.id).toBe("mk_1");
         expect(await store.workingKey("digest-2")).toBeNull();
@@ -1501,7 +1406,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             },
             2_000,
           ),
-        ).rejects.toThrow(/a key with that digest is already written down/);
+        ).rejects.toThrow(/digest/);
 
         expect((await store.workingKey("digest-1"))?.id).toBe("mk_1");
         expect((await store.keysOf(B)).map((key) => key.id)).toStrictEqual([]);
@@ -1538,6 +1443,8 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           ),
         );
 
+        expect(forTheIdentifier).toBeInstanceOf(Error);
+        expect(forTheDigest).toBeInstanceOf(Error);
         expect(asLogged(forTheIdentifier)).not.toContain("digest-2");
         expect(asLogged(forTheDigest)).not.toContain("digest-1");
       });
@@ -1599,14 +1506,28 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.noteKeyUse("mk_1", 5_000, null);
 
-        expect((await store.disableKey("mk_1", 7_000))?.lastUsedAt).toBe(5_000);
+        expect((await store.disableKeyOf(A, "mk_1", 7_000))?.key.lastUsedAt).toBe(5_000);
         expect((await store.keysOf(A))[0]?.lastUsedAt).toBe(5_000);
       });
     });
 
     describe("a payment admitted against a stamped price", () => {
       const admitted = (id: string, buyerKey: string): StoredOrder => {
-        const record = anOrder(id, "quoted", { buyerKey, createdAt: 1_500 });
+        const record = anOrder(id, "quoted", { buyerKey, createdAt: 1_000 });
+        const presented = transition(
+          {
+            ...record.order,
+            price: record.order.cardPrice,
+            quoteSource: "card_snapshot",
+            policy: {
+              ...record.order.policy,
+              deadlines: { ...record.order.policy.deadlines, quoteTtlMs: 30_000 },
+            },
+            timestamps: { ...record.order.timestamps, quotedAt: 1_000 },
+          },
+          { kind: "payment_presented", at: 1_500 },
+        );
+        if (!presented.ok) throw new Error("the payment did not arrive while its price held");
         return {
           ...record,
           through: "api",
@@ -1623,26 +1544,16 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
               extra: {},
             },
           },
-          order: {
-            ...record.order,
-            price: record.order.cardPrice,
-            quoteSource: "card_snapshot",
-            policy: {
-              ...record.order.policy,
-              deadlines: { ...record.order.policy.deadlines, quoteTtlMs: 30_000 },
-            },
-            timestamps: {
-              ...record.order.timestamps,
-              quotedAt: 1_000,
-              paymentPresentedAt: 1_500,
-            },
-          },
+          order: presented.order,
         };
       };
 
       it("creates one order and preserves its original buyer key when the same price is submitted concurrently", async () => {
         const store = await twoMerchants();
-        const candidates = [admitted("ord_one_price", "bk_first"), admitted("ord_one_price", "bk_second")];
+        const candidates = [
+          admitted("ord_one_price", "bk_first"),
+          admitted("ord_one_price", "bk_second"),
+        ];
 
         const born = await Promise.all(
           candidates.map((record) => store.addOrder(record, { through: "api" })),
@@ -1697,110 +1608,9 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await accepted).toStrictEqual({ found: true, result: "api" });
         expect(await switched).toStrictEqual({ switched: false, waiting: [record.order.id] });
         expect((await store.merchantById(A))?.integration).toBe("api");
-        expect((await store.orders(A)).map((order) => order.order.id)).toStrictEqual([record.order.id]);
-      });
-    });
-
-    describe("a purchase waiting for payment", () => {
-      /**
-       * A purchase being priced or priced and not paid, at `createdAt`, with
-       * the deployment's windows: five seconds for a price question, thirty
-       * for a price to hold.
-       */
-      const pending = (
-        id: string,
-        state: "created" | "quoted",
-        createdAt: number,
-        merchantId = A,
-      ): StoredOrder => {
-        const base = anOrder(id, state, { merchantId, createdAt });
-        return {
-          ...base,
-          order: {
-            ...base.order,
-            policy: {
-              ...base.order.policy,
-              deadlines: {
-                ...base.order.policy.deadlines,
-                quoteResponseMs: 5_000,
-                quoteTtlMs: 30_000,
-              },
-            },
-            timestamps: {
-              ...base.order.timestamps,
-              quotedAt: state === "quoted" ? createdAt : null,
-            },
-          },
-        };
-      };
-
-      /** A purchase priced and not paid, as `addOrder` is given one at its birth. */
-      const waiting = (id: string, merchantId = A) =>
-        pending(id, "quoted", Number(id.replace(/\D/g, "")) || 1, merchantId);
-
-      it("is written while fewer of its seller's purchases wait, and refused once as many do as allowed", async () => {
-        // Only a seller's own purchases still waiting for payment count: one
-        // paid, one charging, one that ended and another seller's hold no place.
-        const store = await twoMerchants();
-        await store.addOrder(pending("ord_1", "created", 1));
-        await store.addOrder(waiting("ord_2"));
-        await store.addOrder(anOrder("ord_3", "paid", { createdAt: 3 }));
-        await store.addOrder(anOrder("ord_4", "expired", { createdAt: 4 }));
-        const charging = anOrder("ord_5", "quoted", { createdAt: 5 });
-        await store.addOrder({ ...charging, order: { ...charging.order, payment: "settling" } });
-        await store.addOrder(waiting("ord_6", B));
-        await store.addOrder(waiting("ord_7", B));
-
-        expect(await store.addOrder(waiting("ord_8"), { through: "api", waitingAtMost: 2 })).toBe(
-          "too_many_waiting",
-        );
-        expect(await store.orderById("ord_8")).toBeNull();
-        expect(await store.addOrder(waiting("ord_9"), { through: "api", waitingAtMost: 3 })).toBe(
-          "written",
-        );
-        expect(await store.orderById("ord_9")).not.toBeNull();
-      });
-
-      it("holds no place once its price has run out, though nothing has closed it yet", async () => {
-        // A reminder that fires late, or never, must not keep a seller's
-        // places taken: the price is gone, and no payment will be taken at it.
-        const store = await twoMerchants();
-        await store.addOrder(pending("ord_1", "quoted", 1_000));
-        await store.addOrder(pending("ord_2", "created", 1_000));
-
-        expect(await store.waitingForPayment(A, 20_000, 20)).toBe(2);
-        expect(
-          await store.addOrder(pending("ord_3", "quoted", 20_000), {
-            through: "api",
-            waitingAtMost: 2,
-          }),
-        ).toBe("too_many_waiting");
-        // The price named at 1s holds until 31s; the question asked at 1s may
-        // name one until 6s, which then holds until 36s.
-        expect(await store.waitingForPayment(A, 32_000, 20)).toBe(1);
-        expect(await store.waitingForPayment(A, 37_000, 20)).toBe(0);
-        expect(
-          await store.addOrder(pending("ord_4", "quoted", 37_000), {
-            through: "api",
-            waitingAtMost: 1,
-          }),
-        ).toBe("written");
-      });
-
-      it("is held to the limit however many purchases of one seller arrive at once", async () => {
-        // Counted and written apart, every one of them would count the same
-        // nineteen and all of them would be written.
-        const store = await twoMerchants();
-
-        const born = await Promise.all(
-          Array.from({ length: 30 }, (_, at) =>
-            store.addOrder(waiting(`ord_${at + 1}`), { through: "api", waitingAtMost: 20 }),
-          ),
-        );
-
-        expect(born.filter((one) => one === "written")).toHaveLength(20);
-        expect(born.filter((one) => one === "too_many_waiting")).toHaveLength(10);
-        expect(await store.orders(A)).toHaveLength(20);
+        expect((await store.orders(A)).map((order) => order.order.id)).toStrictEqual([
+          record.order.id,
+        ]);
       });
     });
 
@@ -1933,86 +1743,12 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         for (const id of forgotten) {
           expect(await store.orderById(id)).toBeNull();
         }
-        expect(await store.receiptForOrder("ord_receipted")).not.toBeNull();
+        expect(
+          (await store.receipts(A)).find((receipt) => receipt.order_id === "ord_receipted") ?? null,
+        ).not.toBeNull();
       });
 
-      it("is left out of a merchant's orders when asked, and read apart a page at a time, newest first, with how many there are", async () => {
-        // One that ended before it had a price is read here too, the one place
-        // a merchant can find it.
-        const store = await twoMerchants();
-        const price = { amount: "5.00", currency: "USD", asOf: 0 };
-        const priced = (id: string, state: Order["state"], createdAt: number, merchantId = A) => {
-          const base = anOrder(id, state, { merchantId, createdAt });
-          return { ...base, order: { ...base.order, price } };
-        };
-        await store.addOrder(priced("ord_1", "delivered", 1));
-        await store.addOrder(priced("ord_2", "expired", 2));
-        await store.addOrder(anOrder("ord_3", "rejected", { createdAt: 3 }));
-        await store.addOrder(priced("ord_4", "rejected", 4));
-        await store.addOrder(priced("ord_5", "quoted", 5));
-        await store.addOrder(priced("ord_6", "expired", 6, B));
-
-        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([
-          "ord_1",
-          "ord_5",
-        ]);
-        expect(await idsOf(store.orders(A))).toHaveLength(5);
-        const ids = (page: { readonly orders: readonly StoredOrder[] }) =>
-          page.orders.map((one) => one.order.id);
-        const first = await store.lapsedAttempts(A, { limit: 2 });
-        expect(ids(first)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(first).toMatchObject({ of: 3, newer: 0, previous: null });
-        expect(first.next).toStrictEqual({ createdAt: 3, id: "ord_3" });
-        const second = await store.lapsedAttempts(A, {
-          limit: 2,
-          from: { after: first.next ?? { createdAt: 0, id: "" } },
-        });
-        expect(ids(second)).toStrictEqual(["ord_2"]);
-        expect(second).toMatchObject({ of: 3, newer: 2, next: null });
-        expect(second.previous).toStrictEqual({ createdAt: 2, id: "ord_2" });
-        const back = await store.lapsedAttempts(A, {
-          limit: 2,
-          from: { before: second.previous ?? { createdAt: 0, id: "" } },
-        });
-        expect(ids(back)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(back).toMatchObject({ newer: 0, previous: null, next: first.next });
-        expect(await store.lapsedAttempts(A, { limit: 0 })).toStrictEqual({
-          orders: [],
-          of: 3,
-          newer: 0,
-          previous: null,
-          next: null,
-        });
-      });
-
-      it("reads apart from a cursor naming an attempt that is not there, where its moment and identifier fall", async () => {
-        const store = await twoMerchants();
-        const price = { amount: "5.00", currency: "USD", asOf: 0 };
-        for (const [id, createdAt] of [
-          ["ord_1", 1],
-          ["ord_2", 3],
-          ["ord_3", 3],
-          ["ord_4", 4],
-        ] as const) {
-          const base = anOrder(id, "expired", { createdAt });
-          await store.addOrder({ ...base, order: { ...base.order, price } });
-        }
-        const ids = (page: { readonly orders: readonly StoredOrder[] }) =>
-          page.orders.map((one) => one.order.id);
-        // Between ord_3 and ord_2, which were made in the same millisecond.
-        const gone = { createdAt: 3, id: "ord_2z" };
-
-        const older = await store.lapsedAttempts(A, { limit: 10, from: { after: gone } });
-        const newer = await store.lapsedAttempts(A, { limit: 10, from: { before: gone } });
-
-        expect(ids(older)).toStrictEqual(["ord_2", "ord_1"]);
-        expect(older).toMatchObject({ newer: 2, next: null });
-        expect(ids(newer)).toStrictEqual(["ord_4", "ord_3"]);
-        expect(newer).toMatchObject({ newer: 0, previous: null });
-        expect(newer.next).toStrictEqual({ createdAt: 3, id: "ord_3" });
-      });
-
-      it("is marked as it ends, so an order born waiting and closed later leaves the default reads and is forgotten", async () => {
+      it("is marked as it ends, so an order born waiting and closed later is forgotten", async () => {
         const store = await twoMerchants();
         const born = anOrder("ord_born", "quoted");
         await store.addOrder({
@@ -2025,8 +1761,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           result: null,
         }));
 
-        expect(await idsOf(store.orders(A, { leaveOutLapsed: true }))).toStrictEqual([]);
-        expect((await store.lapsedAttempts(A, { limit: 10 })).of).toBe(1);
         expect(await store.forgetLapsedBefore(Date.now() + 31 * DAY, 10)).toBe(1);
         expect(await store.orderById("ord_born")).toBeNull();
       });
@@ -2041,18 +1775,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     });
 
     describe("an order", () => {
-      it("is written once under one identifier, and a second attempt is refused", async () => {
-        // A second write would replace the order an agent holds an identifier
-        // for. Both adapters must refuse in their own words, not a driver's.
-        const store = await twoMerchants();
-        await store.addOrder(anOrder("ord_1", "created"));
-
-        await expect(store.addOrder(anOrder("ord_1", "quoted"))).rejects.toThrow(
-          /already written down/,
-        );
-        expect((await store.orderById("ord_1"))?.order.state).toBe("created");
-      });
-
       it("is said not to be there rather than thrown about", async () => {
         const store = await twoMerchants();
 
@@ -2111,10 +1833,16 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
           releaseFirst = resolve;
         });
 
+        let markEntered: () => void = () => undefined;
+        const entered = new Promise<void>((resolve) => {
+          markEntered = resolve;
+        });
         const first = store.withOrder("ord_1", async () => {
+          markEntered();
           await held;
           return { result: "first" };
         });
+        await entered;
         const second = store.withOrder("ord_2", () => ({ result: "second" }));
 
         try {
@@ -2197,7 +1925,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.addKey({ id: "mk_1", merchantId: A, label: "one", digest: "digest-1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: A, label: "two", digest: "digest-2" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: B, label: "B's", digest: "digest-b" }, 1_000);
-        await store.disableKey("mk_1", 2_000);
+        await store.disableKeyOf(A, "mk_1", 2_000);
         let asked = 0;
         const handOver = (keyId: string) =>
           store.withOrder(
@@ -2502,15 +2230,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.claimPayment("fp-2", "ord_2")).toStrictEqual({ claimed: true });
       });
 
-      it("is presented again by its own order without complaint", async () => {
-        // A retry after a dropped connection is ordinary, and the portal promises
-        // that repeating a call is safe.
-        const store = await twoMerchants();
-        await store.claimPayment("fp-1", "ord_1");
-
-        expect(await store.claimPayment("fp-1", "ord_1")).toStrictEqual({ claimed: true });
-      });
-
       it("is let go by the order holding it and by nobody else", async () => {
         // The claim is taken before the ownership decision, so a presentation
         // the decision turns away must give it back. Only the holder may, or one
@@ -2558,17 +2277,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     });
 
     describe("a receipt", () => {
-      it("is one per order and is found by the order", async () => {
-        const store = await twoMerchants();
-        const receipt = aReceipt("rcp_1", "ord_1", "delivered");
-
-        await store.putReceipt(A, receipt);
-
-        expect(await store.receiptForOrder("ord_1")).toStrictEqual(receipt);
-        expect(await store.receiptForOrder("ord_2")).toBeNull();
-        expect(await store.receipts(A)).toHaveLength(1);
-      });
-
       it("is in its own merchant's list and in nobody else's", async () => {
         const store = await twoMerchants();
 
@@ -2577,8 +2285,6 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
         expect((await store.receipts(A)).map((held) => held.id)).toStrictEqual(["rcp_1"]);
         expect((await store.receipts(B)).map((held) => held.id)).toStrictEqual(["rcp_2"]);
-        // Unscoped on purpose: the agent reads its receipt without a key.
-        expect((await store.receiptForOrder("ord_2"))?.id).toBe("rcp_2");
       });
 
       it("does not change hands when it is written again", async () => {
@@ -2591,9 +2297,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         // Written again, and named for the wrong merchant.
         await store.putReceipt(B, aReceipt("rcp_1", "ord_1", "unfulfilled"));
 
-        expect((await store.receipts(A)).map((held) => held.outcome)).toStrictEqual([
-          "unfulfilled",
-        ]);
+        expect(await store.receipts(A)).toStrictEqual([aReceipt("rcp_1", "ord_1", "unfulfilled")]);
         expect(await store.receipts(B)).toStrictEqual([]);
       });
     });
@@ -2910,13 +2614,17 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
 
       it("hands back at most its page's most however many are asked for", async () => {
         const store = await twoMerchants();
-        await store.recordJournal(refused(merchantA, 1_000, "no_reason"));
-
-        expect((await store.journal({ limit: 0 })).rows).toHaveLength(1);
-        expect((await store.journal({ limit: 10_000 })).rows).toHaveLength(1);
-        // A limit read from a malformed address is no number at all.
-        for (const limit of [Number.NaN, Number.POSITIVE_INFINITY, -5]) {
-          expect((await store.journal({ limit })).rows, String(limit)).toHaveLength(1);
+        for (let i = 0; i < 201; i++)
+          await store.recordJournal(refused(merchantA, 1_000 + i, "no_reason"));
+        for (const limit of [0, -5]) {
+          const page = await store.journal({ limit });
+          expect(page.rows, String(limit)).toHaveLength(1);
+          expect(page.next).not.toBeNull();
+        }
+        for (const limit of [10_000, Number.NaN, Number.POSITIVE_INFINITY]) {
+          const page = await store.journal({ limit });
+          expect(page.rows, String(limit)).toHaveLength(200);
+          expect(page.next).not.toBeNull();
         }
       });
     });

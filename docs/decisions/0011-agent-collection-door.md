@@ -35,9 +35,10 @@ The identifier is a plain reference: it names the order, opens nothing, and may
 be logged and passed on freely. The status document keeps `order_id` as what
 the buyer quotes to the seller; its description and `llms.txt` say that
 `status_url` is the key and not to be shared, while `order_id` is not a secret.
-The payment requirements name the order by it, `accepts[].extra.order_id`, and
-a paid request is bound to the order it names; an order belongs to the payer
-bound to its first verified payment, so a published identifier buys nothing.
+The payment requirements carry an authenticated `extra.price_stamp` instead
+(ADR-0049). Its price identifier derives one order identifier at payment. An
+order belongs to the payer bound to its first verified payment, so a published
+identifier buys nothing.
 The document carries what the buyer may know and never the merchant's product
 key, what the buyer sent or any other order.
 
@@ -46,11 +47,12 @@ key, what the buyer sent or any other order.
 Anyone who obtains a status address can read that order, though not change it,
 act as its payer or list other orders: for a parcel its tracking (ADR-0033),
 for every order the seller's name and site (ADR-0034), and for a paid one the
-transaction that paid it, which leads to the buyer's wallet. Anyone who learns
-an unpaid order's identifier can pay for it at its full price before its buyer
-does, and for a parcel then receives its tracking; the buyer's payment is
-refused, saying that nothing was charged, that buying needs a new purchase, and
-that a fresh payment from the wallet that paid returns it.
+transaction that paid it, which leads to the buyer's wallet. A party who obtains
+a still-valid price stamp and can repeat its priced parameters and locality
+can pay before the intended buyer. The first verified payer owns the purchase
+and receives its private status address. For a parcel, that payer supplies the
+full address within the priced locality. Another payer is refused; the wallet
+that paid can recover the purchase with a fresh signature.
 
 ## Alternatives rejected
 

@@ -235,9 +235,13 @@ class Backups(unittest.TestCase):
         self.assertEqual(len(list((self.world / "repo/locks").iterdir())), 1)
 
     def test_a_check_restores_the_latest_snapshot_whole_and_leaves_only_the_live_databases(self):
+        self.assertIn("backup exit 0", self.run_script("backup"))
+        (self.world / "db/agentify/public.orders").write_text("ord_1\nord_2\nord_3\nord_latest\n")
         said = self.run_script("backup\ncheck")
         self.assertIn("backup exit 0", said)
         self.assertIn("check exit 0", said)
+        self.assertEqual(len(self.snapshots()), 2)
+        self.assertIn(self.snapshots()[-1][:8], self.status())
         self.assertIn("passed", self.status())
         self.assertEqual(self.databases(), sorted({**LIVE, **SCRATCH}.keys() - {"check_agentify"}))
 

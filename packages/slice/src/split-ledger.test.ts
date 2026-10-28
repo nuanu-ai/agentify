@@ -117,9 +117,9 @@ const replayed = sent.transactions.map((transaction, at) => {
 
 describe("a payout split's USDC, as the split and the warehouse move it", () => {
   it.each(
-    replayed.map(
-      (transaction) => [transaction.label, transaction.chain.block, transaction] as const,
-    ),
+    replayed
+      .filter((transaction) => transaction.moves.length > 0)
+      .map((transaction) => [transaction.label, transaction.chain.block, transaction] as const),
   )("moves the experiment's %s at block %i exactly as Base Sepolia did", (_, __, transaction) => {
     const played = play(ledgerOf(transaction.chain.before), warehouse, transaction.moves);
 

@@ -176,6 +176,13 @@
       "when": 1792765584625,
       "tag": "0024_step_up_links",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793116663443,
+      "tag": "0025_stateless_woo_quotes",
+      "breakpoints": true
     }
   ]
 }

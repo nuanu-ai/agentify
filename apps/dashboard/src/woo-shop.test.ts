@@ -58,20 +58,20 @@ interface Stand {
   close(): Promise<void>;
 }
 
+interface ShopAnswer {
+  readonly status: number;
+  readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly raw?: string;
+}
 const shopAnswering = async (
-  answer: (asked: Asked) => {
-    status: number;
-    body?: unknown;
-    headers?: Readonly<Record<string, string>>;
-    /** Sent as it is in place of the body, for an answer that is not JSON. */
-    raw?: string;
-  },
+  answer: (asked: Asked) => ShopAnswer | Promise<ShopAnswer>,
 ): Promise<Stand> => {
   const asked: Asked[] = [];
   const server: Server = createServer((request, response) => {
     const chunks: Buffer[] = [];
     request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => {
+    request.on("end", async () => {
       const call: Asked = {
         method: request.method ?? "GET",
         url: request.url ?? "/",
@@ -82,7 +82,7 @@ const shopAnswering = async (
         body: Buffer.concat(chunks).toString("utf8"),
       };
       asked.push(call);
-      const said = answer(call);
+      const said = await answer(call);
       response.writeHead(said.status, { "content-type": "application/json", ...said.headers });
       response.end(said.raw ?? JSON.stringify(said.body));
     });
@@ -433,20 +433,6 @@ describe("creating the order", () => {
     ]);
   });
 
-  it("writes what the buyer paid on the shop's order, beside the total the shop makes of it", async () => {
-    // A shop's total may be a cent from the payment, so the order says what
-    // was paid in the request that makes it, with no second call to note it.
-    stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.01" }) }));
-
-    await createOrder(connectionTo(stand.url), order);
-
-    expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toContainEqual({
-      key: "agentify_paid",
-      value: "25.00 USD",
-    });
-    expect(stand.asked).toHaveLength(1);
-  });
-
   it("says on a test channel's order that it was paid in test USDC, which is not real money", async () => {
     // A merchant may connect their real shop on the test channel, whose paid
     // orders look like any other in WooCommerce unless the order says so.
@@ -471,28 +457,6 @@ describe("creating the order", () => {
       key: "agentify_commission",
       value: "≈ 0.75 USD (3%)",
     });
-  });
-
-  it("still refuses an answer whose correlation changed when the commission lines come back with it", async () => {
-    const lines = [
-      { key: "agentify_commission", value: "≈ 0.025 USD (0.1%)" },
-      { key: "agentify_payout_contract", value: PAID_INTO.address },
-    ];
-    for (const meta of [
-      lines,
-      [{ key: "agentify_order_id", value: "ord_other" }, ...lines],
-      [
-        { key: "agentify_order_id", value: "ord_7" },
-        { key: "agentify_order_id", value: "ord_7" },
-        ...lines,
-      ],
-    ]) {
-      stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ meta_data: meta }) }));
-      const made = await createOrder(connectionTo(stand.url), { ...order, paidInto: PAID_INTO });
-      expect(made.ok, JSON.stringify(meta)).toBe(false);
-      await stand.close();
-      stand = null;
-    }
   });
 
   it("reads the number the shop gave the order rather than its row id", async () => {
@@ -567,23 +531,42 @@ describe("creating the order", () => {
   });
 
   it("refuses a successful order response whose Agentify correlation changed", async () => {
-    for (const changed of [
-      { payment_method: "other" },
-      { transaction_id: "ord_other" },
-      { billing: { email: "somebody@example.com" } },
-      { meta_data: [{ key: "agentify_order_id", value: "ord_other" }] },
-      {
-        meta_data: [
-          { key: "agentify_order_id", value: "ord_7" },
-          { key: "agentify_order_id", value: "ord_7" },
-        ],
-      },
-    ]) {
-      stand = await shopAnswering(() => ({ status: 201, body: madeOrder(changed) }));
-      const made = await createOrder(connectionTo(stand.url), order);
-      expect(made.ok).toBe(false);
-      await stand.close();
-      stand = null;
+    const commission = [
+      { key: "agentify_commission", value: "≈ 0.025 USD (0.1%)" },
+      { key: "agentify_payout_contract", value: PAID_INTO.address },
+    ];
+    for (const extra of [[], commission]) {
+      for (const changed of [
+        { payment_method: "other" },
+        { transaction_id: "ord_other" },
+        { billing: { email: "somebody@example.com" } },
+        { meta_data: [] },
+        { meta_data: [{ key: "agentify_order_id", value: "ord_other" }] },
+        {
+          meta_data: [
+            { key: "agentify_order_id", value: "ord_7" },
+            { key: "agentify_order_id", value: "ord_7" },
+          ],
+        },
+      ]) {
+        stand = await shopAnswering(() => ({
+          status: 201,
+          body: madeOrder({
+            ...changed,
+            meta_data: [
+              ...(changed.meta_data ?? [{ key: "agentify_order_id", value: "ord_7" }]),
+              ...extra,
+            ],
+          }),
+        }));
+        const made = await createOrder(connectionTo(stand.url), {
+          ...order,
+          paidInto: extra.length === 0 ? null : PAID_INTO,
+        });
+        expect(made).toMatchObject({ ok: false, again: true });
+        await stand.close();
+        stand = null;
+      }
     }
   });
 
@@ -709,6 +692,11 @@ describe("creating the order", () => {
       ok: true,
       total: "25.01",
     });
+    expect(JSON.parse(stand.asked[0]?.body ?? "{}").meta_data).toContainEqual({
+      key: "agentify_paid",
+      value: "25.00 USD",
+    });
+    expect(stand.asked).toHaveLength(1);
     await stand.close();
     stand = await shopAnswering(() => ({ status: 201, body: madeOrder({ total: "25.02" }) }));
     expect(await createOrder(connectionTo(stand.url), order)).toMatchObject({
@@ -718,16 +706,22 @@ describe("creating the order", () => {
   });
 
   it("does not take on the order of a shop sold as calculating no tax when the order carries tax", async () => {
-    const [{ productId, paid, answer }] = ANSWERED_IN_BALI;
-    stand = await shopAnswering(() => ({ status: 201, body: answeredWith(productId, answer) }));
-
-    const made = await createOrder(connectionTo(stand.url), {
-      ...order,
-      productId: String(productId),
-      price: { amount: paid, currency: "USD" },
-    });
-
-    expect(made).toMatchObject({ ok: false, again: true });
+    for (const changed of [
+      { total_tax: "0.01" },
+      {
+        line_items: [
+          { product_id: 11, quantity: 1, subtotal: "25.00", total: "25.00", total_tax: "0.01" },
+        ],
+      },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeOrder(changed) }));
+      expect(await createOrder(connectionTo(stand.url), order)).toMatchObject({
+        ok: false,
+        again: true,
+      });
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("says a shop that would not answer is worth asking again", async () => {
@@ -739,23 +733,18 @@ describe("creating the order", () => {
   it("says a shop that is busy is worth asking again", async () => {
     // 429 and 408 are not 5xx; read as final, a busy afternoon would close the
     // sale for good.
-    for (const status of [408, 429, 502]) {
+    for (const [status, again] of [
+      [408, true],
+      [429, true],
+      [502, true],
+      [401, false],
+    ] as const) {
       stand = await shopAnswering(() => ({ status, body: { message: "later" } }));
       const made = await createOrder(connectionTo(stand.url), order);
-      expect(made.ok === false && made.again).toBe(true);
+      expect(made).toMatchObject({ ok: false, again });
       await stand.close();
       stand = null;
     }
-  });
-
-  it("treats a shop that refused our keys as final", async () => {
-    stand = await shopAnswering(() => ({
-      status: 401,
-      body: { code: "woocommerce_rest_cannot_view", message: "Sorry, you cannot list resources." },
-    }));
-    const made = await createOrder(connectionTo(stand.url), order);
-    expect(made.ok).toBe(false);
-    expect(made.ok === false && made.again).toBe(false);
   });
 
   it("does not claim an order from an answer with no order in it", async () => {
@@ -763,7 +752,9 @@ describe("creating the order", () => {
     // naming order number "undefined".
     stand = await shopAnswering(() => ({ status: 201, body: { ok: true } }));
     const made = await createOrder(connectionTo(stand.url), order);
-    expect(made.ok).toBe(false);
+    expect(made).toMatchObject({ ok: false, again: true });
+    expect(made).not.toHaveProperty("id");
+    expect(made).not.toHaveProperty("number");
   });
 });
 
@@ -1113,52 +1104,6 @@ describe("the protected product check", () => {
     }
   });
 
-  it("treats a shop that refused the product check as having answered", async () => {
-    stand = await shopAnswering(() => ({
-      status: 401,
-      body: {
-        code: "woocommerce_rest_cannot_view",
-        message: "Sorry, you cannot view this resource.",
-      },
-    }));
-
-    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
-
-    expect(read).toMatchObject({ ok: false, again: false });
-  });
-
-  it("tells a revoked key, a firewall, a missing settings route and a key kept from the settings apart in the reason it gives", async () => {
-    // The reason is all whoever reads the log has to go on: one reconnects, one
-    // asks their host, one repairs the shop.
-    const reasons = new Set<string>();
-    for (const [where, status, code] of [
-      ["/products/", 401, "woocommerce_rest_cannot_view"],
-      ["/products/", 403, "forbidden"],
-      ["woocommerce_ship_to_destination", 404, "rest_no_route"],
-      // A key that may read the product and not the shop's settings.
-      ["woocommerce_ship_to_destination", 401, "woocommerce_rest_cannot_view"],
-    ] as const) {
-      stand = await shopAnswering((asked) => {
-        if (asked.url.includes(where)) return { status, body: { code } };
-        if (asked.url.includes("/settings/")) {
-          return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
-        }
-        return { status: 200, body: parcelDocument() };
-      });
-
-      const read = await inspectProduct(
-        connectionTo(stand.url),
-        merchantItemIdFor(stand.url, "28"),
-      );
-
-      expect(read, `${status}`).toMatchObject({ ok: false, again: false, saidNo: false });
-      if (!read.ok) reasons.add(read.why);
-      await stand.close();
-      stand = null;
-    }
-    expect(reasons.size).toBe(4);
-  });
-
   it("names in the reason for every failed answer which check it was and the status it came with", async () => {
     // The reason is what the operator's log says of the shop; the status and
     // the address it came from are what they take to the merchant's host. An
@@ -1168,6 +1113,7 @@ describe("the protected product check", () => {
       { status: 429, body: { message: "later" } },
       { status: 408, body: { message: "later" } },
       { status: 401, body: { code: "woocommerce_rest_cannot_view" } },
+      { status: 403, body: { code: "forbidden" } },
       { status: 404, body: { code: "rest_no_route" } },
       { status: 200, raw: "not-json" },
       { status: 200, body: { id: 28 } },
@@ -1184,9 +1130,10 @@ describe("the protected product check", () => {
       [file, productDocument],
     ] as const;
     for (const failure of failures) {
-      const reasons = new Set<string>();
       // Every answer from the raw file is a verdict except a refusal.
-      const asked = checks.filter(([where]) => where !== file || failure.status !== 401);
+      const asked = checks.filter(
+        ([where]) => where !== file || ![401, 403].includes(failure.status),
+      );
       for (const [where, product] of asked) {
         stand = await shopAnswering((one) => {
           if (one.url.includes(where)) return failure;
@@ -1210,13 +1157,21 @@ describe("the protected product check", () => {
           if (failure.kind !== "unanswered") {
             expect(read.why, said).toContain(String(failure.status));
           }
-          if (failure.kind === "broken" && where !== file) expect(read.again, said).toBe(true);
-          reasons.add(read.why);
+          expect(read.why, said).toMatch(
+            where === file
+              ? /download|file/i
+              : where === "/wc/v3/products/"
+                ? /product/i
+                : new RegExp(where),
+          );
+          const busy = [408, 429, 503].includes(failure.status);
+          expect(read.again, said).toBe(busy || (where !== file && failure.kind !== undefined));
+          if (!read.again)
+            expect(read.saidNo, said).toBe(where === file && failure.kind === undefined);
         }
         await stand.close();
         stand = null;
       }
-      expect(reasons.size, `${failure.kind ?? failure.status}`).toBe(asked.length);
     }
   });
 
@@ -1314,29 +1269,13 @@ describe("the protected product check", () => {
     ).toBeUndefined();
   });
 
-  it("does not call a download public when the shop was too busy to say", async () => {
-    // A refusal of the keyless request proves the file protected; a 503 proves
-    // nothing either way.
-    stand = await shopAnswering((asked) => {
-      if (asked.url === "/protected/guide.txt") return { status: 503, body: {} };
-      if (asked.url.includes("/settings/")) {
-        return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
-      }
-      return { status: 200, body: productDocument() };
-    });
-
-    const read = await inspectProduct(connectionTo(stand.url), merchantItemIdFor(stand.url, "11"));
-
-    expect(read).toMatchObject({ ok: false, again: true });
-  });
-
   it("refuses public raw bytes and finite or stock-managed products", async () => {
-    for (const overrides of [
-      { manage_stock: true },
-      { sold_individually: true },
-      { download_limit: 1 },
-      { download_expiry: 1 },
-    ]) {
+    for (const [overrides, reason] of [
+      [{ manage_stock: true }, /managed stock/i],
+      [{ sold_individually: true }, /sold individually/i],
+      [{ download_limit: 1 }, /download count.*limited/i],
+      [{ download_expiry: 1 }, /download access expires/i],
+    ] as const) {
       stand = await shopAnswering((asked) => {
         if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
         if (asked.url.includes("/settings/")) {
@@ -1348,7 +1287,12 @@ describe("the protected product check", () => {
         connectionTo(stand.url),
         merchantItemIdFor(stand.url, "11"),
       );
-      expect(read.ok).toBe(false);
+      expect(read).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo: true,
+        why: expect.stringMatching(reason),
+      });
       await stand.close();
       stand = null;
     }
@@ -1714,36 +1658,6 @@ describe("the protected product check", () => {
     expect(await readFrom(stand, "28")).toMatchObject({ ok: true });
   });
 
-  it("refuses a shop that writes prices at another number of decimals and names the setting", async () => {
-    // WooCommerce writes order totals at the shop's number of decimals ("25" at
-    // zero, "25.000" at three), so an order created at "25.00" there could not
-    // be matched after the paid order exists.
-    for (const decimals of ["0", "3"]) {
-      stand = await shopAnswering((asked) => {
-        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
-        if (asked.url.includes("woocommerce_price_num_decimals")) {
-          return { status: 200, body: settingAt(asked.url, decimals) };
-        }
-        if (asked.url.includes("/settings/")) {
-          return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
-        }
-        return { status: 200, body: productDocument() };
-      });
-
-      const read = await inspectProduct(
-        connectionTo(stand.url),
-        merchantItemIdFor(stand.url, "11"),
-      );
-
-      expect(read, decimals).toMatchObject({
-        ok: false,
-        why: expect.stringContaining("Number of decimals"),
-      });
-      await stand.close();
-      stand = null;
-    }
-  });
-
   it("names an unreadable tax-calculation setting", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url.includes("woocommerce_calc_taxes")) {
@@ -1785,21 +1699,31 @@ describe("the protected product check", () => {
   });
 
   it("refuses missing raw bytes and empty permission fields", async () => {
-    for (const product of [
-      productDocument({ downloads: [{ id: "", name: "Guide", file: `${stand?.url}/x` }] }),
-      productDocument({ downloads: [{ id: "dl", name: "", file: `${stand?.url}/x` }] }),
-    ]) {
+    for (const missing of ["id", "name"] as const) {
       stand = await shopAnswering((asked) => {
+        if (asked.url === "/protected/guide.txt") return { status: 403, body: {} };
         if (asked.url.includes("/settings/")) {
           return { status: 200, body: settingAt(asked.url, settingFor(asked.url)) };
         }
-        return { status: 200, body: product };
+        return {
+          status: 200,
+          body: productDocument({
+            downloads: [
+              { id: "dl", name: "Guide", file: `${stand?.url}/protected/guide.txt`, [missing]: "" },
+            ],
+          }),
+        };
       });
       const read = await inspectProduct(
         connectionTo(stand.url),
         merchantItemIdFor(stand.url, "11"),
       );
-      expect(read.ok).toBe(false);
+      expect(read).toMatchObject({
+        ok: false,
+        again: false,
+        saidNo: true,
+        why: expect.stringMatching(/download.*readable address/i),
+      });
       await stand.close();
       stand = null;
     }
@@ -1815,7 +1739,12 @@ describe("the protected product check", () => {
       connectionTo(stand.url),
       merchantItemIdFor(stand.url, "11"),
     );
-    expect(missing.ok).toBe(false);
+    expect(missing).toMatchObject({
+      ok: false,
+      again: false,
+      saidNo: true,
+      why: expect.stringContaining("HTTP 404"),
+    });
   });
 
   it("says which of a download's refusals are the shop's no", async () => {
@@ -2291,6 +2220,128 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     });
   const JAKARTA: ShipToLocality = { country: "ID", city: "Jakarta" };
 
+  it("keeps concurrent cities in separate carts and cleans both before reuse", async () => {
+    const carts = new Map<string, { held: boolean; city: string }>();
+    const together = Promise.withResolvers<void>();
+    let concurrent = false;
+    let updates = 0;
+    stand = await shopAnswering(async (asked) => {
+      const token = asked.cartToken ?? `cart-${carts.size + 1}`;
+      const state = carts.get(token) ?? { held: false, city: "" };
+      carts.set(token, state);
+      if (asked.url.endsWith("/add-item")) state.held = true;
+      if (asked.url.endsWith("/remove-item")) state.held = false;
+      if (asked.url.endsWith("/update-customer")) {
+        state.city = JSON.parse(asked.body).shipping_address.city;
+        if (concurrent) {
+          updates += 1;
+          if (updates === 2) together.resolve();
+          await together.promise;
+        }
+      }
+      return {
+        status: asked.url.endsWith("/add-item") ? 201 : 200,
+        body: state.held
+          ? cart([rate({ price: state.city === "Berlin" ? "900" : "500" })])
+          : emptyCart(),
+        headers: { "Cart-Token": token },
+      };
+    });
+    const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
+    expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+    concurrent = true;
+    const unblock = setTimeout(() => together.resolve(), 1_000);
+    try {
+      const [jakarta, berlin] = await Promise.all([
+        runtime.shippingRates("28", JAKARTA),
+        runtime.shippingRates("28", { country: "DE", city: "Berlin" }),
+      ]);
+      expect(jakarta).toMatchObject({ ok: true, rates: [{ cost: "5.00" }] });
+      expect(berlin).toMatchObject({ ok: true, rates: [{ cost: "9.00" }] });
+      expect(carts.size).toBe(2);
+      expect([...carts.values()].every((cart) => !cart.held)).toBe(true);
+    } finally {
+      clearTimeout(unblock);
+      together.resolve();
+      await runtime.drain();
+    }
+  });
+
+  it.each([
+    "transport",
+    "proxy add 504",
+    "proxy add 202",
+    "proxy remove 504",
+    "proxy add HTML",
+    "proxy remove HTML",
+  ] as const)(
+    "does not revive an uncertain mutation from an empty read while a completed failed cart recovers: %s",
+    async (failure) => {
+      const carts = new Map<string, { held: number }>();
+      let retryCleanup = false;
+      let originalUnknown = false;
+      const request: WooRequest = async (url, init) => {
+        const path = new URL(url).pathname;
+        const token = new Headers(init?.headers).get("cart-token") ?? `cart-${carts.size + 1}`;
+        const state = carts.get(token) ?? { held: 0 };
+        carts.set(token, state);
+        if (path.endsWith("/add-item")) {
+          if (token === "cart-1" && !originalUnknown && !failure.startsWith("proxy remove")) {
+            originalUnknown = true;
+            if (failure === "transport")
+              throw new Error("reply lost while the shop still has the mutation");
+            if (failure === "proxy add 202") return Response.json(cart([rate()]), { status: 202 });
+            return failure.endsWith("HTML")
+              ? new Response("<html>Proxy response</html>", { status: 200 })
+              : Response.json({}, { status: 504 });
+          }
+          // Reusing the first token would overlap the original add, whose response was lost.
+          state.held =
+            token === "cart-1" && originalUnknown
+              ? failure.startsWith("proxy remove")
+                ? 0
+                : 2
+              : 1;
+        }
+        if (path.endsWith("/remove-item")) {
+          if (token === "cart-1" && !originalUnknown && failure.startsWith("proxy remove")) {
+            originalUnknown = true;
+            state.held = 0;
+            return failure.endsWith("HTML")
+              ? new Response("<html>Proxy response</html>", { status: 200 })
+              : Response.json({}, { status: 504 });
+          }
+          if (!retryCleanup)
+            return Response.json(
+              {
+                code: "woocommerce_rest_cart_conflict",
+                message: "Cart update was refused.",
+                data: { status: 409 },
+              },
+              { status: 409 },
+            );
+          state.held = 0;
+        }
+        return Response.json(
+          state.held ? cart([rate()], { items: [{ ...LINE, quantity: state.held }] }) : emptyCart(),
+          { headers: { "Cart-Token": token } },
+        );
+      };
+      const runtime = new WooShopRuntime(connectionTo("https://woo.nuanu.ai"), request);
+      for (let count = 0; count < 4; count += 1)
+        expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: false });
+      expect(carts.size).toBe(4);
+      retryCleanup = true;
+      expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({
+        ok: true,
+        rates: [{ cost: "5.00" }],
+      });
+      expect(carts.size).toBe(4);
+      expect(carts.get("cart-1")?.held).toBe(0);
+      expect([...carts.values()].map((cart) => cart.held)).toStrictEqual([0, 0, 1, 1]);
+    },
+  );
+
   it("waits for an in-flight cart mutation after quote cancellation before cleaning or reusing its slot", async () => {
     const adding = Promise.withResolvers<void>();
     const finishAdd = Promise.withResolvers<void>();
@@ -2579,6 +2630,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         true,
       ],
       [
+        "a rate at three decimals",
+        null,
+        { status: 200, body: cart([rate({ currency_minor_unit: 3, price: "5000" })]) },
+        true,
+      ],
+      [
         "a cart that wants a nonce",
         null,
         { status: 401, body: { code: "woocommerce_rest_missing_nonce" } },
@@ -2745,28 +2802,6 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         ok: false,
         again: false,
         saidNo: false,
-      });
-      await stand.close();
-      stand = null;
-    }
-  });
-
-  it("refuses rates it could not sell at, rather than choosing among them", async () => {
-    // Rates in two currencies, decimals no shop is sold from at, or two
-    // packages: none is the price of shipping this parcel, and choosing among
-    // them would be a guess.
-    for (const body of [
-      cart([rate(), rate({ rate_id: "flat_rate:4", currency_code: "EUR" })]),
-      cart([rate({ currency_minor_unit: 3, price: "5000" })]),
-      cart([rate({ price: "five" })]),
-      cart([rate()], { shipping_rates: [aPackage([rate()]), aPackage([rate()])] }),
-      cart([rate()], { needs_shipping: false }),
-    ]) {
-      stand = await shopWithRates(() => ({ status: 200, body }));
-
-      expect(await ratesFor(stand.url, "28", JAKARTA), JSON.stringify(body)).toMatchObject({
-        ok: false,
-        again: false,
       });
       await stand.close();
       stand = null;
@@ -3145,51 +3180,52 @@ describe("creating a parcel's order", () => {
     "0000 0000",
   ];
 
-  it("sends a paid order shipping to the buyer, with the rate the price was paid at", async () => {
-    stand = await shopAnswering(() => ({ status: 201, body: madeParcel() }));
+  it.each([false, true])(
+    "sends a paid parcel at its rate and destination, test channel %s",
+    async (test) => {
+      stand = await shopAnswering(() => ({ status: 201, body: madeParcel() }));
 
-    const made = await createParcel(connectionTo(stand.url), sold);
+      const made = await createParcel(connectionTo(stand.url), { ...sold, test });
 
-    expect(made).toStrictEqual({ ok: true, id: "30", number: "30", total: "23.00" });
-    const asked = stand.asked[0];
-    expect(asked?.method).toBe("POST");
-    expect(asked?.authorization).toMatch(/^Basic /);
-    // Only the fields needed, the address among them so it can be checked.
-    expect(new URL(asked?.url ?? "", stand.url).searchParams.get("_fields")?.split(",")).toContain(
-      "shipping",
-    );
-    const body = JSON.parse(asked?.body ?? "{}");
-    expect(body).toMatchObject({
-      set_paid: true,
-      transaction_id: "ord_9",
-      billing: { email: "merchant@example.com" },
-      // The whole name goes into the first name: splitting it would be a guess.
-      shipping: {
-        first_name: "Nuanu Reception",
-        address_1: "Jl. Raya Kediri, Beraban",
-        address_2: "Nuanu Creative City",
-        city: "Tabanan",
-        state: "BA",
-        postcode: "82121",
-        country: "ID",
-        phone: "+62 000 0000 0000",
-      },
-      line_items: [{ product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00" }],
-      shipping_lines: [
-        { method_id: "flat_rate", instance_id: "1", method_title: "Bali courier", total: "3.00" },
-      ],
-    });
-    expect(body.shipping.last_name).toBeUndefined();
-  });
-
-  it("says on a test channel's parcel order that it was paid in test USDC, so nobody ships it", async () => {
-    stand = await shopAnswering(() => ({ status: 201, body: madeParcel() }));
-
-    await createParcel(connectionTo(stand.url), { ...sold, test: true });
-
-    const lines = JSON.parse(stand.asked[0]?.body ?? "{}").meta_data;
-    expect(lines).toContainEqual({ key: "agentify_channel", value: "test" });
-  });
+      expect(made).toStrictEqual({ ok: true, id: "30", number: "30", total: "23.00" });
+      const asked = stand.asked[0];
+      expect(asked?.method).toBe("POST");
+      expect(asked?.authorization).toMatch(/^Basic /);
+      // Only the fields needed, the address among them so it can be checked.
+      expect(
+        new URL(asked?.url ?? "", stand.url).searchParams.get("_fields")?.split(","),
+      ).toContain("shipping");
+      const body = JSON.parse(asked?.body ?? "{}");
+      expect(body).toMatchObject({
+        set_paid: true,
+        transaction_id: "ord_9",
+        billing: { email: "merchant@example.com" },
+        // The whole name goes into the first name: splitting it would be a guess.
+        shipping: {
+          first_name: "Nuanu Reception",
+          address_1: "Jl. Raya Kediri, Beraban",
+          address_2: "Nuanu Creative City",
+          city: "Tabanan",
+          state: "BA",
+          postcode: "82121",
+          country: "ID",
+          phone: "+62 000 0000 0000",
+        },
+        line_items: [{ product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00" }],
+        shipping_lines: [
+          { method_id: "flat_rate", instance_id: "1", method_title: "Bali courier", total: "3.00" },
+        ],
+      });
+      expect(body.shipping.last_name).toBeUndefined();
+      expect(body.meta_data).toContainEqual({
+        key: "agentify_paid",
+        value: test ? "23.00 USD in test USDC, not real money" : "23.00 USD",
+      });
+      expect(
+        body.meta_data.filter((one: { key: string }) => one.key === "agentify_channel"),
+      ).toStrictEqual(test ? [{ key: "agentify_channel", value: "test" }] : []);
+    },
+  );
 
   it("writes the commission of a parcel on what was paid, the goods and the shipping together", async () => {
     // The split received the whole payment, shipping included: 0.1% of 23.00
@@ -3419,37 +3455,6 @@ describe("creating a parcel's order", () => {
     }
   });
 
-  it("does not take on a taxed parcel's order that moved the goods to another rate", async () => {
-    // Paris from the German shop keeping one gross price: paid 31.88 at its
-    // cart, the order totalled 32.05.
-    const standard = {
-      methodId: "flat_rate",
-      instanceId: "11",
-      title: "Standard",
-      cost: "9.90",
-      tax: "1.98",
-    } as const;
-    stand = await shopAnswering(() => ({
-      status: 201,
-      body: taxedParcel(standard, {
-        total: "32.05",
-        total_tax: "5.34",
-        line: "16.81",
-        lineTax: "3.36",
-        shippingTax: "1.98",
-      }),
-    }));
-
-    const made = await createParcel(connectionTo(stand.url), {
-      ...sold,
-      total: { amount: "31.88", currency: "USD" },
-      rate: standard,
-      tax: "included",
-    });
-
-    expect(made).toMatchObject({ ok: false, again: true, id: "30" });
-  });
-
   it("takes on a parcel's order a cent from what was paid from a shop calculating no tax too, and no more", async () => {
     stand = await shopAnswering(() => ({ status: 201, body: madeParcel({ total: "23.01" }) }));
     expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
@@ -3465,17 +3470,22 @@ describe("creating a parcel's order", () => {
   });
 
   it("does not take on the order of a parcel sold as untaxed when the order carries tax", async () => {
-    const [{ rate, answer }] = TAXED_ORDERS;
-    stand = await shopAnswering(() => ({ status: 201, body: taxedParcel(rate, answer) }));
-
-    const made = await createParcel(connectionTo(stand.url), {
-      ...sold,
-      total: { amount: answer.total, currency: "USD" },
-      goods: "20.33",
-      rate,
-    });
-
-    expect(made).toMatchObject({ ok: false, again: true });
+    for (const changed of [
+      { total_tax: "0.01" },
+      {
+        line_items: [
+          { product_id: 28, quantity: 1, subtotal: "20.00", total: "20.00", total_tax: "0.01" },
+        ],
+      },
+    ]) {
+      stand = await shopAnswering(() => ({ status: 201, body: madeParcel(changed) }));
+      expect(await createParcel(connectionTo(stand.url), sold)).toMatchObject({
+        ok: false,
+        again: true,
+      });
+      await stand.close();
+      stand = null;
+    }
   });
 
   it("carries none of the address into a refusal, and says whether to ask again", async () => {

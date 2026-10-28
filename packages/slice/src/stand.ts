@@ -449,17 +449,16 @@ const recordAnswer = (on: Exchange, answer: Answered): void => {
     const view = readChallenge(answer.challenge);
     on.challenge = answer.challenge;
     on.challengeView = view;
-    // The challenge names its order by its identifier; the feed's thread, and
-    // the address the order is read again at, come with the paid answer.
+    // The paid answer establishes the order and its private status address.
     beat(
       on,
       "gateway",
       view === null
         ? "Answered with a challenge this console could not read."
-        : view.orderId === null
+        : !view.priced
           ? "Answered with a challenge for the card alone. No order was opened."
-          : "Opened an order and answered with a challenge naming it by its identifier.",
-      view?.orderId ?? "",
+          : "Confirmed this purchase price. No order exists until payment is presented.",
+      "",
       answer.challenge,
     );
     return;

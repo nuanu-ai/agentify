@@ -1,4 +1,5 @@
 import { useVisitor } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import { useState } from "react";
 import { press } from "../lib/press";
 import { READING_SIGN_IN } from "../lib/reading-sign-in";
@@ -52,7 +53,7 @@ function doneIn(answer: unknown): Done | null {
     : null;
 }
 
-const minutes = (count: number): string => (count === 1 ? "1 minute" : `${count} minutes`);
+const minutes = (count: number): string => withUnit(count, count === 1 ? "minute" : "minutes");
 
 /** What the page says of a request for a copy, from how it stands. */
 function copySaid(copy: Copy, privacyEmail: string): string {

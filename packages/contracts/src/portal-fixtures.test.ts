@@ -24,6 +24,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 import { CardSchema, deliveryCheckFor } from "./card.js";
@@ -98,16 +99,11 @@ const jsonOf = (file: string): unknown => {
 };
 
 describe("the portal's examples are files, and every file is checked", () => {
-  it("finds examples and includes at all", () => {
-    // The negative control: a moved docs tree, a changed include syntax or a
-    // filter that matched nothing would otherwise read as a clean run.
-    expect(files.length, "no example files found under apps/docs/examples").toBeGreaterThan(0);
-    expect(included.size, "no page includes anything").toBeGreaterThan(0);
-  });
-
   it("keeps every example in a directory that names a schema", () => {
     // Where an unchecked example would otherwise hide: a file dropped at the
     // top of the tree, or a directory nobody mapped to a schema.
+    expect(files.length, "no example files found").toBeGreaterThan(0);
+    expect(included.size, "no page includes examples").toBeGreaterThan(0);
     const loose = entriesOfExamples.filter((entry) => !entry.isDirectory()).map((e) => e.name);
     const unmapped = entriesOfExamples
       .filter((entry) => entry.isDirectory() && SCHEMAS[entry.name] === undefined)
@@ -123,6 +119,7 @@ describe("the portal's examples are files, and every file is checked", () => {
   it.each(files)("%s passes the schema its directory names", (file) => {
     // If this fails, a merchant who copied this example got a document the
     // gateway would refuse.
+    expect(included.get(`examples/${file}`) ?? [], `no page displays ${file}`).not.toEqual([]);
     const [directory = ""] = file.split("/");
     const schema = SCHEMAS[directory];
 
@@ -137,25 +134,11 @@ describe("the portal's examples are files, and every file is checked", () => {
     ).toBe("");
   });
 
-  it.each(files)("%s is shown by a page", (file) => {
-    // An example no page includes goes on passing long after nobody reads it.
-    expect(
-      included.get(`examples/${file}`) ?? [],
-      `no portal page includes apps/docs/examples/${file}; include it or delete it`,
-    ).not.toStrictEqual([]);
-  });
-
-  it.each(programs)("%s is shown by a page", (program) => {
-    // A program no page includes goes on running in its test long after
-    // nobody reads it.
-    expect(
-      included.get(program) ?? [],
-      `no portal page includes apps/docs/${program}; include it or delete it`,
-    ).not.toStrictEqual([]);
-  });
-
   it("includes nothing that is not there", () => {
     // A page pointing at a missing file renders an empty block.
+    for (const program of programs) {
+      expect(included.get(program) ?? [], `no page displays ${program}`).not.toEqual([]);
+    }
     const known = new Set([...files.map((file) => `examples/${file}`), ...programs]);
     const missing = [...included.entries()]
       .filter(([path]) => !known.has(path))
@@ -199,44 +182,41 @@ describe("the pages agree with each other", () => {
     );
   });
 
-  it("every delivery the orders page shows carries what the card example declares", () => {
-    // The promise spans two pages: a merchant who declares a result on one and
-    // copies a delivery call from the other ends up with a delivery that goes
-    // through.
-    const card = CardSchema.parse(jsonOf("card/access-monthly.json"));
-    const check = deliveryCheckFor(card);
-    const orders = textOf("orders.md");
-
-    // Every `deliver` call on the page: what each one carries, up to the
-    // parenthesis that closes it, so a call written over several lines is read
-    // whole.
-    const calls = orders
-      .split(".deliver(")
-      .slice(1)
-      .map((rest) => {
-        const end = rest.indexOf(")");
-        return end === -1 ? rest : rest.slice(0, end);
-      });
-
-    expect(calls.length, "the orders page shows no delivery at all").toBeGreaterThan(0);
-
-    for (const call of calls) {
-      for (const name of Object.keys(card.result ?? {})) {
-        expect(
-          new RegExp(`(?<![\\w$])${name}\\s*:`).test(call),
-          `the orders page delivers without "${name}", which the card example declares: ${call}`,
-        ).toBe(true);
-      }
+  it("executes the orders page examples and validates their actual delivery payloads", async () => {
+    const check = deliveryCheckFor(CardSchema.parse(jsonOf("card/access-monthly.json")));
+    const delivered: unknown[] = [];
+    const url = "https://example.com/a/9f2c4a";
+    const until = "2026-09-25T10:00:00Z";
+    const order = {
+      id: "ord_saved",
+      status: "in_progress",
+      deliver: async (goods: unknown) => {
+        delivered.push(goods);
+      },
+      refuse: async () => {},
+      close: async () => {},
+    };
+    const context = {
+      order,
+      url,
+      until,
+      expiresAt: until,
+      orderId: order.id,
+      savedId: order.id,
+      explanationForBuyer: "Fulfillment closed by merchant",
+      accessFor: async () => ({ url, expiresAt: until }),
+      agentify: {
+        orders: { forId: () => order, get: async () => order, list: async () => [order] },
+      },
+    };
+    const examples = [...textOf("orders.md").matchAll(/^```ts\n([\s\S]*?)^```$/gm)];
+    expect(examples.length).toBeGreaterThan(0);
+    for (const example of examples)
+      await runInNewContext(`(async () => { ${example[1]} })()`, context);
+    expect(delivered.length, "the actual page must demonstrate a delivery").toBeGreaterThan(0);
+    for (const goods of delivered) {
+      expect(goods).toEqual({ access_url: url, expires_at: until });
+      expect(check.parse(goods)).toEqual({ access_url: url, expires_at: until });
     }
-
-    // And a delivery of the shape those calls produce passes the check the card
-    // compiles to, while one missing a declared field does not.
-    expect(
-      check.safeParse({
-        access_url: "https://example.com/a/9f2c4a",
-        expires_at: "2026-09-25T10:00:00Z",
-      }).success,
-    ).toBe(true);
-    expect(check.safeParse({ access_url: "https://example.com/a/9f2c4a" }).success).toBe(false);
   });
 });

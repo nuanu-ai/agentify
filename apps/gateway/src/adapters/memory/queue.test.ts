@@ -202,7 +202,11 @@ describe("MemoryQueue delivery", () => {
     await queue.publish(A, envelope("env_1"));
     await queue.publish(A, envelope("env_1"));
 
-    const [first, second] = await queue.draw(A, 10, 0);
+    const drawn = await queue.draw(A, 10, 0);
+    expect(drawn).toHaveLength(2);
+    const [first, second] = drawn;
+    expect(first?.handle).toEqual(expect.stringMatching(/.+/));
+    expect(second?.handle).toEqual(expect.stringMatching(/.+/));
     expect(first?.handle).not.toBe(second?.handle);
   });
 
@@ -245,7 +249,7 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     vi.useRealTimers();
   });
 
-  it("forgets an order's hand-overs and its price question wherever they wait, and nothing else", async () => {
+  it("forgets an order's hand-overs wherever they wait, and nothing else", async () => {
     // Once the merchant has the address, no envelope carrying any of it may
     // still reach a worker, a hand-over waiting out a delay included. Events
     // about the order carry no address and stay, as does everybody else's work.
@@ -257,12 +261,13 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     await queue.publish(A, question("env_q2", "prc_2"));
     await queue.publish(A, handOver("env_o2", "ord_2"));
 
-    queue.forget(A, "ord_1", "prc_1");
+    queue.forget(A, "ord_1");
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect((await queue.draw(A, 10, 0)).map((d) => d.envelope.id)).toStrictEqual([
       "env_event",
       "env_o2",
+      "env_q1",
       "env_q2",
     ]);
     expect(await queue.holdsOrder(A, "ord_1")).toBe(false);
@@ -274,7 +279,7 @@ describe("MemoryQueue letting go of a parcel's address", () => {
     const queue = await started();
     await queue.publish(B, handOver("env_b", "ord_1"));
 
-    queue.forget(A, "ord_1", null);
+    queue.forget(A, "ord_1");
 
     expect((await queue.draw(B, 10, 0)).map((d) => d.envelope.id)).toStrictEqual(["env_b"]);
   });

@@ -19,7 +19,7 @@ import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
-import { dragUp, launchChromium, theBar } from "@agentify/ui/chromium";
+import { dragUp, launchChromium } from "@agentify/ui/chromium";
 import express from "express";
 import type { Browser, Locator, Page, Route } from "playwright";
 import type { ServerBuild } from "react-router";
@@ -179,6 +179,7 @@ describe("the page data Chromium keeps", () => {
     const before = timesAsked("/orders");
 
     await restOn(page, "Orders");
+    expect(timesAsked("/orders") - before).toBe(1);
     await open(page, "Orders", "/orders");
 
     expect(timesAsked("/orders") - before).toBe(1);
@@ -377,6 +378,21 @@ describe("a copy button once the page's script runs", () => {
   });
 });
 
+describe("a copy out of a page", () => {
+  it("carries the spaces a person types where the page keeps a number with its unit", async () => {
+    const page = await onTheCards();
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin });
+    const price = page.getByText(/^80\.00\sUSD$/).first();
+
+    await price.selectText();
+    await page.keyboard.press("ControlOrMeta+C");
+
+    expect(await price.textContent()).toBe("80.00\u00a0USD");
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("80.00 USD");
+    await page.context().close();
+  });
+});
+
 describe("a click under the dashboard's prefix", () => {
   it("marks the section or filter chosen before its page arrives, and says the page is coming", async () => {
     const page = await onTheCards();
@@ -403,28 +419,32 @@ describe("a click under the dashboard's prefix", () => {
 });
 
 describe("the sections on a long page", () => {
-  it("stay in reach on a phone from the menu at the end of the header's row, which shows who is signed in and closes on Escape", async () => {
-    const page = await onTheCards({ width: 390, height: 600 });
-    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-    const burger = page.locator(".site-menu > summary");
-    const panel = page.locator(".site-menu-panel");
+  it.each(["focused-link", "blurred-summary"])(
+    "keeps phone navigation reachable after scrolling and restores focus after Escape: %s",
+    async (focus) => {
+      const page = await onTheCards({ width: 390, height: 600 });
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const burger = page.locator(".site-menu > summary");
+      const panel = page.locator(".site-menu-panel");
 
-    const reach = await burger.boundingBox();
-    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-    expect(reach?.y).toBeGreaterThanOrEqual(0);
-    expect((reach?.y ?? 600) + (reach?.height ?? 0)).toBeLessThanOrEqual(600);
-    await burger.click();
-    await panel.waitFor({ state: "visible" });
-    expect(await panel.getByRole("link", { name: /Orders/ }).isVisible()).toBe(true);
-    expect(await panel.getByText(PERSON).isVisible()).toBe(true);
-    expect(await panel.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
+      const reach = await burger.boundingBox();
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+      expect(reach?.y).toBeGreaterThanOrEqual(0);
+      expect((reach?.y ?? 600) + (reach?.height ?? 0)).toBeLessThanOrEqual(600);
+      await burger.click();
+      await panel.waitFor({ state: "visible" });
+      expect(await panel.getByRole("link", { name: /Orders/ }).isVisible()).toBe(true);
+      expect(await panel.getByText(PERSON).isVisible()).toBe(true);
+      expect(await panel.getByRole("button", { name: "Sign out" }).isVisible()).toBe(true);
 
-    await panel.getByRole("link", { name: /Orders/ }).focus();
-    await page.keyboard.press("Escape");
-    await panel.waitFor({ state: "hidden" });
-    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
-    await page.context().close();
-  });
+      if (focus === "focused-link") await panel.getByRole("link", { name: /Orders/ }).focus();
+      else await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.keyboard.press("Escape");
+      await panel.waitFor({ state: "hidden" });
+      expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
+      await page.context().close();
+    },
+  );
 
   it("are in a phone's menu that, opened on a scrolled page, keeps the header at the top and holds the page still under a wheel and a finger until it closes", async () => {
     const page = await onTheCards({ width: 390, height: 600 }, true);
@@ -454,22 +474,6 @@ describe("the sections on a long page", () => {
     await panel.waitFor({ state: "hidden" });
     await dragUp(page, under, 200);
     expect(await scrolled()).toBeGreaterThan(before);
-    await page.context().close();
-  });
-
-  it("are in a phone's menu that Escape closes wherever the focus is, handing the focus back to its button", async () => {
-    const page = await onTheCards({ width: 390, height: 600 });
-    const burger = page.locator(".site-menu > summary");
-    const panel = page.locator(".site-menu-panel");
-
-    await burger.click();
-    await panel.waitFor({ state: "visible" });
-    // A browser that does not focus a pressed summary, as Safari does not.
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await page.keyboard.press("Escape");
-
-    await panel.waitFor({ state: "hidden" });
-    expect(await burger.evaluate((element) => element === document.activeElement)).toBe(true);
     await page.context().close();
   });
 
@@ -520,6 +524,18 @@ describe("the sections on a long page", () => {
     const sidebar = await page.locator(".app-sidebar-inner").boundingBox();
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
     expect(sidebar?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
+    expect((sidebar?.y ?? 0) + (sidebar?.height ?? 0)).toBeLessThanOrEqual(700);
+    for (const name of ["Orders", "Receipts", "API keys", "Integrations", "Settings"]) {
+      const link = page.locator(".app-sidebar").getByRole("link", { name, exact: true });
+      const box = await link.boundingBox();
+      expect(box?.y).toBeGreaterThanOrEqual((header?.y ?? 0) + (header?.height ?? 0));
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(700);
+      await link.click({ trial: true });
+    }
+    expect(await page.locator("footer").isVisible()).toBe(true);
+    expect(
+      await page.locator("footer").evaluate((element) => element.getBoundingClientRect().bottom),
+    ).toBeLessThanOrEqual(701);
     await page.context().close();
   });
 });
@@ -537,105 +553,132 @@ const inTheSiteFace = async (page: Page): Promise<boolean> => {
 /** How many of what the locator finds are in sight. */
 const inSight = (found: Locator): Promise<number> => found.filter({ visible: true }).count();
 
-describe("the working header over the frame", () => {
-  it.each([
-    [320, "menu"],
-    [390, "menu"],
-    [768, "menu"],
-    [905, "menu"],
-    [910, "menu"],
-    [911, "bar"],
-    [1440, "bar"],
-  ] as const)(
-    "keeps one row at %ipx with the documentation and the dashboard, the address and the way out in its %s, the sections in the sidebar or the menu, never both, and none of the site's offers",
-    async (width, where) => {
-      const page = await onTheCards({ width, height: 700 });
-      expect(await inTheSiteFace(page)).toBe(true);
-      const header = page.locator("header.site-header");
-
-      const bar = await theBar(header);
-      expect(bar.spread).toBeLessThanOrEqual(1);
-      expect(bar.sections).toEqual([]);
-      expect(bar.doors).toEqual(["Docs", "Dashboard"]);
-      expect(bar.visitor).toBe(where === "bar" ? 1 : 0);
-      expect(bar.button).toBe(where === "menu");
-      expect(await page.locator(".app-sidebar nav.tabs").isVisible()).toBe(where === "bar");
-
-      if (where === "menu") {
-        await header.locator(".site-menu > summary").click();
-        await header.locator(".site-menu-panel").waitFor({ state: "visible" });
-      } else {
-        await header.locator(".site-account > summary").click();
-        await header.locator(".site-account-panel").waitFor({ state: "visible" });
+describe("navigation in the loaded dashboard", () => {
+  it.each(
+    [320, 390, 768, 905, 910, 911, 1440].flatMap((width) =>
+      [true, false].map((signedIn) => ({ width, signedIn })),
+    ),
+  )(
+    "keeps doors and account controls reachable at $width px, signed in $signedIn",
+    async ({ width, signedIn }) => {
+      const context = await browser.newContext({ viewport: { width, height: 700 } });
+      if (signedIn) await context.addCookies(cookies.map((one) => ({ ...one, url: origin })));
+      const page = await context.newPage();
+      try {
+        await page.goto(`${origin}${BASE}${signedIn ? "/products" : "/sign-in"}`);
+        await page.waitForLoadState("networkidle");
+        expect(await inTheSiteFace(page)).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        );
+        const header = page.locator("header.site-header");
+        const menu = header.locator(".site-menu > summary");
+        if (await menu.isVisible()) await menu.click();
+        else if (signedIn) await header.locator(".site-account > summary").click();
+        const controls = [
+          header.getByRole("link", { name: "Docs", exact: true }).filter({ visible: true }),
+          header.getByRole("link", { name: "Dashboard", exact: true }).filter({ visible: true }),
+        ];
+        if (signedIn) {
+          expect(await inSight(page.getByRole("link", { name: "Orders", exact: true }))).toBe(1);
+          expect(await inSight(page.getByText(PERSON, { exact: true }))).toBe(1);
+          controls.push(
+            page.getByRole("button", { name: "Sign out", exact: true }).filter({ visible: true }),
+          );
+        } else {
+          controls.push(
+            header.getByRole("link", { name: "Scanner", exact: true }).filter({ visible: true }),
+            header
+              .getByRole("link", { name: "Sell to agents", exact: true })
+              .filter({ visible: true }),
+          );
+          expect(await page.getByLabel("Email address").isVisible()).toBe(true);
+        }
+        for (const control of controls) {
+          expect(await control.count()).toBe(1);
+          const box = await control.boundingBox();
+          expect(box?.x).toBeGreaterThanOrEqual(0);
+          expect((box?.x ?? width) + (box?.width ?? 0)).toBeLessThanOrEqual(width);
+          expect(box?.y).toBeGreaterThanOrEqual(0);
+          expect((box?.y ?? 700) + (box?.height ?? 0)).toBeLessThanOrEqual(700);
+          await control.click({ trial: true });
+        }
+      } finally {
+        await context.close();
       }
-      expect(await inSight(page.getByRole("link", { name: "Orders", exact: true }))).toBe(1);
-      expect(await inSight(header.locator('a[href="/docs/"]'))).toBe(1);
-      expect(await inSight(header.getByRole("link", { name: "Dashboard", exact: true }))).toBe(1);
-      expect(await inSight(page.getByText(PERSON))).toBe(1);
-      expect(await inSight(page.getByRole("button", { name: "Sign out" }))).toBe(1);
-      for (const name of ["Sell to agents", "Scanner"]) {
-        expect(await inSight(header.getByRole("link", { name, exact: true })), name).toBe(0);
-      }
-      await page.context().close();
     },
   );
 
-  it.each([911, 1280, 1440])(
-    "starts its lockup on the sidebar's line of words and ends its row on the content's right edge at %ipx",
+  it.each([320, 390, 1280])(
+    "keeps the global selling switch reachable before the product list at %ipx",
     async (width) => {
+      await harnessed.gateway.setSelling(harnessed.merchant.id, "open");
       const page = await onTheCards({ width, height: 700 });
-      expect(await inTheSiteFace(page)).toBe(true);
+      try {
+        const pause = page.getByRole("button", { name: "Pause all sales", exact: true });
+        const box = await pause.boundingBox();
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+        expect(box?.y).toBeGreaterThanOrEqual(0);
+        expect((box?.y ?? 700) + (box?.height ?? 0)).toBeLessThanOrEqual(700);
+        expect((await harnessed.gateway.catalog()).items.length).toBeGreaterThan(0);
+        await pause.click();
+        await page.getByRole("button", { name: "Resume all sales", exact: true }).waitFor();
+        expect((await harnessed.gateway.catalog()).items).toStrictEqual([]);
+      } finally {
+        await harnessed.gateway.setSelling(harnessed.merchant.id, "open");
+        await page.context().close();
+      }
+    },
+  );
 
-      const edges = await page.evaluate(() => {
-        const box = (selector: string) =>
-          document.querySelector(selector)?.getBoundingClientRect() ?? null;
-        const words = document.createRange();
-        const section = document.querySelector(".app-sidebar nav.tabs > a");
-        if (section !== null) words.selectNodeContents(section);
+  it("renders frame, list and form boundaries with the styles actually loaded by Chromium", async () => {
+    const page = await onTheCards();
+    try {
+      const body = await page.locator("body").evaluate((element) => {
+        const s = getComputedStyle(element);
+        return { background: s.backgroundColor, color: s.color };
+      });
+      expect(body).toStrictEqual({ background: "rgb(246, 244, 239)", color: "rgb(26, 25, 23)" });
+      for (const selector of ["header.site-header", ".list"]) {
+        const painted = await page
+          .locator(selector)
+          .first()
+          .evaluate((element) => {
+            const s = getComputedStyle(element);
+            return {
+              width: parseFloat(s.borderBottomWidth),
+              style: s.borderBottomStyle,
+              color: s.borderBottomColor,
+              background: s.backgroundColor,
+            };
+          });
+        expect(painted.width).toBeGreaterThan(0);
+        expect(painted.style).toBe("solid");
+        expect(painted.color).toBe("rgb(231, 227, 219)");
+        expect(painted.background).not.toBe("rgba(0, 0, 0, 0)");
+      }
+      await page.goto(`${origin}${BASE}/settings`);
+      const field = await page.getByLabel("Shop's site").evaluate((element) => {
+        const s = getComputedStyle(element);
         return {
-          lockup: box("header .brand")?.left,
-          sidebarWords: section === null ? undefined : words.getBoundingClientRect().left,
-          rowEnd: box("header .site-account > summary")?.right,
-          contentEnd: box(".app-content")?.right,
+          width: parseFloat(s.borderTopWidth),
+          style: s.borderTopStyle,
+          border: s.borderTopColor,
+          background: s.backgroundColor,
+          color: s.color,
         };
       });
-
-      expect(
-        Math.abs((edges.lockup ?? 0) - (edges.sidebarWords ?? Number.NaN)),
-      ).toBeLessThanOrEqual(1);
-      expect(Math.abs((edges.rowEnd ?? 0) - (edges.contentEnd ?? Number.NaN))).toBeLessThanOrEqual(
-        1,
-      );
+      expect(field.width).toBeGreaterThan(0);
+      expect(field).toMatchObject({
+        style: "solid",
+        border: "rgb(141, 137, 129)",
+        background: "rgb(255, 254, 250)",
+        color: "rgb(26, 25, 23)",
+      });
+    } finally {
       await page.context().close();
-    },
-  );
-});
-
-describe("the site header over the pages outside the frame", () => {
-  it.each([
-    [320, []],
-    [390, []],
-    [768, []],
-    [910, []],
-    [911, ["Scanner", "Sell to agents"]],
-    [1440, ["Scanner", "Sell to agents"]],
-  ] as const)(
-    "keeps one row on the sign-in at %ipx with the site's offers %j and its doors, and the menu where the offers do not fit",
-    async (width, sections) => {
-      const context = await browser.newContext({ viewport: { width, height: 700 } });
-      const page = await context.newPage();
-      await page.goto(`${origin}${BASE}/sign-in`);
-      await page.waitForLoadState("networkidle");
-      expect(await inTheSiteFace(page)).toBe(true);
-
-      const bar = await theBar(page.locator("header.site-header"));
-      expect(bar.spread).toBeLessThanOrEqual(1);
-      expect(bar.sections).toEqual(sections);
-      expect(bar.doors).toEqual(["Docs", "Dashboard"]);
-      expect(bar.button).toBe(sections.length === 0);
-      await context.close();
-    },
-  );
+    }
+  });
 });
 
 it("closes fulfillment from a keyboard-accessible order form and preserves the merchant statement, line breaks and all", async () => {
@@ -791,13 +834,14 @@ describe("a request that fails or stops on its way", () => {
     expect(sent.get("seller_site")).toBe("https://rooms.example.com");
     expect(sent.get(DRAWN_FOR)).toBe(PERSON);
     expect(seen).toMatchObject({
-      waiting: "Still waiting for an answer…",
       typableSoon: "false",
       typableLater: "false",
       saveable: "false",
-      said: "We could not confirm whether your change was made. Open this page again to see where it stands; this sends nothing again.",
       reads: `${BASE}/settings`,
     });
+    expect(seen.waiting).toMatch(/still waiting.*answer/i);
+    expect(seen.said).toMatch(/could not confirm.*change.*made/i);
+    expect(seen.said).not.toMatch(/nothing was changed|saved successfully/i);
     expect(await site.inputValue()).toBe("https://rooms.example.com");
     await page.context().close();
     // The site's save waits out the gateway's ten seconds before it says so.

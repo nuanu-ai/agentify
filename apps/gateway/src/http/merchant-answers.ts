@@ -23,7 +23,7 @@ import type { StoredOrder } from "../ports/store.js";
 export const OK = 200;
 export const BAD_REQUEST = 400;
 export const PAYMENT_REQUIRED = 402;
-export const NOT_FOUND = 404;
+const NOT_FOUND = 404;
 export const CONFLICT = 409;
 export const UNPROCESSABLE = 422;
 export const TOO_MANY_REQUESTS = 429;

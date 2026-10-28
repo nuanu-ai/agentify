@@ -18,7 +18,7 @@ const CARD: Card = {
   price_check: "handler",
 };
 const BUYER = aWallet("the buyer");
-const ADDRESS = ShipToSchema.parse(ShipToSchema.meta()?.examples?.[0]);
+const ADDRESS = ShipToSchema.parse((ShipToSchema.meta()?.examples as unknown[])?.[0]);
 let h: Harness;
 let served: Served;
 let itemId: string;
@@ -72,6 +72,8 @@ describe("a stamped price and an order born at payment", () => {
     "prices a %s purchase without a stored order",
     async (fulfillment) => {
       await started({ ...CARD, fulfillment });
+      h.store.addOrder = () =>
+        Promise.reject(new Error("a price response must not need order storage"));
       const offer = await quote();
       expect(offer.amount).toBe("75000000");
       expect(offer.extra).toMatchObject({ price_stamp: expect.any(String) });
@@ -82,20 +84,31 @@ describe("a stamped price and an order born at payment", () => {
     },
   );
 
-  it("refuses a changed stamp before creating or charging an order", async () => {
-    await started();
-    const offer = await quote();
-    const extra = { ...offer.extra, price_stamp: `${offer.extra?.price_stamp ?? "invalid"}x` };
-    delete extra.order_id;
-    const refused = await pay({ ...offer, extra }, "0x01");
-    expect(refused.status).toBe(409);
-    expect(refused.body).toMatchObject({
-      error: { code: "payment_not_verified", retryable: false },
-    });
-    expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
-    expect(h.facilitator.verifies).toHaveLength(0);
-    expect(h.facilitator.settles).toHaveLength(0);
-  });
+  it.each(["malformed", "amount", "quoteReference"])(
+    "refuses a changed %s stamp before creating or charging an order",
+    async (changed) => {
+      await started();
+      const offer = await quote();
+      const original = String(offer.extra?.price_stamp);
+      const parts = original.split(".");
+      let stamp = `${original}x`;
+      if (changed !== "malformed") {
+        const facts = JSON.parse(Buffer.from(parts[1] ?? "", "base64url").toString()) as unknown[];
+        facts[changed === "amount" ? 8 : 20] = changed === "amount" ? "1.00" : "changed-reference";
+        stamp = `${parts[0]}.${Buffer.from(JSON.stringify(facts)).toString("base64url")}.${parts[2]}`;
+      }
+      const extra: Record<string, unknown> = { ...offer.extra, price_stamp: stamp };
+      delete extra.order_id;
+      const refused = await pay({ ...offer, extra }, "0x01");
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: "payment_not_verified", retryable: false },
+      });
+      expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
+      expect(h.facilitator.verifies).toHaveLength(0);
+      expect(h.facilitator.settles).toHaveLength(0);
+    },
+  );
 
   it("refuses an expired unconsumed price without creating an order", async () => {
     await started();
@@ -150,7 +163,9 @@ describe("a stamped price and an order born at payment", () => {
   it("converges concurrent payments on one order and one private status address", async () => {
     await started();
     const offer = await quote();
-    const answers = await Promise.all(Array.from({ length: 5 }, (_, index) => pay(offer, `0x${index + 1}`)));
+    const answers = await Promise.all(
+      Array.from({ length: 5 }, (_, index) => pay(offer, `0x${index + 1}`)),
+    );
     expect(answers.every((answer) => answer.status === 200)).toBe(true);
     const identifiers = new Set(
       answers.map((answer) => (answer.body as { order_id: string }).order_id),

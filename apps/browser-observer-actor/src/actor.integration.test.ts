@@ -10,11 +10,17 @@ import { describe, expect, it } from "vitest";
 
 import { collectPageSignals } from "./browser-signals.js";
 import { type FetchResource, runBrowserObservation } from "./runner.js";
-import {
-  BLOCKED_ACTIVE_NETWORK_GLOBALS,
-  installPassiveRuntimeGuards,
-  PASSIVE_BROWSER_ARGS,
-} from "./runtime-guards.js";
+import { installPassiveRuntimeGuards, PASSIVE_BROWSER_ARGS } from "./runtime-guards.js";
+
+const FORBIDDEN_CAPABILITIES = [
+  "RTCPeerConnection",
+  "webkitRTCPeerConnection",
+  "WebTransport",
+  "Worker",
+  "SharedWorker",
+  "WebSocket",
+  "EventSource",
+];
 
 describe("real Chromium aggregate extraction", () => {
   it("observes JS, ARIA, forms, WebMCP and hidden instructions without returning raw content", async () => {
@@ -69,6 +75,30 @@ describe("real Chromium aggregate extraction", () => {
       udp.bind(0, "127.0.0.1", () => resolve());
     });
     const address = udp.address();
+    const controlBrowser = await chromium.launch({ headless: true });
+    try {
+      const control = await controlBrowser.newPage();
+      const packet = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("unguarded STUN probe emitted no UDP")),
+          5000,
+        );
+        udp.once("message", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+      await control.evaluate(async (port) => {
+        const peer = new RTCPeerConnection({ iceServers: [{ urls: `stun:127.0.0.1:${port}` }] });
+        (globalThis as typeof globalThis & { probe?: RTCPeerConnection }).probe = peer;
+        peer.createDataChannel("control");
+        await peer.setLocalDescription(await peer.createOffer());
+      }, address.port);
+      await packet;
+    } finally {
+      await controlBrowser.close();
+    }
+    udpPackets = 0;
     const browser = await chromium.launch({
       headless: true,
       args: [...PASSIVE_BROWSER_ARGS],
@@ -82,7 +112,7 @@ describe("real Chromium aggregate extraction", () => {
       await page.setContent(
         `<!doctype html><body>
         <script>
-          const blocked = ${JSON.stringify(BLOCKED_ACTIVE_NETWORK_GLOBALS)};
+          const blocked = ${JSON.stringify(FORBIDDEN_CAPABILITIES)};
           const snapshot = () => Object.fromEntries(blocked.map((name) => [
             name,
             { type: typeof globalThis[name], present: name in globalThis },
@@ -122,10 +152,10 @@ describe("real Chromium aggregate extraction", () => {
             ]),
           );
         },
-        [...BLOCKED_ACTIVE_NETWORK_GLOBALS],
+        [...FORBIDDEN_CAPABILITIES],
       );
       await new Promise((resolve) => setTimeout(resolve, 750));
-      for (const name of BLOCKED_ACTIVE_NETWORK_GLOBALS) {
+      for (const name of FORBIDDEN_CAPABILITIES) {
         expect(main[name]).toEqual({
           type: "undefined",
           present: false,
@@ -244,6 +274,8 @@ describe("a real Chromium run against a served site", () => {
     // An image the server never finishes sending, as a slow or hostile server
     // can: it stops only when the observer lets go of it.
     let downloading = false;
+    let started = false;
+    let aborted = false;
     const output = await observeSite(
       {
         "/": `<!doctype html><title>Linen shirt</title>
@@ -251,10 +283,12 @@ describe("a real Chromium run against a served site", () => {
         "/lookbook.jpg": async (resource) =>
           await new Promise<Answer>((_resolve, reject) => {
             downloading = true;
+            started = true;
             resource.signal.addEventListener(
               "abort",
               () => {
                 downloading = false;
+                aborted = true;
                 reject(new Error("the observer let go of the download"));
               },
               { once: true },
@@ -264,6 +298,8 @@ describe("a real Chromium run against a served site", () => {
       ["/"],
     );
     expect(output.pages_assessed).toBe(1);
+    expect(started).toBe(true);
+    expect(aborted).toBe(true);
     expect(downloading).toBe(false);
   }, 30_000);
 

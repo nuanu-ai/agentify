@@ -47,6 +47,12 @@ export const OrderSchema = z.strictObject({
    */
   price_id: IdentifierSchema.optional(),
 
+  /** The merchant confirmation from the price answer, authenticated and returned unchanged. Public to the buyer; contains no secrets. */
+  quote_reference: z
+    .string()
+    .regex(/^[\x20-\x7e]{1,512}$/)
+    .optional(),
+
   /**
    * Where a parcel goes, present on a parcel's order only, in one of three
    * shapes as the order goes along. Before payment, the locality the price was

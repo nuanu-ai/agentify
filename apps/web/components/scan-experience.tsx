@@ -1,5 +1,6 @@
 import type { ScanStatusResponse, Segment } from "@agentify/scanner-contracts";
 import { Badge } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import { type CSSProperties, type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
 import { scanStatusIn } from "../lib/api-answers";
 import { ask, waitAfter } from "../lib/ask";
@@ -139,7 +140,7 @@ export function ScanExperience({
         failures += 1;
         const seconds = waitAfter(failures, asked.waitSeconds);
         setRequestError(
-          `${asked.words ?? "Live status cannot be read right now."} The page asks again in ${seconds} s.`,
+          `${asked.words ?? "Live status cannot be read right now."} The page asks again in ${withUnit(seconds, "s")}.`,
         );
         askAgainIn(seconds);
         return;
@@ -386,7 +387,7 @@ function ProgressState({
             ? "Waiting for scanner capacity"
             : `${data.progress.completed} of ${data.progress.total} checks reported`}
         </span>
-        <span>{elapsedSeconds}s · usually under 60 s</span>
+        <span>{elapsedSeconds}s · usually under 60&nbsp;s</span>
       </p>
       {data.checks.length > 0 ? (
         <details className={styles.checkDetails}>

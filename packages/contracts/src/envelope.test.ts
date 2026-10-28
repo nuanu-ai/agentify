@@ -1,10 +1,7 @@
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import {
-  WORKER_ENVELOPE_KINDS,
-  WORKER_ENVELOPE_PAYLOADS,
-  WorkerEnvelopeSchema,
-} from "./envelope.js";
-import { schemas } from "./index.js";
+import { WORKER_ENVELOPE_KINDS, WorkerEnvelopeSchema } from "./envelope.js";
+import { toJsonSchemas } from "./index.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 const order = {
@@ -117,16 +114,6 @@ describe("the worker envelope", () => {
     expect(errorOf(WorkerEnvelopeSchema, { ...envelopes.order, attempt: 2 })).toContain("attempt");
   });
 
-  it("keeps the message's own identifier apart from the payload's", () => {
-    // An order's `id` is its idempotency key; spread into one object with the
-    // envelope's, one of the two would win silently.
-    const parsed = WorkerEnvelopeSchema.parse(envelopes.order);
-
-    expect(parsed.kind).toBe("order");
-    expect(parsed.id).toBe("msg_4a19be");
-    expect(parsed.kind === "order" && parsed.payload.id).toBe("ord_7c1e05");
-  });
-
   it("refuses a send time with no zone, which is an hour of the day and not a moment", () => {
     expect(
       WorkerEnvelopeSchema.safeParse({ ...envelopes.order, sent_at: "2026-08-26T10:20:01" })
@@ -143,12 +130,17 @@ describe("the worker envelope", () => {
 });
 
 describe("the kinds and the registry", () => {
-  it("names each kind after the schema in the registry that its payload is held to", () => {
-    // The marker on the wire is the name the registry publishes for that
-    // document, so a reader of the JSON Schema alone can follow it.
-    for (const kind of WORKER_ENVELOPE_KINDS) {
-      expect(Object.keys(schemas), kind).toContain(kind);
-      expect(WORKER_ENVELOPE_PAYLOADS[kind], kind).toBe(schemas[kind]);
+  it("validates each named exported payload document and rejects a different kind", () => {
+    const documents = toJsonSchemas();
+    const ajv = new Ajv2020({ allErrors: true, validateFormats: false });
+    for (const [kind, payload, wrong] of [
+      ["order", order, quoteRequest],
+      ["quote_request", quoteRequest, order],
+      ["order_event", orderEvent, order],
+    ] as const) {
+      const validate = ajv.compile(documents[kind]);
+      expect(validate(payload), `${kind}: ${JSON.stringify(validate.errors)}`).toBe(true);
+      expect(validate(wrong), kind).toBe(false);
     }
   });
 });

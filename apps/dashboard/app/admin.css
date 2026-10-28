@@ -313,8 +313,11 @@
   gap: 2px;
 }
 
-.op-checks .what b {
-  font-weight: 600;
+/* A panel's own headings stand apart from what is above them; a check's title
+   stands level with its tick and its badge. */
+.op-checks .what h3 {
+  margin: 0;
+  font-size: var(--text-body);
 }
 
 /* The check's own lines, and nothing drawn inside them, such as a badge or a form. */
@@ -339,7 +342,7 @@
     grid-column: 2 / -1;
   }
 
-  .op-checks .what > b {
+  .op-checks .what > h3 {
     grid-column: 2;
     grid-row: 1;
   }

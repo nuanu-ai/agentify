@@ -8,8 +8,13 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { encodePaymentRequiredHeader } from "@x402/core/http";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { checkListingNow, overTheNetwork, type Reach } from "./listing-check.js";
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 const AT = Date.parse("2026-10-24T09:00:00.000Z");
 const BASE = "https://agentify.example";
@@ -51,7 +56,7 @@ describe("checking the listing now", () => {
     expect(checked.kind === "checked" && checked.unanswered.length).toBe(1);
   });
 
-  it("replaces every wallet address in what came back with the words a wallet, and keeps a transaction", async () => {
+  it("redacts nested wallet addresses while preserving transaction evidence", async () => {
     const checked = await checkListingNow(
       BASE,
       reachWith({
@@ -63,7 +68,8 @@ describe("checking the listing now", () => {
 
     const shown = JSON.stringify(checked);
     expect(shown).not.toMatch(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/);
-    expect(shown).toContain("payTo a wallet is not accepted");
+    expect(shown).toContain("payTo");
+    expect(shown).toContain("is not accepted");
     expect(shown).toContain(TRANSACTION);
   });
 
@@ -79,7 +85,16 @@ describe("checking the listing now", () => {
           : { kind: "answered", status: 402, challenge },
     };
 
-    const checked = await checkListingNow(BASE, stalled, () => AT, 100);
+    vi.useFakeTimers();
+    let completed = false;
+    const pending = checkListingNow(BASE, stalled, () => AT).then((value) => {
+      completed = true;
+      return value;
+    });
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(completed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const checked = await pending;
 
     expect(checked.kind).toBe("checked");
     if (checked.kind !== "checked") return;
@@ -94,24 +109,60 @@ describe("checking the listing now", () => {
       catalog: async () => await new Promise<never>(() => undefined),
     };
 
-    const checked = await checkListingNow(BASE, stalled, () => AT, 100);
+    vi.useFakeTimers();
+    let completed = false;
+    const pending = checkListingNow(BASE, stalled, () => AT).then((value) => {
+      completed = true;
+      return value;
+    });
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(completed).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const checked = await pending;
 
     expect(checked.kind).toBe("catalog_unreadable");
   });
 
-  it("gives up on a fetch that does not answer in time, as no verdict, and on a catalog that does not", async () => {
-    const silent = createServer(() => undefined);
+  it("aborts unanswered real HTTP door and catalog fetches at the shipped ten-second deadline", async () => {
+    let arrived = 0;
+    let bothArrived: () => void = () => undefined;
+    const requests = new Promise<void>((resolve) => {
+      bothArrived = resolve;
+    });
+    const silent = createServer(() => {
+      if (++arrived === 2) bothArrived();
+    });
     await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
     const at = `http://127.0.0.1:${(silent.address() as AddressInfo).port}`;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException("deadline elapsed", "TimeoutError")), ms);
+      return controller.signal;
+    });
     try {
-      const reach = overTheNetwork(100);
-
-      expect(await reach.door(`${at}/x402/itm_1/purchase`)).toMatchObject({
-        kind: "unreachable",
-        why: "no answer within 0.1 seconds",
+      const reach = overTheNetwork();
+      let completed = 0;
+      const door = reach.door(`${at}/x402/itm_1/purchase`).then((value) => {
+        completed++;
+        return value;
       });
-      await expect(reach.catalog(at)).rejects.toThrow("no answer within 0.1 seconds");
+      const catalog = reach.catalog(at).catch((error: unknown) => {
+        completed++;
+        return error;
+      });
+      await requests;
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(completed).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await door).toMatchObject({
+        kind: "unreachable",
+        why: expect.stringMatching(/10.*seconds/),
+      });
+      expect(await catalog).toBeInstanceOf(Error);
+      expect(String(await catalog)).toMatch(/10.*seconds/);
     } finally {
+      vi.useRealTimers();
       silent.closeAllConnections();
       await new Promise((resolve) => silent.close(resolve));
     }

@@ -68,6 +68,7 @@ describe("who the operator's workspace answers", () => {
     expect(await operatorOf(identity, cookie)).toBeNull();
     expect(await operatorOf(identity, undefined)).toBeNull();
     flagRow(rows, PERSON, true);
+    expect(await operatorOf(identity, cookie)).toMatchObject({ person: { email: PERSON } });
     flagRow(rows, PERSON, false);
     expect(await operatorOf(identity, cookie)).toBeNull();
     flagRow(rows, PERSON, true);

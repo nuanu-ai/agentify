@@ -147,6 +147,7 @@ describe("the compiler from a spec to a validator", () => {
     const validator = paramSpecToValidator({ note: { type: "string" } }, "purchase");
     expect(validator.safeParse({}).success).toBe(true);
     expect(validator.safeParse({ note: "for a friend" }).success).toBe(true);
+    expect(validator.safeParse({ note: "" }).success).toBe(true);
   });
 
   it("holds a delivery to every field the card declared", () => {
@@ -231,13 +232,6 @@ describe("the compiler from a spec to a validator", () => {
 
     expect(validator.safeParse({}).success).toBe(true);
     expect(validator.safeParse({ note: "" }).success).toBe(false);
-  });
-
-  it("lets a purchase parameter be an empty string, because that is the agent's to choose", () => {
-    // Input the agent left blank is input; refusing it would invent a
-    // requirement no card asked for.
-    const validator = paramSpecToValidator({ note: { type: "string" } }, "purchase");
-    expect(validator.safeParse({ note: "" }).success).toBe(true);
   });
 
   it("compiles an empty spec into a check that accepts only an empty object", () => {

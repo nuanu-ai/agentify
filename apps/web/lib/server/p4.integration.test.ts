@@ -1,4 +1,10 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  request as nodeRequest,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import { fileURLToPath } from "node:url";
 
 import { CONSENT_POLICY_VERSION } from "@agentify/analytics";
@@ -19,7 +25,7 @@ import {
 } from "@agentify/scanner-database";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Params } from "react-router";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { action as requestDataActionRoute } from "../../app/routes/api/v1/account.data-request";
 import { action as unsubscribeActionRoute } from "../../app/routes/api/v1/account.unsubscribe";
@@ -37,9 +43,10 @@ import { loader as shareImageRoute } from "../../app/routes/api/v1/shares.slug.i
 import { loader as getContactAccessRoute } from "../../app/routes/api/v2/scans.id.contact-access";
 import { action as requestScannerRegistrationRoute } from "../../app/routes/api/v2/scans.id.registrations";
 import { loader as readVisitorRoute } from "../../app/routes/api/v2/session";
+import { testScanner } from "../../testing/scanner";
 import { latestReportOf, visitorOf } from "./auth";
 import { getServerConfig } from "./config";
-import { encryptSensitiveValue, hmacHex, sha256 } from "./crypto";
+import { decryptSensitiveValue, encryptSensitiveValue, hmacHex, sha256 } from "./crypto";
 import { getDashboardReportIdentityClient } from "./dashboard-report-identity";
 import { getDatabase } from "./database";
 import { enqueueScanInTransaction, stopScanQueue } from "./queue";
@@ -165,6 +172,18 @@ function onlyRow<T>(rows: readonly T[]): T {
   const [row] = rows;
   if (!row) throw new Error("a query that must return one row returned none");
   return row;
+}
+
+async function waitForBackendBlockedBy(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const waiting = await getDatabase().pool.query<{ count: number }>(
+      `select count(*)::int as count from pg_stat_activity where datname = current_database() and $1::int = any(pg_blocking_pids(pid))`,
+      [pid],
+    );
+    if ((waiting.rows[0]?.count ?? 0) >= 1) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error("the competing deletion did not reach its database lock");
 }
 
 async function createFreshCompletedScan(label: string) {
@@ -448,6 +467,7 @@ describe("P4 dashboard-owned scanner identity", () => {
   });
 
   it("follows a first visitor with an anonymous cookie for thirty days that the page's script cannot read", async () => {
+    const before = Date.now();
     const response = await acceptScan(
       new Request("http://localhost:3000/api/v1/scans", {
         method: "POST",
@@ -467,9 +487,21 @@ describe("P4 dashboard-owned scanner identity", () => {
     );
 
     expect(response.status).toBe(202);
-    expect(response.headers.get("set-cookie")).toMatch(
-      /^agentify_anonymous=[^;]+; Path=\/; Expires=[^;]+; Max-Age=2592000; HttpOnly; SameSite=lax$/,
+    const cookie = response.headers.get("set-cookie") ?? "";
+    const fields = cookie.split(/;\s*/);
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^agentify_anonymous=.+/),
+        expect.stringMatching(/^path=\/$/i),
+        expect.stringMatching(/^max-age=2592000$/i),
+        expect.stringMatching(/^httponly$/i),
+        expect.stringMatching(/^samesite=lax$/i),
+      ]),
     );
+    const expires = fields.find((field) => /^expires=/i.test(field))?.slice(8) ?? "";
+    const expiry = new Date(expires).getTime();
+    expect(expiry).toBeGreaterThanOrEqual(before + 2_592_000_000 - 1000);
+    expect(expiry).toBeLessThanOrEqual(Date.now() + 2_592_000_000);
   });
 
   it("calls a database failure before acceptance temporary, not an invalid address", async () => {
@@ -769,13 +801,22 @@ describe("P4 dashboard-owned scanner identity", () => {
           }),
         }),
       );
-    const expired = "clickid=; Path=/; Max-Age=0; HttpOnly; SameSite=lax";
 
     const withdrawn = await choose(false);
     const allowed = await choose(true);
 
     expect(withdrawn.status).toBe(201);
-    expect(withdrawn.headers.getSetCookie()).toContain(expired);
+    const cleared =
+      withdrawn.headers.getSetCookie().find((cookie) => cookie.startsWith("clickid=")) ?? "";
+    expect(cleared.split(/;\s*/)).toEqual(
+      expect.arrayContaining([
+        "clickid=",
+        expect.stringMatching(/^path=\/$/i),
+        expect.stringMatching(/^max-age=0$/i),
+        expect.stringMatching(/^httponly$/i),
+        expect.stringMatching(/^samesite=lax$/i),
+      ]),
+    );
     expect(allowed.status).toBe(201);
     expect(allowed.headers.getSetCookie().join("\n")).not.toContain("clickid=");
   });
@@ -1023,24 +1064,38 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(await registrationsFor(scan.id)).toBe("0");
   });
 
-  it("leaves a request that has waited past its hour to expire", async () => {
+  it("admits a request before its hour and leaves it expired at that hour", async () => {
     const { db } = getDatabase();
-    const { scan } = await createFreshCompletedScan("expired-request");
-    const email = "expired-request@example.com";
-    await createScannerRegistrationIntent(scan, registrationBody(email));
-    const link = latestLink(email);
-    await db
-      .update(registrationIntents)
-      .set({ expiresAt: new Date(Date.now() - 1_000) })
-      .where(eq(registrationIntents.id, link.request));
-
-    await expect(visitorOf(pressLink(link))).resolves.toMatchObject({
-      kind: "person",
-      leadId: null,
-    });
-
-    expect(await registrationsFor(scan.id)).toBe("0");
-    expect(await reportFor(scan.id, pressLink(link))).toBeUndefined();
+    const now = Date.now();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (const [offset, admitted] of [
+        [3_599_999, true],
+        [3_600_000, false],
+        [3_600_001, false],
+      ] as const) {
+        vi.setSystemTime(now);
+        const { scan } = await createFreshCompletedScan(`request-expiry-${offset}`);
+        const email = `request-expiry-${offset}@example.com`;
+        await createScannerRegistrationIntent(scan, registrationBody(email));
+        const link = latestLink(email);
+        const intent = onlyRow(
+          await db
+            .select()
+            .from(registrationIntents)
+            .where(eq(registrationIntents.id, link.request)),
+        );
+        expect(intent.expiresAt.getTime()).toBe(now + 3_600_000);
+        vi.setSystemTime(now + offset);
+        const visitor = await visitorOf(pressLink(link));
+        expect(visitor.kind).toBe("person");
+        expect(visitor.kind === "person" && visitor.leadId !== null).toBe(admitted);
+        expect(await registrationsFor(scan.id)).toBe(admitted ? "1" : "0");
+        if (!admitted) expect(await reportFor(scan.id, pressLink(link))).toBeUndefined();
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("files a signed-in person's own ask at once, sends nothing, and leaves a stranger's waiting request alone", async () => {
@@ -1495,6 +1550,7 @@ describe("P4 dashboard-owned scanner identity", () => {
     const cookie = signedInAs("signed-in-cooldown@example.com");
     process.env.REGISTRATION_ENABLED = "true";
     try {
+      const sentBefore = sentLinks.length;
       let last: Response | undefined;
       for (let ask = 0; ask < 11; ask += 1) {
         last = await registrationRequest(
@@ -1503,7 +1559,12 @@ describe("P4 dashboard-owned scanner identity", () => {
           registrationBody("signed-in-cooldown@example.com"),
           { cookie },
         );
+        if (ask < 10) {
+          expect(last.status, `accepted ask ${ask + 1}`).toBe(200);
+          expect(await last.clone().json()).toMatchObject({ status: "report_ready" });
+        }
       }
+      expect(sentLinks).toHaveLength(sentBefore);
       expect(last?.status).toBe(429);
       const refusal = (await last?.json()) as {
         error: { code: string; retry_after_seconds?: number };
@@ -1766,6 +1827,37 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(verifiedDownload.headers.get("content-disposition")).toBe(
       'attachment; filename="agentify-visible-findings-prompt.md"',
     );
+    const { origin } = await testScanner();
+    const wire = await new Promise<{ status: number; headers: string[]; body: string }>(
+      (resolve, reject) => {
+        const request = nodeRequest(
+          `${origin}/api/v1/scans/${scan.id}/remediation-prompt/download`,
+          { headers: { cookie: authorizedCookie } },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on("data", (chunk: Buffer) => chunks.push(chunk));
+            response.on("end", () =>
+              resolve({
+                status: response.statusCode ?? 0,
+                headers: response.rawHeaders
+                  .filter((_, index) => index % 2 === 0)
+                  .map((name) => name.toLowerCase()),
+                body: Buffer.concat(chunks).toString("utf8"),
+              }),
+            );
+          },
+        );
+        request.on("error", reject);
+        request.end();
+      },
+    );
+    expect(wire.status).toBe(200);
+    for (const name of ["x-content-type-options", "x-frame-options", "permissions-policy"])
+      expect(
+        wire.headers.filter((header) => header === name),
+        name,
+      ).toHaveLength(1);
+    expect(wire.body).toContain("2026-10-13 07:59 UTC");
     const teaserFile = await verifiedDownload.text();
     expect(teaserFile).toContain("2026-10-13 07:59 UTC");
     expect(teaserFile).toContain("MCP server card");
@@ -1773,7 +1865,12 @@ describe("P4 dashboard-owned scanner identity", () => {
       await db.select().from(leads).where(eq(leads.emailLookupHash, emailLookupHash)),
     );
     expect(lead.phoneE164Ciphertext).not.toContain("+14155550123");
-    expect(lead.phoneLookupHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(decryptSensitiveValue(lead.phoneE164Ciphertext ?? "", Buffer.alloc(32, 9))).toBe(
+      "+14155550123",
+    );
+    expect(lead.phoneLookupHash).toBe(
+      "bd3b27cdbedfd1b96c8aa74cb5acd04108ad6ee6d828b32fe6508d02f22a1cbc",
+    );
   });
 
   it("authorizes the 18-row report and a revocable safe share for the owner's session", async () => {
@@ -2239,7 +2336,7 @@ describe("P4 dashboard-owned scanner identity", () => {
 
     const refused = await consumeRateLimitsAtomically([email, session], now);
 
-    expect(refused.allowed).toBe(false);
+    expect(refused).toMatchObject({ allowed: false, wall: "registration_session_hour" });
     expect(refused.allowed === false && refused.retryAt.toISOString()).toBe(
       new Date(now.getTime() + 40 * 60_000).toISOString(),
     );
@@ -2489,13 +2586,13 @@ describe("P4 dashboard-owned scanner identity", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       expect(confirmationBlocked).toBe(true);
+      const held = await pool.query<{ pid: number }>(
+        `select pid from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like '%waitlist_entries%'`,
+      );
+      const confirmingPid = held.rows[0]?.pid;
+      if (!confirmingPid) throw new Error("the held confirmation backend disappeared");
       deletion = requestScannerIdentityDeletion({ leadId });
-      expect(
-        await Promise.race([
-          deletion.then(() => true),
-          new Promise<false>((resolve) => setTimeout(() => resolve(false), 150)),
-        ]),
-      ).toBe(false);
+      await waitForBackendBlockedBy(confirmingPid);
     } finally {
       await blocker.query("commit");
       blocker.release();
@@ -2567,13 +2664,13 @@ describe("P4 dashboard-owned scanner identity", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
       expect(confirmationBlocked).toBe(true);
+      const held = await pool.query<{ pid: number }>(
+        `select pid from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like '%waitlist_entries%'`,
+      );
+      const confirmingPid = held.rows[0]?.pid;
+      if (!confirmingPid) throw new Error("the held confirmation backend disappeared");
       deletion = requestScannerIdentityDeletion({ leadId: oldLeadId });
-      expect(
-        await Promise.race([
-          deletion.then(() => true),
-          new Promise<false>((resolve) => setTimeout(() => resolve(false), 150)),
-        ]),
-      ).toBe(false);
+      await waitForBackendBlockedBy(confirmingPid);
     } finally {
       await blocker.query("commit");
       blocker.release();

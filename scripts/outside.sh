@@ -134,6 +134,22 @@ JSON
 
 "$repo/node_modules/.bin/tsc" -p tsconfig.json
 
+# Check the resolved install, not workspace range spellings in the source manifest.
+npm ls --all --json > installed-tree.json
+node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import assert from "node:assert/strict";
+  const names = new Set();
+  const visit = (tree) => Object.entries(tree.dependencies ?? {}).forEach(([name, dependency]) => {
+    names.add(name); visit(dependency);
+  });
+  visit(JSON.parse(readFileSync("installed-tree.json", "utf8")));
+  assert.deepEqual([...names].sort(), ["@nuanu-ai/agentify", "@nuanu-ai/agentify-contracts", "zod"]);
+  const { CardSchema, toJsonSchemas } = await import("@nuanu-ai/agentify-contracts");
+  assert.equal(CardSchema.safeParse({}).success, false);
+  assert.equal(toJsonSchemas().card.type, "object");
+'
+
 # The pilot's eSIM card.
 cat > card.json <<'JSON'
 {

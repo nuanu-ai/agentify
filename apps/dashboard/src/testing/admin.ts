@@ -72,7 +72,7 @@ export async function adminServed(
     /** More of the dashboard's configuration, such as the channel's first operator. */
     environment?: Readonly<Record<string, string>>;
     /** What the mail provider answers a message; it takes every one where absent. */
-    handOver?: (message: Message) => Handover;
+    handOver?: (message: Message) => Handover | Promise<Handover>;
   }> = {},
 ): Promise<AdminServed> {
   const channel = CHANNELS[options.channel ?? "test"];

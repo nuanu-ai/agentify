@@ -22,7 +22,7 @@ import {
   journalLimitOf,
   settledPress,
 } from "../../ports/journal.js";
-import { byBytes, type PageFrom, pageIn } from "../../ports/paging.js";
+import { pageIn } from "../../ports/paging.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
   type AnalyticsOf,
@@ -31,16 +31,14 @@ import {
   type Born,
   type CatalogEntry,
   type ClaimHolder,
+  forgettableAttempt,
   type Integration,
   type IntegrationSwitch,
-  type LapsedPage,
-  lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
-  type OrderPlace,
   type PaymentClaim,
   type PayoutWalletRead,
   type PayoutWalletWrite,
@@ -52,9 +50,9 @@ import {
   type StoredMerchant,
   type StoredOrder,
   type StoredPayoutWallet,
+  unverifiedAdmission,
   type WalletWritten,
   type WithTheOrder,
-  waitsForPayment,
 } from "../../ports/store.js";
 import { isSameAddress } from "../../split/address.js";
 import type { PayoutSplit } from "../../split/parameters.js";
@@ -76,7 +74,7 @@ export interface Envelopes {
    * halves: anything that would refuse refuses here, and the returned call
    * takes them off the stream once the order recording the erasure is written.
    */
-  forget(merchantId: string, orderId: string, priceQuestion: string | null): Promise<() => void>;
+  forget(merchantId: string, orderId: string): Promise<() => void>;
   /** Sets a reminder an order's birth asked for, once the order is written. */
   remind(reminder: Reminder, afterMs: number): Promise<void>;
 }
@@ -159,6 +157,7 @@ export class MemoryStore implements Store {
   readonly #splits: RecordedPayoutSplit[] = [];
   /** The tail of the queue of decisions waiting on each order. */
   readonly #locks = new Map<string, Promise<unknown>>();
+  readonly #merchantLocks = new Map<string, Promise<unknown>>();
   readonly #running = new Set<string>();
   readonly #network: string;
   readonly #ids: Ids;
@@ -341,19 +340,6 @@ export class MemoryStore implements Store {
     return written;
   }
 
-  /**
-   * Writes a merchant's wallet columns and no split. Only tests call this, to
-   * hold what a start finds where a wallet was written without its split;
-   * everything else writes a wallet through `setPayoutWallet`, with its split.
-   */
-  async writeWalletWithoutSplit(id: string, wallet: PayoutWalletRead): Promise<void> {
-    const row = this.#merchants.get(id);
-    if (row === undefined) {
-      throw new Error(`there is no merchant ${id} to write a wallet for`);
-    }
-    row.payoutWallet = wallet;
-  }
-
   // --- the payout splits ----------------------------------------------------
 
   async recordPayoutSplits(
@@ -528,11 +514,6 @@ export class MemoryStore implements Store {
     return [...this.#keys.values()]
       .filter((key) => key.merchantId === merchantId)
       .sort((one, other) => one.createdAt - other.createdAt || (one.id < other.id ? -1 : 1));
-  }
-
-  async disableKey(id: string, at: number): Promise<StoredKey | null> {
-    const found = this.#keys.get(id);
-    return found === undefined ? null : this.#revoke(found, at);
   }
 
   async disableKeyOf(
@@ -730,36 +711,47 @@ export class MemoryStore implements Store {
     if (changed) await this.#recordWith(analytics, undefined, this.#now());
   }
 
+  #withMerchant<T>(merchantId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.#merchantLocks.get(merchantId) ?? Promise.resolve();
+    const mine = previous.then(work);
+    const tail = mine.catch(() => undefined);
+    this.#merchantLocks.set(merchantId, tail);
+    void tail.then(() => {
+      if (this.#merchantLocks.get(merchantId) === tail) this.#merchantLocks.delete(merchantId);
+    });
+    return mine;
+  }
+
   async switchIntegration(
     merchantId: string,
     to: Integration,
     analytics?: AnalyticsEvent,
   ): Promise<IntegrationSwitch> {
-    // No await between the reads and the write, so nothing interleaves with
-    // it in the one process this map lives in, the birth of an order included.
-    const row = this.#merchants.get(merchantId);
-    if (row === undefined) {
-      throw new Error(`there is no merchant ${merchantId} to switch to ${to}`);
-    }
-    if (row.integration === to) {
-      return { switched: true, sellingPaused: false };
-    }
-    const waiting = this.#holdingASwitch(merchantId);
-    if (waiting.length > 0) {
-      return { switched: false, waiting };
-    }
-    const sellingPaused =
-      to === "api" &&
-      row.selling === "open" &&
-      [...this.#cards.values()].some(
-        (card) => card.merchantId === merchantId && card.integration === to && !card.paused,
-      );
-    row.integration = to;
-    if (sellingPaused) {
-      row.selling = "paused";
-      await this.#recordWith(analytics, undefined, this.#now());
-    }
-    return { switched: true, sellingPaused };
+    return this.#withMerchant(merchantId, async () => {
+      const row = this.#merchants.get(merchantId);
+      if (row === undefined) {
+        throw new Error(`there is no merchant ${merchantId} to switch to ${to}`);
+      }
+      if (row.integration === to) {
+        return { switched: true, sellingPaused: false };
+      }
+      const waiting = this.#holdingASwitch(merchantId);
+      if (waiting.length > 0) {
+        return { switched: false, waiting };
+      }
+      const sellingPaused =
+        to === "api" &&
+        row.selling === "open" &&
+        [...this.#cards.values()].some(
+          (card) => card.merchantId === merchantId && card.integration === to && !card.paused,
+        );
+      row.integration = to;
+      if (sellingPaused) {
+        row.selling = "paused";
+        await this.#recordWith(analytics, undefined, this.#now());
+      }
+      return { switched: true, sellingPaused };
+    });
   }
 
   async switchHeldBy(merchantId: string, to: Integration): Promise<readonly string[]> {
@@ -776,6 +768,7 @@ export class MemoryStore implements Store {
         (record) =>
           record.merchantId === merchantId &&
           listedAsOpen(record.order) &&
+          !unverifiedAdmission(record) &&
           !(NO_PENDING_HANDLER as readonly string[]).includes(record.order.state),
       )
       .sort((one, other) => one.order.timestamps.createdAt - other.order.timestamps.createdAt)
@@ -785,46 +778,33 @@ export class MemoryStore implements Store {
   // --- orders ---------------------------------------------------------------
 
   async addOrder(record: StoredOrder, birth?: Birth, analytics?: AnalyticsEvent): Promise<Born> {
-    if (this.#orders.has(record.order.id)) {
-      throw new Error(`the order ${record.order.id} is already written down`);
-    }
-    if ([...this.#orders.values()].some((held) => held.buyerKey === record.buyerKey)) {
-      throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
-    }
-    // No await from here to the write, so the count and the write are one step
-    // against every other birth in the one process this map lives in.
-    if (birth !== undefined) {
-      if (this.#merchants.get(record.merchantId)?.integration !== birth.through) {
-        return "switched_away";
+    const write = async (): Promise<Born> => {
+      if (this.#orders.has(record.order.id)) return "exists";
+      if ([...this.#orders.values()].some((held) => held.buyerKey === record.buyerKey)) {
+        throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
       }
       if (
-        this.#waiting(record.merchantId, record.order.timestamps.createdAt, birth.waitingAtMost) >=
-        birth.waitingAtMost
+        birth !== undefined &&
+        this.#merchants.get(record.merchantId)?.integration !== birth.through
       ) {
-        return "too_many_waiting";
+        return "switched_away";
       }
-    }
-    this.#orders.set(record.order.id, Object.freeze({ ...record }));
-    this.#written.set(record.order.id, this.#now());
-    // Set after the write and taken back with it where one is refused, as the
-    // transaction on Postgres rolls back the order with its clocks.
-    try {
-      for (const clock of birth?.clocks ?? []) {
-        await this.#envelopes.remind(clock.reminder, clock.afterMs);
+      this.#orders.set(record.order.id, Object.freeze({ ...record }));
+      this.#written.set(record.order.id, this.#now());
+      try {
+        for (const clock of birth?.clocks ?? []) {
+          await this.#envelopes.remind(clock.reminder, clock.afterMs);
+        }
+      } catch (thrown) {
+        this.#orders.delete(record.order.id);
+        this.#written.delete(record.order.id);
+        throw thrown;
       }
-    } catch (thrown) {
-      this.#orders.delete(record.order.id);
-      this.#written.delete(record.order.id);
-      throw thrown;
-    }
-    if (analytics !== undefined) {
-      await this.recordAnalytics(analytics, record.order.timestamps.createdAt);
-    }
-    return "written";
-  }
-
-  async waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number> {
-    return this.#waiting(merchantId, at, atMost);
+      if (analytics !== undefined)
+        await this.recordAnalytics(analytics, record.order.timestamps.createdAt);
+      return "written";
+    };
+    return birth === undefined ? write() : this.#withMerchant(record.merchantId, write);
   }
 
   async unservedOrders(merchantId: string, atMost: number): Promise<number> {
@@ -848,13 +828,6 @@ export class MemoryStore implements Store {
     return new Set([...counted].flatMap(([id, many]) => (many >= atLeast ? [id] : [])));
   }
 
-  #waiting(merchantId: string, at: number, atMost: number): number {
-    const waiting = [...this.#orders.values()].filter(
-      (held) => held.merchantId === merchantId && waitsForPayment(held, at),
-    ).length;
-    return Math.min(waiting, atMost);
-  }
-
   async orderById(id: string): Promise<StoredOrder | null> {
     return this.#orders.get(id) ?? null;
   }
@@ -865,54 +838,43 @@ export class MemoryStore implements Store {
 
   async merchantOrder(merchantId: string, id: string): Promise<StoredOrder | null> {
     const found = this.#orders.get(id);
-    return found === undefined || found.merchantId !== merchantId ? null : found;
+    return found === undefined || found.merchantId !== merchantId || unverifiedAdmission(found)
+      ? null
+      : found;
   }
 
   async orders(
     merchantId: string,
-    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
+    query?: { readonly open?: boolean },
   ): Promise<readonly StoredOrder[]> {
     const mine = [...this.#orders.values()].filter(
-      (record) =>
-        record.merchantId === merchantId &&
-        (query?.leaveOutLapsed !== true || !lapsedAttempt(record)),
+      (record) => record.merchantId === merchantId && !unverifiedAdmission(record),
     );
     return query?.open === true ? mine.filter((record) => listedAsOpen(record.order)) : mine;
   }
 
-  async lapsedAttempts(
-    merchantId: string,
-    page: { readonly limit: number; readonly from?: PageFrom<OrderPlace> },
-  ): Promise<LapsedPage> {
-    const placeOf = (record: StoredOrder): OrderPlace => ({
-      createdAt: record.order.timestamps.createdAt,
-      id: record.order.id,
-    });
-    // Newest first: below nought for an attempt before the place.
-    const placed = (record: StoredOrder, place: OrderPlace) =>
-      place.createdAt - record.order.timestamps.createdAt || byBytes(place.id, record.order.id);
-    const lapsed = [...this.#orders.values()]
-      .filter((record) => record.merchantId === merchantId && lapsedAttempt(record))
-      .sort((one, other) => placed(one, placeOf(other)));
-    if (page.limit === 0) {
-      return { orders: [], of: lapsed.length, newer: 0, previous: null, next: null };
-    }
-    const cut = pageIn(lapsed, page.from, page.limit, placed);
-    return {
-      orders: cut.rows,
-      of: lapsed.length,
-      newer: cut.newer,
-      previous: cut.previous === null ? null : placeOf(cut.previous),
-      next: cut.next === null ? null : placeOf(cut.next),
-    };
-  }
-
   async withOrder<T>(
     id: string,
-    change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
+    change: (
+      found: StoredOrder,
+      integration?: Integration,
+    ) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
     analytics?: OrderAnalytics,
+    holdMerchant?: string,
   ): Promise<OrderLookup<T>> {
+    if (holdMerchant !== undefined) {
+      if (scope !== undefined && scope.merchantId !== holdMerchant) return { found: false };
+      if (!this.#merchants.has(holdMerchant)) return { found: false };
+      return this.#withMerchant(holdMerchant, () =>
+        this.withOrder(
+          id,
+          (found) => change(found, this.#merchants.get(holdMerchant)?.integration),
+          scope ?? { merchantId: holdMerchant },
+          analytics,
+        ),
+      );
+    }
     // Each order's decisions run one after another. Only the tail of the chain
     // is kept, so an idle order costs one settled promise.
     const previous = this.#locks.get(id) ?? Promise.resolve();
@@ -983,7 +945,9 @@ export class MemoryStore implements Store {
   }
 
   async openOrders(): Promise<readonly StoredOrder[]> {
-    return [...this.#orders.values()].filter((record) => listedAsOpen(record.order));
+    return [...this.#orders.values()].filter(
+      (record) => listedAsOpen(record.order) && !unverifiedAdmission(record),
+    );
   }
 
   async unresolvedPayments(afterId = "", limit = 100): Promise<readonly StoredOrder[]> {
@@ -1023,7 +987,7 @@ export class MemoryStore implements Store {
     const gone = [...this.#orders.values()]
       .filter(
         (record) =>
-          lapsedAttempt(record) &&
+          forgettableAttempt(record, this.#now()) &&
           (this.#written.get(record.order.id) ?? instant) < instant &&
           !this.#receipts.has(record.order.id) &&
           !claimed.has(record.order.id),
@@ -1065,7 +1029,7 @@ export class MemoryStore implements Store {
       case "envelope":
         return this.#envelopes.stage(write.merchantId, write.envelope, write.afterMs);
       case "forget":
-        return this.#envelopes.forget(write.merchantId, write.orderId, write.priceQuestion);
+        return this.#envelopes.forget(write.merchantId, write.orderId);
     }
   }
 
@@ -1135,10 +1099,6 @@ export class MemoryStore implements Store {
       merchantId: held?.merchantId ?? merchantId,
       receipt: Object.freeze({ ...receipt }),
     });
-  }
-
-  async receiptForOrder(orderId: string): Promise<Receipt | null> {
-    return this.#receipts.get(orderId)?.receipt ?? null;
   }
 
   async receipts(merchantId: string): Promise<readonly Receipt[]> {

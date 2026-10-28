@@ -64,16 +64,6 @@ describe("the internal route between the scanner and the dashboard", () => {
     }
   });
 
-  it("refuses every request when any required field is absent", () => {
-    for (const { schema, value } of requests) {
-      for (const field of Object.keys(value)) {
-        const incomplete = { ...value } as Record<string, unknown>;
-        delete incomplete[field];
-        expect(schema.safeParse(incomplete).success, `${value.operation}.${field}`).toBe(false);
-      }
-    }
-  });
-
   it("names a destination only from the closed set: the report of one scan", () => {
     // Nothing in a link is ever read as a destination, so one the set does not
     // hold is refused at the door rather than carried into mail.

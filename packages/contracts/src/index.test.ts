@@ -1,6 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import * as contracts from "./index.js";
 import { CONTRACT_VERSION, type JsonSchemaDocument, schemas, toJsonSchemas } from "./index.js";
 
@@ -16,94 +16,6 @@ const nested = (value: JsonSchemaDocument[keyof JsonSchemaDocument]): JsonSchema
   expect(value, "expected a nested schema object").toBeTypeOf("object");
   return (value ?? {}) as JsonSchemaDocument;
 };
-
-/** A zod schema as it is built internally, for the refinement walk below. */
-interface ZodInternals {
-  _zod?: { def?: Record<string, unknown> };
-}
-
-/**
- * The keys under which zod 4 stores one schema inside another. `shape` and
- * `options` hold several; the rest hold one. `getter` is `z.lazy`, which has
- * to be called to yield anything.
- */
-const WAYS_A_SCHEMA_HOLDS_ANOTHER = [
-  "shape",
-  "options",
-  "valueType",
-  "keyType",
-  "innerType",
-  "element",
-  "items",
-  "rest",
-  "left",
-  "right",
-  "in",
-  "out",
-  "catchall",
-  "getter",
-] as const;
-
-const callGetter = (getter: unknown): unknown =>
-  typeof getter === "function" ? (getter as () => unknown)() : undefined;
-
-const isRefined = (schema: unknown): boolean =>
-  (((schema as ZodInternals)._zod?.def?.checks as unknown[]) ?? []).some(
-    (check) => (check as ZodInternals)._zod?.def?.check === "custom",
-  );
-
-/**
- * Every schema in the registry that carries a refinement, by the path it sits
- * at, nested ones included. The walk is coupled to zod's internals on purpose,
- * so a change in their shape breaks it loudly.
- */
-const walkRefined = (
-  schema: unknown,
-  path: string,
-  found: { path: string; described: boolean }[],
-  seen: Set<unknown>,
-): void => {
-  if (schema === null || typeof schema !== "object" || seen.has(schema)) return;
-  seen.add(schema);
-
-  const def = (schema as ZodInternals)._zod?.def;
-  if (def === undefined) return;
-
-  if (isRefined(schema)) {
-    const meta = z.globalRegistry.get(schema as never);
-    found.push({ path, described: (meta?.description ?? "").length > 0 });
-  }
-
-  // A container the walk cannot enter hides a refinement silently.
-  for (const key of WAYS_A_SCHEMA_HOLDS_ANOTHER) {
-    const child = key === "getter" ? callGetter(def[key]) : def[key];
-    if (child === undefined) continue;
-
-    if (Array.isArray(child)) {
-      for (const [index, option] of child.entries()) {
-        walkRefined(option, `${path}[${index}]`, found, seen);
-      }
-    } else if (key === "shape") {
-      for (const [name, field] of Object.entries(child as Record<string, unknown>)) {
-        walkRefined(field, `${path}.${name}`, found, seen);
-      }
-    } else {
-      walkRefined(child, path, found, seen);
-    }
-  }
-};
-
-const refinedSchemas = (): { path: string; described: boolean }[] => {
-  const found: { path: string; described: boolean }[] = [];
-  const seen = new Set<unknown>();
-  for (const [name, schema] of Object.entries(schemas)) walkRefined(schema, name, found, seen);
-  return found;
-};
-
-const refinedSchemasWithoutDescription = (): string[] =>
-  refinedSchemas()
-    .filter((entry) => !entry.described)
-    .map((entry) => entry.path);
 
 describe("@nuanu-ai/agentify-contracts", () => {
   it("keeps zod its only runtime dependency", () => {
@@ -143,29 +55,6 @@ describe("the registry of schemas", () => {
     expect(missing).toStrictEqual([]);
   });
 
-  it("is reachable from outside this package, every bit of it", async () => {
-    // The package has one entry point, so a schema not re-exported from it
-    // does not exist for a consumer. Walking the modules, rather than listing
-    // them, catches the next schema added to a file nobody re-exports.
-    const publicModules = readdirSync(new URL(".", import.meta.url))
-      .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "index.ts")
-      .sort();
-
-    expect(publicModules.length).toBeGreaterThan(5);
-
-    const exported = new Set(Object.keys(contracts));
-    const unreachable: string[] = [];
-
-    for (const file of publicModules) {
-      const module = (await import(`./${file.replace(/\.ts$/, ".js")}`)) as Record<string, unknown>;
-      for (const name of Object.keys(module)) {
-        if (!exported.has(name)) unreachable.push(`${file}: ${name}`);
-      }
-    }
-
-    expect(unreachable).toStrictEqual([]);
-  });
-
   it("registers nothing under a name that is not written the way the wire is", () => {
     // Registry names are what a consumer outside TypeScript sees, and wire
     // fields are snake_case.
@@ -182,19 +71,12 @@ describe("the contract as JSON Schema", () => {
     const documents = toJsonSchemas();
 
     expect(Object.keys(documents).sort()).toStrictEqual(Object.keys(schemas).sort());
-  });
-
-  it("describes something in every document, not only the ones read back below", () => {
-    // The tests below read a few documents in detail; this catches any
-    // document reduced to its name.
-    const empty = Object.entries(toJsonSchemas())
-      .filter(
-        ([, document]) =>
-          Object.keys(document).filter((key) => key !== "$id" && key !== "$schema").length === 0,
-      )
-      .map(([name]) => name);
-
-    expect(empty).toStrictEqual([]);
+    for (const [name, document] of Object.entries(documents)) {
+      expect(
+        Object.keys(document).filter((key) => key !== "$id" && key !== "$schema"),
+        name,
+      ).not.toEqual([]);
+    }
   });
 
   it("stamps each document with the contract version it came from", () => {
@@ -282,14 +164,44 @@ describe("the contract as JSON Schema", () => {
     expect(accepts("access-monthly\u200b")).toBe(false);
   });
 
-  it("leaves no refinement undescribed, anywhere in the registry", () => {
-    // A rule written as a refinement vanishes from the export without a word.
-    // Add a refinement anywhere and this asks for the sentence that tells a
-    // generator's reader what is not being checked. It reads zod's internals
-    // on purpose: if their shape changes, this breaks loudly.
-    // A walk that found nothing would pass for the wrong reason.
-    expect(refinedSchemas().length).toBeGreaterThan(10);
-    expect(refinedSchemasWithoutDescription()).toStrictEqual([]);
+  it.each([
+    ["service_name", "<b>Tea</b>", /plain text.*HTML markup/i],
+    ["tags", ["Access", "access"], /same without regard to case/i],
+    ["seller_name_request", {}, /one of the two has to be there/i],
+    [
+      "evm_address",
+      "0x52908400098527886E0F7030069857D2E4169Ee7",
+      /EIP-55.*checksum.*not part of this document/i,
+    ],
+  ] as const)(
+    "discloses the runtime-only rule omitted from generated %s validation",
+    (name, value, disclosure) => {
+      const document = toJsonSchemas()[name];
+      expect(new Ajv2020({ validateFormats: false }).compile(document)(value)).toBe(true);
+      expect(schemas[name].safeParse(value).success).toBe(false);
+      expect(document.description).toMatch(disclosure);
+    },
+  );
+
+  it("discloses runtime-only card rules beside the generated card fields", () => {
+    expect(toJsonSchemas().seller_site.description).toMatch(/domain name.*no path.*credentials/i);
+    const card = toJsonSchemas().card;
+    expect(card.description).toMatch(/plain text.*HTML markup/i);
+    expect(card.description).toMatch(/case-insensitive tag uniqueness.*runtime checks/i);
+    expect(nested(card.properties?.result).description).toMatch(
+      /at least one.*not marked required: false/i,
+    );
+    const shipment = toJsonSchemas().shipment;
+    expect(nested(shipment.properties?.estimated_delivery).description).toMatch(
+      /earliest.*no later than.*latest/i,
+    );
+    expect(nested(shipment.properties?.tracking_url).description).toMatch(
+      /no credentials, port or IP address/i,
+    );
+    expect(nested(shipment.properties?.carrier).description).toMatch(/plain text.*HTML markup/i);
+    expect(nested(toJsonSchemas().order_close_request.properties?.message).description).toMatch(
+      /bidirectional control.*half of a character/i,
+    );
   });
 
   it("carries the open code dictionaries, which no structure can hold", () => {

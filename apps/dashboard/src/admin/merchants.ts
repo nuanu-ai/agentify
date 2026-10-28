@@ -21,6 +21,7 @@ import {
   type MerchantRow,
   type MerchantSegment,
 } from "@agentify/gateway/operator";
+import { keepUnits, withUnit } from "@agentify/ui/units";
 import type { NamedAccount } from "../dashboard-entry.js";
 
 /** The reader's facts the views are drawn from, for the code that draws them without the reader. */
@@ -62,7 +63,7 @@ const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/;
 
 const at = (instant: number): MomentView => momentView(new Date(instant).toISOString());
 
-const dollars = (amount: string): string => `${amount} USD`;
+const dollars = (amount: string): string => withUnit(amount, "USD");
 
 // --- the list -----------------------------------------------------------------
 
@@ -559,9 +560,9 @@ export function merchantViewOf({
     cards: {
       rows: record.cards.rows.map((card) => ({
         id: card.id,
-        title: card.card.title,
+        title: keepUnits(card.card.title),
         code: card.card.merchant_item_id,
-        price: `${card.card.price.amount} ${card.card.price.currency}`,
+        price: withUnit(card.card.price.amount, card.card.price.currency),
         timing: FULFILLMENT_WORDS[card.card.fulfillment ?? "sync"],
         onSale: card.onSale,
         paused: card.paused,
@@ -576,7 +577,7 @@ export function merchantViewOf({
         id: order.id,
         href: `/admin/orders/${order.id}`,
         state: ORDER_WORDS[order.status],
-        title: order.title ?? "A product no longer published",
+        title: order.title === null ? "A product no longer published" : keepUnits(order.title),
         price: dollars(order.price.amount),
         when: at(order.createdAt),
         shopUncertain: uncertainIds !== "unread" && uncertainIds.includes(order.id),

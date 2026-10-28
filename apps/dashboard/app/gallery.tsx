@@ -4,11 +4,11 @@
  * route tree, the one `routes.ts` declares, at the state's address, with the
  * data its loaders or presses would have answered: views built by the real
  * view functions from example data, the way the screen tests draw them.
- * Nothing here runs on the site; `gallery.test.tsx` holds that every page the
- * route table declares has a state here.
+ * Nothing here runs on the site.
  */
 
 import "./styles.css";
+import { keepUnits } from "@agentify/ui/units";
 import "@agentify/visual/workspace.css";
 import "./admin.css";
 import { createHash } from "node:crypto";
@@ -77,7 +77,6 @@ import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
-  type LapsedAttempt,
   ordersView,
   receiptsView,
 } from "../src/views.js";
@@ -101,7 +100,7 @@ import {
   wooImportView,
   wooShopView,
 } from "../src/woo-views.js";
-import { SITE_IN_SETTINGS } from "../src/words.js";
+import { money, SITE_IN_SETTINGS } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Gated, Trouble } from "./answer.js";
 import { shortened } from "./components/copy.js";
@@ -699,10 +698,11 @@ const refusalIn = (answer: Answer<never>): Answer<never> & { ok: false } => {
 /** What the dashboard says when the gateway does not answer a call in time. */
 const LATE = refusalIn(lateAnswer(ANSWER_WITHIN_MS));
 
+/** Its words as the server half sends them to the page, a number kept with its unit. */
 const LATE_PROBLEM = (() => {
   const outcome = problemOf(LATE);
   if (outcome.kind !== "problem") throw new Error("an unanswered call was not drawn as a problem");
-  return outcome.problem;
+  return { ...outcome.problem, said: keepUnits(outcome.problem.said) };
 })();
 
 /** Orders the gateway names when it refuses to move a merchant between integrations. */
@@ -1362,6 +1362,13 @@ const openTheMenu = (page: Document) => {
   button.click();
 };
 
+/** Presses the signed-in address in the header's row, which opens the account's menu. */
+const openTheAccount = (page: Document) => {
+  const button = page.querySelector<HTMLElement>(".site-account > summary");
+  if (button === null) throw new Error("the page draws no account menu");
+  button.click();
+};
+
 /** Products as an operator who also sells sees it, with the door into the workspace in the header. */
 const operatorsCards = (told: Told): GalleryState =>
   at(told, {
@@ -1418,6 +1425,22 @@ const CARDS: GalleryState[] = [
       shows: "Sign out",
     },
   },
+  {
+    ...cards(
+      {
+        id: "dashboard-cards-account",
+        screen: "Products",
+        when: "A merchant on a computer presses their address at the end of the header's row.",
+        cause: "The account's menu opens under the address with Settings and Sign out.",
+      },
+      cardsView(CATALOGUE, ORIGIN.live),
+      "live",
+    ),
+    scene: {
+      steps: [{ shows: WHO, does: openTheAccount }],
+      shows: "Sign out",
+    },
+  },
   cards(
     {
       id: "dashboard-cards-account-unread",
@@ -1443,18 +1466,6 @@ const CARDS: GalleryState[] = [
     {
       account: bannerOf(seenBy("live"), { outOfTouch: { since: "2026-10-12T14:02:07Z" } }),
     },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-busy",
-      screen: "Products",
-      when: "A merchant opens Products while as many purchases of theirs as Agentify allows are priced and unpaid.",
-      cause:
-        "The gateway refuses new purchases while as many wait for payment as it allows, so the banner says so and that sales resume by themselves; each place comes free when its purchase is paid or its price runs out.",
-    },
-    cardsView(CATALOGUE, ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live"), { busy: true }) },
   ),
   cards(
     {
@@ -1812,15 +1823,13 @@ const ordersAt = (
     cards = SOLD,
     open = openAmong(listed),
     owed = {},
-    lapsed,
     connector = {},
   }: Readonly<{
     mode?: SurfaceMode;
     cards?: ReturnType<typeof cardsOf>;
     open?: ReturnType<typeof ordersOf>;
     owed?: Parameters<typeof ordersView>[4];
-    lapsed?: Parameters<typeof ordersView>[6];
-    connector?: Parameters<typeof ordersView>[8];
+    connector?: Parameters<typeof ordersView>[7];
   }> = {},
 ) =>
   ordersView(
@@ -1830,7 +1839,6 @@ const ordersAt = (
     new URL(path, ORIGIN[mode]).searchParams,
     owed,
     paidIntoSplit(mode, listed.orders),
-    lapsed,
     {},
     connector,
     new Set(),
@@ -1954,20 +1962,6 @@ const PAID_AFTER_CLOSURE = OrderListSchema.parse({
       : order,
   ),
 });
-
-/** Two purchases priced and never paid, and one the price check refused before any price. */
-const LAPSED: readonly LapsedAttempt[] = ordersOf([
-  ["number", "expired"],
-  ["vpn", "expired"],
-  ["esimEurope", "rejected"],
-]).orders.map((order, at) => ({
-  id: order.id,
-  merchant_item_id: order.merchant_item_id,
-  status: order.status,
-  price: at === 2 ? null : { amount: order.price.amount, currency: order.price.currency },
-  asked_at: secondsAfter(order.price.at, -2),
-  priced_at: at === 2 ? null : order.price.at,
-}));
 
 const ORDERS: GalleryState[] = [
   {
@@ -2303,36 +2297,6 @@ const ORDERS: GalleryState[] = [
     ]),
     "/orders",
     { cards: soldAs(cardsOf("paused", ON_SALE)) },
-  ),
-  orders(
-    {
-      id: "dashboard-orders-lapsed",
-      screen: "Orders",
-      when: "A merchant opens Lapsed beside their orders to find a purchase a buyer says failed.",
-      cause:
-        "Purchases priced and never paid, or refused before payment, priced or not, are read apart from the other orders, a page at a time, and kept for thirty days.",
-    },
-    ordersOf([
-      ["vpn", "delivered"],
-      ["esimEurope", "in_progress"],
-    ]),
-    "/orders?show=lapsed",
-    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
-  ),
-  orders(
-    {
-      id: "dashboard-orders-lapsed-unpriced",
-      screen: "Orders",
-      when: "A merchant opens a lapsed purchase that the price check refused before naming any price.",
-      cause:
-        "The attempt was never priced, so its row says Not priced and its details say when it was asked for, with no moment for a price.",
-    },
-    ordersOf([
-      ["vpn", "delivered"],
-      ["esimEurope", "in_progress"],
-    ]),
-    `/orders?${new URLSearchParams({ show: "lapsed", details: LAPSED[2]?.id ?? "" })}`,
-    { lapsed: { page: LAPSED, of: LAPSED.length, newer: 0, previous: null, next: null } },
   ),
   orders(
     {
@@ -2979,7 +2943,7 @@ const RECOVERY_SALE = {
   orderId: idOf("ord", "Coffee & Brunch Gift Card recovery"),
   product: imported("Coffee & Brunch Gift Card").title,
   shopOrigin: SHOP,
-  amount: "25.00 USD",
+  amount: money({ amount: "25.00", currency: "USD" }),
 };
 
 /** Sales saved with no shop order yet, as the recovery page reads them. */

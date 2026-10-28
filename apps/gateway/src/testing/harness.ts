@@ -26,15 +26,15 @@ import { ScriptedFacilitator } from "../adapters/memory/facilitator.js";
 import { MemoryQueue } from "../adapters/memory/queue.js";
 import { MemoryStore } from "../adapters/memory/store.js";
 import { paymentChainOn } from "../adapters/x402/payment-chain.js";
-import { Gateway } from "../app/gateway.js";
+import { Gateway, type PricedPurchase } from "../app/gateway.js";
 import {
   grantLiveApproval,
   issueKey,
   keyDigest,
-  setPayoutWallet,
   setSellerSite,
   setServiceName,
 } from "../app/merchants.js";
+
 import type { Runtime } from "../app/runtime.js";
 import { type GatewayConfig, loadConfig } from "../config.js";
 import { buildApp } from "../http/server.js";
@@ -67,6 +67,7 @@ export const countedIds = (): Ids => {
 export const testConfig = (overrides: Record<string, string> = {}): GatewayConfig =>
   loadConfig({
     DATABASE_URL: "postgres://agentify@localhost:5432/agentify",
+    PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
     ...overrides,
   });
 
@@ -108,8 +109,6 @@ export interface Harness {
   readonly addMerchant: (name?: string) => Promise<SeededMerchant>;
   /** A second key for a merchant who already has one. The secret, once. */
   readonly addKey: (merchantId: string, label?: string) => Promise<string>;
-  /** Stops one key working, touching no other. */
-  readonly disableKey: (keyId: string) => Promise<void>;
   /**
    * The merchant a test gets without asking, for tests that need a seller but
    * are not about one. Tests about tenancy seed two of their own.
@@ -197,7 +196,13 @@ export async function harness(
     // One wallet per merchant, or a gateway paying every sale to one address
     // would pass a test about whose it is.
     const wallet = aSeededWallet();
-    await setPayoutWallet(store, config.payoutSplit, made.id, wallet, now);
+    // Notifications observed by a test begin after this fixture is ready.
+    const announcedBeforeSeed = announcer.announced.length;
+    await gateway.setPayoutWallet(made.id, wallet, {
+      kind: "signed_in",
+      email: "owner@example.com",
+    });
+    announcer.announced.splice(announcedBeforeSeed);
     // A live gateway sells only for approved merchants. Approval is granted
     // here rather than defaulted, so merchants made any other way stay
     // unapproved.
@@ -231,12 +236,7 @@ export async function harness(
       addMerchant: (name = `Merchant ${countedName()}`) => seed(name),
       addKey: async (merchantId, label = "another of the harness's") =>
         (await issueKey(store, ids, merchantId, label, now, config.environment)).secret,
-      disableKey: async (keyId) => {
-        const disabled = await store.disableKey(keyId, now);
-        if (disabled === null) {
-          throw new Error(`the harness was asked to disable ${keyId}, and there is no such key`);
-        }
-      },
+
       stop: () => gateway.stop(),
     };
   } catch (thrown) {
@@ -503,20 +503,15 @@ function encoded(
  */
 export async function signedFor(
   worked: { readonly runtime: Runtime },
-  order: StoredOrder,
+  order: StoredOrder | PricedPurchase,
   wallet: LocalAccount,
   terms: Omit<SignedTerms, "validBefore"> & { readonly validBefore?: number },
 ): Promise<{ readonly payment: string; readonly fingerprint: string }> {
   const { config, clock } = worked.runtime;
   const edge = new PaymentEdge(config);
-  const price = order.order.price;
-  if (price === null) throw new Error(`${order.order.id} has no price to sign for`);
-  // An order not paid yet has no address of its own, so the test names one.
-  const requirements = edge.requirementsFor(
-    price,
-    order.order.id,
-    order.payTo ?? terms.payTo ?? null,
-  );
+  const requirements = order.priceOffer?.requirements;
+  if (requirements === undefined)
+    throw new Error(`${order.order.id} has no saved offer to sign for`);
   const payment = await signedPayment(wallet, requirements, {
     validBefore: clock() + requirements.maxTimeoutSeconds * 1_000,
     ...terms,

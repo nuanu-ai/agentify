@@ -30,6 +30,7 @@ const ONLY_READS = "a command that only reads puts nothing on a queue and takes 
 
 /** Refuses every call out loud rather than dropping a merchant's work. */
 const noQueue: Queue = {
+  forgetPrice: () => Promise.reject(new Error(ONLY_READS)),
   publish: () => Promise.reject(new Error(ONLY_READS)),
   draw: () => Promise.reject(new Error(ONLY_READS)),
   finish: () => Promise.reject(new Error(ONLY_READS)),

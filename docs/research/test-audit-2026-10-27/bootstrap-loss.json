@@ -1,0 +1,38 @@
+{
+  "source": "77a9b578312e696826f378405c099f4996bcd703",
+  "external_requests": 0,
+  "mutated_sources": 0,
+  "results": [
+    {
+      "mode": "unsigned_loss",
+      "requests": [
+        {
+          "signed": false
+        }
+      ],
+      "expected": "client_refused",
+      "actual": "client_refused",
+      "payment": {
+        "paid": "refused",
+        "why": "no payment was ever presented, so nothing was charged: controlled transport loss"
+      }
+    },
+    {
+      "mode": "signed_loss",
+      "requests": [
+        {
+          "signed": false
+        },
+        {
+          "signed": true
+        }
+      ],
+      "expected": "unreachable",
+      "actual": "client_refused",
+      "payment": {
+        "paid": "refused",
+        "why": "no payment was ever presented, so nothing was charged: controlled transport loss"
+      }
+    }
+  ]
+}

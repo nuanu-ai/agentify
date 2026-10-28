@@ -20,7 +20,11 @@ const paid = {
   payment: null,
   price: { amount: "80.00", currency: "USD" },
 };
-const requirements = edge.requirementsFor(paid.price, paid.orderId, paid.payTo);
+const requirements = edge.requirementsFor(paid.price, "signed-offer-1", paid.payTo);
+const paidWithOffer = {
+  ...paid,
+  priceOffer: { stamp: "signed-offer-1", requirements, expiresAt: NOW - 1 },
+};
 const WALLET = aWallet("a wallet that is a contract");
 /** A signature no key made: what a contract wallet's own scheme can look like. */
 const CONTRACTS_SIGNATURE = `0x${"cd".repeat(97)}` as const;
@@ -34,8 +38,7 @@ const signed = (signature?: `0x${string}`) =>
 
 /** The payment checked as a paid order's return, against `chain` where there is one. */
 const checking = (payment: string, chain: PaymentChain | undefined) =>
-  returningPayment(payment, paid, {
-    edge,
+  returningPayment(payment, paidWithOffer, {
     now: NOW,
     claimHolder: async () => null,
     ...(chain === undefined ? {} : { chain }),
@@ -114,7 +117,6 @@ describe("a key's signature for a paid purchase", () => {
   });
 });
 
-
 describe("returning a paid purchase against its persisted price offer", () => {
   const savedRequirements = {
     scheme: "exact",
@@ -131,16 +133,28 @@ describe("returning a paid purchase against its persisted price offer", () => {
   };
 
   it("accepts a fresh owner signature after the saved offer expires without rebuilding its terms", async () => {
-    const payment = await signedPayment(WALLET, savedRequirements, { nonce: "0x03", validBefore: NOW + 60_000 });
-    expect(await returningPayment(payment, saved, {
-      edge, now: NOW, claimHolder: async () => null,
-    })).toMatchObject({ verified: true, payer: WALLET.address });
+    const payment = await signedPayment(WALLET, savedRequirements, {
+      nonce: "0x03",
+      validBefore: NOW + 60_000,
+    });
+    expect(
+      await returningPayment(payment, saved, {
+        now: NOW,
+        claimHolder: async () => null,
+      }),
+    ).toMatchObject({ verified: true, payer: WALLET.address });
   });
 
   it("still refuses the retained original authorization", async () => {
-    const payment = await signedPayment(WALLET, savedRequirements, { nonce: "0x02", validBefore: NOW + 60_000 });
-    expect(await returningPayment(payment, saved, {
-      edge, now: NOW, claimHolder: async () => ({ orderId: paid.orderId, retained: true }),
-    })).toMatchObject({ verified: false, reason: "signature" });
+    const payment = await signedPayment(WALLET, savedRequirements, {
+      nonce: "0x02",
+      validBefore: NOW + 60_000,
+    });
+    expect(
+      await returningPayment(payment, saved, {
+        now: NOW,
+        claimHolder: async () => ({ orderId: paid.orderId, retained: true }),
+      }),
+    ).toMatchObject({ verified: false, reason: "signature" });
   });
 });

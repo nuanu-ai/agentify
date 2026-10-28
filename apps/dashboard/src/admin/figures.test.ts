@@ -16,6 +16,7 @@ import {
   type Reach,
 } from "@agentify/gateway/operator";
 import { type Harness, harness } from "@agentify/gateway/testing";
+import { decodeFunctionData, type Hex, parseAbi } from "viem";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config.js";
 import type { Person } from "../dashboard-entry.js";
@@ -293,13 +294,38 @@ describe("money", () => {
     // The harness's merchant set a wallet, which recorded its split.
     const { harnessed, pages } = await served({ channel: "test" });
 
+    const other = await harnessed.addMerchant("Another merchant");
+    const expected = await Promise.all(
+      [harnessed.merchant.id, other.id].map(
+        async (id) => (await harnessed.store.merchantById(id))?.payoutWallet.split?.address,
+      ),
+    );
     const view = viewOf<MoneyView>(await pages.money(operatorAt(harnessed), new URLSearchParams()));
 
     const listed =
       view.payout.kind === "read" && view.payout.value.kind === "listed" ? view.payout.value : null;
     expect(listed?.parts).toHaveLength(1);
-    expect(listed?.parts[0]?.pays.join(" ")).toContain(harnessed.merchant.wallet);
-    expect(view.splits.kind === "read" && view.splits.value.count).toBe(1);
+    expect(listed?.parts[0]?.pays).toHaveLength(2);
+    const part = listed?.parts[0];
+    expect(part?.pays.join(" ")).toContain(harnessed.merchant.wallet);
+    expect(part?.pays.join(" ")).toContain(other.wallet);
+    expect(part?.to).toBe(harnessed.runtime.config.payoutSplit.multicall3);
+    expect(part).toBeDefined();
+    const decoded = decodeFunctionData({
+      abi: parseAbi([
+        "function aggregate3((address target, bool allowFailure, bytes callData)[] calls) payable returns ((bool success, bytes returnData)[] returnData)",
+      ]),
+      data: part?.data as Hex,
+    });
+    expect(
+      decoded.args[0]
+        .filter((call) =>
+          expected.some((address) => address?.toLowerCase() === call.target.toLowerCase()),
+        )
+        .map((call) => call.target.toLowerCase())
+        .sort(),
+    ).toStrictEqual(expected.map((address) => address?.toLowerCase()).sort());
+    expect(view.splits.kind === "read" && view.splits.value.count).toBe(2);
   });
 
   it("says how many splits waiting behind a wallet change the payout leaves out, so an absent split is not read as none", () => {
@@ -368,13 +394,28 @@ describe("health", () => {
     expect((await backupOf(live))?.badge).toStrictEqual({ tone: "unknown", word: "Not measured" });
   });
 
-  it("reads the WooCommerce shops connected on the live channel", async () => {
-    const { harnessed, pages } = await served({ channel: "live", shops: memoryWooShops() });
+  it.each([0, 1])("reads connected Woo shops on live: %i", async (count) => {
+    const stored = memoryWooShops();
+    if (count === 1)
+      await stored.connect({
+        accountId: "acc_shop",
+        shopUrl: "https://shop.example",
+        consumerKey: "k".repeat(43),
+        consumerSecret: "s".repeat(43),
+        permissions: "read_write",
+        revision: "connected-revision",
+        currency: null,
+        connectedAt: new Date("2026-10-24T09:00:00Z"),
+      });
+    const { harnessed, pages } = await served({ channel: "live", shops: stored });
 
     const view = viewOf<HealthView>(await pages.health(operatorAt(harnessed)));
     const shops = [...view.read, ...view.unseen].find((row) => row.part === "WooCommerce");
 
-    expect(shops?.badge).toStrictEqual({ tone: "quiet", word: "No shop" });
+    expect(shops?.badge).toStrictEqual(
+      count === 0 ? { tone: "quiet", word: "No shop" } : { tone: "pass", word: "Connected" },
+    );
+    expect(shops?.fact.join(" ")).toMatch(new RegExp(`${count} shop.*connected`));
   });
 
   it("names the revision the build wrote, linked to its commit", async () => {
@@ -465,7 +506,15 @@ describe("the chart of settled sales", () => {
     const chart = chartOf(sales, true);
 
     const onThatDay = chart.bars.filter((bar) => bar.label.startsWith("22 Oct"));
-    expect(onThatDay.map((bar) => bar.className)).toStrictEqual(["bar", "bar nodel"]);
-    expect(onThatDay[1]?.label).toBe("22 Oct: 8.00 USD paid with no delivery recorded");
+    expect(onThatDay).toHaveLength(2);
+    const [lower, upper] = onThatDay;
+    expect(lower?.label).toMatch(/10\.00\sUSD delivered/);
+    expect(upper?.x).toBe(lower?.x);
+    expect((upper?.y ?? 0) + (upper?.height ?? 0)).toBeCloseTo(lower?.y ?? -1, 1);
+    expect(upper?.y).toBeLessThan(lower?.y ?? 0);
+    expect(lower?.height).toBeGreaterThan(0);
+    expect(upper?.height).toBeGreaterThan(0);
+    expect((upper?.height ?? 0) / (lower?.height ?? 1)).toBeCloseTo(8 / 10, 2);
+    expect(onThatDay[1]?.label).toBe("22 Oct: 8.00\u00a0USD paid with no delivery recorded");
   });
 });

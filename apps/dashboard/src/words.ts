@@ -13,6 +13,7 @@
  * network and heard nothing, which is not the same as nothing being charged.
  */
 
+import { withUnit } from "@agentify/ui/units";
 import type { Fulfillment, MerchantFinding, OrderStatus } from "@nuanu-ai/agentify-contracts";
 
 /**
@@ -107,9 +108,8 @@ export const SITE_IN_SETTINGS = "Set your shop's site in Settings, then import a
  * Why the account as a whole is not as usual: a change of the payout wallet
  * waits to apply, all sales are paused, something publishing needs is
  * missing, the products are off sale while their integration is not
- * connected, or new purchases are refused while as many wait for payment as
- * Agentify allows or while as many paid orders are left unserved as it
- * allows; or that what would say so could not be read. Selling through a
+ * connected, or new purchases are refused while as many paid orders are left
+ * unserved as Agentify allows; or that what would say so could not be read. Selling through a
  * WooCommerce shop is not among them: it holds nothing, and the products it
  * leaves off sale say so on their own rows.
  */
@@ -120,7 +120,6 @@ export type AccountReason =
   | "no_seller_name"
   | "no_payout_wallet"
   | "out_of_touch"
-  | "busy"
   | "unserved"
   | "unread";
 
@@ -179,11 +178,6 @@ export const ACCOUNT_WORDS: Readonly<
     says: "Your integration has not connected yet, so agents don't see your products and new purchases are refused until it does.",
     fix: { to: "/docs/failures#your-integration-has-not-connected", words: "What to check" },
   },
-  busy: {
-    title: "New purchases are refused",
-    says: "As many purchases as Agentify allows are waiting for payment, so new ones are refused until one is paid or its price runs out.",
-    fix: null,
-  },
   unserved: {
     title: "All new purchases are refused",
     says: "As many paid orders you were given as Agentify allows are left without delivery or closure, so agents cannot buy anything from you until you deliver or close some of them. Under Needs you, each order that counts says so.",
@@ -220,8 +214,7 @@ export const headingOf = (
   if (first === undefined) return "";
   if (notes.length === 1) return first.title;
   if (notes.some((note) => KEEP_OFF_SALE.has(note.reason))) return "Your products are off sale";
-  return (notes.find((note) => note.reason === "busy" || note.reason === "unserved") ?? first)
-    .title;
+  return (notes.find((note) => note.reason === "unserved") ?? first).title;
 };
 
 /**
@@ -249,7 +242,8 @@ export const notConnectedSince = (when: string): string =>
 /**
  * The amount is passed through exactly as it arrived: it is a decimal string on
  * the wire so nothing turns it into a float, and `"5.00"` shown as `$5` is a
- * different number to anybody checking their books.
+ * different number to anybody checking their books. It is kept on one line
+ * with its currency, so it is for a page and nothing else.
  */
 export const money = (sum: { readonly amount: string; readonly currency: string }): string =>
-  `${sum.amount} ${sum.currency}`;
+  withUnit(sum.amount, sum.currency);

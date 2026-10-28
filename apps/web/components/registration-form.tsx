@@ -1,6 +1,7 @@
 import { registrationResponseSchema } from "@agentify/scanner-contracts";
 import { PHONE_INPUT_PATTERN } from "@agentify/scanner-contracts/browser";
 import { useVisitor } from "@agentify/ui";
+import { keepUnits } from "@agentify/ui/units";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { waitLabel } from "../lib/link-answer";
 import { press } from "../lib/press";
@@ -10,17 +11,15 @@ import styles from "./registration-form.module.css";
 type RegistrationState = "idle" | "sending" | "sent" | "opening" | "error" | "stale";
 
 /** The wait is the server's to name; the button never counts down a guess of its own. */
-export function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
+function registrationSubmitLabel(state: RegistrationState, resendWait: number) {
   if (state === "sending" || state === "opening") return "Sending…";
   if (resendWait > 0) return `Try again in ${waitLabel(resendWait)}`;
   if (state === "sent") return "Resend secure link";
   return "Email me a secure link";
 }
 
-export function sentConfirmationCopy(email: string) {
+function sentConfirmationCopy(email: string) {
   const followUp = "Open it in this browser to unlock the prompt and report.";
-  if (!email)
-    return `If the address can receive mail, a secure confirmation link has been sent. ${followUp}`;
   return `We sent a secure link to ${email} (if the address can receive mail). ${followUp}`;
 }
 
@@ -120,7 +119,7 @@ export function RegistrationForm({ scanId }: Readonly<{ scanId: string }>) {
     }
     if (outcome.kind === "refused") {
       setState(outcome.refusal.code === "signed_in_as_another_address" ? "stale" : "error");
-      setMessage(outcome.refusal.message);
+      setMessage(keepUnits(outcome.refusal.message));
       const field = refusedField(outcome.refusal.code);
       // A signed-in ask names the session's address, which has no field here.
       if (field !== undefined && !(signedIn && field === "email")) setRefused({ field });

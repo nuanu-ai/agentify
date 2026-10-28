@@ -114,7 +114,15 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The buyer walks the whole exchange: unpaid → 402 with the challenge →
     // signed payment → the goods themselves.
+    const issuedAtSettlement: boolean[] = [];
+    const settle = facilitator.settle.bind(facilitator);
+    facilitator.settle = async (charge) => {
+      const stored = await booted.gateway.runtime.store.orderById(charge.orderId);
+      issuedAtSettlement.push(stored?.delivery !== null && stored?.delivery !== undefined);
+      return settle(charge);
+    };
     const bought = await buyer.buy(rented, { area_code: "415" });
+    expect(issuedAtSettlement).toEqual([true]);
 
     expect(bought.status).toBe(200);
 
@@ -137,7 +145,9 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     // receipt lives — behind the merchant's own key — and it agrees about the
     // price the money moved at.
     const receipt = ReceiptSchema.parse(
-      await booted.gateway.runtime.store.receiptForOrder(answered.order_id),
+      (await booted.gateway.runtime.store.receipts("the_merchant")).find(
+        (receipt) => receipt.order_id === answered.order_id,
+      ) ?? null,
     );
     expect(receipt.outcome).toBe("delivered");
     expect(receipt.test).toBe(true);
@@ -212,11 +222,15 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     // The receipt now exists and says delivered, in test money, at the price
     // the money moved at.
-    const receipt = await booted.gateway.runtime.store.receiptForOrder(orderId);
+    const receipt =
+      (await booted.gateway.runtime.store.receipts("the_merchant")).find(
+        (receipt) => receipt.order_id === orderId,
+      ) ?? null;
     const parsedReceipt = ReceiptSchema.parse(receipt);
     expect(parsedReceipt.outcome).toBe("delivered");
     expect(parsedReceipt.test).toBe(true);
     expect(parsedReceipt.price.amount).toBe("8.00");
+    expect(facilitator.settles).toHaveLength(1);
 
     // The happy asynchronous path carries no wire event: the event channel is
     // for the things a merchant would otherwise only find by reconciling by
@@ -418,29 +432,21 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
     expect(invented.status).toBe(404);
     expect(invented.state).toBeNull();
     expect(invented.delivered).toBeNull();
-    expect(invented.body).toStrictEqual({
-      error: { code: "no_such_order", message: "there is no such order", retryable: false },
-    });
-
-    for (const value of ["bk_nor_this_one", "ord_never_issued"]) {
+    expect(invented.body).toMatchObject({ error: { code: "no_such_order", retryable: false } });
+    const card = (await buyer.catalog()).find((entry) => entry.title === RENTED_NUMBER.title);
+    if (card === undefined) throw new Error("the synchronous card is not listed");
+    const existing = AgentOrderStatusSchema.parse(
+      (await buyer.buy(card, { area_code: "415" })).body,
+    );
+    expect(existing.status).toBe("delivered");
+    for (const value of ["bk_nor_this_one", "ord_never_issued", existing.order_id]) {
       const another = await buyer.status(statusAt(value));
       expect(another.status).toBe(invented.status);
       expect(another.body).toStrictEqual(invented.body);
     }
   }, 20_000);
 
-  it("gives the merchant the gateway's own reason for an order it will not describe", async () => {
-    // The whole road, with nothing stubbed on it: a real gateway refuses a
-    // real SDK call in words of its own, and the merchant reads those words.
-    //
-    // The order is one that closed before anybody named a price for it — the
-    // card is price-checked and this merchant's desk does not price it, so the
-    // honest answer is "there is none" and the purchase ends there. The
-    // merchant's own read of that order cannot come back in the shape it
-    // promises, because that shape carries a sale price and this sale has
-    // none. What the gateway sends instead is a refusal with a reason in it,
-    // and a merchant told only that we could not parse something would go
-    // reading our schemas about an order that is simply over.
+  it("refuses an unavailable price without creating an order or asking for payment", async () => {
     const unpriceable: CardInput = {
       ...EUROPE_ESIM,
       merchant_item_id: "esim-eu-no-desk-prices-it",
@@ -457,22 +463,18 @@ describe("the stage-one gate: a sandbox purchase, green from catalog to receipt"
 
     const bought = await buyer.buy(listed, { email: "buyer@example.com" });
 
-    // The purchase is over before any money moved, and it says so in the same
-    // document a purchase that worked would have used.
     expect(bought.status).toBe(409);
-    const refusedPurchase = AgentOrderStatusSchema.parse(bought.body);
-    expect(refusedPurchase.status).toBe("rejected");
-    expect(refusedPurchase.price).toBeNull();
+    expect(bought.body).toMatchObject({
+      error: {
+        code: "not_selling",
+        message: expect.stringMatching(/unavailable.*nothing was charged/i),
+      },
+    });
+    expect(bought.body).not.toHaveProperty("order_id");
+    expect(bought.statusUrl).toBeNull();
+    expect(facilitator.verifies).toStrictEqual([]);
     expect(facilitator.settles).toStrictEqual([]);
-
-    const said = await merchant.client.orders.get(refusedPurchase.order_id).then(
-      () => null,
-      (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown)),
-    );
-
-    expect(said).toContain("order_closed_before_it_was_priced");
-    expect(said).toContain("no sale to describe");
-    expect(said).not.toContain("is not the document it promises");
+    expect(await merchant.client.orders.list()).toHaveLength(0);
   }, 20_000);
 
   it("a refused payment moves no money and hands over no goods: the synchronous refusal is free", async () => {

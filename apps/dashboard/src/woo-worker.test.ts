@@ -20,6 +20,8 @@ import {
   type AgentOrderStatus,
   type Order,
   QuoteRequestSchema,
+  type QuoteResponse,
+  QuoteResponseSchema,
   type ShipToLocality,
 } from "@nuanu-ai/agentify-contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -429,7 +431,12 @@ describe("one paid order, in the merchant's own shop", () => {
       NO_SPLIT,
     );
 
-    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    expect(answer).toMatchObject({
+      refused: {
+        code: "cannot_fulfill",
+        message: expect.stringMatching(/answer.*product check.*broke off.*could not be read/i),
+      },
+    });
     expect(JSON.stringify(answer)).not.toMatch(/did not answer/i);
     expect(shop.placed).toHaveLength(0);
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("precreate_refused");
@@ -470,56 +477,6 @@ describe("one paid order, in the merchant's own shop", () => {
     // The shop answered, so it was not silent, and what it answered says
     // nothing about the product, so no reason that says the product changed
     // is true of it.
-    const refusalWith = async (overrides: Partial<Filling>): Promise<string | undefined> => {
-      const answer = await fillFromTheShop(
-        anOrder(),
-        connection(),
-        MERCHANT_EMAIL,
-        { ...filling(memoryWooShops(), aShopThatAccepts().place), ...overrides },
-        NO_SPLIT,
-      );
-      return (answer as { refused?: { message?: string } } | null)?.refused?.message;
-    };
-    const download = {
-      kind: "download" as const,
-      productId: "11",
-      downloadId: "dl_guide",
-      fileName: "Guide",
-      price: { amount: "25.00", currency: "USD" },
-      fingerprint: "accepted-download-fingerprint",
-      tax: { mode: "off" as const },
-    };
-    const untrue = new Set(
-      await Promise.all(
-        [
-          { inspectProduct: async () => RULED_OUT },
-          {
-            inspectProduct: async () =>
-              showing({
-                kind: "parcel",
-                productId: "11",
-                price: download.price,
-                tax: { mode: "off" },
-                fingerprint: "p",
-              }),
-          },
-          {
-            inspectProduct: async () =>
-              showing({ ...download, price: { amount: "30.00", currency: "USD" } }),
-          },
-          { offered: boundAt("an-earlier-download") },
-          {
-            inspectProduct: async (): Promise<ProductInspection> => ({
-              ok: false,
-              why: "The shop did not answer the protected product check.",
-              again: true,
-            }),
-          },
-        ].map(refusalWith),
-      ),
-    );
-    expect(untrue.has(undefined)).toBe(false);
-
     for (const [what, answering] of UNREADABLE) {
       const shops = memoryWooShops();
       const shop = aShopThatAccepts();
@@ -538,7 +495,8 @@ describe("one paid order, in the merchant's own shop", () => {
 
       expect(answer, what).toMatchObject({ refused: { code: "cannot_fulfill" } });
       const message = (answer as { refused?: { message?: string } } | null)?.refused?.message;
-      expect(untrue, what).not.toContain(message);
+      expect(message, what).toMatch(/answer.*product check.*could not be read or trusted/i);
+      expect(message, what).toMatch(/no WooCommerce order was created/i);
       expect(shop.placed, what).toHaveLength(0);
       expect((await shops.knownOrder("ord_1"))?.kind, what).toBe("precreate_refused");
     }
@@ -650,44 +608,6 @@ describe("one paid order, in the merchant's own shop", () => {
     expect((await shops.knownOrder("ord_1"))?.kind).toBe("unknown");
     expect(again && "refused" in again).toBe(true);
     expect(placements).toBe(1);
-  });
-
-  it("answers nothing at all when the shop did not answer either", async () => {
-    // A refusal would close the sale for good; answering nothing lets the
-    // gateway hand the order over again.
-    const shops = memoryWooShops();
-    const answer = await fillFromTheShop(
-      anOrder(),
-      connection(),
-      MERCHANT_EMAIL,
-      filling(shops, async () => ({ ok: false, why: "no answer", again: true })),
-      NO_SPLIT,
-    );
-    expect(answer).toBeNull();
-  });
-
-  it("will not place a second order for an attempt whose outcome nobody knows", async () => {
-    // The process died with a request on its way to the shop. Whether the shop
-    // holds an order is not knowable here, and ordering again is the one move
-    // certainly wrong.
-    const shops = memoryWooShops();
-    const shop = aShopThatAccepts();
-    const parts = filling(shops, shop.place);
-
-    await fillFromTheShop(
-      anOrder(),
-      connection(),
-      MERCHANT_EMAIL,
-      filling(shops, async () => ({ ok: false, why: "the shop did not answer", again: true })),
-      NO_SPLIT,
-    );
-    const again = await fillFromTheShop(anOrder(), connection(), MERCHANT_EMAIL, parts, NO_SPLIT);
-
-    expect(shop.placed).toHaveLength(0);
-    expect(again).not.toBeNull();
-    // Not "there is no such order", but "an order may be there and nothing here
-    // can tell".
-    expect(again && "refused" in again && again.refused.message).toMatch(/ord_1/);
   });
 
   it("refuses a connection whose keys cannot write", async () => {
@@ -1061,7 +981,9 @@ describe("the whole way through, against a real gateway", () => {
     expect(first).toBeNull();
     expect(durable?.kind).toBe("unknown");
     expect(shop.orders).toHaveLength(1);
-    expect(redelivery && "refused" in redelivery).toBe(true);
+    expect(redelivery).toMatchObject({
+      refused: { code: "cannot_fulfill", message: expect.stringContaining("ord_1") },
+    });
   });
 
   it("draws the stream of the merchant the connected account names, and nobody else's", async () => {
@@ -1235,9 +1157,9 @@ describe("a price question off the merchant's stream", () => {
     shops: WooShops,
     product: typeof inTheShop | null,
     inspectProduct = shopShowing(product),
-  ): Promise<unknown> => {
+  ): Promise<QuoteResponse | null> => {
     // Stays null when the worker says nothing.
-    let answer: unknown = null;
+    let answer: QuoteResponse | null = null;
     const gateway = {
       pollWorker: async () => ({
         ok: true as const,
@@ -1249,7 +1171,8 @@ describe("a price question off the merchant's stream", () => {
       }),
       answerQuote: async (priceId: string, said: unknown) => {
         // The gateway files a price answer only under the price it named.
-        answer = priceId === question.price_id ? said : `answered under ${priceId}`;
+        if (priceId !== question.price_id) throw new Error(`answered under ${priceId}`);
+        answer = QuoteResponseSchema.parse(said);
         return { ok: true as const, document: { used: true } };
       },
       answerOrder: async () => {
@@ -1273,35 +1196,25 @@ describe("a price question off the merchant's stream", () => {
     return answer;
   };
 
-  it("returns the product and money facts in its opaque reference", async () => {
-    const shops = memoryWooShops();
-    const answer = await answering(shops, inTheShop);
-    expect(answer).toMatchObject({
-      available: true,
-      price: { amount: "25.00", currency: "USD" },
-      as_of: NOW,
-    });
-    if (answer?.available !== true || answer.quote_reference === undefined)
-      throw new Error("No quoted sale reference");
-    expect(
-      JSON.parse(Buffer.from(answer.quote_reference, "base64url").toString("utf8")),
-    ).toStrictEqual(["accepted-download-fingerprint", "25.00", "USD", "25.00"]);
-  });
-
-  it("answers a download from a shop whose prices hold their tax at the price as entered", async () => {
-    const shops = memoryWooShops();
-
-    expect(
-      await answering(shops, inTheShop, async () =>
-        showing({ ...inTheShop, tax: { mode: "included" } }),
-      ),
-    ).toStrictEqual({
-      available: true,
-      quote_reference: expect.stringMatching(/^[A-Za-z0-9_-]{1,512}$/),
-      price: { amount: "25.00", currency: "USD" },
-      as_of: NOW,
-    });
-  });
+  it.each(["off", "included"] as const)(
+    "returns the product and money facts in its opaque reference with tax %s",
+    async (mode) => {
+      const shops = memoryWooShops();
+      const answer = await answering(shops, inTheShop, async () =>
+        showing({ ...inTheShop, tax: { mode } }),
+      );
+      expect(answer).toMatchObject({
+        available: true,
+        price: { amount: "25.00", currency: "USD" },
+        as_of: NOW,
+      });
+      if (answer?.available !== true || answer.quote_reference === undefined)
+        throw new Error("No quoted sale reference");
+      expect(
+        JSON.parse(Buffer.from(answer.quote_reference, "base64url").toString("utf8")),
+      ).toStrictEqual(["accepted-download-fingerprint", "25.00", "USD", "25.00"]);
+    },
+  );
 
   it("names no price when the shop does not show the product as one download", async () => {
     const shops = memoryWooShops();
@@ -2022,38 +1935,40 @@ describe("a parcel's paid order", () => {
             { status: 400 },
           );
 
-    // What is said where the product or its shipping did change.
-    const changed = new Set<string | undefined>();
-    for (const overrides of [
-      { inspectProduct: async () => RULED_OUT },
-      { offered: boundAt("an-earlier-parcel") },
-      {
-        inspectProduct: async (): Promise<ProductInspection> =>
-          showing({
-            kind: "download",
-            productId: "28",
-            downloadId: "dl",
-            fileName: "Tote.pdf",
-            price: { amount: "20.00", currency: "USD" },
-            fingerprint: "accepted-parcel-fingerprint",
-            tax: { mode: "off" as const },
+    for (const [overrides, reason] of [
+      [{ inspectProduct: async () => RULED_OUT }, /product.*no longer.*parcel/i],
+      [{ offered: boundAt("an-earlier-parcel") }, /product changed.*quoted/i],
+      [
+        {
+          inspectProduct: async (): Promise<ProductInspection> =>
+            showing({
+              kind: "download",
+              productId: "28",
+              downloadId: "dl",
+              fileName: "Tote.pdf",
+              price: { amount: "20.00", currency: "USD" },
+              fingerprint: "accepted-parcel-fingerprint",
+              tax: { mode: "off" },
+            }),
+        },
+        /product.*no longer.*parcel/i,
+      ],
+      [
+        {
+          shippingRates: async (): Promise<RatesRead> => ({
+            ok: true,
+            currency: "USD",
+            rates: [rate("Standard", "6.00", "3")],
+            priced: NOT_PRICED,
           }),
-      },
-      {
-        shippingRates: async () => ({
-          ok: true as const,
-          currency: "USD",
-          rates: [rate("Standard", "6.00", "3")],
-          priced: NOT_PRICED,
-        }),
-      },
-    ] satisfies Partial<Filling>[]) {
-      changed.add(await refusalWith(overrides));
+        },
+        /shipping.*no longer costs.*paid/i,
+      ],
+    ] satisfies readonly (readonly [Partial<Filling>, RegExp])[]) {
+      expect(await refusalWith(overrides)).toMatch(reason);
     }
-    expect(changed.has(undefined)).toBe(false);
 
     // Where the answer could not be read, none of those is true.
-    const unread = new Set<string | undefined>();
     for (const [what, overrides] of [
       ...UNREADABLE.map(
         ([what, answering]) =>
@@ -2068,9 +1983,12 @@ describe("a parcel's paid order", () => {
       ["a cart holding two", fromTheCart(aCartHoldingTheTote(2))] as const,
     ]) {
       const message = await refusalWith(overrides);
-      expect(message, what).toBeDefined();
-      expect(changed, what).not.toContain(message);
-      unread.add(message);
+      expect(message, what).toMatch(
+        what === "a cart holding two"
+          ? /cart.*shipping.*could not be read or trusted/i
+          : /answer.*product check.*could not be read or trusted/i,
+      );
+      expect(message, what).toMatch(/no WooCommerce order was created/i);
     }
 
     // Where the shop's cart refused the parcel, that is what is said: not
@@ -2091,9 +2009,8 @@ describe("a parcel's paid order", () => {
       ],
     ] as const) {
       const message = await refusalWith(overrides);
-      expect(message, what).toBeDefined();
-      expect(changed, what).not.toContain(message);
-      expect(unread, what).not.toContain(message);
+      expect(message, what).toMatch(/cart.*offered no shipping.*place.*sale/i);
+      expect(message, what).toMatch(/no WooCommerce order was created/i);
     }
   });
 
@@ -3008,46 +2925,6 @@ describe("following a parcel to the carrier", () => {
     expect(gateway.delivered).toStrictEqual([]);
     expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
   });
-
-  it("follows nothing of a download, whose order is already delivered", async () => {
-    const shops = memoryWooShops();
-    await shops.connect(connection());
-    await shops.claimOrder(
-      "acc_1",
-      "ord_2",
-      {
-        shopOrigin: "https://shop.example.com",
-        connectionRevision: "grant_1",
-        merchantItemId: merchantItemIdFor("https://shop.example.com", "11"),
-        priceId: "prc_1",
-        productId: "11",
-        productFingerprint: "accepted-download-fingerprint",
-        amount: "25.00",
-        currency: "USD",
-      },
-      new Date("2026-09-14T12:00:00.000Z"),
-    );
-    await shops.recordOrder(
-      "ord_2",
-      {
-        id: "13",
-        number: "13",
-        permission: {
-          shopOrigin: "https://shop.example.com",
-          productId: "11",
-          orderKey: "wc_order_13",
-          downloadId: "dl_guide",
-          fileName: "Guide",
-          emailUid: "uid",
-          orderNumber: "13",
-        },
-        total: "25.00",
-      },
-      new Date("2026-09-14T12:00:00.000Z"),
-    );
-
-    expect(await shops.parcelsToFollow("acc_1")).toStrictEqual([]);
-  });
 });
 
 describe("a parcel the whole way through, against a real gateway", () => {
@@ -3734,8 +3611,9 @@ describe("what the worker writes in the merchant's log when something fails", ()
 
     const written = await loggedWhile(() => turnOnce(connection(), parts));
 
-    expect(written).toContain("was not accepted: the order is over");
-    expect(written).toContain(`order ${anOrder().id}`);
+    expect(written).toContain("the order is over");
+    expect(written).toMatch(/answer.*order/i);
+    expect(written).toContain("ord_1");
   });
 
   it("names an order whose delivery could not be bound without the buyer's download secrets", async () => {
@@ -3944,6 +3822,8 @@ describe("bounded work within one connected shop", () => {
   it("waits for a timed-out quote's cart cleanup before shutdown completes", async () => {
     const removing = Promise.withResolvers<void>();
     const finishRemoval = Promise.withResolvers<void>();
+    const emptied = Promise.withResolvers<void>();
+    let removed = false;
     let held = false;
     const cart = () => ({
       items: held ? [{ key: "line-28", id: 28, quantity: 1 }] : [],
@@ -3975,7 +3855,9 @@ describe("bounded work within one connected shop", () => {
         removing.resolve();
         await finishRemoval.promise;
         held = false;
+        removed = true;
       }
+      if (path.endsWith("/cart") && removed) emptied.resolve();
       return Response.json(cart(), { headers: { "Cart-Token": "one-owned-cart" } });
     });
     const shops = memoryWooShops();
@@ -4040,6 +3922,7 @@ describe("bounded work within one connected shop", () => {
       expect(held).toBe(true);
     } finally {
       finishRemoval.resolve();
+      await emptied.promise;
       await (stopping ?? worker.stop());
       request.mockRestore();
     }

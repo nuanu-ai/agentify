@@ -331,14 +331,14 @@ export function OverviewScreen({ view }: Readonly<{ view: OverviewView }>) {
 
           <section className="op-panel" aria-labelledby="sales-title">
             <div className="op-panel-head">
-              <h2 id="sales-title">Settled sales · last 30 days</h2>
+              <h2 id="sales-title">Settled sales · last 30&nbsp;days</h2>
               {view.chart.kind === "read" ? <p>{view.chart.value.head}</p> : null}
             </div>
             <div className="op-panel-body">
               {view.chart.kind === "read" ? (
                 <SalesChart chart={view.chart.value.chart} title="Settled sales" />
               ) : (
-                <Unread what="The sales of the last 30 days" />
+                <Unread what="The sales of the last 30&nbsp;days" />
               )}
             </div>
             {view.chart.kind === "read" ? (
@@ -432,7 +432,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
 
       <section className="op-panel" aria-labelledby="days-title">
         <div className="op-panel-head">
-          <h2 id="days-title">Settled per day · last 30 days</h2>
+          <h2 id="days-title">Settled per day · last 30&nbsp;days</h2>
           <div className="op-legend">
             <span>
               <i />
@@ -452,7 +452,7 @@ export function MoneyScreen({ view }: Readonly<{ view: MoneyView }>) {
           {view.chart.kind === "read" ? (
             <SalesChart chart={view.chart.value.chart} title="Settled per day" />
           ) : (
-            <Unread what="The sales of the last 30 days" />
+            <Unread what="The sales of the last 30&nbsp;days" />
           )}
         </div>
         {view.chart.kind === "read" ? (

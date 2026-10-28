@@ -1,32 +1,23 @@
 /**
  * The facilitator, over HTTP, through the official `@x402/core` client. The
- * requirements handed to it are always rebuilt from our own order, never taken
- * from the payment, so a payment against a price the agent invented fails.
+ * requirements handed to it are the trusted offer saved with the order, never
+ * taken from the payment or rebuilt from current deployment settings.
  *
  * A settlement failure may describe an unconfirmed broadcast. Only a known
  * pre-broadcast refusal proves nonpayment; other failures stay unknown.
  */
 
-import { PAYABLE_CURRENCIES } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { FacilitatorClient } from "@x402/core/server";
 import {
   type PaymentPayload,
-  type PaymentRequirements,
   SettleError,
   type SettleResponse,
   VerifyError,
   type VerifyResponse,
 } from "@x402/core/types";
-import { getDefaultAsset } from "@x402/evm";
 import { failureNamed } from "../../failure-named.js";
-import {
-  atomicUnits,
-  authorisedUntil,
-  CLOCK_SKEW_SECONDS,
-  ORDER_IN_EXTRA,
-  type PaymentEdge,
-} from "../../http/x402.js";
+import { authorisedUntil, CLOCK_SKEW_SECONDS, PRICE_STAMP_IN_EXTRA } from "../../http/x402.js";
 import type {
   Charge,
   Facilitator,
@@ -41,20 +32,11 @@ import { readRefusal } from "./refusal-codes.js";
 
 export class X402Facilitator implements Facilitator {
   readonly #client: FacilitatorClient;
-  readonly #edge: PaymentEdge;
-  readonly #now: () => number;
   readonly reconcile?: (request: PaymentRecoveryRequest) => Promise<PaymentRecoveryOutcome>;
 
-  constructor(
-    client: FacilitatorClient,
-    edge: PaymentEdge,
-    recovery?: Eip3009Recovery,
-    now = Date.now,
-  ) {
+  constructor(client: FacilitatorClient, recovery?: Eip3009Recovery) {
     this.#client = client;
-    this.#edge = edge;
     if (recovery) this.reconcile = (request) => recovery.reconcile(request);
-    this.#now = now;
   }
 
   async verify(charge: Charge): Promise<VerifyOutcome> {
@@ -67,15 +49,7 @@ export class X402Facilitator implements Facilitator {
       };
     }
 
-    let requirements: PaymentRequirements;
-    try {
-      requirements = this.#requirements(charge);
-    } catch (thrown) {
-      // Our own side of the question could not be built (no payout address,
-      // a currency we cannot charge in). That is not a verdict on the payment,
-      // so it must not be reported as a refusal.
-      return { verified: "unknown", cause: "seller_cannot_be_paid", failure: describe(thrown) };
-    }
+    const requirements = charge.requirements;
 
     const mismatch = wrongOffer(payload.accepted, requirements);
     if (mismatch !== null) {
@@ -87,7 +61,7 @@ export class X402Facilitator implements Facilitator {
     let authorization: ReturnType<typeof authorizationOf>;
     try {
       authorization = authorizationOf(payload, requirements);
-      const now = BigInt(Math.floor(this.#now() / 1000));
+      const now = BigInt(Math.floor(Date.now() / 1000));
       const expires = BigInt(authorization.validBefore);
       const asked = requirements.maxTimeoutSeconds;
       // Signing again fixes both cases, and the offer still stands: answering
@@ -117,7 +91,7 @@ export class X402Facilitator implements Facilitator {
     // lands after this moment, give or take the clocks.
     const recovery: PaymentRecoveryContext = {
       ...authorization,
-      notBefore: String(Math.floor(this.#now() / 1000) - CLOCK_SKEW_SECONDS),
+      notBefore: String(Math.floor(Date.now() / 1000) - CLOCK_SKEW_SECONDS),
     };
 
     let answered: VerifyResponse;
@@ -165,9 +139,7 @@ export class X402Facilitator implements Facilitator {
         `the charge on the order ${charge.orderId} was to be executed and the payment kept for it cannot be read`,
       );
     }
-    // Throws with its own sentence, which points the reader at the merchant's
-    // settings rather than at the payment.
-    const requirements = savedRequirements(charge, payload);
+    const requirements = charge.requirements;
     const mismatch = wrongOffer(payload.accepted, requirements);
     if (mismatch) throw new Error(mismatch);
     try {
@@ -194,30 +166,6 @@ export class X402Facilitator implements Facilitator {
     }
     return settlementFailure(answered);
   }
-
-  async recoveryFor(charge: Charge, since: number): Promise<PaymentRecoveryContext | null> {
-    try {
-      const payload = decoded(charge.payment);
-      if (!payload) return null;
-      // Recovery binds signed financial terms to the saved sale; an old unsigned routing hint cannot establish payment.
-      return {
-        ...authorizationOf(payload, savedRequirements(charge, payload)),
-        notBefore: String(Math.floor(since / 1000) - CLOCK_SKEW_SECONDS),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * What this payment should have been paid against, rebuilt from our own
-   * order. It throws, rather than answering null like the decode, because
-   * every failure here is on our side and must not read as "this is not a
-   * payment".
-   */
-  #requirements(charge: Charge) {
-    return this.#edge.requirementsFor(charge, charge.orderId, charge.payTo);
-  }
 }
 
 function settlementFailure(
@@ -235,31 +183,6 @@ function settlementFailure(
       ? { transaction: response.transaction }
       : {}),
   };
-}
-
-function savedRequirements(charge: Charge, payload: PaymentPayload): PaymentRequirements {
-  if (typeof charge.payTo !== "string")
-    throw new Error("There is nowhere to send the money recorded for this order.");
-  if (!PAYABLE_CURRENCIES.includes(charge.currency.toUpperCase()))
-    throw new Error("The saved charge uses an unsupported currency.");
-  if (!payload.accepted) throw new Error("The saved payment names no offer.");
-  const asset = getDefaultAsset(payload.accepted.network);
-  const amount = atomicUnits(charge.amount, asset.decimals);
-  if (
-    !sameAddress(payload.accepted.asset, asset.asset) ||
-    payload.accepted.amount !== amount ||
-    !sameAddress(payload.accepted.payTo, charge.payTo)
-  ) {
-    throw new Error("The saved payment's financial offer contradicts the recorded sale.");
-  }
-  const requirements = {
-    ...payload.accepted,
-    asset: asset.asset,
-    amount,
-    payTo: charge.payTo,
-    extra: { name: asset.name, version: asset.version, [ORDER_IN_EXTRA]: charge.orderId },
-  };
-  return requirements;
 }
 
 function decoded(payment: string): PaymentPayload | null {
@@ -311,8 +234,8 @@ function wrongOffer(
   if (accepted.maxTimeoutSeconds !== ours.maxTimeoutSeconds) {
     return "the payment names a different timeout from the offer it was made against";
   }
-  if (accepted.extra?.[ORDER_IN_EXTRA] !== ours.extra[ORDER_IN_EXTRA]) {
-    return "the payment was made against a different order from the one it was presented for";
+  if (accepted.extra?.[PRICE_STAMP_IN_EXTRA] !== ours.extra[PRICE_STAMP_IN_EXTRA]) {
+    return "the payment was made against a different stamped price from the one saved for this order";
   }
   return null;
 }

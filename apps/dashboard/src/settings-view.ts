@@ -8,6 +8,7 @@
 import { readinessOf, type SurfaceMode, UNKNOWN } from "@agentify/core";
 import { type CommissionRate, percentagesOf } from "@agentify/core/published";
 import type { RecordedPayoutSplit } from "@agentify/gateway";
+import { withUnit } from "@agentify/ui/units";
 import { MERCHANT_FINDINGS, type PayoutWallet } from "@nuanu-ai/agentify-contracts";
 import { SIGN_OUT_EVERYWHERE } from "./control-labels.js";
 import type { PayoutSplits } from "./gateway.js";
@@ -282,7 +283,7 @@ const payoutView = (
     wallet: split.merchantWallet,
   }));
   const one = new Set(pays.map((pair) => pair.wallet.toLowerCase())).size === 1;
-  const amount = brings === UNKNOWN ? null : `${usdcOf(brings)} ${TOKEN_ON[mode]}`;
+  const amount = brings === UNKNOWN ? null : withUnit(usdcOf(brings), TOKEN_ON[mode]);
   return {
     kind: "send",
     said: [

@@ -72,7 +72,7 @@ by merchant", preserves the original payment and history, and attributes any
 refund or agreement claim to the merchant. A missed deadline establishes
 unfulfilled delivery, not a required whole-price refund. A shop connector adapts
 the shop to the public contracts; the core and SDK acquire no shop-specific
-business rules. Closure does not undo delivery or cancel a payment already
+business rules. A connector's needs alone do not justify expanding a public contract. Closure does not undo delivery or cancel a payment already
 accepted for execution (ADR-0028; the product owner, 2026-10-19).
 
 ## Git
@@ -169,6 +169,8 @@ accepted for execution (ADR-0028; the product owner, 2026-10-19).
   sessions, without a glossary and without git archaeology.
 
 ## Code
+- Before writing, changing, reviewing or auditing tests, read
+  `.agents/skills/test-audit/SKILL.md` and its Agentify proof policy.
 - TDD red→green. The hand-over ritual: a mutation self-check, a negative
   control, a run outside the fixtures, an adversarial review by a separate
   agent (three rounds at most; repeats of one class are a signal of a missing

@@ -84,54 +84,57 @@ describe("dashboard magic links", () => {
     }
   });
 
-  it("keeps two links independent and creates a person only when each is opened", async () => {
-    const { identity, messages, rows } = memoryIdentity();
+  it.each(["settings", "woocommerce"] as const)(
+    "keeps two links independent through destination %s",
+    async (destination) => {
+      const { identity, messages, rows } = memoryIdentity();
 
-    await expect(
-      identity.requestLink(" Person@Example.com ", "default", ONE_CLIENT),
-    ).resolves.toStrictEqual({
-      status: "accepted",
-      retryAt: expect.any(Date),
-    });
-    rewindLinkSends(rows);
-    await expect(
-      identity.requestLink("person@example.com", "settings", ONE_CLIENT),
-    ).resolves.toStrictEqual({
-      status: "accepted",
-      retryAt: expect.any(Date),
-    });
+      await expect(
+        identity.requestLink(" Person@Example.com ", "default", ONE_CLIENT),
+      ).resolves.toStrictEqual({
+        status: "accepted",
+        retryAt: expect.any(Date),
+      });
+      rewindLinkSends(rows);
+      await expect(
+        identity.requestLink("person@example.com", destination, ONE_CLIENT),
+      ).resolves.toStrictEqual({
+        status: "accepted",
+        retryAt: expect.any(Date),
+      });
 
-    expect(rows.dashboard_accounts).toHaveLength(0);
-    expect(rows.dashboard_sessions).toHaveLength(0);
-    expect(messages).toHaveLength(2);
-    const firstToken = tokenIn(messages[0] as Message);
-    const secondToken = tokenIn(messages[1] as Message);
-    expect(firstToken).not.toBe(secondToken);
-    expect(rows.dashboard_verifications?.map((row) => row.identifier)).toStrictEqual([
-      createHash("sha256").update(firstToken).digest("base64url"),
-      createHash("sha256").update(secondToken).digest("base64url"),
-    ]);
+      expect(rows.dashboard_accounts).toHaveLength(0);
+      expect(rows.dashboard_sessions).toHaveLength(0);
+      expect(messages).toHaveLength(2);
+      const firstToken = tokenIn(messages[0] as Message);
+      const secondToken = tokenIn(messages[1] as Message);
+      expect(firstToken).not.toBe(secondToken);
+      expect(rows.dashboard_verifications?.map((row) => row.identifier)).toStrictEqual([
+        createHash("sha256").update(firstToken).digest("base64url"),
+        createHash("sha256").update(secondToken).digest("base64url"),
+      ]);
 
-    const first = await identity.openLink(firstToken);
-    expect(first).toMatchObject({
-      status: "opened",
-      destination: "default",
-      person: { email: "person@example.com", confirmed: true, merchant: null },
-    });
-    expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(rows.dashboard_sessions).toHaveLength(1);
+      const first = await identity.openLink(firstToken);
+      expect(first).toMatchObject({
+        status: "opened",
+        destination: "default",
+        person: { email: "person@example.com", confirmed: true, merchant: null },
+      });
+      expect(rows.dashboard_accounts).toHaveLength(1);
+      expect(rows.dashboard_sessions).toHaveLength(1);
 
-    await expect(identity.openLink(firstToken)).resolves.toStrictEqual({ status: "refused" });
+      await expect(identity.openLink(firstToken)).resolves.toStrictEqual({ status: "refused" });
 
-    const second = await identity.openLink(secondToken);
-    expect(second).toMatchObject({
-      status: "opened",
-      destination: "settings",
-      person: { id: first.status === "opened" ? first.person.id : "wrong person" },
-    });
-    expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(rows.dashboard_sessions).toHaveLength(2);
-  });
+      const second = await identity.openLink(secondToken);
+      expect(second).toMatchObject({
+        status: "opened",
+        destination,
+        person: { id: first.status === "opened" ? first.person.id : "wrong person" },
+      });
+      expect(rows.dashboard_accounts).toHaveLength(1);
+      expect(rows.dashboard_sessions).toHaveLength(2);
+    },
+  );
 
   it("sends nothing and spends nothing when a second link is asked for inside the minute", async () => {
     const { identity, messages, rows } = memoryIdentity();
@@ -224,15 +227,6 @@ describe("dashboard magic links", () => {
     expect(refused).toMatchObject({ status: "cooldown", wall: "hourly" });
     if (refused.status !== "cooldown") throw new Error("the fourth link should be refused");
     expect(refused.retryAt.getTime() - Date.now()).toBeGreaterThan(LINK_MIN_INTERVAL_MS);
-  });
-
-  it("keeps the Woo destination inside the one-time dashboard claim", async () => {
-    const { identity, messages } = memoryIdentity();
-    await identity.requestLink("person@example.com", "woocommerce", ONE_CLIENT);
-
-    const opened = await identity.openLink(tokenIn(messages[0] as Message));
-
-    expect(opened).toMatchObject({ status: "opened", destination: "woocommerce" });
   });
 
   it("refuses a token whose recorded destination is outside the closed set, spending nothing", async () => {
@@ -378,23 +372,11 @@ describe("sign-in links counted per client and across the channel", () => {
       identity.requestLink("one-more@example.com", "default", ELSEWHERE),
     ).resolves.toMatchObject({ status: "accepted" });
     expect(messages.at(-1)?.to).toBe("one-more@example.com");
-  });
-
-  it("lets a client's links out again once its hour has passed", async () => {
-    const { identity, rows } = memoryIdentity();
-    for (let sent = 0; sent < LINK_CLIENT_LIMIT; sent += 1) {
-      await identity.requestLink(`person-${sent}@example.com`, "default", CROWDED);
-    }
-    expect(await identity.requestLink("one-more@example.com", "default", CROWDED)).toMatchObject({
-      status: "cooldown",
-      wall: "client",
-    });
-
     rewindLinkSends(rows, LINK_RATE_WINDOW_MS);
-
     await expect(
-      identity.requestLink("one-more@example.com", "default", CROWDED),
+      identity.requestLink("after-the-hour@example.com", "default", CROWDED),
     ).resolves.toMatchObject({ status: "accepted" });
+    expect(messages.at(-1)?.to).toBe("after-the-hour@example.com");
   });
 
   it("refuses every client and address once the channel has sent its hour's links, and lets them out once the hour has passed", async () => {
@@ -408,6 +390,7 @@ describe("sign-in links counted per client and across the channel", () => {
 
     for (const [email, asker] of [
       ["fresh@example.com", ELSEWHERE],
+      ["proxy@example.com", { client: "::ffff:10.20.10.11" }],
       ["person-0@example.com", CROWDED],
     ] as const) {
       await expect(identity.requestLink(email, "default", asker)).resolves.toStrictEqual({
@@ -502,18 +485,6 @@ describe("sign-in links counted per client and across the channel", () => {
     ).resolves.toMatchObject({ status: "accepted" });
   });
 
-  it("still stops visitors arriving through one private proxy address at the channel's ceiling", async () => {
-    const { identity, messages } = memoryIdentity();
-    for (let sent = 0; sent < LINK_CHANNEL_LIMIT; sent += 1) {
-      await identity.requestLink(`person-${sent}@example.com`, "default", clientOf(sent));
-    }
-
-    await expect(
-      identity.requestLink("one-more@example.com", "default", { client: "::ffff:10.20.10.11" }),
-    ).resolves.toMatchObject({ status: "cooldown", wall: "ceiling" });
-    expect(messages).toHaveLength(LINK_CHANNEL_LIMIT);
-  });
-
   it("writes one warning naming the purpose and the window, and no address, when the ceiling first refuses in a window", async () => {
     const warned = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
@@ -545,42 +516,29 @@ describe("sign-in links counted per client and across the channel", () => {
     }
   });
 
-  it("keeps an address to one link a minute and three an hour behind a private proxy address too", async () => {
-    const { identity, rows } = memoryIdentity();
-    const proxy = { client: "10.20.10.11" };
-    await identity.requestLink("person@example.com", "default", proxy);
-    await expect(
-      identity.requestLink("person@example.com", "default", proxy),
-    ).resolves.toMatchObject({ status: "cooldown", wall: "interval" });
-    for (let sent = 0; sent < 2; sent += 1) {
-      rewindLinkSends(rows);
-      await identity.requestLink("person@example.com", "default", proxy);
-    }
-    rewindLinkSends(rows);
-    await expect(
-      identity.requestLink("person@example.com", "default", proxy),
-    ).resolves.toMatchObject({ status: "cooldown", wall: "hourly" });
-  });
+  it.each([false, true])(
+    "keeps the address minute/hour limits through a private proxy: %s",
+    async (privateProxy) => {
+      const clientAt = (n: number) => (privateProxy ? "10.20.10.11" : `192.0.2.${n}`);
+      const { identity, messages, rows } = memoryIdentity();
+      await identity.requestLink("person@example.com", "default", { client: clientAt(1) });
 
-  it("keeps an address to one link a minute and three an hour whichever client asks", async () => {
-    const { identity, messages, rows } = memoryIdentity();
-    await identity.requestLink("person@example.com", "default", { client: "192.0.2.1" });
-
-    await expect(
-      identity.requestLink("person@example.com", "default", { client: "192.0.2.2" }),
-    ).resolves.toMatchObject({ status: "cooldown", wall: "interval" });
-    for (const client of ["192.0.2.3", "192.0.2.4"]) {
+      await expect(
+        identity.requestLink("person@example.com", "default", { client: clientAt(2) }),
+      ).resolves.toMatchObject({ status: "cooldown", wall: "interval" });
+      for (const client of [clientAt(3), clientAt(4)]) {
+        rewindLinkSends(rows);
+        await expect(
+          identity.requestLink("person@example.com", "default", { client }),
+        ).resolves.toMatchObject({ status: "accepted" });
+      }
       rewindLinkSends(rows);
       await expect(
-        identity.requestLink("person@example.com", "default", { client }),
-      ).resolves.toMatchObject({ status: "accepted" });
-    }
-    rewindLinkSends(rows);
-    await expect(
-      identity.requestLink("person@example.com", "default", { client: "192.0.2.5" }),
-    ).resolves.toMatchObject({ status: "cooldown", wall: "hourly" });
-    expect(messages).toHaveLength(3);
-  });
+        identity.requestLink("person@example.com", "default", { client: clientAt(5) }),
+      ).resolves.toMatchObject({ status: "cooldown", wall: "hourly" });
+      expect(messages).toHaveLength(3);
+    },
+  );
 
   it("names the client's hour, not the address's minute, when waiting out the minute would change nothing", async () => {
     const { identity } = memoryIdentity();
@@ -661,6 +619,10 @@ describe("the registration a link asked for with an ad's click leaves for the tr
         settledAt: null,
       },
     ]);
+    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toStrictEqual({
+      status: "refused",
+    });
+    expect(registrationsIn(rows)).toHaveLength(1);
     const registration = registrationsIn(rows)[0];
     // Due at once: nothing about a new registration is worth waiting for.
     const due = new Date(registration?.nextAttemptAt as Date).getTime();
@@ -727,10 +689,14 @@ describe("the registration a link asked for with an ad's click leaves for the tr
 
   it("leaves no registration when the link was asked for without a click", async () => {
     const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", ONE_CLIENT);
+    await identity.requestLink("person@example.com", "settings", ONE_CLIENT);
 
+    expect(JSON.parse(String(rows.dashboard_verifications?.[0]?.value))).not.toHaveProperty(
+      "clickId",
+    );
     await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
       status: "opened",
+      destination: "settings",
       person: { confirmed: true },
     });
 
@@ -782,17 +748,6 @@ describe("the registration a link asked for with an ad's click leaves for the tr
     expect(rows.dashboard_accounts).toHaveLength(0);
     expect(rows.dashboard_sessions).toHaveLength(0);
     expect(adReportsIn(rows)).toStrictEqual([]);
-  });
-
-  it("leaves one registration when the same link is opened twice", async () => {
-    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "default", { ...ONE_CLIENT, clickId: CLICK });
-    const token = tokenIn(messages[0] as Message);
-
-    await expect(identity.openLink(token)).resolves.toMatchObject({ status: "opened" });
-    await expect(identity.openLink(token)).resolves.toStrictEqual({ status: "refused" });
-
-    expect(registrationsIn(rows)).toHaveLength(1);
   });
 
   it("writes nothing when the landing page reads a link asked for with a click", async () => {
@@ -865,26 +820,6 @@ describe("the registration a link asked for with an ad's click leaves for the tr
       { accountId: bystander.person.id, clickId: ANOTHER_CLICK },
     ]);
     expect(registrationsIn(rows)).toHaveLength(1);
-  });
-
-  it("still opens a link stored in the shape without a click, and writes no registration", async () => {
-    const { identity, messages, rows } = memoryIdentity("accepted", reporting);
-    await identity.requestLink("person@example.com", "settings", { ...ONE_CLIENT, clickId: CLICK });
-    const verification = rows.dashboard_verifications?.[0];
-    if (verification === undefined) throw new Error("the link was not stored");
-    verification.value = JSON.stringify({
-      email: "person@example.com",
-      destination: "settings",
-      request: null,
-    });
-
-    await expect(identity.openLink(tokenIn(messages[0] as Message))).resolves.toMatchObject({
-      status: "opened",
-      destination: "settings",
-    });
-
-    expect(rows.dashboard_accounts).toHaveLength(1);
-    expect(adReportsIn(rows)).toStrictEqual([]);
   });
 
   it("opens nothing and writes nothing for a stored click outside the closed set", async () => {

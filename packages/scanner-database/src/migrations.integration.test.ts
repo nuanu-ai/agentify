@@ -81,23 +81,86 @@ afterAll(async () => {
   await adminPool.end();
 });
 
-describe("initial database migration", () => {
-  it("migrates up and enforces RLS and idempotency", async () => {
-    const { db, pool } = createDatabase(connectionString, { max: 5 });
+describe("the migrated scanner database", () => {
+  const withDatabase = async (
+    check: (database: ReturnType<typeof createDatabase>) => Promise<void>,
+  ) => {
+    await resetDatabase();
+    const database = createDatabase(connectionString, { max: 5 });
+    const environment = { ...process.env };
     try {
-      await migrateDatabase(db, migrationsFolder);
+      await migrateDatabase(database.db, migrationsFolder);
+      await check(database);
+    } finally {
+      process.env = environment;
+      await database.pool.end();
+    }
+  };
+  const seedScan = async (pool: Pool) => {
+    const sessionId = createUuidV7();
+    await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, $2)", [
+      sessionId,
+      "anon-hash",
+    ]);
+    const scanValues = [
+      createUuidV7(),
+      sessionId,
+      "store",
+      "gtm-v1.0.0",
+      "https://example.com/",
+      "https://example.com/",
+      "example.com",
+      "target-hash",
+      "token-hash",
+      new Date(Date.now() + 3_600_000),
+      "idem-hash",
+      "idem-body-hash",
+    ];
+    const insertScan = `insert into scans
+        (id, session_id, segment, rubric_version, submitted_url_redacted, canonical_target_url,
+         target_host, target_hash, access_token_hash, access_token_expires_at, idempotency_key_hash,
+         idempotency_body_hash)
+        values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`;
+    await pool.query(insertScan, scanValues);
+    return { sessionId, scanValues, insertScan };
+  };
+  const seedConsent = async (pool: Pool, sessionId: string) => {
+    // Snapshots the deployed channels hold also name card_signal, a category
+    // the policy does not, as this one does.
+    const consentSnapshotId = createUuidV7();
+    await pool.query(
+      "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
+      [
+        consentSnapshotId,
+        sessionId,
+        JSON.stringify({
+          essential_processing: true,
+          product_analytics: true,
+          ads_measurement: true,
+          marketing_email: false,
+          dataset_reuse: false,
+          card_signal: false,
+        }),
+      ],
+    );
 
-      const tableRows = await pool.query<{
-        tablename: string;
-        rowsecurity: boolean;
-      }>(
-        "select tablename, rowsecurity from pg_tables where schemaname = 'public' order by tablename",
-      );
-      expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
-      expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
-      // Data the product does not keep is dropped, not only left unread.
-      const deletedColumns = await pool.query(
-        `select table_name, column_name from information_schema.columns
+    return consentSnapshotId;
+  };
+  it(
+    "installs the public schema, removes retired data and denies unprivileged reads",
+    async () =>
+      withDatabase(async ({ pool }) => {
+        const tableRows = await pool.query<{
+          tablename: string;
+          rowsecurity: boolean;
+        }>(
+          "select tablename, rowsecurity from pg_tables where schemaname = 'public' order by tablename",
+        );
+        expect(tableRows.rows.map(({ tablename }) => tablename)).toEqual([...TABLES].sort());
+        expect(tableRows.rows.every(({ rowsecurity }) => rowsecurity)).toBe(true);
+        // Data the product does not keep is dropped, not only left unread.
+        const deletedColumns = await pool.query(
+          `select table_name, column_name from information_schema.columns
          where table_schema = 'public'
            and ((table_name = 'scans' and column_name in ('cache_hit', 'source_scan_id'))
              or (table_name = 'browser_observations'
@@ -108,308 +171,382 @@ describe("initial database migration", () => {
                  and column_name in ('supabase_user_id', 'name', 'volume_bucket', 'data_access_requested_at'))
              or (table_name = 'sessions' and column_name = 'geo_country')
              or (table_name = 'consent_snapshots' and column_name = 'country'))`,
-      );
-      expect(deletedColumns.rows).toEqual([]);
-      // A delivery goes to PostHog or to Meta; the scanner has no other destination.
-      const destinations = await pool.query<{ destination: string }>(
-        "select unnest(enum_range(null::delivery_destination))::text as destination",
-      );
-      expect(destinations.rows.map(({ destination }) => destination)).toEqual(["posthog", "meta"]);
+        );
+        expect(deletedColumns.rows).toEqual([]);
+        // A delivery goes to PostHog or to Meta; the scanner has no other destination.
+        const destinations = await pool.query<{ destination: string }>(
+          "select unnest(enum_range(null::delivery_destination))::text as destination",
+        );
+        expect(destinations.rows.map(({ destination }) => destination)).toEqual([
+          "posthog",
+          "meta",
+        ]);
 
-      const oldWorkerStart = new Date("2026-07-12T10:00:00.000Z");
-      const newWorkerStart = new Date("2026-07-12T11:00:00.000Z");
-      await recordWorkerHeartbeat(db, {
-        workerId: "restart-fence-worker",
-        service: "scanner-worker",
-        startedAt: oldWorkerStart,
-        metadata: { generation: "old" },
-      });
-      await recordWorkerHeartbeat(db, {
-        workerId: "restart-fence-worker",
-        service: "scanner-worker",
-        startedAt: newWorkerStart,
-        metadata: { generation: "new" },
-      });
-      await recordWorkerHeartbeat(db, {
-        workerId: "restart-fence-worker",
-        service: "scanner-worker",
-        startedAt: oldWorkerStart,
-        metadata: { generation: "stale" },
-      });
-      const restartFence = await pool.query<{
-        started_at: Date;
-        metadata: { generation: string };
-      }>(
-        "select started_at, metadata from worker_heartbeats where worker_id = 'restart-fence-worker'",
-      );
-      expect(restartFence.rows[0]?.started_at.toISOString()).toBe(newWorkerStart.toISOString());
-      expect(restartFence.rows[0]?.metadata).toEqual({ generation: "new" });
-
-      const sessionId = createUuidV7();
-      await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, $2)", [
-        sessionId,
-        "anon-hash",
-      ]);
-      const scanValues = [
-        createUuidV7(),
-        sessionId,
-        "store",
-        "gtm-v1.0.0",
-        "https://example.com/",
-        "https://example.com/",
-        "example.com",
-        "target-hash",
-        "token-hash",
-        new Date(Date.now() + 3_600_000),
-        "idem-hash",
-        "idem-body-hash",
-      ];
-      const insertScan = `insert into scans
+        const { sessionId } = await seedScan(pool);
+        expect(
+          (await pool.query("select id from sessions where id = $1", [sessionId])).rowCount,
+        ).toBe(1);
+        const reader = await pool.connect();
+        try {
+          await reader.query(
+            "BEGIN; CREATE ROLE audit_rls_reader NOLOGIN; GRANT USAGE ON SCHEMA public TO audit_rls_reader; GRANT SELECT ON ALL TABLES IN SCHEMA public TO audit_rls_reader; SET LOCAL ROLE audit_rls_reader",
+          );
+          for (const table of TABLES)
+            expect(
+              (await reader.query(`select count(*)::int as n from ${table}`)).rows,
+              table,
+            ).toEqual([{ n: 0 }]);
+        } finally {
+          await reader.query("ROLLBACK");
+          reader.release();
+        }
+      }),
+    20_000,
+  );
+  it(
+    "fences a stale worker heartbeat after a restart",
+    async () =>
+      withDatabase(async ({ db, pool }) => {
+        const oldWorkerStart = new Date("2026-07-12T10:00:00.000Z");
+        const newWorkerStart = new Date("2026-07-12T11:00:00.000Z");
+        await recordWorkerHeartbeat(db, {
+          workerId: "restart-fence-worker",
+          service: "scanner-worker",
+          startedAt: oldWorkerStart,
+          metadata: { generation: "old" },
+        });
+        await recordWorkerHeartbeat(db, {
+          workerId: "restart-fence-worker",
+          service: "scanner-worker",
+          startedAt: newWorkerStart,
+          metadata: { generation: "new" },
+        });
+        await recordWorkerHeartbeat(db, {
+          workerId: "restart-fence-worker",
+          service: "scanner-worker",
+          startedAt: oldWorkerStart,
+          metadata: { generation: "stale" },
+        });
+        const restartFence = await pool.query<{
+          started_at: Date;
+          metadata: { generation: string };
+        }>(
+          "select started_at, metadata from worker_heartbeats where worker_id = 'restart-fence-worker'",
+        );
+        expect(restartFence.rows[0]?.started_at.toISOString()).toBe(newWorkerStart.toISOString());
+        expect(restartFence.rows[0]?.metadata).toEqual({ generation: "new" });
+      }),
+    20_000,
+  );
+  it(
+    "rejects duplicate scan idempotency and non-v7 identifiers",
+    async () =>
+      withDatabase(async ({ pool }) => {
+        const sessionId = createUuidV7();
+        await pool.query("insert into sessions (id, anonymous_id_hash) values ($1, $2)", [
+          sessionId,
+          "anon-hash",
+        ]);
+        const scanValues = [
+          createUuidV7(),
+          sessionId,
+          "store",
+          "gtm-v1.0.0",
+          "https://example.com/",
+          "https://example.com/",
+          "example.com",
+          "target-hash",
+          "token-hash",
+          new Date(Date.now() + 3_600_000),
+          "idem-hash",
+          "idem-body-hash",
+        ];
+        const insertScan = `insert into scans
         (id, session_id, segment, rubric_version, submitted_url_redacted, canonical_target_url,
          target_host, target_hash, access_token_hash, access_token_expires_at, idempotency_key_hash,
          idempotency_body_hash)
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`;
-      await pool.query(insertScan, scanValues);
-      await expect(
-        pool.query(insertScan, [createUuidV7(), ...scanValues.slice(1)]),
-      ).rejects.toMatchObject({
-        code: "23505",
-      });
-      await expect(
-        pool.query(
-          "insert into sessions (id, anonymous_id_hash) values ('550e8400-e29b-41d4-a716-446655440000', 'bad-v4')",
-        ),
-      ).rejects.toMatchObject({ code: "23514" });
-
-      const browserObservationId = createUuidV7();
-      const browserOperationId = createUuidV7();
-      await pool.query(
-        `insert into browser_observations
+        await pool.query(insertScan, scanValues);
+        await expect(
+          pool.query(insertScan, [createUuidV7(), ...scanValues.slice(1)]),
+        ).rejects.toMatchObject({
+          code: "23505",
+        });
+        await expect(
+          pool.query(
+            "insert into sessions (id, anonymous_id_hash) values ('550e8400-e29b-41d4-a716-446655440000', 'bad-v4')",
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+      }),
+    20_000,
+  );
+  it(
+    "fences stale browser leases and rejects invalid observation records",
+    async () =>
+      withDatabase(async ({ db, pool }) => {
+        const { scanValues } = await seedScan(pool);
+        const browserObservationId = createUuidV7();
+        const browserOperationId = createUuidV7();
+        await pool.query(
+          `insert into browser_observations
           (id, scan_id, observation_version, operation_id, operation_key,
            actor_id, actor_build)
          values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
-        [
-          browserObservationId,
-          scanValues[0],
-          browserOperationId,
-          `browser:${scanValues[0]}`,
-          "owner/agentify-browser-observer",
-          "1.0.42",
-        ],
-      );
-      const browserRepository = createBrowserObservationRepository(db);
-      const browserJob = {
-        observation_id: browserObservationId,
-        operation_id: browserOperationId,
-        attempt_no: 1 as const,
-      };
-      const firstLease = await browserRepository.claim(
-        browserJob,
-        new Date("2026-07-13T00:00:00.000Z"),
-        1_000,
-      );
-      expect(firstLease.state).toBe("claimed");
-      const secondLease = await browserRepository.claim(
-        browserJob,
-        new Date("2026-07-13T00:00:01.001Z"),
-        1_000,
-      );
-      expect(secondLease.state).toBe("claimed");
-      if (firstLease.state !== "claimed" || secondLease.state !== "claimed")
-        throw new Error("browser lease setup failed");
-      expect(secondLease.observation.leaseToken).not.toBe(firstLease.observation.leaseToken);
-      await expect(
-        browserRepository.attachRun(
-          browserObservationId,
-          firstLease.observation.leaseToken,
-          "stale-run",
-          new Date("2026-07-13T00:00:01.001Z"),
-          1_000,
-        ),
-      ).resolves.toBe("owned_elsewhere");
-      await expect(
-        browserRepository.attachRun(
-          browserObservationId,
-          secondLease.observation.leaseToken,
-          "current-run",
-          new Date("2026-07-13T00:00:01.001Z"),
-          1_000,
-        ),
-      ).resolves.toBe("attached");
-      await expect(
-        browserRepository.heartbeat(
-          browserObservationId,
-          firstLease.observation.leaseToken,
-          new Date("2026-07-13T00:00:01.002Z"),
-          1_000,
-        ),
-      ).resolves.toBe(false);
-      const staleOutput = {
-        schema_version: BROWSER_OBSERVATION_VERSION,
-        operation_id: browserOperationId,
-        actor_build: "1.0.42",
-        status: "completed" as const,
-        pages_assessed: 1,
-        observations: BROWSER_OBSERVATION_IDS.map((id) => ({
-          id,
-          status: "unavailable" as const,
-          summary_code: "browser_observation_unavailable",
-          evidence: {},
-        })),
-        timings: { total_ms: 1 },
-      };
-      await expect(
-        browserRepository.complete(
-          browserObservationId,
-          firstLease.observation.leaseToken,
-          staleOutput,
-          { usageUsd: 0.01, finishedAt: new Date("2026-07-13T00:00:01.002Z") },
-        ),
-      ).resolves.toBe("fenced");
-      await expect(
-        browserRepository.markTerminal(
-          browserObservationId,
-          firstLease.observation.leaseToken,
-          "failed",
-          "stale_worker_must_not_commit",
-          { at: new Date("2026-07-13T00:00:01.003Z") },
-        ),
-      ).resolves.toBe(false);
-      await expect(
-        browserRepository.markTerminal(
-          browserObservationId,
-          secondLease.observation.leaseToken,
-          "failed",
-          "current_worker_commit",
-          { at: new Date("2026-07-13T00:00:01.004Z"), usageUsd: 0 },
-        ),
-      ).resolves.toBe(true);
-
-      const budgetRows: Array<{
-        observationId: string;
-        operationId: string;
-        leaseToken: string;
-      }> = [];
-      for (const index of [0, 1]) {
-        const budgetScanId = createUuidV7();
-        await pool.query(insertScan, [
-          budgetScanId,
-          sessionId,
-          "owner",
-          "gtm-v1.0.0",
-          `https://budget-${index}.example/`,
-          `https://budget-${index}.example/`,
-          `budget-${index}.example`,
-          `budget-target-${index}`,
-          `budget-token-${index}`,
-          new Date(Date.now() + 3_600_000),
-          `budget-idem-${index}`,
-          `budget-body-${index}`,
-        ]);
-        const observationId = createUuidV7();
-        const operationId = createUuidV7();
-        await pool.query(
-          `insert into browser_observations
-            (id, scan_id, observation_version, operation_id, operation_key,
-             actor_id, actor_build)
-           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
           [
-            observationId,
-            budgetScanId,
-            operationId,
-            `budget-operation-${index}`,
+            browserObservationId,
+            scanValues[0],
+            browserOperationId,
+            `browser:${scanValues[0]}`,
             "owner/agentify-browser-observer",
             "1.0.42",
           ],
         );
-        const claim = await browserRepository.claim(
-          {
-            observation_id: observationId,
-            operation_id: operationId,
-            attempt_no: 1,
-          },
-          new Date("2026-07-13T02:00:00.000Z"),
+        const browserRepository = createBrowserObservationRepository(db);
+        const browserJob = {
+          observation_id: browserObservationId,
+          operation_id: browserOperationId,
+          attempt_no: 1 as const,
+        };
+        const firstLease = await browserRepository.claim(
+          browserJob,
+          new Date("2026-07-13T00:00:00.000Z"),
+          1_000,
         );
-        if (claim.state !== "claimed") throw new Error("budget claim failed");
-        budgetRows.push({
-          observationId,
-          operationId,
-          leaseToken: claim.observation.leaseToken,
-        });
-      }
-      const budgetResults = await Promise.all(
-        budgetRows.map((row) =>
-          browserRepository.reserveDailyBudget(
-            row.observationId,
-            row.leaseToken,
-            0.05,
-            0.05,
-            new Date("2026-07-13T02:00:01.000Z"),
+        expect(firstLease.state).toBe("claimed");
+        const secondLease = await browserRepository.claim(
+          browserJob,
+          new Date("2026-07-13T00:00:01.001Z"),
+          1_000,
+        );
+        expect(secondLease.state).toBe("claimed");
+        if (firstLease.state !== "claimed" || secondLease.state !== "claimed")
+          throw new Error("browser lease setup failed");
+        expect(secondLease.observation.leaseToken).not.toBe(firstLease.observation.leaseToken);
+        await expect(
+          browserRepository.attachRun(
+            browserObservationId,
+            firstLease.observation.leaseToken,
+            "stale-run",
+            new Date("2026-07-13T00:00:01.001Z"),
+            1_000,
           ),
-        ),
-      );
-      expect([...budgetResults].sort()).toEqual(["exhausted", "reserved"]);
-      const reservedIndex = budgetResults.indexOf("reserved");
-      const reservedRow = budgetRows[reservedIndex];
-      if (!reservedRow) throw new Error("no row reserved the browser observation budget");
-      await expect(
-        browserRepository.attachRun(
-          reservedRow.observationId,
-          reservedRow.leaseToken,
-          "budget-run-final-cost",
-          new Date("2026-07-13T02:00:01.500Z"),
-        ),
-      ).resolves.toBe("attached");
-      await expect(
-        browserRepository.markTerminal(
-          reservedRow.observationId,
-          reservedRow.leaseToken,
-          "failed",
-          "provider_failed",
-          {
-            at: new Date("2026-07-13T02:00:02.000Z"),
-            usageUsd: 0.002521,
-          },
-        ),
-      ).resolves.toBe(true);
-      const budgetLedger = await pool.query<{
-        reserved_usd: string;
-        usage_usd: string;
-      }>(
-        "select reserved_usd::text, usage_usd::text from browser_observation_budget_days where budget_day = '2026-07-13'",
-      );
-      expect(Number(budgetLedger.rows[0]?.reserved_usd)).toBe(0.047479);
-      expect(Number(budgetLedger.rows[0]?.usage_usd)).toBe(0.002521);
+        ).resolves.toBe("owned_elsewhere");
+        await expect(
+          browserRepository.attachRun(
+            browserObservationId,
+            secondLease.observation.leaseToken,
+            "current-run",
+            new Date("2026-07-13T00:00:01.001Z"),
+            1_000,
+          ),
+        ).resolves.toBe("attached");
+        await expect(
+          browserRepository.heartbeat(
+            browserObservationId,
+            firstLease.observation.leaseToken,
+            new Date("2026-07-13T00:00:01.002Z"),
+            1_000,
+          ),
+        ).resolves.toBe(false);
+        const staleOutput = {
+          schema_version: BROWSER_OBSERVATION_VERSION,
+          operation_id: browserOperationId,
+          actor_build: "1.0.42",
+          status: "completed" as const,
+          pages_assessed: 1,
+          observations: BROWSER_OBSERVATION_IDS.map((id) => ({
+            id,
+            status: "unavailable" as const,
+            summary_code: "browser_observation_unavailable",
+            evidence: {},
+          })),
+          timings: { total_ms: 1 },
+        };
+        await expect(
+          browserRepository.complete(
+            browserObservationId,
+            firstLease.observation.leaseToken,
+            staleOutput,
+            { usageUsd: 0.01, finishedAt: new Date("2026-07-13T00:00:01.002Z") },
+          ),
+        ).resolves.toBe("fenced");
+        await expect(
+          browserRepository.markTerminal(
+            browserObservationId,
+            firstLease.observation.leaseToken,
+            "failed",
+            "stale_worker_must_not_commit",
+            { at: new Date("2026-07-13T00:00:01.003Z") },
+          ),
+        ).resolves.toBe(false);
+        await expect(
+          browserRepository.markTerminal(
+            browserObservationId,
+            secondLease.observation.leaseToken,
+            "failed",
+            "current_worker_commit",
+            { at: new Date("2026-07-13T00:00:01.004Z"), usageUsd: 0 },
+          ),
+        ).resolves.toBe(true);
 
-      const reconciliation = await browserRepository.reconcileUsage(
-        reservedRow.observationId,
-        "budget-run-final-cost",
-        0.002566,
-        new Date("2026-07-13T02:31:00.000Z"),
-      );
-      expect(reconciliation.state).toBe("updated");
-      expect(reconciliation.deltaUsd).toBeCloseTo(0.000045, 10);
-      expect(reconciliation.dayTotalUsd).toBe(0.002566);
-      await expect(
-        browserRepository.reconcileUsage(
+        await expect(
+          pool.query(
+            `insert into browser_observations
+            (id, scan_id, observation_version, operation_id, operation_key,
+             actor_id, actor_build)
+           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
+            [
+              createUuidV7(),
+              scanValues[0],
+              createUuidV7(),
+              "duplicate-operation",
+              "owner/agentify-browser-observer",
+              "1.0.42",
+            ],
+          ),
+        ).rejects.toMatchObject({ code: "23505" });
+        await expect(
+          pool.query(
+            `insert into browser_observation_findings
+            (observation_id, finding_id, status, summary_code)
+           values ($1, 'form_semantics', 'pending', 'pending_is_invalid')`,
+            [browserObservationId],
+          ),
+        ).rejects.toMatchObject({ code: "23514" });
+      }),
+    20_000,
+  );
+  it(
+    "reserves concurrent browser budgets once and reconciles actual usage",
+    async () =>
+      withDatabase(async ({ db, pool }) => {
+        const { sessionId, insertScan } = await seedScan(pool);
+        const browserRepository = createBrowserObservationRepository(db);
+        const budgetRows: Array<{
+          observationId: string;
+          operationId: string;
+          leaseToken: string;
+        }> = [];
+        for (const index of [0, 1]) {
+          const budgetScanId = createUuidV7();
+          await pool.query(insertScan, [
+            budgetScanId,
+            sessionId,
+            "owner",
+            "gtm-v1.0.0",
+            `https://budget-${index}.example/`,
+            `https://budget-${index}.example/`,
+            `budget-${index}.example`,
+            `budget-target-${index}`,
+            `budget-token-${index}`,
+            new Date(Date.now() + 3_600_000),
+            `budget-idem-${index}`,
+            `budget-body-${index}`,
+          ]);
+          const observationId = createUuidV7();
+          const operationId = createUuidV7();
+          await pool.query(
+            `insert into browser_observations
+            (id, scan_id, observation_version, operation_id, operation_key,
+             actor_id, actor_build)
+           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
+            [
+              observationId,
+              budgetScanId,
+              operationId,
+              `budget-operation-${index}`,
+              "owner/agentify-browser-observer",
+              "1.0.42",
+            ],
+          );
+          const claim = await browserRepository.claim(
+            {
+              observation_id: observationId,
+              operation_id: operationId,
+              attempt_no: 1,
+            },
+            new Date("2026-07-13T02:00:00.000Z"),
+          );
+          if (claim.state !== "claimed") throw new Error("budget claim failed");
+          budgetRows.push({
+            observationId,
+            operationId,
+            leaseToken: claim.observation.leaseToken,
+          });
+        }
+        const budgetResults = await Promise.all(
+          budgetRows.map((row) =>
+            browserRepository.reserveDailyBudget(
+              row.observationId,
+              row.leaseToken,
+              0.05,
+              0.05,
+              new Date("2026-07-13T02:00:01.000Z"),
+            ),
+          ),
+        );
+        expect([...budgetResults].sort()).toEqual(["exhausted", "reserved"]);
+        const reservedIndex = budgetResults.indexOf("reserved");
+        const reservedRow = budgetRows[reservedIndex];
+        if (!reservedRow) throw new Error("no row reserved the browser observation budget");
+        await expect(
+          browserRepository.attachRun(
+            reservedRow.observationId,
+            reservedRow.leaseToken,
+            "budget-run-final-cost",
+            new Date("2026-07-13T02:00:01.500Z"),
+          ),
+        ).resolves.toBe("attached");
+        await expect(
+          browserRepository.markTerminal(
+            reservedRow.observationId,
+            reservedRow.leaseToken,
+            "failed",
+            "provider_failed",
+            {
+              at: new Date("2026-07-13T02:00:02.000Z"),
+              usageUsd: 0.002521,
+            },
+          ),
+        ).resolves.toBe(true);
+        const budgetLedger = await pool.query<{
+          reserved_usd: string;
+          usage_usd: string;
+        }>(
+          "select reserved_usd::text, usage_usd::text from browser_observation_budget_days where budget_day = '2026-07-13'",
+        );
+        expect(Number(budgetLedger.rows[0]?.reserved_usd)).toBe(0.047479);
+        expect(Number(budgetLedger.rows[0]?.usage_usd)).toBe(0.002521);
+
+        const reconciliation = await browserRepository.reconcileUsage(
           reservedRow.observationId,
           "budget-run-final-cost",
           0.002566,
-          new Date("2026-07-13T02:32:00.000Z"),
-        ),
-      ).resolves.toEqual({
-        state: "unchanged",
-        deltaUsd: 0,
-        dayTotalUsd: 0.002566,
-      });
-      const reconciledBudget = await pool.query<{
-        reserved_usd: string;
-        usage_usd: string;
-        observation_reserved_usd: string;
-        observation_usage_usd: string;
-        usage_reconciled_at: Date | null;
-      }>(
-        `select budget.reserved_usd::text, budget.usage_usd::text,
+          new Date("2026-07-13T02:31:00.000Z"),
+        );
+        expect(reconciliation.state).toBe("updated");
+        expect(reconciliation.deltaUsd).toBeCloseTo(0.000045, 10);
+        expect(reconciliation.dayTotalUsd).toBe(0.002566);
+        await expect(
+          browserRepository.reconcileUsage(
+            reservedRow.observationId,
+            "budget-run-final-cost",
+            0.002566,
+            new Date("2026-07-13T02:32:00.000Z"),
+          ),
+        ).resolves.toEqual({
+          state: "unchanged",
+          deltaUsd: 0,
+          dayTotalUsd: 0.002566,
+        });
+        const reconciledBudget = await pool.query<{
+          reserved_usd: string;
+          usage_usd: string;
+          observation_reserved_usd: string;
+          observation_usage_usd: string;
+          usage_reconciled_at: Date | null;
+        }>(
+          `select budget.reserved_usd::text, budget.usage_usd::text,
           observation.budget_reserved_usd::text as observation_reserved_usd,
           observation.usage_usd::text as observation_usage_usd,
           observation.usage_reconciled_at
@@ -417,452 +554,331 @@ describe("initial database migration", () => {
         join browser_observations observation
           on observation.budget_day = budget.budget_day
         where observation.id = $1`,
-        [reservedRow.observationId],
-      );
-      expect(Number(reconciledBudget.rows[0]?.reserved_usd)).toBe(0);
-      expect(Number(reconciledBudget.rows[0]?.usage_usd)).toBe(0.002566);
-      expect(Number(reconciledBudget.rows[0]?.observation_reserved_usd)).toBe(0);
-      expect(Number(reconciledBudget.rows[0]?.observation_usage_usd)).toBe(0.002566);
-      expect(reconciledBudget.rows[0]?.usage_reconciled_at).toBeInstanceOf(Date);
-
-      await expect(
-        pool.query(
-          `insert into browser_observations
-            (id, scan_id, observation_version, operation_id, operation_key,
-             actor_id, actor_build)
-           values ($1, $2, 'browser-public-v2.0.0', $3, $4, $5, $6)`,
-          [
-            createUuidV7(),
-            scanValues[0],
-            createUuidV7(),
-            "duplicate-operation",
-            "owner/agentify-browser-observer",
-            "1.0.42",
-          ],
-        ),
-      ).rejects.toMatchObject({ code: "23505" });
-      await expect(
-        pool.query(
-          `insert into browser_observation_findings
-            (observation_id, finding_id, status, summary_code)
-           values ($1, 'form_semantics', 'pending', 'pending_is_invalid')`,
-          [browserObservationId],
-        ),
-      ).rejects.toMatchObject({ code: "23514" });
-
-      // Snapshots the deployed channels hold also name card_signal, a category
-      // the policy does not, as this one does.
-      const consentSnapshotId = createUuidV7();
-      await pool.query(
-        "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
-        [
-          consentSnapshotId,
-          sessionId,
-          JSON.stringify({
-            essential_processing: true,
-            product_analytics: true,
-            ads_measurement: true,
-            marketing_email: false,
-            dataset_reuse: false,
-            card_signal: false,
-          }),
-        ],
-      );
-
-      const repository = createScanJobRepository(db);
-      const scanJob: ScanJobV1 = {
-        scan_id: scanValues[0] as string,
-        canonical_target_url: "https://example.com/",
-        segment: "store",
-        rubric_version: "gtm-v1.0.0",
-        deadline_at: new Date(Date.now() + 55_000).toISOString(),
-        attempt_no: 1,
-      };
-      const scanCheck: CheckResult = {
-        id: 1,
-        status: "pass",
-        nominalWeight: 5,
-        applicableWeight: 5,
-        earnedWeight: 5,
-        summaryCode: "robots_parseable",
-        evidence: { status: 200 },
-        userImpactCode: "robots_policy_discoverability",
-        durationMs: 1,
-      };
-      await expect(repository.claim(scanJob)).resolves.toBe("claimed");
-      await expect(repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date())).resolves.toBe(
-        true,
-      );
-      await expect(repository.claim({ ...scanJob, attempt_no: 2 })).resolves.toBe("claimed");
-      await expect(repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date())).resolves.toBe(
-        false,
-      );
-      await expect(
-        repository.upsertCheck(
-          scanJob.scan_id,
-          2,
-          { ...scanCheck, summaryCode: "fresh_attempt_check" },
-          new Date(),
-        ),
-      ).resolves.toBe(true);
-      const staleCommit = await repository.commitTerminal({
-        scanId: scanJob.scan_id,
-        attemptNo: 1,
-        evaluation: {
-          checks: [scanCheck],
-          score: {
-            rubricVersion: "gtm-v1.0.0",
-            score: 100,
-            coverage: 1,
-            level: "ahead_of_market",
-            terminalStatus: "completed",
-            nominalWeight: 5,
-            applicableWeight: 5,
-            assessedWeight: 5,
-            earnedWeight: 5,
+          [reservedRow.observationId],
+        );
+        expect(Number(reconciledBudget.rows[0]?.reserved_usd)).toBe(0);
+        expect(Number(reconciledBudget.rows[0]?.usage_usd)).toBe(0.002566);
+        expect(Number(reconciledBudget.rows[0]?.observation_reserved_usd)).toBe(0);
+        expect(Number(reconciledBudget.rows[0]?.observation_usage_usd)).toBe(0.002566);
+        expect(reconciledBudget.rows[0]?.usage_reconciled_at).toBeInstanceOf(Date);
+      }),
+    20_000,
+  );
+  it(
+    "fences stale scan commits and closes only abandoned scans",
+    async () =>
+      withDatabase(async ({ db, pool }) => {
+        const { sessionId, scanValues } = await seedScan(pool);
+        await seedConsent(pool, sessionId);
+        const repository = createScanJobRepository(db);
+        const scanJob: ScanJobV1 = {
+          scan_id: scanValues[0] as string,
+          canonical_target_url: "https://example.com/",
+          segment: "store",
+          rubric_version: "gtm-v1.0.0",
+          deadline_at: new Date(Date.now() + 55_000).toISOString(),
+          attempt_no: 1,
+        };
+        const scanCheck: CheckResult = {
+          id: 1,
+          status: "pass",
+          nominalWeight: 5,
+          applicableWeight: 5,
+          earnedWeight: 5,
+          summaryCode: "robots_parseable",
+          evidence: { status: 200 },
+          userImpactCode: "robots_policy_discoverability",
+          durationMs: 1,
+        };
+        await expect(repository.claim(scanJob)).resolves.toBe("claimed");
+        await expect(
+          repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date()),
+        ).resolves.toBe(true);
+        await expect(repository.claim({ ...scanJob, attempt_no: 2 })).resolves.toBe("claimed");
+        await expect(
+          repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date()),
+        ).resolves.toBe(false);
+        await expect(
+          repository.upsertCheck(
+            scanJob.scan_id,
+            2,
+            { ...scanCheck, summaryCode: "fresh_attempt_check" },
+            new Date(),
+          ),
+        ).resolves.toBe(true);
+        const staleCommit = await repository.commitTerminal({
+          scanId: scanJob.scan_id,
+          attemptNo: 1,
+          evaluation: {
+            checks: [scanCheck],
+            score: {
+              rubricVersion: "gtm-v1.0.0",
+              score: 100,
+              coverage: 1,
+              level: "ahead_of_market",
+              terminalStatus: "completed",
+              nominalWeight: 5,
+              applicableWeight: 5,
+              assessedWeight: 5,
+              earnedWeight: 5,
+            },
+            findings: { negativeCheckIds: [] },
           },
-          findings: { negativeCheckIds: [] },
-        },
-        finishedAt: new Date(),
-      });
-      expect(staleCommit).toBe("already_terminal");
-      const fencedState = await pool.query<{
-        status: string;
-        attempt_no: number;
-        summary_code: string;
-        completed_events: string;
-      }>(
-        `select s.status, s.attempt_no, c.summary_code,
+          finishedAt: new Date(),
+        });
+        expect(staleCommit).toBe("already_terminal");
+        const fencedState = await pool.query<{
+          status: string;
+          attempt_no: number;
+          summary_code: string;
+          completed_events: string;
+        }>(
+          `select s.status, s.attempt_no, c.summary_code,
            (select count(*) from analytics_events where name = 'scan_completed' and scan_id = s.id)::text as completed_events
          from scans s
          join scan_checks c on c.scan_id = s.id and c.check_id = 1
          where s.id = $1`,
-        [scanJob.scan_id],
-      );
-      expect(fencedState.rows[0]).toEqual({
-        status: "running",
-        attempt_no: 2,
-        summary_code: "fresh_attempt_check",
-        completed_events: "0",
-      });
+          [scanJob.scan_id],
+        );
+        expect(fencedState.rows[0]).toEqual({
+          status: "running",
+          attempt_no: 2,
+          summary_code: "fresh_attempt_check",
+          completed_events: "0",
+        });
 
-      // A scan no worker will finish, its deadline long past, is closed as
-      // lost, once, whatever stage it stopped at. One accepted within the
-      // bound, one accepted long ago but queued again lately, one whose worker
-      // still beats, and a terminal one are left alone.
-      const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
-      const insertAged = (
-        key: string,
-        status: string,
-        times: { acceptedAt: Date; queuedAt?: Date; heartbeatAt?: Date },
-        failureCode: string | null = null,
-      ) => {
-        const id = createUuidV7();
-        return pool
-          .query(
-            `insert into scans
+        // A scan no worker will finish, its deadline long past, is closed as
+        // lost, once, whatever stage it stopped at. One accepted within the
+        // bound, one accepted long ago but queued again lately, one whose worker
+        // still beats, and a terminal one are left alone.
+        const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+        const insertAged = (
+          key: string,
+          status: string,
+          times: { acceptedAt: Date; queuedAt?: Date; heartbeatAt?: Date },
+          failureCode: string | null = null,
+        ) => {
+          const id = createUuidV7();
+          return pool
+            .query(
+              `insert into scans
               (id, session_id, segment, rubric_version, submitted_url_redacted, canonical_target_url,
                target_host, target_hash, access_token_hash, access_token_expires_at,
                idempotency_key_hash, idempotency_body_hash, status, accepted_at, queued_at,
                worker_heartbeat_at, failure_code)
              values ($1,$2,'store','gtm-v1.0.0','https://example.com/','https://example.com/',
                'example.com','target-hash','token-hash',$3,$4,'idem-body-hash',$5,$6,$7,$8,$9)`,
-            [
-              id,
-              sessionId,
-              new Date(Date.now() + 3_600_000),
-              key,
-              status,
-              times.acceptedAt,
-              times.queuedAt ?? null,
-              times.heartbeatAt ?? null,
-              failureCode,
-            ],
-          )
-          .then(() => id);
-      };
-      const lost = [
-        await insertAged("lost-1", "running", {
-          acceptedAt: minutesAgo(10),
-          queuedAt: minutesAgo(10),
-          heartbeatAt: minutesAgo(9),
-        }),
-        await insertAged("lost-2", "queued", {
-          acceptedAt: minutesAgo(10),
-          queuedAt: minutesAgo(10),
-        }),
-        await insertAged("lost-3", "accepted", { acceptedAt: minutesAgo(10) }),
-      ];
-      const alive = {
-        recent: await insertAged("recent", "queued", { acceptedAt: minutesAgo(1) }),
-        requeued: await insertAged("requeued", "queued", {
-          acceptedAt: minutesAgo(10),
-          queuedAt: minutesAgo(1),
-        }),
-        beating: await insertAged("beating", "running", {
-          acceptedAt: minutesAgo(10),
-          heartbeatAt: minutesAgo(0),
-        }),
-        failed: await insertAged(
-          "failed",
-          "failed",
-          { acceptedAt: minutesAgo(10) },
-          "scan_system_error",
-        ),
-      };
-      const finished = (await repository.finishLostScans(5 * 60_000)).sort();
-      expect(finished).toEqual([...lost].sort());
-      await expect(repository.finishLostScans(5 * 60_000)).resolves.toEqual([]);
-      const aged = await pool.query<{
-        id: string;
-        status: string;
-        failure_code: string | null;
-        level: string | null;
-        finished: boolean;
-      }>(
-        `select id, status, failure_code, level, finished_at is not null as finished
+              [
+                id,
+                sessionId,
+                new Date(Date.now() + 3_600_000),
+                key,
+                status,
+                times.acceptedAt,
+                times.queuedAt ?? null,
+                times.heartbeatAt ?? null,
+                failureCode,
+              ],
+            )
+            .then(() => id);
+        };
+        const lost = [
+          await insertAged("lost-1", "running", {
+            acceptedAt: minutesAgo(10),
+            queuedAt: minutesAgo(10),
+            heartbeatAt: minutesAgo(9),
+          }),
+          await insertAged("lost-2", "queued", {
+            acceptedAt: minutesAgo(10),
+            queuedAt: minutesAgo(10),
+          }),
+          await insertAged("lost-3", "accepted", { acceptedAt: minutesAgo(10) }),
+        ];
+        const alive = {
+          recent: await insertAged("recent", "queued", { acceptedAt: minutesAgo(1) }),
+          requeued: await insertAged("requeued", "queued", {
+            acceptedAt: minutesAgo(10),
+            queuedAt: minutesAgo(1),
+          }),
+          beating: await insertAged("beating", "running", {
+            acceptedAt: minutesAgo(10),
+            heartbeatAt: minutesAgo(0),
+          }),
+          failed: await insertAged(
+            "failed",
+            "failed",
+            { acceptedAt: minutesAgo(10) },
+            "scan_system_error",
+          ),
+        };
+        const finished = (await repository.finishLostScans(5 * 60_000)).sort();
+        expect(finished).toEqual([...lost].sort());
+        await expect(repository.finishLostScans(5 * 60_000)).resolves.toEqual([]);
+        const aged = await pool.query<{
+          id: string;
+          status: string;
+          failure_code: string | null;
+          level: string | null;
+          finished: boolean;
+        }>(
+          `select id, status, failure_code, level, finished_at is not null as finished
          from scans where id = any($1)`,
-        [[...lost, ...Object.values(alive), scanJob.scan_id]],
-      );
-      const state = Object.fromEntries(
-        aged.rows.map((row) => [row.id, [row.status, row.failure_code, row.level, row.finished]]),
-      );
-      for (const id of lost) expect(state[id]).toEqual(["failed", "scan_lost", "incomplete", true]);
-      expect([...Object.values(alive), scanJob.scan_id].map((id) => state[id])).toEqual([
-        ["queued", null, null, false],
-        ["queued", null, null, false],
-        ["running", null, null, false],
-        ["failed", "scan_system_error", null, false],
-        ["running", null, null, false],
-      ]);
-
-      const eventId = createUuidV7();
-      const insertOnce = (input: BusinessEventInput) =>
-        db.transaction(async (tx) => insertBusinessEventOnce(tx, input));
-      const eventInput = {
-        onceKey: `landing_view:${sessionId}:store-v1:2026-07-12`,
-        event: {
-          eventId,
-          name: "landing_view" as const,
-          occurredAt: "2026-07-12T12:00:00.000Z",
-          pseudonymousId: "anon_test",
-          segment: "store" as const,
-          landingVariant: "store-v1",
-          properties: { day: "2026-07-12" },
-        },
-        context: { sessionId, consentSnapshotId },
-        outbox: [
-          {
+          [[...lost, ...Object.values(alive), scanJob.scan_id]],
+        );
+        const state = Object.fromEntries(
+          aged.rows.map((row) => [row.id, [row.status, row.failure_code, row.level, row.finished]]),
+        );
+        for (const id of lost)
+          expect(state[id]).toEqual(["failed", "scan_lost", "incomplete", true]);
+        expect([...Object.values(alive), scanJob.scan_id].map((id) => state[id])).toEqual([
+          ["queued", null, null, false],
+          ["queued", null, null, false],
+          ["running", null, null, false],
+          ["failed", "scan_system_error", null, false],
+          ["running", null, null, false],
+        ]);
+      }),
+    20_000,
+  );
+  it(
+    "atomically deduplicates events and outbox rows, including rollback and concurrency",
+    async () =>
+      withDatabase(async ({ db, pool }) => {
+        const { sessionId } = await seedScan(pool);
+        const consentSnapshotId = await seedConsent(pool, sessionId);
+        const eventId = createUuidV7();
+        const insertOnce = (input: BusinessEventInput) =>
+          db.transaction(async (tx) => insertBusinessEventOnce(tx, input));
+        const eventInput = {
+          onceKey: `landing_view:${sessionId}:store-v1:2026-07-12`,
+          event: {
             eventId,
-            destination: "posthog" as const,
-            payload: { event: "landing_view" },
+            name: "landing_view" as const,
+            occurredAt: "2026-07-12T12:00:00.000Z",
+            pseudonymousId: "anon_test",
+            segment: "store" as const,
+            landingVariant: "store-v1",
+            properties: { day: "2026-07-12" },
           },
-          { eventId, destination: "meta" as const, payload: { data: [] } },
-        ],
-      };
-      await expect(insertOnce(eventInput)).resolves.toEqual({
-        inserted: true,
-        eventId,
-      });
-      await expect(
-        insertOnce({
-          ...eventInput,
-          event: { ...eventInput.event, eventId: createUuidV7() },
-        }),
-      ).resolves.toEqual({ inserted: false, eventId });
-      const storedEvents = await pool.query<{ count: string }>(
-        "select count(*)::text as count from analytics_events where once_key = $1",
-        [eventInput.onceKey],
-      );
-      const storedOutbox = await pool.query<{ count: string }>(
-        "select count(*)::text as count from delivery_outbox where event_id = $1",
-        [eventId],
-      );
-      expect(storedEvents.rows[0]?.count).toBe("1");
-      expect(storedOutbox.rows[0]?.count).toBe("2");
-
-      const rollbackOnceKey = `results_viewed:${sessionId}:rollback-scan`;
-      const rollbackEventId = createUuidV7();
-      await expect(
-        db.transaction(async (tx) => {
-          await insertBusinessEventOnce(tx, {
-            ...eventInput,
-            onceKey: rollbackOnceKey,
-            event: {
-              ...eventInput.event,
-              eventId: rollbackEventId,
-              name: "results_viewed",
+          context: { sessionId, consentSnapshotId },
+          outbox: [
+            {
+              eventId,
+              destination: "posthog" as const,
+              payload: { event: "landing_view" },
             },
-            outbox: [
-              {
+            { eventId, destination: "meta" as const, payload: { data: [] } },
+          ],
+        };
+        await expect(insertOnce(eventInput)).resolves.toEqual({
+          inserted: true,
+          eventId,
+        });
+        await expect(
+          insertOnce({
+            ...eventInput,
+            event: { ...eventInput.event, eventId: createUuidV7() },
+          }),
+        ).resolves.toEqual({ inserted: false, eventId });
+        const storedEvents = await pool.query<{ count: string }>(
+          "select count(*)::text as count from analytics_events where once_key = $1",
+          [eventInput.onceKey],
+        );
+        const storedOutbox = await pool.query<{ count: string }>(
+          "select count(*)::text as count from delivery_outbox where event_id = $1",
+          [eventId],
+        );
+        expect(storedEvents.rows[0]?.count).toBe("1");
+        expect(storedOutbox.rows[0]?.count).toBe("2");
+
+        const rollbackOnceKey = `results_viewed:${sessionId}:rollback-scan`;
+        const rollbackEventId = createUuidV7();
+        await expect(
+          db.transaction(async (tx) => {
+            await insertBusinessEventOnce(tx, {
+              ...eventInput,
+              onceKey: rollbackOnceKey,
+              event: {
+                ...eventInput.event,
                 eventId: rollbackEventId,
-                destination: "posthog",
-                payload: { event: "results_viewed" },
+                name: "results_viewed",
               },
-            ],
-          });
-          throw new Error("force_outer_transaction_rollback");
-        }),
-      ).rejects.toThrow("force_outer_transaction_rollback");
-      const rolledBack = await pool.query<{ events: string; outbox: string }>(
-        `select
+              outbox: [
+                {
+                  eventId: rollbackEventId,
+                  destination: "posthog",
+                  payload: { event: "results_viewed" },
+                },
+              ],
+            });
+            throw new Error("force_outer_transaction_rollback");
+          }),
+        ).rejects.toThrow("force_outer_transaction_rollback");
+        const rolledBack = await pool.query<{ events: string; outbox: string }>(
+          `select
            (select count(*) from analytics_events where once_key = $1)::text as events,
            (select count(*) from delivery_outbox where event_id = $2)::text as outbox`,
-        [rollbackOnceKey, rollbackEventId],
-      );
-      expect(rolledBack.rows[0]).toEqual({ events: "0", outbox: "0" });
+          [rollbackOnceKey, rollbackEventId],
+        );
+        expect(rolledBack.rows[0]).toEqual({ events: "0", outbox: "0" });
 
-      const concurrentOnceKey = `registration_started:${sessionId}:concurrent-scan`;
-      const concurrentResults = await Promise.all(
-        Array.from({ length: 6 }, async () => {
-          const candidateEventId = createUuidV7();
-          return await insertOnce({
-            ...eventInput,
-            onceKey: concurrentOnceKey,
-            event: {
-              ...eventInput.event,
-              eventId: candidateEventId,
-              name: "registration_started",
-            },
-            outbox: [
-              {
+        const concurrentOnceKey = `registration_started:${sessionId}:concurrent-scan`;
+        const concurrentResults = await Promise.all(
+          Array.from({ length: 6 }, async () => {
+            const candidateEventId = createUuidV7();
+            return await insertOnce({
+              ...eventInput,
+              onceKey: concurrentOnceKey,
+              event: {
+                ...eventInput.event,
                 eventId: candidateEventId,
-                destination: "posthog",
-                payload: { event: "registration_started" },
+                name: "registration_started",
               },
-            ],
-          });
-        }),
-      );
-      expect(concurrentResults.filter(({ inserted }) => inserted)).toHaveLength(1);
-      expect(new Set(concurrentResults.map(({ eventId: id }) => id)).size).toBe(1);
-      const [firstConcurrent] = concurrentResults;
-      if (!firstConcurrent) throw new Error("the concurrent inserts answered with nothing");
-      const concurrentEventId = firstConcurrent.eventId;
-      const concurrentStored = await pool.query<{
-        events: string;
-        outbox: string;
-      }>(
-        `select
+              outbox: [
+                {
+                  eventId: candidateEventId,
+                  destination: "posthog",
+                  payload: { event: "registration_started" },
+                },
+              ],
+            });
+          }),
+        );
+        expect(concurrentResults.filter(({ inserted }) => inserted)).toHaveLength(1);
+        expect(new Set(concurrentResults.map(({ eventId: id }) => id)).size).toBe(1);
+        const [firstConcurrent] = concurrentResults;
+        if (!firstConcurrent) throw new Error("the concurrent inserts answered with nothing");
+        const concurrentEventId = firstConcurrent.eventId;
+        const concurrentStored = await pool.query<{
+          events: string;
+          outbox: string;
+        }>(
+          `select
            (select count(*) from analytics_events where once_key = $1)::text as events,
            (select count(*) from delivery_outbox where event_id = $2)::text as outbox`,
-        [concurrentOnceKey, concurrentEventId],
-      );
-      expect(concurrentStored.rows[0]).toEqual({ events: "1", outbox: "1" });
+          [concurrentOnceKey, concurrentEventId],
+        );
+        expect(concurrentStored.rows[0]).toEqual({ events: "1", outbox: "1" });
+      }),
+    20_000,
+  );
+  it(
+    "honors independent consent categories and destination isolation",
+    async () =>
+      withDatabase(async ({ db, pool }) => {
+        const { sessionId, scanValues } = await seedScan(pool);
+        const consentSnapshotId = await seedConsent(pool, sessionId);
+        process.env.ANALYTICS_RUNTIME_ENV = "test";
+        process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "true";
+        process.env.POSTHOG_API_KEY = "ph_test_project";
+        process.env.POSTHOG_DESTINATION_ENV = "test";
+        process.env.META_CAPI_ENABLED = "true";
+        process.env.META_ACCESS_TOKEN = "meta-test-token";
+        process.env.META_DATASET_ID = "meta-test-dataset";
+        process.env.META_DESTINATION_ENV = "test";
 
-      process.env.ANALYTICS_RUNTIME_ENV = "test";
-      process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "true";
-      process.env.POSTHOG_API_KEY = "ph_test_project";
-      process.env.POSTHOG_DESTINATION_ENV = "test";
-      process.env.META_CAPI_ENABLED = "true";
-      process.env.META_ACCESS_TOKEN = "meta-test-token";
-      process.env.META_DATASET_ID = "meta-test-dataset";
-      process.env.META_DESTINATION_ENV = "test";
-
-      const runtimeAllowed = await emitStoredBusinessEvent(db, {
-        name: "results_viewed",
-        identifiers: {
-          session_id: sessionId,
-          scan_id: scanValues[0] as string,
-        },
-        sessionId,
-        consentSnapshotId,
-        scanId: scanValues[0] as string,
-        segment: "store",
-        landingVariant: "store-v1",
-        properties: {
-          coverage_band: "high",
-          scanned_url: "https://example.com/private?token=nope",
-        },
-      });
-      const runtimeAllowedOutbox = await pool.query<{
-        count: string;
-        payload: string;
-      }>(
-        "select count(*)::text as count, string_agg(payload::text, '') as payload from delivery_outbox where event_id = $1",
-        [runtimeAllowed?.eventId],
-      );
-      // The snapshot that also names card_signal is read by the categories the
-      // policy names: both destinations it allows receive the event.
-      expect(runtimeAllowedOutbox.rows[0]?.count).toBe("2");
-      expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(/example\.com|token=nope/i);
-
-      const deniedConsentId = createUuidV7();
-      await pool.query(
-        "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
-        [
-          deniedConsentId,
-          sessionId,
-          JSON.stringify({
-            essential_processing: true,
-            product_analytics: false,
-            ads_measurement: false,
-            marketing_email: false,
-            dataset_reuse: false,
-          }),
-        ],
-      );
-      // A visitor who allowed no optional measurement leaves no event behind,
-      // for the dashboard to count or for any destination to receive.
-      const denied = await emitStoredBusinessEvent(db, {
-        name: "landing_view",
-        identifiers: {
-          session_id: sessionId,
-          variant: "store-denied-v1",
-          day: "2026-07-12",
-        },
-        sessionId,
-        consentSnapshotId: deniedConsentId,
-        segment: "store",
-        landingVariant: "store-denied-v1",
-      });
-      expect(denied).toBeUndefined();
-      const deniedEvents = await pool.query<{ count: string }>(
-        "select count(*)::text as count from analytics_events where consent_snapshot_id = $1",
-        [deniedConsentId],
-      );
-      expect(deniedEvents.rows[0]?.count).toBe("0");
-
-      // Ads measurement alone is a choice to be measured: the event is kept,
-      // and only the destination that choice allows receives it.
-      const adsOnlyConsentId = createUuidV7();
-      await pool.query(
-        "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
-        [
-          adsOnlyConsentId,
-          sessionId,
-          JSON.stringify({
-            essential_processing: true,
-            product_analytics: false,
-            ads_measurement: true,
-            marketing_email: false,
-            dataset_reuse: false,
-          }),
-        ],
-      );
-      const adsOnly = await emitStoredBusinessEvent(db, {
-        name: "landing_view",
-        identifiers: {
-          session_id: sessionId,
-          variant: "store-ads-only-v1",
-          day: "2026-07-12",
-        },
-        sessionId,
-        consentSnapshotId: adsOnlyConsentId,
-        segment: "store",
-        landingVariant: "store-ads-only-v1",
-      });
-      const adsOnlyOutbox = await pool.query<{ destination: string }>(
-        "select destination from delivery_outbox where event_id = $1",
-        [adsOnly?.eventId],
-      );
-      expect(adsOnlyOutbox.rows).toEqual([{ destination: "meta" }]);
-
-      process.env.ANALYTICS_RUNTIME_ENV = "preview";
-      process.env.POSTHOG_DESTINATION_ENV = "production";
-      await expect(
-        emitStoredBusinessEvent(db, {
-          name: "registration_started",
+        const runtimeAllowed = await emitStoredBusinessEvent(db, {
+          name: "results_viewed",
           identifiers: {
             session_id: sessionId,
             scan_id: scanValues[0] as string,
@@ -872,13 +888,113 @@ describe("initial database migration", () => {
           scanId: scanValues[0] as string,
           segment: "store",
           landingVariant: "store-v1",
-        }),
-      ).rejects.toThrow("posthog_environment_mismatch");
-      process.env.ANALYTICS_SERVER_DELIVERY_ENABLED = "false";
-    } finally {
-      await pool.end();
-    }
-  }, 20_000);
+          properties: {
+            coverage_band: "high",
+            scanned_url: "https://example.com/private?token=nope",
+          },
+        });
+        const runtimeAllowedOutbox = await pool.query<{
+          count: string;
+          payload: string;
+        }>(
+          "select count(*)::text as count, string_agg(payload::text, '') as payload from delivery_outbox where event_id = $1",
+          [runtimeAllowed?.eventId],
+        );
+        // The snapshot that also names card_signal is read by the categories the
+        // policy names: both destinations it allows receive the event.
+        expect(runtimeAllowedOutbox.rows[0]?.count).toBe("2");
+        expect(runtimeAllowedOutbox.rows[0]?.payload).not.toMatch(/example\.com|token=nope/i);
+
+        const deniedConsentId = createUuidV7();
+        await pool.query(
+          "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
+          [
+            deniedConsentId,
+            sessionId,
+            JSON.stringify({
+              essential_processing: true,
+              product_analytics: false,
+              ads_measurement: false,
+              marketing_email: false,
+              dataset_reuse: false,
+            }),
+          ],
+        );
+        // A visitor who allowed no optional measurement leaves no event behind,
+        // for the dashboard to count or for any destination to receive.
+        const denied = await emitStoredBusinessEvent(db, {
+          name: "landing_view",
+          identifiers: {
+            session_id: sessionId,
+            variant: "store-denied-v1",
+            day: "2026-07-12",
+          },
+          sessionId,
+          consentSnapshotId: deniedConsentId,
+          segment: "store",
+          landingVariant: "store-denied-v1",
+        });
+        expect(denied).toBeUndefined();
+        const deniedEvents = await pool.query<{ count: string }>(
+          "select count(*)::text as count from analytics_events where consent_snapshot_id = $1",
+          [deniedConsentId],
+        );
+        expect(deniedEvents.rows[0]?.count).toBe("0");
+
+        // Ads measurement alone is a choice to be measured: the event is kept,
+        // and only the destination that choice allows receives it.
+        const adsOnlyConsentId = createUuidV7();
+        await pool.query(
+          "insert into consent_snapshots (id, session_id, policy_version, categories, source) values ($1, $2, 'consent-v1.0.0', $3, 'api')",
+          [
+            adsOnlyConsentId,
+            sessionId,
+            JSON.stringify({
+              essential_processing: true,
+              product_analytics: false,
+              ads_measurement: true,
+              marketing_email: false,
+              dataset_reuse: false,
+            }),
+          ],
+        );
+        const adsOnly = await emitStoredBusinessEvent(db, {
+          name: "landing_view",
+          identifiers: {
+            session_id: sessionId,
+            variant: "store-ads-only-v1",
+            day: "2026-07-12",
+          },
+          sessionId,
+          consentSnapshotId: adsOnlyConsentId,
+          segment: "store",
+          landingVariant: "store-ads-only-v1",
+        });
+        const adsOnlyOutbox = await pool.query<{ destination: string }>(
+          "select destination from delivery_outbox where event_id = $1",
+          [adsOnly?.eventId],
+        );
+        expect(adsOnlyOutbox.rows).toEqual([{ destination: "meta" }]);
+
+        process.env.ANALYTICS_RUNTIME_ENV = "preview";
+        process.env.POSTHOG_DESTINATION_ENV = "production";
+        await expect(
+          emitStoredBusinessEvent(db, {
+            name: "registration_started",
+            identifiers: {
+              session_id: sessionId,
+              scan_id: scanValues[0] as string,
+            },
+            sessionId,
+            consentSnapshotId,
+            scanId: scanValues[0] as string,
+            segment: "store",
+            landingVariant: "store-v1",
+          }),
+        ).rejects.toThrow("posthog_environment_mismatch");
+      }),
+    20_000,
+  );
 });
 
 /**

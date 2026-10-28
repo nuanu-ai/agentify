@@ -9,7 +9,7 @@
  */
 
 import { type AgentOrderStatus, API_ROUTES, type Card } from "@nuanu-ai/agentify-contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { randomIds } from "../ports/clock.js";
 import {
   buyOverHttp,
@@ -20,6 +20,16 @@ import {
   theMerchantKey,
 } from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
+
+// The log guard imports randomIds during setup, before this native entropy control.
+vi.hoisted(() => vi.resetModules());
+const entropy = vi.hoisted(() => ({
+  values: [] as `${string}-${string}-${string}-${string}-${string}`[],
+}));
+vi.mock("node:crypto", async (original) => {
+  const native = await original<typeof import("node:crypto")>();
+  return { ...native, randomUUID: () => entropy.values.shift() ?? native.randomUUID() };
+});
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
 
@@ -112,45 +122,44 @@ describe("the buyer's key", () => {
   });
 });
 
-/** Whether `a` and `b` share any run of `length` characters. */
-const shareARun = (a: string, b: string, length: number): boolean => {
-  for (let at = 0; at + length <= a.length; at += 1) {
-    if (b.includes(a.slice(at, at + length))) return true;
-  }
-  return false;
-};
-
 describe("the buyer's key, as production issues it", () => {
-  it("cannot be worked out from the order's identifier, or from another order's key", async () => {
-    // The identifier reaches the merchant, their shop, their logs and the
-    // payment side. A key derived from it, or counted along with the orders,
-    // would let whoever holds an identifier, or a key of their own, open
-    // somebody else's goods.
+  it("uses fresh native cryptographic identifiers independently of order identifiers", async () => {
     const harnessed = await harness({ PAY_TO_ADDRESS: PAY_TO }, { ids: randomIds });
     open = { harnessed, served: await serve(harnessed) };
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, laterCard);
     if (!published.ok) throw new Error("the card would not publish");
-
-    const orders: { readonly id: string; readonly key: string }[] = [];
-    for (let made = 0; made < 5; made += 1) {
-      const offered = await harnessed.gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
-      orders.push({ id: offered.order.order.id, key: offered.order.buyerKey });
-    }
-
-    const randomPart = (value: string) => value.slice(value.indexOf("_") + 1);
-    for (const { id, key } of orders) {
-      expect(key).toMatch(/^bk_[0-9a-f]{32}$/);
-      expect(shareARun(randomPart(key), randomPart(id), 8), `${key} beside ${id}`).toBe(false);
-    }
-    for (const [at, { key }] of orders.entries()) {
-      for (const { key: other } of orders.slice(at + 1)) {
-        expect(shareARun(randomPart(key), randomPart(other), 8), `${key} beside ${other}`).toBe(
-          false,
+    const supplied = [
+      "18673e4a-29f1-4f0c-8893-dca7501b268a",
+      "e8b235c1-d900-493a-a1b7-7038faeb19cd",
+      "a5421e37-863d-4e7a-b36f-65db207c3499",
+      "32e40fd8-854a-4439-976e-d8a5a7c390fd",
+      "93d7c8ee-a153-4519-a05d-387b3021e64e",
+      "c7b6e460-9942-46ca-837e-a8059461e9c2",
+    ] as const;
+    entropy.values = [...supplied];
+    try {
+      const orders = [];
+      for (let n = 0; n < 2; n++) {
+        const offered = await harnessed.gateway.beginPurchase(published.id, {});
+        if (offered.step !== "pay") throw new Error(`no price: ${offered.step}`);
+        const paid = await harnessed.gateway.payPurchase(
+          offered.order.priceOffer.stamp,
+          `PAYMENT-${n}`,
+          `PAYMENT-${n}`,
         );
-        const apart = BigInt(`0x${randomPart(key)}`) - BigInt(`0x${randomPart(other)}`);
-        expect(apart < 0n ? -apart : apart).toBeGreaterThan(2n ** 64n);
+        if (paid.step !== "under_way")
+          throw new Error("the asynchronous purchase was not accepted");
+        orders.push(paid.order);
       }
+      const nativeValues = supplied.map((value) => value.replaceAll("-", ""));
+      expect(new Set(orders.map((record) => record.buyerKey)).size).toBe(2);
+      for (const record of orders) {
+        expect(record.buyerKey).toMatch(/^bk_[0-9a-f]{32}$/);
+        expect(nativeValues).toContain(record.buyerKey.slice(3));
+        expect(orders.map((row) => row.order.id.slice(4))).not.toContain(record.buyerKey.slice(3));
+      }
+    } finally {
+      entropy.values = [];
     }
   });
 });

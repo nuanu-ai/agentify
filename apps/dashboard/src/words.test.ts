@@ -3,11 +3,7 @@
  * so a value added to a vocabulary fails here until somebody writes its words.
  */
 
-import {
-  FulfillmentSchema,
-  ORDER_STATUSES,
-  ReceiptOutcomeSchema,
-} from "@nuanu-ai/agentify-contracts";
+import { FulfillmentSchema, ORDER_STATUSES } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import { FULFILLMENT_WORDS, money, needsYou, ORDER_WORDS, waitsOnTheBuyer } from "./words.js";
 
@@ -17,14 +13,6 @@ describe("the words a merchant reads", () => {
       expect(ORDER_WORDS[status]?.text, status).toBeTruthy();
       // `unfulfilled` on a screen is a field name, not a sentence.
       expect(ORDER_WORDS[status]?.text, status).not.toContain("_");
-    }
-  });
-
-  it("covers every outcome a receipt can carry with the order's own words", () => {
-    // A receipt's outcomes are a subset of the order's, so one map serves both
-    // screens and a state reads the same on each.
-    for (const outcome of ReceiptOutcomeSchema.options) {
-      expect(ORDER_WORDS[outcome]?.text, outcome).toBeTruthy();
     }
   });
 
@@ -73,11 +61,11 @@ describe("the words a merchant reads", () => {
 });
 
 describe("money on a screen", () => {
-  it("prints an amount exactly as it arrived", () => {
+  it("prints an amount exactly as it arrived, on one line with its currency", () => {
     // Money is a decimal string on the wire so nothing turns it into a float;
     // "5.00" shown as "5" is where a merchant's books would first disagree.
-    expect(money({ amount: "5.00", currency: "USD" })).toBe("5.00 USD");
-    expect(money({ amount: "0.000001", currency: "USDC" })).toBe("0.000001 USDC");
-    expect(money({ amount: "1234.50", currency: "USD" })).toBe("1234.50 USD");
+    expect(money({ amount: "5.00", currency: "USD" })).toBe("5.00\u00a0USD");
+    expect(money({ amount: "0.000001", currency: "USDC" })).toBe("0.000001\u00a0USDC");
+    expect(money({ amount: "1234.50", currency: "USD" })).toBe("1234.50\u00a0USD");
   });
 });

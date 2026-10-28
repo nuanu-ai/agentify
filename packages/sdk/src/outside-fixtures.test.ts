@@ -123,25 +123,19 @@ it("carries one merchant's two products from publishing to the last refusal", as
   expect(checkCard(numberCard).problems).toStrictEqual([]);
   expect(checkCard(esimCard).problems).toStrictEqual([]);
 
-  // The merchant's own systems, standing in for their API, whose purchase
-  // endpoint takes an idempotency key.
+  // Supplier facts are fixed inputs here; supplier storage and idempotence are not SDK behavior.
   const supplierCostUsd = "7.00";
-  const provisioned = new Map<string, { iccid: string; lpa: string; ios: string }>();
-  let profilesLeft = 1;
-
-  const provision = (idempotencyKey: string): boolean => {
-    if (provisioned.has(idempotencyKey)) return true;
-    if (profilesLeft === 0) return false;
-
-    profilesLeft -= 1;
-    provisioned.set(idempotencyKey, {
-      iccid: "8931080000000000001",
-      lpa: "LPA:1$rsp.example.net$K2-9QF-0A1",
-      ios: "https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=LPA:1$rsp.example.net$K2-9QF-0A1",
-    });
-
-    return true;
+  const profile = {
+    iccid: "8931080000000000001",
+    lpa: "LPA:1$rsp.example.net$K2-9QF-0A1",
+    ios: "https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=LPA:1$rsp.example.net$K2-9QF-0A1",
   };
+  let releaseEvent: () => void = () => {
+    throw new Error("the refusal gate was not initialized");
+  };
+  const refusedOnWire = new Promise<void>((resolve) => {
+    releaseEvent = resolve;
+  });
 
   const polls: GatewayAnswer[] = [
     carrying(envelope("quote_request", "env-q1", numberQuestion)),
@@ -150,7 +144,6 @@ it("carries one merchant's two products from publishing to the last refusal", as
     // The same eSIM order again: delivery is at least once.
     carrying(envelope("order", "env-o2", esimOrder)),
     carrying(envelope("order", "env-o3", soldOutOrder)),
-    carrying(envelope("order_event", "env-e1", unfulfilled)),
   ];
 
   const parked = new Promise<GatewayAnswer>(() => {});
@@ -164,11 +157,18 @@ it("carries one merchant's two products from publishing to the last refusal", as
         published.push(key);
         return { body: { ok: true, id: `cat-${published.length}` } };
       },
-      poll_worker: (_call, index) => polls[index] ?? parked,
+      poll_worker: (_call, index) =>
+        polls[index] ??
+        (index === polls.length
+          ? refusedOnWire.then(() => carrying(envelope("order_event", "env-e1", unfulfilled)))
+          : parked),
       answer_quote: () => ({ body: { used: true } }),
       answer_order: () => ({ body: { ok: true, result: "delivered" } }),
       deliver_order: () => ({ body: { ok: true, result: "delivered" } }),
-      refuse_order: () => ({ body: { ok: true, result: "refused" } }),
+      refuse_order: () => {
+        releaseEvent();
+        return { body: { ok: true, result: "refused" } };
+      },
     },
   });
 
@@ -191,12 +191,9 @@ it("carries one merchant's two products from publishing to the last refusal", as
       return order.delivered({ phone_number: "+31 970 1020 3040" });
     }
 
-    // The asynchronous product: taken on, provisioned behind the answer, and
-    // closed later by a call on the kept order. The order's identifier is the
-    // idempotency key, so the redelivery provisions nothing twice.
+    // The asynchronous product is taken on and closed later by a call on the kept order.
     accepted.push(order.id);
     takenOn.set(order.id, order);
-    provision(order.id);
 
     return order.accepted();
   });
@@ -224,7 +221,10 @@ it("carries one merchant's two products from publishing to the last refusal", as
   running = agentify;
   await agentify.start();
 
-  await waitUntil(() => events.length === 1, "everything through the subscription");
+  await waitUntil(
+    () => (gateway?.callsTo("answer_order").length ?? 0) >= 3,
+    "the initial subscription answers",
+  );
 
   // Answered against its own identifier, at the price the merchant computed,
   // not the card's.
@@ -236,8 +236,7 @@ it("carries one merchant's two products from publishing to the last refusal", as
     as_of: AT,
   });
 
-  // An in-flight redelivery can share its first attempt; a later one can call
-  // the idempotent handler again. Neither may provision a second profile.
+  // An in-flight redelivery can share its first attempt; a later one can call the handler again.
   const answers = gateway.callsTo("answer_order");
   expect(new Set(answers.map((call) => call.params.order_id))).toStrictEqual(
     new Set([numberOrder.id, esimOrder.id, soldOutOrder.id]),
@@ -251,11 +250,9 @@ it("carries one merchant's two products from publishing to the last refusal", as
   for (const answer of esimAnswers) expect(answer.body).toStrictEqual({ accepted: {} });
   expect(accepted.filter((id) => id === esimOrder.id)).toHaveLength(esimAnswers.length);
   expect(accepted.filter((id) => id === soldOutOrder.id)).toHaveLength(1);
-  expect(provisioned.size).toBe(1);
-  expect(profilesLeft).toBe(0);
 
   // The issued profile is closed by a later call, outside the handler.
-  const issued = provisioned.get(esimOrder.id);
+  const issued = profile;
   const delivered = await takenOn.get(esimOrder.id)?.deliver({
     iccid: issued?.iccid,
     lpa_string: issued?.lpa,
@@ -263,6 +260,14 @@ it("carries one merchant's two products from publishing to the last refusal", as
   });
 
   expect(delivered).toStrictEqual({ ok: true, result: "delivered" });
+  expect(gateway.callsTo("deliver_order")[0]?.params).toEqual({ order_id: esimOrder.id });
+  expect(gateway.callsTo("deliver_order")[0]?.body).toEqual({
+    iccid: "8931080000000000001",
+    lpa_string: "LPA:1$rsp.example.net$K2-9QF-0A1",
+    ios_tap_link:
+      "https://esimsetup.apple.com/esim_qrcode_provisioning?carddata=LPA:1$rsp.example.net$K2-9QF-0A1",
+  });
+  expect(events).toEqual([]);
 
   // The one the supplier had nothing for is refused, rather than left to run
   // out its deadline.
@@ -272,9 +277,14 @@ it("carries one merchant's two products from publishing to the last refusal", as
   });
 
   expect(refused).toStrictEqual({ ok: true, result: "refused" });
+  expect(gateway.callsTo("refuse_order")[0]?.params).toEqual({ order_id: soldOutOrder.id });
+  expect(gateway.callsTo("refuse_order")[0]?.body).toEqual({
+    code: "out_of_stock",
+    message: "the supplier has no profile available for this plan",
+  });
+  await waitUntil(() => events.length === 1, "the event enabled by the captured refusal");
 
-  // The unfulfilled state that refusal recorded came back as an event, with nothing sent in
-  // reply.
+  // The fixture releases this event only after the refusal was captured; the SDK sends no reply.
   expect(events).toStrictEqual([unfulfilled]);
   expect(problems).toStrictEqual([]);
 });

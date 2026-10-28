@@ -42,7 +42,6 @@ const reverted = (thrown: unknown): boolean =>
 export function payoutCheckOn(
   network: PayoutSplitNetwork,
   rpcUrl?: string,
-  now: () => number = Date.now,
 ): PayoutCheck | undefined {
   if (!rpcUrl) return undefined;
   const chain = network.network === "eip155:8453" ? base : baseSepolia;
@@ -110,7 +109,7 @@ export function payoutCheckOn(
   const slow = new Map<string, number>();
   return {
     wouldBring(payout, withinMs) {
-      const at = now();
+      const at = Date.now();
       for (const [data, held] of kept) {
         if (at - held.at >= KEPT_FOR_MS) kept.delete(data);
       }
@@ -136,7 +135,7 @@ export function payoutCheckOn(
       return new Promise<bigint>((resolve, reject) => {
         const cut = setTimeout(
           () => {
-            slow.set(payout.data, now() + KEPT_FOR_MS);
+            slow.set(payout.data, Date.now() + KEPT_FOR_MS);
             reject(tooSlow(withinMs));
           },
           Math.max(0, withinMs),

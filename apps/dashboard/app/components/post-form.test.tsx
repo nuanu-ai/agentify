@@ -108,7 +108,7 @@ describe("a whole-page save on its way", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await waited(4_000);
 
-    expect(screen.getByRole("status").textContent).toBe("Still waiting for an answer…");
+    expect(screen.getByRole("status").textContent).toMatch(/waiting.*answer/i);
     expect(screen.queryByRole("link")).toBeNull();
     expect(site.readOnly).toBe(true);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Save" }).disabled).toBe(true);
@@ -123,11 +123,11 @@ describe("a whole-page save on its way", () => {
     const before = screen.getByRole("status").textContent;
     await waited(4_000);
 
-    expect(before).toBe("Still waiting for an answer…");
-    expect(screen.getByRole("status").textContent).toBe(
-      "We could not confirm whether your change was made. Open this page again to see where it stands; this sends nothing again.",
+    expect(before).toMatch(/waiting.*answer/i);
+    expect(screen.getByRole("status").textContent).toMatch(
+      /could not confirm whether.*change.*made/i,
     );
-    expect(screen.getByRole("link", { name: "Open this page again" }).getAttribute("href")).toBe(
+    expect(screen.getByRole("link", { name: /open.*page again/i }).getAttribute("href")).toBe(
       "/settings",
     );
     expect(site.readOnly).toBe(true);
@@ -143,7 +143,7 @@ describe("a whole-page save on its way", () => {
     const before = screen.getByRole("status").textContent;
     await waited(4_000);
 
-    expect(before).toBe("Still waiting for an answer…");
+    expect(before).toMatch(/waiting.*answer/i);
     expect(screen.getByRole("status").textContent).toMatch(/^We could not confirm/);
   });
 

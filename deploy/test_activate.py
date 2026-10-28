@@ -12,9 +12,9 @@ would inspect the host.
 The fake docker knows a container only by the ID `stack.sh ps` lists, never by
 its name: Compose finds its containers by label, and a recreate cut short
 leaves one running under a temporary name. The fake database server creates,
-drops and renames databases as files, lists and measures them, and runs a
-script's renames all together when the script is one transaction, and one by
-one otherwise. When the database starts, the fake records
+drops and renames databases as files, and lists and measures them. The swap's
+actual SQL is also executed against disposable PostgreSQL to prove rollback
+and successful commit. When the database starts, the fake records
 what its init-script mount holds, and creates the directory empty when it is
 missing, as Docker does with a bind mount's source. It also records the
 transition record as it stands when the first dump is taken and when the new
@@ -35,6 +35,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).parent))
 from scratch_container import ScratchContainer  # noqa: E402
+from real_postgres import RealPostgres  # noqa: E402
 
 
 HERE = Path(__file__).parent
@@ -112,9 +113,8 @@ case "$args" in
       script="$(cat)"
       mapfile -t renames < <(grep -o 'ALTER DATABASE [a-z0-9_]* RENAME TO [a-z0-9_]*' <<<"$script")
       if [[ -n ${SWAP_FAILS:-} ]]; then
-        # The second rename fails: inside a transaction nothing is applied,
-        # outside one the rename before it stays.
-        [[ $script == *BEGIN* ]] || statement "${renames[0]}"
+        printf '%s' "$script" > "$W/swap.sql"
+        # The real PostgreSQL witness executes this captured SQL; this adapter only reports failure.
         echo "ERROR: the second rename failed" >&2; exit 1
       fi
       for rename in "${renames[@]}"; do statement "$rename"; done
@@ -202,7 +202,9 @@ case $path in
       printf 'HTTP/2 409\r\ncontent-type: application/json\r\n\r\n{"error": {"code": "%s"}}' "$refused"
       exit 0
     fi
-    challenge="{\"resource\": {\"url\": \"$url\"}, \"accepts\": [{\"network\": \"$(< /h/world/network)\"}]}"
+    network="$(< /h/world/network)"
+    [[ ! -f /h/world/network-$card ]] || network="$(< /h/world/network-$card)"
+    challenge="{\"resource\": {\"url\": \"$url\"}, \"accepts\": [{\"network\": \"$network\"}]}"
     printf 'HTTP/2 402\r\npayment-required: %s\r\n\r\n' "$(printf '%s' "$challenge" | base64 -w0)" ;;
   *)
     if [[ -n $code ]]; then
@@ -718,6 +720,22 @@ class Activation(unittest.TestCase):
         said = self.run_script(f"restore /var/backups/agentify/test/{point}", SWAP_FAILS="1")
         self.assertIn("restore exit 1", said)
         self.assertEqual((self.databases(), self.record()), (MIGRATED, None))
+        # Execute exactly the SQL the shipped restore sent, against a real server.
+        database = RealPostgres()
+        try:
+            database.sql("CREATE TABLE marker(value text); INSERT INTO marker VALUES ('live');", "agentify")
+            script = (self.world / "swap.sql").read_text()
+            refused = database.sql(script, check=False)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertEqual(database.sql("SELECT value FROM marker", "agentify").stdout.strip(), "live")
+            database.sql("CREATE DATABASE agentify_restoring")
+            database.sql("CREATE TABLE marker(value text); INSERT INTO marker VALUES ('restored');", "agentify_restoring")
+            database.sql(script)
+            self.assertEqual(database.sql("SELECT value FROM marker", "agentify").stdout.strip(), "restored")
+            replaced = database.sql("SELECT datname FROM pg_database WHERE datname LIKE 'agentify_replaced_%'").stdout.strip()
+            self.assertEqual(database.sql("SELECT value FROM marker", replaced).stdout.strip(), "live")
+        finally:
+            database.close()
 
     def test_a_restore_without_room_for_a_second_copy_changes_nothing(self):
         self.assertIn("exit 0", self.run_script("activate"))
@@ -929,10 +947,10 @@ class Activation(unittest.TestCase):
         self.assertIn("--leaving card_one", said)
 
     def test_every_card_must_answer_its_challenge_on_the_channels_network(self):
-        (self.world / "network").write_text("eip155:8453")
+        (self.world / "network-card_two").write_text("eip155:8453")
         said = self.run_script("activate")
         self.assertIn("exit 1", said)
-        self.assertIn("card_one", said)
+        self.assertIn("card_two", said)
 
     def test_a_catalog_longer_than_one_argument_can_hold_is_checked_whole(self):
         # A card ID is `item_` and 32 hex characters; 3,600 of them are more

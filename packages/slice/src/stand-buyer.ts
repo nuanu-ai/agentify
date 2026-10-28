@@ -50,16 +50,8 @@ export interface ChallengeView {
    * be ours.
    */
   readonly said: string | null;
-  /**
-   * The identifier of the order this challenge names, where it was issued for
-   * one. It opens nothing; the address the order is read again at comes with
-   * the answer to the payment.
-   *
-   * A challenge for a card alone — the GET a crawler makes — names no order,
-   * because there is none behind it. The difference is the whole reason this
-   * console offers two probes rather than one.
-   */
-  readonly orderId: string | null;
+  /** Whether this is a purchase-specific price rather than a listing probe. */
+  readonly priced: boolean;
 }
 
 export interface StandBuyer {
@@ -68,7 +60,7 @@ export interface StandBuyer {
   catalog(): Promise<readonly PublicCard[]>;
   /** The GET a crawler makes: a challenge for the card alone, opening no order. */
   askPrice(itemId: string): Promise<Answered>;
-  /** The unpaid POST: opens an order, and answers with what a payment must satisfy. */
+  /** The unpaid POST: prices the purchase, and answers with what a payment must satisfy. */
   startPurchase(itemId: string, params: Readonly<Record<string, unknown>>): Promise<Answered>;
   /** Signs a challenge already in hand and sends it, paying that order and no other. */
   payFor(
@@ -99,14 +91,14 @@ export interface StandBuyerOptions {
 }
 
 /** Where in a challenge's requirements the order it prices is named, by its identifier. */
-const ORDER_IN_EXTRA = "order_id";
+const PRICE_STAMP_IN_EXTRA = "price_stamp";
 
 /** Reads a challenge into the six things worth putting on a screen. */
 export const readChallenge = (challenge: PaymentRequired): ChallengeView | null => {
   const first = challenge.accepts[0];
   if (first === undefined) return null;
   const extra = first.extra as Record<string, unknown> | undefined;
-  const named = extra?.[ORDER_IN_EXTRA];
+  const named = extra?.[PRICE_STAMP_IN_EXTRA];
   const said = (challenge as { error?: unknown }).error;
   return {
     amount: first.amount,
@@ -115,7 +107,7 @@ export const readChallenge = (challenge: PaymentRequired): ChallengeView | null 
     payTo: first.payTo,
     scheme: first.scheme,
     said: typeof said === "string" && said !== "" ? said : null,
-    orderId: typeof named === "string" ? named : null,
+    priced: typeof named === "string",
   };
 };
 

@@ -32,15 +32,6 @@ export const DEFAULT_ASYNC_FULFILLMENT_MS = 86_400_000;
 export const REDELIVERY_MAX_ATTEMPTS = 5;
 
 /**
- * How many of one seller's purchases may be priced and waiting for payment at
- * once, counted at the birth of each; one beyond them is refused as
- * `seller_busy`. A constant rather than a setting, since a knob here either
- * lets anyone load a seller's shop with purchases nobody pays or stops the
- * seller's every sale.
- */
-export const WAITING_FOR_PAYMENT_AT_MOST = 50;
-
-/**
  * How many of a seller's paid orders may be taken on and left with nothing
  * delivered or closed before every new purchase of theirs is refused as
  * `seller_not_fulfilling`, and their cards leave the catalogue. A constant

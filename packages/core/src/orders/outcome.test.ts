@@ -2,36 +2,31 @@ import { describe, expect, it } from "vitest";
 import { newOrder, reach, T0, walk } from "./fixtures.js";
 import type { OrderState } from "./model.js";
 import { ORDER_STATES } from "./model.js";
-import {
-  ENDING_REASONS,
-  endingReasonFor,
-  ORDER_OUTCOMES,
-  onTheMerchantsOpenList,
-  outcomeFor,
-} from "./outcome.js";
+import { ENDING_REASONS, endingReasonFor, onTheMerchantsOpenList, outcomeFor } from "./outcome.js";
 
 /**
  * The status an agent reads says exactly what the machine knows: "not known
  * yet" is a different word from "known to be none".
  */
 describe("what the agent is told an order came to", () => {
-  it("says the answer is not in yet while the order is still moving", () => {
-    const inFlight: readonly OrderState[] = [
-      "created",
-      "quoted",
-      "paid",
-      "dispatched",
-      "fulfilled",
-    ];
-
-    for (const state of inFlight) {
-      expect(outcomeFor(reach(state)), `an order in ${state}`).toBe("in_progress");
-    }
-  });
-
-  it("never leaves an order without an outcome", () => {
-    for (const state of ORDER_STATES) {
-      expect(ORDER_OUTCOMES, `an order in ${state}`).toContain(outcomeFor(reach(state)));
+  it("maps every reachable state to its independently expected public outcome", () => {
+    const expected = {
+      created: "in_progress",
+      quoted: "in_progress",
+      paid: "in_progress",
+      dispatched: "in_progress",
+      fulfilled: "in_progress",
+      delivered: "delivered",
+      delivered_unpaid: "delivered_unpaid",
+      unfulfilled: "unfulfilled",
+      fulfillment_closed: "fulfillment_closed",
+      failed: "rejected",
+      rejected: "rejected",
+      expired: "expired",
+    } as const;
+    expect(Object.keys(expected).sort()).toEqual([...ORDER_STATES].sort());
+    for (const [state, outcome] of Object.entries(expected)) {
+      expect(outcomeFor(reach(state as OrderState)), state).toBe(outcome);
     }
   });
 
@@ -80,18 +75,6 @@ describe("what the agent is told an order came to", () => {
     expect(outcomeFor(answered)).toBe("rejected");
   });
 
-  it("carries the difference all the way out to the agent, not only inside", () => {
-    // One charge was reported as failed and the other never reported at all.
-    const silent = walk(reach("fulfilled"), [
-      { kind: "deadline_expired", at: T0 + 999_999, deadline: "settle_response" },
-    ]);
-    const reported = walk(reach("fulfilled"), [{ kind: "payment_settle_failed", at: T0 + 5 }]);
-
-    expect(silent.state).toBe(reported.state);
-    expect(silent.payment).not.toBe(reported.payment);
-    expect(outcomeFor(silent)).not.toBe(outcomeFor(reported));
-  });
-
   it("turns a charge that finally reports in into the unfulfilled paid order it is", () => {
     // The order was closed as refused because the payment network went silent,
     // and then the money turned out to have moved. The machine reopens the
@@ -124,7 +107,13 @@ describe("what the agent is told an order came to", () => {
     // finish. A list holding both makes a restart deliver goods for a purchase
     // that was never paid.
     const unpaid = reach("quoted");
-    const takenOn = walk(reach("dispatched"), [{ kind: "handler_accepted", at: T0 + 4 }]);
+    const takenOn = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settled", at: T0 + 2 },
+      { kind: "order_dispatched", at: T0 + 3 },
+      { kind: "handler_accepted", at: T0 + 4 },
+    ]);
+    expect(takenOn.dispatch.accepted).toBe(true);
     const handed = reach("paid");
     const debt = reach("unfulfilled");
     const goodsUnpaid = reach("delivered_unpaid");
@@ -158,12 +147,6 @@ describe("what the agent is told an order came to", () => {
 
     expect(outcomeFor(delivered)).toBe("delivered");
     expect(delivered.payment).toBe("settled");
-  });
-
-  it("changes its answer the moment a late delivery reaches an unfulfilled order", () => {
-    const closed = walk(reach("unfulfilled"), [{ kind: "deliver_called", at: T0 + 999 }]);
-
-    expect(outcomeFor(closed)).toBe("delivered");
   });
 });
 

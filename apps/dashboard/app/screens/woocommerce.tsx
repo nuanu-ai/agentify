@@ -1,4 +1,5 @@
 import { Button, Field } from "@agentify/ui";
+import { withUnit } from "@agentify/ui/units";
 import type { ReactNode } from "react";
 import { Navigate } from "react-router";
 import type {
@@ -418,7 +419,7 @@ function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
               <>
                 <Fact label="Your rate">
                   <span className={current.far ? styles.far : undefined}>
-                    {current.rate} {rate.currency} per US dollar
+                    {withUnit(current.rate, rate.currency)} per US dollar
                     {current.gap === null ? null : `, ${current.gap} Coinbase's`}
                   </span>
                 </Fact>
@@ -437,7 +438,7 @@ function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
             )}
             {reference.kind === "read" ? (
               <Fact label="Coinbase">
-                {reference.rate} {rate.currency} per US dollar, read{" "}
+                {withUnit(reference.rate, rate.currency)} per US dollar, read{" "}
                 <Moment at={reference.readAt} />
               </Fact>
             ) : reference.kind === "unread" ? (

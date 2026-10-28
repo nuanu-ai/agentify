@@ -332,7 +332,7 @@ const requirements = (view: ChallengeView): string => `<div class="reqs">
   <div><div class="k">network</div><div class="v">${escaped(view.network)}</div></div>
   <div><div class="k">pay to</div><div class="v">${escaped(view.payTo)}</div></div>
   <div><div class="k">scheme</div><div class="v">${escaped(view.scheme)}</div></div>
-  <div><div class="k">order</div><div class="v">${view.orderId === null ? "none — this challenge is for the card alone" : escaped(view.orderId)}</div></div>
+  <div><div class="k">price</div><div class="v">${view.priced ? "confirmed for this purchase" : "listed on the card"}</div></div>
 </div>${view.said === null ? "" : `<p class="aside">The gateway says: “${escaped(view.said)}”</p>`}`;
 
 const exchangePanel = (view: ExchangeView): string => {
@@ -444,9 +444,7 @@ const heldMail = (one: HeldOrder): string => {
 };
 
 /**
- * Where a paused order stands, in the words its row says it with. The row
- * carries the key as `data-paused` too, so a script reading the row is told
- * what the person reading it is.
+ * Where a paused order stands, in the words its row says it with.
  */
 const PAUSED_WHERE = {
   arrival: "arrived, nothing done yet",
@@ -457,7 +455,7 @@ const PAUSED_WHERE = {
 const pausedRow = (one: PausedOrder, recording: boolean): string => {
   const where: keyof typeof PAUSED_WHERE =
     one.phase === "arrival" ? "arrival" : recording ? "answer_recorded" : "answer_ready";
-  return `<tr data-paused="${where}">
+  return `<tr>
   <td>
     <div class="under mono">${escaped(one.id)}</div>
     <div class="under">${escaped(one.merchantItemId)}</div>

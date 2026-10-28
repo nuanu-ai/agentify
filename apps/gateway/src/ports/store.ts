@@ -19,6 +19,7 @@ import type {
   ShipTo,
   WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
+import type { PaymentRequirements } from "@x402/core/types";
 import type { AnalyticsEvent } from "../analytics/events.js";
 import type { PayoutSplit } from "../split/parameters.js";
 import type { PaymentRecoveryContext } from "./facilitator.js";
@@ -29,7 +30,6 @@ import type {
   JournalQuery,
   JournalRow,
 } from "./journal.js";
-import type { PageFrom } from "./paging.js";
 import type { Reminder } from "./queue.js";
 
 export type PaymentCompletion =
@@ -73,31 +73,6 @@ export const NO_PENDING_HANDLER = [
 ] as const satisfies readonly OrderState[];
 
 /**
- * The states of a purchase being priced or priced and not yet paid for. A
- * purchase in one of them whose payment stage is still `none` waits on its
- * buyer, and holds one of its seller's places at the door (`Birth`).
- */
-export const WAITING_FOR_PAYMENT = ["created", "quoted"] as const satisfies readonly OrderState[];
-
-/**
- * Whether a purchase waits on its buyer's payment at `at`, and so holds one of
- * its seller's places at the door: being priced or priced, with no payment,
- * and with its price still able to stand. A price holds for the quote's time
- * to live from when it was named, and a question still unanswered may name
- * one until its own window ends; past that the order is over in all but the
- * reminder that closes it, which may fire late or not at all.
- */
-export const waitsForPayment = (record: StoredOrder, at: number): boolean => {
-  const { order } = record;
-  if (!(WAITING_FOR_PAYMENT as readonly string[]).includes(order.state)) return false;
-  if (order.payment !== "none") return false;
-  const { quoteResponseMs, quoteTtlMs } = order.policy.deadlines;
-  return order.state === "quoted"
-    ? order.timestamps.quotedAt === null || order.timestamps.quotedAt + quoteTtlMs > at
-    : order.timestamps.createdAt + quoteResponseMs + quoteTtlMs > at;
-};
-
-/**
  * Whether the merchant answers for an order that has just become
  * `unfulfilled`, given the integration it was sold through: whether they were
  * given it. Their own code answers for an order it was handed, and they for
@@ -131,18 +106,35 @@ export const lapsedAttempt = (record: StoredOrder): boolean =>
   record.paymentAttempt == null &&
   record.delivery == null;
 
+/** An admitted price whose payment has established no owner and moved no money. */
+export const unverifiedAdmission = (record: StoredOrder): boolean =>
+  record.priceOffer !== undefined &&
+  record.order.timestamps.paymentPresentedAt !== null &&
+  record.order.state === "quoted" &&
+  record.order.payment === "none" &&
+  !record.order.heldFulfillment &&
+  record.payment == null &&
+  record.paidBy == null &&
+  record.paymentAttempt == null &&
+  record.delivery == null;
+
+/** Cleanup eligibility; age, receipt and payment-claim checks belong to the store's deletion. */
+export const forgettableAttempt = (record: StoredOrder, at: number): boolean =>
+  lapsedAttempt(record) ||
+  (unverifiedAdmission(record) &&
+    record.priceOffer !== undefined &&
+    record.priceOffer.expiresAt <= at);
+
 /**
  * What the birth of a purchase is held to: the integration its card was sold
- * through, which its merchant must still sell through, and how many of that
- * merchant's purchases may wait for payment at once, this one included.
+ * through, which its merchant must still sell through.
  */
 export interface Birth {
   readonly through: Integration;
-  readonly waitingAtMost: number;
   /**
    * The reminders that close the order on time, written with it or not at
-   * all: a refused birth leaves none behind, and an order written with no
-   * clock on it is one nothing would close.
+   * all: a refused birth leaves none behind. An admitted unverified attempt
+   * has no quote clock and is bounded by retention instead.
    */
   readonly clocks?: readonly ClockAtBirth[];
 }
@@ -154,11 +146,9 @@ export interface ClockAtBirth {
 }
 
 /**
- * What became of the birth of a purchase: written, or not written because its
- * merchant has switched to the other integration, or because as many of their
- * purchases as `Birth` allows already wait for payment.
+ * A birth writes once, finds the existing order, or refuses an integration the merchant left.
  */
-export type Born = "written" | "switched_away" | "too_many_waiting";
+export type Born = "written" | "exists" | "switched_away";
 
 /**
  * What switching a merchant to the other integration came to.
@@ -178,23 +168,10 @@ export type IntegrationSwitch =
   | { readonly switched: true; readonly sellingPaused: boolean }
   | { readonly switched: false; readonly waiting: readonly string[] };
 
-/** A place in a list of orders: when an order was made, and its identifier, which breaks a tie. */
+/** A stable position in the operator order list. */
 export interface OrderPlace {
   readonly createdAt: number;
   readonly id: string;
-}
-
-/**
- * A page of a merchant's attempts that lapsed unpaid: how many there are in
- * all and how many are newer than the page, and the places of its first
- * attempt where newer ones precede it and of its last where older ones follow.
- */
-export interface LapsedPage {
-  readonly orders: readonly StoredOrder[];
-  readonly of: number;
-  readonly newer: number;
-  readonly previous: OrderPlace | null;
-  readonly next: OrderPlace | null;
 }
 
 /** A card as its merchant published it, under the catalog identifier we issued. */
@@ -218,13 +195,20 @@ export interface StoredCard {
   readonly integration: Integration;
 }
 
+/** The immutable financial offer consumed by this order. */
+export interface ConsumedPriceOffer {
+  readonly stamp: string;
+  readonly reference?: string;
+  readonly requirements: PaymentRequirements;
+  readonly expiresAt: number;
+}
+
 /**
- * One order: the machine's order plus everything about the purchase the
- * machine has no opinion about. The payment is kept as the opaque string the
- * agent presented because the charge runs later than the verification, in the
- * synchronous mode only after the goods come back.
+ * One order and its purchase facts. The payment stays opaque until settlement,
+ * which runs after fulfillment for a synchronous purchase.
  */
 export interface StoredOrder {
+  readonly priceOffer?: ConsumedPriceOffer;
   readonly order: Order;
   /**
    * The merchant whose card the order was made against, fixed when the order
@@ -259,13 +243,6 @@ export interface StoredOrder {
    * it, then only the instant it was erased. Absent on every other order.
    */
   readonly shipTo?: ShipTo | { readonly erasedAt: number };
-  /**
-   * The identifier of the price question asked for a parcel's order. A price
-   * question carries the address and names no order, so this is how it is
-   * found when the address is erased from the queue. Absent on other orders
-   * and where no price was asked of the merchant.
-   */
-  readonly priceQuestion?: string;
   /** The price question this order was priced by, where one was asked. */
   readonly priceId: string | null;
   readonly delivery: Delivery | null;
@@ -372,7 +349,6 @@ export type WithTheOrder =
       readonly kind: "forget";
       readonly merchantId: string;
       readonly orderId: string;
-      readonly priceQuestion: string | null;
     };
 
 /**
@@ -870,14 +846,6 @@ export interface Store {
   keysOf(merchantId: string): Promise<readonly StoredKey[]>;
 
   /**
-   * Stops one key working and returns it as it now stands, or null where there
-   * is no such key. A key already disabled keeps its first revocation instant.
-   * It names no merchant, which is safe only because nothing reachable from a
-   * request calls it; the dashboard calls {@link disableKeyOf}.
-   */
-  disableKey(id: string, at: number): Promise<StoredKey | null>;
-
-  /**
    * Stops one of this merchant's keys working and returns it as it now stands
    * with whether this call stopped it, or null where this merchant has no such
    * key. That null must stay the same
@@ -1023,12 +991,6 @@ export interface Store {
   // --- orders ---------------------------------------------------------------
 
   /**
-   * How many of this merchant's purchases wait for payment at `at`
-   * (`waitsForPayment`), counted up to `atMost` and no further.
-   */
-  waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number>;
-
-  /**
    * How many of this merchant's orders are `unfulfilled` and answered for by
    * them (`StoredOrder#answerable`), counted up to `atMost` and no further.
    */
@@ -1041,18 +1003,13 @@ export interface Store {
   stoppedSellers(merchantIds: readonly string[], atLeast: number): Promise<ReadonlySet<string>>;
 
   /**
-   * Writes an order that is not there yet. The record says whose it is. An
-   * identifier or a buyer's key another order already has is refused.
+   * Writes an order once, or returns `exists` without changing the original
+   * record, buyer key, clocks or analytics. A buyer key held by another order
+   * is refused.
    *
-   * Given a `Birth`, the write is made only while its merchant still sells
-   * through the integration named and fewer than `waitingAtMost` of their
-   * purchases wait for payment at the order's own birth (`waitsForPayment`);
-   * the count and the write
-   * are one step against every other birth for that merchant, and the write and
-   * `switchIntegration` wait for each other on the merchant. Its clocks are
-   * written in the same step, so a birth refused for either reason writes
-   * nothing. A purchase always names one; without one the write is
-   * unconditional, which is how a test sets an order down.
+   * A `Birth` holds the merchant against an integration switch. The order and
+   * its clocks commit together, or nothing is written. Without a birth the
+   * integration is not checked.
    *
    * `analytics` is recorded in the same write, dated when the order was made,
    * and only when the order was written.
@@ -1078,31 +1035,16 @@ export interface Store {
 
   /**
    * This merchant's orders, or with `open` only the ones still owed work or
-   * money and the closed ones whose payment completed after the closure. With
-   * `leaveOutLapsed`, the attempts that lapsed unpaid (`lapsedAttempt`) are
-   * not read at all.
+   * money and the closed ones whose payment completed after the closure.
+   * An admitted attempt with no verified owner is never on this merchant list.
    */
-  orders(
-    merchantId: string,
-    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
-  ): Promise<readonly StoredOrder[]>;
-
-  /**
-   * One page of this merchant's attempts that lapsed unpaid, priced or not,
-   * the newest first, at most `limit` of them where `from` stands (the newest
-   * page where absent), and how many such attempts they have in all. A
-   * `limit` of nothing reads only the count.
-   */
-  lapsedAttempts(
-    merchantId: string,
-    page: { readonly limit: number; readonly from?: PageFrom<OrderPlace> },
-  ): Promise<LapsedPage>;
+  orders(merchantId: string, query?: { readonly open?: boolean }): Promise<readonly StoredOrder[]>;
 
   /**
    * Every order still owed work or money, whoever it belongs to, for the
    * sweep, which asks the orders what they are missing rather than keeping a
    * second record of what was meant to happen. It stays bounded because every
-   * open order waits on a deadline that closes it.
+   * admitted attempts with no verified owner are excluded.
    */
   openOrders(): Promise<readonly StoredOrder[]>;
 
@@ -1125,7 +1067,7 @@ export interface Store {
   runAlone<T>(name: string, work: () => Promise<T>): Promise<Ran<T>>;
 
   /**
-   * Deletes at most `limit` attempts that lapsed unpaid (`lapsedAttempt`),
+   * Deletes at most `limit` safe uncharged attempts (`forgettableAttempt`),
    * whoever they belong to, that were last written before `instant` and that
    * no receipt and no payment claim names, and returns how many went. An
    * order deleted is answered after as one that never existed. Bounded, so
@@ -1152,13 +1094,19 @@ export interface Store {
    * Where `change` saves the order, `analytics` is asked what the order as
    * found and as saved amount to, and what it answers is recorded in the same
    * write; it is not asked when nothing is saved, and nothing it answered
-   * stays when the write fails.
+   * stays when the write fails. With `holdMerchant`, the merchant is locked
+   * before the order, against an integration switch; the callback also receives
+   * its current integration. The order must belong to that merchant.
    */
   withOrder<T>(
     id: string,
-    change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
+    change: (
+      found: StoredOrder,
+      integration?: Integration,
+    ) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
     analytics?: OrderAnalytics,
+    holdMerchant?: string,
   ): Promise<OrderLookup<T>>;
 
   // --- payments -------------------------------------------------------------
@@ -1202,13 +1150,6 @@ export interface Store {
 
   /** Writes down one merchant's receipt for one order. */
   putReceipt(merchantId: string, receipt: Receipt): Promise<void>;
-
-  /**
-   * The receipt for one order, whoever it belongs to. Only tests read a
-   * receipt this way. The read is not scoped to a merchant, so anything that
-   * serves its answer to a caller has to settle whose order it is first.
-   */
-  receiptForOrder(orderId: string): Promise<Receipt | null>;
 
   /** This merchant's receipts, and nobody else's. */
   receipts(merchantId: string): Promise<readonly Receipt[]>;

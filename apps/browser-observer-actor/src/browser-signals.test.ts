@@ -150,7 +150,10 @@ var wc_add_to_cart_params = {"ajax_url":"\/wp-admin\/admin-ajax.php","i18n_view_
 describe("raw HTML signals on storefront markup", () => {
   it("reads a hosted-storefront product page", () => {
     const html = STOREFRONT_PRODUCT;
-    expect(rawTextCharacterCount(html)).toBe(261);
+    expect(rawTextCharacterCount(html)).toBe(
+      "Linen shirt – Example Shop Skip to content Free shipping over €100 Shop all Contact Linen shirt €89,00 EUR Relaxed fit, 100% linen. Ships in 2–3 days. Rated 4.8 ★ by 120 customers. Add to cart © 2026, Example Shop <Powered by Shopify>"
+        .length,
+    );
     expect(extractRawMetadata(html, "https://shop.example.com/products/linen-shirt")).toEqual({
       canonical: "https://shop.example.com/products/linen-shirt",
       hreflangCount: 3,
@@ -165,7 +168,10 @@ describe("raw HTML signals on storefront markup", () => {
 
   it("reads a WordPress shop product page", () => {
     const html = WORDPRESS_PRODUCT;
-    expect(rawTextCharacterCount(html)).toBe(118);
+    expect(rawTextCharacterCount(html)).toBe(
+      "Ceramic mug – Example Studio Handmade in Berlin. Ceramic mug 24,00 € 12 in stock Ceramic mug quantity Add to cart"
+        .length,
+    );
     expect(extractRawMetadata(html, "https://example.com/product/ceramic-mug/")).toEqual({
       canonical: "https://example.com/product/ceramic-mug/",
       hreflangCount: 0,
@@ -180,14 +186,14 @@ describe("raw HTML signals on storefront markup", () => {
 
   it.each([
     {
-      shape: "a comment opened inside a script runs to the next comment end",
+      shape: "script comments do not consume following visible content",
       html: '<script>var marker = "<!--";</script><p>Visible</p><!-- trailing -->',
-      text: 14,
+      text: 7,
     },
     {
-      shape: "a raw-text element ends at any raw-text closer",
+      shape: "a script ends only at its own closer",
       html: "<script>a</style>b</script>c",
-      text: 3,
+      text: 1,
     },
     {
       shape: "tag names are read without case",
@@ -195,27 +201,31 @@ describe("raw HTML signals on storefront markup", () => {
       text: 1,
     },
     { shape: "a longer tag name is not a script", html: "<scripts>x</scripts>y", text: 3 },
-    { shape: "a hyphen ends the tag name", html: "<script-x>z</script>w", text: 1 },
-    { shape: "a closer with a space does not close", html: "<style>a</style >b", text: 3 },
-    { shape: "a comment end is looked for after its opening", html: "<!-->x-->y", text: 1 },
+    { shape: "a hyphen belongs to the tag name", html: "<script-x>z</script>w", text: 3 },
+    { shape: "a closer permits trailing space", html: "<style>a</style >b", text: 1 },
+    { shape: "a comment permits an immediate closer", html: "<!-->x-->y", text: 5 },
     { shape: "empty and unclosed brackets stay text", html: "a <> b < c", text: 10 },
-    { shape: "entities decode", html: "&amp;lt;b&amp;gt; &#x41;&#66; &nbsp;&NBSP;end", text: 10 },
+    { shape: "entities decode", html: "&amp;lt;b&amp;gt; &#x41;&#66; &nbsp;&NBSP;end", text: 22 },
     { shape: "Unicode spaces collapse", html: "a\u00a0\u2003b", text: 3 },
-    { shape: "an unclosed comment stays text", html: "<p>open <!-- never closed", text: 22 },
+    {
+      shape: "an unclosed comment hides its remainder",
+      html: "<p>open <!-- never closed",
+      text: 4,
+    },
     {
       shape: "noscript and template are not text",
       html: "<noscript><p>hidden</p></noscript><template><p>t</p></template>shown",
       text: 5,
     },
     {
-      shape: "a script inside a textarea is still a script",
+      shape: "a textarea contains literal markup",
       html: "<textarea><script>x</textarea>y</script>z",
-      text: 1,
+      text: 13,
     },
     {
       shape: "a non-ASCII letter does not fold into a tag name",
       html: "<\u017fcript>x</script>y",
-      text: 3,
+      text: 11,
     },
   ])("counts raw text where $shape", ({ html, text }) => {
     expect(rawTextCharacterCount(html)).toBe(text);
@@ -228,9 +238,24 @@ describe("raw HTML signals on storefront markup", () => {
       expected: { canonical: "https://example.com/a" },
     },
     {
-      shape: "a commented-out canonical still counts, and the first one wins",
+      shape: "a commented-out canonical is ignored",
       html: '<!-- <link rel="canonical" href="/old"> --><link rel="canonical" href="/new">',
-      expected: { canonical: "https://example.com/old" },
+      expected: { canonical: "https://example.com/new" },
+    },
+    {
+      shape: "template metadata is dormant and cannot displace the page's metadata",
+      html: '<template><link rel="canonical" href="/template"><link rel="alternate" hreflang="de" href="/de"><script type="application/ld+json">{"price":"9"}</script></template><link rel="canonical" href="/page">',
+      expected: {
+        canonical: "https://example.com/page",
+        hreflangCount: 0,
+        jsonLdCount: 0,
+        priceCount: 0,
+      },
+    },
+    {
+      shape: "noscript metadata stays text when scripts are enabled",
+      html: '<noscript><link rel="canonical" href="/noscript"><script type="application/ld+json">{"price":"9"}</script></noscript><link rel="canonical" href="/page">',
+      expected: { canonical: "https://example.com/page", jsonLdCount: 0, priceCount: 0 },
     },
     {
       shape: "an alternate with a language counts, quoted or not",
@@ -268,9 +293,9 @@ describe("raw HTML signals on storefront markup", () => {
       expected: { jsonLdCount: 1, currencies: ["USD"] },
     },
     {
-      shape: "any attribute ending in type names structured data",
+      shape: "data-type does not name structured data",
       html: '<script data-type="application/ld+json">{"availability":"https://schema.org/PreOrder"}</script>',
-      expected: { jsonLdCount: 1, availability: ["preorder"] },
+      expected: { jsonLdCount: 0, availability: [] },
     },
     {
       shape: "a type with parameters is not structured data",
@@ -283,9 +308,9 @@ describe("raw HTML signals on storefront markup", () => {
       expected: { jsonLdCount: 1, hasContact: true },
     },
     {
-      shape: "the type may be named inside another attribute's value",
+      shape: "a type string inside another attribute is not a type",
       html: '<script type="text/javascript" data-x="type=application/ld+json">{"openingHours":"Mo-Fr"}</script>',
-      expected: { jsonLdCount: 1, hasOpeningHours: true },
+      expected: { jsonLdCount: 0, hasOpeningHours: false },
     },
     {
       shape: "a block that is not JSON is counted but yields no facts",
@@ -293,9 +318,9 @@ describe("raw HTML signals on storefront markup", () => {
       expected: { jsonLdCount: 1, priceCount: 0 },
     },
     {
-      shape: "a closer with a space does not close structured data",
+      shape: "a closer permits trailing space in structured data",
       html: '<script type="application/ld+json">{"price":"1"}</script ><script type="application/ld+json">{"price":"2"}</script>',
-      expected: { jsonLdCount: 1, priceCount: 0 },
+      expected: { jsonLdCount: 2, priceCount: 2 },
     },
     {
       shape: "the type must be separated from the tag name",
@@ -362,16 +387,16 @@ describe("raw HTML signals on hostile markup", () => {
   };
 
   it.each([
-    { unit: "<!--", text: (html: string) => html.length },
+    { unit: "<!--", text: () => 0 },
     { unit: "<", text: (html: string) => html.length },
-    { unit: "<a ", text: (html: string) => html.length - 1 },
+    { unit: "<a ", text: () => 0 },
     { unit: "<script>", text: () => 0 },
-    { unit: "<script ", text: (html: string) => html.length - 1 },
-    { unit: "<style ", text: (html: string) => html.length - 1 },
+    { unit: "<script ", text: () => 0 },
+    { unit: "<style ", text: () => 0 },
     { unit: "<noscript>", text: () => 0 },
-    { unit: "<template ", text: (html: string) => html.length - 1 },
-    { unit: "<link ", text: (html: string) => html.length - 1 },
-    { unit: "<script type ", text: (html: string) => html.length - 1 },
+    { unit: "<template ", text: () => 0 },
+    { unit: "<link ", text: () => 0 },
+    { unit: "<script type ", text: () => 0 },
     { unit: '<script type="application/ld+json">', text: () => 0 },
   ])("reads $unit repeated up to the byte budget in linear time", ({ unit, text }) => {
     for (let size = 64 * 1024; size <= BYTE_BUDGET; size *= 2) {

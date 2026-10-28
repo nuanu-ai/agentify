@@ -54,6 +54,7 @@ const order = (id: string, state: Order["state"]): StoredOrder => ({
     timestamps: {
       createdAt: 0,
       quotedAt: null,
+      paymentPresentedAt: null,
       settleStartedAt: null,
       paidAt: null,
       dispatchedAt: null,
@@ -268,6 +269,8 @@ describe("MemoryStore writes that go with an order", () => {
     expect((await store.orderById("ord_1"))?.order.state).toBe("paid");
     // The receipt is listed before the envelope, but envelopes are taken
     // first, so the refusal comes before any receipt is written.
-    expect(await store.receiptForOrder("ord_1")).toBeNull();
+    expect(
+      (await store.receipts(A)).find((receipt) => receipt.order_id === "ord_1") ?? null,
+    ).toBeNull();
   });
 });

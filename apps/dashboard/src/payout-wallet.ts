@@ -13,6 +13,7 @@
  */
 
 import type { NotAPayoutWallet } from "@agentify/gateway";
+import { withUnit } from "@agentify/ui/units";
 import { EvmAddressSchema } from "@nuanu-ai/agentify-contracts";
 import { WALLET_CHANGE_MS } from "./deadlines.js";
 
@@ -35,7 +36,7 @@ export const LIVE_CHANGE_WAITS =
   " Money already in your payout contract is still paid to your current wallet.";
 
 /** Said while a change is on its way on live, so that wait does not read as a frozen page. */
-export const CHANGE_ON_ITS_WAY = `Emailing everyone on your account first. This can take up to ${WALLET_CHANGE_MS / 1_000} seconds.`;
+export const CHANGE_ON_ITS_WAY = `Emailing everyone on your account first. This can take up to ${withUnit(WALLET_CHANGE_MS / 1_000, "seconds")}.`;
 
 export const WALLET_NEEDED = "Paste your wallet's address.";
 

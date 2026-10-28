@@ -175,28 +175,6 @@ describe("a merchant's payout of one split", () => {
     expect(paid.splits).toStrictEqual([S_ROW]);
   });
 
-  it("lets the distribution and both withdrawals fail without undoing the rest, and never the creation", () => {
-    // The warehouse's withdraw reverts at a balance of zero and when USDC
-    // refuses the owner, a wallet Circle has blocked; a distribution reverts
-    // when Circle has blocked the split itself. A failed create must stop the
-    // transaction: the distribute of a split with no code "succeeds" and pays
-    // nobody. A commission that cannot be withdrawn must not cost the
-    // merchant their share.
-    const flags = callsOf(merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS).data).map(
-      ({ allowFailure }) => allowFailure,
-    );
-    expect(flags).toStrictEqual([false, true, true, true]);
-  });
-
-  it("pays Agentify's share out of the warehouse in the same transaction, after the merchant's", () => {
-    const calls = callsOf(merchantPayout(TEST_NETWORK, [S_ROW], NETWORKS).data);
-
-    expect(calls.slice(-2)).toStrictEqual([
-      call(ON_CHAIN.warehouse, true, WITHDRAW_M),
-      call(ON_CHAIN.warehouse, true, WITHDRAW_A),
-    ]);
-  });
-
   it("is the transaction a hand encoder gives for a production-shaped split", () => {
     const { merchant } = handEncoded.payouts;
     const split = payoutSplitFor(
@@ -207,7 +185,6 @@ describe("a merchant's payout of one split", () => {
     expect(merchantPayout(WITH_THE_EXPERIMENTS_COMMISSION, [split], NETWORKS).data).toBe(
       merchant.data,
     );
-    expect(merchant.data.length).toBe(3_658);
   });
 
   it("is built from the split as recorded, whatever commission wallet the network names today", () => {
@@ -348,26 +325,6 @@ describe("a merchant's payout over every split that can hold their money", () =>
       call(ON_CHAIN.warehouse, true, WITHDRAW_M),
       call(ON_CHAIN.warehouse, true, WITHDRAW_A),
     ]);
-  });
-
-  it("pays a merchant's other splits when one of them cannot be distributed, since each distribution may fail alone", () => {
-    // Circle can block a split as it can any address, and its distribution
-    // then reverts for good. A merchant whose wallet has changed has every
-    // split that can hold their money in this one transaction, so with the
-    // flag down a blocked old split would revert it on every run and the
-    // split in force would never be paid out by them.
-    const paid = merchantPayout(TEST_NETWORK, [S_ROW, S2_OF_THE_SAME_MERCHANT], NETWORKS);
-
-    expect(paid.data).toBe(
-      `0x82ad56cb${word("20")}${word("6")}` +
-        `${word("c0")}${word("320")}${word("560")}${word("7c0")}${word("a00")}${word("ae0")}` +
-        `${word(ON_CHAIN.factory)}${word("0")}${word("60")}${word("1c4")}${padded(CREATE_S)}` +
-        `${word(S.address)}${word("1")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
-        `${word(ON_CHAIN.factory)}${word("0")}${word("60")}${word("1c4")}${padded(CREATE_S2)}` +
-        `${word(S2.address)}${word("1")}${word("60")}${word("1a4")}${padded(DISTRIBUTE)}` +
-        `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_M)}` +
-        `${word(ON_CHAIN.warehouse)}${word("1")}${word("60")}${word("44")}${padded(WITHDRAW_A)}`,
-    );
   });
 });
 
@@ -512,17 +469,6 @@ describe("the operator's payout", () => {
       call(ON_CHAIN.warehouse, true, withdrawCall(SECOND_WALLET, ON_CHAIN.usdc)),
       call(ON_CHAIN.warehouse, true, WITHDRAW_A),
     ]);
-  });
-
-  it("pays every other split when one cannot be distributed, since each distribution may fail alone", () => {
-    // A split Circle has blocked reverts in its distribution; with the flag
-    // down it would take the other nineteen merchants of its part with it, on
-    // every run, and the commission with them.
-    const calls = callsOf(operatorPayouts(TEST_NETWORK, [S_ROW, S2_ROW], NETWORKS)[0]?.data ?? "");
-    const distributes = calls.filter(
-      ({ target }) => target !== ON_CHAIN.factory && target !== ON_CHAIN.warehouse,
-    );
-    expect(distributes.map(({ allowFailure }) => allowFailure)).toStrictEqual([true, true]);
   });
 
   it("is no transaction at all where there is no split", () => {

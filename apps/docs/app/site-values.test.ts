@@ -3,18 +3,15 @@
  * have said: the browser fills the build's templates from the values Caddy
  * filled into the document it did serve, and must fill them as Caddy does,
  * on either channel and whether or not the operator's identity is published.
- * Caddy's filling is the one the edge's stand-in does from the same
- * environment.
+ * The real Caddy/browser parity is held by the Chromium integration suite.
+ * These rows isolate the parser on the gallery's supplied example documents.
  */
 
 import { describe, expect, it } from "vitest";
 import { type Environment, fillTemplates } from "../testing/caddy-templates.js";
 import { CHANNELS } from "../testing/edge.js";
-import { renderedPages } from "./markdown.server.js";
 import { servedTemplate } from "./served.js";
-import { analyticsConfigIn, fillSiteValues, siteValuesIn } from "./site-values.js";
-
-const identity = (await renderedPages()).get("/scanner")?.html ?? "";
+import { analyticsConfigIn, siteValuesIn } from "./site-values.js";
 
 const environments: [string, Environment][] = [
   ["the test channel", CHANNELS.test],
@@ -45,17 +42,6 @@ describe("the values a deployment decides", () => {
         "meta-pixel": environment.META_PIXEL_ID ?? "",
         "meta-destination": environment.META_DESTINATION_ENV ?? "",
       });
-    },
-  );
-
-  it.each(environments)(
-    "fill a page in the browser as Caddy fills it on %s",
-    (_on, environment) => {
-      const values = siteValuesIn(fillTemplates(servedTemplate(), environment));
-      if (values === null) throw new Error("the served part carried no values");
-
-      expect(identity).toContain("<!--{{");
-      expect(fillSiteValues(identity, values)).toBe(fillTemplates(identity, environment));
     },
   );
 

@@ -52,6 +52,19 @@ describe("sanitized Actor output", () => {
     };
     expect(() => sanitizeBrowserOutput(urlLeak)).toThrowError("forbidden_output_value");
 
+    for (const address of [
+      "192.0.2.1",
+      "2001:db8::1",
+      "::1",
+      "::ffff:192.0.2.1",
+      "ip=2001:db8::1",
+      "<2001:db8::1>",
+    ]) {
+      const ipLeak = validOutput();
+      firstObservation(ipLeak).evidence = { debug_value: address };
+      expect(() => sanitizeBrowserOutput(ipLeak), address).toThrow();
+    }
+
     const rawLeak = validOutput();
     firstObservation(rawLeak).evidence = { storage: "redacted" };
     expect(() => sanitizeBrowserOutput(rawLeak)).toThrowError("forbidden_output_key");

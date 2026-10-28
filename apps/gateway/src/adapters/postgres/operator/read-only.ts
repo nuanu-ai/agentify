@@ -10,7 +10,7 @@ import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 /** How long one statement of an operator's read may run before the database cancels it. */
-export const OPERATOR_STATEMENT_MS = 5_000;
+const OPERATOR_STATEMENT_MS = 5_000;
 
 type Transaction = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
 
@@ -23,13 +23,7 @@ export type ReadOnlyTransaction = Pick<
 /** Runs one read of the operator's reader. */
 export type ReadOnly = <T>(read: (tx: ReadOnlyTransaction) => Promise<T>) => Promise<T>;
 
-export function readOnlyOn(
-  db: NodePgDatabase,
-  statementMs: number = OPERATOR_STATEMENT_MS,
-): ReadOnly {
-  if (!Number.isInteger(statementMs) || statementMs <= 0) {
-    throw new Error("an operator's read needs a statement time of a whole number of milliseconds");
-  }
+export function readOnlyOn(db: NodePgDatabase): ReadOnly {
   return async (read) =>
     await db.transaction(
       async (tx) => {
@@ -38,7 +32,9 @@ export function readOnlyOn(
         // rather than a SET command on purpose: Postgres lets a transaction's
         // mode change until its first query, so a read that began with
         // `set transaction read write` would otherwise be writable.
-        await tx.execute(sql`select set_config('statement_timeout', ${String(statementMs)}, true)`);
+        await tx.execute(
+          sql`select set_config('statement_timeout', ${String(OPERATOR_STATEMENT_MS)}, true)`,
+        );
         return await read(tx);
       },
       // Repeatable read, so a page's count and the rows it counts are read at

@@ -385,6 +385,7 @@ describe("a card or a merchant taken off sale and put back", () => {
 describe("the merchant's setup", () => {
   it("records a seller name and a shop's site when saved, and nothing when saved again unchanged", async () => {
     const { harnessed } = await started();
+    const before = recorded(harnessed, "agc_setup_result").length;
     const merchant = harnessed.merchant.id;
 
     await harnessed.gateway.setSellerName(
@@ -405,7 +406,7 @@ describe("the merchant's setup", () => {
       refs: { merchant },
       fields: { step, integration: "none", outcome: "completed" },
     });
-    expect(recorded(harnessed, "agc_setup_result")).toStrictEqual([
+    expect(recorded(harnessed, "agc_setup_result").slice(before)).toStrictEqual([
       saved("seller_name"),
       saved("seller_site"),
     ]);
@@ -413,6 +414,7 @@ describe("the merchant's setup", () => {
 
   it("records a seller name refused at the API as blocked, for the step it asked for, and saves nothing", async () => {
     const { harnessed, served } = await started();
+    const before = recorded(harnessed, "agc_setup_result").length;
 
     const refused = await served.call("POST", "/v0/seller-name", {
       body: { seller_name: "é".repeat(40) },
@@ -423,7 +425,7 @@ describe("the merchant's setup", () => {
     expect((await harnessed.gateway.sellerName(harnessed.merchant.id)).seller_name).toBe(
       "The merchant",
     );
-    expect(recorded(harnessed, "agc_setup_result")).toStrictEqual([
+    expect(recorded(harnessed, "agc_setup_result").slice(before)).toStrictEqual([
       {
         name: "agc_setup_result",
         actor: "merchant_worker",
@@ -458,6 +460,7 @@ describe("the merchant's setup", () => {
 
   it("records a payout wallet saved, nothing for the same wallet again, and a refused one as blocked", async () => {
     const { harnessed } = await started();
+    const before = setupOf(harnessed, "payout_wallet").length;
     const merchant = harnessed.merchant.id;
 
     await harnessed.gateway.setPayoutWallet(merchant, A_WALLET, SIGNED_IN);
@@ -469,7 +472,11 @@ describe("the merchant's setup", () => {
     );
 
     expect(refused).toMatchObject({ refused: "not_a_payout_wallet" });
-    expect(setupOf(harnessed, "payout_wallet").map((event) => event.fields)).toStrictEqual([
+    expect(
+      setupOf(harnessed, "payout_wallet")
+        .slice(before)
+        .map((event) => event.fields),
+    ).toStrictEqual([
       { step: "payout_wallet", integration: "none", outcome: "completed" },
       {
         step: "payout_wallet",
@@ -482,6 +489,7 @@ describe("the merchant's setup", () => {
 
   it("records a live replacement wallet as pending, nothing when it is asked for again, and its cancel as completed", async () => {
     const { harnessed } = await started(LIVE);
+    const before = setupOf(harnessed, "payout_wallet").length;
     const merchant = await harnessed.gateway.registerMerchant();
 
     await harnessed.gateway.setPayoutWallet(merchant, A_WALLET, SIGNED_IN);
@@ -491,7 +499,9 @@ describe("the merchant's setup", () => {
     await harnessed.gateway.setPayoutWallet(merchant, A_WALLET, SIGNED_IN);
 
     expect(
-      setupOf(harnessed, "payout_wallet").map((event) => [event.refs, event.fields.outcome]),
+      setupOf(harnessed, "payout_wallet")
+        .slice(before)
+        .map((event) => [event.refs, event.fields.outcome]),
     ).toStrictEqual([
       [{ merchant }, "completed"],
       [{ merchant }, "pending"],
@@ -501,6 +511,7 @@ describe("the merchant's setup", () => {
 
   it("records a live replacement that could not be announced as failed, and writes nothing", async () => {
     const { harnessed } = await started(LIVE);
+    const before = setupOf(harnessed, "payout_wallet").length;
     const merchant = await harnessed.gateway.registerMerchant();
     await harnessed.gateway.setPayoutWallet(merchant, A_WALLET, SIGNED_IN);
     harnessed.announcer.answer = "not_handed_over";
@@ -509,7 +520,11 @@ describe("the merchant's setup", () => {
 
     expect(refused).toBe("not_announced");
     expect((await harnessed.gateway.payoutWallet(merchant)).pending).toBeNull();
-    expect(setupOf(harnessed, "payout_wallet").map((event) => event.fields)).toStrictEqual([
+    expect(
+      setupOf(harnessed, "payout_wallet")
+        .slice(before)
+        .map((event) => event.fields),
+    ).toStrictEqual([
       { step: "payout_wallet", integration: "none", outcome: "completed" },
       {
         step: "payout_wallet",

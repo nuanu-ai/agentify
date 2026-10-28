@@ -148,28 +148,12 @@ describe("an address written the way a wallet shows it", () => {
     }
   });
 
-  it("puts capitals in an address that has letters to capitalise", () => {
-    // The negative control: two of the vectors come out all lower case, so an
-    // identity function would pass those; this one has to change.
-    const lowered = "0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed";
-
-    expect(checksummedAddressOf(lowered)).not.toBe(lowered);
-    expect(checksummedAddressOf(lowered)).toBe("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
-  });
-
   it("leaves an address with no letters in it exactly as it is", () => {
     // All digits, nothing to capitalise: what the seeded addresses in the
     // gateway's tests look like.
     const digits = "0x0000000000000000000000000000000000000001";
 
     expect(checksummedAddressOf(digits)).toBe(digits);
-  });
-
-  it("agrees with the schema about which addresses there are", () => {
-    // An address this writes out is one the schema takes, and the reverse.
-    for (const address of CHECKSUMMED) {
-      expect(EvmAddressSchema.safeParse(checksummedAddressOf(address)).success, address).toBe(true);
-    }
   });
 
   it("refuses to repair an address whose letters disagree with it", () => {

@@ -13,8 +13,7 @@
  * among them; and a visit is measured only as its visitor chose, one choice
  * holding on the scanner's pages and the documentation's alike.
  *
- * It needs the build (`pnpm --filter @agentify/docs build`) and Playwright's
- * Chromium.
+ * It needs the built scanner and docs, Playwright Chromium and Docker for the deployed Caddy image.
  */
 
 import { readFile } from "node:fs/promises";
@@ -35,6 +34,8 @@ import { SURFACE_WORDS } from "@agentify/ui/surface";
 import type { Browser, BrowserContext, Page, Request } from "playwright";
 import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { renderedPages } from "../app/markdown.server.js";
+import { fillSiteValues, siteValuesIn } from "../app/site-values.js";
 import { BUILT, CHANNELS, type Edge, standEdge } from "./edge.js";
 
 /**
@@ -105,6 +106,22 @@ const choiceOf = (allowed: boolean): string =>
 
 let browser: Browser;
 let edge: Edge;
+const tablePages = (
+  await Promise.all(
+    DOCS_PAGES.filter((entry) => !entry.path.startsWith("/scanner")).map(async (entry) => ({
+      entry,
+      html: await readFile(
+        join(BUILT, entry.path === "/" ? "index.html" : `${entry.path.slice(1)}.html`),
+        "utf8",
+      ),
+    })),
+  )
+)
+  .filter(({ html }) => /<table(?:\s|>)/.test(html))
+  .map(({ entry }) => entry);
+if (tablePages.length === 0)
+  throw new Error("the built documentation contains no tables to inspect");
+
 let build: ServerBuild;
 let viteManifest: ViteManifest;
 /** What reached the edge, as the server rather than the browser's cache tells it. */
@@ -274,18 +291,24 @@ describe("a page of the documentation in Chromium", () => {
     await page.context().close();
   });
 
-  it("loads no code of a measuring service on a first visit, which waits for the visitor's choice", async () => {
-    for (const script of firstVisitScriptsOfAPage()) {
-      const code = await readFile(join(BUILT, script.replace(/^\/docs\//, "")), "utf8");
-      expect(code, script).not.toContain("fbevents.js");
-      expect(code, script).not.toContain("api_host");
-    }
+  it("keeps the measuring runtime and provider chunks outside the first-visit module graph", () => {
+    const first = new Set(firstVisitScripts(build, viteManifest, "routes/page"));
+    const measuring = Object.entries(viteManifest).filter(([module]) =>
+      /posthog-js|\/page-view\.[cm]?[jt]s/.test(module),
+    );
+    expect(
+      measuring.length,
+      "the build must expose its deferred measuring modules",
+    ).toBeGreaterThan(0);
+    for (const [module, chunk] of measuring) expect(first.has(chunk.file), module).toBe(false);
   });
 
   it("draws every diagram of the orders page as a named, described picture, running no diagram code", async () => {
     const { page, asked } = await visit("/docs/orders");
 
-    for (const diagram of await page.locator("figure.diagram svg").all()) {
+    const diagrams = await page.locator("figure.diagram svg").all();
+    expect(diagrams.length).toBeGreaterThan(0);
+    for (const diagram of diagrams) {
       const accessible = await diagram.evaluate((element) => {
         const texts = (attribute: string, tag: string) => {
           const ids = element.getAttribute(attribute)?.trim().split(/\s+/) ?? [];
@@ -419,6 +442,8 @@ describe("the search", () => {
     await page.keyboard.press("ArrowDown");
     expect(await input.getAttribute("aria-activedescendant")).toBe("search-result-1");
     expect(await page.locator("#search-result-1").getAttribute("aria-selected")).toBe("true");
+    // A result is one control: a link inside an option would be a control in a control.
+    expect(await page.locator('[role="option"] :is(a, button, input)').count()).toBe(0);
     await page.keyboard.press("Tab");
     expect(await input.evaluate((element) => element === document.activeElement)).toBe(true);
     await page.keyboard.press("Escape");
@@ -493,10 +518,12 @@ describe("the search", () => {
 
     const list = await page.locator(".search-results").boundingBox();
     const reached = await page.locator("#search-result-11").boundingBox();
-    expect(reached?.y ?? 0).toBeGreaterThanOrEqual(list?.y ?? 0);
-    expect((reached?.y ?? 0) + (reached?.height ?? 0)).toBeLessThanOrEqual(
-      (list?.y ?? 0) + (list?.height ?? 0) + 1,
-    );
+    expect(list).not.toBeNull();
+    expect(reached).not.toBeNull();
+    if (list === null || reached === null)
+      throw new Error("the search result or list is not rendered");
+    expect(reached.y).toBeGreaterThanOrEqual(list.y);
+    expect(reached.y + reached.height).toBeLessThanOrEqual(list.y + list.height + 1);
     await page.context().close();
   });
 
@@ -772,7 +799,9 @@ describe("a diagram or a table on a narrow or a wide screen", () => {
     async (address) => {
       const { page } = await visit(address, { width: 1440, height: 900 });
       await page.evaluate(() => document.fonts.ready);
-      const cut = await page.locator("figure.diagram foreignObject").evaluateAll((boxes) =>
+      const labels = page.locator("figure.diagram foreignObject");
+      expect(await labels.count()).toBeGreaterThan(0);
+      const cut = await labels.evaluateAll((boxes) =>
         boxes
           .filter((box) => {
             const label = box.firstElementChild as HTMLElement | null;
@@ -791,10 +820,11 @@ describe("a diagram or a table on a narrow or a wide screen", () => {
     },
   );
 
-  it.each(DOCS_PAGES.filter((entry) => !entry.path.startsWith("/scanner")))(
+  it.each(tablePages)(
     "fits every table of $path into the column on a wide screen",
     async (entry) => {
       const { page } = await visit(docsAddress(entry.path), { width: 1440, height: 900 });
+      expect(await page.locator(".doc table").count()).toBeGreaterThan(0);
       const wider = await page
         .locator(".doc table")
         .evaluateAll((tables) =>
@@ -1068,6 +1098,7 @@ describe("measuring a visit", () => {
     await drawn(page, "/docs/orders");
     await expect.poll(() => views.length, { timeout: 10_000 }).toBe(2);
     await page.locator("footer").getByRole("button", { name: "Privacy choices" }).click();
+    await page.getByRole("dialog", { name: "Privacy choices" }).waitFor();
     await page.getByRole("button", { name: "Save choices" }).click();
     await page.getByRole("dialog", { name: "Privacy choices" }).waitFor({ state: "detached" });
     await page.waitForTimeout(1_000);
@@ -1150,7 +1181,14 @@ describe("measuring a visit", () => {
     const last = await list.locator("a").last().boundingBox();
     const asking = await banner.boundingBox();
 
-    expect((last?.y ?? 0) + (last?.height ?? 0)).toBeLessThanOrEqual(asking?.y ?? 0);
+    expect(await list.locator("a").last().isVisible()).toBe(true);
+    expect(await banner.isVisible()).toBe(true);
+    expect(last).not.toBeNull();
+    expect(asking).not.toBeNull();
+    if (last === null || asking === null)
+      throw new Error("the last navigation link or consent banner is not rendered");
+    expect(last.height).toBeGreaterThan(0);
+    expect(last.y + last.height).toBeLessThanOrEqual(asking.y);
     await page.context().close();
   });
 
@@ -1160,9 +1198,14 @@ describe("measuring a visit", () => {
     await page.locator(".docs-bar .docs-search-button").click();
     await page.getByRole("combobox").waitFor();
 
+    expect(asking).not.toBeNull();
+    if (asking === null) throw new Error("the consent banner is not rendered");
     const above = await page.evaluate(
-      ([x, y]) => document.elementFromPoint(x, y)?.closest(".search-backdrop") !== null,
-      [(asking?.x ?? 0) + 20, (asking?.y ?? 0) + 20] as const,
+      ([x, y]) => {
+        const hit = document.elementFromPoint(x, y);
+        return hit !== null && hit.closest(".search-backdrop") !== null;
+      },
+      [asking.x + 20, asking.y + 20] as const,
     );
     expect(above).toBe(true);
     await page.context().close();
@@ -1186,12 +1229,68 @@ describe("measuring a visit", () => {
     expect(await page.getByRole("complementary", { name: "Privacy choices" }).count()).toBe(0);
     await context.close();
   });
+});
 
-  it("opens the choices again from the foot of a page", async () => {
-    const { page } = await visit("/docs/money");
-    await page.locator("footer").getByRole("button", { name: "Privacy choices" }).click();
+describe("Caddy and browser site values", () => {
+  it.each([
+    ["test", CHANNELS.test],
+    ["live", CHANNELS.live],
+    [
+      "escaped published operator",
+      {
+        ...CHANNELS.live,
+        LEGAL_OPERATOR: `O'Brien & "Sons" <Ltd> $& co`,
+        LEGAL_IDENTITY_CONFIRMED: "true",
+      },
+    ],
+  ] as const)("fill the actual scanner article identically on %s", async (_name, environment) => {
+    const real = await standEdge({ environment });
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    try {
+      const response = await fetch(`${real.origin}/docs/scanner`);
+      expect(response.status).toBe(200);
+      const values = siteValuesIn(await response.text());
+      expect(values).toMatchObject({
+        origin: environment.AGENTIFY_PUBLIC_ORIGIN,
+        "abuse-email": environment.ABUSE_EMAIL,
+        operator: environment.LEGAL_OPERATOR,
+        "identity-confirmed": environment.LEGAL_IDENTITY_CONFIRMED,
+      });
+      if (values === null) throw new Error("Caddy did not supply the site values");
+      const identity = (await renderedPages()).get("/scanner")?.html;
+      expect(identity).toBeTypeOf("string");
+      const page = await context.newPage();
+      await page.goto(`${real.origin}/docs/scanner`);
+      const expected = await page.evaluate(
+        (html) => {
+          const div = document.createElement("div");
+          div.innerHTML = html;
+          return div.innerHTML;
+        },
+        fillSiteValues(identity ?? "", values),
+      );
+      expect(await page.locator(".doc").innerHTML()).toBe(expected);
+    } finally {
+      await context.close();
+      await real.close();
+    }
+  });
 
-    await page.getByRole("dialog", { name: "Privacy choices" }).waitFor();
+  it("keeps the search control visibly bounded and its text distinct from its fill", async () => {
+    const { page } = await visit("/docs/orders");
+    const drawn = await page.locator(".docs-aside .docs-search-button").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        border: Number.parseFloat(style.borderTopWidth),
+        borderColor: style.borderTopColor,
+        text: style.color,
+        fill: style.backgroundColor,
+      };
+    });
+    expect(drawn.border).toBeGreaterThan(0);
+    expect(drawn.borderColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(drawn.text).not.toBe(drawn.fill);
+    expect(drawn.fill).not.toBe("rgba(0, 0, 0, 0)");
     await page.context().close();
   });
 });

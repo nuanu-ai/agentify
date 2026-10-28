@@ -419,38 +419,6 @@ export const wooRates = pgTable(
 );
 
 /**
- * Delivery-critical WooCommerce facts accepted under one gateway price
- * question.
- */
-export const wooQuotes = pgTable(
-  "dashboard_woo_quotes",
-  {
-    priceId: text("price_id").primaryKey(),
-    accountId: text("account_id")
-      .notNull()
-      .references(() => accounts.id, { onDelete: "cascade" }),
-    merchantItemId: text("merchant_item_id").notNull(),
-    /**
-     * Digest only: the protected source address itself is buyer-secret data.
-     */
-    productFingerprint: text("product_fingerprint").notNull(),
-    /**
-     * The amount the shop's order is held to, in the shop's currency at its
-     * decimals, and the US dollars answered for it. Null on a row that bound no
-     * amount, which no order can be filled against.
-     */
-    shopAmount: text("shop_amount"),
-    shopCurrency: text("shop_currency"),
-    dollars: text("dollars"),
-    /** The rate the dollars were converted at; null where the shop sells in US dollars. */
-    rateVersion: integer("rate_version"),
-    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-    createdAt: moment("created_at"),
-  },
-  (table) => [index("dashboard_woo_quotes_account_idx").on(table.accountId)],
-);
-
-/**
  * Delivery is at least once, so without this table a repeated delivery would
  * place a second order in the merchant's shop for one sale. A row is written
  * before the shop is called and completed after it answers.

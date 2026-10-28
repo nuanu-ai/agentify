@@ -19,6 +19,7 @@ services:
     environment:
       AGENTIFY_METRICS_PORT: "9464"
       SANDBOX_MERCHANT_KEY: ""
+      PRICE_STAMP_KEY: "${PRICE_STAMP_KEY:?set this channel own stable price signing secret; see deploy/README.md}"
 
   merchant:
     # The laptop's fixture merchant, given a profile nothing enables. On a

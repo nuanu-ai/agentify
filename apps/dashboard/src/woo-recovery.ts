@@ -6,10 +6,12 @@
  */
 
 import { createHash } from "node:crypto";
+import { withUnit } from "@agentify/ui/units";
 import type { Delivery, Money, OrderWithStatus } from "@nuanu-ai/agentify-contracts";
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
 import { amountOfMinor, minorOf, withinOneUnit } from "./woo-money.js";
+import { saleFromQuoteReference } from "./woo-quoted-sale.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -127,13 +129,7 @@ const recover = async (
     return deliverSaved(request.orderId, record.placed.id, record.placed.permission, gateway);
   }
 
-  const acceptedFingerprint = (
-    await parts.shops.quotedSale(
-      record.accountId,
-      record.facts.priceId,
-      record.facts.merchantItemId,
-    )
-  )?.fingerprint;
+  const acceptedFingerprint = saleFromQuoteReference(state.document.quote_reference)?.fingerprint;
   if (acceptedFingerprint !== record.facts.productFingerprint) {
     return refused("The saved WooCommerce sale does not match its accepted price question.");
   }
@@ -381,10 +377,10 @@ const differencesOf = (
   wooOrderId: string,
 ): string[] => {
   const held = inTheShopOf(facts);
-  const price = `${held.amount} ${held.currency}`;
+  const price = withUnit(held.amount, held.currency);
   const decimals = minorOf(held.amount)?.decimals ?? 2;
   const none = amountOfMinor(0n, decimals);
-  const unit = decimals === 2 ? "a cent" : `1 ${held.currency}`;
+  const unit = decimals === 2 ? "a cent" : withUnit(1, held.currency);
   const untaxed =
     order.subtotal === held.amount &&
     order.lineTotal === held.amount &&

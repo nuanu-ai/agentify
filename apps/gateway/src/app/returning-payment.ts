@@ -6,21 +6,20 @@
  * wallet could pay again, which has no bearing on giving back what it already
  * paid for.
  *
- * The order's identifier travels in the payment's unsigned copy of the offer,
+ * The price stamp travels in the payment's unsigned copy of the offer,
  * so one wallet's authorization fits every order of the same price and payee.
  * What binds an authorization to one order is its claim here, and, where the
  * chain answers, its use there.
  */
 
 import { decodePaymentSignatureHeader } from "@x402/core/http";
-import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
+import type { PaymentPayload } from "@x402/core/types";
 import { authorizationTypes } from "@x402/evm";
 import { type Hex, hashTypedData, isAddressEqual, recoverAddress } from "viem";
 import {
   authorizationFingerprint,
   CLOCK_SKEW_SECONDS,
-  ORDER_IN_EXTRA,
-  type PaymentEdge,
+  PRICE_STAMP_IN_EXTRA,
 } from "../http/x402.js";
 import type { VerifyOutcome } from "../ports/facilitator.js";
 import type { PaymentChain } from "../ports/payment-chain.js";
@@ -28,7 +27,6 @@ import type { ClaimHolder, StoredOrder } from "../ports/store.js";
 
 /** What a payment for a paid order is checked with. */
 export interface ReturnCheck {
-  readonly edge: PaymentEdge;
   readonly now: number;
   /** Who holds the claim on a payment's fingerprint, if anyone. */
   readonly claimHolder: (fingerprint: string) => Promise<ClaimHolder | null>;
@@ -43,20 +41,10 @@ export interface ReturnCheck {
  */
 export async function returningPayment(
   payment: string,
-  paid: Pick<StoredOrder, "payTo"> & {
-    readonly orderId: string;
-    readonly price: { readonly amount: string; readonly currency: string };
-  },
-  { edge, now, claimHolder, chain }: ReturnCheck,
+  paid: { readonly priceOffer: NonNullable<StoredOrder["priceOffer"]>; readonly orderId: string },
+  { now, claimHolder, chain }: ReturnCheck,
 ): Promise<VerifyOutcome | null> {
-  let ours: PaymentRequirements;
-  try {
-    ours = edge.requirementsFor(paid.price, paid.orderId, paid.payTo);
-  } catch {
-    // Our own side of the question could not be built; the payment layer's
-    // path answers that as not knowing.
-    return null;
-  }
+  const ours = paid.priceOffer.requirements;
 
   let payload: PaymentPayload;
   try {
@@ -79,23 +67,27 @@ export async function returningPayment(
       "the payment was made in a different asset or on a different chain from the one asked for",
     );
   }
-  if (payload.accepted.extra?.[ORDER_IN_EXTRA] !== paid.orderId) {
+  if (payload.accepted.extra?.[PRICE_STAMP_IN_EXTRA] !== paid.priceOffer.stamp) {
     return refused(
       "price_stale",
-      "the payment was made against a different order from the one it was presented for",
+      "the payment was made against a different stamped price from the one saved for this order",
     );
   }
-  if (authorization.value !== ours.amount) {
+  if (payload.accepted.amount !== ours.amount || authorization.value !== ours.amount) {
     return refused(
       "price_stale",
       `this order is priced at ${ours.amount} and the payment was made for ${authorization.value}`,
     );
   }
-  if (!same(authorization.to, ours.payTo)) {
+  if (!same(payload.accepted.payTo, ours.payTo) || !same(authorization.to, ours.payTo)) {
     return refused(
       "price_stale",
       "the payment was made out to a different address from the one asked for",
     );
+  }
+
+  if (payload.accepted.maxTimeoutSeconds !== ours.maxTimeoutSeconds) {
+    return refused("price_stale", "the payment names a different timeout from the saved offer");
   }
 
   const seconds = BigInt(Math.floor(now / 1_000));

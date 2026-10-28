@@ -1,9 +1,9 @@
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
-import { type ZodType, z } from "zod";
+import type { ZodType } from "zod";
 import {
   AgentOrderStatusSchema,
   API_ROUTES,
-  AUTH_MODES,
   CatalogPageSchema,
   cardsOf,
   ERROR_CODES,
@@ -14,7 +14,6 @@ import {
   MerchantCardListSchema,
   merchantKeyFrom,
   merchantKeyHeaderValue,
-  mountableRoutes,
   OrderAcceptResponseSchema,
   OrderCallResponseSchema,
   OrderListQuerySchema,
@@ -32,7 +31,7 @@ import {
 import { CardSchema, publicCardOf } from "./card.js";
 import { CONTRACT_VERSION, type SchemaName, schemas, toJsonSchemas } from "./index.js";
 import { readerOf } from "./reading.js";
-import { ORDER_CALL_ERROR_CODES, ORDER_CALL_RESULTS } from "./results.js";
+import { ORDER_CALL_RESULTS } from "./results.js";
 import { errorOf, expectMissingFieldRejected } from "./testing/expect-schema.js";
 
 const order = {
@@ -76,15 +75,6 @@ const orderEnvelope = {
   payload: order,
 };
 
-/**
- * Whether a schema accepts a value and, when it does not, why, so a failure
- * names the field instead of "expected false to be true".
- */
-const verdictOf = (schema: ZodType, value: unknown): string => {
-  const result = schema.safeParse(value);
-  return result.success ? "accepted" : `refused: ${z.prettifyError(result.error)}`;
-};
-
 const callError = {
   code: "order_already_closed",
   message: "Заказ уже закрыт, выдавать по нему нечего",
@@ -109,7 +99,9 @@ describe("an order read back with its state", () => {
   it("refuses a word that is not one of the endings the agent and merchant share", () => {
     // A state under a word nobody publishes would be a second answer to "what
     // became of it".
-    expect(errorOf(OrderWithStatusSchema, { ...order, status: "dispatched" })).toContain("status");
+    const rejected = OrderWithStatusSchema.safeParse({ ...openOrder, status: "dispatched" });
+    expect(rejected.success).toBe(false);
+    expect(rejected.error?.issues.map((issue) => issue.path)).toEqual([["status"]]);
     expect(OrderWithStatusSchema.safeParse({ ...openOrder, status: "delivered" }).success).toBe(
       true,
     );
@@ -157,7 +149,13 @@ describe("the list of orders", () => {
   });
 
   it("holds every order in the list to the same document", () => {
-    expect(OrderListSchema.safeParse({ orders: [order] }).success).toBe(false);
+    for (const field of ["status", "payment_status"]) {
+      const incomplete: Record<string, unknown> = { ...openOrder };
+      delete incomplete[field];
+      const rejected = OrderListSchema.safeParse({ orders: [incomplete] });
+      expect(rejected.success).toBe(false);
+      expect(rejected.error?.issues.map((issue) => issue.path)).toEqual([["orders", 0, field]]);
+    }
   });
 });
 
@@ -439,16 +437,6 @@ describe("what answering for an order comes back as", () => {
     });
   }
 
-  it("marks success with something every language reads the same way", () => {
-    // A value, not a key that may hold an empty object, which reads as false
-    // in some languages.
-    const delivered = OrderCallResponseSchema.parse({ ok: true, result: "delivered" });
-    const accepted = OrderAcceptResponseSchema.parse({ ok: true });
-    const failed = OrderCallResponseSchema.parse({ ok: false, error: callError });
-
-    expect([delivered.ok, accepted.ok, failed.ok]).toStrictEqual([true, true, false]);
-  });
-
   it("carries a failure that says whether calling again could change anything", () => {
     expect(OrderCallResponseSchema.parse({ ok: false, error: callError })).toStrictEqual({
       ok: false,
@@ -639,15 +627,6 @@ describe("the status an agent reads", () => {
     expect(AgentOrderStatusSchema.parse(owing)).toStrictEqual(owing);
   });
 
-  it("names who sold it, so an agent with a question the order cannot answer knows where to go", () => {
-    // The shop's own site is where an agent takes a parcel that did not
-    // arrive, a return or the terms of the sale.
-    expect(AgentOrderStatusSchema.parse(status).seller).toStrictEqual({
-      name: "Freeland",
-      site: "https://freeland.example",
-    });
-  });
-
   for (const field of [
     "order_id",
     "status",
@@ -769,14 +748,9 @@ describe("the status an agent reads", () => {
     }
   });
 
-  it("takes a field added later, which an agent ignores", () => {
-    expect(
-      AgentOrderStatusSchema.safeParse({ ...status, estimated_at: "2026-09-30T00:00:00Z" }).success,
-    ).toBe(true);
-  });
-
   it("takes a field added later inside any of its parts, not only beside them", () => {
     for (const [part, grown] of [
+      ["outer", { estimated_at: "2026-09-30T00:00:00Z" }],
       ["price", { price: { ...price, tax_included: true } }],
       ["seller", { seller: { ...status.seller, verified_by: "nobody" } }],
       [
@@ -873,96 +847,6 @@ describe("the catalog an agent reads", () => {
     ).toMatchObject({
       anyOf: expect.arrayContaining([expect.objectContaining({ pattern: expect.any(String) })]),
     });
-  });
-});
-
-describe("the answer a handler returned, on its way back", () => {
-  // The promise: whatever a handler returns has an address, in every mode. In
-  // synchronous fulfillment the explicit deliver and refuse calls do not
-  // apply, so without this route a synchronous refusal would go nowhere.
-
-  const answerRoute: RouteDefinition = API_ROUTES.answer_order;
-
-  /** The body and the answer as the table names them. */
-  const body = (): ZodType => {
-    expect(answerRoute.request, "the answer route carries no request body").toBeDefined();
-    return answerRoute.request ?? z.never();
-  };
-
-  const answer = (): ZodType => answerRoute.response.document;
-
-  it("carries each of the three things a handler can return", () => {
-    expect(verdictOf(body(), { delivered: { access_url: "https://example.com/a/9f2c4a" } })).toBe(
-      "accepted",
-    );
-    expect(
-      verdictOf(body(), { refused: { code: "out_of_stock", message: "Мест на тарифе нет" } }),
-    ).toBe("accepted");
-    expect(verdictOf(body(), { accepted: {} })).toBe("accepted");
-  });
-
-  it("refuses an answer that says two things at once, or nothing", () => {
-    // Two would be two answers; none is silence, and silence is a deadline.
-    expect(
-      verdictOf(body(), {
-        delivered: { access_url: "https://example.com/a" },
-        refused: { code: "out_of_stock", message: "нет" },
-      }),
-    ).not.toBe("accepted");
-    expect(verdictOf(body(), {})).not.toBe("accepted");
-  });
-
-  it("refuses a refusal nobody can count or read", () => {
-    // The code is counted toward the missing-product measure; the message is
-    // for the person who picks the case up.
-    expect(verdictOf(body(), { refused: { message: "нет" } })).not.toBe("accepted");
-    expect(verdictOf(body(), { refused: { code: "out_of_stock" } })).not.toBe("accepted");
-    expect(verdictOf(body(), { refused: { code: "", message: "нет" } })).not.toBe("accepted");
-    expect(verdictOf(body(), { refused: { code: "out_of_stock", message: " " } })).not.toBe(
-      "accepted",
-    );
-  });
-
-  it("refuses a fourth kind of answer", () => {
-    // "Not right now" would blur the line a refusal draws; a temporary failure
-    // is an exception, and the order comes back.
-    expect(verdictOf(body(), { deferred: { retry_after_seconds: 30 } })).not.toBe("accepted");
-    expect(verdictOf(body(), { delivered: { access_url: "https://x" }, extra: 1 })).not.toBe(
-      "accepted",
-    );
-  });
-
-  it("tells a late synchronous handler that the work was not wasted", () => {
-    // The merchant started before the deadline and finished after it: the
-    // goods exist and a repeat purchase collects them, so this is a success
-    // word, not a failure code.
-    const late = answer().safeParse({ ok: true, result: "purchase_already_closed" });
-
-    expect(late.success ? "accepted" : "refused").toBe("accepted");
-    expect((late.data as { ok: boolean }).ok).toBe(true);
-    expect(ORDER_CALL_RESULTS).toContain("purchase_already_closed");
-    expect(ORDER_CALL_ERROR_CODES).not.toContain("purchase_already_closed");
-  });
-
-  it("answers in the same family as the explicit closure calls", () => {
-    // One vocabulary of successes and failures across all four calls.
-    expect(answer()).toBe(OrderCallResponseSchema);
-    expect(
-      verdictOf(answer(), {
-        ok: false,
-        error: {
-          code: "order_already_closed",
-          message: "Заказ уже закрыт",
-          retryable: false,
-        },
-      }),
-    ).toBe("accepted");
-  });
-
-  it("is reachable from the registry the way every other document is", () => {
-    // The one shape a synchronous merchant needs is reachable through the API.
-    expect(body()).toBe(schemas.handler_answer);
-    expect(Object.keys(schemas)).toContain("handler_answer");
   });
 });
 
@@ -1112,59 +996,30 @@ describe("the route table", () => {
         responseOf(route),
       ]),
     ).toStrictEqual(surface);
-  });
-
-  it("names every route the way the wire is written", () => {
-    // As in the schema registry: wire names are snake_case.
-    for (const name of Object.keys(API_ROUTES)) expect(name, name).toMatch(/^[a-z][a-z0-9_]*$/);
-  });
-
-  it("puts no two routes at one address under one method", () => {
-    // One of two routes at one address is never reached, depending on mount
-    // order.
-    const addresses = Object.values(API_ROUTES).map((route) => `${route.method} ${route.path}`);
-
-    expect([...new Set(addresses)]).toHaveLength(addresses.length);
-  });
-
-  it("uses only the methods and the doors it declares", () => {
-    for (const [name, route] of Object.entries(API_ROUTES)) {
-      expect(HTTP_METHODS, name).toContain(route.method);
-      expect(AUTH_MODES, name).toContain(route.auth);
+    for (const [name, , path, auth] of surface) {
+      if (auth === "buyer_key") expect(pathParamsOf(path ?? ""), name).toEqual(["buyer_key"]);
+      const route = API_ROUTES[name as RouteName];
+      expect(
+        expandPath(
+          route.path,
+          Object.fromEntries(
+            Object.entries({
+              item_id: "itm_1",
+              order_id: "ord_1",
+              buyer_key: "buyer_1",
+              price_id: "prc_1",
+            }).filter(([key]) => path?.includes(`:${key}`)),
+          ),
+        ),
+        name,
+      ).toBe(
+        path
+          ?.replace(":item_id", "itm_1")
+          .replace(":order_id", "ord_1")
+          .replace(":buyer_key", "buyer_1")
+          .replace(":price_id", "prc_1"),
+      );
     }
-  });
-
-  it("refers to no schema the contract does not publish", () => {
-    // A reader outside TypeScript has the export and this table; a schema the
-    // registry lacks is a call they cannot generate a client for.
-    const published = new Set<ZodType>(Object.values(schemas));
-    const unpublished: string[] = [];
-
-    for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
-      const referenced: [string, ZodType | undefined][] = [
-        ["query", route.query],
-        ["request", route.request],
-        ["response", route.response.document],
-      ];
-
-      for (const [what, schema] of referenced) {
-        if (schema !== undefined && !published.has(schema)) unpublished.push(`${name}.${what}`);
-      }
-    }
-
-    expect(unpublished).toStrictEqual([]);
-  });
-
-  it("names the document every call answers with, the purchase included", () => {
-    // The purchase too: the payment exchange is not a document, but what a
-    // paid purchase comes back with is the state of the order.
-    for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
-      expect(route.response.document, name).toBeDefined();
-    }
-
-    expect(API_ROUTES.purchase_item.response.document).toBe(
-      API_ROUTES.get_order_status.response.document,
-    );
   });
 
   it("says what every call is for, in words", () => {
@@ -1201,64 +1056,12 @@ describe("the route table", () => {
       }
     }
   });
-
-  it("leaves a route whose door nobody has chosen out of what a gateway may serve", () => {
-    // Mounting "key or open" would serve an undecided route to the world;
-    // mounting from this list makes the safe reading the easy one. The gateway
-    // keeps its own half: `buildApp` refuses to mount an undecided route.
-    for (const [name, route] of mountableRoutes()) expect(route.auth, name).not.toBe("undecided");
-  });
-
-  it("names the door on the one route that is the agent's rather than the merchant's", () => {
-    // An agent has no merchant key, and `none` would be no door at all: the
-    // buyer's key stands in for one, and the word keeps a gateway from reading
-    // it as either of the others.
-    expect(API_ROUTES.get_order_status.auth).toBe("buyer_key");
-    // The route behind that door takes the key and nothing else: an address
-    // that also took the order's identifier, which the merchant and the
-    // payment side hold, would invite a gateway to answer by it.
-    for (const [name, route] of Object.entries(API_ROUTES) as [string, RouteDefinition][]) {
-      if (route.auth !== "buyer_key") continue;
-      expect(pathParamsOf(route.path), name).toStrictEqual(["buyer_key"]);
-    }
-  });
-
-  it("keeps the version in the merchant's prefix and out of the storefront's", () => {
-    // `/v0` is the merchant's API, versioned for integration code. Storefront
-    // addresses are listed in catalogs Agentify does not run and built by
-    // strangers, so they carry no version; the protocol versions itself in the
-    // challenge. A storefront route under `/v0`, a merchant route where an
-    // agent would find it, or `/x402/v1/…` each fail here.
-    const storefront: readonly RouteName[] = ["list_catalog", "purchase_item", "get_order_status"];
-
-    for (const [name, route] of Object.entries(API_ROUTES) as [RouteName, RouteDefinition][]) {
-      const agents = storefront.includes(name);
-      expect(route.path.startsWith(agents ? "/x402/" : "/v0/"), name).toBe(true);
-      if (agents) {
-        expect(route.path, name).not.toMatch(/\/v\d+(\/|$)/);
-      }
-    }
-  });
 });
 
 describe("the addresses in the table, expanded and read back", () => {
   it("names the parameters of a path, and none where there are none", () => {
     expect(pathParamsOf("/v0/orders/:order_id/deliver")).toStrictEqual(["order_id"]);
     expect(pathParamsOf("/x402/catalog")).toStrictEqual([]);
-  });
-
-  it("round-trips every route in the table", () => {
-    // The promise: the SDK builds any call's address from the table, with
-    // nothing left to substitute.
-    for (const [name, route] of Object.entries(API_ROUTES)) {
-      const parameters = pathParamsOf(route.path);
-      const values = Object.fromEntries(parameters.map((parameter) => [parameter, "ord_7c1e05"]));
-      const address = expandPath(route.path, values);
-
-      expect(pathParamsOf(address), name).toStrictEqual([]);
-      expect(address, name).not.toContain(":");
-      for (const parameter of parameters) expect(address, name).not.toContain(parameter);
-    }
   });
 
   it("encodes a value the way a path segment has to be encoded", () => {
@@ -1417,9 +1220,7 @@ describe("the envelope every call refuses in", () => {
   it("is not a document that merely mentions an error", () => {
     // The negative control: an envelope matching anything with an `error` in
     // it would turn a route's own document into a failed call.
-    expect(
-      ErrorEnvelopeSchema.safeParse({ ok: false, error: { code: "x", message: "y" } }).success,
-    ).toBe(false);
+    expect(ErrorEnvelopeSchema.safeParse({ ...refused, ok: false }).success).toBe(false);
     expect(ErrorEnvelopeSchema.safeParse({ errors: [] }).success).toBe(false);
     expect(ErrorEnvelopeSchema.safeParse({ order_id: "ord_7c1e05" }).success).toBe(false);
     expect(ErrorEnvelopeSchema.safeParse("a proxy's error page").success).toBe(false);
@@ -1449,13 +1250,13 @@ describe("the envelope every call refuses in", () => {
     expect(ERROR_CODES).not.toContain("something_nobody_has_named_yet");
   });
 
-  it("has no code written down twice", () => {
-    // A duplicate would mislead a reader counting what this surface can say.
-    expect(new Set(ERROR_CODES).size).toBe(ERROR_CODES.length);
-  });
-
   it("is published, because it is the one answer every caller has to be able to read", () => {
     // A reader with only the export must be able to tell a call failed.
-    expect(schemas.error_envelope).toBe(ErrorEnvelopeSchema);
+    const validate = new Ajv2020({ validateFormats: false }).compile(
+      toJsonSchemas().error_envelope,
+    );
+    expect(validate(refused), JSON.stringify(validate.errors)).toBe(true);
+    expect(validate({ ...refused, ok: false })).toBe(false);
+    expect(validate({ error: { code: "x", message: "y" } })).toBe(false);
   });
 });

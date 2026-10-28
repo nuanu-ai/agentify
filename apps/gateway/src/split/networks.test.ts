@@ -10,7 +10,7 @@
 
 import { checksummedAddressOf } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
-import { loadConfig, SANDBOX_FACILITATOR } from "../config.js";
+import { loadConfig } from "../config.js";
 import { PaymentEdge } from "../http/x402.js";
 import { COMMISSION, DISTRIBUTOR, IMPLEMENTATION, inputOf, MERCHANT, ON_CHAIN } from "./fixture.js";
 import {
@@ -24,6 +24,7 @@ const DATABASE_URL = "postgres://agentify@localhost:5432/agentify";
 
 /** What a live chain needs besides the table before `loadConfig` takes it. */
 const LIVE = {
+  PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
   DATABASE_URL,
   PAYMENT_NETWORK: "eip155:8453",
   FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -48,7 +49,13 @@ const TEST_CHANNEL = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:84532")
 /** The token a gateway on this network asks a buyer for, as its payment library names it. */
 const tokenOn = (network: string): string => {
   const config = loadConfig(
-    network === "eip155:8453" ? LIVE : { DATABASE_URL, PAYMENT_NETWORK: network },
+    network === "eip155:8453"
+      ? LIVE
+      : {
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+          DATABASE_URL,
+          PAYMENT_NETWORK: network,
+        },
   );
   return new PaymentEdge(config).token().asset;
 };
@@ -61,7 +68,7 @@ describe("the payout split table in the code", () => {
       expect(entry.warehouse.toLowerCase(), entry.network).toBe(ON_CHAIN.warehouse);
       // The experiment never called Multicall3, which sits at one address on
       // every chain it is deployed to; the payout tests hold that address.
-      expect(entry.multicall3, entry.network).toBe(TEST_CHANNEL.multicall3);
+      expect(entry.multicall3, entry.network).toBe("0xcA11bde05977b3631167028862bE2a173976CA11");
       expect(entry.usdc, entry.network).toBe(tokenOn(entry.network));
     }
     expect(TEST_CHANNEL.usdc.toLowerCase()).toBe(ON_CHAIN.usdc);
@@ -138,38 +145,5 @@ describe("the payout split table in the code", () => {
         new RegExp(`${network}.*commission wallet`, "s"),
       );
     }
-  });
-});
-
-describe("the table a gateway runs on", () => {
-  it("is the code's own wherever a gateway is configured from its environment alone", () => {
-    const config = loadConfig({ DATABASE_URL });
-    expect(config.payoutSplitNetworks).toBe(PAYOUT_SPLIT_NETWORKS);
-    expect(config.payoutSplit).toBe(TEST_CHANNEL);
-  });
-
-  it("is Base Sepolia's in the sandbox, which describes Base Sepolia", () => {
-    expect(loadConfig({ DATABASE_URL, FACILITATOR_URL: SANDBOX_FACILITATOR }).payoutSplit).toBe(
-      TEST_CHANNEL,
-    );
-  });
-
-  it("is Base's on Base", () => {
-    expect(loadConfig(LIVE).payoutSplit).toBe(
-      payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453"),
-    );
-  });
-
-  it("is the one handed in beside the environment, for a test whose constants must differ from the code's", () => {
-    const handed: PayoutSplitNetworks = {
-      ...PAYOUT_SPLIT_NETWORKS,
-      "eip155:8453": {
-        ...payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, "eip155:8453"),
-        commissionWallet: DISTRIBUTOR,
-      },
-    };
-    const config = loadConfig(LIVE, handed);
-    expect(config.payoutSplitNetworks).toBe(handed);
-    expect(config.payoutSplit.commissionWallet).toBe(DISTRIBUTOR);
   });
 });

@@ -12,11 +12,11 @@
 
 import { Pool } from "pg";
 
-export const TEST_DATABASE = "agentify_test";
+const TEST_DATABASE = "agentify_test";
 
 const THE_STACK_DATABASE = "agentify";
 
-export const DEFAULT_TEST_DATABASE_URL = `postgres://agentify:agentify@localhost:5432/${TEST_DATABASE}`;
+const DEFAULT_TEST_DATABASE_URL = `postgres://agentify:agentify@localhost:5432/${TEST_DATABASE}`;
 
 /**
  * For a host whose Postgres is not on localhost:5432, such as one that moved
@@ -33,10 +33,8 @@ const NO_SUCH_DATABASE = "3D000";
  * else the default. An address naming the stack's database is refused, and the
  * refusal names the variable that pointed there.
  */
-export function testDatabaseUrl(
-  environment: Record<string, string | undefined> = process.env,
-): string {
-  const named = namedDatabaseUrl(environment);
+export function testDatabaseUrl(): string {
+  const named = namedDatabaseUrl(process.env);
   if (named === undefined) {
     return DEFAULT_TEST_DATABASE_URL;
   }
@@ -168,7 +166,8 @@ function isAlreadyThere(error: unknown): boolean {
 }
 
 function databaseNameOf(url: string): string {
-  return new URL(url).pathname.replace(/^\//, "");
+  // Match pg-connection-string before deciding whether this database is safe to erase.
+  return decodeURI(new URL(url).pathname.replace(/^\//, ""));
 }
 
 function withDatabase(url: string, name: string): string {

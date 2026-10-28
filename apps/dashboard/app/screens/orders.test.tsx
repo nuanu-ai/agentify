@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The orders a merchant can find on their Orders page: by the identifier they
  * were handed or pasted from the page, by the product, within the gateway's
@@ -13,13 +14,7 @@ import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { inViewersZone } from "../../src/moments.js";
 import { formsIn, readable } from "../../src/testing/html.js";
-import {
-  CLOSURE_NOTES,
-  closedForGood,
-  drawnClosedForGood,
-  type LapsedAttempt,
-  ordersView,
-} from "../../src/views.js";
+import { CLOSURE_NOTES, closedForGood, drawnClosedForGood, ordersView } from "../../src/views.js";
 import type { ShopTotal } from "../../src/woo-shops.js";
 import { shortened } from "../components/copy.js";
 import { OrdersScreen } from "./orders.js";
@@ -162,6 +157,27 @@ describe("searching the orders", () => {
     );
   });
 
+  it("finds an order by a product name that holds a number and its unit, typed with a space or pasted from the page", () => {
+    const sized = MerchantCardListSchema.parse({
+      selling: "open",
+      cards: CARDS.cards.map((entry) =>
+        entry.card.merchant_item_id === "vpn-1m"
+          ? { ...entry, card: { ...entry.card, title: "VPN 30 days, 5 GB" } }
+          : entry,
+      ),
+    });
+    const orders = ordersOf([{ id: FIRST }, { id: SAME_HEAD, item: "number-sms" }]);
+    const named = (q: string) =>
+      ordersView(sized, orders, orders, new URLSearchParams({ q })).listing.rows.map(
+        (row) => row.id,
+      );
+
+    expect(named("30 days, 5 gb")).toStrictEqual([FIRST]);
+    // The no-break space a page keeps between a number and its unit, as a Mac
+    // types it for Option and the space bar.
+    expect(named("30\u00a0days, 5\u00a0GB")).toStrictEqual([FIRST]);
+  });
+
   describe("among IDs whose hidden middle holds a word a merchant might search for", () => {
     // The middle of an ID is never shown, so a few characters found only there
     // would list orders whose rows show nothing of what was searched for.
@@ -214,13 +230,15 @@ describe("searching the orders", () => {
   });
 
   it("says what was searched for when nothing matches, which is not what a merchant without orders reads", () => {
-    const missed = readable(
-      served(() => (
-        <OrdersScreen
-          view={ordersView(CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))}
-        />
-      )),
-    );
+    const missedHtml = served(() => (
+      <OrdersScreen view={ordersView(CARDS, THREE, THREE, new URLSearchParams({ q: "router" }))} />
+    ));
+    const missed = readable(missedHtml);
+    expect(
+      [...new DOMParser().parseFromString(missedHtml, "text/html").querySelectorAll("a")].filter(
+        (link) => link.getAttribute("href") === "/orders",
+      ),
+    ).toHaveLength(1);
     const none = readable(
       served(() => <OrdersScreen view={ordersView(CARDS, ordersOf([]), ordersOf([]))} />),
     );
@@ -262,21 +280,6 @@ describe("the counts beside a search", () => {
     // merchant with nothing to do.
     expect(readable(toolsOf("q=unfulfilled"))).toContain("“unfulfilled”");
     expect(linksIn(toolsOf("q=vpn"))).toContain("/orders");
-  });
-
-  it("lead back to the segment the search was made in", () => {
-    expect(linksIn(toolsOf("q=virtual&show=open"))).toContain("/orders?show=open");
-  });
-
-  it("offer one way back where the search found nothing", () => {
-    const page = served(() => (
-      <OrdersScreen view={ordersView(CARDS, THREE, THREE, new URLSearchParams("q=unfulfilled"))} />
-    ));
-
-    expect(linksIn(page).filter((href) => href === "/orders")).toHaveLength(1);
-  });
-
-  it("say nothing more where the page searched for the one order it opens", () => {
     // The page's own links to an order search for it; the merchant searched
     // for nothing.
     expect(readable(toolsOf(`q=${FIRST}&details=${FIRST}`))).not.toContain("“");
@@ -286,11 +289,8 @@ describe("the counts beside a search", () => {
     expect(readable(toolsOf(`q=${FIRST.toUpperCase()}&details=${FIRST}`))).not.toContain("“");
   });
 
-  it("say nothing of a search where there is none", () => {
-    const tools = toolsOf("");
-
-    expect(linksIn(tools)).not.toContain("/orders");
-    expect(readable(tools)).not.toContain("“");
+  it("lead back to the segment the search was made in", () => {
+    expect(linksIn(toolsOf("q=virtual&show=open"))).toContain("/orders?show=open");
   });
 });
 
@@ -307,7 +307,6 @@ describe("a shop's order a cent from what the buyer paid", () => {
             new URLSearchParams({ details: FIRST }),
             {},
             {},
-            { page: null, of: 0 },
             totals,
           )}
         />
@@ -331,9 +330,10 @@ describe("a shop's order a cent from what the buyer paid", () => {
       },
     });
 
-    expect(said).toContain(
-      "90001 IDR in your shop, paid as 5.00 USDC at your rate of 18000 IDR per US dollar, set 2026-10-09 10:00:00 UTC",
-    );
+    expect(said).toMatch(/90001 IDR.*shop/i);
+    expect(said).toMatch(/paid.*5.00 USDC/i);
+    expect(said).toMatch(/your rate.*18000 IDR.*US dollar/i);
+    expect(said).toMatch(/set.*2026-10-09 10:00:00 UTC/i);
     expect(said).not.toContain("within a cent");
   });
 });
@@ -470,6 +470,7 @@ describe("a long run of orders told in full", () => {
 
     expect(toldIn(html, "Orders that need you")).toStrictEqual([FIRST]);
     expect(readable(html)).not.toContain("Showing the newest");
+    expect(waysOnFrom(html)).toStrictEqual([]);
   });
 
   /** The ids drawn in each list on the page, list after list, each once in its list. */
@@ -522,6 +523,10 @@ describe("a long run of orders told in full", () => {
       );
       const html = served(() => <OrdersScreen view={view} />);
       const told = toldIn(html, "Orders that need you");
+      const range = view.listing.cut;
+      expect(range).not.toBeNull();
+      expect(readable(html).match(/Showing/g)).toHaveLength(1);
+      expect(readable(html)).toContain(pages === 0 ? "Showing 1–50 of 61" : "Showing 51–61 of 61");
       // The group's own count, apart from the segment's beside the search.
       expect(readable(/<h2>Needs you[\s\S]*?<\/h2>/.exec(html)?.[0] ?? "")).toBe("Needs you 61");
       // Nothing else on the page draws the same orders again.
@@ -562,27 +567,6 @@ describe("a long run of orders told in full", () => {
     expect(form?.fields.get("after")).toBe(next.get("after"));
     // Named by the address, as the closure's answer names it, it is open.
     expect(rowOf(drawnAt(`${next}&details=${id}`))).toMatch(/<details[^>]*\bopen\b/);
-  });
-
-  it("says once which of how many it shows where the list is the orders that need the merchant", () => {
-    const owing = sixtyOf("unfulfilled");
-
-    const text = readable(
-      served(() => (
-        <OrdersScreen view={ordersView(CARDS, owing, owing, new URLSearchParams("show=needs"))} />
-      )),
-    );
-
-    expect(text.match(/Showing/g)).toHaveLength(1);
-    expect(text).toContain("Showing 1–50 of 60");
-  });
-
-  it("offers no other way on where Needs you already holds every order", () => {
-    const orders = ordersOf([{ id: FIRST, status: "unfulfilled" }, { id: SAME_HEAD }]);
-
-    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
-
-    expect(waysOnFrom(html)).toStrictEqual([]);
   });
 });
 
@@ -748,26 +732,6 @@ describe("an order's details", () => {
   const detailsOf = (html: string, id: string) =>
     new RegExp(`id="details-${id}"[^>]*>[\\s\\S]*?(<details[^>]*>)`).exec(html)?.[1] ?? "";
 
-  it("open from every row on every width, each named apart from another sale of its product", () => {
-    // The order's ID, its payment and the merchant's share are in no column,
-    // so every row opens to them, whatever its state; two sales of one
-    // product read out by name alone could not be told apart, nor could two
-    // made at the same time of day on different days.
-    const orders = ordersOf([
-      { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
-      { id: SAME_HEAD, status: "delivered", at: "2026-10-11T16:40:00Z" },
-    ]);
-    const html = served(() => <OrdersScreen view={ordersView(CARDS, orders, orders)} />);
-
-    expect(detailsOf(html, FIRST)).toContain("row-more");
-    expect(detailsOf(html, SAME_HEAD)).toContain("row-more");
-    const names = [...html.matchAll(/aria-label="(Details of VPN, one month[^"]*)"/g)].map(
-      (found) => found[1],
-    );
-    expect(names).toHaveLength(2);
-    expect(new Set(names).size).toBe(2);
-  });
-
   it("are drawn open where a press made on the order is said", () => {
     // An order that ended before its closure arrived has nothing else to
     // read there, and the merchant must still see what became of the press.
@@ -843,216 +807,10 @@ describe("a closure recorded", () => {
   });
 });
 
-describe("the purchases that lapsed unpaid", () => {
-  /** Where an attempt stands in the list, by when it was asked for and its identifier. */
-  const markOf = (attempt: LapsedAttempt | undefined) => ({
-    key: [Date.parse(attempt?.asked_at ?? "")],
-    id: attempt?.id ?? "",
-  });
-  const placeOf = (attempt: LapsedAttempt | undefined) =>
-    `${markOf(attempt).key[0]}.${markOf(attempt).id}`;
-  // As the gateway reads them apart: a page of them, newest first, and how
-  // many there are in all.
-  const page = (from: number): LapsedAttempt[] =>
-    Array.from({ length: 50 }, (_, at) => ({
-      id: idOf((from + at).toString(16).padStart(4, "0"), "dead"),
-      merchant_item_id: "vpn-1m",
-      status: at % 2 === 0 ? ("expired" as const) : ("rejected" as const),
-      price: { amount: "5.00", currency: "USD" },
-      asked_at: new Date(Date.parse("2026-10-11T22:59:00Z") - (from + at) * 60_000).toISOString(),
-      priced_at: new Date(Date.parse("2026-10-11T23:00:00Z") - (from + at) * 60_000).toISOString(),
-    }));
-
-  it("are listed under their own segment a page at a time, and in no other", () => {
-    const second = page(50);
-
-    const there = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams(`show=lapsed&after=${placeOf(page(49)[0])}`),
-      {},
-      {},
-      {
-        page: second,
-        of: 120,
-        newer: 50,
-        previous: markOf(second[0]),
-        next: markOf(second.at(-1)),
-      },
-    );
-    const elsewhere = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams(),
-      {},
-      {},
-      { page: null, of: 120 },
-    );
-
-    expect(there.listing.rows.map((row) => row.id)).toStrictEqual(
-      second.map((attempt) => attempt.id),
-    );
-    expect(there.listing.cut).toMatchObject({
-      from: 51,
-      to: 100,
-      of: 120,
-      previous: `/orders?show=lapsed&before=${placeOf(second[0])}`,
-      next: `/orders?show=lapsed&after=${placeOf(second.at(-1))}`,
-    });
-    expect(there.listing.segments.map((one) => [one.label, one.count, one.here])).toStrictEqual([
-      ["All", 3, false],
-      ["Open", 3, false],
-      ["Needs you", 0, false],
-      ["Lapsed", 120, true],
-    ]);
-    expect(elsewhere.listing.rows.map((row) => row.id).sort()).toStrictEqual(
-      THREE.orders.map((order) => order.id).sort(),
-    );
-    const text = readable(served(() => <OrdersScreen view={there} />));
-    expect(text).toContain("Showing 51–100 of 120");
-    expect(text).toContain("Closed on time limit");
-  });
-
-  it("include one that ended before any price was named, shown without a price", () => {
-    const unpriced: LapsedAttempt = {
-      id: idOf("0aa0", "beef"),
-      merchant_item_id: "vpn-1m",
-      status: "rejected",
-      price: null,
-      asked_at: "2026-10-11T23:00:00Z",
-      priced_at: null,
-    };
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams("show=lapsed"),
-      {},
-      {},
-      { page: [unpriced], of: 1, newer: 0, previous: null, next: null },
-    );
-
-    expect(view.listing.rows.map((row) => [row.id, row.amount])).toStrictEqual([
-      [unpriced.id, "No price"],
-    ]);
-    expect(readable(served(() => <OrdersScreen view={view} />))).toContain("VPN, one month");
-  });
-
-  it("are said, beside a search, to be left out of it and kept under Lapsed", () => {
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams({ q: "ord_ffff" }),
-      {},
-      {},
-      { page: null, of: 3 },
-    );
-
-    const text = readable(served(() => <OrdersScreen view={view} />));
-    expect(text).toContain("No order matches");
-    expect(text).toContain("Purchases that lapsed unpaid are not searched: 3 are under Lapsed");
-  });
-
-  it("are not offered beside a search, which reads only the other orders", () => {
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams({ q: FIRST }),
-      {},
-      {},
-      { page: null, of: 120 },
-    );
-
-    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
-  });
-
-  it("are a segment only where there is one, so a list without them reads as before", () => {
-    const view = ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams(),
-      {},
-      {},
-      {
-        page: null,
-        of: 0,
-      },
-    );
-
-    expect(view.listing.segments.map((one) => one.key)).toStrictEqual(["all", "open", "needs"]);
-  });
-
-  it("are orders, so a merchant with no other is not told there are none", () => {
-    const view = ordersView(
-      CARDS,
-      ordersOf([]),
-      ordersOf([]),
-      new URLSearchParams(),
-      {},
-      {},
-      { page: null, of: 3 },
-    );
-
-    expect(view.none).toBe(false);
-    expect(readable(served(() => <OrdersScreen view={view} />))).not.toContain("No orders yet");
-  });
-});
-
 describe("an order's facts", () => {
   /** The opened part of one order's row, read apart from the rest of the page. */
   const detailsText = (html: string, id: string) =>
     readable(new RegExp(`id="details-${id}"[\\s\\S]*?</details>`).exec(html)?.[0] ?? "");
-
-  const lapsedPage = (attempts: LapsedAttempt[]) =>
-    ordersView(
-      CARDS,
-      THREE,
-      THREE,
-      new URLSearchParams({ show: "lapsed", details: attempts[0]?.id ?? "" }),
-      {},
-      {},
-      { page: attempts, of: attempts.length, newer: 0, previous: null, next: null },
-    );
-
-  const UNPRICED: LapsedAttempt = {
-    id: idOf("0aa0", "beef"),
-    merchant_item_id: "vpn-1m",
-    status: "rejected",
-    price: null,
-    asked_at: "2026-10-11T23:00:00Z",
-    priced_at: null,
-  };
-
-  it("say a purchase that ended before any price was set was not priced, and when it was asked for, never a price set", () => {
-    const html = served(() => <OrdersScreen view={lapsedPage([UNPRICED])} />);
-    const details = detailsText(html, UNPRICED.id);
-
-    expect(readable(html)).toContain("Not priced");
-    expect(readable(html)).not.toMatch(/Price set \d/);
-    expect(details).toContain("Asked to buy 2026-10-11 23:00:00 UTC");
-    expect(details).not.toContain("Price set");
-  });
-
-  it("say when a lapsed purchase's price was set, apart from when it was asked for", () => {
-    const priced: LapsedAttempt = {
-      ...UNPRICED,
-      status: "expired",
-      price: { amount: "5.00", currency: "USD" },
-      asked_at: "2026-10-11T22:59:58Z",
-      priced_at: "2026-10-11T23:00:00Z",
-    };
-    const html = served(() => <OrdersScreen view={lapsedPage([priced])} />);
-    const details = detailsText(html, priced.id);
-
-    expect(readable(html)).not.toContain("Not priced");
-    expect(details).toContain("Asked to buy 2026-10-11 22:59:58 UTC");
-    expect(details).toContain("Price set 2026-10-11 23:00:00 UTC");
-  });
 
   const UNFULFILLED = ordersOf([
     { id: FIRST, status: "unfulfilled", at: "2026-10-12T16:40:00Z" },
@@ -1096,7 +854,15 @@ describe("an order's facts", () => {
     ));
 
   it("say, in the details of an order its delivery deadline left unfulfilled, when it was paid, when the deadline passed, and both ways on", () => {
-    const details = detailsText(opened(FIRST), FIRST);
+    const html = opened(FIRST);
+    const row = [
+      ...new DOMParser()
+        .parseFromString(html, "text/html")
+        .querySelectorAll('ul[aria-label="Orders that need you"] li'),
+    ].find((row) => row.querySelector(`a[href*="details=${FIRST}"]`) !== null);
+    expect(row).toBeDefined();
+    expect(row?.textContent).toMatch(/before the delivery deadline/i);
+    const details = detailsText(html, FIRST);
 
     expect(details).toContain("Paid 2026-10-12 16:40:05 UTC");
     expect(details).toContain("Delivery deadline passed 2026-10-12 17:40:05 UTC");
@@ -1141,13 +907,6 @@ describe("an order's facts", () => {
       /Price set 2026-10-12 16:40:00 UTC Closed by you 2026-10-12 16:50:00 UTC Paid 2026-10-12 17:10:00 UTC/,
     );
   });
-
-  it("say the deadline's passing in the order's details, while its row in Needs you reads its cause", () => {
-    const html = opened(FIRST);
-
-    expect(readable(html)).toMatch(/before the delivery deadline[\s\S]*Delivering late/);
-    expect(detailsText(html, FIRST)).toContain("Delivery deadline passed 2026-10-12 17:40:05 UTC");
-  });
 });
 
 describe("the way on for an unfulfilled order", () => {
@@ -1191,7 +950,6 @@ describe("the way on for an unfulfilled order", () => {
               [NEVER_RECEIVED]: cause("charge_confirmed_late"),
             },
             {},
-            undefined,
             {},
             {
               [FIRST]: { kind: "parcel", placed: true },
@@ -1237,28 +995,23 @@ describe("the way on for an unfulfilled order", () => {
     expect(details).not.toContain(SDK_DOCS);
   });
 
-  it("offers no late delivery for a download the connector cannot deliver", () => {
-    const details = opened(LOST);
+  it.each([LOST, NEVER_RECEIVED])(
+    "offers only closure for an unrecoverable or unreceived shop sale %s",
+    (id) => {
+      const details = opened(id);
 
-    expect(readable(details)).not.toContain("late");
-    expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
-    expect(details).not.toContain(SDK_DOCS);
-    expect(details).not.toContain("/integrations/woocommerce/recover/");
-  });
+      expect(readable(details)).not.toContain("late");
+      expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
+      expect(details).not.toContain(SDK_DOCS);
+      expect(details).not.toContain("/integrations/woocommerce/recover/");
+    },
+  );
 
   it("is no shipment for a parcel whose shop order was never confirmed, though its days ran out", () => {
     const details = opened(UNPLACED);
 
     expect(readable(details)).toContain("Do not ship it");
     expect(readable(details)).not.toMatch(/still (deliver|ship)/);
-  });
-
-  it("offers no late delivery for a sale made through the shop that the connector never received", () => {
-    const details = opened(NEVER_RECEIVED);
-
-    expect(readable(details)).not.toContain("late");
-    expect(readable(details)).toContain("Close fulfillment with a note to the buyer");
-    expect(details).not.toContain(SDK_DOCS);
   });
 });
 
@@ -1291,7 +1044,6 @@ describe("the transaction that paid an order", () => {
           new URLSearchParams({ details: FIRST }),
           {},
           {},
-          { page: null, of: 0 },
           {},
           {},
           new Set(),

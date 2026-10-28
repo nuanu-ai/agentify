@@ -129,7 +129,13 @@ describe("the consent route", () => {
 
   it.each([
     ["is not JSON", "not json"],
-    ["names another policy", JSON.stringify({ policy_version: "older", categories: {} })],
+    [
+      "names another policy",
+      JSON.stringify({
+        ...JSON.parse(choice({ product_analytics: true })),
+        policy_version: "older",
+      }),
+    ],
     ["claims a category it may not", choice({ marketing_email: true })],
     [
       "carries a field the route does not know",

@@ -28,9 +28,12 @@ const preview = (existing: boolean) => ({
 
 /** The preview the buttons wait for, and `pressed` for the press that publishes or revokes. */
 function siteWith({ existing, pressed }: { existing: boolean; pressed: () => Promise<Response> }) {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
-    String(input).endsWith("/share-preview") ? json(200, preview(existing)) : await pressed(),
-  );
+  const requests: string[] = [];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const path = String(input);
+    requests.push(path);
+    return path.endsWith("/share-preview") ? json(200, preview(existing)) : await pressed();
+  });
   render(
     <PublicShareActions
       enabled
@@ -38,6 +41,7 @@ function siteWith({ existing, pressed }: { existing: boolean; pressed: () => Pro
       scanId={scanId}
     />,
   );
+  return requests;
 }
 
 afterEach(() => {
@@ -132,17 +136,22 @@ describe("publishing and revoking a scan's public link", () => {
   });
 
   it("says the public link was already live when Publish image is pressed again, and makes no new one", async () => {
-    const press = vi.fn(async () =>
-      json(201, { slug, public_url: `${window.location.origin}/s/${slug}`, status: "published" }),
-    );
-    siteWith({ existing: true, pressed: press });
+    const requests = siteWith({
+      existing: true,
+      pressed: async () => {
+        throw new Error("a live share must not be published again");
+      },
+    });
     const publish = await screen.findByRole("button", { name: "Publish image" });
     await vi.waitFor(() => expect((publish as HTMLButtonElement).disabled).toBe(false));
 
     await userEvent.click(publish);
 
     expect(await screen.findByText(/already live/i)).toBeTruthy();
-    expect(press).not.toHaveBeenCalled();
+    expect(requests).toEqual([`/api/v1/scans/${scanId}/share-preview`]);
+    expect(screen.getByRole("link", { name: "Download image again" }).getAttribute("href")).toBe(
+      `/api/v1/shares/${slug}/image`,
+    );
     expect(screen.getByRole("link", { name: "Download image again" })).toBeTruthy();
   });
 
@@ -194,6 +203,9 @@ describe("publishing and revoking a scan's public link", () => {
     await userEvent.click(copy);
     await screen.findByText(/selected/i);
     expect(document.activeElement).toBe(box);
-    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe(box.value);
+    expect(box.value).toBe(`${window.location.origin}/s/${slug}`);
+    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe(
+      `${window.location.origin}/s/${slug}`,
+    );
   });
 });

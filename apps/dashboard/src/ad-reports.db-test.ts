@@ -19,7 +19,6 @@ import {
   PostgresStore,
   randomIds,
   ScriptedFacilitator,
-  setPayoutWallet,
   widestChallengeOn,
 } from "@agentify/gateway";
 import { testConfig } from "@agentify/gateway/testing";
@@ -418,43 +417,29 @@ if (databaseUrl === null) {
       });
     });
 
-    it("gives up without posting a report found a day or more after the registration", async () => {
-      await registered(CLICK, 24 * HOUR);
-      const { post, received } = tracker(200);
+    it.each([false, true])(
+      "expires a registration without posting, retaining prior failure: %s",
+      async (failed) => {
+        const account = await registered(CLICK, 24 * HOUR);
+        if (failed)
+          await pool.query(
+            "update dashboard_ad_reports set attempts = 2, last_outcome = 'http_503' where account_id = $1",
+            [account],
+          );
+        const { post, received } = tracker(200);
 
-      expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(true);
+        expect(await reportOnce({ pool, target: TARGET, fetch: post, now, wait })).toBe(true);
 
-      expect(received).toStrictEqual([]);
-      expect(await onlyRow()).toMatchObject({
-        click_id: null,
-        state: "given_up",
-        attempts: 0,
-        last_outcome: null,
-        settled_at: START,
-      });
-    });
-
-    it("keeps the last failure's outcome on a report given up a day after the registration", async () => {
-      // The outcome is what the tracker last answered; the end of the window
-      // is said by the state and when it settled.
-      const account = await registered(CLICK, 24 * HOUR);
-      await pool.query(
-        "update dashboard_ad_reports set attempts = 2, last_outcome = 'http_503' where account_id = $1",
-        [account],
-      );
-      const { post, received } = tracker(200);
-
-      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
-
-      expect(received).toStrictEqual([]);
-      expect(await onlyRow()).toMatchObject({
-        click_id: null,
-        state: "given_up",
-        attempts: 2,
-        last_outcome: "http_503",
-        settled_at: START,
-      });
-    });
+        expect(received).toStrictEqual([]);
+        expect(await onlyRow()).toMatchObject({
+          click_id: null,
+          state: "given_up",
+          attempts: failed ? 2 : 0,
+          last_outcome: failed ? "http_503" : null,
+          settled_at: START,
+        });
+      },
+    );
 
     it("still posts a report found just under a day after the registration", async () => {
       await registered(CLICK, 24 * HOUR - 1);
@@ -485,21 +470,6 @@ if (databaseUrl === null) {
         });
       });
     }
-
-    it("posts two due reports at least 1.1 seconds apart", async () => {
-      await registered(CLICKS[0]);
-      await registered(CLICKS[1]);
-      const { post, received } = tracker(200, 200);
-
-      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
-      await reportOnce({ pool, target: TARGET, fetch: post, now, wait });
-
-      expect(received.map((request) => request.body)).toStrictEqual([
-        `{"clickid":"${CLICKS[0]}","event":"reg"}`,
-        `{"clickid":"${CLICKS[1]}","event":"reg"}`,
-      ]);
-      expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
-    });
 
     it("holds the next post back 1.1 seconds even when a post's outcome could not be recorded", async () => {
       // The rollback leaves the row pending, so the next turn, from any
@@ -576,36 +546,6 @@ if (databaseUrl === null) {
       expect(await rows()).toStrictEqual([]);
     });
 
-    it("never posts one report twice from two processes running at once, and spaces their posts too", async () => {
-      for (const click of CLICKS) await registered(click);
-      const { post, received } = tracker();
-      const parts = { target: TARGET, fetch: post, now, wait, idleMs: 50 };
-
-      const one = startAdReports({ ...parts, pool });
-      const other = startAdReports({ ...parts, pool: otherPool });
-      try {
-        await until(() => received.length >= CLICKS.length);
-        // Room for a second post of any of them, had one been taken twice.
-        await sleep(200);
-      } finally {
-        await Promise.all([one.stop(), other.stop()]);
-      }
-
-      const posted = received.map((request) => request.body);
-      expect([...posted].sort()).toStrictEqual(
-        CLICKS.map((click) => `{"clickid":"${click}","event":"reg"}`),
-      );
-      const times = received.map((request) => request.at);
-      for (let at = 1; at < times.length; at += 1) {
-        expect((times[at] ?? 0) - (times[at - 1] ?? 0)).toBeGreaterThanOrEqual(1_100);
-      }
-      expect((await rows()).map((row) => row.state)).toStrictEqual([
-        "delivered",
-        "delivered",
-        "delivered",
-      ]);
-    });
-
     it("keeps going after a turn the database failed, and delivers once it is back", async () => {
       await registered(CLICK);
       await pool.query("alter table dashboard_ad_reports rename to ad_reports_away");
@@ -671,27 +611,6 @@ if (databaseUrl === null) {
   };
 
   describe("the loop every dashboard starts, whichever way the report is switched", () => {
-    it("reports what is due when switched on", async () => {
-      await registered(CLICK);
-      const { post, received } = tracker(200);
-      const running = startAdReports({
-        pool,
-        target: TARGET,
-        fetch: post,
-        now,
-        wait,
-        idleMs: 20,
-      });
-      try {
-        await until(() => received.length === 1);
-      } finally {
-        await running.stop();
-      }
-
-      expect(received[0]?.body).toBe(`{"clickid":"${CLICK}","event":"reg"}`);
-      expect((await onlyRow()).state).toBe("delivered");
-    });
-
     it("posts nothing when switched off, and gives up every report a day old so its click goes", async () => {
       // Pending rows from before the switch went off would otherwise keep
       // their click for as long as it stays off.
@@ -821,13 +740,13 @@ if (databaseUrl === null) {
     const made = await store.addMerchant({ id: `mch_report_${merchants}`, name }, clock);
     if (made === null) throw new Error("the merchant was not made");
     await store.setServiceName(made.id, name, clock);
-    await setPayoutWallet(
-      store,
-      gatewayConfig.payoutSplit,
+    const wallet = await gateway.setPayoutWallet(
       made.id,
       `0x${merchants.toString(16).padStart(40, "0")}`,
-      clock,
+      { kind: "signed_in", email: "owner@example.com" },
     );
+    if (typeof wallet === "string" || "refused" in wallet)
+      throw new Error("merchant wallet was refused");
     if (integration === "woocommerce") await store.switchIntegration(made.id, "woocommerce");
     return made.id;
   };
@@ -1059,29 +978,14 @@ if (databaseUrl === null) {
       });
     });
 
-    it("says in the log why waiting store reports lapsed, in one line for each reason", async () => {
-      const merchant = await aMerchant();
-      await publish(merchant, "room-1");
-      clock += MINUTE;
-      const registeredAt = clock;
-      await fromAnAd(CLICKS[0], merchant);
-      await fromAnAd(CLICKS[1], null);
-      await fromAnAd(CLICKS[2], null);
-      clock = registeredAt + 30 * DAY;
-
-      expect(await report(tracker().post)).toBe(false);
-
-      expect(told.filter((line) => line.includes("lapsed"))).toHaveLength(2);
-      expect(told.filter((line) => line.includes("first_card_before_registration"))).toHaveLength(
-        1,
-      );
-      expect(told.filter((line) => line.includes("no_first_card_in_30_days"))).toHaveLength(1);
-    });
-
     it("keeps the click while it waits and erases it, posting nothing, once 30 days pass without a first card", async () => {
+      const older = await aMerchant();
+      await publish(older, "room-before-registration");
+      clock += MINUTE;
       const merchant = await aMerchant();
       const withMerchant = await fromAnAd(CLICKS[0], merchant);
       const withoutMerchant = await fromAnAd(CLICKS[1], null);
+      const preexisting = await fromAnAd(CLICKS[2], older);
       const registeredAt = clock;
       const { post, received } = tracker(200);
 
@@ -1112,6 +1016,20 @@ if (databaseUrl === null) {
       clock += MINUTE;
       expect(await report(post)).toBe(false);
       expect(received).toStrictEqual([]);
+      expect(await storeRowOf(preexisting)).toMatchObject({
+        state: "lapsed",
+        last_outcome: "first_card_before_registration",
+        click_id: null,
+      });
+      const lapsed = told.filter((line) => line.includes("lapsed"));
+      expect(lapsed).toHaveLength(2);
+      expect(lapsed.filter((line) => line.includes("first_card_before_registration"))).toHaveLength(
+        1,
+      );
+      expect(lapsed.filter((line) => line.includes("no_first_card_in_30_days"))).toHaveLength(1);
+      expect(lapsed.find((line) => line.includes("no_first_card_in_30_days"))).toMatch(
+        /2 waiting store reports/i,
+      );
     });
 
     it("counts a first card published just inside the 30 days, and not one published at 30 days though nothing looked in between", async () => {
@@ -1124,10 +1042,12 @@ if (databaseUrl === null) {
 
       clock = registeredAt + 30 * DAY - 2_000;
       await publish(inside, "room-1");
-      clock = registeredAt + 30 * DAY;
-      await publish(outside, "room-1");
       clock = registeredAt + 30 * DAY - 1_000;
       await report(post);
+      expect(await storeRowOf(counted)).toMatchObject({ state: "delivered", click_id: null });
+      expect(await storeRowOf(uncounted)).toMatchObject({ state: "waiting", click_id: CLICKS[1] });
+      clock = registeredAt + 30 * DAY;
+      await publish(outside, "room-1");
       clock = registeredAt + 30 * DAY + MINUTE;
       expect(await report(post)).toBe(false);
 
@@ -1149,6 +1069,7 @@ if (databaseUrl === null) {
       clock = firstCardAt + DAY;
       const { post, received } = tracker(200);
 
+      const loggedBefore = told.length;
       expect(await report(post)).toBe(false);
 
       expect(received).toStrictEqual([]);
@@ -1160,8 +1081,9 @@ if (databaseUrl === null) {
         event_at: new Date(firstCardAt),
         settled_at: new Date(clock),
       });
-      expect(told).toHaveLength(1);
-      expect(told[0]).toMatch(/given up/);
+      const reported = told.slice(loggedBefore);
+      expect(reported).toHaveLength(1);
+      expect(reported[0]).toMatch(/given up/);
     });
 
     it("dates the store report, and so its day of tries, by the first publication, not a republish's, and the card keeps that time", async () => {
@@ -1232,34 +1154,49 @@ if (databaseUrl === null) {
       ).toStrictEqual([]);
     });
 
-    it("tries a store report again after a 429 and delivers it once the tracker takes it", async () => {
-      const merchant = await aMerchant();
-      const account = await fromAnAd(CLICK, merchant);
-      const firstCardAt = clock;
-      await publish(merchant, "room-1");
-      const { post, received } = tracker(429, 200);
+    it.each([400, 429])(
+      "records a promoted store report outcome %i, retrying only a busy answer",
+      async (status) => {
+        const merchant = await aMerchant();
+        const account = await fromAnAd(CLICK, merchant);
+        const firstCardAt = clock;
+        await publish(merchant, "room-1");
+        const { post, received } = tracker(status, 200);
 
-      await report(post);
-      expect(await storeRowOf(account)).toMatchObject({
-        click_id: CLICK,
-        state: "pending",
-        attempts: 1,
-        last_outcome: "http_429",
-        next_attempt_at: new Date(firstCardAt + MINUTE),
-      });
-      clock = firstCardAt + MINUTE;
-      await report(post);
+        await report(post);
+        if (status === 400) {
+          clock += 2 * DAY;
+          expect(await report(post)).toBe(false);
+          expect(received.map((request) => request.body)).toStrictEqual([storeReport(CLICK)]);
+          expect(await storeRowOf(account)).toMatchObject({
+            click_id: null,
+            state: "refused",
+            attempts: 1,
+            last_outcome: "http_400",
+          });
+          return;
+        }
+        expect(await storeRowOf(account)).toMatchObject({
+          click_id: CLICK,
+          state: "pending",
+          attempts: 1,
+          last_outcome: "http_429",
+          next_attempt_at: new Date(firstCardAt + MINUTE),
+        });
+        clock = firstCardAt + MINUTE;
+        await report(post);
 
-      expect(received.map((request) => request.body)).toStrictEqual([
-        storeReport(CLICK),
-        storeReport(CLICK),
-      ]);
-      expect(await storeRowOf(account)).toMatchObject({
-        click_id: null,
-        state: "delivered",
-        attempts: 2,
-      });
-    });
+        expect(received.map((request) => request.body)).toStrictEqual([
+          storeReport(CLICK),
+          storeReport(CLICK),
+        ]);
+        expect(await storeRowOf(account)).toMatchObject({
+          click_id: null,
+          state: "delivered",
+          attempts: 2,
+        });
+      },
+    );
 
     it("tries a store report the tracker answers 503 within a day of the first card, not of the registration, then gives up and erases the click", async () => {
       const merchant = await aMerchant();
@@ -1317,74 +1254,54 @@ if (databaseUrl === null) {
       expect(row.settled_at?.getTime()).toBeLessThan(registeredAt + 30 * DAY);
     });
 
-    it("refuses for good a store report the tracker answered 400, and erases the click", async () => {
-      const merchant = await aMerchant();
-      const account = await fromAnAd(CLICK, merchant);
-      await publish(merchant, "room-1");
-      const { post, received } = tracker(400);
+    it.each([false, true])(
+      "two processes deliver every report once and space each post, store pairs %s",
+      async (withStores) => {
+        for (const click of CLICKS) {
+          if (withStores) {
+            const merchant = await aMerchant();
+            await fromAnAd(click, merchant, 0, "pending");
+            await publish(merchant, "room-1");
+          } else await registered(click);
+        }
+        const { post, received } = tracker();
+        const parts = { target: TARGET, fetch: post, now, wait, idleMs: 50 };
 
-      await report(post);
-      clock += 2 * DAY;
-      expect(await report(post)).toBe(false);
+        const one = startAdReports({ ...parts, pool });
+        const other = startAdReports({ ...parts, pool: otherPool });
+        try {
+          await until(() => received.length >= (withStores ? 2 : 1) * CLICKS.length);
+          await sleep(200);
+        } finally {
+          await Promise.all([one.stop(), other.stop()]);
+        }
 
-      expect(received).toHaveLength(1);
-      expect(await storeRowOf(account)).toMatchObject({
-        click_id: null,
-        state: "refused",
-        attempts: 1,
-        last_outcome: "http_400",
-      });
-    });
-
-    it("spaces a registration's post and a store report's post at least 1.1 seconds apart", async () => {
-      const merchant = await aMerchant();
-      await fromAnAd(CLICK, merchant, 0, "pending");
-      await publish(merchant, "room-1");
-      const { post, received } = tracker(200, 200);
-
-      await report(post);
-      await report(post);
-
-      expect(received.map((request) => JSON.parse(String(request.body)).event)).toStrictEqual([
-        "reg",
-        "lead",
-      ]);
-      expect((received[1]?.at ?? 0) - (received[0]?.at ?? 0)).toBeGreaterThanOrEqual(1_100);
-    });
-
-    it("never posts one report twice from two processes running at once, registrations and stores mixed, and spaces every post", async () => {
-      for (const click of CLICKS) {
-        const merchant = await aMerchant();
-        await fromAnAd(click, merchant, 0, "pending");
-        await publish(merchant, "room-1");
-      }
-      const { post, received } = tracker();
-      const parts = { target: TARGET, fetch: post, now, wait, idleMs: 50 };
-
-      const one = startAdReports({ ...parts, pool });
-      const other = startAdReports({ ...parts, pool: otherPool });
-      try {
-        await until(() => received.length >= 2 * CLICKS.length);
-        await sleep(200);
-      } finally {
-        await Promise.all([one.stop(), other.stop()]);
-      }
-
-      const bodies = received.map((request) => JSON.parse(String(request.body)));
-      expect(bodies).toHaveLength(2 * CLICKS.length);
-      for (const click of CLICKS) {
+        const bodies = received.map((request) => JSON.parse(String(request.body)));
+        expect(bodies).toHaveLength((withStores ? 2 : 1) * CLICKS.length);
+        for (const click of CLICKS) {
+          expect(
+            bodies
+              .filter((body) => body.clickid === click)
+              .map((body) => body.event)
+              .sort(),
+          ).toStrictEqual(withStores ? ["lead", "reg"] : ["reg"]);
+        }
+        expect((await rows()).map((row) => row.state)).toStrictEqual(
+          Array(CLICKS.length).fill("delivered"),
+        );
         expect(
-          bodies
-            .filter((body) => body.clickid === click)
-            .map((body) => body.event)
-            .sort(),
-        ).toStrictEqual(["lead", "reg"]);
-      }
-      const times = received.map((request) => request.at);
-      for (let at = 1; at < times.length; at += 1) {
-        expect((times[at] ?? 0) - (times[at - 1] ?? 0)).toBeGreaterThanOrEqual(1_100);
-      }
-    });
+          (
+            await pool.query(
+              "select state from dashboard_ad_reports where event = 'store_connected'",
+            )
+          ).rows.map((row) => row.state),
+        ).toStrictEqual(Array(withStores ? CLICKS.length : 0).fill("delivered"));
+        const times = received.map((request) => request.at);
+        for (let at = 1; at < times.length; at += 1) {
+          expect((times[at] ?? 0) - (times[at - 1] ?? 0)).toBeGreaterThanOrEqual(1_100);
+        }
+      },
+    );
 
     it("tells the tracker once of the registration and once of the store, with one click and the one switch, for a person who signs in from an ad, makes a merchant and publishes", async () => {
       const messages: Message[] = [];

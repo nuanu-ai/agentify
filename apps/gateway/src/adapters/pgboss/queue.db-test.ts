@@ -169,11 +169,16 @@ if (databaseUrl === null) {
         },
       });
       await queue.publish(A, question("env_q1"));
-      expect((await pool.query(
-        "select count(*)::int as count from pgboss_envelope_priority.job where data->>'kind' = 'quote_request'",
-      )).rows).toStrictEqual([{ count: 0 }]);
-      await expect(db.transaction((tx) => queue.publishWithin(tx, A, question("env_transaction"))))
-        .rejects.toThrow(/price questions/);
+      expect(
+        (
+          await pool.query(
+            "select count(*)::int as count from pgboss_envelope_priority.job where data->>'kind' = 'quote_request'",
+          )
+        ).rows,
+      ).toStrictEqual([{ count: 0 }]);
+      await expect(
+        db.transaction((tx) => queue.publishWithin(tx, A, question("env_transaction"))),
+      ).rejects.toThrow(/price questions/);
       await queue.publish(A, handOver("env_o1"));
       await queue.publish(A, question("env_q2"));
       await queue.publish(A, {
@@ -524,6 +529,13 @@ if (databaseUrl === null) {
       const carried = await drawer.queue.draw(A, 10, 20_000);
       expect(carried.map((delivery) => delivery.envelope.id)).toStrictEqual(["env_immediate_1"]);
       await drawer.queue.finish(A, carried[0]?.handle ?? "");
+      expect(await drawer.queue.draw(A, 10, 200)).toStrictEqual([]);
+      expect((await publisher.boss.getJobById(STREAM, drawn[0]?.handle ?? ""))?.state).toBe(
+        "completed",
+      );
+      expect((await publisher.boss.getJobById(STREAM, carried[0]?.handle ?? ""))?.state).toBe(
+        "completed",
+      );
     }, 60_000);
 
     it("says whether a stream is still holding an order, and only about orders", async () => {

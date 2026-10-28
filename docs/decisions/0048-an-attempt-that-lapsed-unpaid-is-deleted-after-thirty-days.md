@@ -1,25 +1,33 @@
-# An attempt that lapsed unpaid is deleted after thirty days
+# Uncharged payment attempts are deleted after thirty days
 
-Status: approved by the product owner on 2026-10-21 as proposed, thirty days
-included.
+Status: thirty-day retention approved by the product owner on 2026-10-21;
+narrowed on 2026-10-27 with the rule that unpaid prices hold nothing over time.
 
 ## Context
 
-Every unpaid purchase opens an order, and every purchase priced and never paid
-stayed a row for ever, which every list of a merchant's orders reads. The
-limit on purchases waiting for payment
-([ADR-0043](0043-the-purchase-door-refuses-before-any-charge.md)) bounds how
-many are open at once, not how many pile up.
+An unpaid price creates no order (ADR-0049). Presenting a payment creates an
+attempt before verification, so invalid or unanswered verification can leave
+an unowned record. Rejected or expired attempts may also remain without money
+or goods. They are not merchant work and must not accumulate forever.
 
 ## Decision
 
-An order that ended rejected or expired with nothing charged, nothing held for
-its buyer and nothing presented to pay with is deleted thirty days after it was
-last written, by a daily job in bounded batches, unless a receipt or a payment
-claim names it. Its buyer's key is then answered as one that names no order.
-Nothing with money, a claim, a receipt or goods is deleted.
+A daily job deletes eligible attempts thirty days after their last write, in
+bounded batches under the order lock. Eligible means an ended rejected or
+expired attempt, or an unverified admission whose original price has expired,
+with no accepted payment, owner, recovery attempt, money, goods, payment claim
+or receipt. Nothing financially accepted is deleted, including an unknown
+payment outcome. First verified acceptance and deletion use the same order lock. Verification
+runs outside it; if retention deletes an eligible unverified record while its
+check is in flight, completion finds no order and executes no payment.
+
+Unverified admissions are absent from the merchant's order list, restart walk
+and integration-switch blockers. There is no merchant Lapsed segment. A deleted
+buyer's key answers as one naming no order; presenting its expired stamp cannot
+create a new charge.
 
 ## Alternatives rejected
 
-Keeping lapsed attempts and only hiding them: the table and every read of it
-grow without bound.
+Keeping expired unverified attempts forever grows the table for free. Hiding
+rows without deleting them leaves that growth. Applying retention to unknown
+payment outcomes would erase the evidence automatic recovery needs.

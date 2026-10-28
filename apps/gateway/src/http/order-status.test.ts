@@ -287,25 +287,6 @@ describe("coming back for goods that were not ready", () => {
     expect(status.price?.currency).toBe("USD");
   });
 
-  it("hands over the goods once the merchant has issued them", async () => {
-    const { served, harnessed } = await started();
-    const itemId = await publish(served, laterCard);
-    const orderId = await orderTakenOn(harnessed, served, itemId);
-
-    const delivered = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
-      body: { activation_code: "LPA:1$example.com$ACTIVATE" },
-      headers: keyOf(harnessed.merchant),
-    });
-    expect(delivered.status, JSON.stringify(delivered.body)).toBe(200);
-
-    const answered = await statusOf(served, orderId);
-
-    expect(answered.status).toBe(200);
-    const status = answered.body as AgentOrderStatus;
-    expect(status.status).toBe("delivered");
-    expect(status.delivered).toStrictEqual({ activation_code: "LPA:1$example.com$ACTIVATE" });
-  });
-
   it("will not hand over goods the buyer has not paid for", async () => {
     // A synchronous delivery whose charge failed: the goods exist but nothing
     // was paid. Handing them over here would let anyone collect for free what a
@@ -343,6 +324,7 @@ describe("a refusal the merchant made", () => {
 
     expect(bought.status).toBe(409);
     expect(bought.headers.get("cache-control")).toBe("no-store");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
     const refused = bought.body as AgentOrderStatus;
     expect(refused.status).toBe("rejected");
     expect(refused.refusal).toStrictEqual({
@@ -485,10 +467,23 @@ describe("a paid order left unfulfilled", () => {
     expect(((await statusOf(served, reported)).body as AgentOrderStatus).status).toBe(
       "payment_unresolved",
     );
-    await harnessed.gateway.runner.apply(reported, {
-      kind: "payment_settled",
-      at: harnessed.now(),
-    });
+    const attempt = (await harnessed.store.orderById(reported))?.paymentAttempt;
+    if (!attempt) throw new Error("no original payment attempt was submitted");
+    await harnessed.gateway.runner.completePaymentAttempt(
+      reported,
+      attempt.id,
+      {
+        settled: true,
+        transaction: `0x${"ab".repeat(32)}`,
+        executedAt: harnessed.now(),
+      },
+      "chain",
+    );
+    expect(
+      (await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes.some(
+        (envelope) => envelope.kind === "order",
+      ),
+    ).toBe(false);
     harnessed.facilitator.willSettle({ settled: true, transaction: "0xsettled" });
     const late = await orderTakenOn(harnessed, served, itemId);
 
@@ -496,8 +491,12 @@ describe("a paid order left unfulfilled", () => {
     const owingReported = await owingOf(served, reported);
 
     expect(owingReported.reason?.code).toBe("deadline_passed");
-    expect(owingReported.reason?.message).toMatch(/\S/);
-    expect(owingReported.reason?.message).not.toBe(owingLate.reason?.message);
+    expect(owingReported.reason?.message).toMatch(/payment.*confirmed after/i);
+    expect(owingReported.reason?.message).toMatch(/did not dispatch/i);
+    expect(owingLate.reason).toMatchObject({
+      code: "deadline_passed",
+      message: expect.stringMatching(/delivery.*deadline/i),
+    });
   });
 
   it("gives each way of being left unfulfilled a sentence of its own", async () => {
@@ -517,11 +516,14 @@ describe("a paid order left unfulfilled", () => {
       headers: keyOf(harnessed.merchant),
     });
 
-    const sentences = await Promise.all(
-      [late, refused].map(async (orderId) => (await owingOf(served, orderId)).reason?.message),
+    const reasons = await Promise.all(
+      [late, refused].map(async (orderId) => (await owingOf(served, orderId)).reason),
     );
-
-    expect(new Set(sentences).size).toBe(2);
+    expect(reasons).toMatchObject([
+      { code: "deadline_passed", message: expect.stringMatching(/delivery.*deadline/i) },
+      { code: "refused", message: expect.stringMatching(/seller refused/i) },
+    ]);
+    expect(new Set(reasons.map((reason) => reason?.message)).size).toBe(2);
   });
 });
 

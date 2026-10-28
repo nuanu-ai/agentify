@@ -209,11 +209,49 @@ describe("failing a chosen shop request", () => {
   });
 
   it("with cut, lets the shop create the order and leaves the caller with no answer, once", async () => {
-    const shop = await standInShop();
+    let release = () => {};
+    let started = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const firstBytes = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let finished = false;
+    const received: Received[] = [];
+    const url = await serve(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(chunk as Buffer);
+      received.push({
+        method: request.method ?? "",
+        url: request.url ?? "",
+        body: Buffer.concat(chunks).toString(),
+      });
+      response.writeHead(201, { "content-type": "application/json" });
+      response.write('{"id":');
+      if (received.length === 1) {
+        started();
+        await gate;
+      }
+      response.once("finish", () => {
+        finished = true;
+      });
+      response.end("101}");
+    });
+    const shop = { url, received };
     const { port, edge } = await edgeFor(shop, await standInShop());
     armed(edge, ["fail", "--method", "POST", "--path", ORDERS, "--fault", "cut"]);
-
-    const cut = await call(port, SHOP, "POST", ORDERS, orderBody("ord_cut"));
+    let answered = false;
+    const pending = call(port, SHOP, "POST", ORDERS, orderBody("ord_cut")).then((reply) => {
+      answered = true;
+      return reply;
+    });
+    await firstBytes;
+    await pause(30);
+    expect(answered).toBe(false);
+    release();
+    const cut = await pending;
+    expect(finished).toBe(true);
     const again = await call(port, SHOP, "POST", ORDERS, orderBody("ord_cut"));
 
     expect(cut.status).toBeNull();

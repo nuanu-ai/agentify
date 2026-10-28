@@ -861,38 +861,23 @@ if (databaseUrl === null) {
   });
 
   describe("a person who opted out", () => {
-    it("is never sent an event as its person, which is marked suppressed", async () => {
-      await optedOut(RAW.person, null);
-      await recorded(viewed);
-      const { post, received } = nuanu();
+    it.each([
+      [RAW.person, null, viewed, "suppressed"],
+      ["acc_raw_owner", RAW.merchant, ordered, "suppressed"],
+      ["acc_raw_somebody_else", "mer_raw_somebody_else", viewed, "sent"],
+    ] as const)(
+      "honors only the event's own person/merchant opt-out: %s, %s",
+      async (person, merchant, event, state) => {
+        await optedOut(person, merchant);
+        await recorded(event);
+        const { post, received } = nuanu();
 
-      await drained(ON_TEST, post);
+        await drained(ON_TEST, post);
 
-      expect(received).toStrictEqual([]);
-      expect(await onlyRow()).toMatchObject({ state: "suppressed" });
-    });
-
-    it("keeps the merchant their account names out of every event, whoever acted", async () => {
-      await optedOut("acc_raw_owner", RAW.merchant);
-      await recorded(ordered);
-      const { post, received } = nuanu();
-
-      await drained(ON_TEST, post);
-
-      expect(received).toStrictEqual([]);
-      expect(await onlyRow()).toMatchObject({ state: "suppressed" });
-    });
-
-    it("leaves everybody else's events to be sent", async () => {
-      await optedOut("acc_raw_somebody_else", "mer_raw_somebody_else");
-      await recorded(viewed);
-      const { post, received } = nuanu();
-
-      await drained(ON_TEST, post);
-
-      expect(received).toHaveLength(1);
-      expect(await onlyRow()).toMatchObject({ state: "sent" });
-    });
+        expect(received).toHaveLength(state === "sent" ? 1 : 0);
+        expect(await onlyRow()).toMatchObject({ state });
+      },
+    );
   });
 
   describe("switched off", () => {

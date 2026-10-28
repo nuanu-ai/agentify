@@ -1,6 +1,6 @@
 /**
  * A purchase that ended with nothing charged and nothing held for its buyer is
- * a record of an attempt, and it is forgotten thirty days after it ended by the
+ * a record of an attempt, and it is forgotten thirty days after its last write by the
  * gateway's daily work. Orders that hold money or goods are never forgotten.
  */
 
@@ -14,7 +14,6 @@ import {
   serve,
   statusPathOf,
 } from "../testing/harness.js";
-import { anOrder } from "../testing/store-contract.js";
 
 const syncCard: Card = CardSchema.parse({
   merchant_item_id: "room-101",
@@ -47,18 +46,21 @@ const started = async () => {
   return { harnessed, served, itemId: stored.id };
 };
 
-/** A purchase priced and never paid, ended when its price ran out. */
-const lapsedUnpaid = async (harnessed: Harness, itemId: string): Promise<string> => {
+/** A real payment-presented attempt whose signature does not verify. */
+const unverifiedAttempt = async (harnessed: Harness, itemId: string): Promise<string> => {
   const offered = await harnessed.gateway.beginPurchase(itemId, {});
   if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
-  harnessed.advance(31_000);
-  await harnessed.gateway.runner.apply(offered.order.order.id, {
-    kind: "deadline_expired",
-    at: harnessed.now(),
-    deadline: "quote_expiry",
-  });
-  const lapsed = await harnessed.store.orderById(offered.order.order.id);
-  expect(lapsed?.order.state).toBe("expired");
+  harnessed.facilitator.willRefuseVerification("signature");
+  const refused = await harnessed.gateway.payPurchase(
+    offered.order.priceOffer.stamp,
+    "INVALID",
+    "fp-invalid",
+  );
+  harnessed.facilitator.willVerify();
+  expect(refused.step).toBe("payment_not_verified");
+  const record = await harnessed.store.orderById(offered.order.order.id);
+  expect(record?.order.state).toBe("quoted");
+  expect(record?.paidBy).toBeNull();
   return offered.order.order.id;
 };
 
@@ -69,14 +71,14 @@ const theDailyWork = async (harnessed: Harness): Promise<void> => {
   }
 };
 
-/** The status address an order's buyer holds, read while the order is still there. */
+/** The retained private address, inspected through the store before deletion. */
 const addressOf = (harnessed: Harness, orderId: string): Promise<string> =>
   statusPathOf(harnessed, orderId);
 
-describe("a purchase that lapsed unpaid", () => {
-  it("is gone thirty days after it ended and its status reads as an unknown order's, while a paid order of the same age stays", async () => {
+describe("an expired unverified payment attempt", () => {
+  it("is gone thirty days after its last write and its status reads as an unknown order's, while a paid order of the same age stays", async () => {
     const { harnessed, served, itemId } = await started();
-    const lapsed = await lapsedUnpaid(harnessed, itemId);
+    const lapsed = await unverifiedAttempt(harnessed, itemId);
     const bought = await buyOverHttp(harnessed, served, itemId, {
       onOrder: () => ({ delivered: { access_code: "SESAME" } }),
     });
@@ -95,12 +97,16 @@ describe("a purchase that lapsed unpaid", () => {
     expect(forgotten.status).toBe(unknown.status);
     expect(forgotten.body).toStrictEqual(unknown.body);
     expect((await served.call("GET", paidAt)).status).toBe(200);
-    expect(await harnessed.store.receiptForOrder(paid)).not.toBeNull();
+    expect(
+      (await harnessed.store.receipts(harnessed.merchant.id)).find(
+        (receipt) => receipt.order_id === paid,
+      ) ?? null,
+    ).not.toBeNull();
   });
 
-  it("is kept until thirty days have passed since it ended", async () => {
+  it("is kept until thirty days have passed since its last write", async () => {
     const { harnessed, served, itemId } = await started();
-    const lapsed = await lapsedUnpaid(harnessed, itemId);
+    const lapsed = await unverifiedAttempt(harnessed, itemId);
 
     harnessed.advance(29 * DAY);
     await theDailyWork(harnessed);
@@ -110,18 +116,22 @@ describe("a purchase that lapsed unpaid", () => {
   });
 });
 
-describe("many purchases that lapsed unpaid", () => {
+describe("many expired unverified payment attempts", () => {
   it("are all gone after one day's work, however many more there are than one statement forgets", async () => {
     const { harnessed } = await started();
-    for (let one = 0; one < 1_201; one += 1) {
-      await harnessed.store.addOrder(
-        anOrder(`ord_lapsed_${one}`, "expired", { merchantId: harnessed.merchant.id }),
-      );
-    }
+    const item = await harnessed.store.publishCard(
+      harnessed.merchant.id,
+      syncCard,
+      harnessed.now(),
+    );
+    const ids: string[] = [];
+    for (let one = 0; one < 1_201; one += 1) ids.push(await unverifiedAttempt(harnessed, item.id));
 
     harnessed.advance(30 * DAY + 60_000);
     await theDailyWork(harnessed);
 
-    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+    expect(await Promise.all(ids.map((id) => harnessed.store.orderById(id)))).toStrictEqual(
+      ids.map(() => null),
+    );
   });
 });

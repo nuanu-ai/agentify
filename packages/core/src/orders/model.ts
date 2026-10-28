@@ -223,17 +223,14 @@ export type QuoteSource = (typeof QUOTE_SOURCES)[number];
  * reason this system cannot read; neither says which of the others would
  * help.
  */
-export const PAYMENT_VERIFICATION_FAILURES = [
-  "signature",
-  "insufficient_funds",
-  "price_stale",
-  "amount_not_payable",
-  "wallet_refused",
-  "unexplained",
-  "unrecognised",
-] as const;
-
-export type PaymentVerificationFailure = (typeof PAYMENT_VERIFICATION_FAILURES)[number];
+export type PaymentVerificationFailure =
+  | "signature"
+  | "insufficient_funds"
+  | "price_stale"
+  | "amount_not_payable"
+  | "wallet_refused"
+  | "unexplained"
+  | "unrecognised";
 
 /**
  * The refusal codes the platform reads the same way everywhere. The set is
@@ -414,18 +411,18 @@ export type Effect =
 /**
  * Whether this order still holds a buyer's address.
  *
- * Only a parcel ever holds one, and it holds it from the priced request until
- * the first of four moments: the merchant takes the order on (they store the
- * address before answering `accepted`), its shipment is recorded, it closes, or
- * it becomes unfulfilled without having been taken on. Each leaves
- * the order closed, unfulfilled or taken on, so the rule is read off the
- * order rather than kept beside it. It only ever goes from true to false
- * because a parcel's money moves first (`OrderMode`): no repeat of the purchase
- * reopens such an order, and an acceptance, once given, stays.
+ * Only a parcel ever holds one. Its first verified payment establishes the
+ * buyer and their full address; an unverified request retains only locality.
+ * The address is held until the merchant takes the order on (they store it
+ * before answering `accepted`), its shipment is recorded, it closes, or it
+ * becomes unfulfilled without having been taken on. Once released it is never
+ * needed again: a parcel's money moves first, no repeat reopens it, and an
+ * acceptance, once given, stays.
  */
 export function holdsShipTo(order: Order): boolean {
   return (
     order.mode.parcel === true &&
+    order.payment !== "none" &&
     isOpen(order.state) &&
     order.state !== "unfulfilled" &&
     !order.dispatch.accepted
@@ -452,12 +449,8 @@ export type OrderEvent =
     }
   | { readonly kind: "quote_answered"; readonly at: number; readonly available: false }
   | { readonly kind: "quote_silent"; readonly at: number }
+  | { readonly kind: "payment_presented"; readonly at: number }
   | { readonly kind: "payment_verified"; readonly at: number }
-  | {
-      readonly kind: "payment_verification_failed";
-      readonly at: number;
-      readonly reason: PaymentVerificationFailure;
-    }
   | { readonly kind: "payment_settled"; readonly at: number }
   | { readonly kind: "payment_settle_failed"; readonly at: number }
   | { readonly kind: "purchase_repeated"; readonly at: number }
@@ -491,8 +484,8 @@ export type OrderEventKind = OrderEvent["kind"];
 const EVENT_KIND_INDEX: Record<OrderEventKind, true> = {
   quote_answered: true,
   quote_silent: true,
+  payment_presented: true,
   payment_verified: true,
-  payment_verification_failed: true,
   payment_settled: true,
   payment_settle_failed: true,
   purchase_repeated: true,
@@ -510,17 +503,21 @@ const EVENT_KIND_INDEX: Record<OrderEventKind, true> = {
 export const ORDER_EVENT_KINDS = Object.keys(EVENT_KIND_INDEX) as readonly OrderEventKind[];
 
 /**
- * Everything that can happen to an order except a deadline running out. The
- * expiry of a deadline is answered once, centrally, because a deadline that is
- * not currently running may not close an order in any state whatsoever.
+ * Events handled by individual states. Deadline expiry, merchant closure and
+ * admission of a payment request are handled centrally.
  */
-export type StateEvent = Exclude<OrderEvent, { kind: "deadline_expired" | "close_called" }>;
+export type StateEvent = Exclude<
+  OrderEvent,
+  { kind: "deadline_expired" | "close_called" | "payment_presented" }
+>;
 
 /** When each step of the order happened. Written from the events, never read
  * from a clock. */
 type OrderTimestamps = {
   readonly createdAt: number;
   readonly quotedAt: number | null;
+  /** The first payment request admitted while its price held; this is not verification. */
+  readonly paymentPresentedAt: number | null;
   /** When the payment was last sent for execution. */
   readonly settleStartedAt: number | null;
   /**

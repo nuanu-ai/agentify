@@ -43,9 +43,9 @@ Without a hash, recovery reads the receipts of only the blocks where the
 authorization could execute, from its verification time (found by bisecting
 block times) to its `validBefore`, with a cursor kept across polls and through a
 refused read; it sends no log queries. A used nonce absent from that window is
-unpaid only if it was unused at the window's last block. Orders saved before
-recovery terms existed search from their creation and reserve their nonce first;
-missing or conflicting context stays unresolved.
+unpaid only if it was unused at the window's last block. A missing durable attempt or conflicting recovery context stays unresolved.
+Every current payment records its attempt before execution; recovery never
+reconstructs a historical order from a raw authorization.
 
 The RPC is trusted as payment evidence, as the facilitator is. Recovery checks
 the token contract, chain id, payer, merchant split, amount, nonce, finality and

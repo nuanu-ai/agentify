@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { documentOf } from "../testing/markup";
 
 import { RobotsNotice } from "./robots-notice";
 
@@ -16,10 +17,15 @@ describe("RobotsNotice", () => {
         ]}
       />,
     );
-    expect(markup).toContain('data-robots-notice="disallowed"');
-    expect(markup).toContain("3 checks");
-    expect(markup).toContain('data-robots-notice="unassessed"');
-    expect(markup).toContain("1 check ");
+    const page = documentOf(markup);
+    for (const [reason, count] of [
+      ["disallowed", 3],
+      ["unassessed", 1],
+    ] as const) {
+      const notices = page.querySelectorAll(`[data-robots-notice="${reason}"]`);
+      expect(notices).toHaveLength(1);
+      expect(notices[0]?.textContent).toMatch(new RegExp(`\\b${count} checks?\\b`));
+    }
   });
 
   it("leads the owner to how the scanner reads robots.txt, whatever kept a check out", () => {

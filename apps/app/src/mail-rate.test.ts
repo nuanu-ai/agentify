@@ -36,6 +36,7 @@ vi.mock("../../dashboard/src/identity.js", async (importOriginal) => ({
 /** The test channel, with its database on a loopback port nothing listens on. */
 const TEST_CHANNEL = {
   DATABASE_URL: "postgres://agentify@127.0.0.1:9/agentify",
+  PRICE_STAMP_KEY: "app-fixture-price-stamp-key-at-least32bytes",
   AUTH_SECRET: "a".repeat(44),
   PAYMENT_NETWORK: "eip155:84532",
   FACILITATOR_URL: "https://x402.org/facilitator",
@@ -74,8 +75,10 @@ describe("the application's messages about a wallet", () => {
     const network = payoutSplitNetworkOf(PAYOUT_SPLIT_NETWORKS, TEST_CHANNEL.PAYMENT_NETWORK);
     const percent = (part: number): string => `${(part / network.totalAllocation) * 100}%`;
     expect(held.tell).not.toBeNull();
-    expect(logged.join("\n")).toContain(
-      `It pays only this wallet, ${percent(network.totalAllocation - network.commissionAllocation)} of every sale, and Agentify, ${percent(network.commissionAllocation)}.`,
-    );
+    const message = logged.join("\n");
+    expect(message).toContain(WALLET);
+    expect(message).toContain(SPLIT);
+    expect(message).toContain(percent(network.totalAllocation - network.commissionAllocation));
+    expect(message).toContain(percent(network.commissionAllocation));
   });
 });

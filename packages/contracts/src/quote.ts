@@ -77,6 +77,17 @@ export const QuoteResponseSchema = z.discriminatedUnion("available", [
     price: MoneySchema.meta({
       description: `Held to the rule a card's price meets at publication: at least ${SMALLEST_PRICE}, in USD or USDC, with two to six digits after the dot ("5.00", "0.015"); an answer that breaks it is refused and prices nothing.`,
     }),
+    quote_reference: z
+      .string()
+      .regex(
+        /^[\x20-\x7e]{1,512}$/,
+        "quote_reference must contain 1 to 512 printable ASCII characters",
+      )
+      .optional()
+      .meta({
+        description:
+          "Opaque merchant confirmation of this calculation, returned unchanged on the order. It travels in the buyer-visible 402 and is authenticated by Agentify. Never put secrets or personal data in it.",
+      }),
     as_of: TimestampSchema,
   }),
   z.strictObject({

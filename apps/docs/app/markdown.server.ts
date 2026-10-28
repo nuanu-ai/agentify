@@ -5,8 +5,9 @@
  * `<<< @/examples/…` include, which reads the file a test validates; a
  * root-relative link mounted under `/docs` and an outside link opened apart;
  * code highlighted by Shiki; a `mermaid` fence drawn into an inline SVG from
- * its kept drawing; a site value named as `{{origin}}`; and a part kept off a
- * channel inside `:::: unless identity-confirmed` (`site-values.ts`). What the
+ * its kept drawing; a site value named as `{{origin}}`; a part kept off a
+ * channel inside `:::: unless identity-confirmed` (`site-values.ts`); and a
+ * number kept on one line with its unit in the page's prose. What the
  * build itself knows, the SDK's release, is written into the source first
  * (`build-values.ts`).
  * `WRITING.md` tells a writer which syntax this understands.
@@ -18,6 +19,7 @@
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { keepUnits } from "@agentify/ui/units";
 import markdownIt, {
   type MarkdownIt,
   type StateBlock,
@@ -103,6 +105,33 @@ function headingAnchors(md: MarkdownIt): void {
       anchor.content = ` <a class="header-anchor" href="#${id}" aria-label="Permalink to &quot;${md.utils.escapeHtml(inline.content)}&quot;">&ZeroWidthSpace;</a>`;
       inline.children.push(anchor);
     });
+  });
+}
+
+/**
+ * A number and its unit on one line, "8 seconds" or "5.00 USD", where the
+ * source wraps between them too. Only the prose of the HTML page: code shows
+ * what it shows, and the Markdown copy is made from the source.
+ */
+function unitsKept(md: MarkdownIt): void {
+  md.core.ruler.push("units_kept", (state: StateCore) => {
+    for (const block of state.tokens) {
+      const words = block.children;
+      if (block.type !== "inline" || words == null) continue;
+      words.forEach((token, index) => {
+        if (token.type === "text") token.content = keepUnits(token.content);
+        const before = words[index - 1];
+        const after = words[index + 1];
+        if (token.type !== "softbreak" || before?.type !== "text" || after?.type !== "text") {
+          return;
+        }
+        const joined = keepUnits(`${before.content} ${after.content}`);
+        if (joined[before.content.length] === "\u00a0") {
+          token.type = "text";
+          token.content = "\u00a0";
+        }
+      });
+    }
   });
 }
 
@@ -200,7 +229,7 @@ function fences(md: MarkdownIt, highlighter: Highlighter): void {
 export function parser(): MarkdownIt {
   const md = markdownIt({ html: true, linkify: true });
   md.linkify.set({ fuzzyLink: false });
-  md.use(includes).use(containers).use(links).use(headingAnchors);
+  md.use(includes).use(containers).use(links).use(headingAnchors).use(unitsKept);
   return md;
 }
 

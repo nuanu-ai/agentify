@@ -57,11 +57,11 @@ const workerEnvSchema = z
         });
       }
     }
-    if (/^(latest|beta|dev)$/i.test(env.APIFY_BROWSER_ACTOR_BUILD)) {
+    if (!/^\d+\.\d+\.\d+$/.test(env.APIFY_BROWSER_ACTOR_BUILD)) {
       context.addIssue({
         code: "custom",
         path: ["APIFY_BROWSER_ACTOR_BUILD"],
-        message: "APIFY_BROWSER_ACTOR_BUILD must be an immutable build number/tag",
+        message: "APIFY_BROWSER_ACTOR_BUILD must be an immutable build number such as 1.0.42",
       });
     }
   });

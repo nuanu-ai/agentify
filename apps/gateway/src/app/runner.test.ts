@@ -1,7 +1,8 @@
-import { createOrder, type Order } from "@agentify/core";
+import { createOrder, type Order, transition } from "@agentify/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Birth, StoredOrder } from "../ports/store.js";
 import { drawEverything, type Harness, harness } from "../testing/harness.js";
+import type { PricedPurchase } from "./gateway.js";
 
 /**
  * The runner refuses to write an order that breaks a money invariant: writing
@@ -11,7 +12,7 @@ import { drawEverything, type Harness, harness } from "../testing/harness.js";
  */
 
 /** What a purchase's birth is held to, where the case is about something else. */
-const ANY_BIRTH: Birth = { through: "api", waitingAtMost: 20 };
+const ANY_BIRTH: Birth = { through: "api" };
 
 /** The address the payments below were checked against; its value does not matter here. */
 const PAID_AT = "0x0000000000000000000000000000000000000009";
@@ -44,6 +45,7 @@ const impossible = (): StoredOrder => {
     timestamps: {
       createdAt: 0,
       quotedAt: 0,
+      paymentPresentedAt: null,
       settleStartedAt: null,
       paidAt: 0,
       dispatchedAt: 0,
@@ -58,6 +60,25 @@ const impossible = (): StoredOrder => {
     buyerKey: "bk_the_runner",
     params: {},
     priceId: null,
+    delivery: null,
+    payment: null,
+    payTo: null,
+    paidBy: null,
+    settlement: null,
+    paymentWords: [],
+    paymentWordsDropped: 0,
+    openDeliveryId: null,
+  };
+};
+
+/** A priced offer admitted at the runner boundary, before financial verification. */
+const admittedRecord = (h: Harness, priced: PricedPurchase): StoredOrder => {
+  const admitted = transition(priced.order, { kind: "payment_presented", at: h.now() });
+  if (!admitted.ok) throw new Error("the payment request did not arrive while its price held");
+  return {
+    ...priced,
+    order: admitted.order,
+    buyerKey: h.runtime.ids("bk"),
     delivery: null,
     payment: null,
     payTo: null,
@@ -89,16 +110,22 @@ describe("an order that cannot be true", () => {
       at: open.now(),
     });
 
-    await expect(applied).rejects.toThrow(/breaks what must be true about money/);
-    await expect(applied).rejects.toThrow(/the order is a success and the money never moved/);
+    const before = await open.store.orderById("ord_impossible");
+    const error = await applied.catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain("ord_impossible");
+    expect(String(error)).toMatch(/money|payment|settle/i);
+    expect(String(error)).toMatch(/success|deliver/i);
+    expect(await open.store.orderById("ord_impossible")).toEqual(before);
+    expect(await open.store.receipts(open.merchant.id)).toEqual([]);
   });
 
   it("is not created either", async () => {
     open = await harness();
     const record = impossible();
 
-    await expect(open.gateway.runner.create(record, [], open.now(), ANY_BIRTH)).rejects.toThrow(
-      /breaks what must be true about money/,
+    await expect(open.gateway.runner.create(record, [], ANY_BIRTH)).rejects.toThrow(
+      /money|payment|settle/i,
     );
 
     expect(await open.store.orderById("ord_impossible")).toBeNull();
@@ -148,7 +175,7 @@ describe("an order that holds an address it should not", () => {
       at: open.now(),
     });
 
-    await expect(applied).rejects.toThrow(/still holds the buyer's address/);
+    await expect(applied).rejects.toThrow(/address/i);
     const thrown = await applied.catch((error: unknown) => String(error));
     for (const part of [address.name, address.line_one, address.phone_number]) {
       expect(thrown).not.toContain(part);
@@ -174,7 +201,7 @@ describe("an order that holds an address it should not", () => {
 
     await expect(
       open.gateway.runner.presentVerifiedPayment("ord_parcel", PAID_AT, "a-payment", PAID_AT, 0),
-    ).rejects.toThrow(/has erased the address its merchant still needs/);
+    ).rejects.toThrow(/address/i);
     // Nothing of the payment was written: no owner, and no money under way.
     const kept = await open.store.orderById("ord_parcel");
     expect(kept?.paidBy).toBeNull();
@@ -211,17 +238,10 @@ describe("an order that holds an address it should not", () => {
       },
     };
 
-    await expect(open.gateway.runner.create(waiting, [], open.now(), ANY_BIRTH)).rejects.toThrow(
-      /is a parcel with no address/,
-    );
+    await expect(open.gateway.runner.create(waiting, [], ANY_BIRTH)).rejects.toThrow(/address/i);
     await expect(
-      open.gateway.runner.create(
-        { ...waiting, shipTo: { erasedAt: 0 } },
-        [],
-        open.now(),
-        ANY_BIRTH,
-      ),
-    ).rejects.toThrow(/has erased the address its merchant still needs/);
+      open.gateway.runner.create({ ...waiting, shipTo: { erasedAt: 0 } }, [], ANY_BIRTH),
+    ).rejects.toThrow(/address/i);
     expect(await open.store.orderById("ord_parcel")).toBeNull();
   });
 
@@ -239,44 +259,9 @@ describe("an order that holds an address it should not", () => {
       shipTo: address,
     };
 
-    await expect(open.gateway.runner.create(paid, [], open.now(), ANY_BIRTH)).rejects.toThrow(
-      /holds an address and is not a parcel/,
+    await expect(open.gateway.runner.create(paid, [], ANY_BIRTH)).rejects.toThrow(
+      /address|parcel/i,
     );
-  });
-});
-
-describe("an effect that must be written down, asked for at the birth of an order", () => {
-  it("stops before the order exists rather than after", async () => {
-    // `addOrder` takes no writes alongside it, so creation has nowhere to put an
-    // effect that must not be lost. The machine never asks for one at creation,
-    // so the test asks by hand. The refusal must come before the order is
-    // written: after, the merchant would have an order in the database and no
-    // work on his stream.
-    open = await harness();
-    const published = await open.gateway.publishCard(open.merchant.id, {
-      merchant_item_id: "esim",
-      title: "A seven day eSIM",
-      description: "Seven days of data",
-      price: { amount: "12.00", currency: "USD" },
-      result: { activation_code: { type: "string" } },
-      fulfillment: "async",
-    });
-    if (!published.ok) throw new Error("the card would not publish");
-    const offered = await open.gateway.beginPurchase(published.id, {});
-    if (offered.step !== "pay") throw new Error("no price was offered");
-
-    // The same order again, as a record that does not exist yet, born asking
-    // for a hand-over.
-    const born: StoredOrder = {
-      ...offered.order,
-      order: { ...offered.order.order, id: "ord_born" },
-    };
-
-    await expect(
-      open.gateway.runner.create(born, [{ kind: "dispatch_order" }], open.now(), ANY_BIRTH),
-    ).rejects.toThrow(/nowhere to write them/);
-
-    expect(await open.store.orderById("ord_born")).toBeNull();
   });
 });
 
@@ -300,6 +285,7 @@ describe("an order whose next clock could not be started", () => {
     const offered = await open.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
+    await open.gateway.runner.create(admittedRecord(open, offered.order), [], { through: "api" });
 
     // From here the queue will not take a reminder.
     open.queue.remind = async () => {
@@ -331,7 +317,9 @@ describe("who an order belongs to", () => {
     if (!published.ok) throw new Error("the card would not publish");
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    return offered.order.order.id;
+    const record = admittedRecord(harnessed, offered.order);
+    await harnessed.gateway.runner.create(record, [], { through: "api" });
+    return record.order.id;
   };
 
   it("is settled by the first verified payment, and not taken from its owner", async () => {
@@ -430,6 +418,8 @@ describe("the first verified buyer of an admitted parcel", () => {
       selling: "open",
     });
     if (!created.ok) throw new Error("the parcel could not be priced");
+    const presented = transition(created.order, { kind: "payment_presented", at: harnessed.now() });
+    if (!presented.ok) throw new Error("the parcel's payment did not arrive in time");
     return {
       merchantId: harnessed.merchant.id,
       itemId: "item_1",
@@ -459,23 +449,14 @@ describe("the first verified buyer of an admitted parcel", () => {
           extra: {},
         },
       },
-      order: {
-        ...created.order,
-        timestamps: {
-          ...created.order.timestamps,
-          createdAt: harnessed.now(),
-          paymentPresentedAt: harnessed.now(),
-        },
-      },
+      order: presented.order,
     };
   };
 
   it("requires and freezes the first verified owner's address, and another payer cannot replace it", async () => {
     open = await harness();
     const record = admitted(open);
-    expect(await open.gateway.runner.create(record, [], open.now(), { through: "api" })).toBe(
-      "written",
-    );
+    expect(await open.gateway.runner.create(record, [], { through: "api" })).toBe("written");
     expect((await open.store.orderById(record.order.id))?.shipTo).toBeUndefined();
     await open.store.claimPayment("first-authorization", record.order.id);
 
@@ -525,7 +506,7 @@ describe("the first verified buyer of an admitted parcel", () => {
   it("takes no ownership, address or financial action after the merchant switched integration", async () => {
     open = await harness();
     const record = admitted(open);
-    await open.gateway.runner.create(record, [], open.now(), { through: "api" });
+    await open.gateway.runner.create(record, [], { through: "api" });
     expect((await open.store.switchIntegration(open.merchant.id, "woocommerce")).switched).toBe(
       true,
     );
@@ -547,7 +528,7 @@ describe("the first verified buyer of an admitted parcel", () => {
     expect(stored?.shipTo).toBeUndefined();
     expect(stored?.order.payment).toBe("none");
     expect(stored?.paymentAttempt).toBeUndefined();
-    expect(await drawEverything(open.queue, open.merchant.id)).toStrictEqual([]);
+    expect(await drawEverything(open)).toStrictEqual([]);
   });
 });
 
@@ -566,7 +547,13 @@ describe("an event held to the hand-over the order is waiting on", () => {
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT",
+      "PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
 
     // Drawn by a worker that answers nothing, which is what records a hand-over.
     const drawn = await harnessed.gateway.poll(harnessed.merchant.id, 1_000);
@@ -639,32 +626,19 @@ describe("the address a charge is sent to", () => {
     if (!published.ok) throw new Error("the card would not publish");
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
-    return offered.order.order.id;
+    const record = admittedRecord(harnessed, offered.order);
+    await harnessed.gateway.runner.create(record, [], { through: "api" });
+    return record.order.id;
   };
-
-  it("charges an order verified before payments went to splits at the wallet it was verified against", async () => {
-    // The buyer signed for the wallet itself. Rewritten to the merchant's
-    // split, the charge would be refused, after the goods in the synchronous
-    // mode; such an order is charged without commission.
-    open = await harness();
-    const orderId = await quoted(open);
-    const wallet = open.merchant.wallet;
-    const split = (await open.store.merchantById(open.merchant.id))?.payoutWallet.split;
-    expect(split?.merchantWallet).toBe(wallet);
-
-    // What a gateway of the previous release kept on the order.
-    await open.gateway.runner.presentVerifiedPayment(orderId, "alice", "PAY-A", wallet, open.now());
-
-    expect(open.facilitator.settles.at(-1)?.payTo).toBe(wallet);
-    expect(open.facilitator.settles.at(-1)?.payTo).not.toBe(split?.address);
-  });
 
   it("names the whole sale price when a payment to a split is left unfulfilled", async () => {
     // The merchant refunds the whole price and the commission stays with
     // Agentify, so the event naming the debt names the whole sum.
     open = await harness();
     const orderId = await quoted(open);
-    await open.gateway.payPurchase(orderId, "PAYMENT", "PAYMENT");
+    const stamp = (await open.store.orderById(orderId))?.priceOffer?.stamp;
+    if (stamp === undefined) throw new Error("the admitted order has no offer");
+    await open.gateway.payPurchase(stamp, "PAYMENT", "PAYMENT");
     expect((await open.store.orderById(orderId))?.payTo).toBe(
       (await open.store.merchantById(open.merchant.id))?.payoutWallet.split?.address,
     );

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { transactionalEmailHtml } from "./mail-template.js";
 
@@ -38,10 +39,25 @@ describe("transactional email HTML", () => {
       paragraphs: ["The link expires in an hour."],
     });
 
-    expect(html).not.toMatch(/<(?:img|link)\b/i);
-    expect(html).not.toMatch(/url\s*\(/i);
-    expect(html).toContain("-apple-system");
-    expect(html).toContain("https://agentify.example/action?token=abc");
+    const page = new DOMParser().parseFromString(html, "text/html");
+    const remote = /^(?:https?:)?\/\//i;
+    for (const resource of page.querySelectorAll("img[src], script[src], link[href]")) {
+      expect(remote.test(resource.getAttribute("src") ?? resource.getAttribute("href") ?? "")).toBe(
+        false,
+      );
+    }
+    expect(html).not.toMatch(/(?:url\(\s*["']?|@import\s*["'])(?:https?:)?\/\//i);
+    expect(html).not.toMatch(/srcset\s*=\s*["'][^"']*(?:https?:)?\/\//i);
+    for (const style of page.querySelectorAll("style, [style]")) {
+      if (style.tagName === "STYLE") style.remove();
+      else style.removeAttribute("style");
+    }
+    expect(page.querySelector("h1")?.textContent).toBe("Continue");
+    expect(page.body.textContent).toContain("Use the link below.");
+    expect(page.body.textContent).toContain("The link expires in an hour.");
+    expect(page.querySelector("a")?.getAttribute("href")).toBe(
+      "https://agentify.example/action?token=abc",
+    );
   });
 
   it("tells the reader why the message came, in the caller's words where the caller gives them", () => {

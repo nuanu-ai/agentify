@@ -22,14 +22,13 @@ import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
-import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import type { Card, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { PgBoss } from "pg-boss";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { Gateway } from "../../app/gateway.js";
-import { setPayoutWallet } from "../../app/merchants.js";
+import { Gateway, type PricedPurchase } from "../../app/gateway.js";
 import type { Runtime } from "../../app/runtime.js";
 import { openCommandApplication } from "../../command-application.js";
 import { loadConfig } from "../../config.js";
@@ -136,9 +135,6 @@ async function backendPid(of: Pool): Promise<number> {
   return pid;
 }
 
-/** The address the payments below were checked against; nothing here turns on which. */
-const PAID_AT = "0x0000000000000000000000000000000000000009";
-
 const syncCard: Card = {
   merchant_item_id: "room-101",
   title: "A room for the night",
@@ -239,19 +235,33 @@ if (databaseUrl === null) {
       await store.addMerchant({ id: A, name: "The merchant of this suite" }, now);
       // Outside the sandbox a card is on sale only if its merchant has a wallet,
       // and this config names a real facilitator.
-      await setPayoutWallet(
-        store,
-        testConfig().payoutSplit,
-        A,
-        "0x0000000000000000000000000000000000000001",
-        now,
-      );
+      await gateway.setPayoutWallet(A, "0x0000000000000000000000000000000000000001", {
+        kind: "signed_in",
+        email: "owner@example.com",
+      });
       // And a name, because a payment request names its seller; without one
       // nothing is on sale.
       await store.setServiceName(A, "The merchant of this suite", now);
       await store.setSellerSite(A, "https://shop.example", now);
     };
     beforeEach(theMerchantOfThisSuite);
+
+    const admit = async (offer: PricedPurchase): Promise<void> => {
+      facilitator.willRefuseVerification("signature", "invalid admission fixture signature");
+      try {
+        const attempted = await gateway.payPurchase(
+          offer.priceOffer.stamp,
+          `UNVERIFIED-${offer.order.id}`,
+          `unverified-${offer.order.id}`,
+          undefined,
+          { itemId: offer.itemId, params: offer.params },
+        );
+        if (attempted.step !== "payment_not_verified")
+          throw new Error(`the admission fixture was ${attempted.step}`);
+      } finally {
+        facilitator.willVerify();
+      }
+    };
 
     afterAll(async () => {
       await gateway.stop();
@@ -359,18 +369,19 @@ if (databaseUrl === null) {
           )
         ).rows[0]?.set ?? 0;
 
-      it("sets no clock, so a seller's fifty-first purchase waiting for payment writes nothing", async () => {
+      it("prices fifty-one unpaid purchases without writing orders or reminders", async () => {
         const card = await store.publishCard(A, syncCard, now);
         await gateway.poll(A, 0);
-        for (let one = 0; one < 50; one += 1) {
+        const before = await clocksSet();
+        expect(before).toBe(0);
+        for (let one = 0; one < 51; one += 1) {
           expect((await gateway.beginPurchase(card.id, {})).step).toBe("pay");
         }
-        const before = await clocksSet();
-        expect(before).toBeGreaterThan(0);
-
-        const refused = await gateway.beginPurchase(card.id, {});
-
-        expect(refused.step).toBe("seller_busy");
+        const written = await pool.query<{ n: number }>(
+          "select count(*)::int as n from orders where merchant_id = $1",
+          [A],
+        );
+        expect(written.rows[0]?.n).toBe(0);
         expect(await clocksSet()).toBe(before);
       });
     });
@@ -456,7 +467,7 @@ if (databaseUrl === null) {
 
           const born = store.addOrder(
             anOrder("ord_born_in_the_switch", "quoted", { merchantId: A }),
-            { through: "api", waitingAtMost: 20 },
+            { through: "api" },
           );
           expect(await settledWithin(born, 300)).toBe(false);
 
@@ -508,6 +519,7 @@ if (databaseUrl === null) {
       );
       const offered = await gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
+      await admit(offered.order);
       const orderId = offered.order.order.id;
 
       // One connection each: the check below names the two backends by pid, so
@@ -667,36 +679,6 @@ if (databaseUrl === null) {
       expect(won).toHaveLength(1);
     });
 
-    it("keeps the open column in step with the state inside the document", async () => {
-      // `open` is a column written from the document by `rowFor`, and
-      // `GET /orders?open=true` answers from it. The in-memory adapter has no
-      // such column, so only this test catches one that fell behind and
-      // dropped a live order from the list the dashboard works from.
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "listed" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-      const orderId = offered.order.order.id;
-
-      const idsOf = async (query?: { readonly open?: boolean }) =>
-        (await store.orders(A, query)).map((record) => record.order.id);
-
-      expect(await idsOf({ open: true })).toContain(orderId);
-
-      // Closed inside the document, and nothing said about the column.
-      await store.withOrder(orderId, (found) => ({
-        save: { ...found, order: { ...found.order, state: "expired" } },
-        result: null,
-      }));
-
-      expect(await idsOf({ open: true })).not.toContain(orderId);
-      // Closed is not deleted: reconciling a day's orders reads the full list.
-      expect(await idsOf()).toContain(orderId);
-    });
-
     it("refuses a closing message cut in the middle of a character before the database sees it", async () => {
       // Postgres refuses half a surrogate pair in a document, so a message
       // that reached it would fail the write and answer as a retryable fault
@@ -708,7 +690,15 @@ if (databaseUrl === null) {
       );
       const offered = await gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
+      await admit(offered.order);
       const orderId = offered.order.order.id;
+      await gateway.runner.presentVerifiedPayment(
+        orderId,
+        "closing-buyer",
+        "closing-payment",
+        offered.order.priceOffer.requirements.payTo,
+        now,
+      );
       const { secret } = await gateway.issueMerchantKey(A, "closing", {
         kind: "signed_in",
         email: "owner@example.com",
@@ -724,7 +714,7 @@ if (databaseUrl === null) {
         const cut = await close(`${"We are sorry ".repeat(10)}\uD83D`);
         expect(cut.status).toBe(400);
         expect(cut.body).toMatchObject({ error: { code: "malformed_body", retryable: false } });
-        expect((await store.orderById(orderId))?.order.state).toBe("quoted");
+        expect((await store.orderById(orderId))?.order.state).toBe("paid");
 
         expect((await close("We are sorry \u{1F64F}")).body).toEqual({ ok: true });
         expect((await store.orderById(orderId))?.order.merchantClosure?.message).toBe(
@@ -747,6 +737,7 @@ if (databaseUrl === null) {
       );
       const offered = await gateway.beginPurchase(published.id, {});
       if (offered.step !== "pay") throw new Error("no price was offered");
+      await admit(offered.order);
       const orderId = offered.order.order.id;
 
       const writtenAt = async (): Promise<string> => {
@@ -781,36 +772,6 @@ if (databaseUrl === null) {
       }));
 
       expect(await writtenAt()).not.toBe(before);
-    });
-
-    it("carries an envelope through the queue and does not send it round again by itself", async () => {
-      const published = await store.publishCard(
-        A,
-        { ...syncCard, merchant_item_id: "queued" },
-        now,
-      );
-      const offered = await gateway.beginPurchase(published.id, {});
-      if (offered.step !== "pay") throw new Error("no price was offered");
-
-      const drawn = await queue.draw(A, 10, 2_000);
-      expect(drawn).toHaveLength(0);
-
-      await queue.publish(A, {
-        kind: "order_event",
-        id: "env_db_1",
-        sent_at: "2026-08-26T12:00:00.000Z",
-        payload: {
-          type: "order.payment_failed_after_delivery",
-          order_id: "ord_db_1",
-          at: "2026-08-26T12:00:00.000Z",
-        },
-      });
-
-      const first = await queue.draw(A, 10, 2_000);
-      expect(first.map((d) => d.envelope.id)).toStrictEqual(["env_db_1"]);
-      await queue.finish(A, first[0]?.handle ?? "");
-
-      expect(await queue.draw(A, 10, 200)).toStrictEqual([]);
     });
 
     describe("a failure in the database", () => {
@@ -848,6 +809,7 @@ if (databaseUrl === null) {
         );
         const offered = await gateway.beginPurchase(published.id, { email: BUYER });
         if (offered.step !== "pay") throw new Error("no price was offered");
+        await admit(offered.order);
         const orderId = offered.order.order.id;
 
         const thrown = await refusedBy("orders", "record", () =>
@@ -885,8 +847,8 @@ if (databaseUrl === null) {
 
     it("walks a parcel through the database and the queue, and keeps nothing of its address", async () => {
       // pg-boss keeps finished jobs for days, so taking the order on must erase
-      // the order's copy of the address and delete both the price question and
-      // the hand-over. Searched as text across every job on the stream, so a
+      // the order's copy of the address and delete its hand-overs. Price
+      // questions are ephemeral. Searched as text across every job, so a
       // field this test did not think of is found too.
       const buyer = `The buyer ${randomUUID()}`;
       const shipTo = {
@@ -926,7 +888,10 @@ if (databaseUrl === null) {
       const orderId = offered.order.order.id;
 
       const paid = `parcel-${randomUUID()}`;
-      await gateway.payPurchase(orderId, paid, paid);
+      await gateway.payPurchase(offered.order.priceOffer.stamp, paid, paid, shipTo, {
+        itemId: offered.order.itemId,
+        params: offered.order.params,
+      });
       const takingOn = workUntilStopped(
         { gateway, merchant },
         { onOrder: () => ({ accepted: {} }) },
@@ -943,14 +908,13 @@ if (databaseUrl === null) {
         [streamOf(A), `%${buyer}%`],
       );
       expect(Number(rows[0]?.n)).toBe(0);
-      // The price question carries the place and not the person, so it is
-      // found by the identifier the order kept for it.
+      // A price question carries locality, but no question is written into pg-boss.
       const kept = await store.orderById(orderId);
       const asked = await pool.query<{ n: string }>(
         `select count(*) as n from ${QUEUE_SCHEMA}.job where name = $1 and data @> $2::jsonb`,
-        [streamOf(A), JSON.stringify({ payload: { price_id: kept?.priceQuestion } })],
+        [streamOf(A), JSON.stringify({ payload: { price_id: kept?.priceId } })],
       );
-      expect(kept?.priceQuestion).toEqual(expect.any(String));
+      expect(kept?.priceId).toEqual(expect.any(String));
       expect(Number(asked.rows[0]?.n)).toBe(0);
       expect(JSON.stringify(kept)).not.toContain(buyer);
     }, 30_000);
@@ -973,7 +937,13 @@ if (databaseUrl === null) {
       // A fingerprint of this run's own, so the claim left behind by a previous
       // run — or by another test in this one — is never what decides it.
       const paid = `walked-${randomUUID()}`;
-      const bought = await gateway.payPurchase(offered.order.order.id, paid, paid);
+      const bought = await gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        paid,
+        paid,
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
       await worker.stop();
 
       expect(bought.step).toBe("settled");
@@ -981,14 +951,11 @@ if (databaseUrl === null) {
       expect(bought.order.order.state).toBe("delivered");
       expect(bought.delivery).toStrictEqual({ access_code: "SESAME" });
 
-      const receipt = await store.receiptForOrder(offered.order.order.id);
+      const receipt =
+        (await store.receipts(A)).find((receipt) => receipt.order_id === offered.order.order.id) ??
+        null;
       expect(receipt?.outcome).toBe("delivered");
       expect(receipt?.price.amount).toBe("80.00");
-      // The list is a different query from the lookup, and a receipt that can
-      // be fetched but is never listed is a day's takings that does not add up.
-      const listed = await store.receipts(A);
-      expect(listed.map((one) => one.order_id)).toContain(offered.order.order.id);
-      expect(listed.find((one) => one.order_id === offered.order.order.id)).toStrictEqual(receipt);
     }, 30_000);
 
     /**
@@ -1019,27 +986,40 @@ if (databaseUrl === null) {
         },
       });
 
-      const aReceipt = (orderId: string, itemId: string): Receipt => ({
-        id: `rcp_${randomUUID()}`,
-        order_id: orderId,
-        item_id: itemId,
-        price: {
-          amount: "80.00",
-          currency: "USD",
-          at: "2026-08-26T12:00:00.000Z",
-          as_of: "2026-08-26T12:00:00.000Z",
-        },
-        paid_at: "2026-08-26T12:00:00.000Z",
-        outcome: "delivered",
-        test: true,
-      });
-
       /** An order of A's, priced and waiting to be paid for. */
-      const anOrder = async (name: string): Promise<{ id: string; itemId: string }> => {
+      const anOrder = async (
+        name: string,
+      ): Promise<{ id: string; itemId: string; offer: PricedPurchase }> => {
         const card = await store.publishCard(A, { ...syncCard, merchant_item_id: name }, now);
         const offered = await gateway.beginPurchase(card.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
-        return { id: offered.order.order.id, itemId: card.id };
+        await admit(offered.order);
+        return { id: offered.order.order.id, itemId: card.id, offer: offered.order };
+      };
+
+      const receiptedOrder = async (name: string) => {
+        const order = await anOrder(name);
+        const worker = workUntilStopped(
+          { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
+          { onOrder: () => ({ delivered: { access_code: "RECEIPTED" } }) },
+        );
+        try {
+          const bought = await gateway.payPurchase(
+            order.offer.priceOffer.stamp,
+            `paid-${order.id}`,
+            `paid-${order.id}`,
+            undefined,
+            { itemId: order.itemId, params: order.offer.params },
+          );
+          if (bought.step !== "settled" || bought.order.order.state !== "delivered")
+            throw new Error("the receipt fixture did not complete its sale");
+        } finally {
+          await worker.stop();
+        }
+        const receipt = (await store.receipts(A)).find((row) => row.order_id === order.id);
+        if (receipt === undefined) throw new Error("the completed sale has no receipt");
+        await pool.query("delete from receipts where order_id = $1", [order.id]);
+        return { ...order, receipt };
       };
 
       it("is not there at all when the write it went in with rolled back", async () => {
@@ -1048,7 +1028,7 @@ if (databaseUrl === null) {
         // Postgres refuses the second write and takes the first down with it.
         // A pg-boss insert that had gone out on the library's own connection
         // would survive that, and the count below would be one.
-        const order = await anOrder("rolled-back");
+        const order = await receiptedOrder("rolled-back");
         const envelopeId = `env_${randomUUID()}`;
 
         await expect(
@@ -1056,14 +1036,16 @@ if (databaseUrl === null) {
             save: { ...found, priceId: "the write that never happened" },
             alongside: [
               { kind: "envelope", merchantId: A, envelope: anEnvelope(envelopeId) },
-              { kind: "receipt", merchantId: "mch_nobody", receipt: aReceipt(order.id, "item") },
+              { kind: "receipt", merchantId: "mch_nobody", receipt: order.receipt },
             ],
             result: null,
           })),
         ).rejects.toThrow();
 
         expect(await jobsFor(A, envelopeId)).toBe(0);
-        expect(await store.receiptForOrder(order.id)).toBeNull();
+        expect(
+          (await store.receipts(A)).find((receipt) => receipt.order_id === order.id) ?? null,
+        ).toBeNull();
         expect((await store.orderById(order.id))?.priceId).not.toBe(
           "the write that never happened",
         );
@@ -1073,20 +1055,23 @@ if (databaseUrl === null) {
         // The negative control for the case above: the same three writes with
         // nothing refusing, so that "no job" there means the rollback and not
         // that this never writes one.
-        const order = await anOrder("went-through");
+        const order = await receiptedOrder("went-through");
         const envelopeId = `env_${randomUUID()}`;
 
         await store.withOrder(order.id, (found) => ({
           save: { ...found, priceId: "the write that happened" },
           alongside: [
             { kind: "envelope", merchantId: A, envelope: anEnvelope(envelopeId) },
-            { kind: "receipt", merchantId: A, receipt: aReceipt(order.id, order.itemId) },
+            { kind: "receipt", merchantId: A, receipt: order.receipt },
           ],
           result: null,
         }));
 
         expect(await jobsFor(A, envelopeId)).toBe(1);
-        expect((await store.receiptForOrder(order.id))?.order_id).toBe(order.id);
+        expect(
+          ((await store.receipts(A)).find((receipt) => receipt.order_id === order.id) ?? null)
+            ?.order_id,
+        ).toBe(order.id);
         expect((await store.orderById(order.id))?.priceId).toBe("the write that happened");
       });
 
@@ -1132,18 +1117,17 @@ if (databaseUrl === null) {
       });
 
       /**
-       * An order whose question and first hand-over a worker drew and finished,
+       * An order whose first hand-over a worker drew and finished,
        * with a second hand-over waiting out a delay, an event about it, and
        * another order's hand-over beside them. pg-boss keeps a finished job in
        * its table for days, so "drawn" is not "gone".
        */
       const aStreamCarryingAnAddress = async (name: string) => {
-        const order = await anOrder(name);
+        const order = await receiptedOrder(name);
         const priceId = `prc_${randomUUID()}`;
         const otherOrderId = `ord_${randomUUID()}`;
         await queue.draw(A, 100, 0);
         await queue.publish(A, aQuestion(priceId));
-        await queue.publish(A, aHandOver(order.id));
         for (const drawn of await queue.draw(A, 10, 2_000)) {
           await queue.finish(A, drawn.handle);
         }
@@ -1160,20 +1144,20 @@ if (databaseUrl === null) {
         });
         await queue.publish(A, aHandOver(otherOrderId));
         expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(2);
-        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(1);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(0);
         return { order, priceId, otherOrderId };
       };
 
       it("deletes every job carrying a parcel's address with the order, finished ones included", async () => {
-        // Once the merchant has the address, the order's hand-overs and its
-        // price question leave the queue in the same transaction as the order
+        // Once the merchant has the address, its hand-overs leave the queue
+        // in the same transaction as the order
         // that says so. The event about the order carries no address and stays,
         // and so does another order's hand-over.
         const { order, priceId, otherOrderId } = await aStreamCarryingAnAddress("forgotten");
 
         await store.withOrder(order.id, (found) => ({
           save: found,
-          alongside: [{ kind: "forget", merchantId: A, orderId: order.id, priceQuestion: priceId }],
+          alongside: [{ kind: "forget", merchantId: A, orderId: order.id }],
           result: null,
         }));
 
@@ -1194,15 +1178,15 @@ if (databaseUrl === null) {
           store.withOrder(order.id, (found) => ({
             save: found,
             alongside: [
-              { kind: "forget", merchantId: A, orderId: order.id, priceQuestion: priceId },
-              { kind: "receipt", merchantId: "mch_nobody", receipt: aReceipt(order.id, "item") },
+              { kind: "forget", merchantId: A, orderId: order.id },
+              { kind: "receipt", merchantId: "mch_nobody", receipt: order.receipt },
             ],
             result: null,
           })),
         ).rejects.toThrow();
 
         expect(await jobsCarrying(A, { kind: "order", payload: { id: order.id } })).toBe(2);
-        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(1);
+        expect(await jobsCarrying(A, { payload: { price_id: priceId } })).toBe(0);
       });
     });
 
@@ -1298,6 +1282,7 @@ if (databaseUrl === null) {
         );
         const offered = await gateway.beginPurchase(published.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
+        await admit(offered.order);
         const orderId = offered.order.order.id;
 
         const own = PostgresStore.over(owner.db, "eip155:84532", countedIds());
@@ -1447,7 +1432,7 @@ if (databaseUrl === null) {
               query: (...args: Parameters<typeof realQuery>) => {
                 if (typeof args[0] === "string" && args[0].includes("pg_advisory_unlock")) {
                   return Promise.reject(
-                    Object.assign(new Error("canceling statement due to statement timeout"), {
+                    Object.assign(new Error("cs_a-secret-from-the-shop\n[gateway] forged"), {
                       code: "57014",
                     }),
                   );
@@ -1462,10 +1447,16 @@ if (databaseUrl === null) {
         const stubborn = PostgresStore.over(held.db, "eip155:84532", countedIds());
         // The run itself is a success and is reported as one. An unlock nobody
         // could complete is not the sweep's failure to hand back to the queue.
-        expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
-          ran: true,
-          result: "swept",
+        const written = await loggedWhile(async () => {
+          expect(await stubborn.runAlone("a_wedged_sweep", async () => "swept")).toStrictEqual({
+            ran: true,
+            result: "swept",
+          });
         });
+        expect(written).toContain("a_wedged_sweep");
+        expect(written).toContain("57014");
+        expect(written).not.toContain("cs_a-secret-from-the-shop");
+        expect(written).not.toContain("forged");
 
         // The pool ends the session the failed unlock ran on. Ending is
         // asynchronous, so this waits two seconds, well inside the ten the pool
@@ -1514,6 +1505,7 @@ if (databaseUrl === null) {
         );
         const offered = await gateway.beginPurchase(card.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
+        await admit(offered.order);
         const orderId = offered.order.order.id;
         facilitator.willSettle({ settled: "unknown", reason: "response lost" });
         try {
@@ -1521,7 +1513,7 @@ if (databaseUrl === null) {
             orderId,
             "payer",
             "authorization",
-            PAID_AT,
+            offered.order.priceOffer.requirements.payTo,
             now,
           );
           const attempt = (await store.orderById(orderId))?.paymentAttempt;
@@ -1546,10 +1538,26 @@ if (databaseUrl === null) {
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           await gateway.runner.completePaymentAttempt(orderId, attempt.id, proof, "chain");
           expect((await store.orderById(orderId))?.order.state).toBe("unfulfilled");
-          expect((await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope.kind)).toEqual([
-            "order_event",
-          ]);
-          expect(await store.receiptForOrder(orderId)).toBeNull();
+          const envelopes = (await queue.draw(A, 100, 0)).map((delivery) => delivery.envelope);
+          expect(envelopes).toHaveLength(1);
+          expect(envelopes[0]).toMatchObject({
+            kind: "order_event",
+            payload: {
+              type: "order.unfulfilled",
+              order_id: orderId,
+              reason: "deadline_passed",
+              price: { amount: "12.00", currency: "USD" },
+            },
+          });
+          expect(envelopes.some((envelope) => envelope.kind === "order")).toBe(false);
+          expect((await store.orderById(orderId))?.paymentAttempt?.completion).toMatchObject({
+            settled: true,
+            transaction: proof.transaction,
+            source: "chain",
+          });
+          expect(
+            (await store.receipts(A)).find((receipt) => receipt.order_id === orderId) ?? null,
+          ).toBeNull();
         } finally {
           facilitator.willSettle();
         }
@@ -1562,10 +1570,17 @@ if (databaseUrl === null) {
         const card = await store.publishCard(A, asyncCard, now);
         const offered = await gateway.beginPurchase(card.id, {});
         if (offered.step !== "pay") throw new Error("no price was offered");
+        await admit(offered.order);
         const orderId = offered.order.order.id;
 
         const paid = `swept-${randomUUID()}`;
-        await gateway.runner.presentVerifiedPayment(orderId, paid, paid, PAID_AT, now);
+        await gateway.runner.presentVerifiedPayment(
+          orderId,
+          paid,
+          paid,
+          offered.order.priceOffer.requirements.payTo,
+          now,
+        );
         expect((await store.orderById(orderId))?.order.state).toBe("paid");
 
         // The envelope this sale wrote is drawn off and thrown away: the
@@ -1595,37 +1610,90 @@ if (databaseUrl === null) {
         expect(second).toStrictEqual({ dispatched: 0, receipted: 0, rearmed: 0, refused: 0 });
       }, 30_000);
 
-      it("writes the receipt a delivered order has none of, once", async () => {
-        const card = await store.publishCard(A, { ...asyncCard, merchant_item_id: "swept-r" }, now);
-        const offered = await gateway.beginPurchase(card.id, {});
-        if (offered.step !== "pay") throw new Error("no price was offered");
-        const orderId = offered.order.order.id;
-
-        const paid = `swept-r-${randomUUID()}`;
-        await gateway.runner.presentVerifiedPayment(orderId, paid, paid, PAID_AT, now);
-        const worker = workUntilStopped(
-          { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
-          { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
-        );
-        await vi.waitFor(async () => {
-          expect((await store.orderById(orderId))?.order.state).toBe("delivered");
-        });
-        await worker.stop();
-
-        // A delivered order without a receipt, as a record written by an
-        // older version of this code looks.
-        await pool.query("delete from receipts where order_id = $1", [orderId]);
-        expect(await store.receiptForOrder(orderId)).toBeNull();
-
-        const first = await gateway.runner.sweep();
-        expect(first?.receipted).toBe(1);
-        const written = await store.receiptForOrder(orderId);
-        expect(written?.outcome).toBe("delivered");
-
-        const second = await gateway.runner.sweep();
-        expect(second?.receipted).toBe(0);
-        expect(await store.receiptForOrder(orderId)).toStrictEqual(written);
-      }, 30_000);
+      it.each(["observed", "legacy_assertion"] as const)(
+        "repairs a real missing receipt only when payment evidence is %s",
+        async (evidence) => {
+          const card = await store.publishCard(
+            A,
+            { ...asyncCard, merchant_item_id: "swept-r" },
+            now,
+          );
+          await gateway.poll(A, 0);
+          const offered = await gateway.beginPurchase(card.id, {});
+          if (offered.step !== "pay") throw new Error("no price was offered");
+          const orderId = offered.order.order.id;
+          const paid = `swept-r-${randomUUID()}`;
+          await gateway.payPurchase(offered.order.priceOffer.stamp, paid, paid);
+          const worker = workUntilStopped(
+            { gateway, merchant: { id: A, name: "", key: "", keyId: "", wallet: "" } },
+            { onOrder: () => ({ delivered: { activation_code: "CODE" } }) },
+          );
+          await vi.waitFor(async () =>
+            expect((await store.orderById(orderId))?.order.state).toBe("delivered"),
+          );
+          await worker.stop();
+          const original = (await store.receipts(A)).find((row) => row.order_id === orderId);
+          expect(original).toMatchObject({ outcome: "delivered", price: { amount: "12.00" } });
+          expect((await store.orderById(orderId))?.paymentAttempt?.completion?.settled).toBe(true);
+          await pool.query("delete from receipts where order_id = $1", [orderId]);
+          if (evidence === "legacy_assertion") {
+            // Historic rows kept a settlement assertion but no execution provenance.
+            await pool.query(
+              `update orders set record = (record - 'paymentAttempt' - 'paymentRecovery' - 'paymentFingerprint') || jsonb_build_object('paymentWords', $2::jsonb) where id = $1`,
+              [
+                orderId,
+                JSON.stringify([
+                  { about: "settle", at: now, said: "the facilitator was not asked" },
+                ]),
+              ],
+            );
+            expect((await store.orderById(orderId))?.paymentAttempt).toBeUndefined();
+          }
+          expect((await store.receipts(A)).find((row) => row.order_id === orderId)).toBeUndefined();
+          if (evidence === "observed") {
+            const put = store.putReceipt.bind(store);
+            store.putReceipt = async () => {
+              throw new Error(
+                "postgres://operator:receipt-secret@db.invalid/database\nAuthorization: private",
+              );
+            };
+            let refused: Awaited<ReturnType<typeof gateway.runner.sweep>> = null;
+            const logged = await loggedWhile(async () => {
+              try {
+                refused = await gateway.runner.sweep();
+              } finally {
+                store.putReceipt = put;
+              }
+            });
+            expect(refused).toMatchObject({ receipted: 0, refused: 1 });
+            const receiptFailure = logged
+              .split("\n")
+              .filter((line) => line.includes(orderId) && /sweep.*receipt/i.test(line));
+            expect(receiptFailure).toHaveLength(1);
+            expect(logged).not.toMatch(/receipt-secret|Authorization|db\.invalid/);
+            expect(
+              (await store.receipts(A)).find((row) => row.order_id === orderId),
+            ).toBeUndefined();
+          }
+          const first = await gateway.runner.sweep();
+          expect(first?.receipted).toBe(evidence === "observed" ? 1 : 0);
+          const written = (await store.receipts(A)).find((row) => row.order_id === orderId);
+          if (evidence === "observed") {
+            expect(written).toMatchObject({
+              outcome: "delivered",
+              price: { amount: "12.00" },
+              paid_at: original?.paid_at,
+              transaction: original?.transaction,
+            });
+          } else expect(written).toBeUndefined();
+          const second = await gateway.runner.sweep();
+          expect(second?.receipted).toBe(0);
+          expect((await store.receipts(A)).find((row) => row.order_id === orderId)).toEqual(
+            written,
+          );
+        },
+        30_000,
+      );
     });
 
     describe("the registry of payout splits", () => {
@@ -1794,8 +1862,12 @@ if (databaseUrl === null) {
       });
 
       /** A gateway of its own over this database, with nothing in memory but its queue. */
-      const aGatewayOn = (db: Database, table = PAYOUT_SPLIT_NETWORKS) => {
-        const config = loadConfig({ DATABASE_URL: databaseUrl }, table);
+      const aGatewayOn = (db: Database) => {
+        const config = loadConfig({
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+          DATABASE_URL: databaseUrl,
+        });
+
         return new Gateway({
           config,
           store: PostgresStore.over(db, "eip155:84532", countedIds()),
@@ -1928,6 +2000,7 @@ if (databaseUrl === null) {
         );
         try {
           const config = loadConfig({
+            PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
             DATABASE_URL: databaseUrl,
             FACILITATOR_URL: "sandbox:scripted",
           });
@@ -1972,6 +2045,7 @@ if (databaseUrl === null) {
         /** The live deployment on Base, under the fixture's commission wallet. */
         const onBase = () =>
           loadConfig({
+            PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
             DATABASE_URL: databaseUrl,
             PAYMENT_NETWORK: "eip155:8453",
             FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
@@ -2034,14 +2108,20 @@ if (databaseUrl === null) {
         // The edit is refused in words in the log, and nothing the start would
         // write is written first.
         await withoutTheirSplits();
-        const edited = {
-          ...PAYOUT_SPLIT_NETWORKS,
-          "eip155:84532": { ...network, commissionWallet: W2 },
-        };
-        const config = loadConfig(
-          { DATABASE_URL: databaseUrl, FACILITATOR_URL: "sandbox:scripted" },
-          edited,
+        const legacy = "mch_old_policy";
+        await store.addMerchant({ id: legacy, name: "Legacy policy" }, now);
+        const historical = payoutSplitFor({ ...network, commissionWallet: W2 }, legacy, W1);
+        await store.setPayoutWallet(
+          legacy,
+          { address: null, pending: null },
+          { address: W1, split: historical, pending: null },
+          now,
         );
+        const config = loadConfig({
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
+          DATABASE_URL: databaseUrl,
+          FACILITATOR_URL: "sandbox:scripted",
+        });
 
         let refused: unknown;
         const logged = await loggedWhile(async () => {
@@ -2054,8 +2134,9 @@ if (databaseUrl === null) {
           );
         });
 
-        expect(String(refused)).toMatch(/commission wallet or the rate/);
-        expect(logged).toMatch(/commission wallet or the rate/);
+        expect(refused).toBeInstanceOf(Error);
+        expect(String(refused)).toContain(historical.address);
+        expect(logged).toContain(historical.address);
         expect(logged).not.toMatch(/did not answer/);
         expect(await rowsOf("mch_old_one")).toStrictEqual([]);
       });

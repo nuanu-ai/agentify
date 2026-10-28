@@ -16,6 +16,7 @@
  * "nothing yet" are different claims.
  */
 
+import { asTyped } from "@agentify/ui/units";
 import { type From, fromIn, type Mark, once, rising, writeFrom } from "./cursor.js";
 
 /** The most rows a page draws. */
@@ -40,12 +41,6 @@ export interface SegmentRule<Row> {
   readonly label: string;
   readonly holds: (row: Row) => boolean;
   readonly none: string;
-  /**
-   * How many rows a segment holds whose rows are read apart, a page at a
-   * time, rather than found among the list's own (`pagedListingOf`); such a
-   * segment holds none of them.
-   */
-  readonly counted?: number;
 }
 
 /** A segment as the filter draws it, with how many rows it holds under the search. */
@@ -111,7 +106,7 @@ const Q_AT_MOST = 200;
 export const askedIn = (query: URLSearchParams, segments: readonly string[], keys = 1): Asked => {
   const show = once(query, "show");
   // By character, not by unit of the string, so no character is cut in half.
-  const typed = [...(once(query, "q") ?? "").trim()];
+  const typed = [...asTyped(once(query, "q") ?? "").trim()];
   return {
     q: typed.slice(0, Q_AT_MOST).join("").trim(),
     cut: typed.length > Q_AT_MOST,
@@ -245,7 +240,7 @@ export const listingOf = <Row>({
     segments: segments.map((one) => ({
       key: one.key,
       label: one.label,
-      count: one.counted ?? found.filter(one.holds).length,
+      count: found.filter(one.holds).length,
       to: at({ show: one.key, from: null }),
       here: one.key === segment?.key,
     })),
@@ -264,62 +259,6 @@ export const listingOf = <Row>({
                 : at({ from: { after: closing } }),
           },
     nothing: nothing(),
-    place: Object.fromEntries(fieldsOf(here, first)),
-  };
-};
-
-/**
- * The listing of a segment whose rows are read apart a page at a time: `rows`
- * is the page the address asks for, read already, `of` how many the segment
- * holds in all and `newer` how many come before the page, and `previous` and
- * `next` the places of its first and last rows where the segment goes on that
- * way. It is not searched. `listing` is the list's own listing for the same
- * address, whose segments it keeps.
- */
-export const pagedListingOf = <Row>({
-  listing,
-  rows,
-  of,
-  newer,
-  previous,
-  next,
-  asked,
-  path,
-  first,
-  none,
-  showAll,
-}: Readonly<{
-  listing: Listing<Row>;
-  rows: readonly Row[];
-  of: number;
-  newer: number;
-  previous: Mark | null;
-  next: Mark | null;
-  asked: Asked;
-  path: string;
-  /** The key of the list's first segment, which an address leaves out. */
-  first: string;
-  none: string;
-  showAll: string;
-}>): Listing<Row> => {
-  const here = { ...asked, q: "", cut: false };
-  const at = (moved: Partial<Asked>) => addressOf(path, { ...here, ...moved }, first);
-  return {
-    rows,
-    search: { q: "", show: asked.show === first ? null : asked.show, cutAt: null },
-    segments: listing.segments,
-    cut:
-      previous === null && next === null
-        ? null
-        : {
-            from: newer + 1,
-            to: newer + rows.length,
-            of,
-            previous: previous === null ? null : at({ from: { before: previous } }),
-            next: next === null ? null : at({ from: { after: next } }),
-          },
-    nothing:
-      of > 0 ? null : { says: none, way: { to: at({ show: first, from: null }), words: showAll } },
     place: Object.fromEntries(fieldsOf(here, first)),
   };
 };

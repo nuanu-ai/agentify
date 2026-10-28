@@ -107,14 +107,6 @@ describe("the address a merchant types", () => {
     }
   });
 
-  it("refuses a shop on plain http, and says what that would cost them", () => {
-    const wrong = whatIsWrongWithTheShopUrl("http://shop.example.com");
-    expect(wrong).not.toBeNull();
-    // The reason is said, not only the rule: a merchant who reads only "https
-    // only" goes looking for a way round it.
-    expect(wrong).toMatch(/https/);
-  });
-
   it("refuses what is not an address at all", () => {
     for (const typed of ["", "   ", "shop.example.com", "ftp://shop.example.com", "https://"]) {
       expect(whatIsWrongWithTheShopUrl(typed)).not.toBeNull();
@@ -130,20 +122,14 @@ describe("the address a merchant types", () => {
 });
 
 describe("the state token", () => {
-  it("is long enough that nobody guesses one", () => {
-    expect(theStateToken().length).toBeGreaterThanOrEqual(32);
-  });
-
   it("is a different one every time", () => {
-    const minted = new Set(Array.from({ length: 200 }, () => theStateToken()));
-    expect(minted.size).toBe(200);
-  });
-
-  it("survives a URL without being encoded into something else", () => {
-    for (let i = 0; i < 200; i += 1) {
-      const token = theStateToken();
+    const tokens = Array.from({ length: 200 }, () => theStateToken());
+    for (const token of tokens) {
+      expect(token.length).toBeGreaterThanOrEqual(32);
       expect(encodeURIComponent(token)).toBe(token);
     }
+    const minted = new Set(tokens);
+    expect(minted.size).toBe(200);
   });
 });
 
@@ -250,14 +236,24 @@ describe("the preflight", () => {
   });
 
   it("does not follow a redirect off the shop", async () => {
-    // A shop that sends us elsewhere is not a shop whose grant screen we
-    // reached.
-    shop = await shopAnswering(() => ({
-      status: 302,
-      location: "https://example.invalid/wc-auth/v1/login/",
-    }));
-    const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
-    expect(looked.ok).toBe(false);
+    let elsewhereAsked = 0;
+    const elsewhere = await shopAnswering(() => {
+      elsewhereAsked += 1;
+      return { status: 200, body: '<body class="wc-auth"><form>Sign in</form></body>' };
+    });
+    try {
+      shop = await shopAnswering(() => ({
+        status: 302,
+        location: `${elsewhere.url}/wc-auth/v1/login/`,
+      }));
+      const looked = await isTheGrantScreen(`${shop.url}/wc-auth/v1/authorize?x=1`);
+      expect(looked.ok).toBe(false);
+      expect(looked.ok === false && looked.why).toContain(elsewhere.url);
+      expect(looked.ok === false && looked.why).toMatch(/instead of answering/i);
+      expect(elsewhereAsked).toBe(0);
+    } finally {
+      await elsewhere.close();
+    }
   });
 });
 

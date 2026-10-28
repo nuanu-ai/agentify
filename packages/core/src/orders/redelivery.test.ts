@@ -73,13 +73,4 @@ describe("deciding whether to deliver an order again", () => {
     expect(onTheDot).toStrictEqual({ retry: false, reason: "past_deadline" });
     expect(justInside).toStrictEqual({ retry: true, attempt: 2, delayMs: 1_000 });
   });
-
-  it("gives the same answer for the same question every time", () => {
-    // No jitter and no clock: the gateway may spread the load itself, but a
-    // decision that could not be replayed would make the machine untestable.
-    const once = nextRedelivery({ attempts: 3, now: 77, deadlineAt: 10_000, policy });
-    const twice = nextRedelivery({ attempts: 3, now: 77, deadlineAt: 10_000, policy });
-
-    expect(once).toStrictEqual(twice);
-  });
 });

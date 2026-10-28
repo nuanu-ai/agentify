@@ -33,11 +33,8 @@ describe("amount", () => {
     // thousands separator, a negative price, a padded number.
     for (const amount of ["1e3", "5,00", "-1", "05.00", "5.", ".5", "", " 5.00", "5.00 ", "NaN"]) {
       expect(AmountSchema.safeParse(amount).success, JSON.stringify(amount)).toBe(false);
+      if (amount === "5,00") expect(errorOf(AmountSchema, amount)).toContain("decimal");
     }
-  });
-
-  it("says what it wanted when it refuses", () => {
-    expect(errorOf(AmountSchema, "5,00")).toContain("decimal");
   });
 });
 
@@ -111,11 +108,6 @@ describe("timestamp", () => {
 describe("identifier", () => {
   // The promise: an identifier identifies something; an order keyed by "" is
   // an order nobody can find again.
-  it("accepts identifiers from both sides of the contract", () => {
-    for (const id of ["ord_7c1e05", "itm_9f2c4a", "access-monthly", "SKU 100/1"]) {
-      expect(IdentifierSchema.safeParse(id).success, id).toBe(true);
-    }
-  });
 
   it("refuses an empty or blank identifier", () => {
     for (const id of ["", " ", "\t", "\n"]) {
@@ -150,7 +142,16 @@ describe("identifier", () => {
   });
 
   it("still accepts the keys a merchant legitimately writes", () => {
-    for (const id of ["SKU 100/1", "тариф-месяц", "item.v2", "a b c", "A"]) {
+    for (const id of [
+      "SKU 100/1",
+      "тариф-месяц",
+      "item.v2",
+      "a b c",
+      "A",
+      "ord_7c1e05",
+      "itm_9f2c4a",
+      "access-monthly",
+    ]) {
       expect(IdentifierSchema.safeParse(id).success, id).toBe(true);
     }
   });

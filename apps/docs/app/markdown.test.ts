@@ -14,6 +14,7 @@ import { DOCS_GROUPS, DOCS_PAGES } from "@agentify/ui/docs";
 import { PurchaseRequestSchema } from "@nuanu-ai/agentify-contracts";
 import { describe, expect, it } from "vitest";
 import scannerRoutes from "../../web/app/routes.js";
+import { includedFile } from "./includes.js";
 import { parser, renderedPages, sourceOf, withSiteValues } from "./markdown.server.js";
 import { markdownCopy } from "./markdown-copy.js";
 import { PAGES } from "./pages.js";
@@ -111,7 +112,7 @@ describe("a link into the documentation", () => {
   });
 
   it("gives a heading that starts with a digit an anchor starting with an underscore", () => {
-    expect(anchorsOf("/quickstart")).toContain("_1-make-the-merchant-account-ready");
+    expect(parser().render("## 1. Purchase\n", { headings: [] })).toContain('id="_1-purchase"');
   });
 });
 
@@ -151,10 +152,11 @@ describe("a writer's box", () => {
   it("is kept off a channel inside an unless, as Caddy's template", () => {
     const html = parser().render(":::: unless identity-confirmed\n::: note\nNot yet.\n:::\n::::\n");
 
-    expect(html.indexOf(unlessTemplate("identity-confirmed"))).toBeLessThan(
-      html.indexOf("Not yet."),
-    );
-    expect(html.indexOf(UNLESS_END)).toBeGreaterThan(html.indexOf("Not yet."));
+    const opener = html.indexOf(unlessTemplate("identity-confirmed"));
+    const body = html.indexOf("Not yet.");
+    expect(opener).toBeGreaterThanOrEqual(0);
+    expect(body).toBeGreaterThan(opener);
+    expect(html.indexOf(UNLESS_END)).toBeGreaterThan(body);
     expect(() => parser().render(":::: unless nothing-known\nx\n::::\n")).toThrow(/nothing-known/);
   });
 });
@@ -164,9 +166,11 @@ describe("an include", () => {
     expect(() => parser().render("<<< @/examples/card/access-monthly.json#region\n")).toThrow(
       /region or options/,
     );
-    expect(parser().render("<<< @/examples/card/access-monthly.json\n")).toContain(
-      "merchant_item_id",
-    );
+    const named = "@/examples/card/access-monthly.json";
+    const source = readFileSync(includedFile(named), "utf8");
+    const md = parser();
+    const html = md.render(`<<< ${named}\n`);
+    expect(html.match(/<code[^>]*>([\s\S]*?)<\/code>/)?.[1]).toBe(md.utils.escapeHtml(source));
   });
 });
 
@@ -206,5 +210,31 @@ describe("a site value", () => {
 
   it("the documentation does not know stops the build", () => {
     expect(() => withSiteValues("<p>{{nothing}}</p>")).toThrow(/\{\{nothing\}\}/);
+  });
+});
+
+describe("a number and its unit", () => {
+  it("stand on one line in a page's prose, where its source wraps between them too", () => {
+    const html = parser().render("Each fetch waits 8 seconds; a card costs 5.00\nUSD.\n");
+
+    expect(html).toContain("8\u00a0seconds");
+    expect(html).toContain("5.00\u00a0USD");
+  });
+
+  it("are left as written in code, inline or in a block", () => {
+    const html = parser().render("Set `wait: 8 s` here.\n\n```\nwait 8 seconds\n```\n");
+
+    expect(html).toContain("<code>wait: 8 s</code>");
+    expect(html).toContain("wait 8 seconds");
+  });
+
+  it("keep their ordinary space in the Markdown a client that prefers it reads", async () => {
+    const scanner = PAGES.find((page) => page.file === "scanner/index.md");
+    if (scanner === undefined) throw new Error("no scanner page");
+    const copy = await markdownCopy(await sourceOf(scanner));
+
+    expect((await renderedPages()).get(scanner.path)?.html).toContain("8\u00a0seconds");
+    expect(copy).toContain("8 seconds");
+    expect(copy).not.toContain("\u00a0");
   });
 });
