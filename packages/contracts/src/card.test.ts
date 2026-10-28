@@ -505,6 +505,19 @@ describe("a card as its own merchant reads it", () => {
     expect(errorOf(MerchantCardSchema, impossible)).toContain("fulfill_deadline_seconds");
   });
 
+  it("reads back a delivery deadline stored before its range, as it was stored", () => {
+    // The range is held at publication. A card stored with a deadline of a
+    // second or ten is read back whole, or every reader of its merchant's
+    // list would fail on it.
+    for (const seconds of [1, 10, 2_592_001]) {
+      const stored = { ...syncCard, fulfillment: "async", fulfill_deadline_seconds: seconds };
+      expect(CardSchema.safeParse(stored).success, String(seconds)).toBe(false);
+      expect(MerchantCardSchema.parse({ ...merchantCard, card: stored }).card).toStrictEqual(
+        stored,
+      );
+    }
+  });
+
   for (const field of ["id", "as_of", "card", "selling", "paused"]) {
     it(`refuses a merchant's card without ${field} and names it`, () => {
       expectMissingFieldRejected(MerchantCardSchema, merchantCard, field);
