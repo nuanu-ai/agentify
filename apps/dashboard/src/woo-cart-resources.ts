@@ -219,8 +219,11 @@ export const wooCartResources = (access: CartResourceAccess): WooCartResources =
       new URL(shopUrl).origin,
       (state): boolean => {
         const slot = slotOf(state, lane, index);
-        if (empty === null) retire(slot);
-        else {
+        if (empty === null) {
+          // A replacement the shop issued no session for spent nothing it bounds.
+          if (slot.initialized && slot.token === null) state.nextCreationAt = 0;
+          retire(slot);
+        } else {
           if (!registerIdentity(state, lane, index, empty.token)) return false;
           slot.state = "idle";
           slot.token = empty.token;

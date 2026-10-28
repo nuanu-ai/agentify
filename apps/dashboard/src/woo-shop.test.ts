@@ -2310,6 +2310,14 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       await resources.finishCart(shop, "earlier-worker", "paid", slot, `opened-${slot}`, null);
     }
     await resources.claimCart(shop, "earlier-worker", "paid", 1, "replacement", at);
+    await resources.registerCartIdentity(
+      shop,
+      "earlier-worker",
+      "paid",
+      1,
+      "replacement",
+      "retired-replacement",
+    );
     await resources.finishCart(shop, "earlier-worker", "paid", 1, "replacement", null);
   };
 
@@ -2367,24 +2375,30 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({ ok: true });
   });
 
-  it("asks no further cart once the shop's cart did not answer", async () => {
-    let opened = 0;
-    const shop = aShopOfSessions((path, token) => {
-      if (path !== "/wp-json/wc/store/v1/cart" || token !== null) return null;
-      opened += 1;
-      return new Response("<html>Bad Gateway</html>", { status: 502 });
-    });
-    const runtime = new WooShopRuntime(
-      connectionTo("https://woo.nuanu.ai"),
-      shop.request,
-      memoryWooShops(),
-    );
-    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
-      ok: false,
-      again: true,
-    });
-    expect(opened).toBe(1);
-  });
+  it.each([
+    ["did not answer", 502, "<html>Bad Gateway</html>"],
+    ["met a firewall's page", 403, "<html>Access denied</html>"],
+  ])(
+    "asks no further cart, and asks again later, once the shop's cart %s",
+    async (_case, status, page) => {
+      let opened = 0;
+      const shop = aShopOfSessions((path, token) => {
+        if (path !== "/wp-json/wc/store/v1/cart" || token !== null) return null;
+        opened += 1;
+        return new Response(page, { status });
+      });
+      const runtime = new WooShopRuntime(
+        connectionTo("https://woo.nuanu.ai"),
+        shop.request,
+        memoryWooShops(),
+      );
+      expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
+        ok: false,
+        again: true,
+      });
+      expect(opened).toBe(1);
+    },
+  );
 
   it("has a paid question wait for the one usable paid cart rather than say none is free", async () => {
     const shop = aShopOfSessions();
