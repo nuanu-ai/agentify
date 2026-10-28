@@ -65,7 +65,7 @@ describe("loadConfig", () => {
       quoteResponseMs: 5_000,
       quoteTtlMs: 180_000,
       settleResponseMs: 10_000,
-      settleBeforeGoodsMs: 15_000,
+      settleBeforeGoodsMs: 35_000,
       syncResponseMs: 10_000,
       syncBudgetMs: 20_000,
       defaultAsyncFulfillmentMs: 86_400_000,
@@ -92,7 +92,7 @@ describe("loadConfig", () => {
       QUOTE_RESPONSE_MS: "1000",
       QUOTE_TTL_MS: "2000",
       SETTLE_RESPONSE_MS: "3000",
-      SETTLE_BEFORE_GOODS_MS: "3500",
+      SETTLE_BEFORE_GOODS_MS: "36000",
       SYNC_RESPONSE_MS: "4000",
       SYNC_BUDGET_MS: "9000",
       DEFAULT_ASYNC_FULFILLMENT_MS: "7000",
@@ -106,7 +106,7 @@ describe("loadConfig", () => {
     expect(config.deadlines.quoteResponseMs).toBe(1000);
     expect(config.deadlines.quoteTtlMs).toBe(2000);
     expect(config.deadlines.settleResponseMs).toBe(3000);
-    expect(config.deadlines.settleBeforeGoodsMs).toBe(3500);
+    expect(config.deadlines.settleBeforeGoodsMs).toBe(36000);
     expect(config.deadlines.syncResponseMs).toBe(4000);
     expect(config.deadlines.syncBudgetMs).toBe(9000);
     expect(config.deadlines.defaultAsyncFulfillmentMs).toBe(7000);

@@ -229,7 +229,7 @@ describe("recovering a payment without another charge", () => {
     const { h, orderId, stamp } = await purchase();
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
     await h.gateway.payPurchase(stamp, "PAYMENT", "fp-original");
-    h.advance(20_000);
+    h.advance(h.runtime.config.deadlines.settleBeforeGoodsMs);
     const timed = await h.gateway.runner.apply(orderId, {
       kind: "deadline_expired",
       deadline: "settle_response",

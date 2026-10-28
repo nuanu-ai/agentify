@@ -24,8 +24,12 @@ export const SYNC_RESPONSE_MS = 10_000;
 export const SYNC_BUDGET_MS = 20_000;
 /** How long we wait to hear whether a charge went through, on a synchronous order. */
 export const SETTLE_RESPONSE_MS = 10_000;
-/** The same wait on an order charged before its goods. */
-export const SETTLE_BEFORE_GOODS_MS = 15_000;
+/**
+ * The same wait on an order charged before its goods. It outlasts the
+ * gateway's own time for a charge request, so a charge confirmed late in
+ * that request still finds the order waiting for it.
+ */
+export const SETTLE_BEFORE_GOODS_MS = 35_000;
 /** What a card that names no delivery deadline of its own is held to. */
 export const DEFAULT_ASYNC_FULFILLMENT_MS = 86_400_000;
 /** How many times in all an order is handed to the merchant's process. */

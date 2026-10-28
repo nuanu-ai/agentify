@@ -290,28 +290,10 @@ describe("when the time runs out", () => {
 });
 
 describe("the wait for the charge", () => {
-  it("is longer where the money moves before the goods, and a charge inside it counts", async () => {
-    // The answer comes at 200ms: past the synchronous wait of 40ms, inside this one.
-    const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "1000" });
-    const { orderId, stamp } = await priced(harnessed, asyncCard);
-    const release = harnessed.facilitator.holdSettle();
-
-    const paying = harnessed.gateway.payPurchase(stamp, "PAYMENT", "PAYMENT");
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    release();
-    await paying;
-
-    const order = await state(harnessed, orderId);
-    expect(order?.payment).toBe("settled");
-    expect(order?.closure).toBeNull();
-  });
-});
-
-describe("a charge confirmed late in its request", () => {
-  it("counts on a card charged at purchase, which is then handed to the merchant", async () => {
-    // A charge request may take its full time; one confirmed just before that
-    // is a paid order the merchant fulfils, not one closed as unknown and
-    // reopened unfulfilled.
+  it("lasts the charge request's whole time where the money moves before the goods, and the order is then handed to the merchant", async () => {
+    // Far past the synchronous wait of 40ms here. A charge confirmed just
+    // before its request gives up is a paid order the merchant fulfils, not
+    // one closed as unknown and reopened unfulfilled.
     const harnessed = await started();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { orderId, stamp } = await priced(harnessed, asyncCard);
@@ -341,7 +323,7 @@ describe("fulfillment after a delayed charge", () => {
   ])(
     "ends as $ending after $waitMs ms of the merchant's full second",
     async ({ waitMs, ending }) => {
-      const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "10000" });
+      const harnessed = await started();
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
       const { orderId, stamp } = await priced(harnessed, {
         ...asyncCard,
@@ -402,7 +384,7 @@ describe("fulfillment after a delayed charge", () => {
     { settled: false as const, reason: "the charge was refused" },
     { settled: "unknown" as const, reason: "the charge could not be confirmed" },
   ])("records when the facilitator answered $settled", async (outcome) => {
-    const harnessed = await started({ SETTLE_BEFORE_GOODS_MS: "10000" });
+    const harnessed = await started();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const { orderId, stamp } = await priced(harnessed, asyncCard);
     harnessed.facilitator.willSettle(outcome);

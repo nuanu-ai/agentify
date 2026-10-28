@@ -11,6 +11,7 @@ import {
 } from "@agentify/core";
 import * as published from "@agentify/core/published";
 import { z } from "zod";
+import { CHARGE_RECORDED_WITHIN_MS, SETTLE_REQUEST_MS } from "./app/payment-window.js";
 import {
   PAYOUT_SPLIT_NETWORKS,
   type PayoutSplitNetwork,
@@ -499,7 +500,7 @@ export interface GatewayConfig {
  */
 function arithmeticProblems(deadlines: DeadlineConfig): string[] {
   const problems: string[] = [];
-  const { syncResponseMs, settleResponseMs, syncBudgetMs } = deadlines;
+  const { syncResponseMs, settleResponseMs, settleBeforeGoodsMs, syncBudgetMs } = deadlines;
 
   // In the synchronous mode the agent's worst case is the merchant's answer
   // plus the charge: the goods come back on the first clock and the money
@@ -509,6 +510,18 @@ function arithmeticProblems(deadlines: DeadlineConfig): string[] {
     problems.push(
       `the synchronous budget is ${syncBudgetMs}ms and the answer (${syncResponseMs}ms) and ` +
         `the charge (${settleResponseMs}ms) inside it come to ${worstCase}ms`,
+    );
+  }
+
+  // An order charged before its goods closes as unknown when this wait runs
+  // out, so it has to outlast the charge request and the recording of its
+  // answer; a charge confirmed later is paid and never reaches the merchant.
+  const chargeAnswered = SETTLE_REQUEST_MS + CHARGE_RECORDED_WITHIN_MS;
+  if (settleBeforeGoodsMs < chargeAnswered) {
+    problems.push(
+      `the wait for a charge before the goods is ${settleBeforeGoodsMs}ms, shorter than the ` +
+        `charge request's ${SETTLE_REQUEST_MS}ms and ${CHARGE_RECORDED_WITHIN_MS}ms to record ` +
+        `its answer, ${chargeAnswered}ms in all`,
     );
   }
 

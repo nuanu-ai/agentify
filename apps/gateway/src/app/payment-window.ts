@@ -32,6 +32,14 @@ export const VERIFY_REQUEST_MS = 10_000;
 export const SETTLE_REQUEST_MS = 30_000;
 
 /**
+ * What the gateway may take to record a charge's answer once it arrives: the
+ * wait for a charge before the goods has to cover the request and this, or a
+ * charge confirmed at the end of its request finds the order already closed.
+ * Chosen, not measured.
+ */
+export const CHARGE_RECORDED_WITHIN_MS = 5_000;
+
+/**
  * How close to its end the exact-EVM facilitator lets an authorisation come: it
  * refuses one that ends within this long, at the check and again at the
  * charge. Read in `@x402/evm`; whether the hosted facilitators the channels
