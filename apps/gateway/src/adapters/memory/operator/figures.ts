@@ -20,7 +20,6 @@ import {
 } from "../../../ports/operator/figures.js";
 import { commissionOn, dollarsOf, microsOf, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
-import { lapsedAttempt } from "../../../ports/store.js";
 import {
   namedAndPaid,
   onSale,
@@ -168,13 +167,11 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
         (record) =>
           record.order.timestamps.createdAt >= from && record.order.timestamps.createdAt < until,
       );
-    const kept = recent.filter((record) => !lapsedAttempt(record));
     return {
       readAt: asked.at,
-      count: kept.length,
-      delivered: kept.filter((record) => record.order.state === "delivered").length,
-      paymentUnknown: kept.filter(paymentUnknown).length,
-      lapsed: recent.length - kept.length,
+      count: recent.length,
+      delivered: recent.filter((record) => record.order.state === "delivered").length,
+      paymentUnknown: recent.filter(paymentUnknown).length,
     };
   },
 

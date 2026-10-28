@@ -75,6 +75,7 @@ name. Notes written in Russian stay in Russian.
 | [87-unpaid-price-questions](87-unpaid-price-questions.md) | what x402, other agentic payment and commerce protocols, agent identity schemes and shops themselves do about free price questions, and how each option sits against nobody stopping a merchant's sales without paying | ADR-0043 | English | current |
 | [88-what-the-scanner-could-not-read](88-what-the-scanner-could-not-read.md) | how a scanner check tells a document it read from one it could not read, why an unsettled check lowers coverage and not the score, and how results name one cause | — | English | current |
 | [89-scanner-page-reading](89-scanner-page-reading.md) | how the scanner splits a page as the HTML standard does, recognises a price in any currency and reads the product feed check's facts, why it does not use parse5, and what the reading still gets wrong | — | English | current |
+| [90-unpaid-price-questions-design](90-unpaid-price-questions-design.md) | the design the product owner agreed on 2026-10-27 for purchases nobody pays for: a price under the gateway's stamp, the order born at payment, a gate per merchant, and every alternative weighed with its source | ADR-0043, ADR-0048 | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,

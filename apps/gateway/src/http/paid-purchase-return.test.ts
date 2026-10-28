@@ -281,7 +281,7 @@ describe("a purchase already paid for", () => {
     ["a signature of nothing at all", `0x${"ab".repeat(65)}` as const],
     ["a signature that is not hex", "0xsigned" as `0x${string}`],
     ["no signature", "0x" as const],
-  ])("is not returned to %s, and the payment layer is not asked", async (_what, signature) => {
+  ])("reveals no purchase or goods to %s and charges nothing more", async (_what, signature) => {
     const sale = await aPaidSale();
 
     const forged = await sale.present(
@@ -291,7 +291,10 @@ describe("a purchase already paid for", () => {
     expect(forged.status).toBe(409);
     expect(codeOf(forged.body)).toBe("payment_not_verified");
     expect(JSON.stringify(forged.body)).toMatch(/if this purchase was already paid for/);
-    expect(askedOf(sale.harnessed)).toStrictEqual({ verified: 1, charged: 1 });
+    expect((forged.body as { order_id?: string }).order_id).toBeUndefined();
+    expect((forged.body as { status_url?: string }).status_url).toBeUndefined();
+    expect(JSON.stringify(forged.body)).not.toContain("SESAME");
+    expect(sale.harnessed.facilitator.settles).toHaveLength(1);
   });
 
   it("is not returned to another wallet's signature written over the payer's address", async () => {

@@ -323,8 +323,8 @@ describe("a refusal the merchant made", () => {
     });
 
     expect(bought.status).toBe(409);
-    expect(harnessed.facilitator.settles).toHaveLength(0);
     expect(bought.headers.get("cache-control")).toBe("no-store");
+    expect(harnessed.facilitator.settles).toHaveLength(0);
     const refused = bought.body as AgentOrderStatus;
     expect(refused.status).toBe("rejected");
     expect(refused.refusal).toStrictEqual({

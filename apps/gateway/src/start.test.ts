@@ -3,7 +3,6 @@ import type { AddressInfo } from "node:net";
 import { CDP_FACILITATOR_URL, PUBLIC_X402_FACILITATOR_URL } from "@agentify/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
-import { PaymentEdge } from "./http/x402.js";
 import { announceTheEnvironment, paymentLayer } from "./start.js";
 import { loggedWhile } from "./testing/logged.js";
 
@@ -35,6 +34,7 @@ async function endpointOn(chainId: number): Promise<string> {
 describe("starting the payment layer", () => {
   it("reports the wrong RPC chain at startup and retains a reconciliation capability", async () => {
     const config = loadConfig({
+      PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
       DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
       FACILITATOR_URL: "https://x402.org/facilitator",
       PAYMENT_NETWORK: "eip155:84532",
@@ -45,7 +45,7 @@ describe("starting the payment layer", () => {
       vi.spyOn(console, level).mockImplementation((...words: unknown[]) => {
         said.push(words.map(String).join(" "));
       });
-    const facilitator = await paymentLayer(config, new PaymentEdge(config));
+    const facilitator = await paymentLayer(config);
     expect(typeof facilitator.reconcile).toBe("function");
     expect(said.join("\n")).toMatch(/8453.*eip155:84532/);
   });
@@ -56,6 +56,7 @@ describe("the first line of the log", () => {
     loggedWhile(async () =>
       announceTheEnvironment(
         loadConfig({
+          PRICE_STAMP_KEY: "test-only-price-stamp-key-at-least-32-bytes",
           DATABASE_URL: "postgres://agentify:secret@localhost:5432/agentify",
           PAYMENT_NETWORK: "eip155:84532",
           FACILITATOR_URL: facilitatorUrl,

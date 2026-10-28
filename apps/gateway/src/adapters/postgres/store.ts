@@ -44,26 +44,22 @@ import {
   type JournalRow,
   settledPress,
 } from "../../ports/journal.js";
-import type { PageFrom } from "../../ports/paging.js";
 import type { Reminder } from "../../ports/queue.js";
 import {
+  type AdmissionDecision,
+  type AdmissionResult,
   type AnalyticsOf,
   analyticsEventOf,
-  type Birth,
-  type Born,
   type CatalogEntry,
   type ClaimHolder,
   INTEGRATIONS,
   type Integration,
   type IntegrationSwitch,
-  type LapsedPage,
-  lapsedAttempt,
   type MerchantScope,
   NO_PENDING_HANDLER,
   type OrderAnalytics,
   type OrderChange,
   type OrderLookup,
-  type OrderPlace,
   type PaymentClaim,
   type PayoutWalletRead,
   type PayoutWalletWrite,
@@ -76,6 +72,7 @@ import {
   type StoredOrder,
   type StoredPayoutWallet,
   type WalletWritten,
+  type WithTheOrder,
 } from "../../ports/store.js";
 import type { PayoutSplit } from "../../split/parameters.js";
 import { failingWithoutValues } from "../database-failure.js";
@@ -91,7 +88,6 @@ import {
   paymentClaims,
   payoutSplits,
   receipts,
-  WAITING_STATES,
 } from "./schema.js";
 
 /**
@@ -111,12 +107,7 @@ export interface Envelopes {
    * Deletes the envelopes that carry a parcel's address in the same
    * transaction as the order recording the erasure, so the two commit together.
    */
-  forgetWithin(
-    tx: DrizzleTransactionLike,
-    merchantId: string,
-    orderId: string,
-    priceQuestion: string | null,
-  ): Promise<void>;
+  forgetWithin(tx: DrizzleTransactionLike, merchantId: string, orderId: string): Promise<void>;
   committed(merchantIds: readonly string[]): void;
   /** Sets a reminder an order's birth asked for, in the transaction that writes the order. */
   remindWithin(tx: DrizzleTransactionLike, reminder: Reminder, afterMs: number): Promise<void>;
@@ -893,7 +884,7 @@ export class PostgresStore implements Store {
   ): Promise<IntegrationSwitch> {
     return await this.#db.transaction(async (tx): Promise<IntegrationSwitch> => {
       // Held for update, so the birth of an order, which holds the same row
-      // while it writes (`addOrder`), waits for this or finishes first — and
+      // while it accepts a purchase (`admitOrder`), waits for this or finishes first — and
       // then the read of the orders below, a statement of its own, sees it.
       const [merchant] = await tx
         .select({ integration: merchants.integration, selling: merchants.selling })
@@ -957,102 +948,99 @@ export class PostgresStore implements Store {
 
   // --- orders ---------------------------------------------------------------
 
-  async addOrder(record: StoredOrder, birth?: Birth, analytics?: AnalyticsEvent): Promise<Born> {
+  async admitOrder<T>(
+    id: string,
+    decide: (found: StoredOrder | null) => Promise<AdmissionDecision<T>>,
+  ): Promise<AdmissionResult<T>> {
+    const streams: string[] = [];
+    let result: AdmissionResult<T>;
     try {
-      if (birth === undefined && analytics === undefined) {
-        await this.#db.insert(orders).values(rowFor(record));
-        return "written";
-      }
-      return await this.#db.transaction(async (tx): Promise<Born> => {
-        if (birth !== undefined) {
-          // Held against every other birth for this merchant, or two of them
-          // would count the same waiting purchases and both be written, and
-          // against a switch (`switchIntegration`). Not `for update`: that
-          // would also hold up the key-share lock every receipt written for
-          // this merchant takes meanwhile.
-          const [merchant] = await tx
-            .select({ integration: merchants.integration })
-            .from(merchants)
-            .where(eq(merchants.id, record.merchantId))
-            .limit(1)
-            .for("no key update");
-          if (merchant === undefined || integrationOf(merchant.integration) !== birth.through) {
-            return "switched_away";
-          }
-          const waiting = await this.#waiting(
-            tx,
-            record.merchantId,
-            record.order.timestamps.createdAt,
-            birth.waitingAtMost,
-          );
-          if (waiting >= birth.waitingAtMost) {
-            return "too_many_waiting";
-          }
+      result = await this.#db.transaction(async (tx): Promise<AdmissionResult<T>> => {
+        const held = await tx.execute<{ got: boolean }>(sql`
+        select pg_try_advisory_xact_lock(hashtext(${`agentify.payment-admission:${id}`})) as got`);
+        if (held.rows[0]?.got !== true) return { kind: "busy" };
+        const [found] = await tx
+          .select({ record: orders.record })
+          .from(orders)
+          .where(eq(orders.id, id));
+        const decided = await decide(found?.record ?? null);
+        const accepted = decided.accept;
+        if (accepted === undefined) return { kind: "decided", result: decided.result };
+        if (
+          found !== undefined ||
+          accepted.record.order.id !== id ||
+          accepted.record.paidBy === null
+        )
+          throw new Error("admission must create one verified owned order");
+        const [merchant] = await tx
+          .select({ integration: merchants.integration })
+          .from(merchants)
+          .where(eq(merchants.id, accepted.record.merchantId))
+          .for("no key update");
+        if (
+          merchant === undefined ||
+          integrationOf(merchant.integration) !== accepted.birth.through
+        )
+          return { kind: "switched_away" };
+        const [currentMerchant] = await this.#merchantsWhere(
+          tx,
+          eq(merchants.id, accepted.record.merchantId),
+        );
+        const [currentCard] = await tx
+          .select()
+          .from(cards)
+          .where(
+            and(
+              eq(cards.id, accepted.record.itemId),
+              eq(cards.merchantId, accepted.record.merchantId),
+            ),
+          )
+          .for("share");
+        if (
+          currentMerchant === undefined ||
+          !accepted.eligible(
+            currentMerchant,
+            currentCard === undefined ? null : storedCardOf(currentCard),
+          )
+        )
+          return { kind: "offer_changed" };
+        const [claim] = await tx
+          .insert(paymentClaims)
+          .values({
+            fingerprint: accepted.fingerprint,
+            orderId: id,
+            claimedAt: new Date(),
+            retained: true,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (claim === undefined) {
+          const [prior] = await tx
+            .select({ orderId: paymentClaims.orderId })
+            .from(paymentClaims)
+            .where(eq(paymentClaims.fingerprint, accepted.fingerprint));
+          if (prior?.orderId !== id) return { kind: "payment_already_spent" };
+          await tx
+            .update(paymentClaims)
+            .set({ retained: true })
+            .where(eq(paymentClaims.fingerprint, accepted.fingerprint));
         }
-        // Recorded ahead of the insert, so an insert refused as a duplicate
-        // takes the event back with it.
-        if (analytics !== undefined) {
-          await recordAlong(tx, analytics, new Date(record.order.timestamps.createdAt));
-        }
-        await tx.insert(orders).values(rowFor(record));
-        for (const clock of birth?.clocks ?? []) {
+        await tx.insert(orders).values(rowFor(accepted.record));
+        await this.#writeAlong(tx, accepted.alongside, streams);
+        for (const clock of accepted.birth.clocks ?? [])
           await this.#envelopes.remindWithin(tx, clock.reminder, clock.afterMs);
-        }
-        return "written";
+        for (const { event, at } of accepted.analytics) await recordAlong(tx, event, new Date(at));
+        return { kind: "decided", result: decided.result };
       });
     } catch (thrown) {
       const refused = uniquenessRefused(thrown);
-      if (refused === null) {
-        throw thrown;
-      }
-      // Which rule refused is checked, not assumed, so a uniqueness rule added
-      // later is not misreported as a duplicate order. The same words as the
-      // in-memory store. The driver's error is not carried as a cause: its
-      // parameters hold the whole order, payment included.
-      if (refused.constraint === ORDER_IDENTIFIER_TAKEN) {
-        throw new Error(`the order ${record.order.id} is already written down`);
-      }
-      if (refused.constraint === BUYER_KEY_TAKEN) {
-        throw new Error(`the order ${record.order.id} carries a buyer's key another order has`);
-      }
-      throw new Error(unknownRuleRefused(`writing the order ${record.order.id}`, refused));
+      if (refused === null) throw thrown;
+      if (refused.constraint === BUYER_KEY_TAKEN)
+        throw new Error(`the order ${id} carries a buyer's key another order has`);
+      throw new Error(unknownRuleRefused(`admitting the order ${id}`, refused));
     }
-  }
-
-  async waitingForPayment(merchantId: string, at: number, atMost: number): Promise<number> {
-    return this.#waiting(this.#db, merchantId, at, atMost);
-  }
-
-  /**
-   * `waitsForPayment`, spelled in SQL: the states as the partial index has
-   * them, and the count stopped at `atMost`, so it reads at most that many
-   * rows.
-   */
-  async #waiting(on: Queries, merchantId: string, at: number, atMost: number): Promise<number> {
-    const times = sql`${orders.record} -> 'order' -> 'timestamps'`;
-    const windows = sql`${orders.record} -> 'order' -> 'policy' -> 'deadlines'`;
-    const [counted] = await on.select({ waiting: sql<number>`count(*)::int` }).from(
-      on
-        .select({ one: sql`1` })
-        .from(orders)
-        .where(
-          and(
-            eq(orders.merchantId, merchantId),
-            sql`${orders.state} in ${WAITING_STATES}`,
-            sql`${orders.record} -> 'order' ->> 'payment' = 'none'`,
-            sql`case ${orders.state}
-              when 'quoted' then (${times} ->> 'quotedAt') is null
-                or (${times} ->> 'quotedAt')::numeric + (${windows} ->> 'quoteTtlMs')::numeric > ${at}
-              when 'created' then (${times} ->> 'createdAt')::numeric
-                + (${windows} ->> 'quoteResponseMs')::numeric
-                + (${windows} ->> 'quoteTtlMs')::numeric > ${at}
-              else true end`,
-          ),
-        )
-        .limit(atMost)
-        .as("waiting"),
-    );
-    return counted?.waiting ?? 0;
+    this.#envelopes.committed(streams);
+    return result;
   }
 
   /** Read through the partial index's own predicate; it reads at most `atMost` rows. */
@@ -1115,7 +1103,7 @@ export class PostgresStore implements Store {
 
   async orders(
     merchantId: string,
-    query?: { readonly open?: boolean; readonly leaveOutLapsed?: boolean },
+    query?: { readonly open?: boolean },
   ): Promise<readonly StoredOrder[]> {
     const rows = await this.#db
       .select({ record: orders.record })
@@ -1124,76 +1112,17 @@ export class PostgresStore implements Store {
         and(
           eq(orders.merchantId, merchantId),
           query?.open === true ? eq(orders.open, true) : undefined,
-          query?.leaveOutLapsed === true ? eq(orders.lapsed, false) : undefined,
         ),
       )
       .orderBy(orders.createdAt);
     return rows.map((row) => row.record);
   }
 
-  async lapsedAttempts(
-    merchantId: string,
-    page: { readonly limit: number; readonly from?: PageFrom<OrderPlace> },
-  ): Promise<LapsedPage> {
-    const theirs = and(eq(orders.merchantId, merchantId), eq(orders.lapsed, true));
-    const from = page.from;
-    const back = from !== undefined && "before" in from;
-    // The place an attempt stands at, newest first, as one row comparison;
-    // identifiers compare by their bytes, as the memory store compares them.
-    const placed = sql`(${orders.createdAt}, ${orders.id} collate "C")`;
-    const placeOf = (place: OrderPlace) =>
-      sql`(${new Date(place.createdAt)}::timestamptz, ${place.id}::text collate "C")`;
-    const past =
-      from === undefined
-        ? undefined
-        : "after" in from
-          ? sql`${placed} < ${placeOf(from.after)}`
-          : sql`${placed} > ${placeOf(from.before)}`;
-    // Going on, the attempts short of the cursor precede the page; going back,
-    // the ones past it are the page and every attempt before it.
-    const ahead = past === undefined ? sql`false` : back ? past : sql`not (${past})`;
-    return await this.#db.transaction(async (tx) => {
-      const [counted] = await tx
-        .select({
-          of: sql<number>`count(*)::int`,
-          ahead: sql<number>`(count(*) filter (where ${ahead}))::int`,
-        })
-        .from(orders)
-        .where(theirs);
-      const of = counted?.of ?? 0;
-      if (page.limit === 0) return { orders: [], of, newer: 0, previous: null, next: null };
-      const direction = back ? sql`asc` : sql`desc`;
-      // One more than the page, to tell whether the list goes on past it.
-      const read = await tx
-        .select({ record: orders.record })
-        .from(orders)
-        .where(and(theirs, past))
-        .orderBy(sql`${orders.createdAt} ${direction}`, sql`${orders.id} collate "C" ${direction}`)
-        .limit(page.limit + 1);
-      const rows = read.slice(0, page.limit).map((row) => row.record);
-      if (back) rows.reverse();
-      const aheadOf = counted?.ahead ?? 0;
-      const newer = back ? aheadOf - rows.length : aheadOf;
-      const older = back ? of - aheadOf > 0 : read.length > page.limit;
-      const placeAt = (record: StoredOrder | undefined): OrderPlace | null =>
-        record === undefined
-          ? null
-          : { createdAt: record.order.timestamps.createdAt, id: record.order.id };
-      return {
-        orders: rows,
-        of,
-        newer,
-        previous: newer > 0 ? placeAt(rows[0]) : null,
-        next: older ? placeAt(rows.at(-1)) : null,
-      };
-    }, ONE_MOMENT);
-  }
-
   async openOrders(): Promise<readonly StoredOrder[]> {
     const rows = await this.#db
       .select({ record: orders.record })
       .from(orders)
-      .where(eq(orders.open, true))
+      .where(and(eq(orders.open, true)))
       .orderBy(orders.createdAt);
     return rows.map((row) => row.record);
   }
@@ -1276,24 +1205,6 @@ export class PostgresStore implements Store {
     }
   }
 
-  async forgetLapsedBefore(instant: number, limit: number): Promise<number> {
-    // Skipping what is locked leaves an order somebody is deciding about to
-    // the next run, and lets two runs share the work without waiting.
-    const gone = await this.#db.execute(sql`
-      delete from ${orders} where ${orders.id} in (
-        select ${orders.id} from ${orders}
-        where ${orders.lapsed} and ${orders.updatedAt} < ${new Date(instant)}
-          and not exists (select 1 from ${receipts} where ${receipts.orderId} = ${orders.id})
-          and not exists (
-            select 1 from ${paymentClaims} where ${paymentClaims.orderId} = ${orders.id}
-          )
-        order by ${orders.updatedAt}
-        limit ${limit}
-        for update skip locked
-      )`);
-    return gone.rowCount ?? 0;
-  }
-
   async deliveredWithoutReceipt(): Promise<readonly StoredOrder[]> {
     // The missing receipt is asked in the predicate, so the answer is the size
     // of what is wrong, normally nothing. The read is not bounded: with no
@@ -1321,13 +1232,28 @@ export class PostgresStore implements Store {
 
   async withOrder<T>(
     id: string,
-    change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
+    change: (
+      found: StoredOrder,
+      integration?: Integration,
+    ) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: MerchantScope,
     analytics?: OrderAnalytics,
+    holdMerchant?: string,
   ): Promise<OrderLookup<T>> {
     // Streams written to inside the transaction, woken only after the commit.
     const streams: string[] = [];
     const lookup = await this.#db.transaction(async (tx): Promise<OrderLookup<T>> => {
+      let integration: Integration | undefined;
+      if (holdMerchant !== undefined) {
+        const [merchant] = await tx
+          .select({ integration: merchants.integration })
+          .from(merchants)
+          .where(eq(merchants.id, holdMerchant))
+          .limit(1)
+          .for("no key update");
+        if (merchant === undefined) return { found: false };
+        integration = integrationOf(merchant.integration);
+      }
       // A share lock rather than a plain read: a revocation committed first is
       // seen here, and one arriving later waits for this commit, so no write
       // made through a key lands after the key was revoked.
@@ -1362,11 +1288,11 @@ export class PostgresStore implements Store {
         .limit(1)
         .for("update");
 
-      if (row === undefined) {
+      if (row === undefined || (holdMerchant !== undefined && row.merchantId !== holdMerchant)) {
         return { found: false };
       }
 
-      const decided = await change(row.record);
+      const decided = await change(row.record, integration);
       // The merchant always comes from the row, never from the save: an
       // order's merchant never changes, and a document disagreeing with the
       // column would list an order under one merchant while its envelopes
@@ -1383,40 +1309,7 @@ export class PostgresStore implements Store {
       // The writes that must not be lost go in this transaction, so a process
       // that dies mid-flight did all of them or none, the queue's job inserts
       // included.
-      for (const write of decided.alongside ?? []) {
-        switch (write.kind) {
-          case "retain_payment": {
-            const retained = await tx
-              .update(paymentClaims)
-              .set({ retained: true })
-              .where(
-                and(
-                  eq(paymentClaims.fingerprint, write.fingerprint),
-                  eq(paymentClaims.orderId, write.orderId),
-                ),
-              )
-              .returning({ fingerprint: paymentClaims.fingerprint });
-            if (retained.length !== 1)
-              throw new Error("the payment claim no longer belongs to this order");
-            break;
-          }
-          case "receipt":
-            await this.#putReceiptWithin(tx, write.merchantId, write.receipt);
-            break;
-          case "envelope":
-            await this.#envelopes.within(tx, write.merchantId, write.envelope, write.afterMs);
-            streams.push(write.merchantId);
-            break;
-          case "forget":
-            await this.#envelopes.forgetWithin(
-              tx,
-              write.merchantId,
-              write.orderId,
-              write.priceQuestion,
-            );
-            break;
-        }
-      }
+      await this.#writeAlong(tx, decided.alongside ?? [], streams);
 
       if (saved !== undefined) {
         const next = rowFor(saved);
@@ -1425,8 +1318,8 @@ export class PostgresStore implements Store {
           .set({
             state: next.state,
             open: next.open,
-            lapsed: next.lapsed,
             record: next.record,
+            priceOffer: next.priceOffer,
             updatedAt: next.updatedAt,
           })
           .where(eq(orders.id, id));
@@ -1438,6 +1331,42 @@ export class PostgresStore implements Store {
     // Other processes find the work by polling.
     this.#envelopes.committed(streams);
     return lookup;
+  }
+
+  async #writeAlong(
+    tx: Transaction,
+    writes: readonly WithTheOrder[],
+    streams: string[],
+  ): Promise<void> {
+    for (const write of writes) {
+      switch (write.kind) {
+        case "retain_payment": {
+          const retained = await tx
+            .update(paymentClaims)
+            .set({ retained: true })
+            .where(
+              and(
+                eq(paymentClaims.fingerprint, write.fingerprint),
+                eq(paymentClaims.orderId, write.orderId),
+              ),
+            )
+            .returning({ fingerprint: paymentClaims.fingerprint });
+          if (retained.length !== 1)
+            throw new Error("the payment claim no longer belongs to this order");
+          break;
+        }
+        case "receipt":
+          await this.#putReceiptWithin(tx, write.merchantId, write.receipt);
+          break;
+        case "envelope":
+          await this.#envelopes.within(tx, write.merchantId, write.envelope, write.afterMs);
+          streams.push(write.merchantId);
+          break;
+        case "forget":
+          await this.#envelopes.forgetWithin(tx, write.merchantId, write.orderId);
+          break;
+      }
+    }
   }
 
   async claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim> {
@@ -1526,7 +1455,6 @@ export class PostgresStore implements Store {
  * The uniqueness rules this store has a sentence for, by their names in the
  * database. Renaming one in a migration must be matched here.
  */
-const ORDER_IDENTIFIER_TAKEN = "orders_pkey";
 const BUYER_KEY_TAKEN = "orders_buyer_key_unique";
 const KEY_IDENTIFIER_TAKEN = "merchant_keys_pkey";
 const KEY_DIGEST_TAKEN = "merchant_keys_digest_unique";
@@ -1803,11 +1731,11 @@ function rowFor(record: StoredOrder) {
     id: record.order.id,
     state: record.order.state,
     open: listedAsOpen(record.order),
-    lapsed: lapsedAttempt(record),
     merchantId: record.merchantId,
     itemId: record.itemId,
     merchantItemId: record.merchantItemId,
     record,
+    priceOffer: record.priceOffer ?? null,
     createdAt: new Date(record.order.timestamps.createdAt),
     updatedAt: new Date(),
   };

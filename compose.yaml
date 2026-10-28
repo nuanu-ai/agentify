@@ -197,6 +197,8 @@ services:
       # test chain must keep accepting the scripted facilitator. The dashboard only
       # describes these and has no defaults of its own.
       FACILITATOR_URL: "${AGENTIFY_FACILITATOR_URL:-sandbox:scripted}"
+      PRICE_STAMP_KEY: "${PRICE_STAMP_KEY:-sandbox-price-stamp-secret-do-not-reuse-outside-local-compose}"
+      PRICE_STAMP_PREVIOUS_KEY: "${PRICE_STAMP_PREVIOUS_KEY:-}"
       PAYMENT_NETWORK: "${AGENTIFY_PAYMENT_NETWORK:-eip155:84532}"
       PAYMENT_RPC_URL: "${AGENTIFY_PAYMENT_RPC_URL:-}"
       # Required on a live chain, where the gateway refuses to start without both;

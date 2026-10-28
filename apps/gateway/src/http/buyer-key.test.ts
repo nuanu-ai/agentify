@@ -142,7 +142,14 @@ describe("the buyer's key, as production issues it", () => {
       for (let n = 0; n < 2; n++) {
         const offered = await harnessed.gateway.beginPurchase(published.id, {});
         if (offered.step !== "pay") throw new Error(`no price: ${offered.step}`);
-        orders.push(offered.order);
+        const paid = await harnessed.gateway.payPurchase(
+          offered.order.priceOffer.stamp,
+          `PAYMENT-${n}`,
+          `PAYMENT-${n}`,
+        );
+        if (paid.step !== "under_way")
+          throw new Error("the asynchronous purchase was not accepted");
+        orders.push(paid.order);
       }
       const nativeValues = supplied.map((value) => value.replaceAll("-", ""));
       expect(new Set(orders.map((record) => record.buyerKey)).size).toBe(2);

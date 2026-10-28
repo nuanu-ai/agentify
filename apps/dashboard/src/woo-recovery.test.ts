@@ -64,7 +64,10 @@ const gatewayOrder = (
     at: "2026-09-18T09:59:00.000Z",
     as_of: "2026-09-18T09:58:00.000Z",
   },
-  price_id: FACTS.priceId,
+  price_id: facts.priceId,
+  quote_reference: Buffer.from(
+    JSON.stringify([facts.productFingerprint, facts.amount, "USD", facts.amount]),
+  ).toString("base64url"),
   test: true,
   status,
 });
@@ -115,19 +118,6 @@ const shopOrder = (changes: Partial<WooOrderRead> = {}): WooOrderRead => ({
 
 const setup = async (phase: "precreate_refused" | "create_unknown", facts = FACTS) => {
   const shops = memoryWooShops();
-  await shops.recordQuote(
-    "acc_1",
-    facts.priceId,
-    facts.merchantItemId,
-    {
-      fingerprint: facts.productFingerprint,
-      inTheShop: { amount: facts.amount, currency: "USD" },
-      paid: { amount: facts.amount, currency: "USD" },
-      rateVersion: null,
-    },
-    new Date("2026-09-18T11:00:00.000Z"),
-    NOW,
-  );
   await shops.connect({
     accountId: "acc_1",
     shopUrl: FACTS.shopOrigin,

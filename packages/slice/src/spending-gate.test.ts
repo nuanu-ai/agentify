@@ -27,6 +27,7 @@ import { bootGateway, sliceEnv } from "./gateway-harness.js";
 import { whyNotThisNetwork } from "./smoke.js";
 
 const DATABASE_URL = "postgres://agentify@localhost:5432/agentify";
+const PRICE_STAMP_KEY = "test-only-price-stamp-key-at-least-32-bytes";
 
 /**
  * The three fixtures a bootstrap gate needs before it reaches the chain, built
@@ -71,7 +72,9 @@ const bootstrapRefusal = (network: string): string | null =>
 describe("the shared list", () => {
   it("lets every written testnet through all three readers", () => {
     for (const chain of TESTNET_CHAINS) {
-      expect(loadConfig({ DATABASE_URL, PAYMENT_NETWORK: chain }).environment).toBe("test");
+      expect(
+        loadConfig({ DATABASE_URL, PRICE_STAMP_KEY, PAYMENT_NETWORK: chain }).environment,
+      ).toBe("test");
       expect(whyNotThisNetwork(chain, false)).toBeNull();
       expect(bootstrapRefusal(chain)).toBeNull();
     }
@@ -82,6 +85,7 @@ describe("the shared list", () => {
       expect(
         loadConfig({
           DATABASE_URL,
+          PRICE_STAMP_KEY,
           PAYMENT_NETWORK: chain,
           FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
           CDP_API_KEY_ID: "key-id",
@@ -99,9 +103,9 @@ describe("the shared list", () => {
     // rule, so a bare "it throws" would go on passing while the gateway had
     // started calling `eip155:1` live — which is the reading that writes
     // `test: false` onto a receipt paid for with play money.
-    expect(() => loadConfig({ DATABASE_URL, PAYMENT_NETWORK: "eip155:1" })).toThrowError(
-      /neither written list/,
-    );
+    expect(() =>
+      loadConfig({ DATABASE_URL, PRICE_STAMP_KEY, PAYMENT_NETWORK: "eip155:1" }),
+    ).toThrowError(/neither written list/);
     expect(whyNotThisNetwork("eip155:1", false)).toMatch(/SMOKE_ALLOW_MAINNET/);
     expect(bootstrapRefusal("eip155:1")).toMatch(/SMOKE_ALLOW_MAINNET/);
     // And the helper agrees with all three, which is the only thing asking it

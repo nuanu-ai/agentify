@@ -193,9 +193,11 @@ const DEFAULT_PAYMENT_NETWORK = "eip155:84532";
 /**
  * The environment is an external boundary like any request, so it is parsed
  * here and a bad value stops the process at startup rather than at the first
- * payment. The defaults are sandbox defaults; only `DATABASE_URL` has none.
+ * payment. Storage and the channel price-signing key have no safe default.
  */
 const environmentSchema = z.object({
+  PRICE_STAMP_KEY: z.string({ error: absentOrWrong("must be a string") }).min(32),
+  PRICE_STAMP_PREVIOUS_KEY: emptyIsAbsent(z.string().min(32)),
   /** One Postgres for everything: orders, receipts and the queue. */
   DATABASE_URL: z
     .string({ error: absentOrWrong("must be a string") })
@@ -446,6 +448,7 @@ export interface PaymentConfig {
 }
 
 export interface GatewayConfig {
+  readonly priceStampKeys: { readonly current: string; readonly previous?: string };
   readonly databaseUrl: string;
   /** A key seeded into the database at startup, or null to seed nothing. */
   readonly sandboxMerchantKey: string | null;
@@ -711,6 +714,12 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   const derivedEnvironment = environmentOf(network);
 
   return {
+    priceStampKeys: {
+      current: environmentValues.PRICE_STAMP_KEY,
+      ...(environmentValues.PRICE_STAMP_PREVIOUS_KEY === undefined
+        ? {}
+        : { previous: environmentValues.PRICE_STAMP_PREVIOUS_KEY }),
+    },
     databaseUrl: environmentValues.DATABASE_URL,
     sandboxMerchantKey: environmentValues.SANDBOX_MERCHANT_KEY,
     publicBaseUrl: environmentValues.PUBLIC_BASE_URL,

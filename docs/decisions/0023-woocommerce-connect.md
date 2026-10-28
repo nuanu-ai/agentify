@@ -1,92 +1,65 @@
-# 0023. A connected WooCommerce shop is a merchant credential we hold and fill orders with
+# 0023. A connected WooCommerce shop is a credential we hold and fulfill with
 
 Date: 2026-09-14
-Status: accepted; developed on equal terms with the SDK (the product owner,
-2026-10-11), one of the two at a time (ADR-0036), and offered on every channel
-(the product owner, 2026-10-26).
+Status: accepted; equal terms with the SDK (the product owner, 2026-10-11), one
+integration at a time (ADR-0036), every channel (2026-10-26). Cart retirement,
+separate paid resources and at most one replacement per shop per ten minutes
+are the product owner's decision of 2026-10-28.
 
 ## Context
 
-A WooCommerce owner has a catalogue and no code that answers Agentify orders.
-Stock WooCommerce can grant an application a key, serve products, create an
-order, grant a protected download
-([research 33](../research/33-woo-connect-probe.md)) and price shipping in its
-cart for a client with no browser
-([research 41](../research/41-woo-parcel-probe.md)), so connecting a shop hands
-us a third party's write credential and the duty to give the buying agent actual
-goods, which an order number is not.
+Stock WooCommerce can grant a key, read products, create orders, grant protected downloads and
+calculate shipping without a browser. Connecting a shop gives us its write credential and a duty to
+deliver actual goods, not an order number. Research: [Connect](../research/33-woo-connect-probe.md),
+[parcels](../research/41-woo-parcel-probe.md), [resource
+bounds](../research/90-unpaid-price-questions-design.md).
 
 ## Decision
 
-We keep the shop's key and secret as WooCommerce issued them, on the merchant's
-account in the dashboard's database: a boundary against the network, not the
-host, which the shop owner can revoke, and no screen is handed the row holding
-them. The callback that brings them counts only against the account's latest
-Connect, within fifteen minutes and for the shop's root origin, and the shop's
-address comes from that Connect, never from the callback. Requests go only to
-that checked and pinned public address, with TLS host verification and no
-redirect off the shop.
+The dashboard keeps the issued shop key and secret on the merchant's account, never in a screen
+response. This protects against the network, not the host; the shop owner can revoke access. A
+callback consumes only the latest Connect, within fifteen minutes, for its recorded root origin.
+Requests use that checked, pinned public address, TLS host verification and no off-shop redirects.
 
-Two classes of simple product are imported from a shop at its root address, by
-the conditions the merchant guide lists (`apps/docs/woocommerce.md`), and
-anything else is named and skipped. A card is
-priced at every purchase, and an accepted price answer durably binds its
-`price_id` to a fingerprint of the product and the settings it is sold under,
-which the product read at payment must match. A download is virtual and
-downloadable, with one non-public file on the shop's own origin, downloadable
-without limit or expiry under safe download settings; its asynchronous card
-delivers WooCommerce's own download permission URL, which holds the order key
-and is a bearer secret shown only in that delivery.
+The merchant guide defines the imported simple products and safe shop settings. Other products are
+named and skipped. Each purchase gets an offer; successful product reads may be cached for five
+seconds and settings for three minutes. The generic authenticated `quote_reference` carries
+product/settings and pricing facts without a quote ledger. Fulfillment compares fresh shop data with
+them. A virtual download has one non-public file on the shop origin, unlimited safe download
+permission and an async card. Its permission URL is a bearer secret.
 
-A parcel (the product owner, 2026-10-09), neither virtual nor downloadable,
-sells from a shop whose shipping is on and not forced to the billing address,
-and ships within seven days, Agentify's constant, since WooCommerce has no field
-for the merchant's time to ship (ADR-0033). Its price is the goods and the
-cheapest rate the shop's cart gives the locality, and no rate is no price. The
-rate is not bound: the order asks again and ships at the rate that makes up what
-was paid, or is refused before the shop is called. It is taken on only once the
-shop's answer shows the address as sent, Completed in the shop is its shipment,
-and the connector keeps and logs nothing of the address.
+A physical parcel uses enabled shipping not forced to the billing address and ships within seven
+days, Agentify's constant (the owner, 2026-10-09; ADR-0033). The price includes the cheapest cart
+rate for the locality; no rate means no price. The chosen rate is not retained with the offer:
+fulfillment asks again and matches what was paid before creating the shop order. Acceptance requires
+the shop to return the address as sent; Completed records shipment. The full address is neither
+logged nor retained afterward. Tax and one-cent matching follow ADR-0041; merchant conversion rates
+follow ADR-0044.
 
-What a sale from a shop that calculates tax means, and the one-cent match of
-every shop's order to its payment, are ADR-0041. A shop priced in another
-currency than US dollars sells at a rate its merchant sets, as ADR-0044 records.
+Engineering choice: four handlers, with two carts per inclusive-tax calculation, require eight paid
+and eight free slots per shop origin. Paid bundles are reserved before polling; a capacity wait
+spends no fulfillment attempt. Free cleanup cannot borrow paid carts. Idle tokens are encrypted
+under a key derived from the dashboard's existing authentication secret; budgets, slot entitlements
+and ownership survive restart and reconnect. Stale owners cannot modify them.
 
-The dashboard offers the connector on every channel (the product owner,
-2026-10-26), and on the live one an imported card sells only once the operator
-has approved its merchant, as any card there does. It fills orders as the
-merchant's worker in the process it shares with the gateway ([research
-35](../research/35-one-process.md)), recording one paid WooCommerce order per
-sale before it answers, so a redelivery returns the stored result. The ledger
-moves forward only: a refusal proved before the create request is
-`precreate_refused`; once that request is sent the order is `create_unknown`,
-never resent on its own, until a validated, correlated answer makes it `placed`,
-which delivers without the shop credential and is final for a download; a placed
-parcel is followed until it ships or the shop ends it.
+A doubtful identity is permanently retired. Its replacement, including a failed or tokenless
+opening, spends the shared ten-minute creation permission first. With standard two-day guest
+sessions, the bound is the pool plus about 288 replacements (about 304 unexpired sessions). Expired
+SQL rows may await the shop's cleanup; its actual purge timing is unverified. No new merchant
+setting or SDK worker option is introduced. Account credentials and caches stay separate.
 
-A download's paid failure is recovered only on its merchant's recovery page for
-one order, never through an SDK method or the operator's workspace; the page
-shows a sale and calls the gateway or the shop only for the account that owns
-it. After a pre-create refusal the page may create the shop order once, while
-the order is unfulfilled, the same shop is connected again under a new grant
-and the product still qualifies (the product owner, 2026-10-26). The ledger
-becomes `create_unknown` before the request is sent, so no second press
-creates again, and the order holds what the buyer paid. The Agentify order is
-read again after the shop's checks, just before the ledger moves, so a closure
-can still meet a create only between that read and the shop's answer. An
-unknown create binds only an order id the merchant supplies, read back and
-matched on every fact of the sale. A mismatch stays unfulfilled, as does a
-parcel's failure, whose address is gone, and no staffed recovery queue is part
-of the service (the product owner, 2026-10-19).
+The connector runs beside the gateway; live publication requires ordinary merchant approval. One
+paid shop-order ledger advances from precreate_refused to create_unknown before the request, then to
+placed only on a correlated answer. Unknown creation is never resent automatically. Placed downloads
+return stored goods; parcels are followed until shipment or closure. Merchant recovery may retry a
+pre-create download refusal once after reconnect, while unfulfilled and still eligible. Unknown
+creation requires a merchant-supplied shop order, matched on all sale facts. Parcels cannot recover
+an erased address (ADR-0032).
 
-## Consequences
+## Consequences and alternatives
 
-The order carries the merchant's own email, since WooCommerce mails whatever
-address is on it; whose address belongs there is an open product question.
-Rejected: a plugin of ours, which stock WooCommerce makes unnecessary; a buyer's
-email, which buyers do not give; the raw file URL; the order number alone; a
-scan inferring an unknown order is absent, which risks a second order in
-somebody's shop; shop credentials in the gateway; the rate stored with the
-price, a new column for what asking again gives; zones matched by a matcher of
-ours, error-prone (research 37); and a time to ship per shop or none, which the
-product owner put after the test.
+Shop customer mail uses the merchant's dashboard email; buyer email policy remains open. No staffed
+recovery queue is required. Rejected: our own plugin, raw file URLs or order numbers as goods,
+inferred absence after unknown create, shop credentials in the gateway, retained shipping-rate
+columns and zone logic of our own. Permanent exhaustion after a transient cart failure is rejected;
+reusing an identity whose mutation is unknown is unsafe.

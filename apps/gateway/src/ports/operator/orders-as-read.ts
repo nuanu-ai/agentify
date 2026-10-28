@@ -15,7 +15,7 @@ import {
   paidTransactionOf,
   paymentStatusOf,
 } from "../../app/runner.js";
-import { lapsedAttempt, type StoredOrder } from "../store.js";
+import type { StoredOrder } from "../store.js";
 import {
   type AgentReads,
   type OperatorOrder,
@@ -75,7 +75,6 @@ export function operatorOrderOf(
       payment_status: paymentStatusOf(order),
       ...merchantClosureOf(order),
       onOpenList: onTheMerchantsOpenList(order),
-      lapsed: lapsedAttempt(record),
     },
     timeline: timelineOf(record, words),
     paid: paymentOf(record, words),

@@ -128,8 +128,8 @@ function paidAsync(): Order {
 const ENDINGS = [
   "You delivered the goods",
   "You recorded a parcel's shipment",
-  "There is none, or you refused in the synchronous mode",
-  "Time ran out: the price lapsed before the payment, or no synchronous delivery arrived",
+  "A charge failed before the goods, or you refused in the synchronous mode",
+  "No synchronous delivery arrived by its deadline",
   "The money was charged and no delivery happened",
   "You delivered synchronously and the payment did not execute",
   "The facilitator did not say whether the money was charged",
@@ -188,50 +188,32 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
   });
 
   it(`${ENDINGS[2]}: nothing moved, and the agent sees a refusal`, () => {
-    // Three different refusals, and the row promises the agent one word for
-    // all of them. The machine keeps them apart for the merchant's own
-    // metrics; this is where they are held to the single word the page gives
-    // the buyer. Parameters that do not fit and a payment that fails its check
-    // are refused by the gateway before the machine sees them, so they are not
-    // this row's.
-    //
-    // The row's other half, that a merchant's own refusal reaches the agent
-    // with his code and message, is held in
-    // `apps/gateway/src/http/order-status.test.ts`, where the agent's answer is
-    // built.
-    const noStock = must(newOrder("async", { priceCheck: "merchant" }), {
-      kind: "quote_answered",
-      at: T0 + 1,
-      available: false,
-    }).order;
+    // Price refusal happens before an order is written. This row covers a
+    // handler's synchronous refusal and a charge refused before fulfillment.
     const refusedTheParams = must(reach("dispatched"), {
       kind: "handler_refused",
       at: T0 + 4,
       code: "invalid_params",
       message: "the address does not parse",
     }).order;
-    const refusedInSync = reach("failed");
+    const refusedCharge = walk(newOrder("async"), [
+      { kind: "payment_verified", at: T0 + 1 },
+      { kind: "payment_settle_failed", at: T0 + 2 },
+    ]);
 
-    for (const order of [noStock, refusedTheParams, refusedInSync]) {
+    for (const order of [refusedTheParams, refusedCharge]) {
       expect(statusOf(ENDINGS[2]), `from ${order.state}`).toStrictEqual([outcomeFor(order)]);
     }
   });
 
   it(`${ENDINGS[3]}: the order is closed on time and nothing moved`, () => {
-    const priceLapsed = must(newOrder("sync"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "quote_expiry",
-    }).order;
     const noSyncGoods = must(reach("dispatched"), {
       kind: "deadline_expired",
       at: T0 + 999_999,
       deadline: "sync_response",
     }).order;
 
-    for (const order of [priceLapsed, noSyncGoods]) {
-      expect(statusOf(ENDINGS[3]), `from ${order.state}`).toStrictEqual([outcomeFor(order)]);
-    }
+    expect(statusOf(ENDINGS[3])).toStrictEqual([outcomeFor(noSyncGoods)]);
   });
 
   it(`${ENDINGS[4]}: the money is the merchant's and the order is unfulfilled`, () => {
@@ -313,7 +295,7 @@ describe('apps/docs/orders.md, "How an order can end"', () => {
 
 const TIME_LIMITS = [
   "Your price handler's answer",
-  "The price an order was given",
+  "The price offered to the agent",
   "Each hand-over of an order to your process",
   "The goods of a synchronous order",
   "The facilitator's answer about the charge",
@@ -347,30 +329,28 @@ describe('apps/docs/orders.md, "Every time limit"', () => {
     );
 
     expect(outcomeFor(sync)).toBe("in_progress");
+    expect(row[4]).toMatch(/no order.*written/i);
+    expect(resultWords(0)).toEqual([]);
     for (const refused of [async, parcel]) {
-      expect(resultWords(0)).toEqual([outcomeFor(refused), endingReasonFor(refused)]);
+      expect(outcomeFor(refused)).toBe("rejected");
       expect(endingReasonFor(refused)).toBe("price_check_unanswered");
     }
   });
 
-  it(`${TIME_LIMITS[1]}: the price stops holding and the agent asks again`, () => {
+  it(`${TIME_LIMITS[1]}: admission uses the paid request's arrival before the term ends`, () => {
     expect(limitRow(1)[2]).toBe("{{quote-ttl}}");
     expect(limitRow(1)[3]).toMatch(/your answer.*silence.*agent's request/i);
+    expect(limitRow(1)[4]).toMatch(/paid request.*arrive.*before.*term ends.*no order.*written/i);
+    expect(resultWords(1)).toEqual([]);
     const quoted = newOrder("sync");
-    expect(deadlines(quoted)).toEqual([
-      {
-        kind: "quote_expiry",
-        at: (quoted.timestamps.quotedAt ?? NaN) + quoted.policy.deadlines.quoteTtlMs,
-      },
-    ]);
-    const { order } = must(newOrder("sync"), {
-      kind: "deadline_expired",
-      at: T0 + 999_999,
-      deadline: "quote_expiry",
-    });
+    const until = T0 + quoted.policy.deadlines.quoteTtlMs;
+    const admitted = must(quoted, { kind: "payment_presented", at: until - 1 }).order;
+    const late = transition(quoted, { kind: "payment_presented", at: until });
 
-    expect(resultWords(1)).toEqual([outcomeFor(order), endingReasonFor(order)]);
-    expect(endingReasonFor(order)).toBe("price_expired");
+    expect(admitted.timestamps.paymentPresentedAt).toBe(until - 1);
+    expect(deadlines(admitted)).toStrictEqual([]);
+    expect(late.ok).toBe(false);
+    if (!late.ok) expect(late.rejection.code).toBe("event_not_applicable");
   });
 
   it(`${TIME_LIMITS[2]}: the order comes again rather than closing`, () => {
@@ -542,7 +522,7 @@ const FAILURES = [
  * writes them, with the number the build writes in.
  */
 const AT_THE_DOOR = [
-  "{{Waiting-for-payment-at-most}} of your purchases already wait for payment",
+  "Your price-question gate is full",
   "No process of yours has polled for {{silent-after}}",
   "{{Unserved-at-most}} paid orders you took on are left without delivery or closure",
 ] as const;
@@ -563,14 +543,19 @@ describe('apps/docs/failures.md, "Every failure, mode by mode"', () => {
     expect(row[1]).toMatch(/sale goes on.*card's price/i);
     expect(row[2]).toMatch(/refused before payment.*no order/i);
     expect(row[3]).toMatch(/asynchronous/i);
-    for (const [index, code] of [
-      [9, "seller_busy"],
-      [10, "seller_not_taking_orders"],
-      [11, "seller_not_fulfilling"],
+    const gate = rowOf(FAILURES_PAGE, "Every failure, mode by mode", AT_THE_DOOR[0]);
+    expect(gate[1]).toMatch(/sale goes on.*card's price.*without asking/i);
+    expect(gate[2]).toContain("`seller_busy`");
+    expect(gate[2]).toMatch(/HTTP 429.*`Retry-After: 2`/);
+    expect(gate[2]).toMatch(/before.*order is written/i);
+    expect(gate[3]).toMatch(/asynchronous/i);
+    for (const [name, code] of [
+      [AT_THE_DOOR[1], "seller_not_taking_orders"],
+      [AT_THE_DOOR[2], "seller_not_fulfilling"],
     ] as const) {
-      const cells = tableOf(FAILURES_PAGE, "Every failure, mode by mode")[index + 1];
-      expect(cells?.[1]).toContain(`\`${code}\``);
-      expect(cells?.[1]).toMatch(/before.*order exists/i);
+      const cells = rowOf(FAILURES_PAGE, "Every failure, mode by mode", name);
+      expect(cells[1]).toContain(`\`${code}\``);
+      expect(cells[1]).toMatch(/before.*order exists/i);
     }
     const silent = (order: Order) => must(order, { kind: "quote_silent", at: T0 + 1 }).order;
 

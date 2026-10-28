@@ -50,13 +50,12 @@ import {
   type RecordedShipment,
   type SalePrice,
   type Seller,
+  type ShipTo,
   type UnfulfilledReason,
   type WorkerEnvelope,
 } from "@nuanu-ai/agentify-contracts";
-import { decodePaymentSignatureHeader } from "@x402/core/http";
 import type { GatewayConfig } from "../config.js";
 import { failureNamed } from "../failure-named.js";
-import { authorizationFingerprint, paymentFingerprint } from "../http/x402.js";
 import { asTimestamp } from "../ports/clock.js";
 import {
   type Facilitator,
@@ -66,20 +65,21 @@ import {
   type SettleOutcome,
 } from "../ports/facilitator.js";
 import type {
-  Birth,
-  Born,
+  AdmittedOrder,
   ClockAtBirth,
+  Integration,
   MerchantScope,
   OrderChange,
   OrderLookup,
-  PaymentAttempt,
   PaymentCompletion,
   PaymentWord,
+  StoredCard,
+  StoredMerchant,
   StoredOrder,
   WithTheOrder,
 } from "../ports/store.js";
 import { answerableFor } from "../ports/store.js";
-import { statusUrlOf } from "./addresses.js";
+import { sameShipTo, statusUrlOf } from "./addresses.js";
 import {
   type Channel,
   channelOf,
@@ -139,7 +139,16 @@ export type PresentResult =
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
   /** A payment fit only to return a paid purchase, for an order that would now charge it. */
   | { readonly kind: "only_returns" }
+  | { readonly kind: "switched_away" }
+  | { readonly kind: "ship_to_changed" }
+  | { readonly kind: "ship_to_required" }
   | { readonly kind: "no_such_order" };
+
+/** Prepared under admission; external effects may run only after its store commit. */
+export interface PreparedPurchase {
+  readonly accept: AdmittedOrder;
+  readonly effects: readonly Effect[];
+}
 
 /** What one hold on an order came to, before its effects are carried out. */
 type Decided =
@@ -161,7 +170,10 @@ type PresentDecided =
   | { readonly kind: "already_yours"; readonly state: OrderState }
   | { readonly kind: "not_owner"; readonly state: OrderState }
   | { readonly kind: "refused"; readonly rejection: TransitionRejection }
-  | { readonly kind: "only_returns" };
+  | { readonly kind: "only_returns" }
+  | { readonly kind: "switched_away" }
+  | { readonly kind: "ship_to_changed" }
+  | { readonly kind: "ship_to_required" };
 
 export type Applied =
   | {
@@ -282,31 +294,6 @@ export class OrderRunner {
   constructor(runtime: Runtime) {
     this.#runtime = runtime;
     this.#channel = channelOf(runtime.config);
-  }
-
-  /**
-   * Writes down a new order and carries out the effects its creation asked
-   * for; the machine has already decided that the order exists. `birth` is
-   * what the store holds the write to (`Birth`): where the order is not
-   * written, nothing is carried out either, and the answer says why.
-   */
-  async create(record: StoredOrder, effects: readonly Effect[], birth: Birth): Promise<Born> {
-    refuseToWriteAnImpossibleOrder(record.order);
-    refuseToKeepAnAddressPastItsTime(record);
-
-    const born = await this.#runtime.store.addOrder(
-      record,
-      {
-        ...birth,
-        clocks: clocksFor([], deadlines(record.order), record.order.id, this.#runtime.clock()),
-      },
-      orderCreated(record, birth.through, this.#channel),
-    );
-    if (born !== "written") {
-      return born;
-    }
-    await this.#run(record, effects);
-    return born;
   }
 
   /**
@@ -480,6 +467,67 @@ export class OrderRunner {
    * exactly; an address spelled the way a facilitator happened to spell it would
    * make one wallet into two buyers, and nothing here could tell.
    */
+  preparePurchase(
+    record: StoredOrder,
+    owner: string,
+    payment: string,
+    payTo: string,
+    at: number,
+    verified: {
+      readonly fingerprint: string;
+      readonly eligible: (merchant: StoredMerchant, card: StoredCard | null) => boolean;
+      readonly recovery?: PaymentRecoveryContext;
+      readonly shipTo?: ShipTo;
+    },
+  ):
+    | { readonly ok: true; readonly prepared: PreparedPurchase }
+    | { readonly ok: false; readonly rejection: TransitionRejection } {
+    const through = record.through;
+    if (through === undefined) throw new Error("a new purchase must name its merchant integration");
+    const moved = transition(record.order, { kind: "payment_verified", at });
+    if (!moved.ok) return moved;
+    const accepted: StoredOrder = {
+      ...record,
+      order: moved.order,
+      paidBy: owner,
+      payment,
+      payTo,
+      paymentFingerprint: verified.fingerprint,
+      ...(verified.recovery === undefined ? {} : { paymentRecovery: verified.recovery }),
+      ...(verified.shipTo === undefined ? {} : { shipTo: { ...verified.shipTo } }),
+      paymentWords: [{ at, about: "verify", said: `checked out, paid by ${owner}` }],
+    };
+    const next = { ...accepted, ...this.#paymentIntent(accepted, moved.effects, at) };
+    refuseToWriteAnImpossibleOrder(next.order);
+    refuseToKeepAnAddressPastItsTime(next);
+    const analytics = [
+      orderCreated(next, through, this.#channel),
+      ...orderChanged(record, next, this.#channel, "system"),
+    ].map((event) => ({ event, at }));
+    return {
+      ok: true,
+      prepared: {
+        accept: {
+          record: next,
+          eligible: verified.eligible,
+          fingerprint: verified.fingerprint,
+          birth: {
+            through,
+            clocks: clocksFor([], deadlines(next.order), next.order.id, this.#runtime.clock()),
+          },
+          alongside: this.#writesWithTheOrder(next, record.order, moved.effects, at),
+          analytics,
+        },
+        effects: moved.effects,
+      },
+    };
+  }
+
+  async finishAdmission(prepared: PreparedPurchase): Promise<void> {
+    await this.#run(prepared.accept.record, prepared.effects.filter(carriedOutAfterwards));
+    this.#wakeTheAgent(prepared.accept.record);
+  }
+
   async presentVerifiedPayment(
     orderId: string,
     owner: string,
@@ -489,6 +537,7 @@ export class OrderRunner {
     verified?: {
       readonly recovery?: PaymentRecoveryContext;
       readonly fingerprint: string;
+      readonly shipTo?: ShipTo;
       /**
        * Checked only to give back a paid purchase, so it must not be charged:
        * by this gateway alone, or against the split a paid order's money went
@@ -497,6 +546,9 @@ export class OrderRunner {
       readonly onlyReturns?: boolean;
     },
   ): Promise<PresentResult> {
+    const initial = await this.#runtime.store.orderById(orderId);
+    if (initial === null) return { kind: "no_such_order" };
+    const holdMerchant = initial.priceOffer === undefined ? undefined : initial.merchantId;
     const word: PaymentWord = { at, about: "verify", said: `checked out, paid by ${owner}` };
 
     const decided = await this.#withOrder(
@@ -506,6 +558,15 @@ export class OrderRunner {
           // Somebody else's payment owns this order. Nothing is written.
           return { result: { kind: "not_owner", state: found.order.state } };
         }
+
+        const held = found.shipTo;
+        if (
+          verified?.shipTo !== undefined &&
+          held !== undefined &&
+          !("erasedAt" in held) &&
+          !sameShipTo(held, verified.shipTo)
+        )
+          return { result: { kind: "ship_to_changed" } };
 
         const events = eventsForVerifiedPayment(found.order, at);
         if (events.length === 0) {
@@ -545,6 +606,11 @@ export class OrderRunner {
         } = found;
         const accepted: StoredOrder = {
           ...prior,
+          ...(found.paidBy === null &&
+          found.order.mode.parcel === true &&
+          verified?.shipTo !== undefined
+            ? { shipTo: { ...verified.shipTo } }
+            : {}),
           order,
           payment,
           // The address this payment was checked against. The charge runs
@@ -579,6 +645,8 @@ export class OrderRunner {
           result: { kind: "took", known: next, effects },
         };
       },
+      undefined,
+      holdMerchant,
     );
 
     if (!decided.found) {
@@ -790,14 +858,18 @@ export class OrderRunner {
    */
   #withOrder<T>(
     orderId: string,
-    change: (found: StoredOrder) => Promise<OrderChange<T>> | OrderChange<T>,
+    change: (
+      found: StoredOrder,
+      integration?: Integration,
+    ) => Promise<OrderChange<T>> | OrderChange<T>,
     scope?: ActingMerchant,
+    holdMerchant?: string,
   ): Promise<OrderLookup<T>> {
     const actor: OrderActor = scope === undefined ? "system" : (scope.actor ?? "unknown");
     return this.#runtime.store.withOrder(
       orderId,
-      async (found) => {
-        const decided = await change(found);
+      async (found, integration) => {
+        const decided = await change(found, integration);
         return decided.save === undefined
           ? decided
           : { ...decided, save: answering(found, decided.save) };
@@ -819,6 +891,7 @@ export class OrderRunner {
           return [];
         }
       },
+      holdMerchant,
     );
   }
 
@@ -909,7 +982,6 @@ export class OrderRunner {
             kind: "forget",
             merchantId: record.merchantId,
             orderId: record.order.id,
-            priceQuestion: record.priceQuestion ?? null,
           });
           break;
 
@@ -1004,8 +1076,12 @@ export class OrderRunner {
       );
     }
 
+    if (record.priceOffer === undefined) {
+      throw new Error(`the charge on ${record.order.id} has no saved payment requirements`);
+    }
     const outcome = await this.#runtime.facilitator.settle({
       orderId: record.order.id,
+      requirements: record.priceOffer.requirements,
       amount: price.amount,
       currency: price.currency,
       payment,
@@ -1196,7 +1272,7 @@ export class OrderRunner {
    */
   async #reconcileOne(record: StoredOrder, reconcile: Facilitator["reconcile"]): Promise<boolean> {
     if (reconcile === undefined) return false;
-    const attempt = record.paymentAttempt ?? (await this.#recoverAttempt(record));
+    const attempt = record.paymentAttempt;
     if (attempt?.recovery === undefined || attempt.completion !== null) return false;
     const outcome = await reconcile.call(this.#runtime.facilitator, {
       context: attempt.recovery,
@@ -1208,94 +1284,6 @@ export class OrderRunner {
     if (outcome.settled === "unknown" && outcome.failure !== undefined)
       throw new RecoveryFailure(outcome.failure);
     return outcome.settled !== "unknown";
-  }
-
-  async #recoverAttempt(record: StoredOrder): Promise<PaymentAttempt | undefined> {
-    const recoveryFor = this.#runtime.facilitator.recoveryFor;
-    const price = record.order.price;
-    if (
-      recoveryFor === undefined ||
-      record.payment === null ||
-      record.payTo === null ||
-      price === null
-    )
-      return undefined;
-    // The payment was checked after the order existed, so its transfer is later still.
-    const recovery = await recoveryFor.call(
-      this.#runtime.facilitator,
-      {
-        orderId: record.order.id,
-        payment: record.payment,
-        payTo: record.payTo,
-        amount: price.amount,
-        currency: price.currency,
-      },
-      record.order.timestamps.createdAt,
-    );
-    if (recovery === null || record.paidBy?.toLowerCase() !== recovery.payer.toLowerCase())
-      return undefined;
-    const fingerprint = authorizationFingerprint(recovery);
-    if (await this.#authorizationIsAmbiguous(record.order.id, recovery, fingerprint))
-      return undefined;
-    const claim = await this.#runtime.store.claimPayment(fingerprint, record.order.id);
-    if (!claim.claimed) return undefined;
-    const recovered = await this.#withOrder(
-      record.order.id,
-      (found): OrderChange<PaymentAttempt | undefined> => {
-        if (found.paymentAttempt !== undefined) return { result: found.paymentAttempt };
-        if (
-          found.payment !== record.payment ||
-          (found.order.payment !== "settling" && found.order.payment !== "outcome_unknown")
-        )
-          return { result: undefined };
-        const attempt: PaymentAttempt = {
-          id: this.#runtime.ids("pay"),
-          startedAt: found.order.timestamps.settleStartedAt ?? found.order.timestamps.createdAt,
-          recovery: { ...recovery },
-          completion: null,
-        };
-        return {
-          save: {
-            ...found,
-            paymentRecovery: recovery,
-            paymentFingerprint: fingerprint,
-            paymentAttempt: attempt,
-          },
-          alongside: [{ kind: "retain_payment", fingerprint, orderId: found.order.id }],
-          result: attempt,
-        };
-      },
-    );
-    return recovered.found ? recovered.result : undefined;
-  }
-
-  async #authorizationIsAmbiguous(
-    orderId: string,
-    recovery: PaymentRecoveryContext,
-    fingerprint: string,
-  ): Promise<boolean> {
-    // Old accepted claims were pruned by age. Check saved authorizations before attributing their money.
-    let afterId = "";
-    for (;;) {
-      const records = await this.#runtime.store.paymentOrders(afterId, 100);
-      if (records.length === 0) return false;
-      for (const record of records) {
-        afterId = record.order.id;
-        if (record.order.id === orderId || record.payment === null) continue;
-        if (record.paymentFingerprint === fingerprint) return true;
-        try {
-          const payload = decodePaymentSignatureHeader(record.payment);
-          if (
-            payload.accepted?.network.toLowerCase() !== recovery.network.toLowerCase() ||
-            payload.accepted?.asset.toLowerCase() !== recovery.asset.toLowerCase()
-          )
-            continue;
-          if (paymentFingerprint(payload, recovery) === fingerprint) return true;
-        } catch {
-          /* An unreadable saved authorization supplies no matching evidence. */
-        }
-      }
-    }
   }
 
   /**
@@ -1625,6 +1613,9 @@ export function orderDocumentOf(record: StoredOrder): OrderDocument {
     params: { ...record.params },
     price,
     ...(record.priceId === null ? {} : { price_id: record.priceId }),
+    ...(record.priceOffer?.reference === undefined
+      ? {}
+      : { quote_reference: record.priceOffer.reference }),
     ...shipToAsTheMerchantReadsIt(record),
     test: record.order.test,
   };
@@ -1784,16 +1775,16 @@ function whatIsWrongWithTheAddress(record: StoredOrder): string | null {
   if (record.order.mode.parcel !== true) {
     return held === undefined ? null : "holds an address and is not a parcel";
   }
-  if (held === undefined) {
-    return "is a parcel with no address";
-  }
   const needed = holdsShipTo(record.order);
+  if (held === undefined) {
+    return record.order.payment === "none" ? null : "is a parcel with no address";
+  }
   const erased = "erasedAt" in held;
   if (needed && erased) {
     return "has erased the address its merchant still needs";
   }
   if (!needed && !erased) {
-    return "still holds the buyer's address after it stopped being needed";
+    return "holds the buyer's address when it is not needed";
   }
   return null;
 }

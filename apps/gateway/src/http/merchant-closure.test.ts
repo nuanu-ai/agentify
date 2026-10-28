@@ -18,21 +18,22 @@ afterEach(async () => {
   await h?.stop();
 });
 
-async function order() {
+async function order(body: Card = card) {
   h = await harness();
   server = await serve(h);
-  const published = await h.gateway.publishCard(h.merchant.id, card);
+  const published = await h.gateway.publishCard(h.merchant.id, body);
   if (!published.ok) throw new Error("card refused");
   const offered = await h.gateway.beginPurchase(published.id, {});
   if (offered.step !== "pay") throw new Error("price missing");
-  return offered.order.order.id;
+  return offered.order;
 }
 
 describe("the authenticated merchant closure", () => {
   it("continues to report an unresolved original payment after closure, then its actual outcome", async () => {
-    const id = await order();
+    const priced = await order();
+    const id = priced.order.id;
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "fp-original");
     const headers = { authorization: `Bearer ${h.merchant.key}` };
     expect(
       (await server.call("POST", `/v0/orders/${id}/close`, { headers, body: {} })).body,
@@ -63,9 +64,10 @@ describe("the authenticated merchant closure", () => {
   });
 
   it("tells the merchant of a payment completed after closure and keeps the order on their open list until they close it again", async () => {
-    const id = await order();
+    const priced = await order();
+    const id = priced.order.id;
     h.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "fp-original");
     const headers = { authorization: `Bearer ${h.merchant.key}` };
     const close = (message: string) =>
       server.call("POST", `/v0/orders/${id}/close`, { headers, body: { message } });
@@ -134,8 +136,9 @@ describe("the authenticated merchant closure", () => {
   });
 
   it("tells the buyer's agent in Agentify's words what is true of a paid order the merchant closed, beside the merchant's own", async () => {
-    const id = await order();
-    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    const priced = await order();
+    const id = priced.order.id;
+    await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "fp-original");
     await h.gateway.refuseOrder(h.merchant.id, id, { code: "out_of_stock", message: "none left" });
     const headers = { authorization: `Bearer ${h.merchant.key}` };
     expect(
@@ -164,21 +167,31 @@ describe("the authenticated merchant closure", () => {
   });
 
   it("gives no reason of its own on a closed order nobody paid", async () => {
-    const id = await order();
+    const priced = await order({ ...card, fulfillment: "sync" });
+    const id = priced.order.id;
+    const buying = h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "PAYMENT");
+    const drawn = await h.gateway.poll(h.merchant.id, 200);
+    expect(drawn.envelopes).toHaveLength(1);
     await h.gateway.closeOrder(h.merchant.id, id, {});
+    await buying;
     const read = (await server.call("GET", await statusPathOf(h, id))).body;
     expect(read).toMatchObject({ status: "fulfillment_closed", payment_status: "not_paid" });
     expect(read).not.toHaveProperty("reason");
   });
 
   it("preserves its first attributed message and exposes payment facts on both read views", async () => {
-    const id = await order();
+    const priced = await order({ ...card, fulfillment: "sync" });
+    const id = priced.order.id;
+    const buying = h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "PAYMENT");
+    const drawn = await h.gateway.poll(h.merchant.id, 200);
+    expect(drawn.envelopes).toHaveLength(1);
     const headers = { authorization: `Bearer ${h.merchant.key}` };
     const path = `/v0/orders/${id}/close`;
     expect(
       (await server.call("POST", path, { headers, body: { message: "We agreed an offset." } }))
         .body,
     ).toEqual({ ok: true });
+    await buying;
     const first = await h.store.orderById(id);
     expect(
       (await server.call("POST", path, { headers, body: { message: "Changed" } })).body,
@@ -199,7 +212,9 @@ describe("the authenticated merchant closure", () => {
   });
 
   it("requires the owner's key and hides other merchants' orders, whether named by identifier or by buyer's key", async () => {
-    const id = await order();
+    const priced = await order();
+    const id = priced.order.id;
+    await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "PAYMENT");
     const stranger = await h.addMerchant("Another merchant");
     const ownOrder = await h.store.orderById(id);
     if (ownOrder === null) throw new Error("order missing");
@@ -217,7 +232,7 @@ describe("the authenticated merchant closure", () => {
       expect(response.body).toEqual(unknown.body);
     }
     expect((await server.call("POST", `/v0/orders/${id}/close`, { body: {} })).status).toBe(401);
-    expect((await h.store.orderById(id))?.order.state).toBe("quoted");
+    expect((await h.store.orderById(id))?.order.state).toBe("paid");
   });
 
   it.each([
@@ -229,7 +244,8 @@ describe("the authenticated merchant closure", () => {
     { message: "cut short \uD83D" },
     { message: "<b>Refund sent</b> &amp; \u202Edecnys" },
   ])("refuses malformed claims without changing the order: %j", async (body) => {
-    const id = await order();
+    const priced = await order();
+    const id = priced.order.id;
     const before = await h.store.orderById(id);
     const response = await server.call("POST", `/v0/orders/${id}/close`, {
       headers: { authorization: `Bearer ${h.merchant.key}` },
@@ -243,9 +259,10 @@ describe("the authenticated merchant closure", () => {
   });
 
   it("refuses to close an order that ended without a charge, and the buyer's agent reads the same ending", async () => {
-    const id = await order();
+    const priced = await order();
+    const id = priced.order.id;
     h.facilitator.willSettle({ settled: false, reason: "the transfer reverted" });
-    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "fp-original");
     const headers = { authorization: `Bearer ${h.merchant.key}` };
     const before = await server.call("GET", await statusPathOf(h, id));
     expect(before.body).toMatchObject({ status: "rejected", payment_status: "not_paid" });
@@ -265,8 +282,9 @@ describe("the authenticated merchant closure", () => {
   });
 
   it("refuses to close a delivered order, saying its fulfillment is complete", async () => {
-    const id = await order();
-    await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    const priced = await order();
+    const id = priced.order.id;
+    await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "fp-original");
     await h.gateway.deliverOrder(h.merchant.id, id, { activation_code: "BOUGHT" });
     const response = await server.call("POST", `/v0/orders/${id}/close`, {
       headers: { authorization: `Bearer ${h.merchant.key}` },
@@ -285,8 +303,9 @@ describe("the authenticated merchant closure", () => {
   it.each([true, false])(
     "serializes closure against delivery, with a single public result (close first=%s)",
     async (closeFirst) => {
-      const id = await order();
-      await h.gateway.payPurchase(id, "PAYMENT", "fp-original");
+      const priced = await order();
+      const id = priced.order.id;
+      await h.gateway.payPurchase(priced.priceOffer.stamp, "PAYMENT", "fp-original");
       const close = () => h.gateway.closeOrder(h.merchant.id, id, {});
       const deliver = () =>
         h.gateway.deliverOrder(h.merchant.id, id, { activation_code: "BOUGHT" });

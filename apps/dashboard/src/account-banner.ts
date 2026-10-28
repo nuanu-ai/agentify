@@ -53,7 +53,6 @@ export interface AccountRead {
    */
   readonly outOfTouch?: { readonly since: string | null };
   /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */
-  readonly busy?: boolean;
   /** True while as many paid orders are left unserved as Agentify allows, so new purchases are refused. */
   readonly unserved?: boolean;
   /**
@@ -93,7 +92,6 @@ const ORDER: readonly AccountReason[] = [
   "no_payout_wallet",
   "out_of_touch",
   "not_approved",
-  "busy",
   "unserved",
   "unread",
 ];
@@ -134,7 +132,6 @@ export const accountOf = (viewer: Viewer, read: AccountRead = {}): readonly Acco
   const selling = read.selling === undefined ? null : FROM_SELLING[read.selling];
   if (selling !== null) found.add(selling);
   if (read.outOfTouch !== undefined) found.add("out_of_touch");
-  if (read.busy === true) found.add("busy");
   if (read.unserved === true) found.add("unserved");
   if (read.unread === true) found.add("unread");
   if (read.walletChange !== undefined) found.add("wallet_change");

@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
  */
 const BASE = {
   DATABASE_URL: "postgres://agentify@127.0.0.1:9/agentify",
+  PRICE_STAMP_KEY: "app-fixture-price-stamp-key-at-least32bytes",
   PAYMENT_NETWORK: "eip155:8453",
   FACILITATOR_URL: "http://127.0.0.1:9",
 };

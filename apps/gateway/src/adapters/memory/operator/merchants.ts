@@ -26,7 +26,7 @@ import {
 import { type Tally, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
 import { byBytes, pageIn } from "../../../ports/paging.js";
-import { lapsedAttempt, type StoredMerchant } from "../../../ports/store.js";
+import type { StoredMerchant } from "../../../ports/store.js";
 import type { MemoryHoldings } from "../store.js";
 import { type SettledSale, settledSales } from "./figures-standing.js";
 import type { MemoryScope } from "./index.js";
@@ -97,9 +97,7 @@ function factsOf(
     cards: { onSale: cards.filter(onSale).length, published: cards.length },
     thirtyDays: {
       from,
-      orders: orders.filter(
-        (record) => !lapsedAttempt(record) && counted(record.order.timestamps.createdAt),
-      ).length,
+      orders: orders.filter((record) => counted(record.order.timestamps.createdAt)).length,
       settled: tallied(inDays),
     },
     lastSaleAt: lastSale,

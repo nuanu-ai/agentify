@@ -63,6 +63,201 @@ export const wooShopsContract = (
     }
   };
 
+  describe(`${name}: reusable cart identities`, () => {
+    const clean = { token: "private-cart-token", expiresAt: MUCH_LATER };
+    const sessionToken = (issued: number) =>
+      `e30.${Buffer.from(JSON.stringify({ user_id: "one-shop-session", iat: issued, exp: Math.floor(MUCH_LATER.getTime() / 1000) })).toString("base64url")}.signature`;
+
+    it("preserves a restored paid identity when a newly opened free cart returns another token for that session", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "before-restart");
+        await shops.claimCart(SHOP, "before-restart", "paid", 0, "paid-open", NOW);
+        expect(
+          await shops.registerCartIdentity(
+            SHOP,
+            "before-restart",
+            "paid",
+            0,
+            "paid-open",
+            sessionToken(1),
+          ),
+        ).toBe(true);
+        await shops.finishCart(SHOP, "before-restart", "paid", 0, "paid-open", {
+          token: sessionToken(1),
+          expiresAt: MUCH_LATER,
+        });
+        await shops.startCartRuntime(SHOP, "after-restart");
+        await shops.claimCart(SHOP, "after-restart", "quote", 0, "free-open", NOW);
+
+        expect(
+          await shops.registerCartIdentity(
+            SHOP,
+            "after-restart",
+            "quote",
+            0,
+            "free-open",
+            sessionToken(2),
+          ),
+        ).toBe(false);
+        expect(await shops.finishCart(SHOP, "after-restart", "quote", 0, "free-open", null)).toBe(
+          true,
+        );
+        expect(
+          await shops.claimCart(SHOP, "after-restart", "paid", 0, "paid-restored", NOW),
+        ).toEqual({ kind: "reuse", token: sessionToken(1), expiresAt: MUCH_LATER });
+      });
+    });
+
+    it("atomically gives one session identity to one of two simultaneous cart openings", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "worker");
+        await shops.claimCart(SHOP, "worker", "paid", 0, "paid-opening", NOW);
+        await shops.claimCart(SHOP, "worker", "quote", 0, "free-opening", NOW);
+        const registered = await Promise.all([
+          shops.registerCartIdentity(SHOP, "worker", "paid", 0, "paid-opening", sessionToken(1)),
+          shops.registerCartIdentity(SHOP, "worker", "quote", 0, "free-opening", sessionToken(2)),
+        ]);
+        expect(registered.filter(Boolean)).toHaveLength(1);
+        const paid = registered[0] === true;
+        await shops.finishCart(
+          SHOP,
+          "worker",
+          "paid",
+          0,
+          "paid-opening",
+          paid ? { token: sessionToken(1), expiresAt: MUCH_LATER } : null,
+        );
+        await shops.finishCart(
+          SHOP,
+          "worker",
+          "quote",
+          0,
+          "free-opening",
+          paid ? null : { token: sessionToken(2), expiresAt: MUCH_LATER },
+        );
+        expect(
+          await shops.claimCart(SHOP, "worker", paid ? "paid" : "quote", 0, "owner-again", NOW),
+        ).toMatchObject({ kind: "reuse" });
+      });
+    });
+
+    it("restores only confirmed empty carts after a worker restart and rejects the old worker's completion", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "old-worker");
+        expect(await shops.claimCart(SHOP, "old-worker", "paid", 0, "empty", NOW)).toEqual({
+          kind: "new",
+        });
+        expect(await shops.finishCart(SHOP, "old-worker", "paid", 0, "empty", clean)).toBe(true);
+        expect(await shops.claimCart(SHOP, "old-worker", "paid", 1, "interrupted", NOW)).toEqual({
+          kind: "new",
+        });
+
+        await shops.startCartRuntime(SHOP, "new-worker");
+
+        expect(await shops.finishCart(SHOP, "old-worker", "paid", 1, "interrupted", clean)).toBe(
+          false,
+        );
+        expect(await shops.claimCart(SHOP, "new-worker", "paid", 0, "restored", NOW)).toEqual({
+          kind: "reuse",
+          ...clean,
+        });
+        expect(await shops.claimCart(SHOP, "new-worker", "paid", 1, "replacement", NOW)).toEqual({
+          kind: "new",
+        });
+        expect(await shops.claimCart(SHOP, "old-worker", "quote", 0, "stale", NOW)).toEqual({
+          kind: "stale",
+        });
+      });
+    });
+
+    it("keeps one ten-minute replacement budget across normalized origins, lanes, reconnects and restarts", async () => {
+      await using(async (shops, accounts) => {
+        const alias = "https://SHOP.example.com:443/";
+        await shops.startCartRuntime(alias, "first-worker");
+        for (const lane of ["paid", "quote"] as const) {
+          for (let slot = 0; slot < 8; slot += 1) {
+            expect(
+              await shops.claimCart(SHOP, "first-worker", lane, slot, `${lane}-${slot}`, NOW),
+            ).toEqual({ kind: "new" });
+            await shops.finishCart(SHOP, "first-worker", lane, slot, `${lane}-${slot}`, null);
+          }
+        }
+        expect(await shops.claimCart(alias, "first-worker", "quote", 0, "repair", NOW)).toEqual({
+          kind: "new",
+        });
+        await shops.finishCart(SHOP, "first-worker", "quote", 0, "repair", null);
+        await shops.forget(accounts.one);
+        await shops.startCartRuntime(SHOP, "second-worker");
+
+        expect(
+          await shops.claimCart(
+            alias,
+            "second-worker",
+            "paid",
+            0,
+            "too-soon",
+            new Date(LATER.getTime() - 1),
+          ),
+        ).toEqual({ kind: "wait", retryAt: LATER });
+        expect(await shops.claimCart(SHOP, "second-worker", "paid", 0, "due", LATER)).toEqual({
+          kind: "new",
+        });
+        expect(
+          await shops.claimCart(SHOP, "second-worker", "quote", 1, "still-shared", LATER),
+        ).toEqual({ kind: "wait", retryAt: new Date(LATER.getTime() + 600_000) });
+      });
+    });
+
+    it("gives paid slots their own initial identities even after all free identities become uncertain", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "worker");
+        for (let slot = 0; slot < 8; slot += 1) {
+          await shops.claimCart(SHOP, "worker", "quote", slot, `free-${slot}`, NOW);
+          await shops.finishCart(SHOP, "worker", "quote", slot, `free-${slot}`, null);
+        }
+        await shops.claimCart(SHOP, "worker", "quote", 0, "free-repair", NOW);
+        for (let slot = 0; slot < 8; slot += 1) {
+          expect(await shops.claimCart(SHOP, "worker", "paid", slot, `paid-${slot}`, NOW)).toEqual({
+            kind: "new",
+          });
+        }
+      });
+    });
+
+    it("charges expired empty-cart renewal against the same budget as an uncertain replacement", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "worker");
+        await shops.claimCart(SHOP, "worker", "paid", 0, "known", NOW);
+        await shops.finishCart(SHOP, "worker", "paid", 0, "known", { ...clean, expiresAt: LATER });
+        await shops.claimCart(SHOP, "worker", "quote", 0, "unknown", NOW);
+        await shops.finishCart(SHOP, "worker", "quote", 0, "unknown", null);
+        expect(await shops.claimCart(SHOP, "worker", "paid", 0, "renew", LATER)).toEqual({
+          kind: "new",
+        });
+        expect(await shops.claimCart(SHOP, "worker", "quote", 0, "repair", LATER)).toEqual({
+          kind: "wait",
+          retryAt: new Date(LATER.getTime() + 600_000),
+        });
+      });
+    });
+
+    it("lets only one simultaneous caller spend a replacement permission and never reuses its retired token", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "worker");
+        for (const slot of [0, 1]) {
+          await shops.claimCart(SHOP, "worker", "paid", slot, `old-${slot}`, NOW);
+          await shops.finishCart(SHOP, "worker", "paid", slot, `old-${slot}`, null);
+        }
+        const claimed = await Promise.all(
+          [0, 1].map((slot) =>
+            shops.claimCart(SHOP, "worker", "paid", slot, `repair-${slot}`, NOW),
+          ),
+        );
+        expect(claimed.map((answer) => answer.kind).sort()).toEqual(["new", "wait"]);
+      });
+    });
+  });
+
   describe(`${name}: a Connect under way`, () => {
     const keys = {
       consumerKey: "ck_abc",
@@ -522,104 +717,6 @@ export const wooShopsContract = (
 
         expect(await shops.connectionOf(accounts.one)).toBeNull();
         expect(await shops.grantFor(accounts.one)).toBeNull();
-      });
-    });
-  });
-
-  describe(`${name}: a price question`, () => {
-    const DOLLAR_SALE = {
-      fingerprint: FACTS.productFingerprint,
-      inTheShop: { amount: "25.00", currency: "USD" },
-      paid: { amount: "25.00", currency: "USD" },
-      rateVersion: null,
-    };
-
-    it("binds one price id to one product, the amount the shop is held to and the dollars paid", async () => {
-      await using(async (shops, accounts) => {
-        expect(
-          await shops.recordQuote(
-            accounts.one,
-            "prc_1",
-            FACTS.merchantItemId,
-            DOLLAR_SALE,
-            MUCH_LATER,
-            NOW,
-          ),
-        ).toBe(true);
-        expect(await shops.quotedSale(accounts.one, "prc_1", FACTS.merchantItemId)).toEqual({
-          fingerprint: FACTS.productFingerprint,
-          inTheShop: { amount: "25.00", currency: "USD" },
-          paid: { amount: "25.00", currency: "USD" },
-          rate: null,
-        });
-        expect(await shops.quotedSale(accounts.other, "prc_1", FACTS.merchantItemId)).toBeNull();
-        expect(
-          await shops.recordQuote(
-            accounts.one,
-            "prc_1",
-            FACTS.merchantItemId,
-            { ...DOLLAR_SALE, fingerprint: "different-product" },
-            MUCH_LATER,
-            NOW,
-          ),
-        ).toBe(false);
-      });
-    });
-
-    it("binds a price from a shop in another currency to the rate it was converted at, through later rates", async () => {
-      await using(async (shops, accounts) => {
-        const first = await shops.saveRate(accounts.one, SHOP, RUPIAH);
-        const sale = {
-          fingerprint: FACTS.productFingerprint,
-          inTheShop: { amount: "250000", currency: "IDR" },
-          paid: { amount: "13.89", currency: "USD" },
-          rateVersion: first.version,
-        };
-        expect(
-          await shops.recordQuote(
-            accounts.one,
-            "prc_2",
-            FACTS.merchantItemId,
-            sale,
-            MUCH_LATER,
-            NOW,
-          ),
-        ).toBe(true);
-        await shops.saveRate(accounts.one, SHOP, { ...RUPIAH, rate: "16000", setAt: LATER });
-
-        expect(await shops.quotedSale(accounts.one, "prc_2", FACTS.merchantItemId)).toEqual({
-          fingerprint: FACTS.productFingerprint,
-          inTheShop: { amount: "250000", currency: "IDR" },
-          paid: { amount: "13.89", currency: "USD" },
-          rate: { version: first.version, currency: "IDR", rate: "18000", setAt: NOW },
-        });
-        await shops.recordQuote(
-          accounts.one,
-          "prc_mixed",
-          FACTS.merchantItemId,
-          { ...sale, inTheShop: { amount: "14.50", currency: "EUR" } },
-          MUCH_LATER,
-          NOW,
-        );
-        expect(await shops.quotedSale(accounts.one, "prc_mixed", FACTS.merchantItemId)).toBeNull();
-        // A second answer to the same question at another amount or rate is
-        // a price no order could be held to.
-        for (const other of [
-          { ...sale, inTheShop: { amount: "250001", currency: "IDR" } },
-          { ...sale, paid: { amount: "13.90", currency: "USD" } },
-          { ...sale, rateVersion: null },
-        ]) {
-          expect(
-            await shops.recordQuote(
-              accounts.one,
-              "prc_2",
-              FACTS.merchantItemId,
-              other,
-              MUCH_LATER,
-              NOW,
-            ),
-          ).toBe(false);
-        }
       });
     });
   });

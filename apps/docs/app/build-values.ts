@@ -20,7 +20,6 @@ import {
   durationInWords,
   HANDLER_ANSWER_MS,
   inWords,
-  LAPSED_KEPT_MS,
   ordinalInWords,
   percentOf,
   QUOTE_RESPONSE_MS,
@@ -34,7 +33,6 @@ import {
   UNSERVED_AT_MOST,
   type Unit,
   unitsIn,
-  WAITING_FOR_PAYMENT_AT_MOST,
 } from "@agentify/core/published";
 import { ORDER_CALL_ERROR_CODES, ShipToSchema, SMALLEST_PRICE } from "@nuanu-ai/agentify-contracts";
 import {
@@ -81,10 +79,8 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "settle-before-goods": { ms: SETTLE_BEFORE_GOODS_MS, unit: "second" },
   "default-async-fulfillment": { ms: DEFAULT_ASYNC_FULFILLMENT_MS, unit: "day" },
   "redelivery-max-attempts": { count: REDELIVERY_MAX_ATTEMPTS },
-  "waiting-for-payment-at-most": { count: WAITING_FOR_PAYMENT_AT_MOST },
   "unserved-at-most": { count: UNSERVED_AT_MOST },
   "silent-after": { ms: SILENT_AFTER_MS, unit: "minute" },
-  "lapsed-kept": { ms: LAPSED_KEPT_MS, unit: "day" },
   commission: {
     part: COMMISSION_RATE.commissionAllocation,
     total: COMMISSION_RATE.totalAllocation,

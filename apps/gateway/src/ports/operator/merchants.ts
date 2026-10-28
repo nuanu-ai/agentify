@@ -86,7 +86,7 @@ export function segmentOf(facts: SegmentFacts): MerchantSegment {
 interface ThirtyDays {
   /** The first instant counted. */
   readonly from: number;
-  /** Orders made in those days, attempts that lapsed unpaid left out. */
+  /** Orders made in those days. */
   readonly orders: number;
   /**
    * Settled sales in those days, in dollars: orders whose payment settled,

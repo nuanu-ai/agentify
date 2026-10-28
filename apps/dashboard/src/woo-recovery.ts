@@ -11,6 +11,7 @@ import type { Delivery, Money, OrderWithStatus } from "@nuanu-ai/agentify-contra
 import type { Person } from "./dashboard-entry.js";
 import type { Acting, GatewayClient } from "./gateway.js";
 import { amountOfMinor, minorOf, withinOneUnit } from "./woo-money.js";
+import { saleFromQuoteReference } from "./woo-quoted-sale.js";
 import {
   createTheOrderInTheShop,
   inspectProductInTheShop,
@@ -128,13 +129,7 @@ const recover = async (
     return deliverSaved(request.orderId, record.placed.id, record.placed.permission, gateway);
   }
 
-  const acceptedFingerprint = (
-    await parts.shops.quotedSale(
-      record.accountId,
-      record.facts.priceId,
-      record.facts.merchantItemId,
-    )
-  )?.fingerprint;
+  const acceptedFingerprint = saleFromQuoteReference(state.document.quote_reference)?.fingerprint;
   if (acceptedFingerprint !== record.facts.productFingerprint) {
     return refused("The saved WooCommerce sale does not match its accepted price question.");
   }

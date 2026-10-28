@@ -1,6 +1,7 @@
 /**
  * The queue: each merchant's stream of envelopes, and the reminders the gateway
- * leaves itself. Behind it is pg-boss; do not hand-roll a queue here.
+ * leaves itself. Orders, events and reminders are durable; price questions
+ * live only in this process until their caller stops waiting.
  *
  * A drawn envelope never returns to the stream on its own. For orders that is
  * deliberate: an unanswered delivery comes back as a reminder, and only the
@@ -78,6 +79,9 @@ export interface Queue {
     /** The worker has gone: a waiting draw stops and takes nothing. */
     gone?: AbortSignal,
   ): Promise<readonly DrawnEnvelope[]>;
+
+  /** Drops a price question and any delivery of it once its caller stops waiting. */
+  forgetPrice(merchantId: string, priceId: string): Promise<void>;
 
   /** This delivery has been answered. A handle is only unique on its stream. */
   finish(merchantId: string, handle: string): Promise<void>;

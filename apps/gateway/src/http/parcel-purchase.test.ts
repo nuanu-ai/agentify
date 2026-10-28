@@ -37,7 +37,7 @@ import {
   workUntilStopped,
 } from "../testing/harness.js";
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
-import { ORDER_IN_EXTRA, PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER } from "./x402.js";
+import { PAYMENT_REQUIRED_HEADER, PAYMENT_SIGNATURE_HEADER, PRICE_STAMP_IN_EXTRA } from "./x402.js";
 
 const parcelCard: Card = CardSchema.parse({
   merchant_item_id: "beans-1kg",
@@ -218,7 +218,7 @@ describe("buying a parcel", () => {
     expect((read.body as Order).ship_to).toStrictEqual(address);
   });
 
-  it("shows an unpaid order's place to the merchant, and not the address", async () => {
+  it("lists no merchant order for an unpaid price question", async () => {
     const { harnessed, served, itemId } = await started();
     const worker = workUntilStopped(harnessed, { onQuote: () => priced });
     await served.call("POST", `/x402/${itemId}/purchase`, {
@@ -227,29 +227,22 @@ describe("buying a parcel", () => {
     await worker.stop();
 
     const listed = await served.call("GET", "/v0/orders", { headers: asMerchant });
-    const [order] = (listed.body as { orders: Order[] }).orders;
-
-    expect(order?.ship_to).toStrictEqual(locality);
+    expect(listed.status).toBe(200);
+    expect(listed.body).toStrictEqual({ orders: [] });
   });
 
-  it("refuses a verified payment carrying another address before anything is charged, and says to start again", async () => {
+  it("takes the first verified payer's full address within the locality that was priced", async () => {
     const { harnessed, served, itemId } = await started();
+    const paidAddress = { ...address, line_one: "Jl. Pantai Nyanyi" };
 
-    const paid = await buyOverHttp(
-      harnessed,
-      served,
-      itemId,
-      { onQuote: () => priced },
-      {
-        priced: { params: {}, ship_to: address },
-        paid: { params: {}, ship_to: { ...address, line_one: "Jl. Pantai Nyanyi" } },
-      },
-    );
+    const paid = await pricedThenPaid(harnessed, served, itemId, {
+      priced: { params: {}, ship_to: address },
+      paid: { params: {}, ship_to: paidAddress },
+    });
 
-    expect(paid.status).toBe(409);
-    expect((paid.body as Refused).error.code).toBe("ship_to_changed");
-    expect((paid.body as Refused).error.message).toContain("new purchase");
-    expect(harnessed.facilitator.settles).toHaveLength(0);
+    expect(paid.status).toBe(200);
+    expect((await theOrder(served)).ship_to).toStrictEqual(paidAddress);
+    expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 
   it("does not tell a payment that is not one whether an address is the one priced", async () => {
@@ -262,7 +255,7 @@ describe("buying a parcel", () => {
     });
     await worker.stop();
     const named = decodePaymentRequiredHeader(challenge.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
-      .accepts[0]?.extra?.[ORDER_IN_EXTRA];
+      .accepts[0]?.extra?.[PRICE_STAMP_IN_EXTRA];
     harnessed.facilitator.willRefuseVerification("signature", "that is not a payment");
 
     const tried = async (shipTo: ShipTo) => {
@@ -271,7 +264,7 @@ describe("buying a parcel", () => {
         headers: {
           [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
             x402Version: 2,
-            accepted: { extra: { [ORDER_IN_EXTRA]: named } } as never,
+            accepted: { extra: { [PRICE_STAMP_IN_EXTRA]: named } } as never,
             payload: {},
           }),
         },
@@ -315,7 +308,10 @@ describe("buying a parcel", () => {
           }),
         },
       });
-    const bought = await payingFrom(aWallet("the parcel's buyer"), "0x01", { params: {} });
+    const bought = await payingFrom(aWallet("the parcel's buyer"), "0x01", {
+      params: {},
+      ship_to: address,
+    });
     expect(bought.status).toBeLessThan(300);
 
     const stranger = aWallet("somebody else");
@@ -422,7 +418,7 @@ describe("buying a parcel", () => {
     expect(harnessed.facilitator.settles).toHaveLength(1);
   });
 
-  it("pays for the address it was priced for when the payment carries none", async () => {
+  it("refuses payment without the complete address, since the price question kept none", async () => {
     const { harnessed, served, itemId } = await started();
 
     const paid = await pricedThenPaid(harnessed, served, itemId, {
@@ -430,11 +426,10 @@ describe("buying a parcel", () => {
       paid: { params: {} },
     });
 
-    expect(paid.status).toBeLessThan(300);
-    const [handedOver] = (await drawEverything(harnessed)).flatMap((envelope) =>
-      envelope.kind === "order" ? [envelope.payload as Order] : [],
-    );
-    expect(handedOver?.ship_to).toStrictEqual(address);
+    expect(paid.status).toBe(422);
+    expect(paid.body).toMatchObject({ error: { code: "ship_to_does_not_fit", retryable: false } });
+    expect(harnessed.facilitator.settles).toStrictEqual([]);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
   it("keeps the split the payment was checked against on the order, and charges it the whole payment", async () => {
@@ -444,7 +439,7 @@ describe("buying a parcel", () => {
 
     const paid = await pricedThenPaid(harnessed, served, itemId, {
       priced: { params: {}, ship_to: address },
-      paid: { params: {} },
+      paid: { params: {}, ship_to: address },
     });
 
     expect(paid.status, JSON.stringify(paid.body)).toBeLessThan(300);
@@ -529,27 +524,15 @@ describe("once the merchant has the address", () => {
     expect((await theOrder(served)).ship_to).toStrictEqual({ erased_at: expect.any(String) });
   });
 
-  it("deletes the price question nobody answered, with the order that ends unsold", async () => {
-    // No worker is turning, so the question about the place the parcel goes
-    // sits on the stream; the gateway's patience runs out and a parcel, whose
-    // money moves at the purchase, is not sold at the card's price. The order
-    // ends, and the question carrying its locality goes with it.
+  it("forgets an unanswered price question without keeping an order or address", async () => {
     const { harnessed, served, itemId } = await started({ QUOTE_RESPONSE_MS: "50" });
 
     await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {}, ship_to: address },
     });
 
-    // An order that closed before it had a price is not in the merchant's
-    // list, so what the gateway kept is read where it keeps it.
-    const [record] = await harnessed.store.orders(harnessed.merchant.id);
-    expect(record?.order.state).toBe("rejected");
-    expect(record?.shipTo).toStrictEqual({ erasedAt: expect.any(Number) });
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     expect(await drawEverything(harnessed)).toStrictEqual([]);
-    const kept = await keptOf(harnessed, record?.order.id ?? "");
-    for (const part of whoAndWhere) {
-      expect(kept, part).not.toContain(part);
-    }
   });
 });
 
@@ -677,11 +660,7 @@ describe("once the address is gone, nothing puts it back", () => {
     expectNothingOfTheAddressIn(await onTheStream(harnessed));
   });
 
-  it("does not leave a price question that landed after its order ended", async () => {
-    // The question goes out after the order is written. Should it land late —
-    // the stream slow to take it — the order can end on the gateway's patience
-    // first, its address erased, and a question written afterwards would carry
-    // the place the parcel goes for as long as the queue keeps it.
+  it("does not leave a price question that landed after its caller stopped waiting", async () => {
     const { harnessed, served, itemId } = await started({ QUOTE_RESPONSE_MS: "50" });
     const staging = harnessed.queue.stage.bind(harnessed.queue);
     harnessed.queue.stage = async (merchantId, envelope, afterMs) => {
@@ -696,8 +675,7 @@ describe("once the address is gone, nothing puts it back", () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 200));
 
-    const [record] = await harnessed.store.orders(harnessed.merchant.id);
-    expect(record?.shipTo).toStrictEqual({ erasedAt: expect.any(Number) });
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     expect(await onTheStream(harnessed)).toBe("[]");
   });
 
@@ -1052,7 +1030,11 @@ describe("a shipment against a card republished since the sale", () => {
     const offered = await harnessed.gateway.beginPurchase(ordinary.id, {});
     if (offered.step !== "pay") throw new Error("no price was offered");
     const orderId = offered.order.order.id;
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT-VOUCHER", "PAYMENT-VOUCHER");
+    await harnessed.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "PAYMENT-VOUCHER",
+      "PAYMENT-VOUCHER",
+    );
     await harnessed.store.publishCard(
       harnessed.merchant.id,
       { ...parcelCard, merchant_item_id: "voucher-1kg" },
@@ -1073,48 +1055,6 @@ describe("a shipment against a card republished since the sale", () => {
     const status = await served.call("GET", await statusPathOf(harnessed, orderId));
     expect(status.status).toBe(200);
     expect((status.body as { status: string }).status).toBe("delivered");
-  });
-
-  it("refuses a shipment, in words, for an older order whose card has become a parcel's", async () => {
-    // An order with no result of its own is held to the card as it stands.
-    // When that card now declares no goods, nothing can close the order with
-    // goods or with a shipment, and the refusal says why and that sending it
-    // again will not help.
-    const { harnessed } = await started();
-    const ordinary = await harnessed.gateway.publishCard(harnessed.merchant.id, {
-      merchant_item_id: "voucher-older",
-      title: "A voucher for a kilogram",
-      description: "Collected at the roastery.",
-      price: "18.00 USD",
-      fulfillment: "async",
-      fulfill_deadline_seconds: 3_600,
-      result: { code: "string" },
-    });
-    if (!ordinary.ok) throw new Error("the ordinary card would not publish");
-    const offered = await harnessed.gateway.beginPurchase(ordinary.id, {});
-    if (offered.step !== "pay") throw new Error("no price was offered");
-    const { result: _kept, ...older } = offered.order;
-    const orderId = "ord_written_before_orders_kept_a_result";
-    await harnessed.store.addOrder({
-      ...older,
-      buyerKey: harnessed.runtime.ids("bk"),
-      order: { ...older.order, id: orderId },
-    });
-    await harnessed.gateway.payPurchase(orderId, "PAYMENT-OLDER", "PAYMENT-OLDER");
-    await harnessed.store.publishCard(
-      harnessed.merchant.id,
-      { ...parcelCard, merchant_item_id: "voucher-older" },
-      harnessed.now(),
-    );
-
-    const refused = await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, shipment);
-
-    if (refused === null || refused.ok) throw new Error("the shipment was taken as goods");
-    expect(refused.error.code).toBe("delivery_does_not_match_card");
-    expect(refused.error.retryable).toBe(false);
-    expect(refused.error.problems?.map((problem) => problem.code)).toStrictEqual([
-      "card_declares_no_goods",
-    ]);
   });
 });
 

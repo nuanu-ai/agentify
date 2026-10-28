@@ -1,87 +1,54 @@
-# 0032. A buyer's address passes through us and is erased once the merchant holds it
+# 0032. A buyer's address passes through Agentify and is erased at handover
 
-Date: 2026-09-28
-Status: accepted (the product owner, 2026-09-28, after two rounds of
-adversarial review). Built: no error leaving the store or the queue carries a
-bound parameter, and the address is taken, priced by its locality, handed over
-once paid and erased.
+Status: accepted by the product owner on 2026-09-28; updated with the
+stateless-price design on 2026-10-27.
 
 ## Context
 
-A parcel needs an address, and the only thing an agent hands a merchant today
-is the card's `params`: fields the merchant declares, checked for type alone.
-They are written into the order at the unpaid request and readable by the
-merchant from then on, copied into every envelope the queue keeps for a week,
-dumped with the database every ten minutes into snapshots kept for weeks
-(ADR-0029), and carried whole in a failed statement's error, which most paths
-log. An order is kept for good, unless it ended rejected or expired with
-nothing charged or held, which is deleted thirty days after it was last
-written (ADR-0048). For somebody's home
-address that is a store of personal data no process of ours reads once the
-merchant has it. The survey
-behind this decision is `docs/research/37-physical-goods.md`.
+A parcel needs a destination. Agentify needs the full address only until the
+merchant has it; retaining it afterward adds personal data without helping
+fulfillment. Research: [physical goods](../research/37-physical-goods.md).
 
 ## Decision
 
-A card that ships (ADR-0033) takes a `ship_to` block beside `params`, in a
-shape of ours with the Agentic Commerce Protocol's names: `name`, `line_one`,
-`line_two`, `city`, `state`, `postal_code`, `country`, `phone_number`. Any other
-card refuses it. The door checks the shape: a name, a first line, a city and a
-phone are present, the country is two capital letters (ISO 3166-1 alpha-2),
-and a `state`, where given, is a subdivision code without the country's
-prefix. Whether a state or a postal code is needed, and whether the merchant
-ships there, is the merchant's to answer.
+A parcel takes `ship_to` beside `params`: `name`, `line_one`, `line_two`, `city`,
+`state`, `postal_code`, `country` and `phone_number`. Other products refuse it.
+The door checks the common shape; the merchant decides where it ships and
+which state or postal code its carrier needs.
 
-The merchant's price check receives where the parcel goes, not to whom: a
-`ship_to` holding only `country`, `state`, `city` and `postal_code`. The full
-block reaches the merchant only for a paid order, in the order and in their
-reads of it. It is the block that was priced: a paid request carrying another
-is refused before the payment is verified, with words to start a new purchase,
-and one carrying none pays for the block that was priced.
+A price question carries only country, state, city and postal code. The full
+address is not stored at pricing. The authenticated price stamp binds a keyed
+digest of locality (ADR-0049). The buyer repeats the complete address at payment;
+first verified ownership freezes it within that locality. Invalid signatures
+freeze nothing. Private comparisons are not disclosed before verification or,
+for an owned order, before ownership is established.
 
-A merchant takes an order on by answering `accepted`, from the handler or by
-the `accept` call, and the merchant stores `ship_to` before either: that answer
-erases our copy. We hold the address from the priced request until the first of
-these: the order is taken on, its shipment is recorded, it closes, or it
-enters `unfulfilled` without having been taken on (ADR-0028). Then it leaves
-the order, and every envelope carrying any of the address — the order's hand-overs and its
-price questions — is deleted from the queue; the events about the order, the
-`order.unfulfilled` notice among them, carry no address and are kept, as are the
-reminders that keep its deadlines. The order then reads `ship_to: {
-"erased_at": … }`, never absent, and is never handed to a handler again.
-Nothing of the address is kept, neither a masked fragment nor a fingerprint,
-and nothing of ours logs it: no error leaving the store or the queue carries a
-bound parameter. A handler Agentify runs for a merchant, such as a shop
-connector, keeps it no longer than the gateway does. The erasure reaches the
-channel's database. Copies of the database taken before it keep the address:
-the live channel's backups, usually for about sixty days, with no upper bound
-set yet (ADR-0029), and the restore point each release takes, on either
-channel, until five newer releases replace it. The portal and the contract say
-so wherever they promise the erasure.
+The merchant stores the paid address before answering `accepted` or the
+`accept` call. Agentify erases its copy at the first of: acceptance, recorded
+shipment, closure, or unfulfilled delivery without acceptance (ADR-0028).
+Durable order envelopes carrying the address are removed; price questions are
+transient and leave the queue when their wait ends. Events and deadline
+reminders carry no address and remain. An erased parcel reads
+`ship_to: { "erased_at": ... }` and is never handed to a handler again.
+A connector holds the full address no longer than the gateway does. Its bounded
+cart-resource registry retains encrypted idle tokens, not the full address.
+Those shop sessions can retain the last priced locality until WooCommerce
+expires them; their creation bound and ownership are recorded in ADR-0023.
 
-## Consequences
+The full address leaves no masked fragment or fingerprint. The retained stamp
+still contains its keyed locality digest to authenticate the original price.
+No error leaving the store or queue carries bound parameter values, and logs
+contain no address. Free-form purchase parameters remain with the order; a
+merchant must not put an address into those parameters or into free text.
 
-The address is ours while an order waits for its merchant: seconds while their
-worker runs, at most the time to ship while it does not. A merchant process
-that falls over between receiving an order and storing its address loses it,
-the order can only be refused as unfulfilled, and a late parcel on an
-order never taken on must come from the merchant's own copy. The portal's
-asynchronous pattern, which keeps only our identifier, and its walk over
-`orders.list` after a restart change for parcels. What merchants write as free
-text is theirs, and the portal asks them to keep the address out of it. A
-snapshot keeps what it caught until it expires. A dispute over where a parcel
-went cannot be checked against us. The rest of `params` stays with its order:
-for good on an order kept, and for thirty days after it was last written on
-one that ended rejected or expired with nothing charged or held (ADR-0048).
+Erasure reaches the channel database. Earlier live backups retain what they
+captured, usually for about sixty days without a fixed upper bound (ADR-0029).
+Release restore points on either channel last until five newer releases replace
+them. The portal and contract state this wherever they promise erasure.
 
-Rejected: the address in merchant-declared `params` (no common shape, and no
-telling what to erase); a delivery token resolved outside the channel (no agent
-runtime offers the other end); a masked address or a fingerprint (still
-personal — WooCommerce keeps not even the country when it anonymises — and
-nobody reads it; a fingerprint comes with the first process that does); erasing
-at shipment (days of holding so that a merchant can read back what they did not
-store); the full address in the price question, as the protocols do at checkout
-(it would reach merchants for purchases never made, and rates need only the
-locality); a split first and last name (one name cannot be split without
-guessing); a per-country table of required fields (the merchant knows what
-their carrier needs).
+## Alternatives rejected
+
+An address inside merchant-defined parameters gives no common erasure boundary.
+A full address in a price question exposes it for purchases never made. Keeping
+the full address until shipment retains it for days after handover. Agentify
+cannot reconstruct a lost merchant copy or adjudicate where a parcel went.

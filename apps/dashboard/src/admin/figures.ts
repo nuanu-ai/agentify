@@ -757,7 +757,7 @@ export function overviewViewOf(reads: OverviewReads): OverviewView {
       aside:
         orders === null
           ? "Orders made in the last seven days"
-          : `${orders.delivered} delivered · ${orders.paymentUnknown} unknown · ${orders.count - orders.delivered - orders.paymentUnknown} other. ${plural(orders.lapsed, "unpaid attempt")} not counted.`,
+          : `${orders.delivered} delivered · ${orders.paymentUnknown} unknown · ${orders.count - orders.delivered - orders.paymentUnknown} other.`,
     },
     {
       label: "Settled · 7\u00a0days",

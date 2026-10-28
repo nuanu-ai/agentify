@@ -1,69 +1,52 @@
 # The purchase door refuses before any charge
 
-Status: the limit on purchases waiting for payment and the ten minutes of
-silence are the product owner's (2026-10-21), and so is fifty as the limit for
-now (2026-10-26). His word of 2026-10-26: "the catalog does not show a
-seller's cards while that seller is not taking orders; the cards come back by
-themselves when the seller is in touch again." It names the seller, not a
-payment mode, so a silent seller's synchronous cards leave the catalogue too.
-Refusing them at the door, and keeping a silent seller's look answered with
-its challenge, are the engineering consequences.
+Status: the product owner's words of 2026-10-27: "A request nobody paid for may
+use a moment of a merchant's capacity and holds nothing over time" and "Work
+that is paid for never waits behind work that is not." The owner also requires
+one merchant's load not to slow another. The engineering choices below implement
+that rule; shared pool and facilitator isolation remain open in
+[research](../research/90-unpaid-price-questions-design.md).
 
 ## Context
 
-Every unpaid purchase opens an order and, for a card with a price check, asks
-the merchant's code or shop its price; a WooCommerce shop is called about a
-dozen times per price. Nothing limited that, so anyone could load a merchant's
-shop through Agentify, or get Agentify's address banned by the shop's firewall,
-after which every sale fails. A card charged before its goods also kept taking
-money while the merchant's own process was down.
+A caller can ask prices without buying. Holding a place until a price expires
+lets such a caller stop a merchant's sales for free. Merchant work still needs
+an admission bound before its queue grows longer than the time left to answer.
 
 ## Decision
 
-A merchant has at most fifty purchases priced and waiting for payment at once.
-The fifty-first unpaid purchase is refused before its price is asked, with HTTP
-429, a `Retry-After` and `seller_busy`, and nothing is written for it. The
-count and the write are one step on the merchant's row. Whoever keeps fifty
-unpaid purchases open stops that merchant's sales through Agentify while they
-do, and nothing beyond the fifty reaches their shop. The product owner does not
-accept that cost (2026-10-26), since nobody should be able to stop a
-merchant's sales without paying; the objection stays open in [the research on
-unpaid price questions](../research/87-unpaid-price-questions.md).
+Unpaid prices hold no order or outstanding-purchase counter (ADR-0049). A gate
+per merchant bounds active price questions and their arrival rate, shared by
+SDK and WooCommerce fulfillment. It admits only work that fits the price
+response window, discards questions whose wait ended, and selects ready paid
+orders ahead of price questions. It does not preempt a running handler or
+reserve an SDK execution slot. Limits are internal constants, not settings.
 
-Every purchase of a merchant is refused with `seller_not_taking_orders` while
-no compatible process of the merchant's own code has polled for ten minutes, at the
-unpaid request and again before its first payment is verified; a payment that
-releases goods already made goes through. A synchronous purchase would charge
-nothing, but nobody would draw its order, so it could only lapse after the
-buyer had signed and waited. It is not a pause: nothing is stored to resume,
-the first compatible poll lets the next purchase through, and cards the merchant paused
-stay paused. Contact is a poll of the merchant's own code speaking the gateway's contract
-(ADR-0006), recorded with that version per merchant at most every thirty seconds per process and kept in the database so
-that a restart of the same contract refuses nobody; the rule allows for that half minute. A process
-whose handlers are all busy does not poll and counts as quiet. A merchant
-selling through the WooCommerce connector is never refused for this, because
-the connector runs inside Agentify.
+Engineering choices: four active price questions and sixteen admissions per
+second per merchant; one payment verification per merchant and four per gateway process.
+The latter leaves database room outside the admission transactions and prevents
+one merchant taking every verification slot. Actual upstream requests retain
+their permits until bounded completion. These are not measured shop capacity. Overflow on a
+synchronous card uses its existing silent-price fallback and card price; the
+merchant can refuse before any charge. Other modes answer `seller_busy`, HTTP
+429 with `Retry-After: 2`, before any order or charge. Cards remain listed.
 
-The public catalogue lists a card only where the door would price it, by one
-rule both read, so a silent merchant's cards leave it and come back by
-themselves. A look at such a card, the unpaid GET that discovery crawlers
-read, still answers with its challenge, so a listing other people run does not
-drop it for a pause ([ADR-0012](0012-discovery-declaration.md)). A merchant at
-the limit of fifty stays listed: a place frees within a minute, and anybody
-could fill the fifty without paying.
+Every purchase is refused with `seller_not_taking_orders` while no compatible
+process of the merchant's own code has polled for ten minutes, before pricing
+and again before its first payment is verified. A payment releasing goods
+already made continues. Contact records the worker contract, at most every
+thirty seconds per process; its first compatible poll restores admission.
+A connector runs inside Agentify and is exempt from this contact rule.
 
-`seller_busy` and `seller_not_taking_orders` are retryable. The second depends
-on the merchant's process coming back, but that return is enough, with nobody
-switching anything on, and a refused purchase charges nothing, so a retry costs
-the buyer nothing.
+The catalogue omits a silent merchant's cards and restores them on contact.
+A GET or empty POST still answers with a listing challenge, preserving outside
+discovery listings through a temporary silence. Paused cards stay paused.
+`seller_busy` and `seller_not_taking_orders` are retryable and charge nothing.
 
 ## Alternatives rejected
 
-A limit per buyer or per address: an agent has no identity at the door, and
-addresses are cheap. A limit counted in memory: two processes, or two requests
-at once, would both pass it. Stopping a silent merchant's selling as a pause:
-it would have to be resumed by hand, and a merchant whose process restarts in
-a minute would find their sales stopped. Recording contact on every call with
-the merchant's key: a publishing script would count as a running worker. A
-field on each catalogue card saying whether it can be bought now: it grows the
-public surface, when leaving the card out says the same.
+Fifty unpaid orders per merchant: anybody could keep all places occupied and
+stop sales without paying. A limit per wallet before payment: no authenticated
+wallet exists there. Fair lanes and reserved worker capacity are deferred until
+observed contention justifies their added contracts. A stored selling pause
+would need manual resumption after an ordinary worker restart.

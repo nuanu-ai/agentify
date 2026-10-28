@@ -50,6 +50,7 @@ describe("llms.txt", () => {
       '{"params":',
       "PAYMENT-REQUIRED",
       "PAYMENT-SIGNATURE",
+      "extra.price_stamp",
       "status_url",
       "delivered",
       "order_id",

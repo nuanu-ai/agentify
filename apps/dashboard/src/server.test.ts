@@ -4073,10 +4073,7 @@ describe("the orders screen", () => {
     expect(missed).not.toContain("A room for the night");
   });
 
-  it("does not call every order finished while a buyer's price is still unpaid", async () => {
-    // A price a buyer asked for and has not paid is an order under way, and it
-    // is left off the open list on purpose; the empty list must not then say
-    // that everything is finished, while All shows that order in progress.
+  it("shows no merchant order for a price the buyer has not paid", async () => {
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, roomCard);
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
@@ -4086,35 +4083,8 @@ describe("the orders screen", () => {
     const all = readable((await browser.get("/orders")).html);
     const openOnly = readable((await browser.get("/orders?show=open")).html);
 
-    expect(all).toContain("In progress");
-    expect(openOnly).toContain("Nothing is open");
-    expect(openOnly).not.toMatch(/finished/i);
-  });
-
-  it("lists a purchase that lapsed unpaid under Lapsed alone, and the other orders as before", async () => {
-    const { browser, gateway, harnessed } = await started();
-    const itemId = await publish(gateway, roomCard);
-    await buyOverHttp(harnessed, gateway, itemId, {
-      onOrder: () => ({ delivered: { access_code: "SESAME" } }),
-    });
-    const offered = await harnessed.gateway.beginPurchase(itemId, {});
-    if (offered.step !== "pay") throw new Error("no price was offered");
-    harnessed.advance(31_000);
-    await harnessed.gateway.runner.apply(offered.order.order.id, {
-      kind: "deadline_expired",
-      at: harnessed.now(),
-      deadline: "quote_expiry",
-    });
-    await browser.signIn();
-
-    const all = readable((await browser.get("/orders")).html);
-    const lapsed = readable((await browser.get("/orders?show=lapsed")).html);
-
-    expect(all).toContain("Delivered");
-    expect(all).toContain("Lapsed 1");
-    expect(all).not.toContain("Closed on time limit");
-    expect(lapsed).toContain("Closed on time limit");
-    expect(lapsed).not.toContain("Delivered");
+    expect(all).toContain("No orders yet");
+    expect(openOnly).toContain("No orders yet");
   });
 
   it("does not tell a merchant nothing is owed while an order is still running", async () => {
@@ -4366,17 +4336,6 @@ describe("the banner about the account", () => {
     expect(reasonsIn(after)).toStrictEqual([]);
   });
 
-  it("says new purchases are refused while fifty wait for payment", async () => {
-    const { browser, gateway, harnessed } = await started();
-    const itemId = await publish(gateway, roomCard);
-    for (let one = 0; one < 50; one += 1) {
-      await harnessed.gateway.beginPurchase(itemId, {});
-    }
-    await browser.signIn();
-
-    expect(reasonsIn((await browser.get("/orders")).html)).toStrictEqual(["busy"]);
-  });
-
   it("says new purchases are refused while ten paid orders are left unserved, and no longer once one is closed", async () => {
     const { browser, gateway, harnessed } = await started();
     const itemId = await publish(gateway, esimCard);
@@ -4386,7 +4345,13 @@ describe("the banner about the account", () => {
       const offered = await harnessed.gateway.beginPurchase(itemId, {});
       if (offered.step !== "pay") throw new Error(`no price was named: ${offered.step}`);
       const orderId = offered.order.order.id;
-      await harnessed.gateway.payPurchase(orderId, `PAYMENT-${one}`, `PAYMENT-${one}`);
+      await harnessed.gateway.payPurchase(
+        offered.order.priceOffer.stamp,
+        `PAYMENT-${one}`,
+        `PAYMENT-${one}`,
+        undefined,
+        { itemId: offered.order.itemId, params: offered.order.params },
+      );
       await harnessed.gateway.refuseOrder(merchantId, orderId, {
         code: "out_of_stock",
         message: "the supplier has none",
@@ -4513,9 +4478,6 @@ describe("the receipts screen", () => {
     expect(text).not.toContain("the moment a payment goes through");
     expect(text).not.toMatch(/nothing outstanding|refund due|in progress/i);
     expect(text).toMatch(/paid orders still waiting for delivery are on Orders/i);
-    const orders = readable((await browser.get("/orders")).html);
-    expect(orders).toContain("ended before they had a price are under Lapsed, not here");
-    expect(orders).toContain("nothing was charged for them");
     expect(text).toMatch(/only delivered or shipped sales have a receipt/i);
     // The orders screen shows it, where the receipts page says to look.
     expect(readable((await browser.get("/orders?show=open")).html)).toContain("8.00 USD");
@@ -5135,9 +5097,19 @@ describe("what every screen says about the address", () => {
     // what they just did. Every press therefore gives the browser a new value,
     // and the answer it leaves behind no longer matches.
     const { browser, gateway, harnessed } = await started();
-    const itemId = await publish(gateway, roomCard);
+    const itemId = await publish(gateway, esimCard);
     const priced = await harnessed.gateway.beginPurchase(itemId, {});
     if (priced.step !== "pay") throw new Error("the closure order was not priced");
+    await harnessed.gateway.payPurchase(
+      priced.order.priceOffer.stamp,
+      "PAYMENT-CACHE",
+      "PAYMENT-CACHE",
+      undefined,
+      {
+        itemId: priced.order.itemId,
+        params: priced.order.params,
+      },
+    );
     await browser.signIn();
     const kept = await browser.get("/products.data");
     expect(kept.headers.get("vary")).toMatch(/cookie/i);
@@ -7415,7 +7387,13 @@ describe("closing fulfillment from Orders", () => {
     if (priced.step !== "pay") throw new Error("the order was not priced");
     const id = priced.order.order.id;
     running.harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await running.harnessed.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await running.harnessed.gateway.payPurchase(
+      priced.order.priceOffer.stamp,
+      "PAYMENT",
+      "fp-original",
+      undefined,
+      { itemId: priced.order.itemId, params: priced.order.params },
+    );
     await running.browser.signIn();
     await running.browser.post("/orders", { order_id: id, message: "Payment did not arrive." });
     const pending = await running.harnessed.store.orderById(id);
@@ -7640,7 +7618,13 @@ describe("closing fulfillment from Orders", () => {
     if (priced.step !== "pay") throw new Error("the order was not priced");
     const id = priced.order.order.id;
     running.harnessed.facilitator.willSettle({ settled: "unknown", reason: "response lost" });
-    await running.harnessed.gateway.payPurchase(id, "PAYMENT", "fp-original");
+    await running.harnessed.gateway.payPurchase(
+      priced.order.priceOffer.stamp,
+      "PAYMENT",
+      "fp-original",
+      undefined,
+      { itemId: priced.order.itemId, params: priced.order.params },
+    );
     await running.browser.signIn();
     await running.browser.post("/orders", { order_id: id, message: "Payment did not arrive." });
     const pending = await running.harnessed.store.orderById(id);

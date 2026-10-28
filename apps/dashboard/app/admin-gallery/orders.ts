@@ -62,7 +62,6 @@ const busy = aPage({
     delivered_unpaid: 1,
     in_progress: 1,
     ended: 50,
-    lapsed: 6,
   }),
   rows: [
     aRow("ord_6d58e1f0a2b34c5d6e7f8091a2b3a3e7", {
@@ -87,14 +86,6 @@ const busy = aPage({
       status: "payment_unresolved",
       payment: "unresolved",
       segment: "payment_unknown",
-    }),
-    aRow("ord_0aa4b5c6d7e8f9a0b1c2d3e4f5a69c15", {
-      createdAt: minutes(340),
-      pricedAt: null,
-      price: null,
-      status: "rejected",
-      payment: "not_paid",
-      segment: "lapsed",
     }),
     aRow("ord_17ff0c2d3e4f5a6b7c8d9e0f1a2b7de3", {
       createdAt: minutes(1_272),

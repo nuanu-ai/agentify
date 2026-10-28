@@ -43,6 +43,23 @@ for a parcel the shipping rate, and your shop has four seconds to answer. A
 shop slower than that loses that sale before any payment, and only the
 connector's own log, which your dashboard does not show, records why.
 
+Shipping calculations use separate cart pools for unpaid questions and paid
+orders. A slow free question cannot take an already-paid order's carts. If safe
+paid capacity is unavailable, the connector waits before taking another order;
+that wait uses no delivery attempt. The same worker also handles downloads,
+so a wait for safe paid capacity can delay its other work.
+
+The connector reuses up to sixteen guest carts per shop. A cart with an unknown
+mutation outcome is retired permanently, and a replacement is opened at most
+once every ten minutes for that shop, even after reconnect or restart. At
+WooCommerce's standard two-day guest-session lifetime this means the pool plus
+about 288 replacements, or about 304 unexpired sessions. Actual removal of
+expired database rows depends on your shop's cleanup. If your shop changes the
+guest-session lifetime, that storage bound changes with it. A cart can retain
+the last priced city, region and postal code until its session expires; price
+calculations send no buyer name, street address or phone number. Recovery can
+take more than one interval when several replacements are needed.
+
 The buyer gets a download through Agentify: once your shop has created the
 order, the order the buyer reads from us carries your shop's private download
 address for the file, the file's name and the order's number in your shop, and

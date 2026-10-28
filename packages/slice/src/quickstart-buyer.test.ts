@@ -36,7 +36,7 @@ import { ScriptedFacilitator } from "@agentify/gateway";
 import { type AgentifyClient, createClient, type LiveOrder } from "@nuanu-ai/agentify";
 import type { CardInput } from "@nuanu-ai/agentify-contracts";
 import { generatePrivateKey } from "viem/accounts";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Booted, bootGateway } from "./gateway-harness.js";
 
 const PROGRAM = fileURLToPath(new URL("../../../apps/docs/programs/buyer.mts", import.meta.url));
@@ -418,20 +418,20 @@ describe("the quickstart's test buyer", () => {
   it("does not replace an expired saved price with a new purchase", async () => {
     const stopped = await run(AT_ONCE, { stopBeforePayment: true });
     expect(stopped.code, stopped.printed).not.toBe(0);
-    const [order] = await merchant.orders.list();
-    if (!order) throw new Error("the price request must have opened an order");
-    const saved = await booted.gateway.orderById(order.id);
-    if (!saved) throw new Error("the order must still be held");
-    await booted.gateway.runner.apply(order.id, {
-      kind: "deadline_expired",
-      deadline: "quote_expiry",
-      at: (saved.order.timestamps.quotedAt ?? 0) + saved.order.policy.deadlines.quoteTtlMs,
-    });
-    const resumed = await run(AT_ONCE);
-    expect(resumed.code, resumed.printed).not.toBe(0);
-    expect(facilitator.verifies).toHaveLength(0);
-    expect(facilitator.settles).toHaveLength(0);
-    expect(await merchant.orders.list()).toHaveLength(1);
+    expect(await merchant.orders.list()).toHaveLength(0);
+    const saved = readFileSync(join(directory, PURCHASE), "utf8");
+    const later = Date.now() + booted.config.deadlines.quoteTtlMs + 1_000;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      const resumed = await run(AT_ONCE);
+      expect(resumed.code, resumed.printed).not.toBe(0);
+      expect(facilitator.verifies).toHaveLength(0);
+      expect(facilitator.settles).toHaveLength(0);
+      expect(await merchant.orders.list()).toHaveLength(0);
+      expect(readFileSync(join(directory, PURCHASE), "utf8")).toBe(saved);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("makes an existing readable purchase file private before using it", async () => {

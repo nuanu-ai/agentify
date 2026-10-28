@@ -159,6 +159,7 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
     });
     const charge = {
       orderId: "ord_1",
+      requirements: edge.requirementsFor({ amount: "80.00", currency: "USD" }, "ord_1", PAY_TO),
       amount: "80.00",
       currency: "USD",
       payTo: PAY_TO,
@@ -172,13 +173,13 @@ describe("recovering an EIP-3009 payment from chain evidence", () => {
       getSupported: async () => ({ kinds: [], extensions: [], signers: {} }),
     };
     vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    const first = new X402Facilitator(client, edge);
+    const first = new X402Facilitator(client);
     const accepted = await first.verify(charge);
     expect(accepted).toMatchObject({ verified: true, recovery: { notBefore: "970" } });
     expect(await first.settle(charge)).toMatchObject({ settled: "unknown" });
     if (accepted.verified !== true || !accepted.recovery)
       throw new Error("No durable context was returned.");
-    const restored = new X402Facilitator(client, edge, new Eip3009Recovery(() => new Chain()));
+    const restored = new X402Facilitator(client, new Eip3009Recovery(() => new Chain()));
     if (!restored.reconcile) throw new Error("No configured recovery capability.");
     expect(await restored.reconcile({ context: accepted.recovery })).toMatchObject({
       settled: true,

@@ -9,6 +9,7 @@
  */
 
 import type { PaymentVerificationFailure } from "@agentify/core";
+import type { PaymentRequirements } from "@x402/core/types";
 
 /**
  * One charge, as the payment layer needs to see it. The payment is passed on
@@ -21,6 +22,8 @@ export interface Charge {
    * carries nothing that opens the order.
    */
   readonly orderId: string;
+  /** The exact trusted offer saved when this purchase was admitted. */
+  readonly requirements: PaymentRequirements;
   readonly amount: string;
   readonly currency: string;
   readonly payment: string;
@@ -156,10 +159,4 @@ export interface Facilitator {
    * an answer about the payment.
    */
   reconcile?(request: PaymentRecoveryRequest): Promise<PaymentRecoveryOutcome>;
-  /**
-   * Reconstructs recovery from the saved charge, without submitting a payment.
-   * `since` is an instant, in milliseconds, before which the payment cannot
-   * have been checked, such as the order's creation.
-   */
-  recoveryFor?(charge: Charge, since: number): Promise<PaymentRecoveryContext | null>;
 }

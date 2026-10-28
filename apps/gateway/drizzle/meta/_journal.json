@@ -239,6 +239,13 @@
       "when": 1793095533467,
       "tag": "0033_worker_contract_contact",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793095533468,
+      "tag": "0034_priced_payment_admission",
+      "breakpoints": true
     }
   ]
 }

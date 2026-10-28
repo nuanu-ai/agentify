@@ -26,9 +26,9 @@ is recorded as unfulfilled after.
 | The same order arrived twice | answer with the result you gave the first time | as in the synchronous mode | record the same shipment | key your delivery on `order.id` and hand back the first result |
 | The answer to the agent was lost | the agent signs a new payment for the same payment request from the same wallet and receives what you delivered, with no second charge; asking the purchase address again without that request starts a new purchase, which is charged again once paid | the agent signs a new payment for the same payment request from the same wallet and is answered with the order, with no second charge; asking the purchase address again without that request starts a new purchase, which is charged again once paid | as in the asynchronous mode | nothing; a repeat that does reach your handler gets the first result |
 | The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a paid order unfulfilled | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
-| The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out; the risk is one sale's price |
+| The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out. Verification reserves no money: several purchases from one wallet can pass it even when the balance cannot cover all their charges. The buyer receives no unpaid goods, but your cost of making them can multiply across concurrent purchases. If goods cost money to make, publish them with asynchronous fulfillment so payment comes before you make them |
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
-| {{Waiting-for-payment-at-most}} of your purchases already wait for payment | a new purchase is refused with `seller_busy`, HTTP 429 and a `Retry-After`, before its price is asked and before any order exists; your cards stay in the catalogue, nothing is charged, and the agent tries again in a few seconds | as in the synchronous mode | as in the synchronous mode | nothing: a price nobody pays lapses {{quote-ttl}} after it is named and frees its place, and a paid purchase frees its own at once. While somebody keeps {{waiting-for-payment-at-most}} unpaid purchases open, your sales through Agentify wait, though your price handler and your shop are not asked for them |
+| Your price-question gate is full | the sale goes on at the card's price without asking your price handler | the request is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before a price question or order is written | as in the asynchronous mode | keep a synchronous card's price current; an agent refused with 429 waits two seconds and tries again |
 | No process of yours has polled for {{silent-after}} | a new purchase is refused with `seller_not_taking_orders` before its price is asked and before any order exists, and so is a payment for a price named before the silence; your cards leave the catalogue, nothing is charged, and the agent tries again later | as in the synchronous mode | as in the synchronous mode | keep a process running and polling: its first poll brings your cards back and lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected, and [what to check](#your-integration-has-not-connected) |
 | {{Unserved-at-most}} paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the {{unserved-at-most:ordinal}} such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than {{unserved-at-most}} remain, the next purchase goes through with nothing switched back on |
 
@@ -39,13 +39,13 @@ carried and not weighed, so an old one is not a silence. A refusal and its
 message reach the agent word for word, so write the message for a stranger
 ([refusal codes](/cards#refusal-codes)).
 
-Neither the limit of {{waiting-for-payment-at-most}} nor the rule about polling is a pause, and nothing
-has to be switched back on.
-The limit of {{waiting-for-payment-at-most}} bounds how far anybody can load your price handler or your
-shop through Agentify with purchases nobody means to pay, and it is counted for
-you alone, so one seller's {{waiting-for-payment-at-most}} hold up nobody else. Your cards stay in the
-catalogue while it holds, because a place frees within a minute and because
-anybody could fill the {{waiting-for-payment-at-most}} without paying.
+The price-question gate belongs to each merchant separately and applies to
+both SDK and WooCommerce sales. It admits only questions that can still be
+answered within {{quote-response}}. A question whose wait has ended is never
+handed to your handler, and paid orders are drawn before price questions.
+There is no limit of outstanding unpaid prices: they hold no order or place
+in a queue after the question ends. The gate and the polling rule recover
+without a switch in the dashboard.
 
 The rule about polling covers every purchase sold through your own code,
 whatever its mode. Without a process of

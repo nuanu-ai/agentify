@@ -629,7 +629,7 @@ describe("a wallet that moves while a sale is in flight", () => {
     );
   });
 
-  it("checks an old signed challenge against the current payout destination before delivery", async () => {
+  it("refuses an offer whose payout destination changed before verification and offers the current split", async () => {
     const { served, harnessed } = await started();
     await setPayoutWallet(harnessed, harnessed.merchant.id, A_WALLET);
     const itemId = await publish(served, harnessed.merchant.key, cardFor("a-room", "A room"));
@@ -647,10 +647,6 @@ describe("a wallet that moves while a sale is in flight", () => {
       validBefore: harnessed.now() + 60_000,
     });
     await setPayoutWallet(harnessed, harnessed.merchant.id, ANOTHER_WALLET);
-    harnessed.facilitator.willRefuseVerification(
-      "price_stale",
-      "signed for the previous destination",
-    );
 
     const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
@@ -659,13 +655,13 @@ describe("a wallet that moves while a sale is in flight", () => {
 
     expect(refused.status).toBe(409);
     expect(refused.body).toMatchObject({ error: { code: "payment_not_verified" } });
-    expect(harnessed.facilitator.verifies).toHaveLength(1);
-    expect(harnessed.facilitator.verifies[0]).toMatchObject({
-      payment,
-      payTo: await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
-    });
+    expect(harnessed.facilitator.verifies).toStrictEqual([]);
     expect(harnessed.facilitator.settles).toStrictEqual([]);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
     expect((await harnessed.gateway.poll(harnessed.merchant.id, 0)).envelopes).toStrictEqual([]);
+    expect(await payToInTheChallenge(served, itemId)).toBe(
+      await recordedSplit(harnessed, harnessed.merchant.id, ANOTHER_WALLET),
+    );
   });
 });
 

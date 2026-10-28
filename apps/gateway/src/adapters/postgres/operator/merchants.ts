@@ -92,7 +92,7 @@ function judged(scope: OperatorScope, at: number, surface: SurfaceMode, only?: s
           where k.merchant_id = s.id and k.disabled_at is null) as keys_working,
         (select ${ms("mc.polled_at")} from merchant_contact mc where mc.merchant_id = s.id) as last_contact,
         (select count(*)::int from orders o
-          where o.merchant_id = s.id and not o.lapsed
+          where o.merchant_id = s.id
             and o.created_at between ${from} and ${now}) as orders_counted,
         (select max(sa.settled_at) from sales sa where sa.merchant_id = s.id) as last_sale
       from standing s

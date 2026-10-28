@@ -133,14 +133,12 @@ export interface MerchantCounts extends Read {
 export const RECENT_DAYS = 7;
 
 export interface RecentOrders extends Read {
-  /** Orders made in the last `RECENT_DAYS` days, the attempts that lapsed unpaid left out. */
+  /** Orders made in the last `RECENT_DAYS` days. */
   readonly count: number;
   /** Of them, those delivered (a parcel handed to its carrier among them). */
   readonly delivered: number;
   /** Of them, those whose payment outcome is unknown. */
   readonly paymentUnknown: number;
-  /** The attempts that lapsed unpaid in the same days, counted apart. */
-  readonly lapsed: number;
 }
 
 /** The periods Money reads over. */
