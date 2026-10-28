@@ -284,6 +284,21 @@ export const wooShopsContract = (
       });
     });
 
+    it("gives the replacement back when the shop issued no session for it", async () => {
+      await using(async (shops) => {
+        await shops.startCartRuntime(SHOP, "worker");
+        for (const slot of [0, 1])
+          await openedAndRetired(shops, "worker", "paid", slot, `old-${slot}`);
+        expect(await shops.claimCart(SHOP, "worker", "paid", 0, "unanswered", NOW)).toEqual({
+          kind: "new",
+        });
+        await shops.finishCart(SHOP, "worker", "paid", 0, "unanswered", null);
+        expect(await shops.claimCart(SHOP, "worker", "paid", 1, "next", NOW)).toEqual({
+          kind: "new",
+        });
+      });
+    });
+
     it("lets only one simultaneous caller spend a replacement permission and never reuses its retired token", async () => {
       await using(async (shops) => {
         await shops.startCartRuntime(SHOP, "worker");

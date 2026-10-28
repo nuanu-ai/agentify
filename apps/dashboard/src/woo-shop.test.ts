@@ -1087,7 +1087,8 @@ describe("the protected product check", () => {
         ? { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) }
         : {
             status: 200,
-            body: parcelDocument({ description: "<p>A long story.</p>".repeat(16_000) }),
+            // Under 256 Ki characters, over 256 KiB as bytes.
+            body: parcelDocument({ description: "<p>Холст и нить.</p>".repeat(12_000) }),
           },
     );
     const runtime = new WooShopRuntime(connectionTo(stand.url), fetch);
@@ -2312,6 +2313,79 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     await resources.finishCart(shop, "earlier-worker", "paid", 1, "replacement", null);
   };
 
+  it("answers the next paid question after the registry failed to record a finished cart", async () => {
+    const shop = aShopOfSessions();
+    const registry = memoryWooShops();
+    await oneUsablePaidCart(registry, "https://woo.nuanu.ai");
+    let failures = 1;
+    const resources = {
+      ...registry,
+      finishCart: async (...finished: Parameters<typeof registry.finishCart>) => {
+        if (failures-- > 0) throw new Error("Connection terminated unexpectedly");
+        return await registry.finishCart(...finished);
+      },
+    };
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      resources,
+    );
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+    const next = await Promise.race([
+      runtime.paidShippingRates("28", JAKARTA),
+      new Promise((resolve) => setTimeout(() => resolve("still waiting"), 2_000)),
+    ]);
+    expect(next).toMatchObject({ ok: true });
+    expect(shop.sessions()).toBe(1);
+  });
+
+  it("asks a paid question in a cart that answers when another cart's opening was refused", async () => {
+    const resources = memoryWooShops();
+    const shop = aShopOfSessions((path, token) =>
+      path === "/wp-json/wc/store/v1/cart" && token === null
+        ? new Response("<html>Access denied</html>", { status: 403 })
+        : null,
+    );
+    await resources.startCartRuntime("https://woo.nuanu.ai", "earlier-worker");
+    await resources.claimCart(
+      "https://woo.nuanu.ai",
+      "earlier-worker",
+      "paid",
+      1,
+      "c1",
+      new Date(),
+    );
+    await resources.finishCart("https://woo.nuanu.ai", "earlier-worker", "paid", 1, "c1", {
+      token: "session-kept",
+      expiresAt: null,
+    });
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      resources,
+    );
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({ ok: true });
+  });
+
+  it("asks no further cart once the shop's cart did not answer", async () => {
+    let opened = 0;
+    const shop = aShopOfSessions((path, token) => {
+      if (path !== "/wp-json/wc/store/v1/cart" || token !== null) return null;
+      opened += 1;
+      return new Response("<html>Bad Gateway</html>", { status: 502 });
+    });
+    const runtime = new WooShopRuntime(
+      connectionTo("https://woo.nuanu.ai"),
+      shop.request,
+      memoryWooShops(),
+    );
+    expect(await runtime.paidShippingRates("28", JAKARTA)).toMatchObject({
+      ok: false,
+      again: true,
+    });
+    expect(opened).toBe(1);
+  });
+
   it("has a paid question wait for the one usable paid cart rather than say none is free", async () => {
     const shop = aShopOfSessions();
     const resources = memoryWooShops();
@@ -2365,6 +2439,10 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     ],
     ["a proxy's rate limit", () => new Response("<html>Too Many Requests</html>", { status: 429 })],
     ["a firewall's page", () => new Response("<html>Access denied</html>", { status: 403 })],
+    [
+      "a firewall's own document",
+      () => Response.json({ code: "request_blocked", message: "Blocked" }, { status: 403 }),
+    ],
   ])("keeps a cart whose change was turned away before it ran: %s", async (_case, turnedAway) => {
     let turned = false;
     const shop = aShopOfSessions((path) => {
@@ -2384,6 +2462,8 @@ describe("the shop's own shipping rate for a parcel's place", () => {
 
   it("asks a paid question again in another cart when the shop refuses a cart's session", async () => {
     const resources = memoryWooShops();
+    // WooCommerce answers an expired session's change with a new guest's token beside the refusal.
+    let fresh = 0;
     const shop = aShopOfSessions((path, token) =>
       token === "rotated-away" && path !== "/wp-json/wc/store/v1/cart"
         ? Response.json(
@@ -2391,7 +2471,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
               code: "woocommerce_rest_missing_nonce",
               message: "Missing the Nonce header. This endpoint requires a valid nonce.",
             },
-            { status: 401 },
+            { status: 401, headers: { "Cart-Token": `new-guest-${++fresh}` } },
           )
         : null,
     );
@@ -2458,6 +2538,8 @@ describe("the shop's own shipping rate for a parcel's place", () => {
         again: true,
       });
     expect(new Set(changed).size).toBe(changed.length);
+    // A fresh session refused says the shop refuses them all, so each question opens one.
+    expect(shop.sessions()).toBe(2);
   });
 
   it("says a paid question is worth asking again when a cart change met a page that is not the shop's", async () => {
