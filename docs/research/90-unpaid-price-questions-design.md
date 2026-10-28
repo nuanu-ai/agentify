@@ -510,6 +510,16 @@ when a legitimate edit holds it. Two accounts connected to one shop share its
 carts. Several purchases from one wallet can pass verification against one
 balance on a synchronous card.
 
+A stream of payments from freshly made empty wallets, about 25 a second at one
+merchant, fills that merchant's two wallet reads and then its small line, so a
+first-time buyer whose balance cannot be read in time is told the seller is
+busy while the stream lasts; a buyer whose read is kept from the last five
+seconds still passes. Nothing is charged, and other merchants are unaffected.
+Only the sender's address tells such a stream apart, which the gateway does not
+judge. The product owner agreed on 2026-10-28 to release with this exposure and
+to make a limit per sender address at the edge, such as Cloudflare, the next
+step ("согласен").
+
 Both channels read the free public Base endpoints by default
 (`https://mainnet.base.org` on production), which limit requests per address.
 That one endpoint now carries the reads of payers' wallets before their checks,
