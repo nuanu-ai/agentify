@@ -539,6 +539,12 @@ release that tag. Restoring its restore point would lose every order and
 receipt written since, and the command refuses to move production backwards
 from the revision `current` names.
 
+The release whose WooCommerce prices travel with the buyer cannot be rolled
+back past its dashboard migrations `0025_stateless_woo_quotes` and
+`0026_woo_cart_resources`: the first drops the connector's quote ledger, which
+every earlier revision writes at each price question, so an earlier revision
+started on that database fails its first WooCommerce sale.
+
 ## Collecting the commission
 
 Agentify's commission ([Money](https://agentify.ad/docs/money#what-we-take))
