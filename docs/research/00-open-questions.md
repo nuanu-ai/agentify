@@ -60,7 +60,7 @@ owner's to decide, and until then is a limit a parcel sells with.
 | Whether to translate a region's code by the shop's own list, since WooCommerce writes the regions of 37 of its 69 listed countries its own way and an agent naming such a region is told "not available" | product owner | `41-woo-parcel-probe.md` |
 | Whether the guest sessions the connector keeps in a merchant's shop are acceptable, each holding the last destination priced in it for up to 48 hours: usually sixteen or fewer, at most about 300; and whether the connection screen says so | product owner | `41-woo-parcel-probe.md`, `90-unpaid-price-questions-design.md` |
 | ~~What a paid parcel order does when the shop has no usable paid cart free: today it answers nothing and spends one of its hand-overs~~ — paid orders keep being handed over to the merchant for up to three hours (the product owner, 2026-10-28) | product owner | `90-unpaid-price-questions-design.md` |
-| How slow a shop may be: a parcel's price is several requests to the shop within five seconds, 0.9–2.8 seconds each from outside, so a slow shop loses sales to "not available" | product owner | `41-woo-parcel-probe.md` |
+| How slow a shop may be: a parcel's price is several requests to the shop within the nine seconds the connector gives a price question, 0.9–2.8 seconds each from outside, so a slow shop loses sales to "not available" | product owner | `41-woo-parcel-probe.md` |
 | The backups taken before a buyer's address is erased, which keep it with no upper bound: the portal and the contract say so since 2026-10-26, and whether a retention bounds every copy is open | product owner | ADR-0029 |
 
 ## Engineering
@@ -86,4 +86,5 @@ owner's to decide, and until then is a limit a parcel sells with.
 | When to move backups from dumps to WAL archiving: when a dump takes more than about a minute, or the recovery point must be under ten minutes | operator | `44-production-backups.md` |
 | Why images arrive slowly from the GitHub Container Registry on TEST | operator | `52-release-delivery.md` |
 | When the volumes the move to one database left on both hosts, kept as a way back, are archived and removed | operator | — |
+| When production moves from Base's free public endpoint to a keyed RPC endpoint, now that payers' wallet reads, payment recovery, returned purchases and the payout figure all share it | operator | `90-unpaid-price-questions-design.md` |
 | How the ad tracker answers a `reg` posted a second time for the same click; an answer other than 200 refuses that registration report and loses the sign-up's `lead` | the tracker's team, asked | ADR-0039 |
