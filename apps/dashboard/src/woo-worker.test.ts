@@ -4668,3 +4668,53 @@ describe("a shop whose guest carts are short", () => {
     }
   });
 });
+
+describe("a paid order that carries no quoted price", () => {
+  // An order paid before the connector's price travelled with the buyer has no
+  // reference, and none of the shop's answers since can tell what it was.
+  const PARCEL_ADDRESS = {
+    name: "Nuanu Reception",
+    line_one: "Jl. Raya Kediri, Beraban",
+    city: "Tabanan",
+    state: "BA",
+    postal_code: "82121",
+    country: "ID",
+    phone_number: "+62 000 0000 0000",
+  };
+
+  it.each([
+    ["a download", anOrder({ quote_reference: undefined })],
+    [
+      "a parcel",
+      anOrder({
+        merchant_item_id: merchantItemIdFor("https://shop.example.com", "28"),
+        quote_reference: undefined,
+        ship_to: PARCEL_ADDRESS,
+      }),
+    ],
+  ])("is refused as %s in words that say so, before any cart is asked", async (_kind, order) => {
+    const shops = memoryWooShops();
+    const shop = aShopThatAccepts();
+    let cartsAsked = 0;
+    const answer = await fillFromTheShop(
+      order,
+      connection(),
+      MERCHANT_EMAIL,
+      {
+        ...filling(shops, shop.place),
+        shippingRates: async () => {
+          cartsAsked += 1;
+          return { ok: false, why: "not asked", again: true };
+        },
+      },
+      NO_SPLIT,
+    );
+    expect(answer).toMatchObject({ refused: { code: "cannot_fulfill" } });
+    const message = answer !== null && "refused" in answer ? answer.refused.message : "";
+    expect(message).toMatch(/no record of the price/i);
+    expect(message).not.toMatch(/changed/i);
+    expect(cartsAsked).toBe(0);
+    expect(shop.placed).toEqual([]);
+    expect(await shops.knownOrder(order.id)).toMatchObject({ kind: "precreate_refused" });
+  });
+});
