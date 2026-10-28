@@ -20,7 +20,10 @@ On an order paid before its goods (asynchronous, confirmed or a parcel), a
 charge declared silent closes the order without dispatching it, and if the
 charge then lands after all, the order becomes `unfulfilled`: the merchant
 holds money for goods they were never asked to make. These orders
-wait fifteen seconds for the charge (`SETTLE_BEFORE_GOODS_MS`).
+wait thirty-five seconds for the charge (`SETTLE_BEFORE_GOODS_MS`): the thirty
+a charge request may take, and five for the gateway to record the answer, so a
+charge confirmed at the end of its request still finds the order waiting. The
+gateway refuses to start with a shorter wait.
 
 On a synchronous order the merchant has already made the goods when the charge
 is sent. A silent charge there answers the waiting agent with no goods and
@@ -79,22 +82,26 @@ out once the merchant has answered, up to ten seconds after the order is
 marked paid, which is a moment after the check, and then once the answer is
 written. So at the check the gateway asks for the merchant's ten seconds, the
 facilitator's six and two more for its own steps and the difference between
-clocks, eighteen in all, and the challenge asks for the price's life on top
-(thirty seconds, `QUOTE_TTL_MS`) and two more for the check's round trip and
-the client's rounding: fifty seconds, worked out in
+clocks, eighteen in all. Before the check a payment may wait up to fifteen
+seconds: one for a place among its merchant's reads of payers' wallets, two
+for the read of its wallet, two for a place among its merchant's payment
+checks and ten for the check itself. The challenge asks for the price's life
+on top (three minutes, `QUOTE_TTL_MS`) and two more for the check's round trip
+and the client's rounding: 215 seconds, worked out in
 `apps/gateway/src/app/payment-window.ts`. The price's life is there for an
 agent that signs as soon as the price is named and presents the payment as it
-runs out; one that signs and sends at once needs only the eighteen. The two
-allowances are chosen, not measured, and the transfers measured below land in
-under three seconds. The price itself still lapses after thirty seconds, so
-the number is not a time to pay in. An agent that holds a signed authorisation
-past the price's life, whose clock runs slow, or whose check takes longer than
-the allowance can still arrive with less than the charge needs; where the
-goods are still to be made the gateway then refuses the payment at the check,
-as `payment_not_verified`, before anything is made or charged, and the agent
-pays the same order again with a fresh signature while the price holds. A
-repeat purchase that collects goods already made is charged at once and is not
-held to the eighteen seconds. The six-second rule was read in the open-source
+runs out; one that signs and sends at once needs only the waits and the
+eighteen. The two allowances are chosen, not measured, and the transfers
+measured below land in under three seconds. The price itself still lapses
+after three minutes, so the number is not a time to pay in. An agent that
+holds a signed authorisation past the price's life, whose clock runs slow, or
+whose check takes longer than the allowance can still arrive with less than
+the charge needs; where the goods are still to be made the gateway then
+refuses the payment at the check, as `payment_not_verified`, before anything
+is made or charged. Its words ask the agent to sign again and send at once
+while the price holds, or to request a new price once it has lapsed. A repeat
+purchase that collects goods already made is charged at once and is not held
+to the eighteen seconds. The six-second rule was read in the open-source
 facilitator code (`@x402/evm` 2.23.0) in this repository; whether the hosted
 facilitators the channels settle through keep the same margin has not been
 checked, and a check of the payment alone, with authorisations that end five
@@ -129,17 +136,17 @@ in `refund_due` or `delivered_unpaid`, and none whose payment reads
 The samples are small: thirty-one transfers on a test chain and one on
 production. They show where the transfers land on a quiet chain, not how
 often a busy chain or a slow facilitator pushes an answer past ten seconds on a
-synchronous order or past fifteen on one paid before its goods. Neither rate
+synchronous order or past thirty-five on one paid before its goods. Neither rate
 has been measured, and measuring the answer itself needs the gateway to record
 when it arrived.
 
 An agent's own HTTP client may give up before twenty seconds. The ceiling is
 what the gateway promises, and a client with a shorter timeout loses the answer
 while the purchase goes on. The order's status address arrives inside that lost
-answer, so such an agent learns how the purchase ended only by building the
-status route the contract names from the order's identifier, which the payment
-challenge carries. Which timeouts the agents that buy here actually use is not
-known.
+answer, so such an agent learns how the purchase ended only by sending the
+same purchase again with the kept 402's price stamp and a fresh signature from
+the wallet that paid, which returns the order without a second charge
+(ADR-0049). Which timeouts the agents that buy here actually use is not known.
 
 How long the agents that buy here hold a signed authorisation before they
 present it, and how far their clocks run, is not known.
