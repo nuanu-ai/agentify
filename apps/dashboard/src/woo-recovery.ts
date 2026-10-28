@@ -138,10 +138,15 @@ const recover = async (
   if (connection === null || originOf(connection.shopUrl) !== record.facts.shopOrigin) {
     return refused("Reconnect the same WooCommerce shop before recovery.");
   }
-  if (record.phase === "precreate_refused") {
+  if (record.phase === "precreate_refused" || record.phase === "shop_silent") {
     // The grant that refused is the one a create would be sent under, so the
-    // shop is connected again first, with the access to take an order.
-    if (connection.revision === record.facts.connectionRevision) return refused(RECONNECT_FIRST);
+    // shop is connected again first; a shop that was only silent refused
+    // nothing. Either way it needs the access to take an order.
+    if (
+      record.phase === "precreate_refused" &&
+      connection.revision === record.facts.connectionRevision
+    )
+      return refused(RECONNECT_FIRST);
     if (connection.permissions !== "read_write") {
       return refused(
         "Your shop gave Agentify read access only, so it can't take an order. Connect it again with Read/Write access, then create the order here.",
@@ -177,7 +182,7 @@ const recover = async (
     );
   }
 
-  if (record.phase === "precreate_refused") {
+  if (record.phase === "precreate_refused" || record.phase === "shop_silent") {
     // Read before the ledger moves, so a press that cannot say where the
     // payment went can be made again.
     const paid = await gateway.paidInto(request.orderId);

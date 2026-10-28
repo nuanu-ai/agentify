@@ -84,7 +84,7 @@ const modeOf = ({ record, order, reconnected }: Known): WooRecoveryView["mode"] 
   ) {
     return "unavailable";
   }
-  return record.phase === "precreate_refused"
+  return record.phase === "precreate_refused" || record.phase === "shop_silent"
     ? "create"
     : record.phase === "placed"
       ? "retry"

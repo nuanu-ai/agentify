@@ -10,7 +10,7 @@
 import { createHash } from "node:crypto";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "@agentify/gateway/analytics";
 import type { Money } from "@nuanu-ai/agentify-contracts";
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import { decryptSensitiveValue, encryptSensitiveValue } from "../../web/lib/server/crypto.js";
@@ -151,7 +151,7 @@ interface ParcelToFollow {
 interface WooRecoveryOrder {
   readonly orderId: string;
   readonly accountId: string;
-  readonly phase: "precreate_refused" | "create_unknown" | "placed";
+  readonly phase: "precreate_refused" | "shop_silent" | "create_unknown" | "placed";
   readonly facts: WooOrderFacts;
   readonly placed: {
     readonly id: string;
@@ -171,6 +171,8 @@ interface WooRecoveryOrder {
 type OrderClaim =
   | { readonly kind: "ours" }
   | { readonly kind: "precreate_refused" }
+  /** Asked when the shop was silent; nothing was sent to it, so a later hand-over goes on. */
+  | { readonly kind: "shop_silent" }
   | {
       readonly kind: "placed";
       readonly id: string;
@@ -181,9 +183,10 @@ type OrderClaim =
   | { readonly kind: "placed_parcel"; readonly id: string; readonly number: string }
   | { readonly kind: "unknown"; readonly attemptedAt: Date };
 
-// The ledger only moves forward: absent may become precreate_refused or
-// create_unknown; only its merchant's create moves precreate_refused to
-// create_unknown, before the request is sent; only validated binding moves
+// The ledger only moves forward: absent may become shop_silent, precreate_refused
+// or create_unknown; shop_silent may become either of the other two; only its
+// merchant's create moves precreate_refused to create_unknown, before the
+// request is sent; only validated binding moves
 // create_unknown to placed; a placed download never changes, and a placed
 // parcel moves once more, to shipped or closed. The store methods below are
 // the only transitions.
@@ -266,6 +269,16 @@ export interface WooShops extends WooCartResources {
     now: Date,
   ): Promise<void>;
   /**
+   * Keeps a sale whose shop did not answer, so its merchant can still create
+   * the shop's order once the order's hand-overs are over.
+   */
+  recordShopSilence(
+    accountId: string,
+    orderId: string,
+    facts: WooOrderFacts,
+    now: Date,
+  ): Promise<void>;
+  /**
    * A download's permission, or null for a parcel, and what the shop's order
    * totals.
    */
@@ -309,8 +322,10 @@ export interface WooShops extends WooCartResources {
   uncertainOrders(): Promise<number>;
   /**
    * Reopens a definite pre-create refusal as `create_unknown`, and only under a
-   * different grant: a connection revision other than the one that refused.
-   * The compare-and-set is what keeps two presses to one request to the shop.
+   * different grant: a connection revision other than the one that refused. A
+   * sale whose shop was only silent reopens under any grant, since nothing
+   * refused it. The compare-and-set is what keeps two presses to one request
+   * to the shop.
    */
   beginPrecreateRecovery(orderId: string, revision: string, now: Date): Promise<boolean>;
 }
@@ -340,7 +355,7 @@ const heldSaleOf = (
       ? "unrecoverable"
       : phase === "precreate_refused"
         ? "refused"
-        : phase === "create_unknown" || (phase === "placed" && withFile)
+        : phase === "shop_silent" || phase === "create_unknown" || (phase === "placed" && withFile)
           ? "recoverable"
           : "unrecoverable";
 
@@ -383,6 +398,7 @@ const claimOf = (row: {
   readonly attemptedAt: Date;
 }): Exclude<OrderClaim, { kind: "ours" }> => {
   if (row.phase === "precreate_refused") return { kind: "precreate_refused" };
+  if (row.phase === "shop_silent") return { kind: "shop_silent" };
   if (row.wooOrderId !== null && row.wooOrderNumber !== null) {
     if (row.result !== null) {
       return {
@@ -725,7 +741,11 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
       const [claimed] = await db
         .insert(wooOrders)
         .values({ orderId, accountId, facts, attemptedAt: now })
-        .onConflictDoNothing({ target: wooOrders.orderId })
+        .onConflictDoUpdate({
+          target: wooOrders.orderId,
+          set: { phase: "create_unknown", facts, attemptedAt: now },
+          setWhere: eq(wooOrders.phase, "shop_silent"),
+        })
         .returning();
       if (claimed !== undefined) {
         return { kind: "ours" };
@@ -750,6 +770,17 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
       await db
         .insert(wooOrders)
         .values({ orderId, accountId, phase: "precreate_refused", facts, attemptedAt: now })
+        .onConflictDoUpdate({
+          target: wooOrders.orderId,
+          set: { phase: "precreate_refused", facts, attemptedAt: now },
+          setWhere: eq(wooOrders.phase, "shop_silent"),
+        });
+    },
+
+    async recordShopSilence(accountId, orderId, facts, now) {
+      await db
+        .insert(wooOrders)
+        .values({ orderId, accountId, phase: "shop_silent", facts, attemptedAt: now })
         .onConflictDoNothing({ target: wooOrders.orderId });
     },
 
@@ -780,6 +811,7 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
       if (row === undefined || row.facts === null) return null;
       if (
         row.phase !== "precreate_refused" &&
+        row.phase !== "shop_silent" &&
         row.phase !== "create_unknown" &&
         row.phase !== "placed"
       ) {
@@ -908,8 +940,13 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
         .where(
           and(
             eq(wooOrders.orderId, orderId),
-            eq(wooOrders.phase, "precreate_refused"),
-            ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
+            or(
+              eq(wooOrders.phase, "shop_silent"),
+              and(
+                eq(wooOrders.phase, "precreate_refused"),
+                ne(sql`${wooOrders.facts}->>'connectionRevision'`, revision),
+              ),
+            ),
           ),
         )
         .returning({ orderId: wooOrders.orderId });
@@ -949,7 +986,13 @@ export const memoryWooShops = (): WooShops & {
     {
       accountId: string;
       attemptedAt: Date;
-      phase: "precreate_refused" | "create_unknown" | "placed" | "shipped" | "closed";
+      phase:
+        | "precreate_refused"
+        | "shop_silent"
+        | "create_unknown"
+        | "placed"
+        | "shipped"
+        | "closed";
       facts: WooOrderFacts;
       placedAt?: Date;
       /** What the shop's order totals, once placed. */
@@ -1086,7 +1129,7 @@ export const memoryWooShops = (): WooShops & {
 
     async claimOrder(accountId, orderId, facts, now) {
       const found = orders.get(orderId);
-      if (found === undefined) {
+      if (found === undefined || found.phase === "shop_silent") {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
@@ -1106,7 +1149,7 @@ export const memoryWooShops = (): WooShops & {
 
     async recordPrecreateRefusal(accountId, orderId, facts, now) {
       const found = orders.get(orderId);
-      if (found === undefined) {
+      if (found === undefined || found.phase === "shop_silent") {
         orders.set(orderId, {
           accountId,
           attemptedAt: now,
@@ -1115,6 +1158,17 @@ export const memoryWooShops = (): WooShops & {
           placed: null,
         });
       }
+    },
+
+    async recordShopSilence(accountId, orderId, facts, now) {
+      if (orders.has(orderId)) return;
+      orders.set(orderId, {
+        accountId,
+        attemptedAt: now,
+        phase: "shop_silent",
+        facts,
+        placed: null,
+      });
     },
 
     async recordOrder(orderId, placed, now) {
@@ -1196,8 +1250,10 @@ export const memoryWooShops = (): WooShops & {
       const found = orders.get(orderId);
       if (
         found === undefined ||
-        found.phase !== "precreate_refused" ||
-        found.facts.connectionRevision === revision
+        !(
+          found.phase === "shop_silent" ||
+          (found.phase === "precreate_refused" && found.facts.connectionRevision !== revision)
+        )
       ) {
         return false;
       }

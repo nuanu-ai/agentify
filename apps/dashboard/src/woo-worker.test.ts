@@ -468,7 +468,8 @@ describe("one paid order, in the merchant's own shop", () => {
 
       expect(answer).toBeNull();
       expect(shop.placed).toHaveLength(0);
-      expect(await shops.knownOrder("ord_1")).toBeNull();
+      // Only the silence is kept, which no later hand-over reads as a refusal.
+      expect(await shops.knownOrder("ord_1")).toStrictEqual({ kind: "shop_silent" });
     },
   );
 

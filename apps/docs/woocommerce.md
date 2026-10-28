@@ -453,10 +453,12 @@ your shop holds no order for it. This happens, for example, when the product
 had changed since its price was given, or when the shop's answer to the product
 check could not be read. A shop that does not answer at all is asked again each
 time Agentify hands the order over, for up to {{redelivery-window}} after the first hand-over.
-A shop still silent after that leaves the download undelivered until its
-deadline, with no saved sale, so this page is not offered for it. Connect the same shop again on the WooCommerce page, put
-the product back the way it was sold if it changed, and press **Create shop
-order** on the recovery page. Agentify then makes the order in your shop once,
+If it is still silent then, the download stays undelivered until its deadline,
+and from then on this page offers to create its shop order without connecting
+the shop again, since nothing refused it; the create goes through once the shop
+answers. For a refused download, connect the same shop again on the
+WooCommerce page, put the product back the way it was sold if it changed, and
+press **Create shop order** on the recovery page. Agentify then makes the order in your shop once,
 at the price the buyer paid, and delivers the download when the shop places
 it. If the shop refuses before anything is sent, the page says why, and you can
 press again once that is fixed. If the shop's answer to the create does not

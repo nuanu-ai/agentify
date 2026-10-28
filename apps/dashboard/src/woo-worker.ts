@@ -207,6 +207,9 @@ export const fillFromTheShop = async (
   // is handed over again for hours, so it waits for the shop.
   if (!inspected.ok && inspected.again) {
     console.error(`[dashboard] order ${order.id} waits: ${inspected.why}`);
+    // Kept so that a shop silent for longer than the hand-overs last leaves a
+    // sale its merchant can still finish.
+    await parts.shops.recordShopSilence(connection.accountId, order.id, facts, parts.now());
     return null;
   }
   if (eligible === null) {
