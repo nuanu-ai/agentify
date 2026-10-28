@@ -452,6 +452,7 @@ describe("the order a payment names", () => {
     ).toEqual({ ok: true });
     const recovered = await present(served, itemId, await paymentAgainst(challenge, BUYER, "0x02"));
     expect(recovered.status).toBe(409);
+    expect(recovered.headers.get("cache-control")).toBe("no-store");
     expect(recovered.body).toMatchObject({
       order_id: orderId,
       status: "fulfillment_closed",
