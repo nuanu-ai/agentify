@@ -163,7 +163,8 @@ if (databaseUrl === null) {
       const stored = async () =>
         (
           await pool.query(
-            "select owner, next_creation_at, slots from dashboard_woo_cart_resources where shop_origin = $1",
+            // A new row version is what a rewrite costs, whatever it writes.
+            "select xmin::text as version, owner, next_creation_at, slots from dashboard_woo_cart_resources where shop_origin = $1",
             [origin],
           )
         ).rows[0] as { slots: { token: string | null }[] };

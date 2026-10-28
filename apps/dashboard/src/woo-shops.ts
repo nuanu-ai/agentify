@@ -466,29 +466,39 @@ export const postgresWooShops = (pool: Pool, authSecret: string): WooShops => {
         slots: structuredClone(row.slots),
       };
       if (fence !== undefined && !ownsCartResources(state, fence)) return fence.stale;
+      const sealed = row.slots.map((slot) => slot.token);
       for (const slot of state.slots) {
         if (slot.token === null) continue;
         try {
           slot.token = decryptSensitiveValue(slot.token, cartKey);
         } catch {
+          // Sealed under a key since rotated: the session cannot be reached, so
+          // the slot opens a new one as if it had never opened.
           slot.token = null;
-          slot.state = "retired";
+          slot.state = "empty";
           slot.claim = null;
           slot.expiresAt = null;
+          slot.initialized = false;
         }
       }
+      const opened = state.slots.map((slot) => slot.token);
+      const before = JSON.stringify(state);
       const result = change(state);
-      const encrypted = state.slots.map((slot) => ({
+      // Most calls only confirm ownership; rewriting the row for them would
+      // seal every token again under new nonces many times a minute.
+      if (JSON.stringify(state) === before) return result;
+      const slots = state.slots.map((slot, at) => ({
         ...slot,
-        token: slot.token === null ? null : encryptSensitiveValue(slot.token, cartKey),
+        token:
+          slot.token === null
+            ? null
+            : slot.token === opened[at]
+              ? (sealed[at] ?? null)
+              : encryptSensitiveValue(slot.token, cartKey),
       }));
       await tx
         .update(wooCartResourceRows)
-        .set({
-          owner: state.owner,
-          nextCreationAt: new Date(state.nextCreationAt),
-          slots: encrypted,
-        })
+        .set({ owner: state.owner, nextCreationAt: new Date(state.nextCreationAt), slots })
         .where(eq(wooCartResourceRows.shopOrigin, origin));
       return result;
     }),
