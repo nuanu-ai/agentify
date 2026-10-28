@@ -2347,6 +2347,46 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     expect(shop.sessions()).toBe(1);
   });
 
+  it("never prices two paid questions in one cart, even after another cart's opening failed", async () => {
+    const opening = Promise.withResolvers<void>();
+    const adding = Promise.withResolvers<void>();
+    const added = Promise.withResolvers<void>();
+    let openings = 0;
+    let adds = 0;
+    let mostAtOnce = 0;
+    const shop = aShopOfSessions();
+    const request: WooRequest = async (url, init) => {
+      const path = new URL(url).pathname;
+      const token = new Headers(init?.headers).get("cart-token");
+      if (path === "/wp-json/wc/store/v1/cart" && token === null && ++openings === 1) {
+        await opening.promise;
+        return new Response("<html>Access denied</html>", { status: 403 });
+      }
+      if (!path.endsWith("/add-item")) return await shop.request(url, init);
+      adds += 1;
+      mostAtOnce = Math.max(mostAtOnce, adds);
+      adding.resolve();
+      await added.promise;
+      const answered = await shop.request(url, init);
+      adds -= 1;
+      return answered;
+    };
+    const resources = memoryWooShops();
+    await oneUsablePaidCart(resources, "https://woo.nuanu.ai");
+    const runtime = new WooShopRuntime(connectionTo("https://woo.nuanu.ai"), request, resources);
+    const first = runtime.paidShippingRates("28", JAKARTA);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const second = runtime.paidShippingRates("28", JAKARTA);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    opening.resolve();
+    await adding.promise;
+    const third = runtime.paidShippingRates("28", JAKARTA);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    added.resolve();
+    await Promise.all([first, second, third]);
+    expect(mostAtOnce).toBe(1);
+  });
+
   it("asks a paid question in a cart that answers when another cart's opening was refused", async () => {
     const resources = memoryWooShops();
     const shop = aShopOfSessions((path, token) =>
