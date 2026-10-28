@@ -23,7 +23,7 @@ export type RedeliveryQuestion = {
   /** How many deliveries have been made so far. */
   readonly attempts: number;
   readonly now: number;
-  /** When the order first reached its merchant, or null where no hand-over is recorded yet. */
+  /** When the order first reached its merchant, or null where no hand-over is recorded. */
   readonly firstHandedOverAt: number | null;
   /** When the mode's own deadline runs out, or null when none is running. */
   readonly deadlineAt: number | null;
@@ -39,7 +39,9 @@ export function nextRedelivery(question: RedeliveryQuestion): RedeliveryDecision
   if (deadlineAt !== null && now + delayMs >= deadlineAt) {
     return { retry: false, reason: "past_deadline" };
   }
-  if (now + delayMs >= (firstHandedOverAt ?? now) + policy.windowMs) {
+  // With no first hand-over to count from, the window is taken as over:
+  // started now, it would never close.
+  if (firstHandedOverAt === null || now + delayMs >= firstHandedOverAt + policy.windowMs) {
     return { retry: false, reason: "past_window" };
   }
 
