@@ -157,9 +157,10 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   /** An acceptance was given an argument, which it does not carry. The order is taken on. */
   ACCEPTANCE_ARGUMENT_IGNORED: "acceptance_argument_ignored",
   /**
-   * A delivery of an order already delivered carried other goods than the ones
-   * the buyer has. The call succeeded and nothing changed; the goods just sent
-   * reached nobody.
+   * A delivery of an order already delivered carried goods that differ from
+   * the ones the buyer has, which are the first. The call succeeded and
+   * nothing changed; the two differ as documents, so what they share is for
+   * the merchant to check before revoking anything.
    */
   REPEAT_WITH_OTHER_GOODS: "repeat_with_other_goods",
 } as const);
@@ -242,7 +243,7 @@ export const otherGoodsWarning = (orderId: string, result: unknown): WorkerProbl
         kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
         fatal: false,
         subject: orderId,
-        message: `order ${orderId} was already delivered, and this delivery carried other goods than the ones its buyer has: nothing changed, and the goods just sent reached nobody, so whatever they hold is not in use`,
+        message: `order ${orderId} was already delivered, and the goods this delivery carried differ from the goods its buyer has, which are the first ones delivered; nothing changed, and since the two differ as documents, check what they share before revoking anything`,
       }
     : null;
 

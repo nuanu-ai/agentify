@@ -258,7 +258,9 @@ for it to write, and what it carries is not kept: the buyer has the goods the
 first call delivered. Where a repeat carries other goods than those, the word
 is `already_delivered_other_goods`, still with `ok` true, and the SDK reports a
 `repeat_with_other_goods` problem naming the order but not the goods. The
-goods that call sent reached nobody, so a key or a code in them is not in use.
+goods that call sent were not handed to the buyer, but the two are compared as
+documents, so a repeat differing only in, say, when it was issued may name the
+same voucher the buyer holds: check what the two share before revoking anything.
 
 A delivery after the deadline still counts. Past its deadline a paid order
 reads `unfulfilled`, and a late `deliver` makes it `delivered`, or `shipped`
