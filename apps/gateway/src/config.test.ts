@@ -62,7 +62,7 @@ describe("loadConfig", () => {
 
     expect(deadlines).toStrictEqual({
       quoteResponseMs: 5_000,
-      quoteTtlMs: 30_000,
+      quoteTtlMs: 180_000,
       settleResponseMs: 10_000,
       settleBeforeGoodsMs: 15_000,
       syncResponseMs: 10_000,

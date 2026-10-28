@@ -658,7 +658,7 @@ describe("a stamped price and an order born at payment", () => {
   it("refuses an expired unconsumed price without creating an order", async () => {
     await started();
     const offer = await quote();
-    h.advance(31_000);
+    h.advance(h.runtime.config.deadlines.quoteTtlMs + 1_000);
     const refused = await pay(offer, "0x01");
     expect(refused.status).toBe(409);
     expect(refused.body).toMatchObject({ error: { code: "payment_not_taken", retryable: false } });
@@ -673,7 +673,7 @@ describe("a stamped price and an order born at payment", () => {
     const paying = pay(offer, "0x01");
     pending.push(paying);
     await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
-    h.advance(31_000);
+    h.advance(h.runtime.config.deadlines.quoteTtlMs + 1_000);
     const replay = await pay(offer, "0x02");
     expect(replay.status).toBe(409);
     expect(replay.headers.get("retry-after")).toBe("2");
@@ -708,7 +708,7 @@ describe("a stamped price and an order born at payment", () => {
     const offer = await quote();
     const first = await pay(offer, "0x01");
     expect(first.status).toBe(200);
-    h.advance(31_000);
+    h.advance(h.runtime.config.deadlines.quoteTtlMs + 1_000);
     const recovered = await pay(offer, "0x02");
     expect(recovered.status).toBe(200);
     expect(recovered.body).toMatchObject({

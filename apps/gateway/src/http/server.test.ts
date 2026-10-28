@@ -525,9 +525,9 @@ describe("the payment challenge", () => {
     // counts whole seconds, so a window configured to the millisecond is
     // rounded up: a second short would end before the charge.
     const environments: Record<string, string>[] = [
-      { QUOTE_TTL_MS: "30000" },
+      {},
       { QUOTE_TTL_MS: "45000" },
-      { QUOTE_TTL_MS: "30000", SYNC_RESPONSE_MS: "15000", SYNC_BUDGET_MS: "30000" },
+      { SYNC_RESPONSE_MS: "15000", SYNC_BUDGET_MS: "30000" },
       { QUOTE_TTL_MS: "30500" },
     ];
     for (const environment of environments) {

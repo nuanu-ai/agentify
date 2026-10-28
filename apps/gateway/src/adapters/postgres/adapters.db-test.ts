@@ -1508,7 +1508,7 @@ if (databaseUrl === null) {
           ).rows,
         ).toStrictEqual([]);
         expect(await queue.holdsOrder(A, offer.order.id)).toBe(false);
-        now += 31_000;
+        now += ownGateway.runtime.config.deadlines.quoteTtlMs + 1_000;
         // A replacement process has no in-memory knowledge of the first request.
         const restarted = new Gateway({ ...ownGateway.runtime });
         const replay = await signedFor(restarted, offer, buyer, { nonce: "0x02" });

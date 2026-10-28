@@ -15,7 +15,7 @@
 /** How long we wait for the merchant to say what the goods cost. */
 export const QUOTE_RESPONSE_MS = 5_000;
 /** How long a price holds, and with it the unpaid order it was named for. */
-export const QUOTE_TTL_MS = 30_000;
+export const QUOTE_TTL_MS = 3 * 60_000;
 /** How long a handler has to answer one hand-over of an order. */
 export const HANDLER_ANSWER_MS = 3_000;
 /** How long the merchant has to answer a synchronous order with the goods, from the payment check. */

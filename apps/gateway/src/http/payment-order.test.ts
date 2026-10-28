@@ -1405,7 +1405,7 @@ describe("the order named by a payment, where it ended before a payment was take
     const itemId = await publish(harnessed, asyncCard);
     const challenge = await challengeFor(served, itemId);
     const orderId = orderIdIn(challenge);
-    harnessed.advance(60_000);
+    harnessed.advance(harnessed.runtime.config.deadlines.quoteTtlMs);
 
     const answered = await present(served, itemId, onlyTheStamp(challenge));
 

@@ -71,7 +71,7 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   "parcel-purchase": { text: JSON.stringify({ params: {}, ship_to: address }, null, 2) },
   "smallest-price": { text: SMALLEST_PRICE },
   "quote-response": { ms: QUOTE_RESPONSE_MS, unit: "second" },
-  "quote-ttl": { ms: QUOTE_TTL_MS, unit: "second" },
+  "quote-ttl": { ms: QUOTE_TTL_MS, unit: "minute" },
   "handler-answer": { ms: HANDLER_ANSWER_MS, unit: "second" },
   "sync-response": { ms: SYNC_RESPONSE_MS, unit: "second" },
   "sync-budget": { ms: SYNC_BUDGET_MS, unit: "second" },
@@ -91,11 +91,15 @@ const BUILD_VALUES: Readonly<Record<string, BuildValue>> = {
   },
 };
 
+/** A unit as a drawing abbreviates it. */
+const SHORT_UNIT = { second: "s", minute: "min" } as const;
+
 /**
  * A value as its sentence asks for it. With no form, a stretch of time is in
  * words with its unit and a rate is a percentage. A stretch of time also has
  * `number`, the count of its unit in words alone, and one counted in seconds
- * has `short`, digits as a drawing writes them, "30 s"; a count has
+ * or minutes has `short`, digits as a drawing writes them, "30 s" or
+ * "3 min"; a count has
  * `ordinal`, its place in a row, "tenth"; a rate has `words`, as a screen
  * reader reads it.
  */
@@ -103,9 +107,11 @@ function said(value: BuildValue, form: string | undefined): string {
   if ("ms" in value) {
     if (form === undefined) return durationInWords(value.ms, value.unit);
     if (form === "number") return inWords(unitsIn(value.ms, value.unit));
-    if (form === "short" && value.unit === "second") return `${unitsIn(value.ms, "second")} s`;
+    if (form === "short" && value.unit !== "day") {
+      return `${unitsIn(value.ms, value.unit)} ${SHORT_UNIT[value.unit]}`;
+    }
     throw new Error(
-      "a stretch of time is written with no form or as :number, and one in seconds as :short",
+      "a stretch of time is written with no form or as :number, and one in seconds or minutes as :short",
     );
   }
   if ("part" in value) {
