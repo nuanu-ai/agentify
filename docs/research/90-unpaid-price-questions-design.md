@@ -11,7 +11,7 @@ to reverse are in
 [ADR-0043](../decisions/0043-the-purchase-door-refuses-before-any-charge.md),
 [ADR-0049](../decisions/0049-a-price-travels-with-the-buyer.md) and
 [ADR-0023](../decisions/0023-woocommerce-connect.md). The implementation is in
-pull request #___.
+pull request #217.
 
 ## The problem
 
