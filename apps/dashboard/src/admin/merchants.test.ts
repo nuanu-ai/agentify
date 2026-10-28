@@ -9,7 +9,7 @@ import { PAYOUT_SPLIT_NETWORKS, payoutSplitFor, payoutSplitNetworkOf } from "@ag
 import { memoryOperatorReader, type OperatorReader } from "@agentify/gateway/operator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ADMIN_BASE, type AdminServed, adminServed } from "../testing/admin.js";
-import { memoryWooShops } from "../woo-shops.js";
+import { memoryWooShops, type WooShops } from "../woo-shops.js";
 import type { Operator } from "./access.js";
 import { CONFIRM_FIELD, CONFIRMED, REASON_FIELD } from "./fields.js";
 import { merchantsFor } from "./merchants.js";
@@ -428,10 +428,16 @@ describe("a merchant's uncertain shop orders", () => {
   };
 
   /** The page's view of a merchant with one order worth a look, over parts whose accounts or shops fail as the case says. */
-  const viewWith = async (fails: "accounts" | "shop" | "nothing") => {
+  const viewWith = async (
+    fails: "accounts" | "shop" | "nothing",
+    shops: WooShops = memoryWooShops(),
+    ownedBy: (ownerId: string) => Promise<readonly string[]> = async () => ["ord_8c2e5d07a3f141a9"],
+  ) => {
     served = await adminServed();
     const merchant = await served.harnessed.addMerchant("Coffee Roasters");
-    await served.identity.make("owner@coffee.example", merchant.id);
+    const owner = await served.identity.make("owner@coffee.example", merchant.id);
+    if (owner === null) throw new Error("the merchant's owner was not made");
+    const orderIds = await ownedBy(owner.id);
     const real = memoryOperatorReader(served.harnessed.store);
     const reader: OperatorReader = {
       ...real,
@@ -444,17 +450,15 @@ describe("a merchant's uncertain shop orders", () => {
             : {
                 ...record,
                 worthALook: {
-                  rows: [
-                    {
-                      id: "ord_8c2e5d07a3f141a9",
-                      status: "payment_unresolved",
-                      price: { amount: "24.00", currency: "USD" },
-                      createdAt: Date.now() - 60_000,
-                      itemId: "itm_old_town",
-                      title: null,
-                    },
-                  ],
-                  total: 1,
+                  rows: orderIds.map((id) => ({
+                    id,
+                    status: "unfulfilled",
+                    price: { amount: "24.00", currency: "USD" },
+                    createdAt: Date.now() - 60_000,
+                    itemId: "itm_old_town",
+                    title: null,
+                  })),
+                  total: orderIds.length,
                 },
               };
         },
@@ -469,7 +473,7 @@ describe("a merchant's uncertain shop orders", () => {
         fails === "accounts"
           ? ({ ...identity, accountsNamed: failing } as unknown as AdminParts["identity"])
           : identity,
-      shops: { ...memoryWooShops(), ...(fails === "shop" ? { connectionOf: failing } : {}) },
+      shops: { ...shops, ...(fails === "shop" ? { connectionOf: failing } : {}) },
       now: () => new Date(),
     } as unknown as AdminParts);
     const answered = await pages.one(
@@ -489,5 +493,39 @@ describe("a merchant's uncertain shop orders", () => {
 
   it("are not said to be unread where everything was read", async () => {
     expect((await viewWith("nothing"))?.shopOrdersUnread).toBe(false);
+  });
+
+  it("leave out a sale whose shop never answered, since nothing was sent to it", async () => {
+    const shops = memoryWooShops();
+    const facts = {
+      shopOrigin: "https://shop.example.com",
+      connectionRevision: "grant_1",
+      merchantItemId: "woo_merchant_11",
+      priceId: "prc_1",
+      productId: "11",
+      productFingerprint: "accepted-download-fingerprint",
+      amount: "24.00",
+      currency: "USD",
+    };
+    const view = await viewWith("nothing", shops, async (ownerId) => {
+      await shops.connect({
+        accountId: ownerId,
+        shopUrl: "https://shop.example.com",
+        consumerKey: "ck_abc",
+        consumerSecret: "cs_def",
+        permissions: "read_write",
+        revision: "grant_1",
+        connectedAt: new Date(),
+        currency: null,
+      });
+      await shops.claimOrder(ownerId, "ord_create_unknown", facts, new Date());
+      await shops.recordShopSilence(ownerId, "ord_shop_silent", facts, new Date());
+      return ["ord_create_unknown", "ord_shop_silent"];
+    });
+
+    expect(view?.worth.rows.map((row) => [row.id, row.shopUncertain])).toStrictEqual([
+      ["ord_create_unknown", true],
+      ["ord_shop_silent", false],
+    ]);
   });
 });
