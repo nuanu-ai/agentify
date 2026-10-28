@@ -127,11 +127,11 @@ export interface PayerState {
   readonly used: boolean;
 }
 
-/** How long a balance that covers the price stands for its wallet. */
-const BALANCE_KEPT_MS = 5_000;
+/** How long a read that found an authorization unused, with the price covered, stands for it. */
+const READ_KEPT_MS = 5_000;
 
-/** How many wallets' balances are kept at once; the oldest goes first. */
-const BALANCES_KEPT_AT_MOST = 1_024;
+/** How many authorizations' reads are kept at once; the oldest goes first. */
+const READS_KEPT_AT_MOST = 1_024;
 
 /**
  * Reads of one merchant's payers at once, and how many may wait for one.
@@ -143,10 +143,12 @@ const READS_WAITING_AT_MOST = 8;
 
 /**
  * Payers' wallets as read from the chain, one batched request each. Reads
- * asked about the same authorization at once are one read. A balance read
- * stands for a few seconds only for a price it covers, so a buyer's retries
- * ask once, and one below the price asked is read again, so a buyer who tops
- * up can pay at once.
+ * asked about the same authorization at once are one read. A read stands for a
+ * few seconds for the one authorization it was made for, and only for a price
+ * it covers, so a buyer's retries of one payment ask once, and one below the
+ * price asked is read again, so a buyer who tops up can pay at once. Another
+ * authorization of the same wallet is always read, since the token may have
+ * marked it used, and a read that found an authorization used is never kept.
  * A read that failed, could not get a place, or has no chain to ask answers
  * null.
  */
@@ -172,15 +174,14 @@ export class PayerReads {
     nonce: string,
     asked: bigint,
   ): Promise<PayerState | null> {
-    const holder = `${token.toLowerCase()}:${wallet.toLowerCase()}`;
-    const kept = this.#kept.get(holder);
-    if (kept !== undefined && this.#clock() - kept.at < BALANCE_KEPT_MS && kept.held >= asked) {
+    const asking = `${token.toLowerCase()}:${wallet.toLowerCase()}:${nonce.toLowerCase()}`;
+    const kept = this.#kept.get(asking);
+    if (kept !== undefined && this.#clock() - kept.at < READ_KEPT_MS && kept.held >= asked) {
       return { held: kept.held, used: false };
     }
-    const asking = `${holder}:${nonce.toLowerCase()}`;
     const running = this.#inFlight.get(asking);
     if (running !== undefined) return running;
-    const reading = this.#readOnce(merchantId, token, wallet, nonce, holder).finally(() =>
+    const reading = this.#readOnce(merchantId, token, wallet, nonce, asking).finally(() =>
       this.#inFlight.delete(asking),
     );
     this.#inFlight.set(asking, reading);
@@ -192,7 +193,7 @@ export class PayerReads {
     token: string,
     wallet: string,
     nonce: string,
-    holder: string,
+    asking: string,
   ): Promise<PayerState | null> {
     const reader = this.#read();
     if (reader === undefined) return null;
@@ -209,9 +210,10 @@ export class PayerReads {
     } finally {
       place();
     }
-    this.#kept.delete(holder);
-    this.#kept.set(holder, { held: state.held, at: this.#clock() });
-    if (this.#kept.size > BALANCES_KEPT_AT_MOST) {
+    this.#kept.delete(asking);
+    if (state.used) return state;
+    this.#kept.set(asking, { held: state.held, at: this.#clock() });
+    if (this.#kept.size > READS_KEPT_AT_MOST) {
       const oldest = this.#kept.keys().next().value;
       if (oldest !== undefined) this.#kept.delete(oldest);
     }
