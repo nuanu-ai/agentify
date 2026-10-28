@@ -133,7 +133,7 @@ const card: Card = {
  */
 const waitedOut = async (harnessed: Harness, ms: number): Promise<void> => {
   harnessed.advance(ms);
-  await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now());
+  await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now(), "api");
 };
 
 /** The address an agent is told to pay for this merchant's card, right now. */

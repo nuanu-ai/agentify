@@ -188,7 +188,7 @@ export async function harness(
     // As though their process had just polled: a seller whose process never
     // has is refused every purchase and left out of the catalogue, and a test
     // about that moves the clock past the guard.
-    await store.noteContact(made.id, now);
+    await store.noteContact(made.id, now, "api");
     await setServiceName(store, made.id, name, now);
     if (options.sellerSite !== null) {
       await setSellerSite(store, made.id, options.sellerSite ?? "https://shop.example", now);

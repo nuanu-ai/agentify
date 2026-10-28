@@ -377,7 +377,7 @@ export function describeOperatorMerchants(
         await store.addKey({ id: "mk_2", merchantId: "mch_a", label: "two", digest: "d2" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: "mch_b", label: "b", digest: "d3" }, 1_000);
         await store.disableKeyOf("mch_a", "mk_2", 1_500);
-        await store.noteContact("mch_a", AT - 20_000);
+        await store.noteContact("mch_a", AT - 20_000, "api");
         await storeAcceptedOrder(
           store,
           order("ord_in", "mch_a", FROM, "delivered_unpaid", { payment: "settle_failed" }),
@@ -489,7 +489,7 @@ export function describeOperatorMerchants(
         );
         await store.noteKeyUse("mk_new", 3_000, "agentify-sdk/0.9.0");
         await store.disableKeyOf("mch_a", "mk_old", 2_500);
-        await store.noteContact("mch_a", 3_000);
+        await store.noteContact("mch_a", 3_000, "api");
 
         const record = (await merchants.merchant("mch_a", LIVE)) as MerchantRecord;
 

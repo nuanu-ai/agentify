@@ -91,7 +91,7 @@ const aMerchantPaidAt = async (
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
   await database.store.setSellerSite(id, "https://shop.example.com", NOW);
-  await database.store.noteContact(id, NOW);
+  await database.store.noteContact(id, NOW, "api");
   await database.store.setPayoutWallet(
     id,
     { address: null, pending: null },

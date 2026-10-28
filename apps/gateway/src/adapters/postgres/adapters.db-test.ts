@@ -267,7 +267,7 @@ if (databaseUrl === null) {
 
     /** Accepted history comes from the same signed admission and settlement path as a buyer's purchase. */
     const acceptedPurchaseFixture = async (offer: PricedPurchase) => {
-      await store.noteContact(offer.merchantId, now);
+      await store.noteContact(offer.merchantId, now, "api");
       const buyer = aWallet("the PostgreSQL fixture buyer");
       const signed = await signedFor(gateway, offer, buyer, {
         nonce: `0x${randomUUID().replaceAll("-", "")}`,
@@ -347,7 +347,7 @@ if (databaseUrl === null) {
           const funnel = await reader.figures.funnel(asked, { merchantIds: [] });
           expect(funnel.steps.find((step) => step.step === "connected")?.merchants).toBe(1);
         }
-        await store.noteContact(A, now);
+        await store.noteContact(A, now, "api");
         expect(await store.lastContact(A)).toBe(now);
         expect((await gateway.catalog()).items.map((item) => item.id)).toContain(card.id);
       } finally {
@@ -1056,7 +1056,7 @@ if (databaseUrl === null) {
         },
         now,
       );
-      await store.noteContact(A, now);
+      await store.noteContact(A, now, "api");
       const offered = await gateway.beginPurchase(card.id, {});
       if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
       await acceptedPurchaseFixture(offered.order);

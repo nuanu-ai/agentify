@@ -260,13 +260,29 @@ describe("a purchase that charges before its goods", () => {
     expect((refused.body as Refused).error.code).toBe("seller_not_taking_orders");
   });
 
-  it("is taken from a seller selling through their WooCommerce shop however long since anything polled", async () => {
-    // The connector that fills a shop's orders runs inside Agentify, so the
-    // shop is in touch whenever Agentify is.
+  it("is refused at once for a seller on their WooCommerce shop whose connector never polled, though their code polled just before the switch, and priced at the connector's first poll", async () => {
+    // The connector draws a shop's stream only while the shop is connected, so
+    // a merchant left on a shop with none connected has nothing polling for
+    // them.
     const { harnessed, served } = await started();
-    const itemId = await sellingThrough(harnessed, harnessed.merchant.id, "woocommerce");
+    const merchantId = harnessed.merchant.id;
+    await workOnce(harnessed, {}, 0);
+    await harnessed.gateway.sellThrough(merchantId, "woocommerce");
+    const itemId = (
+      await harnessed.store.publishCard(merchantId, pricedCard, harnessed.now(), "woocommerce")
+    ).id;
 
-    harnessed.advance(60 * MINUTE);
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+    expect(refused.status).toBe(409);
+    expect((refused.body as Refused).error.code).toBe("seller_not_taking_orders");
+    expect(await harnessed.store.orders(merchantId)).toStrictEqual([]);
+
+    // Moments after the code's poll, which is not written again so soon; the
+    // connector's first poll is still the shop's first.
+    harnessed.advance(1_000);
+    await workOnce(harnessed, { through: "woocommerce" }, 0);
     const worker = workUntilStopped(harnessed, { onQuote: () => priced, through: "woocommerce" });
     const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
       body: { params: {} },
@@ -417,6 +433,19 @@ describe("a seller's standing", () => {
     expect((await harnessed.gateway.standingOf(harnessed.merchant.id)).outOfTouch).toStrictEqual({
       since: seeded,
     });
+  });
+
+  it("says to a seller on their WooCommerce shop that nothing has polled for them, until the connector does", async () => {
+    const { harnessed } = await started();
+    const merchantId = harnessed.merchant.id;
+    await sellingThrough(harnessed, merchantId, "woocommerce");
+
+    const unpolled = await harnessed.gateway.standingOf(merchantId);
+    await workOnce(harnessed, { through: "woocommerce" }, 0);
+    const polled = await harnessed.gateway.standingOf(merchantId);
+
+    expect(unpolled.outOfTouch).toStrictEqual({ since: null });
+    expect(polled.outOfTouch).toBeNull();
   });
 
   it("says nothing of silence to a seller whose every card is paused", async () => {
@@ -1005,11 +1034,19 @@ const STANDINGS: Readonly<Record<string, Standing>> = {
     refused: "seller_not_taking_orders",
     transient: true,
   },
-  "a shop's card, nothing having polled for an hour": {
+  "a shop's card, the connector in touch for it": {
     card: prepaidCard,
     through: "woocommerce",
-    after: async (harnessed) => harnessed.advance(60 * MINUTE),
+    after: async (harnessed) => {
+      await workOnce(harnessed, { through: "woocommerce" }, 0);
+    },
     refused: null,
+  },
+  "a shop's card that no connector has polled for, as when the shop is no longer connected": {
+    card: prepaidCard,
+    through: "woocommerce",
+    refused: "seller_not_taking_orders",
+    transient: true,
   },
   "a card of a seller who paused all selling": {
     card: prepaidCard,

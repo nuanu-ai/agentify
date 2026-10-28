@@ -43,7 +43,7 @@ describe("the figures' pages", () => {
     const operator = await served.signedIn(OPERATOR, { operator: true });
     const { harnessed } = served;
     harnessed.advance(Date.now() - harnessed.now());
-    await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now());
+    await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now(), "api");
     const published = await harnessed.gateway.publishCard(harnessed.merchant.id, {
       merchant_item_id: "room-101",
       title: "A room for the night",

@@ -2132,7 +2132,7 @@ describe("the price question", () => {
     const publishedAt = asTimestamp(harnessed.now());
 
     harnessed.advance(90 * 60_000);
-    await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now());
+    await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now(), "api");
     const purchasedAt = asTimestamp(harnessed.now());
     expect(purchasedAt).not.toBe(publishedAt);
 

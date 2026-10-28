@@ -361,7 +361,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.setPayoutWallet(A, NO_WALLET, paid, 30_000);
         await store.setServiceName(A, "A's own shop", 30_000);
         await store.setSellerSite(A, "https://a.example", 30_000);
-        await store.noteContact(A, 30_000);
+        await store.noteContact(A, 30_000, "api");
 
         const entries = await store.catalogEntries();
 
@@ -579,13 +579,31 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
 
         expect(await store.lastContact(A)).toBeNull();
-        await store.noteContact(A, 5_000);
-        await store.noteContact(A, 3_000);
+        await store.noteContact(A, 5_000, "api");
+        await store.noteContact(A, 3_000, "api");
 
         expect(await store.lastContact(A)).toBe(5_000);
         expect(await store.lastContact(B)).toBeNull();
-        await store.noteContact(A, 8_000);
+        await store.noteContact(A, 8_000, "api");
         expect(await store.lastContact(A)).toBe(8_000);
+      });
+
+      it("is the poll of the integration the merchant sells through, forgotten when they switch", async () => {
+        // The connector polls a shop's stream after its merchant has moved back
+        // to their code, and the code may never have polled.
+        const store = await twoMerchants();
+        await store.publishCard(A, card("woo-1", "A mug"), 1_000, "woocommerce");
+        await store.noteContact(A, 5_000, "woocommerce");
+
+        expect(await store.lastContact(A)).toBeNull();
+        await store.noteContact(A, 6_000, "api");
+        await store.switchIntegration(A, "woocommerce");
+        expect(await store.lastContact(A)).toBeNull();
+        expect((await store.catalogEntries())[0]?.lastContact).toBeNull();
+        await store.noteContact(A, 7_000, "woocommerce");
+        // Asking for the integration already in use is no switch.
+        await store.switchIntegration(A, "woocommerce");
+        expect(await store.lastContact(A)).toBe(7_000);
       });
     });
 

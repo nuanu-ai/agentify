@@ -601,7 +601,7 @@ export function describeOperatorFigures(
           NOW - 5 * DAY,
         );
         await store.publishCard(A, aCard("sku-1"), NOW - 4 * DAY);
-        await store.noteContact(A, NOW - 3 * 60_000);
+        await store.noteContact(A, NOW - 3 * 60_000, "api");
         await store.addMerchant({ id: B, name: "Only named" }, NOW - 9 * DAY);
         await store.setServiceName(B, "Only named", NOW - 9 * DAY);
         await ready(store, C);
@@ -696,24 +696,30 @@ export function describeOperatorFigures(
         const { store, reader } = await open();
         await ready(store, A);
         await store.publishCard(A, aCard("sku-1", "async"), NOW - DAY);
-        await store.noteContact(A, NOW - 11 * 60_000);
+        await store.noteContact(A, NOW - 11 * 60_000, "api");
         // Silent too, with only a card paid after its goods, which the
         // catalogue leaves out all the same.
         await ready(store, B);
         await store.publishCard(B, aCard("sku-1", "sync"), NOW - DAY);
-        await store.noteContact(B, NOW - HOUR);
+        await store.noteContact(B, NOW - HOUR, "api");
         await ready(store, C);
         await store.publishCard(C, aCard("sku-1", "async"), NOW - DAY);
-        await store.noteContact(C, NOW - 60_000);
+        await store.noteContact(C, NOW - 60_000, "api");
+        // On their WooCommerce shop with nothing polling for them, as when the
+        // shop is no longer connected.
+        await ready(store, "mch_d");
+        await store.switchIntegration("mch_d", "woocommerce");
+        await store.publishCard("mch_d", aCard("woo-1", "async"), NOW - DAY, "woocommerce");
 
         expect(without(await reader.figures.workers(LIVE))).toStrictEqual({
           connectedWithin: 1,
           everConnected: 3,
           silent: [
+            { merchantId: "mch_d", name: "Merchant mch_d", since: null },
             { merchantId: B, name: "Merchant mch_b", since: NOW - HOUR },
             { merchantId: A, name: "Merchant mch_a", since: NOW - 11 * 60_000 },
           ],
-          silentOf: 2,
+          silentOf: 3,
         });
       });
     });
@@ -756,7 +762,7 @@ export function describeOperatorFigures(
         // Took every step, and sold.
         await ready(store, A);
         await store.addKey({ id: "key_a", merchantId: A, label: "k", digest: "d".repeat(64) }, NOW);
-        await store.noteContact(A, NOW - 60_000);
+        await store.noteContact(A, NOW - 60_000, "api");
         await store.publishCard(A, aCard("sku-1"), NOW - DAY);
         await storeAcceptedOrder(store, aSale("ord_a"));
         // Connected a shop, which only the dashboard knows, and was admitted.
