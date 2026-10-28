@@ -236,8 +236,9 @@ sudo "$(ls -dt /var/lib/agentify/production/checkouts/*/ | head -n 1)deploy/stac
 ```
 
 On TEST the path and the channel are `test`. No row means no order in the
-database has that identifier now: an attempt that lapsed unpaid is deleted
-thirty days after it ended. The query selects no record column, because the
+database has that identifier: an order is written only once a verified payment
+arrives, so a purchase nobody paid for has none. The query selects no record
+column, because the
 record holds the buyer's key, and the key stays out of anything shared, this
 log stack included.
 
