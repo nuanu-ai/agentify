@@ -79,20 +79,21 @@ import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
 import type { NoVerdict, VerifyOutcome } from "../ports/facilitator.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
-import type {
-  AdmissionStanding,
-  AnalyticsOf,
-  Integration,
-  IntegrationSwitch,
-  PayoutWalletRead,
-  PayoutWalletWrite,
-  RecordedPayoutSplit,
-  StoredCard,
-  StoredKey,
-  StoredMerchant,
-  StoredOrder,
-  StoredPayoutWallet,
-  WalletWritten,
+import {
+  type AdmissionStanding,
+  type AnalyticsOf,
+  type Integration,
+  type IntegrationSwitch,
+  type PayoutWalletRead,
+  type PayoutWalletWrite,
+  type RecordedPayoutSplit,
+  type StoredCard,
+  type StoredKey,
+  type StoredMerchant,
+  type StoredOrder,
+  type StoredPayoutWallet,
+  storeFailureFactsOf,
+  type WalletWritten,
 } from "../ports/store.js";
 import { isSameAddress } from "../split/address.js";
 import { type PayoutSplit, payoutSplitFor } from "../split/parameters.js";
@@ -337,6 +338,11 @@ export type PurchaseAttempt =
    * failed before anything was written; it was not used.
    */
   | { readonly step: "not_checked_now" }
+  /**
+   * Something on Agentify's side failed before anything was written, for a
+   * reason that will not pass by itself; the payment was not used.
+   */
+  | { readonly step: "failed_before_charge" }
   /**
    * The seller's own process has not polled for longer than
    * `SILENT_AFTER_MS`; nothing was charged.
@@ -2037,11 +2043,15 @@ export class Gateway {
         leave: () => leave(),
       });
     } catch (thrown) {
-      if (progress.wrote) throw thrown;
+      // Before the first write, and where that write never began, nothing was
+      // written and nothing charged. Only a failure that can pass by itself is
+      // worth the same request again; a defect would answer the same forever.
+      const facts = storeFailureFactsOf(thrown);
+      if (progress.wrote && !facts.nothingWritten) throw thrown;
       console.error(
         `[gateway] a payment could not be checked, and nothing was written for it: ${failureNamed(thrown)}`,
       );
-      return { step: "not_checked_now" };
+      return facts.passing ? { step: "not_checked_now" } : { step: "failed_before_charge" };
     } finally {
       leave();
     }

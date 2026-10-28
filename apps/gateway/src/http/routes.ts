@@ -25,6 +25,7 @@ import {
   BAD_REQUEST,
   bodyRefused,
   CONFLICT,
+  FAILED,
   merchantOrderAnswer,
   merchantOrderList,
   NO_SUCH_ITEM,
@@ -679,6 +680,17 @@ async function answerPurchase(
           "payment_not_taken",
           "another request for this price is being checked right now, so this one was not taken; send the same request again in a few seconds to learn how the purchase stands, without starting a new purchase",
           { retryable: true },
+        ),
+      );
+
+    case "failed_before_charge":
+      return written(
+        response,
+        FAILED,
+        refusal(
+          "gateway_failed",
+          "Agentify failed before it could check this payment, so it was not used and nothing was charged; this is a fault on Agentify's side, and sending the same request again is not expected to help until it is fixed",
+          { retryable: false },
         ),
       );
 

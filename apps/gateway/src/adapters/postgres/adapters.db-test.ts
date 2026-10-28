@@ -27,7 +27,7 @@ import { transition } from "@agentify/core";
 import type { Card, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { PgBoss } from "pg-boss";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Gateway, type PricedPurchase } from "../../app/gateway.js";
@@ -1555,7 +1555,7 @@ if (databaseUrl === null) {
         ids: (kind) => `${kind}_${randomUUID()}`,
       });
       let release: (() => void) | undefined;
-      let hog: Awaited<ReturnType<typeof owner.pool.connect>> | undefined;
+      let hog: PoolClient | undefined;
       try {
         await gateway.poll(A, 0);
         const card = await store.publishCard(

@@ -45,10 +45,46 @@ function isServerRefusal(thrown: unknown): thrown is Named {
   );
 }
 
+/**
+ * Server codes for a failure that can pass by itself: the connection
+ * (class 08), resources such as too many connections (53), the server
+ * shutting down or starting (57P), a lock not granted in time (55P03), and a
+ * transaction undone for another's sake (40001, 40P01).
+ */
+const PASSING_CODE = /^(?:08|53|57P|55P03$|40001$|40P01$)/;
+
+/**
+ * What the driver or the pool says when the connection, not the statement,
+ * failed: none could be had in time, it was dropped, or it was closed.
+ */
+const CONNECTION_FAILED =
+  /trying to connect|connection terminated|not queryable|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN/i;
+
+/** Whether a failure beneath a statement can pass by itself (`StoreFailureFacts`). */
+function passingCause(cause: unknown): boolean {
+  if (typeof cause !== "object" || cause === null) return false;
+  const { code, message, severity } = cause as {
+    code?: unknown;
+    message?: unknown;
+    severity?: unknown;
+  };
+  if (typeof severity === "string" && typeof code === "string") return PASSING_CODE.test(code);
+  return CONNECTION_FAILED.test(
+    `${typeof code === "string" ? code : ""} ${typeof message === "string" ? message : ""}`,
+  );
+}
+
 export class DatabaseFailure extends Error {
   readonly code: string | undefined;
+  /** See `StoreFailureFacts` in `ports/store.ts`. */
+  readonly passing: boolean;
+  readonly nothingWritten: boolean;
 
-  constructor(doing: string, named: Named) {
+  constructor(
+    doing: string,
+    named: Named,
+    facts: { readonly passing: boolean; readonly nothingWritten?: boolean } = { passing: false },
+  ) {
     const code = typeof named.code === "string" ? named.code : undefined;
     const said = [
       code === undefined ? null : `code ${code}`,
@@ -61,6 +97,8 @@ export class DatabaseFailure extends Error {
     );
     this.name = "DatabaseFailure";
     this.code = code;
+    this.passing = facts.passing;
+    this.nothingWritten = facts.nothingWritten ?? false;
   }
 }
 
@@ -75,10 +113,11 @@ export function withoutValues(thrown: unknown, doing: string): unknown {
     return new DatabaseFailure(
       doing,
       typeof cause === "object" && cause !== null ? (cause as Named) : {},
+      { passing: passingCause(cause) },
     );
   }
   if (isServerRefusal(thrown)) {
-    return new DatabaseFailure(doing, thrown);
+    return new DatabaseFailure(doing, thrown, { passing: passingCause(thrown) });
   }
   return thrown;
 }

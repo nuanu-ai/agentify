@@ -75,7 +75,7 @@ import {
   type WithTheOrder,
 } from "../../ports/store.js";
 import type { PayoutSplit } from "../../split/parameters.js";
-import { failingWithoutValues } from "../database-failure.js";
+import { DatabaseFailure, failingWithoutValues } from "../database-failure.js";
 import { recordedOtherwise, splitsOfTheWrite } from "../registry.js";
 import { journalAlong, readJournal, readStandingWithdrawal } from "./journal.js";
 import {
@@ -954,8 +954,13 @@ export class PostgresStore implements Store {
       throw new Error("admission must create one verified owned order");
     const streams: string[] = [];
     let result: AdmissionResult;
+    let begun = false;
     try {
       result = await this.#db.transaction(async (tx): Promise<AdmissionResult> => {
+        begun = true;
+        // A merchant or card row held elsewhere answers busy rather than
+        // keeping the buyer, and this transaction's connection, waiting.
+        await tx.execute(sql`set local lock_timeout = '2s'`);
         const held = await tx.execute<{ got: boolean }>(sql`
         select pg_try_advisory_xact_lock(hashtext(${`agentify.payment-admission:${id}`})) as got`);
         if (held.rows[0]?.got !== true) return { kind: "busy" };
@@ -1026,6 +1031,8 @@ export class PostgresStore implements Store {
         return { kind: "admitted" };
       });
     } catch (thrown) {
+      if (!begun) throw notBegun(`admitting the order ${id}`, thrown);
+      if (serverCodeOf(thrown) === LOCK_NOT_GRANTED) return { kind: "busy" };
       const refused = uniquenessRefused(thrown);
       if (refused === null) throw thrown;
       if (refused.constraint === BUYER_KEY_TAKEN)
@@ -1149,9 +1156,9 @@ export class PostgresStore implements Store {
     // A session advisory lock on one connection held for the whole run: the
     // unlock must go out on the session that took the lock, and a transaction
     // lock would keep a transaction idle for the length of the work. The
-    // connection comes from the same pool the work queries through, with no
-    // timeout on waiting for it, so a deployment that shrinks the pool must
-    // count it in.
+    // connection comes from the same pool the work queries through, so it
+    // counts against the pool's size and waits for one no longer than the
+    // pool's connection wait.
     //
     // pg-boss takes advisory locks in the same key space. If it ever reached a
     // key we hold, its operation would wait for our run and then fail on its
@@ -1365,15 +1372,27 @@ export class PostgresStore implements Store {
   async claimPayment(fingerprint: string, orderId: string): Promise<PaymentClaim> {
     // One statement; the primary key decides between two requests presenting
     // the same payment at once. The conflict clause rewrites the holder's own
-    // identifier, so the row that stands always comes back.
-    const [row] = await this.#db
-      .insert(paymentClaims)
-      .values({ fingerprint, orderId, claimedAt: new Date() })
-      .onConflictDoUpdate({
-        target: paymentClaims.fingerprint,
-        set: { orderId: sql`${paymentClaims.orderId}` },
-      })
-      .returning();
+    // identifier, so the row that stands always comes back. It runs in a
+    // transaction of its own so that a claim that never got a connection can
+    // say it wrote nothing.
+    let begun = false;
+    let row: typeof paymentClaims.$inferSelect | undefined;
+    try {
+      [row] = await this.#db.transaction(async (tx) => {
+        begun = true;
+        return await tx
+          .insert(paymentClaims)
+          .values({ fingerprint, orderId, claimedAt: new Date() })
+          .onConflictDoUpdate({
+            target: paymentClaims.fingerprint,
+            set: { orderId: sql`${paymentClaims.orderId}` },
+          })
+          .returning();
+      });
+    } catch (thrown) {
+      if (!begun) throw notBegun(`claiming a payment for ${orderId}`, thrown);
+      throw thrown;
+    }
 
     if (row === undefined) {
       throw new Error(`claiming a payment for ${orderId} wrote and read no row`);
@@ -1451,6 +1470,25 @@ export class PostgresStore implements Store {
 const BUYER_KEY_TAKEN = "orders_buyer_key_unique";
 const KEY_IDENTIFIER_TAKEN = "merchant_keys_pkey";
 const KEY_DIGEST_TAKEN = "merchant_keys_digest_unique";
+
+/** Postgres's code for a lock not granted within `lock_timeout`. */
+const LOCK_NOT_GRANTED = "55P03";
+
+/** The server's code for a failure, read through drizzle's wrapper where there is one. */
+function serverCodeOf(thrown: unknown): string | undefined {
+  const raised = (thrown as { cause?: unknown } | null)?.cause ?? thrown;
+  const code = (raised as { code?: unknown } | null)?.code;
+  return typeof code === "string" ? code : undefined;
+}
+
+/**
+ * A write that failed before its transaction began, for want of a
+ * connection: it wrote nothing, and the same write may go through in a moment.
+ */
+function notBegun(doing: string, thrown: unknown): DatabaseFailure {
+  const named = typeof thrown === "object" && thrown !== null ? (thrown as { code?: unknown }) : {};
+  return new DatabaseFailure(doing, named, { passing: true, nothingWritten: true });
+}
 
 /**
  * The uniqueness rule (SQLSTATE 23505) that turned a write away, found down

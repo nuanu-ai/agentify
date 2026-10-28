@@ -110,6 +110,25 @@ export interface ClockAtBirth {
 }
 
 /**
+ * What a store failure says of itself, for a caller that must answer honestly
+ * about money. `passing`: the database could not be reached, dropped the
+ * connection or did not grant a lock in time, which can pass by itself.
+ * `nothingWritten`: the call that failed wrote nothing, which a write can say
+ * only where it never began. A failure saying neither is read as saying no.
+ */
+export interface StoreFailureFacts {
+  readonly passing: boolean;
+  readonly nothingWritten: boolean;
+}
+
+/** What `thrown` says of itself under {@link StoreFailureFacts}. */
+export function storeFailureFactsOf(thrown: unknown): StoreFailureFacts {
+  const said =
+    typeof thrown === "object" && thrown !== null ? (thrown as Partial<StoreFailureFacts>) : {};
+  return { passing: said.passing === true, nothingWritten: said.nothingWritten === true };
+}
+
+/**
  * Whether a verified purchase may still be accepted, judged on the merchant
  * and card as they stand at its admission: `off_sale` where the card or its
  * seller no longer sells, `changed` where the terms the price was named on
@@ -999,6 +1018,9 @@ export interface Store {
    * jobs and analytics. Either all of it commits or nothing does, and a lost
    * connection commits nothing. Nothing slow happens inside it, and nothing
    * outside the database: the caller verifies before and charges after.
+   * Where it never began, for want of a connection, it throws a failure
+   * saying nothing was written ({@link StoreFailureFacts}); where a lock it
+   * waits for is not granted in time, it answers busy.
    */
   admitOrder(accepted: AdmittedOrder): Promise<AdmissionResult>;
 
