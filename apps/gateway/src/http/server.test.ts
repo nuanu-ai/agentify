@@ -27,6 +27,7 @@ import {
 import { aWallet, signedPayment } from "../testing/signed-payment.js";
 import { refusal } from "./server.js";
 import {
+  CHALLENGE_REASONS,
   PAYMENT_REQUIRED_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   PaymentEdge,
@@ -789,6 +790,129 @@ describe("the payment challenge", () => {
     expect(harnessed.facilitator.verifies).toHaveLength(0);
     expect(harnessed.facilitator.settles).toHaveLength(0);
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+  });
+
+  describe("a discovery catalog replaying a card's own example", () => {
+    // Coinbase's catalog replays a listing's example purchase as an unpaid
+    // POST after a payment settles. Where the example holds stand-in values,
+    // the merchant must not be asked a price for it.
+    const withParams: Card = {
+      ...syncCard,
+      merchant_item_id: "room-with-guest",
+      price_check: "handler",
+      params: { email: { type: "string" } },
+    };
+    const parcel: Card = {
+      merchant_item_id: "beans-1kg",
+      title: "Coffee beans, one kilogram",
+      description: "Roasted in Bali this week and sent by courier.",
+      price: { amount: "18.00", currency: "USD" },
+      fulfillment: "ship",
+      price_check: "handler",
+      ship_within_seconds: 172800,
+    };
+
+    /** The card's listing challenge, and the example purchase body it declares. */
+    const listing = async (served: Served, itemId: string) => {
+      const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+      const challenge = decodePaymentRequiredHeader(
+        probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+      );
+      const bazaar = challenge.extensions?.bazaar as
+        | { info: { input: { body: Record<string, unknown> } } }
+        | undefined;
+      if (bazaar === undefined) throw new Error("the listing declares no example purchase");
+      return { challenge, example: bazaar.info.input.body };
+    };
+
+    it.each([
+      ["parameters", withParams],
+      ["an address", parcel],
+    ] as const)(
+      "answers the replayed example of a card with %s as its listing, asking the merchant nothing",
+      async (_declares, card) => {
+        const { served, harnessed } = await started();
+        const itemId = await publish(served, card);
+        const { challenge: listed, example } = await listing(served, itemId);
+        let asked = 0;
+        const worker = workUntilStopped(harnessed, {
+          onQuote: () => {
+            asked += 1;
+            return {
+              available: true,
+              price: { amount: "80.00", currency: "USD" },
+              as_of: new Date(harnessed.now()).toISOString(),
+            };
+          },
+        });
+        try {
+          const replayed = await served.call("POST", `/x402/${itemId}/purchase`, {
+            body: example,
+          });
+
+          expect(replayed.status).toBe(402);
+          const challenge = decodePaymentRequiredHeader(
+            replayed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+          );
+          expect(challenge).toStrictEqual(listed);
+          expect(asked).toBe(0);
+          expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+        } finally {
+          await worker.stop();
+        }
+      },
+    );
+
+    it("prices the example of a card with neither, which is a real purchase", async () => {
+      const { served } = await started();
+      const itemId = await publish(served, syncCard);
+      const { example } = await listing(served, itemId);
+      expect(example).toStrictEqual({ params: {} });
+
+      const priced = await served.call("POST", `/x402/${itemId}/purchase`, { body: example });
+
+      expect(priced.status).toBe(402);
+      const challenge = decodePaymentRequiredHeader(
+        priced.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+      );
+      expect(challenge.accepts[0]?.extra).toMatchObject({ price_stamp: expect.any(String) });
+    });
+
+    it("answers a payment signed for the listing with the example as any listing-signed payment", async () => {
+      const { served, harnessed } = await started();
+      const itemId = await publish(served, withParams);
+      const { challenge: listed, example } = await listing(served, itemId);
+      let asked = 0;
+      const worker = workUntilStopped(harnessed, {
+        onQuote: () => {
+          asked += 1;
+          return { available: false, as_of: new Date(harnessed.now()).toISOString() };
+        },
+      });
+      try {
+        const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+          body: example,
+          headers: {
+            [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+              x402Version: 2,
+              accepted: listed.accepts[0] ?? {},
+              payload: { signature: "0xsigned" },
+            } as never),
+          },
+        });
+
+        expect(answered.status).toBe(402);
+        const challenge = decodePaymentRequiredHeader(
+          answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+        );
+        expect(challenge.error).toBe(CHALLENGE_REASONS.signedForTheListing);
+        expect(challenge.accepts).toStrictEqual(listed.accepts);
+        expect(asked).toBe(0);
+        expect(harnessed.facilitator.verifies).toHaveLength(0);
+      } finally {
+        await worker.stop();
+      }
+    });
   });
 
   it("says nothing about a payment when none was presented", async () => {
