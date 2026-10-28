@@ -19,7 +19,7 @@ is recorded as unfulfilled after.
 
 | Situation | Synchronous | Asynchronous | A parcel | What you do |
 | --- | --- | --- | --- | --- |
-| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment with `seller_busy`, HTTP 429 and `Retry-After: 2`, and no order reaches you; the agent may ask again | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
+| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment with `seller_busy`, HTTP 429 and `Retry-After: 10`, and no order reaches you; the agent may ask again, and is told that a silence that repeats means your price check is not answering | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
 | You refused | the purchase did not happen and nothing was charged | the paid order is unfulfilled (`unfulfilled`) | as in the asynchronous mode | refuse before the money where you can, in the answer to the price question; after it, refuse at once rather than wait out your deadline |
 | Your handler threw, or your process fell over | the order comes again after a pause that grows with each attempt, up to {{redelivery-max-attempts}} deliveries in all, while its deadline lasts | as in the synchronous mode | as in the synchronous mode | throw for a failure that may pass, and keep refusals for "this cannot be delivered" |
 | No answer by the deadline | nothing was charged (`expired`) | the paid order is unfulfilled (`unfulfilled`) | the paid order is unfulfilled (`unfulfilled`) | name a deadline you can keep; a late delivery still counts until you close fulfillment |

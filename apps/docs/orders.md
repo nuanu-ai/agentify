@@ -651,8 +651,8 @@ any order exists. A payment that fails its check reaches no merchant handler;
 a price requested without payment creates no order. A price question that
 finds the gate full waits briefly for a place; if none comes, a synchronous
 card sells at its card price, and an asynchronous card or parcel is refused
-with `seller_busy`, HTTP 429 and `Retry-After: 2`, as it is when your price
-check names no price in time. A paid request that finds your payment checks
+with `seller_busy`, HTTP 429 and `Retry-After: 2`. When your price check names
+no price in time it is refused the same way with `Retry-After: 10`. A paid request that finds your payment checks
 full within a short wait is refused with `seller_busy` too, before anything is
 charged. A merchant whose process has stopped polling is refused with
 `seller_not_taking_orders`.

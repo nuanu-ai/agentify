@@ -443,8 +443,10 @@ A question that finds your gate full waits briefly for a place, inside that
 same window. If none comes, a synchronous sale goes at the card price, and its
 handler can still refuse before a charge. An asynchronous purchase or parcel
 is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before asking
-your price, and so is one whose price your handler did not name in time. The
-agent waits two seconds and asks again. An answer that the product is
+your price, and the agent waits two seconds and asks again. One whose price
+your handler did not name in time is refused the same way with `Retry-After:
+10`, and the agent is told that if this repeats, your price check is not
+answering. An answer that the product is
 unavailable is refused for good, with nothing charged. Another merchant's
 questions never take your places. These rules apply to the SDK and WooCommerce
 alike; they are described on [What can go wrong](/failures).

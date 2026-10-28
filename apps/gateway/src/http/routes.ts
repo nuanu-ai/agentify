@@ -666,7 +666,10 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
-      response.setHeader("retry-after", String(BUSY_RETRY_AFTER_SECONDS));
+      response.setHeader(
+        "retry-after",
+        String(attempt.retryAfterSeconds ?? BUSY_RETRY_AFTER_SECONDS),
+      );
       return written(response, TOO_MANY_REQUESTS, refusal("seller_busy", attempt.why));
 
     case "payment_being_checked":

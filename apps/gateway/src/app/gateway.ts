@@ -327,7 +327,12 @@ export type PurchaseAttempt =
    * payments being checked as it may; nothing was charged, and the same call
    * may go through in a moment. `why` says which, in the agent's words.
    */
-  | { readonly step: "seller_busy"; readonly why: string }
+  | {
+      readonly step: "seller_busy";
+      readonly why: string;
+      /** How long the agent is asked to wait, where it is not the usual two seconds. */
+      readonly retryAfterSeconds?: number;
+    }
   /**
    * Another request for this price is being checked right now; this one was
    * not taken, and the same request answers once that check is over.
@@ -1891,7 +1896,11 @@ export class Gateway {
     if (order.price === null || order.timestamps.quotedAt === null || order.quoteSource === null) {
       return unavailable
         ? { step: "not_selling", message: MERCHANT_SAID_UNAVAILABLE }
-        : { step: "seller_busy", why: NO_PRICE_IN_TIME };
+        : {
+            step: "seller_busy",
+            why: NO_PRICE_IN_TIME,
+            retryAfterSeconds: SILENT_PRICE_RETRY_AFTER_SECONDS,
+          };
     }
     const merchant = await this.runtime.store.merchantById(stored.merchantId);
     const payTo =
@@ -3589,7 +3598,14 @@ const QUESTIONS_FULL =
   "this seller is answering as many price questions as it can right now, so this purchase was not started and nothing was charged; ask again in a few seconds";
 
 const NO_PRICE_IN_TIME =
-  "the seller did not name a price in time, so this purchase was not started and nothing was charged; ask again in a few seconds";
+  "the seller's price check did not name a price in time, so this purchase was not started and nothing was charged; it may go through if asked again, and if this repeats, the seller's price check is not answering";
+
+/**
+ * How long an agent is asked to wait after the seller's price check was asked
+ * and named no price. Unlike a full gate it may be down for good: a handler
+ * that always times out, or a shop whose keys are gone.
+ */
+const SILENT_PRICE_RETRY_AFTER_SECONDS = 10;
 
 const MERCHANT_SAID_UNAVAILABLE =
   "the merchant answered that this product is unavailable; nothing was charged";
