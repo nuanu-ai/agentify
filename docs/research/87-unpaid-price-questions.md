@@ -2,7 +2,10 @@
 
 Desk research of 2026-10-26. It informs a later decision on the unpaid side of
 a purchase and decides nothing itself. Every market fact carries its source;
-what is my own reading or arithmetic is marked as such.
+what is my own reading or arithmetic is marked as such. On 2026-10-28 a price
+came to hold for three minutes and a merchant to have ten seconds for a price
+answer; the thirty and five seconds below are those of the day of this
+research.
 
 ## The question
 

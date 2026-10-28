@@ -3,7 +3,8 @@
 Date: 2026-10-21. A design proposal. It decides nothing by itself: what the
 product owner has already said is marked as his word, and every other point is
 a proposal that waits for his word or for the decision record drafted at the
-end.
+end. On 2026-10-28 a price came to hold for three minutes; the 30 seconds below
+were its life when this note was written.
 
 ## Why this note
 

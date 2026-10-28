@@ -2,6 +2,9 @@
 
 Date: 2026-10-09. Predictions and the decision rule were fixed in this note and
 committed before the probe ran; the results follow in a section of their own.
+On 2026-10-28 the gateway's wait for a price answer became ten seconds, of
+which the connector gives itself nine; the five seconds below were the wait on
+the day of the probe.
 
 ## Why this probe
 
