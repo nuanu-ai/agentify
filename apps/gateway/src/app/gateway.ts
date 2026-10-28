@@ -489,6 +489,10 @@ const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
 /** What an agent is told of a product that went off sale as its order was made. */
 const NOT_ON_SALE = "this product is not on sale at the moment, so no new order is taken";
 
+/** The same, told to an agent that has signed a payment for it. */
+const NOT_ON_SALE_PAID =
+  "this product is not on sale at the moment, so this payment was not taken and nothing was charged";
+
 /** A buyer pays before receiving goods, so needs somewhere to read the merchant's terms. */
 const siteRequiredFor = (fulfillment: unknown): boolean =>
   fulfillment === "async" || fulfillment === "ship";
@@ -2161,16 +2165,17 @@ export class Gateway {
     }
     const stored = await this.runtime.store.cardById(offer.itemId);
     const merchant = await this.runtime.store.merchantById(offer.merchantId);
-    const standing = this.#standingOf(offer, key, merchant, stored, arrivedAt);
-    if (stored === null || merchant === null || standing === "off_sale")
-      return { step: "not_selling", message: NOT_ON_SALE };
+    if (stored === null || merchant === null)
+      return { step: "not_selling", message: NOT_ON_SALE_PAID };
+    // Asked before the standing, so a reason it names, such as a missing
+    // seller site, reaches the buyer in its own words.
     const off = offSaleNow(
       saleFactsOf(stored, await this.#theirsOf(merchant, arrivedAt)),
       arrivedAt,
     );
     switch (off?.code) {
       case "not_selling":
-        return { step: "not_selling", message: off.message ?? NOT_ON_SALE };
+        return { step: "not_selling", message: off.message ?? NOT_ON_SALE_PAID };
       case "seller_not_fulfilling":
         this.#sayUnserved(merchant.id, arrivedAt);
         return { step: "seller_not_fulfilling" };
@@ -2179,6 +2184,8 @@ export class Gateway {
       case undefined:
         break;
     }
+    const standing = this.#standingOf(offer, key, merchant, stored, arrivedAt);
+    if (standing === "off_sale") return { step: "not_selling", message: NOT_ON_SALE_PAID };
     if (standing === "changed") return offerChanged();
 
     const fit = purchaseCheckFor(stored.card).safeParse(asked?.params ?? {});
@@ -2331,7 +2338,7 @@ export class Gateway {
       case "payment_already_spent":
         return { step: "payment_already_spent" };
       case "off_sale":
-        return { step: "not_selling", message: NOT_ON_SALE };
+        return { step: "not_selling", message: NOT_ON_SALE_PAID };
       case "offer_changed":
         return offerChanged();
       case "admitted":
@@ -2591,7 +2598,7 @@ export class Gateway {
       this.runner.purchases.giveUp(key);
       await this.runtime.store.releaseClaim(fingerprint, orderId);
       return taken.kind === "switched_away"
-        ? { step: "not_selling", message: NOT_ON_SALE }
+        ? { step: "not_selling", message: NOT_ON_SALE_PAID }
         : {
             step: "ship_to_rejected",
             message: "this parcel needs the complete ship_to address with payment",
@@ -3555,7 +3562,7 @@ function briefly(said: string): string {
 /** What a buyer is told for a payment that got no verdict, by why. */
 const NO_VERDICT_WORDS: Readonly<Record<NoVerdict, string>> = {
   no_answer:
-    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again while its price holds",
+    "this payment charged nothing: the payment check gave no verdict on it, because it could not be reached, did not answer or failed on its own side, so the payment was neither accepted nor refused; present the same payment again, which for a new purchase has to arrive while its price holds",
   refused_agentify:
     "this payment charged nothing and was not checked: the payment check turned away Agentify itself or the terms Agentify asked it to check, so Agentify cannot check payments right now and no payment can be taken until it can",
   seller_cannot_be_paid:
@@ -3583,7 +3590,7 @@ const NEXT_STEP_AFTER: Readonly<Record<PaymentVerificationFailure, string>> = {
 /** A stamp Agentify did not sign, or one changed since, that is no saved price either. */
 const unknownPrice = (): PurchaseAttempt => ({
   step: "payment_not_verified",
-  why: "nothing was charged: this payment was signed for a price Agentify did not issue, or one changed after it was issued; request a new price and sign that",
+  why: "nothing was charged: the price this payment was signed for is not one Agentify recognises now, because it was changed or was issued under a key Agentify no longer holds; request a new price and sign that",
   retryable: false,
 });
 
