@@ -54,13 +54,17 @@ let releaseVerification: (() => void) | undefined;
 const pending: Promise<unknown>[] = [];
 
 afterEach(async () => {
+  vi.useRealTimers();
+  await stopped();
+});
+async function stopped() {
   releaseVerification?.();
   releaseVerification = undefined;
   await Promise.allSettled(pending.splice(0));
   await worker.stop();
   await served.close();
   await h.stop();
-});
+}
 async function started(card: Card = CARD) {
   h = await harness();
   served = await serve(h);
@@ -189,13 +193,39 @@ describe("a stamped price and an order born at payment", () => {
     },
   );
 
+  it("lets an honest payment through after forged stamps naming its merchant", async () => {
+    await started({ ...CARD, price_check: undefined });
+    const offer = await quote();
+    const [, payload] = String(offer.extra?.price_stamp).split(".");
+    // Any price of this merchant's, under a signature Agentify never made.
+    for (let one = 0; one < 32; one += 1) {
+      const facts = JSON.parse(Buffer.from(payload ?? "", "base64url").toString()) as unknown[];
+      facts[1] = `prc_forged_${one}`;
+      const forged = `v1.${Buffer.from(JSON.stringify(facts)).toString("base64url")}.${"A".repeat(43)}`;
+      const refused = await pay(
+        { ...offer, extra: { ...offer.extra, price_stamp: forged } },
+        `0x${(one + 100).toString(16)}`,
+      );
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: "payment_not_verified", retryable: false },
+      });
+    }
+
+    const paid = await pay(offer, "0x01");
+
+    expect(paid.status).toBe(200);
+    expect(paid.body).toMatchObject({ status: "delivered", payment_status: "paid" });
+    expect(h.facilitator.verifies).toHaveLength(1);
+  });
+
   it.each([
     { price_check: undefined, mismatched: false },
     { price_check: "handler", mismatched: false },
     { price_check: undefined, mismatched: true },
     { price_check: "handler", mismatched: true },
   ] as const)(
-    "bounds concurrent verification for price_check=$price_check and mismatched=$mismatched",
+    "lets four payments at one merchant be checked at once and makes a fifth wait, for price_check=$price_check and mismatched=$mismatched",
     async ({ price_check, mismatched }) => {
       await started({
         ...CARD,
@@ -203,45 +233,60 @@ describe("a stamped price and an order born at payment", () => {
         params: { email: { type: "string", required: false } },
       });
       const offers: PaymentRequirements[] = [];
-      for (let one = 0; one < 2; one += 1) offers.push(await quote());
+      for (let one = 0; one < 5; one += 1) offers.push(await quote());
+      const presented = await Promise.all(
+        offers.map((offer, index) =>
+          signedPayment(BUYER, offer, {
+            nonce: `0x${index + 1}`,
+            validBefore: h.now() + offer.maxTimeoutSeconds * 1000,
+          }),
+        ),
+      );
+      const stampOf = (offer: PaymentRequirements | undefined) => String(offer?.extra?.price_stamp);
+      const present = (index: number) => {
+        const payment = presented[index] ?? "";
+        return h.gateway.payPurchase(
+          stampOf(offers[index]),
+          payment,
+          paymentFingerprint(
+            decodePaymentSignatureHeader(payment),
+            new PaymentEdge(h.runtime.config).token(),
+          ),
+          undefined,
+          { itemId, params: mismatched && index === 4 ? { email: "buyer@example.com" } : {} },
+        );
+      };
       releaseVerification = h.facilitator.holdVerification();
-      for (const [index, offer] of offers.slice(0, 1).entries()) {
-        pending.push(pay(offer, `0x${index + 1}`));
-      }
-      await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
-      const overflowOffer = offers[1];
-      if (overflowOffer === undefined) throw new Error("no second price was issued");
-      const payment = await signedPayment(BUYER, overflowOffer, {
-        nonce: "0x05",
-        validBefore: h.now() + overflowOffer.maxTimeoutSeconds * 1000,
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const paying = [0, 1, 2, 3].map(present);
+      pending.push(...paying);
+      await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(4));
+      let fifthLanded = false;
+      const fifth = present(4).finally(() => {
+        fifthLanded = true;
       });
-      let answered: Awaited<ReturnType<Served["call"]>> | undefined;
-      const overflow = served
-        .call("POST", `/x402/${itemId}/purchase`, {
-          body: { params: mismatched ? { email: "buyer@example.com" } : {} },
-          headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
-        })
-        .then((answer) => {
-          answered = answer;
-        });
-      pending.push(overflow);
-      // An overload refusal arrives while the upstream call remain held.
-      await vi.waitFor(() => expect(answered).toBeDefined(), { timeout: 500 });
-      expect(answered?.status).toBe(409);
-      expect(answered?.body).toMatchObject({
-        error: { code: "payment_not_taken", retryable: true },
-      });
-      expect(answered?.body).not.toHaveProperty("order_id");
-      expect(answered?.body).not.toHaveProperty("status_url");
-      expect(h.facilitator.verifies).toHaveLength(1);
+      pending.push(fifth);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fifthLanded).toBe(false);
+      expect(h.facilitator.verifies).toHaveLength(4);
+
+      await vi.advanceTimersByTimeAsync(h.runtime.config.deadlines.quoteResponseMs);
+
+      expect(await fifth).toMatchObject({ step: "seller_busy" });
+      expect(h.facilitator.verifies).toHaveLength(4);
       expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
-      expect(h.facilitator.settles).toHaveLength(0);
+      vi.useRealTimers();
+      releaseVerification();
+      for (const answer of await Promise.all(paying)) expect(answer.step).toBe("settled");
+      expect(h.facilitator.settles).toHaveLength(4);
     },
   );
 
-  it("lets another merchant complete a purchase while one merchant's verification is held", async () => {
+  it("lets another merchant complete a purchase while four of one merchant's payments are being checked", async () => {
     await started({ ...CARD, price_check: undefined });
-    const offer = await quote();
+    const offers: PaymentRequirements[] = [];
+    for (let one = 0; one < 4; one += 1) offers.push(await quote());
+    const payTo = offers[0]?.payTo;
     let release!: () => void;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -251,15 +296,15 @@ describe("a stamped price and an order born at payment", () => {
       facilitator: {
         verify: async (charge: Parameters<typeof h.facilitator.verify>[0]) => {
           const verified = await h.facilitator.verify(charge);
-          if (charge.payTo === offer.payTo) await held;
+          if (charge.payTo === payTo) await held;
           return verified;
         },
         settle: h.facilitator.settle.bind(h.facilitator),
       },
     });
-    const paying = pay(offer, "0x01");
-    pending.push(paying);
-    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+    const paying = offers.map((offer, index) => pay(offer, `0x${index + 1}`));
+    pending.push(...paying);
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(4));
     const other = await h.addMerchant("Another merchant");
     const card = await h.store.publishCard(other.id, { ...CARD, price_check: undefined }, h.now());
     const bought = await buyOverHttp(h, served, card.id, {
@@ -271,7 +316,24 @@ describe("a stamped price and an order born at payment", () => {
     expect(h.facilitator.settles).toHaveLength(1);
     expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
     releaseVerification();
-    expect((await paying).status).toBe(200);
+    for (const answer of await Promise.all(paying)) expect(answer.status).toBe(200);
+    expect(h.facilitator.settles).toHaveLength(5);
+  });
+
+  it("charges two buyers of one merchant whose payments are checked at the same time", async () => {
+    await started({ ...CARD, price_check: undefined });
+    const first = await quote();
+    const second = await quote();
+    releaseVerification = h.facilitator.holdVerification();
+    const paying = [pay(first, "0x01"), pay(second, "0x02")];
+    pending.push(...paying);
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(2));
+    releaseVerification();
+    for (const answer of await Promise.all(paying)) {
+      expect(answer.status).toBe(200);
+      expect(answer.body).toMatchObject({ status: "delivered", payment_status: "paid" });
+    }
+    expect(await h.store.orders(h.merchant.id)).toHaveLength(2);
     expect(h.facilitator.settles).toHaveLength(2);
   });
 
@@ -338,6 +400,7 @@ describe("a stamped price and an order born at payment", () => {
     h.advance(31_000);
     const replay = await pay(offer, "0x02");
     expect(replay.status).toBe(409);
+    expect(replay.headers.get("retry-after")).toBe("2");
     expect(replay.body).toMatchObject({
       error: { code: "payment_not_taken", retryable: true },
     });
@@ -478,32 +541,31 @@ describe("a stamped price and an order born at payment", () => {
     expect(h.facilitator.settles).toHaveLength(1);
   });
 
-  it.each(["card", "site", "selling", "payee"] as const)(
-    "refuses changed %s terms committed while the original payment is verifying",
-    async (changed) => {
-      await started({ ...CARD, fulfillment: "async", price_check: undefined });
-      if (changed === "payee") {
-        const next = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
-        await h.store.setPayoutWallet(
-          h.merchant.id,
-          { address: h.merchant.wallet, pending: null },
-          {
-            address: h.merchant.wallet,
-            split: payoutSplitFor(h.runtime.config.payoutSplit, h.merchant.id, h.merchant.wallet),
-            pending: {
-              address: next,
-              takesEffectAt: h.now() + 1_000,
-              split: payoutSplitFor(h.runtime.config.payoutSplit, h.merchant.id, next),
-            },
+  /** One purchase whose terms change before its payment arrives or while it is being checked. */
+  async function changedWhilePaying(
+    changed: "card" | "payee" | "selling" | "integration" | "site",
+    when: "before arrival" | "during verification",
+  ) {
+    await started({ ...CARD, fulfillment: "async", price_check: undefined });
+    if (changed === "payee") {
+      const next = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+      await h.store.setPayoutWallet(
+        h.merchant.id,
+        { address: h.merchant.wallet, pending: null },
+        {
+          address: h.merchant.wallet,
+          split: payoutSplitFor(h.runtime.config.payoutSplit, h.merchant.id, h.merchant.wallet),
+          pending: {
+            address: next,
+            takesEffectAt: h.now() + 1_000,
+            split: payoutSplitFor(h.runtime.config.payoutSplit, h.merchant.id, next),
           },
-          h.now(),
-        );
-      }
-      const offer = await quote();
-      releaseVerification = h.facilitator.holdVerification();
-      const paying = pay(offer, "0x01");
-      pending.push(paying);
-      await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+        },
+        h.now(),
+      );
+    }
+    const offer = await quote();
+    const change = async () => {
       if (changed === "card") {
         h.advance(1);
         await h.store.publishCard(
@@ -515,20 +577,92 @@ describe("a stamped price and an order born at payment", () => {
         await h.store.setSellerSite(h.merchant.id, "https://another-shop.example", h.now());
       } else if (changed === "selling") {
         await h.store.setSelling(h.merchant.id, "paused");
+      } else if (changed === "integration") {
+        expect(await h.store.switchIntegration(h.merchant.id, "woocommerce")).toMatchObject({
+          switched: true,
+        });
       } else h.advance(1_001);
+    };
+    let answer: Awaited<ReturnType<typeof pay>>;
+    if (when === "before arrival") {
+      await change();
+      answer = await pay(offer, "0x01");
+    } else {
+      releaseVerification = h.facilitator.holdVerification();
+      const paying = pay(offer, "0x01");
+      pending.push(paying);
+      await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+      await change();
       releaseVerification();
-      const refused = await paying;
-      expect(refused.status).toBe(409);
-      expect(refused.body).toMatchObject({
+      answer = await paying;
+    }
+    const outcome = {
+      status: answer.status,
+      error: (answer.body as { error?: unknown }).error,
+      orders: (await h.store.orders(h.merchant.id)).length,
+      settles: h.facilitator.settles.length,
+      created: h.store.recordedAnalytics.filter(({ event }) => event.name === "agc_order_created")
+        .length,
+    };
+    await stopped();
+    return outcome;
+  }
+
+  it.each(["card", "payee"] as const)(
+    "refuses a price whose %s terms changed, in the same words before arrival and during verification",
+    async (changed) => {
+      const before = await changedWhilePaying(changed, "before arrival");
+      const during = await changedWhilePaying(changed, "during verification");
+      await started();
+
+      expect(before).toMatchObject({
+        status: 409,
         error: { code: "payment_not_taken", retryable: false },
+        orders: 0,
+        settles: 0,
+        created: 0,
       });
-      expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
-      expect(h.facilitator.settles).toHaveLength(0);
-      expect(
-        h.store.recordedAnalytics.filter(({ event }) => event.name === "agc_order_created"),
-      ).toStrictEqual([]);
+      expect(during).toStrictEqual(before);
     },
   );
+
+  it.each(["selling", "integration"] as const)(
+    "refuses a price whose seller stopped selling through %s as not on sale, before arrival and during verification",
+    async (changed) => {
+      const before = await changedWhilePaying(changed, "before arrival");
+      const during = await changedWhilePaying(changed, "during verification");
+      await started();
+
+      expect(before).toMatchObject({
+        status: 409,
+        error: { code: "not_selling", retryable: false },
+        orders: 0,
+        settles: 0,
+        created: 0,
+      });
+      expect(during).toStrictEqual(before);
+    },
+  );
+
+  it("keeps a price whose seller only moved their site, before arrival and during verification", async () => {
+    const before = await changedWhilePaying("site", "before arrival");
+    const during = await changedWhilePaying("site", "during verification");
+    await started();
+
+    expect(before).toMatchObject({ status: 200, orders: 1, settles: 1, created: 1 });
+    expect(during).toStrictEqual(before);
+  });
+
+  it("keeps a price valid when its card is published again unchanged", async () => {
+    await started();
+    const offer = await quote();
+    h.advance(1);
+    await h.store.publishCard(h.merchant.id, CARD, h.now());
+    const paid = await pay(offer, "0x01");
+    expect(paid.status).toBe(200);
+    expect(paid.body).toMatchObject({ status: "delivered", payment_status: "paid" });
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
 
   it("refuses a new payment after the priced card is republished", async () => {
     await started();

@@ -759,6 +759,38 @@ describe("the payment challenge", () => {
     expect(challenge.error).toMatch(/could not be read/);
   });
 
+  it("tells a payment signed for the listing that nothing was charged, with the price to sign", async () => {
+    // A listing's challenge carries no stamped price. Without a word on the
+    // fresh challenge the agent cannot tell "sign this price" from a payment
+    // that failed, and an x402 client does not sign a second challenge itself.
+    const { served, harnessed } = await started();
+    const itemId = await publish(served, syncCard);
+    const probed = await served.call("GET", `/x402/${itemId}/purchase`);
+    const listed = decodePaymentRequiredHeader(probed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "");
+
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+      headers: {
+        [PAYMENT_SIGNATURE_HEADER]: encodePaymentSignatureHeader({
+          x402Version: 2,
+          accepted: listed.accepts[0] ?? {},
+          payload: { signature: "0xsigned" },
+        } as never),
+      },
+    });
+
+    expect(answered.status).toBe(402);
+    const challenge = decodePaymentRequiredHeader(
+      answered.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
+    );
+    expect(challenge.error).toBeDefined();
+    expect(challenge.error).not.toBe(listed.error);
+    expect(challenge.accepts[0]?.extra).toMatchObject({ price_stamp: expect.any(String) });
+    expect(harnessed.facilitator.verifies).toHaveLength(0);
+    expect(harnessed.facilitator.settles).toHaveLength(0);
+    expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
+  });
+
   it("says nothing about a payment when none was presented", async () => {
     // The negative control: a first call presents no payment, so a word about
     // one would be a claim about a payment that never existed.
@@ -1005,10 +1037,21 @@ describe("a card whose payment challenge would be too large to read", () => {
     });
     try {
       const priced = await served.call("POST", purchase, { body });
+      const listed = await served.call("GET", purchase);
+      const signedForTheListing = encodePaymentSignatureHeader({
+        x402Version: 2,
+        accepted: decodePaymentRequiredHeader(listed.headers.get(PAYMENT_REQUIRED_HEADER) ?? "")
+          .accepts[0] as never,
+        payload: { signature: "0xsigned" },
+      });
       for (const answered of [
-        await served.call("GET", purchase),
+        listed,
         await served.call("GET", purchase, {
           headers: { [PAYMENT_SIGNATURE_HEADER]: namingNoHeldOrder },
+        }),
+        await served.call("POST", purchase, {
+          body,
+          headers: { [PAYMENT_SIGNATURE_HEADER]: signedForTheListing },
         }),
         priced,
       ]) {

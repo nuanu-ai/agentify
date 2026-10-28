@@ -1968,16 +1968,17 @@ describe("the price question", () => {
     expect(offered.order.order.quoteSource).toBe("card_snapshot");
   });
 
-  it("will not start an asynchronous purchase the merchant went silent on", async () => {
+  it("will not start an asynchronous purchase the merchant went silent on, and says to ask again", async () => {
     // On an asynchronous card the money moves at the purchase, so selling at an
     // unknown stock level manufactures debts to buyers, and a lost sale is
-    // cheaper than a debt.
+    // cheaper than a debt. A silence is not the merchant's "there is none", so
+    // the agent is told the seller is busy rather than that it is off sale.
     const harnessed = await started({ QUOTE_RESPONSE_MS: "1" });
     const itemId = await published(harnessed, livePriced(asyncCard));
 
     const offered = await harnessed.gateway.beginPurchase(itemId, {});
 
-    expect(offered.step).toBe("not_selling");
+    expect(offered.step).toBe("seller_busy");
     expect(await harnessed.store.orders(harnessed.merchant.id)).toStrictEqual([]);
   });
 
