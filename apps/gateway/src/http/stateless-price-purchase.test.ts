@@ -532,14 +532,34 @@ describe("a stamped price and an order born at payment", () => {
         settle: h.facilitator.settle.bind(h.facilitator),
       },
     });
-    const sending = replays.map((payment) =>
-      served.call("POST", `/x402/${itemId}/purchase`, {
-        body: body(),
-        headers: { [PAYMENT_SIGNATURE_HEADER]: payment },
-      }),
+    const token = new PaymentEdge(h.runtime.config).token();
+    // The wait for a place is a timer that does not run here, so every copy
+    // meets the rule and none of them meets the clock, however slow the run.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let answered = 0;
+    const sending = replays.map((payment, index) =>
+      h.gateway
+        .payPurchase(
+          String(offers[index]?.extra?.price_stamp),
+          payment,
+          paymentFingerprint(decodePaymentSignatureHeader(payment), token),
+          undefined,
+          { itemId, params: {} },
+        )
+        .finally(() => {
+          answered += 1;
+        }),
     );
     pending.push(...sending);
-    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+    for (let turn = 0; answered < 22 && turn < 1_000; turn += 1) {
+      await vi.advanceTimersByTimeAsync(0);
+    }
+
+    // One copy holds the place and one waits behind it; the other 22 are
+    // turned away at once.
+    expect(answered).toBe(22);
+    expect(h.facilitator.verifies).toHaveLength(1);
+    vi.useRealTimers();
     const honest = offers[24];
     if (honest === undefined) throw new Error("no honest price was issued");
 
@@ -548,8 +568,9 @@ describe("a stamped price and an order born at payment", () => {
     expect(paid.status).toBe(200);
     expect(h.facilitator.verifies.filter((charge) => fromAttacker(charge.payment))).toHaveLength(1);
     releaseVerification();
-    const answers = await Promise.all(sending);
-    expect(answers.filter((answer) => answer.status === 429).length).toBeGreaterThanOrEqual(22);
+    const steps = (await Promise.all(sending)).map((answer) => answer.step);
+    expect(steps.filter((step) => step === "seller_busy")).toHaveLength(22);
+    expect(steps.filter((step) => step === "payment_not_verified")).toHaveLength(2);
   });
 
   it.each([
