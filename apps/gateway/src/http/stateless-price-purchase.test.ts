@@ -308,7 +308,10 @@ describe("a stamped price and an order born at payment", () => {
       // Whatever the wait for a place is, it is a timer, and it ends.
       await vi.runOnlyPendingTimersAsync();
 
-      expect(await fifth).toMatchObject({ step: "seller_busy" });
+      expect(await fifth).toMatchObject({
+        step: "seller_busy",
+        why: expect.stringContaining("this seller has as many payments being checked"),
+      });
       expect(h.facilitator.verifies).toHaveLength(4);
       expect(await h.store.orders(h.merchant.id)).toStrictEqual([]);
       vi.useRealTimers();
@@ -592,6 +595,32 @@ describe("a stamped price and an order born at payment", () => {
       expect(h.facilitator.verifies).toHaveLength(0);
     },
   );
+
+  it("tells a wallet whose payment is being checked here that its next one waits on that payment, not on the seller", async () => {
+    // An agent fleet sharing one wallet, or one buyer with three purchases at
+    // once, meets the bound of one wallet; a seller with nothing else to check
+    // is not busy.
+    await started({ ...CARD, price_check: undefined });
+    chainHolding();
+    const offers = [await quote(), await quote(), await quote()];
+    releaseVerification = h.facilitator.holdVerification();
+    const [first, second, third] = offers;
+    if (first === undefined || second === undefined || third === undefined)
+      throw new Error("three prices were not named");
+    pending.push(pay(first, "0x01"));
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(1));
+    const later = [pay(second, "0x02"), pay(third, "0x03")];
+    pending.push(...later);
+
+    const turnedAway = await Promise.race(later);
+
+    expect(turnedAway.status).toBe(429);
+    expect(turnedAway.headers.get("retry-after")).toBe("2");
+    expect(turnedAway.body).toMatchObject({ error: { code: "seller_busy", retryable: true } });
+    const { message } = (turnedAway.body as { error: { message: string } }).error;
+    expect(message).toContain("this wallet already has a payment being checked at this seller");
+    expect(message).not.toContain("this seller has as many payments being checked");
+  });
 
   it("refuses at once a used authorization from a wallet whose other payment was just read, however often it is sent", async () => {
     // A wallet's balance read for one payment says nothing of another
