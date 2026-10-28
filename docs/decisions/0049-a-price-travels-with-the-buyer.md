@@ -78,5 +78,5 @@ merchant's sales (ADR-0046). Every price from the card
 serves fixed prices only. A limit per wallet before payment has no wallet to
 count. `extensions` instead of `extra`: x402 v2 reserves `extra` for the
 scheme, but sellers use it and agents treat the value as opaque. A key the
-buyer's client keeps adds a duty to every buyer; the buyer example keeps the
-402 instead (ADR-0011).
+buyer's client keeps adds a duty to every buyer; an agent that wants to
+recover a lost answer keeps the 402 instead (ADR-0011).
