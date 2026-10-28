@@ -40,5 +40,8 @@ ENV AGENTIFY_SOURCE_REVISION=$AGENTIFY_SOURCE_REVISION
 USER node
 RUN test -r packages/core/src/deployment/preflight.mjs
 
+# Resolve the dashboard server graph in the shipped image without starting services.
+RUN pnpm --filter @agentify/app exec tsx -e 'import("@agentify/dashboard/start")'
+
 # Overridden by compose; named here so the image is runnable on its own.
 CMD ["pnpm", "--filter", "@agentify/app", "start"]
