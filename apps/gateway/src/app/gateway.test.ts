@@ -1313,7 +1313,7 @@ describe("the goods against the card that sold them", () => {
     const again = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       delivered: { access_code: "SOMETHING ELSE" },
     });
-    expect(again).toStrictEqual({ ok: true, result: "already_delivered" });
+    expect(again).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
     expect((await harnessed.store.orderById(orderId))?.delivery).toStrictEqual({
       access_code: "X",
     });
@@ -1348,14 +1348,20 @@ describe("the goods against the card that sold them", () => {
     });
 
     expect(first).toStrictEqual({ ok: true, result: "delivered" });
-    expect(again).toStrictEqual({ ok: true, result: "already_delivered" });
+    expect(again).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
 
     const kept = await harnessed.store.orderById(orderId);
     expect(kept?.delivery).toStrictEqual({ activation_code: "LPA:1$FIRST" });
     const handlerRepeat = await harnessed.gateway.answerOrder(harnessed.merchant.id, orderId, {
       delivered: { activation_code: "LPA:1$THIRD" },
     });
-    expect(handlerRepeat).toEqual({ ok: true, result: "already_delivered" });
+    expect(handlerRepeat).toEqual({ ok: true, result: "already_delivered_other_goods" });
+    // The goods kept, sent again, are an ordinary repeat.
+    expect(
+      await harnessed.gateway.deliverOrder(harnessed.merchant.id, orderId, {
+        activation_code: "LPA:1$FIRST",
+      }),
+    ).toStrictEqual({ ok: true, result: "already_delivered" });
     const afterHandlerRepeat = await harnessed.store.orderById(orderId);
     expect(afterHandlerRepeat?.delivery).toEqual({ activation_code: "LPA:1$FIRST" });
     expect(afterHandlerRepeat?.order).toEqual(delivered?.order);
@@ -1391,7 +1397,7 @@ describe("the goods against the card that sold them", () => {
       nothing_the_card_declared: true,
     });
 
-    expect(junk).toStrictEqual({ ok: true, result: "already_delivered" });
+    expect(junk).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
     expect((await harnessed.store.orderById(orderId))?.delivery).toStrictEqual({
       activation_code: "LPA:1$FIRST",
     });

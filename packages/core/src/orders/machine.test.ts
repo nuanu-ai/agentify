@@ -689,6 +689,24 @@ describe("delivering twice, and delivering late", () => {
     ]);
   });
 
+  it.each(["delivered", "fulfilled", "delivered_unpaid"] as const)(
+    "answers a repeat carrying other goods on a %s order as such, keeping the order as it is",
+    (state) => {
+      const before = reach(state);
+      for (const kind of ["deliver_called", "handler_delivered"] as const) {
+        const { order, effects } = must(before, { kind, at: T0 + 99, otherGoods: true });
+
+        expect(order).toStrictEqual(before);
+        expect(effects).toStrictEqual([
+          {
+            kind: "answer_merchant",
+            answer: { ok: true, result: "already_delivered_other_goods" },
+          },
+        ]);
+      }
+    },
+  );
+
   it("delivers an unfulfilled order late, releasing goods and receipt and clearing its closure", () => {
     const { order, effects } = must(reach("unfulfilled"), { kind: "deliver_called", at: T0 + 999 });
     expect(order.state).toBe("delivered");

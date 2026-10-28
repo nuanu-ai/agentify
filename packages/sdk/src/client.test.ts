@@ -546,6 +546,27 @@ describe("closing an order the merchant took on", () => {
     expect(result).toStrictEqual({ ok: true, result: "delivered" });
   });
 
+  it("warns, naming the order and never the goods, when a deliver repeated with other goods", async () => {
+    const problems: WorkerProblem[] = [];
+    const agentify = await gatewayServing({
+      deliver_order: () => ({ body: { ok: true, result: "already_delivered_other_goods" } }),
+    });
+    agentify.on("problem", (problem) => problems.push(problem));
+
+    const result = await agentify.orders
+      .forId("order-1")
+      .deliver({ access_url: "https://example.com/second-key" });
+
+    expect(result).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
+      fatal: false,
+      subject: "order-1",
+    });
+    expect(problems[0]?.message).not.toContain("second-key");
+  });
+
   it("says when an acceptance is given something it does not carry, on both roads", async () => {
     // An acceptance carries nothing; TypeScript refuses an argument, but a
     // merchant writing JavaScript can still pass one, the removed eta_seconds

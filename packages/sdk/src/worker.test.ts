@@ -334,6 +334,28 @@ describe("an order off the worker stream", () => {
     expect(problems[0]?.message).toMatch(/order_already_closed/);
   });
 
+  it("warns once, naming the order and never the goods, when a repeat carried other goods", async () => {
+    // The buyer keeps the goods first delivered; a merchant whose retries make
+    // new goods each time would otherwise record the wrong ones as used.
+    const { problems } = await workerOver(
+      {
+        poll_worker: polling(batch(envelopes.order)),
+        answer_order: () => ({ body: { ok: true, result: "already_delivered_other_goods" } }),
+      },
+      { order: () => ({ delivered: { access_url: "https://example.com/second-key" } }) },
+    );
+
+    await waitUntil(() => problems.length > 0, "the warning to be reported");
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({
+      kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
+      fatal: false,
+      subject: envelopes.order.payload.id,
+    });
+    expect(problems[0]?.message).toContain(envelopes.order.payload.id);
+    expect(problems[0]?.message).not.toContain("second-key");
+  });
+
   it("leaves an order unanswered when nobody subscribed, and says so", async () => {
     // Orders still arrive at a process with only a price handler, and
     // swallowing them would look like a gateway fault.
