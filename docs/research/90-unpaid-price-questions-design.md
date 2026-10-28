@@ -147,6 +147,37 @@ are all busy does not poll and counts as quiet. Cards the merchant paused stay
 paused when contact returns, and the catalogue and the purchase door read one
 rule for whether a card can be priced now.
 
+## Time limits
+
+A price holds for three minutes (`QUOTE_TTL_MS`), counted to when the complete
+paid request arrives. A merchant has ten seconds to answer a price question
+(`QUOTE_RESPONSE_MS`); the WooCommerce connector gives itself one second less,
+so its answer is in before the gateway stops waiting.
+
+The 402 asks the buyer's authorization to stay valid for 215 seconds
+(`maxTimeoutSeconds`) at the default deadlines. That is the price's three
+minutes, then the longest a payment presented as its price runs out may wait
+before its check answers (a second for a place among the merchant's reads of
+payers' wallets, two for the read, two for a place among its checks and ten for
+the check), then the eighteen seconds a card charged after its goods needs
+past the check (the merchant's ten, the facilitator's six-second margin and two
+for the gateway's own steps), and two more for the check's round trip and the
+client's rounding. It is not a time to pay in, since the price lapses first.
+Such a card's payment that checks out with less time left than its charge
+needs is refused before anything is made: its words ask the agent to sign
+again at once while the price holds, or to request a new price once it has
+lapsed. The arithmetic is in `apps/gateway/src/app/payment-window.ts`, and the
+measurements behind it in [research 46](46-charge-answer-timing.md).
+
+The check of a payment gives up after ten seconds and a charge request after
+thirty. A card charged before its goods waits thirty-five seconds for its
+charge's answer, the thirty a request may take and five to record the answer,
+and the gateway refuses to start with a shorter wait. A card's
+`fulfill_deadline_seconds` runs from a minute to thirty days and is refused at
+publication outside that range. An order nobody answers is handed over again
+for three hours from its first hand-over
+([ADR-0004](../decisions/0004-worker-transport-long-poll.md)).
+
 ## Payments
 
 ### Before the payment is checked
@@ -356,8 +387,8 @@ without it.
 Polling never waits for carts. Downloads, their prices and order events use
 none. A parcel order takes one paid cart per question after it is drawn. It
 waits only for a paid cart another calculation is using; otherwise it answers
-nothing and spends a hand-over. Whether a paid order that finds no usable paid
-cart should be handled otherwise is a question for the product owner.
+nothing and waits for its next hand-over, and hand-overs go on for three hours
+after the first (ADR-0004).
 
 These openings are free of the allowance: a slot's first opening, counted only
 once the shop issues a session; the renewal of an idle empty cart within five
