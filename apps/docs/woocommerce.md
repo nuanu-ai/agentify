@@ -1,7 +1,7 @@
 # Selling through a WooCommerce shop
 
-You run a WooCommerce shop and want buyers — programs buying on a person's
-behalf — to buy from it without anybody writing code. The WooCommerce page of
+You run a WooCommerce shop and want buyers, which are programs buying on a
+person's behalf, to buy from it without anybody writing code. The WooCommerce page of
 your dashboard connects the shop, imports its products, and from then on the
 shop takes the paid orders. This page is what each of those steps does to your
 shop, your products on Agentify and your money.
@@ -43,40 +43,43 @@ for a parcel the shipping rate, and your shop has four seconds to answer. A
 shop slower than that loses that sale before any payment, and only the
 connector's own log, which your dashboard does not show, records why.
 
-A parcel's shipping and tax are worked out in your shop's own cart. The
-connector puts the product in a guest cart, as a visitor would, sets the
+A parcel's shipping and tax are worked out in your shop's own cart, the way a
+visitor's would be: the connector puts the product in a guest cart, enters the
 buyer's city, region and postal code, reads the total and empties the cart
-again. It reuses a small set of these carts: eight answer price questions from
-buyers who have not paid yet, and eight more are kept for paid orders, so a
-burst of questions cannot take the carts of an order somebody has paid for. Downloads use no cart, so nothing
-that happens to the carts stops a download or its price.
+again. It keeps sixteen of these carts and uses them over and over. Eight
+answer price questions from buyers who have not paid yet, and the other eight
+are kept for orders somebody has paid for, so a rush of questions never takes
+the carts a paid order needs. Downloads use no cart, so nothing that happens to
+the carts stops a download or changes its price.
 
-When none of the paid carts can be used at that moment, for example while your
-shop's cart is not answering, a parcel's order waits and Agentify hands it over
-again, as it does when your shop does not answer at all. Each hand-over counts
-toward the {{redelivery-max-attempts}} hand-overs an order gets in all.
+If none of the paid carts can be used at the moment a parcel's order needs one,
+for example because your shop's cart is not answering, Agentify tries the
+order again a little later, as it does when your shop does not answer at all.
+Each of these tries counts toward the {{redelivery-max-attempts}} an order gets
+in all.
 
-Each cart is a guest session in your shop's database. A cart whose last change
-your shop may or may not have made, because its answer was lost or could not be
-read, is never used again, and neither is one whose session your shop stops
-accepting, as can happen to every cart when a security plugin changes your
-site's secret keys. The connector replaces such a cart on its own, at most one
-every ten minutes for your shop, even across reconnects and restarts, so
-recovering several carts takes several of those intervals. A cart whose session
-is about to expire is renewed without that wait, since its old session lapses
-as the new one opens. At WooCommerce's standard two-day guest-session lifetime
-your shop therefore holds at most about 300 of the connector's unexpired guest
-sessions, and while nothing goes wrong sixteen or fewer. When expired sessions
-leave your database depends on your shop's own cleanup, and if your shop gives
-guest sessions another lifetime, that number changes with it. A cart can keep
-the last city, region and postal code it priced until its session expires;
-price questions send no buyer name, street address or phone number.
+Each cart is a guest session stored in your shop's database. The connector
+stops using a cart when it cannot tell whether your shop made its last change,
+because the answer was lost or could not be read, and when your shop stops
+accepting the cart's session, which happens to every cart at once when a
+security plugin changes your site's secret keys. It opens a new cart in its
+place by itself, but never more than one every ten minutes for your shop, even
+when you reconnect or Agentify restarts, so replacing several carts takes
+several ten-minute steps. A cart whose session is about to expire is renewed
+without that wait, because its old session ends as the new one starts.
+WooCommerce keeps a guest session for two days unless your shop sets another
+length, so your shop holds sixteen or fewer of the connector's sessions while
+nothing goes wrong, and about 300 at most. Expired sessions leave your database
+when your shop's own cleanup removes them. A cart can keep the last city,
+region and postal code it priced until its session expires; a price question
+never sends a buyer's name, street address or phone number.
 
 If your shop will not open a cart for a visitor at all, its parcels cannot be
-priced. A security plugin or firewall that keeps visitors out of
+priced. A security plugin or firewall that keeps visitors away from
 `/wp-json/wc/store/v1/cart` does this. The import then holds each parcel back
-with that reason, and once visitors can reach the cart, importing again
-publishes them.
+under To fix, naming the HTTP status your shop answered and what
+to allow, and once visitors can reach the cart, importing again publishes
+them.
 
 The buyer gets a download through Agentify: once your shop has created the
 order, the order the buyer reads from us carries your shop's private download
@@ -84,8 +87,8 @@ address for the file, the file's name and the order's number in your shop, and
 the file itself comes from your shop at that address.
 
 Each order is created in your shop with your own dashboard email as the
-customer's, so the shop's customer emails — the confirmation, the download
-link — come to you and never to the buyer, and the shop's reports name you as
+customer's, so the shop's customer emails, the confirmation and the download
+link, come to you and never to the buyer, and the shop's reports name you as
 the customer of every sale.
 
 An order your shop totals at what the buyer paid, or within a cent of it, is
@@ -379,11 +382,12 @@ settle: without them every product would be refused, so Import stays unavailable
 and says which of them to set. A shop priced in another currency imports
 nothing until its rate is set, which the page asks for first.
 
-Every product imported through WooCommerce takes payment before delivery or
-shipment. Set your shop's site in Settings before importing: publication
-requires it, and buyers read your cancellation, refund and support terms there.
-Existing cards without a site leave the catalogue and refuse new purchases
-until you give one. Already paid orders continue to fulfillment.
+Every product imported from WooCommerce is paid for before it is delivered or
+shipped, so buyers need your shop's site to read your cancellation, refund and
+support terms before they pay. Set the site in Settings before you import:
+products are not published without it. Products already published without a
+site leave the catalogue and refuse new purchases until you set one, and orders
+already paid go ahead as usual.
 
 The result lists every product it read under one of these headings, in this
 order:
@@ -431,7 +435,7 @@ and what you do for the buyer if it does not, are yours and your shop's.
 
 To stop Agentify accepting delivery for an order, use **Orders → Order details
 → Close fulfillment** ([what closing does](/money#if-the-buyer-did-not-get-the-goods)).
-It changes nothing in your shop — no setting, no cancellation, no refund — so
+It changes nothing in your shop, no setting, no cancellation and no refund, so
 stop the shop's own work on that order yourself. Your explanation, if you give
 one, is shown to the buyer as your words.
 
@@ -487,8 +491,8 @@ it there.
 
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked
-Completed in WooCommerce, an order whose charge has not gone through yet within a
-minute, any of them when its time runs out, and a paid one when you close
+Completed in WooCommerce, an order whose charge has not gone through yet
+within a minute, any of them when its time runs out, and a paid one when you close
 fulfillment of it on Orders. A parcel
 already unfulfilled is no longer followed after you disconnect, so marking it
 Completed then records no shipment in Agentify.
