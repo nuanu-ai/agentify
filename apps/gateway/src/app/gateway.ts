@@ -3185,7 +3185,6 @@ export class Gateway {
         continue;
       }
 
-      await this.#remindMeIfNobodyAnswers(applied.order, handOver, at);
       handing.push(delivery.envelope);
       finished.push(delivery.handle);
     }
@@ -3611,22 +3610,6 @@ export class Gateway {
       };
     }
     return deliveryCheckFor(stored.card);
-  }
-
-  /**
-   * Leaves a reminder that this delivery has gone unanswered, but never one
-   * that would land after the order's own deadline has closed it.
-   */
-  async #remindMeIfNobodyAnswers(record: StoredOrder, handOver: string, at: number): Promise<void> {
-    const { config, queue } = this.runtime;
-    const deadline = fulfillmentDeadline(record.order)[0];
-    const untilDeadline = deadline === undefined ? Number.POSITIVE_INFINITY : deadline.at - at;
-    const wait = Math.min(config.deadlines.handlerAnswerMs, untilDeadline);
-
-    if (wait <= 0) {
-      return;
-    }
-    await queue.remind({ kind: "delivery_unanswered", orderId: record.order.id, handOver }, wait);
   }
 
   /**

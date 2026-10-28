@@ -109,7 +109,7 @@ export interface Envelopes {
    */
   forgetWithin(tx: DrizzleTransactionLike, merchantId: string, orderId: string): Promise<void>;
   committed(merchantIds: readonly string[]): void;
-  /** Sets a reminder an order's birth asked for, in the transaction that writes the order. */
+  /** Sets a reminder an order's write asked for, in the transaction that writes the order. */
   remindWithin(tx: DrizzleTransactionLike, reminder: Reminder, afterMs: number): Promise<void>;
 }
 
@@ -1364,6 +1364,9 @@ export class PostgresStore implements Store {
           break;
         case "forget":
           await this.#envelopes.forgetWithin(tx, write.merchantId, write.orderId);
+          break;
+        case "reminder":
+          await this.#envelopes.remindWithin(tx, write.reminder, write.afterMs);
           break;
       }
     }

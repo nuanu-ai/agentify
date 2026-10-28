@@ -73,7 +73,7 @@ export interface Envelopes {
    * takes them off the stream once the order recording the erasure is written.
    */
   forget(merchantId: string, orderId: string): Promise<() => void>;
-  /** Sets a reminder an order's birth asked for, once the order is written. */
+  /** Sets a reminder an order's write asked for, once the order is written. */
   remind(reminder: Reminder, afterMs: number): Promise<void>;
 }
 
@@ -1028,6 +1028,10 @@ export class MemoryStore implements Store {
         return this.#envelopes.stage(write.merchantId, write.envelope, write.afterMs);
       case "forget":
         return this.#envelopes.forget(write.merchantId, write.orderId);
+      case "reminder":
+        return () => {
+          void this.#envelopes.remind(write.reminder, write.afterMs);
+        };
     }
   }
 

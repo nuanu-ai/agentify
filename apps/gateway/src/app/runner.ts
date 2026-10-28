@@ -424,7 +424,10 @@ export class OrderRunner {
         return {
           save: next,
           // The effects that must not be lost go in with the order.
-          alongside: this.#writesWithTheOrder(next, known.order, moved.effects, effectsAt),
+          alongside: [
+            ...this.#writesWithTheOrder(next, known.order, moved.effects, effectsAt),
+            ...this.#silenceOf(next, facts.openDeliveryId, event.at),
+          ],
           result: { kind: "decided", moved, known: next },
         };
       },
@@ -447,6 +450,29 @@ export class OrderRunner {
     this.#wakeTheAgent(known);
 
     return { outcome: "moved", order: known, effects: moved.effects, answer };
+  }
+
+  /**
+   * A hand-over just opened brings the reminder that it went unanswered, never
+   * one that would land after the order's own deadline has closed it.
+   */
+  #silenceOf(
+    record: StoredOrder,
+    handOver: string | null | undefined,
+    at: number,
+  ): readonly WithTheOrder[] {
+    if (typeof handOver !== "string") return [];
+    const deadline = fulfillmentDeadline(record.order)[0];
+    const untilDeadline = deadline === undefined ? Number.POSITIVE_INFINITY : deadline.at - at;
+    const wait = Math.min(this.#runtime.config.deadlines.handlerAnswerMs, untilDeadline);
+    if (wait <= 0) return [];
+    return [
+      {
+        kind: "reminder",
+        reminder: { kind: "delivery_unanswered", orderId: record.order.id, handOver },
+        afterMs: wait,
+      },
+    ];
   }
 
   /**

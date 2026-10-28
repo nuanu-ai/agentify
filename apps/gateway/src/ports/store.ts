@@ -359,7 +359,12 @@ export type WithTheOrder =
       readonly kind: "forget";
       readonly merchantId: string;
       readonly orderId: string;
-    };
+    }
+  /**
+   * The reminder that a hand-over went unanswered. Written with the record of
+   * the hand-over, because nothing else would ever hand the order over again.
+   */
+  | { readonly kind: "reminder"; readonly reminder: Reminder; readonly afterMs: number };
 
 /**
  * What `withOrder` decided: the order to write back, if any, the writes that go
