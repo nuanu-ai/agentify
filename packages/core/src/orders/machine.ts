@@ -268,6 +268,18 @@ function answer(order: Order, merchantAnswer: MerchantAnswer): TransitionResult 
 }
 
 /**
+ * A delivery of an order that already has its goods: nothing is delivered or
+ * charged again and the buyer keeps the first goods. A merchant whose repeat
+ * carried other goods is told so, since those are not the ones the buyer has.
+ */
+function repeatedDelivery(order: Order, event: { readonly otherGoods?: true }): TransitionResult {
+  return answer(order, {
+    ok: true,
+    result: event.otherGoods === true ? "already_delivered_other_goods" : "already_delivered",
+  });
+}
+
+/**
  * The answer to a call or a handler answer the order's mode does not have: a
  * separate `deliver` or `refuse`, or taking the order on, in the synchronous
  * mode.
@@ -880,7 +892,7 @@ function fromFulfilled(order: Order, event: StateEvent): TransitionResult {
         : notApplicable(order, event);
     case "deliver_called":
     case "handler_delivered":
-      return answer(order, { ok: true, result: "already_delivered" });
+      return repeatedDelivery(order, event);
     case "refuse_called":
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.
@@ -910,7 +922,7 @@ function fromDelivered(order: Order, event: StateEvent): TransitionResult {
     case "handler_delivered":
       // Idempotent by the order's own identifier: the same success, no second
       // fulfillment and no second charge.
-      return answer(order, { ok: true, result: "already_delivered" });
+      return repeatedDelivery(order, event);
     case "handler_accepted":
       // A worker taking on an order that is already delivered. Deliveries are
       // at least once, so this is ordinary rather than a fault, and the answer
@@ -981,7 +993,7 @@ function fromDeliveredUnpaid(order: Order, event: StateEvent): TransitionResult 
         : notApplicable(order, event);
     case "deliver_called":
     case "handler_delivered":
-      return answer(order, { ok: true, result: "already_delivered" });
+      return repeatedDelivery(order, event);
     case "refuse_called":
       // This state belongs to the synchronous mode, where the handler refuses
       // by answering and there is no separate call at all.

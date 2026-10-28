@@ -363,6 +363,7 @@ export const MERCHANT_ANSWER_RESULTS = [
   "accepted",
   "delivered",
   "already_delivered",
+  "already_delivered_other_goods",
   "delivered_late",
   "refused",
   "purchase_already_closed",
@@ -456,7 +457,12 @@ export type OrderEvent =
   | { readonly kind: "purchase_repeated"; readonly at: number }
   | { readonly kind: "order_dispatched"; readonly at: number }
   | { readonly kind: "handler_accepted"; readonly at: number }
-  | { readonly kind: "handler_delivered"; readonly at: number }
+  | {
+      readonly kind: "handler_delivered";
+      readonly at: number;
+      /** Set where the order already keeps goods and these differ from them. */
+      readonly otherGoods?: true;
+    }
   | {
       readonly kind: "handler_refused";
       readonly at: number;
@@ -464,7 +470,12 @@ export type OrderEvent =
       readonly message: string;
     }
   | { readonly kind: "handler_undelivered"; readonly at: number }
-  | { readonly kind: "deliver_called"; readonly at: number }
+  | {
+      readonly kind: "deliver_called";
+      readonly at: number;
+      /** Set where the order already keeps goods and these differ from them. */
+      readonly otherGoods?: true;
+    }
   | {
       readonly kind: "refuse_called";
       readonly at: number;

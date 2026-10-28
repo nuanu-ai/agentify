@@ -53,6 +53,7 @@ import {
   type EventHandler,
   type HandlerRegistry,
   listWarning,
+  otherGoodsWarning,
   type ProblemReporter,
   REGISTERED_AS,
   type RunningWorker,
@@ -586,9 +587,14 @@ export const createClient = (options: ClientOptions): AgentifyClient => {
 
     const answer = await callRoute(gateway, route, { path: { order_id: orderId }, body });
 
-    return answer.ok
-      ? answer.document
-      : { ok: false, error: failedCall(route === "deliver_order", answer.failure) };
+    if (!answer.ok) {
+      return { ok: false, error: failedCall(route === "deliver_order", answer.failure) };
+    }
+    if (answer.document.ok) {
+      const otherGoods = otherGoodsWarning(orderId, answer.document.result);
+      if (otherGoods !== null) reportSafely(registry.problem, otherGoods);
+    }
+    return answer.document;
   };
 
   const acceptCall = async (orderId: string): Promise<OrderAcceptResponse> => {

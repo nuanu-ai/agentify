@@ -191,7 +191,9 @@ const OrderCallFailedSchema = z.strictObject({
 /**
  * What delivering, refusing or answering for an order comes back as: `ok`, and
  * on success a word for which success it was. A repeated delivery succeeds as
- * `already_delivered`, not `delivered`, so branch on `ok` and record the word.
+ * `already_delivered`, not `delivered`, or as `already_delivered_other_goods`
+ * where it carried other goods than the ones the buyer has, so branch on `ok`
+ * and record the word.
  * A failure is one `error`; findings about the body sent ride inside it under
  * `problems`.
  */
@@ -766,7 +768,7 @@ export const API_ROUTES = Object.freeze({
     path: "/v0/orders/:order_id/deliver",
     auth: "merchant_key",
     description:
-      "The goods for an order the merchant took on earlier. Repeating delivery against its identifier releases nothing twice and charges nothing twice. An unfulfilled order may receive late delivery until the merchant closes fulfillment; afterward this call is refused as fulfillment_closed. A parcel carries its shipment instead of goods: carrier, tracking number or null, and optional tracking page and expected window. Agentify records when the call arrived, the order reads shipped and the shipment cannot be changed: the same shipment succeeds on retry, a different one is refused as shipment_already_recorded.",
+      "The goods for an order the merchant took on earlier. Repeating delivery against its identifier releases nothing twice and charges nothing twice; the buyer keeps the first goods, and a repeat carrying other goods is answered already_delivered_other_goods. An unfulfilled order may receive late delivery until the merchant closes fulfillment; afterward this call is refused as fulfillment_closed. A parcel carries its shipment instead of goods: carrier, tracking number or null, and optional tracking page and expected window. Agentify records when the call arrived, the order reads shipped and the shipment cannot be changed: the same shipment succeeds on retry, a different one is refused as shipment_already_recorded.",
     request: DeliverySchema,
     response: { document: OrderCallResponseSchema },
   },

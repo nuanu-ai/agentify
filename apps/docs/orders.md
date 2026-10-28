@@ -254,7 +254,11 @@ the same `order.id` and it succeeds again, marked as already delivered: no
 second delivery happened and no second charge. `ok` is true in both cases, so
 you do not have to branch on the word inside it, which is there when you want
 it. A repeat is not weighed against the card, because there is nothing left
-for it to write: what it carries is neither checked nor kept.
+for it to write, and what it carries is not kept: the buyer has the goods the
+first call delivered. Where a repeat carries other goods than those, the word
+is `already_delivered_other_goods`, still with `ok` true, and the SDK reports a
+`repeat_with_other_goods` problem naming the order but not the goods. The
+goods that call sent reached nobody, so a key or a code in them is not in use.
 
 A delivery after the deadline still counts. Past its deadline a paid order
 reads `unfulfilled`, and a late `deliver` makes it `delivered`, or `shipped`

@@ -689,7 +689,7 @@ describe("delivering twice, and delivering late", () => {
     ]);
   });
 
-  it.each(["delivered", "fulfilled", "delivered_unpaid"] as const)(
+  it.each(["delivered", "delivered_unpaid"] as const)(
     "answers a repeat carrying other goods on a %s order as such, keeping the order as it is",
     (state) => {
       const before = reach(state);

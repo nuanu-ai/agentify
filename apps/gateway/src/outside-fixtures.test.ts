@@ -442,8 +442,8 @@ describe("a purchase from the outside", () => {
 
       // A repeat of that call is safe, and charges nothing a second time. This
       // one carries a different code from the first, which is the case the
-      // buyer's copy of the goods depends on: the answer is the same either
-      // way, so nothing but the stored order can tell whether it was honoured.
+      // buyer's copy of the goods depends on: the answer says the goods differ,
+      // and the buyer still collects the first.
       const again = await gateway.call(
         "POST",
         `/v0/orders/${encodeURIComponent(orderId)}/deliver`,
@@ -452,7 +452,7 @@ describe("a purchase from the outside", () => {
           headers: { authorization: `Bearer ${MERCHANT_KEY}` },
         },
       );
-      expect(again.body).toStrictEqual({ ok: true, result: "already_delivered" });
+      expect(again.body).toStrictEqual({ ok: true, result: "already_delivered_other_goods" });
       expect(gateway.facilitator.settles).toHaveLength(1);
       const collected = await gateway.call("GET", new URL(started.status_url).pathname);
       expect(collected.status).toBe(200);

@@ -25,7 +25,10 @@ import { IdentifierSchema } from "./primitives.js";
  * `accepted`: a handler took the order on, and the goods will follow through
  * `deliver`. `delivered`: the sale closed. `already_delivered`: a retry landed
  * twice; nothing is delivered or charged twice, so treat it as success, not as
- * a failure because it is not `delivered`. `delivered_late`: the
+ * a failure because it is not `delivered`. `already_delivered_other_goods`:
+ * the same, where the repeat carried other goods than the ones the order
+ * already keeps; the buyer has the first goods, so the ones just sent were not
+ * given to anybody. `delivered_late`: the
  * delivery deadline had passed and the goods went out anyway. `refused`: the refusal took effect.
  * `purchase_already_closed`: a synchronous handler answered after its
  * deadline; the work exists and a repeat purchase will collect it.
@@ -38,6 +41,7 @@ export const ORDER_CALL_RESULTS = Object.freeze([
   "accepted",
   "delivered",
   "already_delivered",
+  "already_delivered_other_goods",
   "delivered_late",
   "refused",
   "purchase_already_closed",

@@ -145,6 +145,7 @@ import {
   sellableBy,
   sellingFor,
 } from "./runtime.js";
+import { canonical, sameGoods } from "./same-goods.js";
 import { purchaseOf, Waiting } from "./waiting.js";
 
 /** Price questions one merchant may have open at once; its worker handles four messages at a time. */
@@ -3260,7 +3261,7 @@ export class Gateway {
       parcel &&
       applied.outcome === "moved" &&
       applied.order.delivery !== null &&
-      !sameShipment(applied.order.delivery, delivery)
+      !sameGoods(applied.order.delivery, delivery, true)
     ) {
       return {
         ok: false,
@@ -3831,28 +3832,6 @@ function misfitsIn(findings: readonly Problem[]): string {
 
   const rest = findings.length - MISFITS_NAMED;
   return rest > 0 ? `${named} (and ${rest} more)` : named;
-}
-
-/**
- * Whether a shipment sent now is the one already recorded: what the merchant
- * said, field for field, whatever order it was written in, and setting aside
- * the instant the gateway stamped on the recorded one.
- */
-function sameShipment(recorded: Delivery, sent: Delivery): boolean {
-  const { shipped_at: _stamped, ...said } = recorded;
-  const { shipped_at: _echoed, ...saying } = sent;
-  return canonical(said) === canonical(saying);
-}
-
-/** A document as one string, its keys sorted at every depth, so order says nothing. */
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, inner: unknown) =>
-    inner !== null && typeof inner === "object" && !Array.isArray(inner)
-      ? Object.fromEntries(
-          Object.entries(inner as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)),
-        )
-      : inner,
-  );
 }
 
 /**

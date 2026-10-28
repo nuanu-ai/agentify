@@ -156,6 +156,12 @@ export const WORKER_PROBLEM_KINDS = Object.freeze({
   DELIVERY_FIELD_DROPPED: "delivery_field_dropped",
   /** An acceptance was given an argument, which it does not carry. The order is taken on. */
   ACCEPTANCE_ARGUMENT_IGNORED: "acceptance_argument_ignored",
+  /**
+   * A delivery of an order already delivered carried other goods than the ones
+   * the buyer has. The call succeeded and nothing changed; the goods just sent
+   * reached nobody.
+   */
+  REPEAT_WITH_OTHER_GOODS: "repeat_with_other_goods",
 } as const);
 
 export type WorkerProblemKind = (typeof WORKER_PROBLEM_KINDS)[keyof typeof WORKER_PROBLEM_KINDS];
@@ -224,6 +230,21 @@ export const droppedFieldWarning = (
     message: `the delivery for order ${orderId} carried a field named ${PROTOTYPE_KEY_IS_DROPPED}, which is removed before anything can check it: the agent will not receive it, and no card can declare it`,
   };
 };
+
+/**
+ * The warning for a delivery answered `already_delivered_other_goods`, on both
+ * roads to the gateway. It names the order and never either goods, which can
+ * be secrets such as keys.
+ */
+export const otherGoodsWarning = (orderId: string, result: unknown): WorkerProblem | null =>
+  result === "already_delivered_other_goods"
+    ? {
+        kind: WORKER_PROBLEM_KINDS.REPEAT_WITH_OTHER_GOODS,
+        fatal: false,
+        subject: orderId,
+        message: `order ${orderId} was already delivered, and this delivery carried other goods than the ones its buyer has: nothing changed, and the goods just sent reached nobody, so whatever they hold is not in use`,
+      }
+    : null;
 
 /**
  * The warning reported when `accepted` or `accept` is given an argument.
@@ -669,7 +690,11 @@ export const startWorker = (
         subject: order.id,
         message: `the answer for order ${order.id} was not accepted (${sent.document.error.code}): ${sent.document.error.message}`,
       });
+      return;
     }
+
+    const otherGoods = otherGoodsWarning(order.id, sent.document.result);
+    if (otherGoods !== null) tell(one, otherGoods);
   };
 
   /** See `droppedFieldWarning`. */

@@ -86,6 +86,7 @@ import {
   orderCreated,
 } from "./order-analytics.js";
 import type { Runtime } from "./runtime.js";
+import { sameGoods } from "./same-goods.js";
 import { purchaseOf, Waiting } from "./waiting.js";
 import type { WrittenOrderStatus } from "./written.js";
 
@@ -368,7 +369,7 @@ export class OrderRunner {
           ...(facts.openDeliveryId === undefined ? {} : { openDeliveryId: facts.openDeliveryId }),
         };
 
-        const changed = transition(known.order, event);
+        const changed = transition(known.order, asDelivered(event, found, facts.delivery));
         let moved = changed.ok
           ? { ...changed, effects: [...elapsedEffects, ...changed.effects] }
           : changed;
@@ -1711,6 +1712,28 @@ function unfulfilledReasonOf(order: Order): UnfulfilledReason {
  * a call the machine answered with a failure for the merchant, such as on a
  * closed order, are not kept either: they were never released to the buyer.
  */
+/**
+ * A delivery as the machine is given it, told whether it carries other goods
+ * than the order already keeps. Judged under the order's hold, against the
+ * goods as they stand, so two deliveries racing each other are compared with
+ * whichever landed first. An order keeping no goods has nothing to compare.
+ */
+function asDelivered(
+  event: OrderEvent,
+  found: StoredOrder,
+  sent: Delivery | undefined,
+): OrderEvent {
+  if (
+    (event.kind !== "deliver_called" && event.kind !== "handler_delivered") ||
+    sent === undefined ||
+    found.delivery === null ||
+    sameGoods(found.delivery, sent, found.order.mode.parcel === true)
+  ) {
+    return event;
+  }
+  return { ...event, otherGoods: true };
+}
+
 function goodsToKeep(
   found: StoredOrder,
   delivery: Delivery | undefined,
