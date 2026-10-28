@@ -78,7 +78,7 @@ import { failureNamed } from "../failure-named.js";
 import { atomicUnits, CLOCK_SKEW_SECONDS, inUsdc, PaymentEdge } from "../http/x402.js";
 import type { AnnouncementOutcome } from "../ports/announcer.js";
 import { asTimestamp } from "../ports/clock.js";
-import type { NoVerdict, VerifyOutcome } from "../ports/facilitator.js";
+import type { Charge, NoVerdict, VerifyOutcome } from "../ports/facilitator.js";
 import type { DrawnEnvelope, Reminder } from "../ports/queue.js";
 import {
   type AdmissionStanding,
@@ -121,6 +121,14 @@ import {
   stampPrice,
   verifyPriceStamp,
 } from "./price-stamp.js";
+import {
+  admissionTimed,
+  gateRefused,
+  type PaymentLane,
+  paymentArrived,
+  priceAnswered,
+  verifyTimed,
+} from "./purchase-metrics.js";
 import {
   journal,
   recordMissingSplits,
@@ -384,9 +392,6 @@ export type PurchaseAttempt =
   | { readonly step: "payment_not_verified"; readonly why: string; readonly retryable: boolean }
   /** Another payer's payment owns this order, and this payment is not it. */
   | { readonly step: "not_this_purchase" };
-
-/** Which of a merchant's lanes a payment waits in for its check (`Gateway#laneOf`). */
-type PaymentLane = "proven" | "unproven";
 
 /** What the steps of one payment share: when it arrived, and how far it got. */
 interface Paying {
@@ -1894,12 +1899,14 @@ export class Gateway {
         stored.merchantId,
         Math.min(PRICE_PLACE_WAIT_MS, this.runtime.config.deadlines.quoteResponseMs / 2),
       );
+      if (place === null) gateRefused("price");
       // A synchronous card with no place sells at its card price, as in a silence.
       if (place === null && order.mode.settle !== "after_fulfillment") {
         return { step: "seller_busy", why: QUESTIONS_FULL };
       }
       let answer: QuoteResponse | null = null;
       if (place !== null) {
+        const asked = this.runtime.clock();
         try {
           answer = await this.#askThePrice(
             stored,
@@ -1911,6 +1918,11 @@ export class Gateway {
         } finally {
           place();
         }
+        priceAnswered(
+          answer === null ? "silent" : answer.available ? "answered" : "unavailable",
+          stored.integration,
+          this.runtime.clock() - asked,
+        );
       }
       unavailable = answer?.available === false;
       const pricedAt = this.runtime.clock();
@@ -2183,12 +2195,24 @@ export class Gateway {
   ): Promise<T | null> {
     const gate = waits.lane === "proven" ? this.#paymentGate : this.#unprovenGate;
     const place = await gate.enter(merchantId, PAYMENT_PLACE_WAIT_MS, waits.payer);
-    if (place === null) return null;
+    if (place === null) {
+      gateRefused(waits.lane);
+      return null;
+    }
     try {
       return await check();
     } finally {
       place();
     }
+  }
+
+  /** One check by the payment layer, timed for the operator by the lane it waited in. */
+  #verify(charge: Charge, lane: PaymentLane): Promise<VerifyOutcome> {
+    return verifyTimed(
+      () => this.runtime.clock(),
+      lane,
+      () => this.runtime.facilitator.verify(charge),
+    );
   }
 
   /**
@@ -2254,6 +2278,7 @@ export class Gateway {
     const keys = this.runtime.config.priceStampKeys;
     const key = authenticated.key === "current" ? keys.current : keys.previous;
     if (key === undefined) throw new Error("a price authenticated under a key that is not held");
+    paymentArrived(arrivedAt - offer.quotedAt);
     if (arrivedAt < offer.quotedAt || arrivedAt >= offer.expiresAt) {
       return {
         step: "payment_not_taken",
@@ -2320,7 +2345,7 @@ export class Gateway {
     if (anotherPurchase || anotherPlace) {
       // Even a mismatch is private: a published offer must not become an address/parameter oracle.
       const checked = await this.#checked(offer.merchantId, lane, () =>
-        this.runtime.facilitator.verify(charge),
+        this.#verify(charge, lane.lane),
       );
       if (checked === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
       if (checked.verified !== true) {
@@ -2389,7 +2414,7 @@ export class Gateway {
     };
 
     const verified = await this.#checked(offer.merchantId, lane, () =>
-      this.runtime.facilitator.verify(charge),
+      this.#verify(charge, lane.lane),
     );
     if (verified === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };
     if (verified.verified !== true) {
@@ -2430,7 +2455,10 @@ export class Gateway {
       };
 
     paying.progress.wrote = true;
-    const admitted = await this.runtime.store.admitOrder(prepared.prepared.accept);
+    const admitted = await admissionTimed(
+      () => this.runtime.clock(),
+      () => this.runtime.store.admitOrder(prepared.prepared.accept),
+    );
     switch (admitted.kind) {
       case "busy":
       case "existing":
@@ -2578,15 +2606,18 @@ export class Gateway {
         here: here !== null,
         verified:
           here ??
-          (await this.runtime.facilitator.verify({
-            orderId,
-            requirements: saved.requirements,
-            amount: price.amount,
-            currency: price.currency,
-            payment,
-            payTo,
-            ...(paidFor ? { returnsAPaidOrder: true } : {}),
-          })),
+          (await this.#verify(
+            {
+              orderId,
+              requirements: saved.requirements,
+              amount: price.amount,
+              currency: price.currency,
+              payment,
+              payTo,
+              ...(paidFor ? { returnsAPaidOrder: true } : {}),
+            },
+            lane.lane,
+          )),
       };
     });
     if (checked === null) return { step: "seller_busy", why: PAYMENT_CHECKS_FULL };

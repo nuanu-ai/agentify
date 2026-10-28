@@ -85,6 +85,7 @@ import {
   orderChanged,
   orderCreated,
 } from "./order-analytics.js";
+import { settleTimed } from "./purchase-metrics.js";
 import type { Runtime } from "./runtime.js";
 import { sameGoods } from "./same-goods.js";
 import { purchaseOf, Waiting } from "./waiting.js";
@@ -1088,7 +1089,7 @@ export class OrderRunner {
         `the charge on ${record.order.id} cannot be executed: the order was opened before prices were stamped and keeps no saved payment requirements, so an operator has to finish or close it by hand`,
       );
     }
-    const outcome = await this.#runtime.facilitator.settle({
+    const charge = {
       orderId: record.order.id,
       requirements: record.priceOffer.requirements,
       amount: price.amount,
@@ -1098,7 +1099,12 @@ export class OrderRunner {
       // current one: it is what the buyer's authorisation names, so a charge to
       // a wallet moved since would be refused after the goods went out.
       payTo: record.payTo,
-    });
+    };
+    const outcome = await settleTimed(
+      () => this.#runtime.clock(),
+      record.order.mode.settle,
+      () => this.#runtime.facilitator.settle(charge),
+    );
     if (record.paymentAttempt === undefined)
       throw new Error("a charge has no durable payment attempt");
     await this.completePaymentAttempt(

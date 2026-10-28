@@ -19,6 +19,7 @@ import type {
 } from "@nuanu-ai/agentify-contracts";
 import { PurchaseRequestSchema, WorkerPollRequestSchema } from "@nuanu-ai/agentify-contracts";
 import type { Caller, Gateway, OffSale, PurchaseAttempt } from "../app/gateway.js";
+import { retryAfterAnswered } from "../app/purchase-metrics.js";
 import { agentOrderStatusOf, paidTransactionOf } from "../app/runner.js";
 import type { StoredOrder } from "../ports/store.js";
 import {
@@ -666,16 +667,13 @@ async function answerPurchase(
       return written(response, CONFLICT, refusal("seller_not_fulfilling", SELLER_NOT_FULFILLING));
 
     case "seller_busy":
-      response.setHeader(
-        "retry-after",
-        String(attempt.retryAfterSeconds ?? BUSY_RETRY_AFTER_SECONDS),
-      );
+      comeAgain(response, "seller_busy", attempt.retryAfterSeconds ?? BUSY_RETRY_AFTER_SECONDS);
       return written(response, TOO_MANY_REQUESTS, refusal("seller_busy", attempt.why));
 
     case "payment_being_checked":
       // Neutral on purpose: the first request may still be charged, so this
       // one is told neither that nothing was charged nor to buy again.
-      response.setHeader("retry-after", String(BUSY_RETRY_AFTER_SECONDS));
+      comeAgain(response, "payment_being_checked", BUSY_RETRY_AFTER_SECONDS);
       return written(
         response,
         CONFLICT,
@@ -698,7 +696,7 @@ async function answerPurchase(
       );
 
     case "not_checked_now":
-      response.setHeader("retry-after", String(BUSY_RETRY_AFTER_SECONDS));
+      comeAgain(response, "not_checked_now", BUSY_RETRY_AFTER_SECONDS);
       return written(
         response,
         SERVICE_UNAVAILABLE,
@@ -840,6 +838,16 @@ function sayWhatPaid(
     PAYMENT_RESPONSE_HEADER,
     edge.receiptHeader({ success: true, transaction, network: network as `${string}:${string}` }),
   );
+}
+
+/** Tells the buyer to send the same request again after `seconds`, counted for the operator. */
+function comeAgain(
+  response: RouteCall["response"],
+  answer: "seller_busy" | "payment_being_checked" | "not_checked_now",
+  seconds: number,
+): void {
+  response.setHeader("retry-after", String(seconds));
+  retryAfterAnswered(answer, seconds);
 }
 
 function written(response: RouteCall["response"], status: number, document: unknown): RouteAnswer {

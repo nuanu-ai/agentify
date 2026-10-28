@@ -14,6 +14,7 @@ import { authorizationIn } from "../http/payment-authorization.js";
 import type { Clock } from "../ports/clock.js";
 import type { TokenBalances } from "../ports/payment-chain.js";
 import { MerchantGate } from "./merchant-gate.js";
+import { gateRefused, payerReadTimed } from "./purchase-metrics.js";
 
 /** What a payment proves of who pays it. */
 export type PayerProof =
@@ -196,10 +197,13 @@ export class PayerReads {
     const reader = this.#read();
     if (reader === undefined) return null;
     const place = await this.#places.enter(merchantId, READ_PLACE_WAIT_MS);
-    if (place === null) return null;
+    if (place === null) {
+      gateRefused("payer_read");
+      return null;
+    }
     let state: PayerState;
     try {
-      state = await reader.payerState(token, wallet, nonce);
+      state = await payerReadTimed(this.#clock, () => reader.payerState(token, wallet, nonce));
     } catch {
       return null;
     } finally {
