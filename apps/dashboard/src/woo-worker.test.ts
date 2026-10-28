@@ -3764,7 +3764,7 @@ describe("what the worker writes in the merchant's log when something fails", ()
 });
 
 describe("bounded work within one connected shop", () => {
-  it("leaves a paid order undispatched while its cart bundle is unavailable, then fulfills it with one handover", async () => {
+  it("delivers a paid download with one handover while every paid cart waits for a replacement", async () => {
     const application = await harness();
     const shops = memoryWooShops();
     const connected = connection();
@@ -3798,8 +3798,9 @@ describe("bounded work within one connected shop", () => {
       { itemId: published.document.id, params: {} },
     );
     const orderId = offer.order.order.id;
-    let time = application.now();
-    const clock = vi.spyOn(Date, "now").mockImplementation(() => time);
+    const at = new Date(application.now());
+    // Every paid cart was opened and then retired, and a replacement was just
+    // spent, so none of them can open again for ten minutes.
     await shops.startCartRuntime(connected.shopUrl, "interrupted-worker");
     for (let slot = 0; slot < 8; slot += 1) {
       await shops.claimCart(
@@ -3808,7 +3809,15 @@ describe("bounded work within one connected shop", () => {
         "paid",
         slot,
         `initial-${slot}`,
-        new Date(time),
+        at,
+      );
+      await shops.registerCartIdentity(
+        connected.shopUrl,
+        "interrupted-worker",
+        "paid",
+        slot,
+        `initial-${slot}`,
+        `retired-session-${slot}`,
       );
       await shops.finishCart(
         connected.shopUrl,
@@ -3816,19 +3825,10 @@ describe("bounded work within one connected shop", () => {
         "paid",
         slot,
         `initial-${slot}`,
-        slot === 0
-          ? { token: "ready-before-restart", expiresAt: new Date(time + 172_800_000) }
-          : null,
+        null,
       );
     }
-    await shops.claimCart(
-      connected.shopUrl,
-      "interrupted-worker",
-      "paid",
-      1,
-      "failed-repair",
-      new Date(time),
-    );
+    await shops.claimCart(connected.shopUrl, "interrupted-worker", "paid", 1, "failed-repair", at);
     await shops.finishCart(
       connected.shopUrl,
       "interrupted-worker",
@@ -3839,7 +3839,7 @@ describe("bounded work within one connected shop", () => {
     );
     await shops.connect(connected);
     const shop = aShopThatAccepts();
-    const parts = {
+    const worker = startWooWorker({
       ...filling(shops, shop.place),
       now: () => new Date(application.now()),
       identity: {
@@ -3854,17 +3854,8 @@ describe("bounded work within one connected shop", () => {
         gatewayFor(application.gateway, acting),
       betweenTurnsMs: 2,
       waitSeconds: 0,
-    };
-    let worker = startWooWorker(parts);
+    });
     try {
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      const waiting = await application.store.orderById(orderId);
-      expect(waiting?.order.state).toBe("paid");
-      expect(waiting?.order.dispatch.attempts).toBe(0);
-      expect(waiting?.order.timestamps.dispatchedAt).toBeNull();
-      await worker.stop();
-      time += 600_000;
-      worker = startWooWorker(parts);
       for (let attempt = 0; attempt < 200; attempt += 1) {
         if ((await application.store.orderById(orderId))?.order.state === "delivered") break;
         await new Promise((resolve) => setTimeout(resolve, 5));
@@ -3875,7 +3866,6 @@ describe("bounded work within one connected shop", () => {
       expect(await shops.knownOrder(orderId)).toMatchObject({ kind: "placed", id: "13" });
     } finally {
       await worker.stop();
-      clock.mockRestore();
       await application.stop();
     }
   });
@@ -4370,6 +4360,252 @@ describe("bounded work within one connected shop", () => {
       await until(() => run.polls() > before && run.answers.includes("old"));
     } finally {
       resolve();
+      await run.worker.stop();
+    }
+  });
+});
+
+describe("a shop whose guest carts are short", () => {
+  const SHOP = "https://shop.example.com";
+  const PLACE = { country: "ID", state: "BA", city: "Tabanan", postal_code: "82121" };
+  const TOTE = merchantItemIdFor(SHOP, "28");
+
+  /**
+   * WooCommerce's guest cart for product 28 at a 5.00 flat rate, one session
+   * per token it issues. `refuse` answers instead of the shop where it returns
+   * a response.
+   */
+  const aGuestCart = (refuse: (path: string, token: string | null) => Response | null) => {
+    const holds = new Map<string, boolean>();
+    let issued = 0;
+    const request = vi.spyOn(wooTransport, "wooRequest").mockImplementation(async (url, init) => {
+      const path = new URL(url).pathname;
+      const token = new Headers(init?.headers).get("cart-token");
+      const refused = refuse(path, token);
+      if (refused !== null) return refused;
+      const session = token ?? `guest-${++issued}`;
+      if (path.endsWith("/add-item")) holds.set(session, true);
+      if (path.endsWith("/remove-item")) holds.set(session, false);
+      const held = holds.get(session) === true;
+      return Response.json(
+        {
+          items: held ? [{ key: "line-28", id: 28, quantity: 1 }] : [],
+          errors: [],
+          needs_shipping: held,
+          shipping_rates: held
+            ? [
+                {
+                  package_id: 0,
+                  items: [{ key: "line-28", quantity: 1 }],
+                  shipping_rates: [
+                    {
+                      rate_id: "flat_rate:3",
+                      name: "Standard",
+                      method_id: "flat_rate",
+                      instance_id: 3,
+                      price: "500",
+                      taxes: "0",
+                      currency_code: "USD",
+                      currency_minor_unit: 2,
+                    },
+                  ],
+                },
+              ]
+            : [],
+        },
+        { status: path.endsWith("/add-item") ? 201 : 200, headers: { "Cart-Token": session } },
+      );
+    });
+    return { request, sessions: () => issued, holds };
+  };
+
+  const download = (id: string) => ({
+    kind: "order" as const,
+    id: `env-${id}`,
+    sent_at: new Date().toISOString(),
+    payload: anOrder({ id }),
+  });
+  const parcel = (id: string) => ({
+    kind: "order" as const,
+    id: `env-${id}`,
+    sent_at: new Date().toISOString(),
+    payload: anOrder({
+      id,
+      merchant_item_id: TOTE,
+      price_id: `prc-${id}`,
+      quote_reference: referenceFor(boundAt("accepted-parcel-fingerprint")),
+      ship_to: {
+        ...PLACE,
+        name: "Nuanu Reception",
+        line_one: "Jl. Raya Kediri, Beraban",
+        phone_number: "+62 000 0000 0000",
+      },
+    }),
+  });
+  const priceOfTheGuide = {
+    kind: "quote_request" as const,
+    id: "env-guide-price",
+    sent_at: new Date().toISOString(),
+    payload: {
+      merchant_item_id: anOrder().merchant_item_id,
+      price_id: "prc-guide",
+      purpose: "purchase" as const,
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    },
+  };
+
+  /**
+   * A merchant's stream as the gateway keeps it: an order nobody answered is
+   * handed over again on a later poll.
+   */
+  const working = (shops: WooShops, envelopes: { kind: string; payload: unknown }[]) => {
+    const waiting = [...envelopes];
+    const answered = new Map<string, unknown>();
+    const client = {
+      pollWorker: async () => {
+        const next = waiting.shift();
+        if (next?.kind === "order") {
+          const id = (next.payload as Order).id;
+          if (!answered.has(id)) waiting.push(next);
+        }
+        return { ok: true as const, document: { envelopes: next ? [next] : [] } };
+      },
+      paidInto: async () => ({ ok: true as const, document: NO_SPLIT }),
+      answerOrder: async (id: string, answer: unknown) => {
+        answered.set(id, answer);
+        return { ok: true as const };
+      },
+      answerQuote: async (id: string, answer: unknown) => {
+        answered.set(id, answer);
+        return { ok: true as const };
+      },
+    };
+    const worker = startWooWorker({
+      ...filling(shops, aShopThatAccepts().place),
+      now: () => new Date(),
+      identity: {
+        byId: async () => ({
+          id: "acc_1",
+          email: MERCHANT_EMAIL,
+          confirmed: true,
+          merchant: { id: "mer_1" },
+        }),
+      },
+      clientFor: () => client as never,
+      betweenTurnsMs: 2,
+      waitSeconds: 0,
+      inspectProduct: async (_connection, merchantItemId) =>
+        merchantItemId === TOTE
+          ? showing({
+              kind: "parcel",
+              productId: "28",
+              price: { amount: "20.00", currency: "USD" },
+              fingerprint: "accepted-parcel-fingerprint",
+              tax: { mode: "off" },
+            })
+          : showing({
+              kind: "download",
+              productId: "11",
+              downloadId: "dl_guide",
+              fileName: "Guide",
+              price: { amount: "25.00", currency: "USD" },
+              fingerprint: "accepted-download-fingerprint",
+              tax: { mode: "off" },
+            }),
+      placeParcel: async (_keys, sold) => ({
+        ok: true,
+        id: `wc-${sold.orderId}`,
+        number: `wc-${sold.orderId}`,
+        total: sold.total.amount,
+      }),
+    });
+    return { worker, answered };
+  };
+  const within = async (condition: () => boolean, ms = 1_000) => {
+    const deadline = Date.now() + ms;
+    while (!condition() && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, 2));
+    return condition();
+  };
+
+  it("keeps delivering downloads and answering prices from a shop that will not open a cart for a visitor", async () => {
+    // A plugin that turns the REST API off for guests answers the cart this way.
+    aGuestCart((path) =>
+      path.startsWith("/wp-json/wc/store/v1/cart")
+        ? Response.json(
+            {
+              code: "rest_cannot_access",
+              message: "Only authenticated users can access the REST API.",
+            },
+            { status: 401 },
+          )
+        : null,
+    );
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const run = working(shops, [download("ord-guide"), priceOfTheGuide]);
+    try {
+      expect(
+        await within(() => run.answered.has("ord-guide") && run.answered.has("prc-guide")),
+      ).toBe(true);
+      expect(run.answered.get("ord-guide")).toMatchObject({ delivered: { file_name: "Guide" } });
+      expect(run.answered.get("prc-guide")).toMatchObject({ available: true });
+    } finally {
+      await run.worker.stop();
+    }
+  });
+
+  it("takes on a paid parcel as soon as the shop's cart answers again after a burst of errors", async () => {
+    let failing = 9;
+    const cart = aGuestCart((path, token) => {
+      if (path !== "/wp-json/wc/store/v1/cart" || token !== null || failing === 0) return null;
+      failing -= 1;
+      return new Response("<html>Service Unavailable</html>", { status: 503 });
+    });
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const run = working(shops, [parcel("ord-tote")]);
+    try {
+      expect(await within(() => run.answered.has("ord-tote"))).toBe(true);
+      expect(run.answered.get("ord-tote")).toEqual({ accepted: {} });
+      expect(failing).toBe(0);
+      expect([...cart.holds.values()].every((held) => !held)).toBe(true);
+    } finally {
+      await run.worker.stop();
+    }
+  });
+
+  it("takes on a paid parcel at once after a restart that interrupted the carts it was using", async () => {
+    aGuestCart(() => null);
+    const shops = memoryWooShops();
+    await shops.connect(connection());
+    const now = new Date();
+    await shops.startCartRuntime(SHOP, "interrupted-worker");
+    for (const [lane, slot] of [
+      ["paid", 0],
+      ["paid", 1],
+      ["quote", 0],
+    ] as const) {
+      await shops.claimCart(SHOP, "interrupted-worker", lane, slot, `${lane}-${slot}`, now);
+      await shops.registerCartIdentity(
+        SHOP,
+        "interrupted-worker",
+        lane,
+        slot,
+        `${lane}-${slot}`,
+        `interrupted-${lane}-${slot}`,
+      );
+    }
+    // A replacement opened just before the restart, so none is due for ten minutes.
+    await shops.finishCart(SHOP, "interrupted-worker", "quote", 0, "quote-0", null);
+    await shops.claimCart(SHOP, "interrupted-worker", "quote", 0, "replacement", now);
+    const run = working(shops, [parcel("ord-tote"), download("ord-guide")]);
+    try {
+      expect(
+        await within(() => run.answered.has("ord-tote") && run.answered.has("ord-guide")),
+      ).toBe(true);
+      expect(run.answered.get("ord-tote")).toEqual({ accepted: {} });
+    } finally {
       await run.worker.stop();
     }
   });
