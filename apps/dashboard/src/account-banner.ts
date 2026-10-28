@@ -52,7 +52,6 @@ export interface AccountRead {
    * null where it never has.
    */
   readonly outOfTouch?: { readonly since: string | null };
-  /** True while as many purchases wait for payment as Agentify allows, so new ones are refused. */
   /** True while as many paid orders are left unserved as Agentify allows, so new purchases are refused. */
   readonly unserved?: boolean;
   /**
