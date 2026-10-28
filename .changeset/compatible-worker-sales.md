@@ -3,8 +3,9 @@
 "@nuanu-ai/agentify-contracts": minor
 ---
 
-Workers send their contract version before taking work. Contract version 5
-requires it on poll requests. The gateway opens API merchant sales only after
-a compatible worker connects; older SDKs must be updated. Publishing before
-starting a worker remains supported, and already accepted orders remain for
-compatible workers to fulfill without another charge.
+Your worker now sends its contract version on every poll, and the gateway
+takes work only from a worker that speaks its contract version, 6 in this
+release. Your sales through the SDK open only once such a worker has connected, so a
+worker on an older SDK has to be upgraded. You can still publish cards before
+you start a worker, and orders already accepted stay for a compatible worker
+to fulfill, without another charge.

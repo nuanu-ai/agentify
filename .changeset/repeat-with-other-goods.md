@@ -3,9 +3,9 @@
 "@nuanu-ai/agentify-contracts": minor
 ---
 
-A delivery of an order already delivered that carries other goods than the
-ones the buyer has is answered with the new word
-`already_delivered_other_goods`, still `ok: true`, and the buyer keeps the first
-goods. The SDK reports a `repeat_with_other_goods` problem naming the order,
-without either goods, whether the delivery came from a handler or from
-`deliver`. An SDK release that does not know the word reads it as `unknown`.
+If you deliver an order again with other goods than the ones the buyer already
+has, the answer is still `ok: true`, with the new word
+`already_delivered_other_goods`, and the buyer keeps the goods you delivered
+first. The SDK reports a `repeat_with_other_goods` problem naming the order,
+without either set of goods, whether the delivery came from a handler or from
+`deliver`. An older SDK that does not know the word reads it as `unknown`.

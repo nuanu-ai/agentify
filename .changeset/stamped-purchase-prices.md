@@ -3,16 +3,28 @@
 "@nuanu-ai/agentify": minor
 ---
 
-Contract version 6 carries an authenticated price stamp through the ordinary
-x402 retry. Unpaid pricing creates no stored order; the paid request repeats
-its purchase body, and one price identifies one order across concurrent retries.
-A generic optional quote_reference confirms a merchant calculation and returns
-unchanged on the order. It is visible to the buyer and must contain no secrets
-or personal data. The buyer example keeps the challenge before payment and
-uses a fresh signature to recover the same purchase.
-Since no order exists before a verified payment, the ending reasons
-unavailable, price_check_unanswered and price_expired and the refusal codes
-order_not_priced_yet and order_closed_before_it_was_priced are removed, and
-the worker no longer suggests setting stock aside for a price question.
-The contracts package exports listedPurchaseOf, the example purchase a
+This release speaks contract version 6. A worker on an older SDK reports the
+problem `contract_version_mismatch` at its first poll after the gateway is
+released and stops; your sales through it resume once you upgrade to this
+release and start the worker again.
+
+A price question you answer no longer opens an order. Agentify puts your price
+in the payment request under its own stamp and writes the order only when the
+buyer's payment arrives and is verified, so answering a price question reserves
+no stock and your handler should not set any aside for it. An order reaches
+your handler only once a payment has been presented for it. The ending reasons
+`unavailable`, `price_check_unanswered` and `price_expired` and the refusal
+codes `order_not_priced_yet` and `order_closed_before_it_was_priced` are gone,
+because no order can reach them.
+
+Your price answer may carry an optional `quote_reference` of up to 512
+printable characters, which Agentify stamps with the price and returns
+unchanged on the order. The buyer can read it in the payment request, so put
+no secrets and no personal data in it.
+
+When a discovery catalogue replays the example purchase your card lists,
+Agentify answers it as a look at the listing and does not ask your price
+handler.
+
+The contracts package exports `listedPurchaseOf`, the example purchase a
 card's listing declares.
