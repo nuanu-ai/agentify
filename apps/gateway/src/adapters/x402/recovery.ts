@@ -64,7 +64,7 @@ const ABI = parseAbi([
 ]);
 /**
  * How many blocks one poll reads. An authorization accepted here can be valid
- * for nearly four minutes counting the allowance for clocks, some 115 Base
+ * for about four minutes counting the allowance for clocks, some 120 Base
  * blocks, so reading all of it can take two polls, the second going on
  * where the first stopped.
  */
