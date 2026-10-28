@@ -9,6 +9,7 @@ import {
 import type { PaymentRequirements } from "@x402/core/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { X402Facilitator } from "../adapters/x402/facilitator.js";
+import { Gateway } from "../app/gateway.js";
 import { payoutSplitFor } from "../split/parameters.js";
 import {
   buyOverHttp,
@@ -469,6 +470,40 @@ describe("a stamped price and an order born at payment", () => {
     );
     expect(identifiers.size).toBe(1);
     expect(addresses.size).toBe(1);
+    expect(await h.store.orders(h.merchant.id)).toHaveLength(1);
+    expect(h.facilitator.settles).toHaveLength(1);
+  });
+
+  it("leaves one order when a second gateway process admits the same price at the same time", async () => {
+    // Each process checks one request per price; only the store's admission
+    // keeps two processes from making two orders of one price.
+    await started({ ...CARD, fulfillment: "async", price_check: undefined });
+    const offer = await quote();
+    const another = new Gateway(h.runtime);
+    const present = async (gateway: Gateway, nonce: string) => {
+      const payment = await signedPayment(BUYER, offer, {
+        nonce,
+        validBefore: h.now() + offer.maxTimeoutSeconds * 1000,
+      });
+      return gateway.payPurchase(
+        String(offer.extra?.price_stamp),
+        payment,
+        paymentFingerprint(
+          decodePaymentSignatureHeader(payment),
+          new PaymentEdge(h.runtime.config).token(),
+        ),
+        undefined,
+        { itemId, params: {} },
+      );
+    };
+    releaseVerification = h.facilitator.holdVerification();
+    const paying = [present(h.gateway, "0x01"), present(another, "0x02")];
+    pending.push(...paying);
+    await vi.waitFor(() => expect(h.facilitator.verifies).toHaveLength(2));
+    releaseVerification();
+
+    const steps = (await Promise.all(paying)).map((answer) => answer.step).sort();
+    expect(steps).toStrictEqual(["payment_being_checked", "under_way"]);
     expect(await h.store.orders(h.merchant.id)).toHaveLength(1);
     expect(h.facilitator.settles).toHaveLength(1);
   });
