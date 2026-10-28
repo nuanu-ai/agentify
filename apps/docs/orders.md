@@ -169,8 +169,10 @@ The price holds until its term ends, judged when the paid request reaches
 Agentify. That request repeats the product and parameters and, for a parcel,
 the complete `ship_to`. The locality must be the one priced; the first verified
 payer supplies the full address within it, which Agentify then holds for that
-order. Publishing a card again invalidates an outstanding unpaid price before
-anything is charged. An order accepted for payment keeps its original terms.
+order. A change to the card, or to where you are paid, invalidates an
+outstanding unpaid price before anything is charged; publishing the same card
+again unchanged does not. An order accepted for payment keeps its original
+terms.
 
 ### What a handler can answer
 
@@ -632,10 +634,14 @@ you closed fulfillment, and its `status` column is the word each one reads.
 
 A purchase whose parameters do not fit the card is refused at the door, before
 any order exists. A payment that fails its check reaches no merchant handler;
-a price requested without payment creates no order. A full price-question gate lets a
-synchronous card sell at its card price; an asynchronous card or parcel is
-refused with `seller_busy`, HTTP 429 and `Retry-After: 2`. A merchant whose
-process has stopped polling is refused with `seller_not_taking_orders`.
+a price requested without payment creates no order. A price question that
+finds the gate full waits briefly for a place; if none comes, a synchronous
+card sells at its card price, and an asynchronous card or parcel is refused
+with `seller_busy`, HTTP 429 and `Retry-After: 2`, as it is when your price
+check names no price in time. A paid request that finds your payment checks
+full within a short wait is refused with `seller_busy` too, before anything is
+charged. A merchant whose process has stopped polling is refused with
+`seller_not_taking_orders`.
 A merchant who leaves {{unserved-at-most}} paid orders without delivery or
 closure is refused with `seller_not_fulfilling`, until enough are delivered
 or closed. These rules are described on [What can go wrong](/failures).

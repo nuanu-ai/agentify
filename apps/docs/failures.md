@@ -19,7 +19,7 @@ is recorded as unfulfilled after.
 
 | Situation | Synchronous | Asynchronous | A parcel | What you do |
 | --- | --- | --- | --- | --- |
-| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment, and no order reaches you | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
+| The price check is silent | the sale goes on at the card's price | the purchase is refused before payment with `seller_busy`, HTTP 429 and `Retry-After: 2`, and no order reaches you; the agent may ask again | as in the asynchronous mode | keep a synchronous card's price current, since in a silence it is the price of the sale |
 | You refused | the purchase did not happen and nothing was charged | the paid order is unfulfilled (`unfulfilled`) | as in the asynchronous mode | refuse before the money where you can, in the answer to the price question; after it, refuse at once rather than wait out your deadline |
 | Your handler threw, or your process fell over | the order comes again after a pause that grows with each attempt, up to {{redelivery-max-attempts}} deliveries in all, while its deadline lasts | as in the synchronous mode | as in the synchronous mode | throw for a failure that may pass, and keep refusals for "this cannot be delivered" |
 | No answer by the deadline | nothing was charged (`expired`) | the paid order is unfulfilled (`unfulfilled`) | the paid order is unfulfilled (`unfulfilled`) | name a deadline you can keep; a late delivery still counts until you close fulfillment |
@@ -28,7 +28,7 @@ is recorded as unfulfilled after.
 | The goods ran out | "there is none" in the price check refuses before payment; a refusal at delivery charges nothing | "there is none" in the price check refuses before payment; a refusal after it leaves a paid order unfulfilled | as in the asynchronous mode | list goods that can run out with a price check, and answer it truthfully |
 | The charge failed after your delivery | the buyer paid nothing and has no goods (`delivered_unpaid`); a repeat purchase that pays releases them, except after you change your payout wallet, when the repeat is refused and the buyer buys again | cannot happen: the charge comes first | cannot happen | decide whether to revoke what you gave out. Verification reserves no money: several purchases from one wallet can pass it even when the balance cannot cover all their charges. The buyer receives no unpaid goods, but your cost of making them can multiply across concurrent purchases. If goods cost money to make, publish them with asynchronous fulfillment so payment comes before you make them |
 | Nobody knows whether the charge went through | after your delivery the order reads `payment_unresolved`, and a repeat purchase is refused | the order reads `payment_unresolved` before it reaches you, and is unfulfilled if the charge reports in later | as in the asynchronous mode | skip it in your loops over open orders and wait: Agentify keeps checking in the background, with no time promised |
-| Your price-question gate is full | the sale goes on at the card's price without asking your price handler | the request is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before a price question or order is written | as in the asynchronous mode | keep a synchronous card's price current; an agent refused with 429 waits two seconds and tries again |
+| Your price-question gate is full | the question waits briefly for a place; if none comes, the sale goes on at the card's price without asking your price handler | the request waits briefly for a place, then is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before a price question or order is written | as in the asynchronous mode | keep a synchronous card's price current; an agent refused with 429 waits two seconds and tries again |
 | No process of yours has polled for {{silent-after}} | a new purchase is refused with `seller_not_taking_orders` before its price is asked and before any order exists, and so is a payment for a price named before the silence; your cards leave the catalogue, nothing is charged, and the agent tries again later | as in the synchronous mode | as in the synchronous mode | keep a process running and polling: its first poll brings your cards back and lets the next purchase through, and the cards you paused stay paused. Your dashboard says since when your integration has not connected, and [what to check](#your-integration-has-not-connected) |
 | {{Unserved-at-most}} paid orders you took on are left without delivery or closure | a new purchase is refused with `seller_not_fulfilling`, HTTP 409, before its price is asked and before any order exists, and so is a payment for a price named before the {{unserved-at-most:ordinal}} such order; your cards leave the catalogue, nothing is charged, and the agent is told that nothing says when it ends | as in the synchronous mode | as in the synchronous mode | deliver late or close fulfillment of those orders, each of which says it counts under Needs you on Orders: once fewer than {{unserved-at-most}} remain, the next purchase goes through with nothing switched back on |
 
@@ -41,11 +41,25 @@ message reach the agent word for word, so write the message for a stranger
 
 The price-question gate belongs to each merchant separately and applies to
 both SDK and WooCommerce sales. It admits only questions that can still be
-answered within {{quote-response}}. A question whose wait has ended is never
+answered within {{quote-response}}, and a question that finds it full waits
+for a place inside that same time. A question whose wait has ended is never
 handed to your handler, and paid orders are drawn before price questions.
-There is no limit of outstanding unpaid prices: they hold no order or place
-in a queue after the question ends. The gate and the polling rule recover
-without a switch in the dashboard.
+Another merchant's questions never take your places. There is no limit of
+outstanding unpaid prices: they hold no order or place in a queue after the
+question ends. The gate and the polling rule recover without a switch in the
+dashboard. An answer that the product is unavailable refuses that purchase
+with `not_selling`, which is not retryable.
+
+Payments are checked with the payment network a few at a time for each
+merchant, and another merchant's payments never take your places. A paid
+request that finds no place within a short wait is refused with
+`seller_busy`, HTTP 429 and `Retry-After: 2`, before anything is charged, and
+the agent sends the same request with the same payment again. While one
+request for a price is being checked, another for the same price is refused
+with `payment_not_taken`, marked retryable, with `Retry-After: 2`. That
+answer does not say whether the first request will be charged, so the agent
+sends the same request again to learn how the purchase stands, rather than
+buying anew.
 
 The rule about polling covers every purchase sold through your own code,
 whatever its mode. Without a process of
@@ -134,9 +148,13 @@ agent is told that whether it was is not known. That answer is not retryable,
 because the payment it carried may already be spent. The agent signs the same
 payment request again from the same wallet, which is answered with the order
 or with where its payment stands and never charges twice. Asking for a new
-price instead starts a new purchase, which is charged again once paid. A
-purchase that fails before any payment it could read is told that nothing was
-charged, and the agent asks for the price again.
+price instead starts a new purchase, which is charged again once paid. Where
+the failure came before anything was written for the payment, for example
+while Agentify waited for a database connection, the answer is HTTP 503 with
+`gateway_failed`, marked retryable, with `Retry-After: 2`: the payment was not
+used, and the agent sends the same request again. A purchase that fails before
+any payment it could read is told that nothing was charged, and the agent asks
+for the price again.
 
 ## Your integration has not connected
 

@@ -310,10 +310,12 @@ ordinary price of the product there rather than a zero or a placeholder: the
 agent decides from it whether to look any further.
 
 The check answers what the product costs and whether it is available now.
-Agentify asks it before payment, and an order is written only when a payment
-is presented. Publishing the card again before that payment invalidates the
-outstanding price; the agent must request a new one. Once the payment is
-accepted, the order keeps its price and fulfillment terms.
+Agentify asks it before payment, and an order is written only once a payment
+is verified. A change to the card before that payment, to its price or its
+title alike, invalidates the outstanding price, and so does a change to where
+you are paid; the agent must request a new one. Publishing the same card again
+unchanged, as your process does when it starts, leaves the price standing.
+Once the payment is accepted, the order keeps its price and fulfillment terms.
 
 The question travels the same channel as the orders: you put a price handler —
 the one you register under `on('quote', …)` — beside the order handler, in the
@@ -377,7 +379,19 @@ bytes on the merchant's paid order. It is visible to the buyer in the 402
 payment requirements and may reach the payment facilitator or a discovery
 listing. Put no secret, personal data or protected download address in it.
 Keeping the price facts in the reference lets your handler recognise them
-without storing an unpaid question.
+without storing an unpaid question. The SDK's `q.available` takes no
+reference, so add it to the answer it builds:
+
+```ts
+agentify.on('quote', async (q) => {
+  const item = await lookupItem(q.merchant_item_id)
+
+  return {
+    ...q.available({ amount: item.price, currency: 'USD' }, item.checked_at),
+    quote_reference: `rate:${item.checked_at}`,
+  }
+})
+```
 
 In full it looks like this:
 
@@ -425,11 +439,15 @@ be answered in that window, and a question whose wait has ended is never
 handed out. Paid orders are drawn before price questions. The SDK handles up
 to four unfinished messages at once; more instances divide that work further.
 
-A full gate uses the card price for a synchronous sale, whose handler can
-still refuse before a charge. It refuses an asynchronous purchase or parcel
-with `seller_busy`, HTTP 429 and `Retry-After: 2`, before asking your price.
-The agent waits two seconds and tries again. These rules apply to the SDK and
-WooCommerce alike; they are described on [What can go wrong](/failures).
+A question that finds your gate full waits briefly for a place, inside that
+same window. If none comes, a synchronous sale goes at the card price, and its
+handler can still refuse before a charge. An asynchronous purchase or parcel
+is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before asking
+your price, and so is one whose price your handler did not name in time. The
+agent waits two seconds and asks again. An answer that the product is
+unavailable is refused for good, with nothing charged. Another merchant's
+questions never take your places. These rules apply to the SDK and WooCommerce
+alike; they are described on [What can go wrong](/failures).
 
 Agentify keeps no stock counts: only you know how much of anything there is. So
 a product that can run out is worth listing with a check, because without one
