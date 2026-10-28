@@ -404,6 +404,11 @@ export type Effect =
   | { readonly kind: "emit_merchant_event"; readonly event: MerchantEvent }
   | { readonly kind: "answer_merchant"; readonly answer: MerchantAnswer }
   /**
+   * The merchant has taken the order on, so any repeat still waiting on his
+   * stream is withdrawn: none is needed, and one can wait fifteen minutes.
+   */
+  | { readonly kind: "withdraw_hand_overs" }
+  /**
    * The buyer's address is no longer needed from us: erase it from the order
    * and from every envelope that carries it. Said once per parcel, on the
    * transition where `holdsShipTo` stops being true.

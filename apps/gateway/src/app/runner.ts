@@ -270,8 +270,10 @@ function carriedOutAfterwards(effect: Effect): boolean {
     case "emit_merchant_event":
     case "issue_receipt":
     // Erasing a parcel's address changes the order itself and the envelopes
-    // that carry it, so it is written with the state.
+    // that carry it, so it is written with the state, and so is withdrawing
+    // the repeats an acceptance made needless.
     case "erase_ship_to":
+    case "withdraw_hand_overs":
       return false;
     case "request_quote":
     case "verify_payment":
@@ -1007,9 +1009,11 @@ export class OrderRunner {
           break;
 
         case "erase_ship_to":
-          // The order itself already keeps only when (`addressToKeep`); what is
-          // left is everything on the merchant's stream that carries any of
-          // the address, deleted in the same unit as the order.
+        // The order itself already keeps only when (`addressToKeep`); what is
+        // left is everything on the merchant's stream that carries any of
+        // the address, deleted in the same unit as the order. An acceptance
+        // withdraws the same envelopes, the order's own hand-overs.
+        case "withdraw_hand_overs":
           writes.push({
             kind: "forget",
             merchantId: record.merchantId,
@@ -1062,6 +1066,7 @@ export class OrderRunner {
         case "emit_merchant_event":
         case "issue_receipt":
         case "erase_ship_to":
+        case "withdraw_hand_overs":
           // These were written with the state that implies them. Reaching here
           // means a caller did not filter them out, and doing them again would
           // put a duplicate on a merchant's stream while looking like the code

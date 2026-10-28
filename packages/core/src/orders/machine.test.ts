@@ -461,8 +461,10 @@ describe("the asynchronous mode: the money moves first", () => {
     expect(order.dispatch.accepted).toBe(true);
     // And he is told his answer landed, in the word for it. An acceptance is a
     // merchant's answer like the other two, and a machine that stayed silent
-    // here would leave whoever answers him with nothing to say but no.
+    // here would leave whoever answers him with nothing to say but no. Any
+    // repeat still waiting on his stream is withdrawn.
     expect(effects).toStrictEqual([
+      { kind: "withdraw_hand_overs" },
       { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
     ]);
   });

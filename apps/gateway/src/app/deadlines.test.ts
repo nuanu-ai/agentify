@@ -798,11 +798,11 @@ describe("when a delivery goes unanswered", () => {
     });
   });
 
-  it("does not close an order on the silence after a repeat its merchant had already taken on", async () => {
-    // A slow handler may accept after our answer wait has expired, and the repeat
-    // sent for that silence is ordinary. The silence after the repeat must not
-    // count once he has accepted, or a slow but willing merchant is handed the
-    // order he is already filling again and again.
+  it("does not repeat or close an order on the silence after a repeat he drew before taking it on", async () => {
+    // A slow handler may accept after our answer wait has expired, by which
+    // time the repeat sent for that silence may already have been drawn. The
+    // silence after that repeat must not count once he has accepted, or a slow
+    // but willing merchant is handed the order he is already filling again.
     // Each step is driven by hand so the order of events is the same every run.
     const harnessed = await started({
       // Long enough that the gateway's own reminders never fire: the two
@@ -832,19 +832,16 @@ describe("when a delivery goes unanswered", () => {
       { timeout: 2_000, interval: 5 },
     );
 
-    // Then the acceptance lands, with the repeat already on the stream, and
-    // the repeat still reaches him.
-    await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
+    // The repeat is drawn, and then the acceptance of the first lands.
     expect((await harnessed.gateway.poll(merchantId, 1_000)).envelopes).toHaveLength(1);
+    const repeat = await openHandOver();
+    await harnessed.gateway.answerOrder(merchantId, orderId, { accepted: {} });
 
     // The silence after the repeat, then the goods. This relies on the in-memory
     // adapters: the reminder fires on the next event-loop turn and takes the
     // order's hold, so the delivery waits behind it. If the delivery ever went
     // first, this would pass whether or not the silence is counted.
-    await harnessed.queue.remind(
-      { kind: "delivery_unanswered", orderId, handOver: await openHandOver() },
-      0,
-    );
+    await harnessed.queue.remind({ kind: "delivery_unanswered", orderId, handOver: repeat }, 0);
     await new Promise((resolve) => setTimeout(resolve, 0));
     const delivered = await harnessed.gateway.deliverOrder(merchantId, orderId, {
       activation_code: "LPA:1$smdp.example$K2-1A2B3C",

@@ -781,15 +781,13 @@ function fromDispatched(order: Order, event: StateEvent): TransitionResult {
       // gateway also clears the hand-over it was waiting on, but that is not
       // enough: a handler can take longer than our wait to accept, so a repeat
       // decided on in the meantime is already on the merchant's stream when
-      // this lands. That repeat is still handed over, since delivery is at
-      // least once and the merchant tells it apart by the order's identifier,
-      // but the silence after it must not count. A parcel's repeat is the
-      // exception: its address went with this acceptance, and `transition`
-      // refuses to hand it over empty.
-      return answer(
-        { ...order, dispatch: { ...order.dispatch, accepted: true } },
-        { ok: true, result: "accepted" },
-      );
+      // this lands, and its pause can run to minutes. So the acceptance
+      // withdraws whatever is still waiting there. A repeat already drawn
+      // still reaches him, and the silence after it must not count.
+      return ok({ ...order, dispatch: { ...order.dispatch, accepted: true } }, [
+        { kind: "withdraw_hand_overs" },
+        { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
+      ]);
     case "handler_delivered":
       return overdueSynchronousGoods(order, event) ?? deliverGoods(order, event.at);
     case "handler_refused":

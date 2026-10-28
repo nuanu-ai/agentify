@@ -148,6 +148,7 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
 
     expect(accepted.order.dispatch.accepted).toBe(true);
     expect(accepted.effects).toStrictEqual([
+      { kind: "withdraw_hand_overs" },
       { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
     ]);
     expect(outcomeFor(accepted.order)).toBe("in_progress");
@@ -165,9 +166,8 @@ describe("one eSIM, bought and provisioned, with the provisioner down at first",
       at: NOON + 10 * MINUTE + SECOND,
     });
 
-    expect(acceptedAgain.effects).toStrictEqual([
-      { kind: "answer_merchant", answer: { ok: true, result: "accepted" } },
-    ]);
+    // Answered as the first acceptance was, word for word.
+    expect(acceptedAgain.effects).toStrictEqual(accepted.effects);
 
     // Twenty minutes later the profile exists and the merchant says so, well
     // inside his four hours.
