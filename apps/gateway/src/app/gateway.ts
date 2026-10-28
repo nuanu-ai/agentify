@@ -2385,15 +2385,7 @@ export class Gateway {
     }
 
     const price = before.order.price;
-    if (price === null) {
-      // Challenges are issued only for priced orders, so this payment is for
-      // the wrong order or was built without a challenge.
-      return {
-        step: "payment_not_verified",
-        why: "this order has no price for a payment to be checked against",
-        retryable: false,
-      };
-    }
+    if (price === null) throw new Error(`the order ${orderId} keeps a saved price and no price`);
 
     // An existing purchase is verified outside its row lock. No owner or
     // address comparison from before that lock can decide acceptance.
@@ -2411,8 +2403,9 @@ export class Gateway {
     // for that return, and the order's lock refuses to charge it.
     const payingMerchant = await this.runtime.store.merchantById(before.merchantId);
 
-    // Previously quoted purchases must meet the site rule before their first
-    // payment. Paid recovery and payments already accepted for execution continue.
+    // A new payment for an order paid before its goods needs the seller's
+    // site, as the first one did. Paid recovery and payments already accepted
+    // for execution continue.
     if (
       payingMerchant?.sellerSite === null &&
       before.order.mode.settle === "on_purchase" &&
@@ -2421,27 +2414,13 @@ export class Gateway {
       return { step: "not_selling", message: SELLER_SITE_REQUIRED };
     }
 
-    // Asked again before the payment is verified, so a price named before the
-    // seller was stopped is not charged after. Only a purchase being paid for
-    // the first time is refused: a payment for goods already made and held
-    // buys an order that was served.
+    // A new payment for an order paid before its goods is refused while the
+    // seller is silent, since nobody would draw the order; a repeat of a
+    // synchronous one that releases goods already made is not.
     if (
       payingMerchant !== null &&
-      before.order.state === "quoted" &&
-      (await this.#stoppedForUnserved(payingMerchant.id, arrivedAt))
-    ) {
-      return { step: "seller_not_fulfilling" };
-    }
-
-    // Asked again here, before the payment is verified, because a price named
-    // just before the seller went quiet holds on into the silence. A purchase
-    // being paid for the first time is refused in every mode, since nobody
-    // would draw its order; a repeat of a synchronous one that releases goods
-    // already made is not.
-    if (
-      payingMerchant !== null &&
-      (before.order.state === "quoted" ||
-        (before.order.mode.settle === "on_purchase" && takesANewPayment(before.order))) &&
+      before.order.mode.settle === "on_purchase" &&
+      takesANewPayment(before.order) &&
       (await this.#outOfTouch(payingMerchant.id, payingMerchant.integration, arrivedAt))
     ) {
       return { step: "seller_not_taking_orders" };
@@ -2555,29 +2534,6 @@ export class Gateway {
     // deciding when the park ends; the agent is then told "in progress", which
     // is true, and keeps the order's status address.
     const checkedOutAt = this.runtime.clock();
-
-    // A purchase delivered in the answer is charged after its goods, so where
-    // the goods are still to be made its authorisation has to outlast the
-    // merchant's answer and the facilitator's margin at the charge. One that
-    // would not is refused here, before the claim and before the merchant is
-    // asked for anything, or the goods would be made for a charge the
-    // facilitator then refuses. A payment whose end is not read here (a
-    // spelling no reference client sends) goes on to the facilitator, which
-    // refuses it at the charge if it has run out: a merchant's work, and no
-    // money, is what that can cost.
-    const needed = validityNeededAfterCheckMs(before.order.policy.deadlines);
-    if (
-      before.order.mode.settle === "after_fulfillment" &&
-      before.order.state === "quoted" &&
-      verified.validUntil !== null &&
-      verified.validUntil < checkedOutAt + needed
-    ) {
-      return {
-        step: "payment_not_verified",
-        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; sign the payment again and send it at once, while its price holds`,
-        retryable: false,
-      };
-    }
 
     // One authorisation buys one order, which ownership by payer cannot ensure
     // since the same wallet would own both. It is claimed after verification,
@@ -2835,18 +2791,6 @@ export class Gateway {
     return (
       (await this.runtime.store.unservedOrders(merchantId, UNSERVED_AT_MOST)) >= UNSERVED_AT_MOST
     );
-  }
-
-  /**
-   * Whether this merchant's purchases are refused for their unserved orders,
-   * said in the log while they are (`#sayUnserved`).
-   */
-  async #stoppedForUnserved(merchantId: string, at: number): Promise<boolean> {
-    if (!(await this.#unserved(merchantId))) {
-      return false;
-    }
-    this.#sayUnserved(merchantId, at);
-    return true;
   }
 
   /**
