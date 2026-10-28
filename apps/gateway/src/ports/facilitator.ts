@@ -39,6 +39,11 @@ export interface Charge {
    * went out.
    */
   readonly payTo: string | null;
+  /**
+   * The payment only returns an order already paid for, and is not charged:
+   * its check must not depend on what the wallet holds now.
+   */
+  readonly returnsAPaidOrder?: boolean;
 }
 
 export interface PaymentRecoveryContext {

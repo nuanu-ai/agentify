@@ -2585,6 +2585,7 @@ export class Gateway {
             currency: price.currency,
             payment,
             payTo,
+            ...(paidFor ? { returnsAPaidOrder: true } : {}),
           })),
       };
     });

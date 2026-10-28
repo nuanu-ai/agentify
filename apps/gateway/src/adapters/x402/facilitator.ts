@@ -108,7 +108,7 @@ export class X402Facilitator implements Facilitator {
     } catch (thrown) {
       // A verdict sent with a refusing status is still a verdict.
       if (thrown instanceof VerifyError && refused(thrown.statusCode)) {
-        return await this.#explained(refusal(thrown), authorization);
+        return await this.#explained(refusal(thrown), authorization, charge);
       }
       const status =
         thrown instanceof VerifyError ? thrown.statusCode : statusOfFailedCheck(thrown);
@@ -137,22 +137,25 @@ export class X402Facilitator implements Facilitator {
         recovery,
       };
     }
-    return await this.#explained(refusal(answered), authorization);
+    return await this.#explained(refusal(answered), authorization, charge);
   }
 
   /**
    * A refusal whose code names no cause, held against the payer's balance: a
    * wallet holding less than the price cannot pay it, whatever else the
    * facilitator saw. Only that fact relabels it. A refusal that names its
-   * cause, a balance that covers the price and a read that fails all leave
-   * the refusal as it was.
+   * cause, a balance that covers the price, a read that fails and a payment
+   * that only returns an order already paid for all leave the refusal as it
+   * was.
    */
   async #explained(
     outcome: VerifyOutcome,
     authorization: ReturnType<typeof authorizationOf>,
+    charge: Charge,
   ): Promise<VerifyOutcome> {
     if (
       this.#balances === undefined ||
+      charge.returnsAPaidOrder === true ||
       outcome.verified !== false ||
       (outcome.reason !== "unexplained" && outcome.reason !== "unrecognised")
     ) {
