@@ -339,7 +339,14 @@ export interface WooShops extends WooCartResources {
  * the merchant may create once from the recovery page; or a download that can
  * no longer be delivered.
  */
-type HeldSale = "parcel" | "unplaced_parcel" | "recoverable" | "refused" | "unrecoverable";
+type HeldSale =
+  | "parcel"
+  | "unplaced_parcel"
+  | "recoverable"
+  | "refused"
+  /** The shop never answered and nothing was sent to it; its merchant can create the order. */
+  | "silent"
+  | "unrecoverable";
 
 /** A sale whose sold facts were never written cannot be recovered: nothing says what to deliver. */
 const heldSaleOf = (
@@ -355,9 +362,11 @@ const heldSaleOf = (
       ? "unrecoverable"
       : phase === "precreate_refused"
         ? "refused"
-        : phase === "shop_silent" || phase === "create_unknown" || (phase === "placed" && withFile)
-          ? "recoverable"
-          : "unrecoverable";
+        : phase === "shop_silent"
+          ? "silent"
+          : phase === "create_unknown" || (phase === "placed" && withFile)
+            ? "recoverable"
+            : "unrecoverable";
 
 const PARCEL_PLACED = new Set(["placed", "shipped", "closed"]);
 

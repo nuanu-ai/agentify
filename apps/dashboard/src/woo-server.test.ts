@@ -2201,6 +2201,7 @@ describe("merchant delivery recovery", () => {
     accountId = running.accountId,
     placed = false,
     neverAsked = false,
+    shopSilent = false,
   ) => {
     const merchantItemId = merchantItemIdFor(SHOP, "11");
     const published = await running.harnessed.gateway.publishCard(running.harnessed.merchant.id, {
@@ -2254,7 +2255,8 @@ describe("merchant delivery recovery", () => {
       amount: "25.00",
       currency: "USD",
     };
-    if (neverAsked) await running.shops.recordPrecreateRefusal(accountId, orderId, facts, now);
+    if (shopSilent) await running.shops.recordShopSilence(accountId, orderId, facts, now);
+    else if (neverAsked) await running.shops.recordPrecreateRefusal(accountId, orderId, facts, now);
     else await running.shops.claimOrder(accountId, orderId, facts, now);
     await running.shops.connect({
       accountId,
@@ -2263,8 +2265,9 @@ describe("merchant delivery recovery", () => {
       consumerSecret: "cs_recovery",
       permissions: "read_write",
       // A shop connected again since the refusal: the one condition under
-      // which its merchant's recovery page creates the order.
-      revision: neverAsked ? "grant_again" : "grant_recovery",
+      // which its merchant's recovery page creates the order. A shop that was
+      // only silent stays under the grant of the sale.
+      revision: neverAsked && !shopSilent ? "grant_again" : "grant_recovery",
       connectedAt: now,
       currency: null,
     });
@@ -2344,6 +2347,30 @@ describe("merchant delivery recovery", () => {
     expect(sold).toHaveLength(1);
     expect(sold[0]?.price).toStrictEqual({ amount: "25.00", currency: "USD" });
     expect((await running.shops.recoveryOrder(own.orderId))?.phase).toBe("placed");
+    expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
+  });
+
+  it("leads from own Orders to creating a download whose shop never answered, with no reconnect", async () => {
+    const sold: SoldItem[] = [];
+    const running = await started({
+      placeOrder: async (item) => {
+        sold.push(item);
+        return {
+          ok: true,
+          id: "13",
+          number: "WOO-13",
+          orderKey: "wc_order_13",
+          downloadId: "dl_guide",
+          total: "25.00",
+        };
+      },
+    });
+    await running.signIn();
+    const own = await sale(running, running.accountId, false, false, true);
+    expect((await running.get("/orders")).html).toContain(`href="${own.path}"`);
+
+    expect((await running.post(own.path)).status).toBe(200);
+    expect(sold).toHaveLength(1);
     expect((await running.harnessed.store.orderById(own.orderId))?.order.state).toBe("delivered");
   });
 

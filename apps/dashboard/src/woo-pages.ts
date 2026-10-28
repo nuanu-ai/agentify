@@ -812,7 +812,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
             : {
                 kind: "download",
                 recover:
-                  sale === "recoverable" || sale === "refused"
+                  sale === "recoverable" || sale === "refused" || sale === "silent"
                     ? `${base}/integrations/woocommerce/recover/${encodeURIComponent(id)}`
                     : null,
               },

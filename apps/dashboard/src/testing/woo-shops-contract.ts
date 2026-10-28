@@ -319,7 +319,7 @@ export const wooShopsContract = (
       await using(async (shops, accounts) => {
         await shops.recordShopSilence(accounts.one, "ord_1", FACTS, NOW);
         expect(await shops.heldSales(accounts.one, ["ord_1"])).toStrictEqual({
-          ord_1: "recoverable",
+          ord_1: "silent",
         });
         expect(await shops.claimOrder(accounts.one, "ord_1", FACTS, LATER)).toStrictEqual({
           kind: "ours",
