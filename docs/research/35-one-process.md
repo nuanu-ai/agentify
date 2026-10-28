@@ -9,7 +9,9 @@ pull requests #90, #91, #95 and #97, the last on 2026-10-09.
 ## How to read this note
 
 The first section states the design as it runs. Everything after it was
-written before the move and keeps the words of that time. The dashboard was
+written before the move and keeps the words of that time; the `woo:recover`
+command it names no longer exists, and a merchant recovers a WooCommerce sale
+on their own recovery page. The dashboard was
 then called the *cabinet* and served at `/cabinet`; it has since been renamed,
 in the code (`apps/dashboard`) and in its address (`/dashboard`). The survey
 describes the two processes as they were at commit 33f8c43d on `main`, and
