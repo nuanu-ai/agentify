@@ -1110,6 +1110,12 @@ export interface WooWorker {
 }
 
 const BETWEEN_TURNS_MS = 1_000;
+/**
+ * How long another worker keeps a shop's carts before this one takes them
+ * back. Taking them back at once would fight a worker that is still running,
+ * as during a deploy, where the older one stops within seconds.
+ */
+const CARTS_TAKEN_BACK_AFTER_MS = 600_000;
 // shortcut: four unfinished envelopes per shop; revisit on measured saturation.
 const HANDLERS_AT_ONCE = 4;
 
@@ -1130,7 +1136,52 @@ export const startWooWorker = (
     string,
     { shop: WooShopRuntime; connections: Map<string, { shop: WooShopRuntime; revision: string }> }
   >();
+  const draining = new Set<Promise<void>>();
   let running = true;
+
+  /** A runtime let go still finishes the cart cleanup it started. */
+  const letGo = (origin: string, shop: WooShopRuntime) => {
+    runtimes.delete(origin);
+    const drained: Promise<void> = shop.drain().finally(() => draining.delete(drained));
+    draining.add(drained);
+  };
+  /** Drops this account's readers at other shops, and a shop's runtime once nobody reads it. */
+  const forget = (accountId: string, except?: string) => {
+    for (const [origin, runtime] of runtimes) {
+      if (origin === except || !runtime.connections.delete(accountId)) continue;
+      if (runtime.connections.size === 0) letGo(origin, runtime.shop);
+    }
+  };
+  const readerFor = (connection: WooConnection): WooShopRuntime => {
+    const origin = new URL(connection.shopUrl).origin;
+    forget(connection.accountId, origin);
+    let runtime = runtimes.get(origin);
+    const deadSince = runtime?.shop.deadSince ?? null;
+    if (
+      runtime !== undefined &&
+      deadSince !== null &&
+      Date.now() - deadSince >= CARTS_TAKEN_BACK_AFTER_MS
+    ) {
+      letGo(origin, runtime.shop);
+      runtime = undefined;
+    }
+    if (runtime === undefined) {
+      runtime = {
+        shop: new WooShopRuntime(connection, undefined, parts.shops),
+        connections: new Map(),
+      };
+      runtimes.set(origin, runtime);
+    }
+    let reader = runtime.connections.get(connection.accountId);
+    if (reader === undefined) {
+      reader = { shop: runtime.shop.forConnection(connection), revision: connection.revision };
+      runtime.connections.set(connection.accountId, reader);
+    } else if (reader.revision !== connection.revision) {
+      reader.shop.updateKeys(connection);
+      reader.revision = connection.revision;
+    }
+    return reader.shop;
+  };
 
   const loopFor = (accountId: string) => {
     let alive = true;
@@ -1182,29 +1233,9 @@ export const startWooWorker = (
             );
             continue;
           }
-          const origin = new URL(connection.shopUrl).origin;
-          let runtime = runtimes.get(origin);
-          if (runtime === undefined) {
-            runtime = {
-              shop: new WooShopRuntime(connection, undefined, parts.shops),
-              connections: new Map(),
-            };
-            runtimes.set(origin, runtime);
-          }
-          let reader = runtime.connections.get(accountId);
-          if (reader === undefined) {
-            reader = {
-              shop: runtime.shop.forConnection(connection),
-              revision: connection.revision,
-            };
-            runtime.connections.set(accountId, reader);
-          } else if (reader.revision !== connection.revision) {
-            reader.shop.updateKeys(connection);
-            reader.revision = connection.revision;
-          }
           const filled = await turnOnce(
             connection,
-            { ...parts, shopRuntime: reader.shop },
+            { ...parts, shopRuntime: readerFor(connection) },
             schedule,
           );
           if (filled === 0) {
@@ -1254,6 +1285,7 @@ export const startWooWorker = (
             // Reconnect must wait for the old poll and accepted work to finish.
             void loop.done.then(() => {
               if (turning.get(accountId) === loop) turning.delete(accountId);
+              forget(accountId);
             });
           }
         }
@@ -1302,6 +1334,7 @@ export const startWooWorker = (
       await watching;
       await Promise.all([...turning.values()].map((loop) => loop.done));
       await Promise.all([...runtimes.values()].map(({ shop }) => shop.drain()));
+      await Promise.all(draining);
       turning.clear();
     },
   };

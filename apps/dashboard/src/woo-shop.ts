@@ -1284,6 +1284,8 @@ const CART_UNAVAILABLE: NotSellable = {
   again: true,
   why: "The shop's reusable carts are busy or could not be cleaned safely.",
 };
+/** A product document is a few kilobytes; one larger is read again rather than held. */
+const KEPT_READ_AT_MOST = 256 * 1024;
 interface CachedShopRead {
   until: number;
   readonly pending: Promise<Answered>;
@@ -1312,9 +1314,10 @@ export class WooShopRuntime {
   );
   readonly #resources: WooCartResources;
   readonly #owner = randomUUID();
-  readonly #ready: Promise<void>;
+  #started: Promise<void> | null = null;
   readonly #room = new Set<() => void>();
   #alive = true;
+  #diedAt: number | null = null;
   readonly #active = new Set<Promise<RatesRead>>();
 
   constructor(
@@ -1328,10 +1331,14 @@ export class WooShopRuntime {
     this.#cartOwner = cartOwner;
     if (cartOwner !== null) this.#carts.length = 0;
     this.#resources = resources;
-    this.#ready =
-      cartOwner === null
-        ? resources.startCartRuntime(new URL(keys.shopUrl).origin, this.#owner)
-        : Promise.resolve();
+  }
+
+  /**
+   * When another worker took this shop's carts over, after which this runtime
+   * prices nothing; null while it owns them.
+   */
+  get deadSince(): number | null {
+    return this.#cartOwner === null ? this.#diedAt : this.#cartOwner.deadSince;
   }
 
   /** Private reads keep this connection's credentials and cache; anonymous carts share the origin's owner. */
@@ -1363,7 +1370,8 @@ export class WooShopRuntime {
   async #cached(keys: ShopKeys, path: string, ttl: number): Promise<Answered> {
     const existing = this.#reads.get(path);
     if (existing !== undefined && existing.until > Date.now()) return existing.pending;
-    this.#reads.delete(path);
+    for (const [kept, entry] of this.#reads)
+      if (entry.until <= Date.now()) this.#reads.delete(kept);
     // Settings have eleven paths; at most 128 product documents are retained.
     if (this.#reads.size >= 139) {
       const oldest = [...this.#reads].find(([, entry]) => Number.isFinite(entry.until));
@@ -1391,7 +1399,8 @@ export class WooShopRuntime {
             valid = false;
           }
         }
-        if (valid) entry.until = Date.now() + ttl;
+        if (valid && read !== null && read.body !== null && read.body.length <= KEPT_READ_AT_MOST)
+          entry.until = Date.now() + ttl;
         else if (this.#reads.get(path) === entry) this.#reads.delete(path);
         return read;
       }),
@@ -1460,7 +1469,7 @@ export class WooShopRuntime {
       new Date(Date.now()),
     );
     if (admitted.kind === "stale") {
-      this.#alive = false;
+      this.#die();
       return { kind: "wait", until: Date.now() + 250 };
     }
     if (admitted.kind === "wait") return { kind: "wait", until: admitted.retryAt.getTime() };
@@ -1523,7 +1532,7 @@ export class WooShopRuntime {
         slot.claim,
         null,
       );
-      if (!kept) this.#alive = false;
+      if (!kept) this.#die();
     }
     slot.claim = null;
     slot.token = null;
@@ -1565,7 +1574,7 @@ export class WooShopRuntime {
         slot.claim,
         empty,
       );
-      if (!kept) this.#alive = false;
+      if (!kept) this.#die();
       slot.claim = null;
       slot.refused = false;
       if (empty === null) {
@@ -1577,6 +1586,23 @@ export class WooShopRuntime {
     }
     slot.busy = false;
     for (const wake of this.#room) wake();
+  }
+
+  #die(): void {
+    if (!this.#alive) return;
+    this.#alive = false;
+    this.#diedAt = Date.now();
+  }
+
+  /** Taken on first use and again after a failure, so one database blip does not end the runtime. */
+  #start(): Promise<void> {
+    this.#started ??= this.#resources
+      .startCartRuntime(this.#keys.shopUrl, this.#owner)
+      .catch((error: unknown) => {
+        this.#started = null;
+        throw error;
+      });
+    return this.#started;
   }
 
   async #wait(until: number, signal?: AbortSignal): Promise<void> {
@@ -1607,7 +1633,7 @@ export class WooShopRuntime {
         saidNo: true,
         why: "The card names no product in a WooCommerce shop.",
       };
-    await this.#ready;
+    await this.#start();
     const tried = new Set<CartSlot>();
     let refused: RatesRead | null = null;
     while (this.#alive && !signal?.aborted) {
@@ -1620,6 +1646,7 @@ export class WooShopRuntime {
             (Number(b.quarantined) + Number(b.uncertainMutation)),
         );
       for (const slot of untried) {
+        if (!this.#alive) break;
         if (slot.busy) continue;
         tried.add(slot);
         slot.busy = true;

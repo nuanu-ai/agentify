@@ -4613,7 +4613,17 @@ describe("a shop whose guest carts are short", () => {
       expect(await within(run.drained)).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(run.answered.has("prc-taken-over")).toBe(false);
+      // Within ten minutes the other worker keeps them, asked or not.
+      run.offer(priceOfTheTote("prc-within"));
+      expect(await within(run.drained)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(run.answered.has("prc-within")).toBe(false);
+      expect(
+        await shops.claimCart(SHOP, "another-worker", "quote", 7, "still-mine", new Date(time)),
+      ).not.toEqual({ kind: "stale" });
       time += 600_001;
+      // A turn under way when the clock moved still holds the old runtime.
+      await new Promise((resolve) => setTimeout(resolve, 20));
       run.offer(priceOfTheTote("prc-after"));
       expect(await within(() => run.answered.has("prc-after"))).toBe(true);
       expect(run.answered.get("prc-after")).toMatchObject({ available: true });
