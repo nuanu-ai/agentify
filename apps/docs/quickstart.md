@@ -14,26 +14,27 @@ through a WooCommerce shop](/woocommerce).
 
 ## The words used below
 
-- Card — the description of a product in the catalogue that an agent decides
-  from and buys through; its fields are in the [card reference](/cards).
-- Order — the object that appears on our side after a purchase and arrives on
-  yours; its whole life is on [Orders and fulfillment modes](/orders).
-- Handler — your code, which receives orders and carries out the delivery, and
-  your process, the program that runs it beside your API.
-- Idempotency key — a string that is the same across every repeat of one order.
-  Ours is the order's identifier, and your side answers with the earlier result
-  under it instead of delivering a second time.
-- Fulfillment mode — whether the goods arrive in the answer to the purchase or
-  later, which decides when the buyer is charged. Three modes can be published:
-  synchronous, asynchronous, and a parcel
+- A card is the description of a product in the catalogue that an agent
+  decides from and buys through; its fields are in the [card
+  reference](/cards).
+- An order is the object that appears on our side after a purchase and arrives
+  on yours; its whole life is on [Orders and fulfillment modes](/orders).
+- A handler is your code, which receives orders and carries out the delivery,
+  and your process is the program that runs it beside your API.
+- An idempotency key is a string that is the same across every repeat of one
+  order. Ours is the order's identifier, and your side answers with the earlier
+  result under it instead of delivering a second time.
+- A fulfillment mode says whether the goods arrive in the answer to the
+  purchase or later, which decides when the buyer is charged. Three modes can
+  be published: synchronous, asynchronous, and a parcel
   ([the modes](/orders#fulfillment-modes)).
-- Price check — the question of how much a product costs and whether it is
-  there, which we ask at the moment of purchase about products whose price
-  moves. A price handler answers it, in your process beside the order handler.
-- Facilitator — the service that verifies the buyer's signed payment and
+- A price check is the question of how much a product costs and whether it is
+  there, which we ask before the buyer pays for a product whose price moves. A
+  price handler answers it, in your process beside the order handler.
+- The facilitator is the service that verifies the buyer's signed payment and
   executes the charge; who is who in a sale is on [Connecting to
   Agentify](/#who-is-who).
-- Pilot — the period Agentify runs in now, defined on [Connecting to
+- The pilot is the period Agentify runs in now, defined on [Connecting to
   Agentify](/#who-is-who); some rules hold only during it.
 
 ## One purchase, from the catalogue to the goods
@@ -197,10 +198,10 @@ This step worked if `published.ok` is true and `published.id` holds the card's
 catalogue identifier, which the test purchase on step 6 buys by. If `ok` is
 false, `error.problems` lists everything that stops the card being published
 in one answer, each finding with a code, words a person can act on and the
-path to the field where there is one. Four findings are about your merchant
-rather than the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site`
-on an asynchronous or parcel card, and `no_operator_approval` on the live channel ([who
-checks a card](/cards#who-checks-a-card-before-it-is-published)).
+path to the field where there is one. Four findings are about you rather than
+the card: `no_seller_name`, `no_payout_wallet`, `no_seller_site` on an
+asynchronous or a parcel's card, and `no_operator_approval` on the live
+channel ([who checks a card](/cards#who-checks-a-card-before-it-is-published)).
 Fixing what they name, not sending the card again, changes the answer.
 
 A published card is in the catalogue only while a process of yours is
@@ -209,8 +210,8 @@ polled for {{silent-after}}, the catalogue leaves your cards out and every
 purchase of them is refused; they come back at the next poll ([What can go
 wrong](/failures)).
 
-A call that fails for another reason — a key we do not accept, an address that
-does not answer — throws an `AgentifyError` with a `code`, such as
+A call that fails for another reason, such as a key we do not accept or an
+address that does not answer, throws an `AgentifyError` with a `code`, such as
 `not_authorised`, a `retryable` flag and the `route` it happened on.
 
 ## 4. Take an order and deliver the goods
@@ -218,8 +219,8 @@ does not answer — throws an `AgentifyError` with a `code`, such as
 Your process takes orders from a queue on our side through a subscription it
 opens itself, over ordinary HTTPS to the address you gave the client, so it
 needs no public address and no open port. You declare what it answers with
-`on`, once for each kind of message — orders, price questions, events about
-orders — and then open the subscription with `start`. Register one handler for
+`on`, once for each kind of message (orders, price questions and events about
+orders), and then open the subscription with `start`. Register one handler for
 orders, either the synchronous or the asynchronous kind below, and call
 `start()` once.
 
@@ -306,8 +307,8 @@ through](/orders#when-a-call-on-an-order-does-not-go-through)).
 
 ### A failure that may pass, and a repeat
 
-A refusal is final. For a failure that may pass — a supplier that did not
-answer, a database that was down — throw instead: the order counts as never
+A refusal is final. For a failure that may pass, such as a supplier that did
+not answer or a database that was down, throw instead: the order counts as never
 having reached you and comes again after a delay, and what you threw goes to
 your problem handler and never to the agent.
 
@@ -323,8 +324,8 @@ stands](/orders#finding-out-where-an-order-stands)).
 ### Answering the price question
 
 A card with `price_check: 'handler'` is sold at the price your price handler
-names at the moment of purchase. It answers in the same process, down the same
-subscription:
+names when an agent asks to buy. The handler answers in the same process, down
+the same subscription:
 
 ```ts
 agentify.on('quote', async (q) => {
@@ -343,8 +344,10 @@ agentify.on('quote', async (q) => {
 
 The last argument, `as_of`, is the moment the answer is true for; left out, it
 is the moment of the answer itself, so name the moment your cache was filled
-when you answer from one. An answer of none starts no purchase. What a silent
-price handler costs in each mode is on [What can go wrong](/failures).
+when you answer from one. An answer of none starts no purchase, and no answer
+at all opens no order either: a price question reserves nothing, so set no
+stock aside for it. What a silent price handler costs in each mode is on [What
+can go wrong](/failures).
 
 The test buyer on step 6 pays no more than the price on the card, so it
 refuses a price your handler names above that before it signs anything. Raise

@@ -6,14 +6,14 @@ Your SDK integration writes and publishes the cards, and remains their source
 when a product or price changes. The whole path, from an empty project to a
 test sale, is on [The first test sale](/quickstart).
 
-The working words — handler, order, agent — are defined on [The first test
+The working words handler, order and agent are defined on [The first test
 sale](/quickstart).
 
 A card is the description of one product in a catalogue: everything the agent
-sees before buying, and everything it decides to buy from. From that follows
-the requirement that runs through every field at once — an agent has to be able
-to buy from the card, which means assembling a correct purchase and getting
-back what it expected.
+sees before buying, and everything it decides to buy from. One requirement
+follows from that and runs through every field: an agent has to be able to buy
+from the card, which means assembling a correct purchase and getting back what
+it expected.
 
 The page begins at the smallest card that sells and adds one field at a time,
 each of them under the need that asks for it. If what you came for is a lookup
@@ -25,7 +25,7 @@ in one table at the end.
 <<< @/examples/card/access-monthly-short.json
 
 That is a whole card, and there are three facts in it: what you sell, at what
-price, and what the agent receives. Published as it stands it sells — an agent
+price, and what the agent receives. Published as it stands, it sells: an agent
 finds it in a catalogue, buys it, and your handler delivers against it. Nothing
 further down this page is needed for a product that works like this one.
 
@@ -85,8 +85,8 @@ it may run to several lines.
 
 A price in the card is required in every case: it is what the agent sees in a
 catalogue while it is choosing, and it is what ends up in the receipt when the
-sale goes through at it. For a product with a fixed price that is the whole
-story — the price is true until you change it.
+sale goes through at it. For a product with a fixed price nothing more is
+needed: the price is true until you change it.
 
 A price is an amount and a currency, and `'5.00 USD'` above is those two
 written as one string, with a single space between them. Either spelling can be
@@ -97,8 +97,8 @@ Five kinds of price are refused at publication, and each refusal names the
 half of the price that is wrong and what it said:
 
 - an amount with fewer than two digits after the dot, such as `500` or `5`. The
-  amount is in dollars — five dollars is `5.00`, a cent and a half for a
-  product priced per call is `0.015` — so a number counted in cents is never
+  amount is in dollars (five dollars is `5.00`, and a cent and a half for a
+  product priced per call is `0.015`), so a number counted in cents is never
   listed as that many dollars;
 - an amount with more than six digits after the dot, such as `5.0000001`. Six
   places are all USDC carries, so a longer amount has no exact charge, and we
@@ -134,7 +134,7 @@ A declared field is a name and a type, and the type may be `string`, `number`,
 a choice from a set travels as one of them. Where the name says enough,
 `access_url: 'string'` is the whole declaration. Where it does not, write the
 field out and give it a `title`, a line of human words that the agent reads
-beside the name — [plain text](#the-words-on-a-card-are-plain-text) on one
+beside the name. It is [plain text](#the-words-on-a-card-are-plain-text) on one
 line, as the card's own title is:
 
 ```ts
@@ -144,21 +144,22 @@ result: {
 }
 ```
 
-Those two spellings declare the same field. A title is worth writing wherever
-`expires_at` could be read as a date, a duration or a number of seconds — the
-agent has your field name and nothing else to go on.
+Those two spellings declare the same field. A title is worth writing wherever a
+name such as `expires_at` could be read as a date, a duration or a number of
+seconds, because the agent has your field name and nothing else to go on.
 
 We pass the delivery to the agent as it is: the handler returns JSON to this
 shape, and we neither rewrite it nor rename anything in it. So the declaration
 has to match what the handler really sends, in both directions: a promised
 field that does not arrive is a mismatch, and so is a field the card never
-declared. A mismatch does not reach the agent — we refuse the delivery, name
+declared. A mismatch does not reach the agent: we refuse the delivery, name
 the fields that are wrong and leave the order where it was, so your handler can
-send the right thing. It is the merchant who finds out, not the buyer.
+send the right thing. You find out about the mismatch, and the buyer does not.
 
-Where that order has already ended — its deadline ran out while the handler was
-being fixed — the refusal names the ending as well as the fields, rather than
-inviting another attempt at a sale there is nothing left to deliver against.
+Where that order has already ended, because its deadline ran out while the
+handler was being fixed, the refusal names the ending as well as the fields
+and does not invite another attempt at a sale there is nothing left to deliver
+against.
 
 Where a handler has got everything wrong at once, the refusal's sentence is held
 to a single line rather than allowed to grow into a paragraph nobody reads. A
@@ -174,15 +175,14 @@ That cut is the sentence's alone. The same findings travel beside it as a list,
 and the list leaves nothing out. A field your card declares and your handler got
 wrong is one finding there, carrying the path to it, a code and words a person
 can act on. The fields your card never declared are one finding between them,
-with an empty path — there is no path to a name the card never had — and all of
-those names inside its own words ([when a call on an order does not go
+with an empty path, since there is no path to a name the card never had, and
+all of those names inside its own words ([when a call on an order does not go
 through](/orders#when-a-call-on-an-order-does-not-go-through)).
 
 Every field of the result is required until you mark it `required: false`. The
 result is a promise, and a delivery missing a promised field does not go
-through as a delivery; a promised string that arrives empty counts as missing,
-because an empty access code is not a shorter access code but nothing under the
-name of something.
+through as a delivery. A promised string that arrives empty counts as missing,
+because an empty access code gives the buyer nothing to use.
 
 A card declares at least one field here, and at least one of them has to arrive
 every time. A result that might be entirely absent tells the agent nothing
@@ -190,9 +190,10 @@ about what it is paying for, and a card carrying one is refused at publication.
 
 ## Input the agent has to send you
 
-Some purchases cannot be carried out from the card alone. An email address to
-send the link to, a country, a period, a name to put on a licence — whatever
-your delivery needs that only the agent can give goes in `params`, and the
+Some purchases cannot be carried out from the card alone. Whatever your
+delivery needs that only the agent can give, such as an email address to send
+the link to, a country, a period or a name to put on a licence, goes in
+`params`, and the
 agent is shown it before it buys. A product whose delivery needs nothing leaves
 the field out, as the card at the top of this page does.
 
@@ -201,7 +202,7 @@ the field out, as the card at the top of this page does.
 That is the same product with one parameter added. A parameter is declared in
 the same small language as a delivered field: the same four types, and the same
 choice between the type word alone and the field written out. This one is
-written out because it carries two things a type word cannot — the mark saying
+written out because it carries two things a type word cannot: the mark saying
 the agent has to supply it, and the line of words saying what it is for.
 Everything else on the card is unchanged, which is the rule about the shorter
 spellings: they belong to fields rather than to cards, so writing one field out
@@ -216,8 +217,8 @@ since that is input it chose to give.
 
 Nothing checks this field against your delivery, and it is where the card's
 main requirement breaks. A parameter your delivery needs and the card does not
-name produces a purchase you cannot fulfil — and instead of a sale you get a
-refusal. No check of ours can see that, because neither we nor the contract
+name produces a purchase you cannot fulfil, and you end up refusing it instead
+of making a sale. No check of ours can see that, because neither we nor the contract
 know what your delivery needs; getting it right is yours.
 
 ## Goods that leave later than the answer
@@ -232,11 +233,11 @@ something fails, so the product decides it:
 | Your product | `fulfillment` | When the buyer is charged |
 | --- | --- | --- |
 | Your API hands it over within {{sync-response}} of the payment check, every time: a key, a link, a document | `'sync'`, the default | after the goods came back |
-| It takes longer — a profile to provision, a supplier to ask — and can be delivered a second time without loss | `'async'`, with a deadline of your own or {{default-async-fulfillment}} | at the moment of purchase |
+| It takes longer, such as a profile to provision or a supplier to ask, and can be delivered a second time without loss | `'async'`, with a deadline of your own or {{default-async-fulfillment}} | at the moment of purchase |
 | A physical product a carrier takes to the buyer | `'ship'` | at the moment of purchase, at the price with shipping and any tax your price handler names |
 | A download from a WooCommerce shop | `'async'`, set by the connector | at the moment of purchase |
 | A physical product from a WooCommerce shop | `'ship'`, set by the connector | at the moment of purchase |
-| Every order has to be confirmed by hand before the buyer pays | none: no mode lets you confirm an order before the buyer pays | — |
+| Every order has to be confirmed by hand before the buyer pays | none: no mode lets you confirm an order before the buyer pays | not offered |
 
 What happens inside each mode is on [Orders and fulfillment modes](/orders),
 and one handler can serve products in different modes, telling them apart by
@@ -245,7 +246,7 @@ and one handler can serve products in different modes, telling them apart by
 An asynchronous card can carry one deadline of its own,
 `fulfill_deadline_seconds`: how long you may take to deliver. It runs from the
 moment the buyer is charged, which for an asynchronous product is the moment of
-purchase — so the clock is already going when the order reaches your handler,
+purchase, so the clock is already going when the order reaches your handler,
 and it covers every attempt we make to deliver that order to you. Name it, and
 the agent sees it before it buys.
 
@@ -285,17 +286,20 @@ address lacks something your carrier needs; the agent is told the purchase did
 not happen. The price an agent pays does not cover duties the recipient may owe
 at the border, so say in the card's description where that can happen.
 
-An asynchronous or parcel card requires the site of your shop
-(`no_seller_site`). The buyer pays before delivery and needs somewhere to read
-your cancellation and refund terms and ask about an unfulfilled purchase.
-Set the site in your dashboard settings or with `POST /v0/seller-name`.
-Existing cards without a site leave the catalogue and refuse new purchases
-until you give one. Already paid orders continue to fulfillment.
+An asynchronous card and a parcel's card are published only once you have
+given your shop's site, and are refused with `no_seller_site` until then. The
+buyer pays before delivery, so it needs somewhere to read your cancellation and
+refund terms and to ask about a purchase that did not arrive. You set the site
+in your dashboard's Settings or with `POST /v0/seller-name` ([your seller name
+and site](#your-seller-name-and-site)). Such a card published before you gave
+a site leaves the catalogue and refuses new purchases until you give one, and
+you do not have to publish it again when you do. Orders already paid for
+continue to fulfillment.
 
 ## A price worked out at the moment of purchase
 
-Where the price is not fixed — it comes off a rate, off a supplier's cost, off
-what is in stock this minute — you add a price check to the card, and the check
+Where the price is not fixed, because it comes off a rate, a supplier's cost or
+what is in stock this minute, you add a price check to the card, and the check
 and the card's price work together. The check's answer is stronger than the
 card's price: when it answers, the sale goes at the price it named; when it is
 silent, we take the price from the card, and what follows depends on the
@@ -309,17 +313,19 @@ check starts no purchase and the card's price is not a fallback. Put the
 ordinary price of the product there rather than a zero or a placeholder: the
 agent decides from it whether to look any further.
 
-The check answers what the product costs and whether it is available now.
-Agentify asks it before payment, and an order is written only once a payment
-is verified. A change to the card before that payment, to its price or its
-title alike, invalidates the outstanding price, and so does a change to where
-you are paid; the agent must request a new one. Publishing the same card again
-unchanged, as your process does when it starts, leaves the price standing.
-Once the payment is accepted, the order keeps its price and fulfillment terms.
+The check answers what the product costs and whether it is there right now.
+Agentify asks it before the buyer pays, and no order exists until a payment for
+that price is verified. Until then, any change to the card, its price or its
+title alike, cancels the price your handler named, and so does a change to
+where you are paid, so the agent has to ask for a new price. Publishing the
+same card again unchanged, as your process does each time it starts, leaves
+the price standing. Once a payment is accepted, the order keeps the price and
+the fulfillment terms it was sold under.
 
-The question travels the same channel as the orders: you put a price handler —
-the one you register under `on('quote', …)` — beside the order handler, in the
-same process. Nothing of yours faces outward — no address, no open ports.
+The question travels the same channel as the orders: you put a price handler,
+the one you register under `on('quote', …)`, beside the order handler in the
+same process. Nothing of yours faces outward: you need no public address and no
+open port.
 
 ```ts
 agentify.on('quote', async (q) => {
@@ -338,8 +344,8 @@ not have to check that a price question really came from us.
 
 So a card's price check is always `price_check: 'handler'`. A second way of
 asking is designed for a business whose price is worked out by a separate
-pricing service the order handler cannot reach — a price hook, an https address
-of yours that we would call instead — and we do not call it yet. A card that
+pricing service the order handler cannot reach: a price hook, an https address
+of yours that we would call instead. We do not call it yet. A card that
 names an address is therefore refused at publication: accepted, it would be a
 setting nothing acts on, and you would find out from a synchronous product
 quietly selling at its listed price or an asynchronous one quietly refusing
@@ -353,17 +359,17 @@ The field `purpose` says why we are asking. Today it always reads `"purchase"`:
 there is an agent behind the question, buying right now. A handler should
 accept the other value, `"poll"`, all the same, though nothing sends it yet.
 
-The field `price_id` identifies one price question. At most one order uses it,
-and it arrives with that order so you can recognise the price you named.
-`expires_at` bounds the life of the price you name. Agentify judges its term when
-the paid request arrives at its gateway, rather than when the agent signs or
-when the charge executes.
+The field `price_id` identifies this one price question. At most one order
+goes through under it, and it arrives again with that order, so you can
+recognise the price you named. `expires_at` bounds how long the price you name
+can still be paid for, and Agentify judges that by when the paid request
+reaches it, rather than by when the agent signs or when the charge executes.
 
-A price question creates no order and reserves no stock. Answer it without
-setting goods aside or creating a checkout session for the buyer. The question
-lives only while Agentify waits for your answer; a gateway restart forgets it.
-An agent may never pay for the price it asked for. Stock and fulfillment begin
-with the paid order.
+A price question opens no order and reserves no stock, so answer it without
+setting goods aside or opening a checkout session for the buyer: an agent may
+never pay for the price it asked for. The question lives only while Agentify
+waits for your answer, and a restart of Agentify forgets it. Stock and
+fulfillment begin with the paid order.
 
 The answer carries these fields:
 
@@ -372,15 +378,15 @@ The answer carries these fields:
 | `available` | boolean | required | `true` |
 | `price` | an amount and a currency | required where `available` | `{ "amount": "5.00", "currency": "USD" }` |
 | `as_of` | a timestamp, ISO 8601 | required | `"2026-08-26T10:15:00Z"` |
-| `quote_reference` | 1–512 printable ASCII characters | optional where `available` | your own opaque reference to the price facts |
+| `quote_reference` | 1 to 512 printable ASCII characters | optional where `available` | your own reference to the facts behind the price |
 
-Agentify authenticates `quote_reference` with the price and returns its exact
-bytes on the merchant's paid order. It is visible to the buyer in the 402
-payment requirements and may reach the payment facilitator or a discovery
-listing. Put no secret, personal data or protected download address in it.
-Keeping the price facts in the reference lets your handler recognise them
-without storing an unpaid question. The SDK's `q.available` takes no
-reference, so add it to the answer it builds:
+Agentify stamps `quote_reference` together with the price and returns it, byte
+for byte, on the order once it is paid. The buyer can read it in the payment
+request of the 402, and it may reach the facilitator or a discovery listing, so
+put no secret, no personal data and no protected download address in it.
+Keeping the facts behind your price in the reference lets your handler
+recognise them later without storing a question nobody paid for. The SDK's
+`q.available` takes no reference, so add it to the answer it builds:
 
 ```ts
 agentify.on('quote', async (q) => {
@@ -412,7 +418,7 @@ in the example above.
 
 We carry the mark and we do not yet weigh it. It travels into the order your
 handler is given and into the record of the sale, so whoever reconciles a
-charge afterwards can see how old the number behind it was — but nothing
+charge afterwards can see how old the number behind it was, but nothing
 compares it against anything. An answer stamped a year ago is honoured for
 exactly as long as one stamped a second ago, because a price's life runs from
 the moment your answer reached us rather than from the moment it says it was
@@ -426,30 +432,33 @@ both is refused rather than read one way or the other:
 
 An `available: false` answer to a purchase closes it before any money moves,
 and no order appears on your side. A price you name holds for {{quote-ttl}},
-counted from the moment your answer reaches us; that number is set by us and is
-the same across the system. The `expires_at` in the question is the outside edge
-of the same life rather than a second number — it is worked out when the
-question goes out, before anyone knows when your answer will land, so it falls a
-little later — and what happens once a price has run out is in [Time ran
-out](/orders).
+counted from the moment your answer reaches us; we set that number, and it is
+the same for every card. The `expires_at` in the question is the outer edge of
+that same term rather than a second number. It is worked out when the question
+goes out, before anyone knows when your answer will land, so it falls a little
+later. What happens once a price has run out is in [Time ran out](/orders).
 
-We wait {{quote-response}} from asking, rather than from when your process
-takes the question. Each merchant's gate admits only questions that can still
-be answered in that window, and a question whose wait has ended is never
-handed out. Paid orders are drawn before price questions. The SDK handles up
-to four unfinished messages at once; more instances divide that work further.
+We wait {{quote-response}} for your answer, counted from when we ask rather
+than from when your process takes the question, and a question unanswered by
+then counts as silence. Your price questions pass a gate of their own, which
+hands your process only questions that can still be answered in that time and
+never one whose wait has ended. Paid orders are handed out before price
+questions. The SDK handles up to four unfinished messages at once, and more
+instances divide that work further.
 
-A question that finds your gate full waits briefly for a place, inside that
-same window. If none comes, a synchronous sale goes at the card price, and its
-handler can still refuse before a charge. An asynchronous purchase or parcel
-is refused with `seller_busy`, HTTP 429 and `Retry-After: 2`, before asking
-your price, and the agent waits two seconds and asks again. One whose price
-your handler did not name in time is refused the same way with `Retry-After:
-10`, and the agent is told that if this repeats, your price check is not
-answering. An answer that the product is
-unavailable is refused for good, with nothing charged. Another merchant's
-questions never take your places. These rules apply to the SDK and WooCommerce
-alike; they are described on [What can go wrong](/failures).
+When all of your price questions are taken, a new one waits briefly for a
+place, within the same {{quote-response}}. If no place comes, a synchronous
+card sells at its card price without asking your handler, and your order
+handler can still refuse before the charge. An asynchronous card or a parcel is
+refused with `seller_busy`, HTTP 429, with `Retry-After: 2`, before your price
+is asked, and the agent asks again two seconds later. When your handler is
+asked and names no price in time on such a card, the purchase is refused with
+`seller_busy` as well, with `Retry-After: 10`, and the agent is told that a
+silence which repeats means your price check is not answering. An answer that
+the product is unavailable refuses the purchase with `not_selling`, which the
+agent is told not to retry, and nothing is charged. Another seller's price
+questions never take your places. The same rules hold for a WooCommerce shop,
+and [What can go wrong](/failures) lists them with the other refusals.
 
 Agentify keeps no stock counts: only you know how much of anything there is. So
 a product that can run out is worth listing with a check, because without one
@@ -459,13 +468,13 @@ at delivery.
 ## Words that help an agent find the card
 
 The catalogues outside ours are listings other people run, where an agent
-searches for what it needs. A card can carry `tags` — words describing the
-product for that search — and they go out with the card into those listings,
+searches for what it needs. A card can carry `tags`, words describing the
+product for that search, and they go out with the card into those listings,
 beside the description.
 
 A card carries at most five of them, each between 1 and 32 characters of plain
-typewriter text — unaccented letters, digits, spaces and the punctuation on a
-keyboard, so a curly quote or a long dash is refused — with no space at either
+typewriter text (unaccented letters, digits, spaces and the punctuation on a
+keyboard, so a curly quote or a long dash is refused), with no space at either
 end, and no two the same but for their case. Those limits belong to the
 listings rather than to us, and they are checked here because what a listing
 does past them is drop the word without telling anybody.
@@ -502,8 +511,8 @@ character where the first of it begins, counted from one in the same units as a
 description's length, where an emoji counts as two. Nothing is cleaned or
 rewritten for you: stripping tags or decoding references on our side would put
 words in front of an agent that you never wrote, and you would not find out.
-Write the characters themselves — `&` rather than `&amp;`, `’` rather than
-`&#8217;` — and leave the markup out.
+Write the characters themselves, `&` rather than `&amp;` and `’` rather than
+`&#8217;`, and leave the markup out.
 
 The rule is checked when a card is published. Reading a card back, and showing
 it in a catalogue, does not check it.
@@ -529,7 +538,7 @@ back gives you the long form, whichever way you wrote it.
 Write whichever suits the way your cards are made. A card assembled by a
 program has no use for the shorter spellings and is easier to generate without
 them; a card written by hand is shorter and plainer with them. Neither is a
-mode you switch on, and one card mixes them field by field — write the price
+mode you switch on, and one card mixes them field by field: write the price
 short and the purchase parameters in full, put a title on the field that needs
 one and leave its neighbours as type words.
 
@@ -543,7 +552,7 @@ are together, the required fields first.
 | `id` | string | not yours to fill in: we issue it at publication |
 | `merchant_item_id` | string | required |
 | `title` | plain text, one line | required |
-| `description` | plain text, up to 500 characters — the discovery catalog's ceiling, not ours | required |
+| `description` | plain text, up to 500 characters, the discovery catalog's ceiling and not ours | required |
 | `price` | an amount as a string, and a currency; or the two as one string | required |
 | `result` | the shape of what the agent receives on delivery | required, except on a parcel's card, which has none |
 | `params` | the shape of the purchase parameters | required where the delivery needs input |
@@ -562,6 +571,14 @@ stands between us and the buyer, so a card is published only if its header
 stays within 8,192 bytes. A card whose header could grow past that is refused
 with the finding `challenge_too_large`, which says how large the header would
 get.
+
+A priced purchase also carries Agentify's price stamp in that header, and the
+stamp takes part of the 8,192 bytes. At its widest, with a `quote_reference` of
+512 characters that JSON has to escape, the stamp is 2,173 characters and
+takes about 2,900 bytes of the encoded header; with no reference it takes about
+1,100. A card is measured with the widest stamp before it is published, so
+those 2,900 bytes are set aside for every card, whatever reference your handler
+sends, and the card's own fields have the rest.
 
 The header is the challenge's JSON in base64, which turns every three bytes into
 four. It carries the description and the tags once, and the name of each
@@ -602,8 +619,8 @@ yet ([What is not settled yet](/failures#what-is-not-settled-yet)).
 ## Who checks a card before it is published
 
 Two of us: the check we ship, run on your side, and we ourselves before the
-card goes into the catalogues. Both sides look at the same thing — whether an
-agent can assemble a correct purchase from this card — and both read the card
+card goes into the catalogues. Both sides look at the same thing, whether an
+agent can assemble a correct purchase from this card, and both read the card
 by the same contract, so a card the first accepts is not turned away by the
 second for its shape or its price.
 
@@ -615,8 +632,8 @@ our list that no check on your side can see, and all of them are about you
 rather than the card: no name set for buyers to read (`no_seller_name`), no
 wallet set for your share of the sales wherever a payment settles
 (`no_payout_wallet`), on the live channel only, no approval from the operator
-yet (`no_operator_approval`), and on an asynchronous or parcel card, no site set for
-your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
+yet (`no_operator_approval`), and on an asynchronous or a parcel's card, no
+site set for your shop (`no_seller_site`) ([publishing a card](/quickstart)). The check on
 your side cannot measure the header a card is paid through either, so a card it
 passes can still be refused for its size ([how large a card may be](#how-large-a-card-may-be)).
 
@@ -677,18 +694,19 @@ against it play out in the ordinary way. Nothing removes a card altogether.
 - How a card is removed altogether rather than paused, and how long that
   takes.
 - The scheduled refresh of price and availability between purchases. It is
-  designed — a poll's answer would take a card out of a catalogue's listing
-  until the next poll, and no sale would go through on a poll's answer alone,
-  because a question with money behind it is asked again — and nothing runs it
-  yet.
-- The thresholds that limit how often price questions go out.
+  designed, and nothing runs it yet: a poll's answer would take a card out of a
+  catalogue's listing until the next poll, and no sale would go through on a
+  poll's answer alone, because a question with money behind it is asked again.
+- Whether the bounds on your price questions, four at once and sixteen started
+  in any one second, are the right ones: they have not been measured against
+  real shops.
 - Whether an answer whose `as_of` is too old is refused rather than honoured,
   what counts as too old, and what a sale does when one arrives.
 - The price hook, an address of yours that we would call instead of your price
   handler. A card cannot name one yet, and when one can, your side will need
   something to check a request against to know that it came from us. A price
-  handler has neither question — the subscription channel is authenticated when
-  it connects.
+  handler has neither question, because the subscription channel is
+  authenticated when it connects.
 - The smallest payment the live payment network carries. It does not publish
   its minimum, and a payment of `0.01` has not been tried on the live network,
   so a price at or above `{{smallest-price}}` could still be refused when a
