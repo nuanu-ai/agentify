@@ -182,10 +182,11 @@ export const fillFromTheShop = async (
   if (known?.kind === "unknown") {
     return unknownCreation(order.id, connection.shopUrl, known.attemptedAt);
   }
+  const bound = boundSale(order);
+  if (bound === null) return await refusedUnquoted(order, connection, parts);
   const inspected = await productInTheShop(connection, order.merchant_item_id, parts);
   const eligible = inspected.ok ? inspected.product : null;
-  const bound = boundSale(order);
-  const quoted = bound?.fingerprint ?? null;
+  const quoted = bound.fingerprint;
   const facts: WooOrderFacts = {
     shopOrigin: new URL(connection.shopUrl).origin,
     connectionRevision: connection.revision,
@@ -196,9 +197,8 @@ export const fillFromTheShop = async (
       productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ??
       "",
     // Recovery must restore the product the buyer accepted, never bless the
-    // changed product that caused this refusal; with no accepted quote no
-    // fingerprint can satisfy recovery.
-    productFingerprint: quoted ?? "unbound-price-id",
+    // changed product that caused this refusal.
+    productFingerprint: quoted,
     amount: order.price.amount,
     currency: order.price.currency,
     ...convertedFacts(bound),
@@ -238,10 +238,7 @@ export const fillFromTheShop = async (
   // The shop is held to the amount bound to the price, and the payment to the
   // dollars answered for it; a rate the merchant changed since does not move
   // either, because the buyer has paid at the one bound.
-  if (
-    !sameMoney(eligible.price, bound?.inTheShop ?? order.price) ||
-    (bound !== null && !sameMoney(order.price, bound.paid))
-  ) {
+  if (!sameMoney(eligible.price, bound.inTheShop) || !sameMoney(order.price, bound.paid)) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
@@ -251,7 +248,7 @@ export const fillFromTheShop = async (
       },
     };
   }
-  if (bound === null || quoted !== eligible.fingerprint) {
+  if (quoted !== eligible.fingerprint) {
     await parts.shops.recordPrecreateRefusal(connection.accountId, order.id, facts, parts.now());
     return {
       refused: {
@@ -466,10 +463,11 @@ const fillParcelFromTheShop = async (
       known.kind === "unknown" ? known.attemptedAt : parts.now(),
     );
   }
+  const bound = boundSale(order);
+  if (bound === null) return await refusedUnquoted(order, connection, parts);
   const address = ShipToSchema.safeParse(order.ship_to);
   const productId = productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id);
-  const bound = boundSale(order);
-  const quoted = bound?.fingerprint ?? null;
+  const quoted = bound.fingerprint;
   const facts: WooOrderFacts = {
     kind: "parcel",
     shopOrigin: new URL(connection.shopUrl).origin,
@@ -477,7 +475,7 @@ const fillParcelFromTheShop = async (
     merchantItemId: order.merchant_item_id,
     priceId: order.price_id ?? "unbound-price-id",
     productId: productId ?? "",
-    productFingerprint: quoted ?? "unbound-price-id",
+    productFingerprint: quoted,
     amount: order.price.amount,
     currency: order.price.currency,
     ...convertedFacts(bound),
@@ -521,7 +519,7 @@ const fillParcelFromTheShop = async (
     );
   }
   const product = inspected.product;
-  if (bound === null || quoted !== product.fingerprint || !sameMoney(order.price, bound.paid)) {
+  if (quoted !== product.fingerprint || !sameMoney(order.price, bound.paid)) {
     return await refuse(
       "The shop's product changed after this purchase was quoted, so no WooCommerce order was created.",
     );
@@ -679,6 +677,42 @@ const fillParcelFromTheShop = async (
     `[dashboard] order ${order.id} has no verifiable WooCommerce creation result${inTheShop}`,
   );
   return unknownCreation(order.id, connection.shopUrl, parts.now());
+};
+
+/**
+ * An order paid before its price travelled with the buyer carries no reference,
+ * and nothing the shop says now can tell what that price was.
+ */
+const refusedUnquoted = async (
+  order: Order,
+  connection: WooConnection,
+  parts: Filling,
+): Promise<HandlerAnswer> => {
+  await parts.shops.recordPrecreateRefusal(
+    connection.accountId,
+    order.id,
+    {
+      ...(order.ship_to === undefined ? {} : { kind: "parcel" as const }),
+      shopOrigin: new URL(connection.shopUrl).origin,
+      connectionRevision: connection.revision,
+      merchantItemId: order.merchant_item_id,
+      priceId: order.price_id ?? "unbound-price-id",
+      productId: productIdFromMerchantItem(connection.shopUrl, order.merchant_item_id) ?? "",
+      // No fingerprint can satisfy recovery without the price it was quoted at.
+      productFingerprint: "unbound-price-id",
+      amount: order.price.amount,
+      currency: order.price.currency,
+    },
+    parts.now(),
+  );
+  return {
+    refused: {
+      code: "cannot_fulfill",
+      message:
+        "This order carries no record of the price the shop quoted for it, so the shop cannot be" +
+        " held to that price and no WooCommerce order was created.",
+    },
+  };
 };
 
 /** Written only where there is one, so a dollar shop's sale carries none. */
