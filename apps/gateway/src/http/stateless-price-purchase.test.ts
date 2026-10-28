@@ -203,23 +203,27 @@ describe("a stamped price and an order born at payment", () => {
     await started({ ...CARD, price_check: undefined });
     const offer = await quote();
     const [, payload] = String(offer.extra?.price_stamp).split(".");
-    // Any price of this merchant's, under a signature Agentify never made.
-    for (let one = 0; one < 32; one += 1) {
+    // Any price of this merchant's, under a signature Agentify never made,
+    // all at once and ahead of the honest payment: a gate entered before the
+    // stamp is checked would be full when the honest payment reaches it.
+    const forgeries = Array.from({ length: 32 }, (_, one) => {
       const facts = JSON.parse(Buffer.from(payload ?? "", "base64url").toString()) as unknown[];
       facts[1] = `prc_forged_${one}`;
       const forged = `v1.${Buffer.from(JSON.stringify(facts)).toString("base64url")}.${"A".repeat(43)}`;
-      const refused = await pay(
+      return pay(
         { ...offer, extra: { ...offer.extra, price_stamp: forged } },
         `0x${(one + 100).toString(16)}`,
       );
+    });
+    const paying = pay(offer, "0x01");
+
+    for (const refused of await Promise.all(forgeries)) {
       expect(refused.status).toBe(409);
       expect(refused.body).toMatchObject({
         error: { code: "payment_not_verified", retryable: false },
       });
     }
-
-    const paid = await pay(offer, "0x01");
-
+    const paid = await paying;
     expect(paid.status).toBe(200);
     expect(paid.body).toMatchObject({ status: "delivered", payment_status: "paid" });
     expect(h.facilitator.verifies).toHaveLength(1);
@@ -276,7 +280,8 @@ describe("a stamped price and an order born at payment", () => {
       expect(fifthLanded).toBe(false);
       expect(h.facilitator.verifies).toHaveLength(4);
 
-      await vi.advanceTimersByTimeAsync(h.runtime.config.deadlines.quoteResponseMs);
+      // Whatever the wait for a place is, it is a timer, and it ends.
+      await vi.runOnlyPendingTimersAsync();
 
       expect(await fifth).toMatchObject({ step: "seller_busy" });
       expect(h.facilitator.verifies).toHaveLength(4);

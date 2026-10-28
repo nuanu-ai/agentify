@@ -249,9 +249,10 @@ describe("an order that holds an address it should not", () => {
 });
 
 describe("an order kept from before prices were stamped", () => {
-  it("is never charged, because it keeps no saved payment requirements", async () => {
+  it("is never charged, and is left fulfilled with its goods kept and its charge unsent", async () => {
     // Its buyer signed requirements nothing saved, so there is nothing to
-    // charge against; the charge is refused by name rather than rebuilt.
+    // charge against; the charge is refused by name rather than rebuilt, and
+    // the order waits where it stopped for an operator to finish it by hand.
     open = await harness();
     const kept = impossible(open.merchant.id);
     await storeAcceptedOrder(open.store, {
@@ -271,6 +272,9 @@ describe("an order kept from before prices were stamped", () => {
       ),
     ).rejects.toThrow(kept.order.id);
     expect(open.facilitator.settles).toStrictEqual([]);
+    const left = await open.store.orderById(kept.order.id);
+    expect(left?.order).toMatchObject({ state: "fulfilled", payment: "settling" });
+    expect(left?.delivery).toStrictEqual({ access_code: "SESAME" });
   });
 });
 
