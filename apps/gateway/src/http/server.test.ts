@@ -522,10 +522,11 @@ describe("the payment challenge", () => {
   it("asks for an authorisation that outlives the charge, even one signed as the price is named and presented as it runs out", async () => {
     // The reference client signs an authorisation valid for maxTimeoutSeconds
     // from the moment it signs. An agent may sign as soon as the price is named
-    // and present the payment as the price runs out, and the door then asks
-    // for what a charge after the goods needs: the synchronous answer's time,
-    // the exact-EVM facilitator's six seconds, and two for the gateway's own
-    // steps and the clocks. Two more cover the time before the check: its round
+    // and present the payment as the price runs out; the payment may then wait
+    // for its wallet's balance, a place among the checks and the check itself,
+    // and the door then asks for what a charge after the goods needs: the
+    // synchronous answer's time, the exact-EVM facilitator's six seconds, and
+    // two for the gateway's own steps and the clocks. Two more cover the time before the check: its round
     // trip, and the client rounding its clock down to the second. The protocol
     // counts whole seconds, so a window configured to the millisecond is
     // rounded up: a second short would end before the charge.
@@ -548,7 +549,17 @@ describe("the payment challenge", () => {
           asked.headers.get(PAYMENT_REQUIRED_HEADER) ?? "",
         );
         expect(challenge.accepts[0]?.maxTimeoutSeconds, JSON.stringify(environment)).toBe(
-          Math.ceil((quoteTtlMs + syncResponseMs) / 1_000) + 6 + 2 + 2,
+          Math.ceil(
+            (quoteTtlMs +
+              syncResponseMs +
+              BALANCE_READ_MS +
+              PAYMENT_PLACE_WAIT_MS +
+              VERIFY_REQUEST_MS) /
+              1_000,
+          ) +
+            6 +
+            2 +
+            2,
         );
       }
 

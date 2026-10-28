@@ -66,12 +66,26 @@ export const validityNeededAfterCheckMs = (deadlines: Pick<Deadlines, "syncRespo
   deadlines.syncResponseMs + FACILITATOR_EXPIRY_MARGIN_MS + UNCOUNTED_MS;
 
 /**
+ * The longest a payment that arrived in time may wait before its check
+ * answers: the read of its wallet's balance, a place among its merchant's
+ * checks, and the check itself.
+ */
+const WAITED_BEFORE_CHECK_MS = BALANCE_READ_MS + PAYMENT_PLACE_WAIT_MS + VERIFY_REQUEST_MS;
+
+/**
  * How long a challenge asks an agent's authorisation to stay valid, in the
  * protocol's whole seconds. The price's whole life is there for an agent that
  * signs as soon as the price is named and presents the payment as it runs out;
- * after that comes what the check asks for, and the allowance for the time
- * before the check. Rounded up, since longer is safe and shorter is not. It is
- * not the time an agent has to pay: the price lapses long before.
+ * then come the waits before the check answers, what the check asks for, and
+ * the allowance for the time before the check. Rounded up, since longer is
+ * safe and shorter is not. It is not the time an agent has to pay: the price
+ * lapses long before.
  */
 export const authorisationSecondsOf = (deadlines: Deadlines): number =>
-  Math.ceil((deadlines.quoteTtlMs + validityNeededAfterCheckMs(deadlines) + UNCOUNTED_MS) / 1_000);
+  Math.ceil(
+    (deadlines.quoteTtlMs +
+      WAITED_BEFORE_CHECK_MS +
+      validityNeededAfterCheckMs(deadlines) +
+      UNCOUNTED_MS) /
+      1_000,
+  );

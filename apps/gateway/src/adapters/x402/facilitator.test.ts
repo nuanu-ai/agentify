@@ -67,7 +67,8 @@ const edge = new PaymentEdge({
     cdpApiKeySecret: null,
   },
   publicBaseUrl: "https://agentify.example",
-  deadlines: { quoteTtlMs: 30_000, syncResponseMs: 10_000 },
+  // A term that makes the offered timeout fifty seconds, which the cases below count from.
+  deadlines: { quoteTtlMs: 16_000, syncResponseMs: 10_000 },
 });
 
 /** A facilitator that answers what a test tells it to, and records what it was asked. */

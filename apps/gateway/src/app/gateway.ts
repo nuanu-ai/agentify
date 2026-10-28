@@ -2427,7 +2427,11 @@ export class Gateway {
     )
       return {
         step: "payment_not_verified",
-        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; sign the payment again and send it at once, while its price holds`,
+        why: `nothing was charged and nothing was made: a purchase delivered in the answer is charged after its goods, so its authorisation has to last ${needed / 1_000} seconds past the check, and this one ends sooner; ${
+          checkedAt < offer.expiresAt
+            ? "sign the payment again and send it at once, while its price holds"
+            : "its price has lapsed since, so request a new price and sign that at once"
+        }`,
         retryable: false,
       };
     const prepared = this.runner.preparePurchase(
