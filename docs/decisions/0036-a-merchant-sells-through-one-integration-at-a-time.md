@@ -36,7 +36,8 @@ switch again. Disconnecting switches back to the SDK, and leaves selling
 paused where the code's cards come back on sale: an asynchronous order is paid
 before the code answers, and the code may not be running. A Disconnect and
 keys arriving in the same moment can leave the merchant on a shop with none
-connected; the shop screen's way back is the exit.
+connected, which nothing polls for, so their cards are off sale (ADR-0043); the
+shop screen's way back is the exit.
 
 A switch is refused, naming the orders, while one still waits on the
 integration being left: to be paid at its quoted price, for its first answer,

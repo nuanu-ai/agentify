@@ -48,7 +48,7 @@ interface WaitingMerchant {
   readonly sellerSite: string | null;
   readonly createdAt: number;
   readonly integration: Integration;
-  /** When their own process last polled, or null where no poll was ever recorded. */
+  /** When the integration they sell through last polled, or null where no poll was recorded. */
   readonly lastContact: number | null;
   /** How many cards they have published, on sale or not. */
   readonly cardsPublished: number;
@@ -97,10 +97,10 @@ export interface Workers extends Read {
   /** How many merchants' processes ever polled. */
   readonly everConnected: number;
   /**
-   * The merchants selling through their own code, with a card on sale, whose
-   * process has not polled with a compatible contract within the guard's window, so purchases
-   * are being refused and their cards left out of the catalogue; the longest
-   * silent first.
+   * The merchants with a card on sale whose integration, their own code or
+   * the connector of their shop, has not polled with a compatible contract
+   * within the guard's window, so purchases are being refused and their cards
+   * left out of the catalogue; the longest silent first.
    */
   readonly silent: readonly SilentMerchant[];
   readonly silentOf: number;

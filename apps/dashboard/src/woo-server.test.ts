@@ -2474,6 +2474,11 @@ describe("one integration at a time", () => {
       consumer_secret: "cs_b",
       key_permissions: "read_write",
     });
+    // As the worker does for every connected shop; nothing of the shop's is on
+    // sale until it has.
+    await running.harnessed.gateway.poll(running.harnessed.merchant.id, 0, {
+      through: "woocommerce",
+    });
   };
 
   it("sends the merchant to WooCommerce on an allowed Connect and leaves the code's products on sale", async () => {
@@ -2733,7 +2738,9 @@ describe("one integration at a time", () => {
     await running.signIn();
     await connectTheShop(running);
     await running.harnessed.gateway.sellThrough(running.harnessed.merchant.id, "api");
-    const orderId = await paidFor(running, await publishedByTheCode(running));
+    const card = await publishedByTheCode(running);
+    expect((await theCodePolls(running)).status).toBe(200);
+    const orderId = await paidFor(running, card);
 
     const refused = await running.post("/woocommerce/switch");
 
@@ -2761,6 +2768,10 @@ describe("one integration at a time", () => {
     expect(await running.shops.connectionOf(running.accountId)).toBeNull();
     expect(await onSale(running)).toStrictEqual([]);
     await running.post("/products?selling=resume");
+    // Back on sale at the code's first poll since the shop, not on its polls
+    // from before.
+    expect(await onSale(running)).toStrictEqual([]);
+    expect((await theCodePolls(running)).status).toBe(200);
     expect(await onSale(running)).toStrictEqual([card]);
   });
 

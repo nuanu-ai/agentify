@@ -580,6 +580,37 @@ if (databaseUrl === null) {
       });
     });
 
+    describe("a poll written while a switch of integration is under way", () => {
+      afterEach(async () => {
+        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
+        await pool.query("update merchants set integration = 'api' where id = $1", [A]);
+      });
+
+      it("waits for the switch, and is not taken for the poll of the integration taking over", async () => {
+        // The connector polled for the shop as its merchant moved back to their
+        // code, which may not be running.
+        await pool.query("update merchants set integration = 'woocommerce' where id = $1", [A]);
+        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
+        const switching = await pool.connect();
+        try {
+          await switching.query("begin");
+          await switching.query("select id from merchants where id = $1 for update", [A]);
+
+          const noted = store.noteContact(A, now, "woocommerce");
+          expect(await settledWithin(noted, 300)).toBe(false);
+
+          await switching.query("update merchants set integration = 'api' where id = $1", [A]);
+          await switching.query("delete from merchant_contact where merchant_id = $1", [A]);
+          await switching.query("commit");
+          await noted;
+
+          expect(await store.lastContact(A)).toBeNull();
+        } finally {
+          switching.release();
+        }
+      });
+    });
+
     it("serializes decisions from two separate database clients against one accepted order", async () => {
       // Two pools and two connections, so only the database can make the second
       // wait: a chain of promises in one adapter would pass the store contract's

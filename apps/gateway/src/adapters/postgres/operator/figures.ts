@@ -151,10 +151,10 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
         select m.id, m.name, ${msOf(sql`mc.polled_at`)} as polled_at, (count(*) over ())::int as of
           from merchants m
           left join merchant_contact mc on mc.merchant_id = m.id
-         where m.selling = 'open' and m.integration = 'api' and ${ready(asked, scope.network)}
+         where m.selling = 'open' and ${ready(asked, scope.network)}
            and (mc.contract_version is distinct from ${CONTRACT_VERSION} or mc.polled_at < ${quiet})
            and exists (select 1 from cards c
-                        where c.merchant_id = m.id and not c.paused and c.integration = 'api')
+                        where c.merchant_id = m.id and not c.paused and c.integration = m.integration)
          order by mc.polled_at nulls first, m.id collate "C"
          limit ${SILENT_NAMED_AT_MOST}`);
       return {

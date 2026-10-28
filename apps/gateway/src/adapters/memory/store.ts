@@ -485,8 +485,8 @@ export class MemoryStore implements Store {
     this.#keys.set(found.id, Object.freeze({ ...found, lastUsedAt: at, lastUserAgent: userAgent }));
   }
 
-  async noteContact(merchantId: string, at: number): Promise<void> {
-    if (!this.#merchants.has(merchantId)) return;
+  async noteContact(merchantId: string, at: number, through: Integration): Promise<void> {
+    if (this.#merchants.get(merchantId)?.integration !== through) return;
     this.#contact.set(merchantId, Math.max(this.#contact.get(merchantId) ?? at, at));
   }
 
@@ -744,6 +744,7 @@ export class MemoryStore implements Store {
           (card) => card.merchantId === merchantId && card.integration === to && !card.paused,
         );
       row.integration = to;
+      this.#contact.delete(merchantId);
       if (sellingPaused) {
         row.selling = "paused";
         await this.#recordWith(analytics, undefined, this.#now());

@@ -96,11 +96,13 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
       .filter(
         (merchant) =>
           merchant.selling === "open" &&
-          merchant.integration === "api" &&
           ready(merchant, asked) &&
           silentAt(contact.get(merchant.id) ?? null, asked.at) &&
           cards.some(
-            (card) => card.merchantId === merchant.id && !card.paused && card.integration === "api",
+            (card) =>
+              card.merchantId === merchant.id &&
+              !card.paused &&
+              card.integration === merchant.integration,
           ),
       )
       .map((merchant) => ({

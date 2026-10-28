@@ -3,12 +3,13 @@
 Status: the ten minutes of silence are the product owner's (2026-10-21). His
 word of 2026-10-26: "the catalog does not show a seller's cards while that
 seller is not taking orders; the cards come back by themselves when the seller
-is in touch again." It names the seller, not a payment mode, so a silent
-seller's synchronous cards leave the catalogue too. Refusing them at the door,
-and keeping a silent seller's look answered with its challenge, are the
-engineering consequences. His words of 2026-10-27 replace the limit of fifty
-purchases waiting for payment: "A request nobody paid for may use a moment of
-a merchant's capacity and holds nothing over time" and "Work that is paid for
+is in touch again." It names the seller, not a payment mode or an integration,
+so a silent seller's synchronous cards leave the catalogue too. Refusing them
+at the door, keeping a silent seller's look answered with its challenge, and
+holding a shop to the connector's polls are the engineering consequences. His
+words of 2026-10-27 replace the limit of fifty purchases waiting for payment:
+"A request nobody paid for may use a moment of a merchant's capacity and holds
+nothing over time" and "Work that is paid for
 never waits behind work that is not"; one merchant's load must not slow
 another's either. The gates, the lanes and their counts are engineering
 choices, not measured capacity
@@ -56,22 +57,29 @@ bound only work in progress, never anything stored or owed; one process admits
 callers one at a time, and each channel runs one gateway process. A second
 process is the exit trigger, as in ADR-0049.
 
-Every purchase is refused with `seller_not_taking_orders` while no compatible
-process of the merchant's own code has polled for ten minutes, before pricing
-and again before its first payment is verified; a payment that releases goods
-already made goes through. Nothing is stored to resume: the first compatible
-poll lets the next purchase through. A WooCommerce connector runs inside
-Agentify and is never refused for this. The catalogue lists a card only where
-the door would price it, while a silent merchant's card still answers its
-unpaid GET with its challenge, so an outside listing keeps it (ADR-0012). A
-busy merchant's cards stay listed. `seller_busy` and
+Every purchase is refused with `seller_not_taking_orders` while nothing has
+polled for ten minutes for the integration the merchant sells through: a
+compatible process of their own code, or the WooCommerce connector, which
+polls for a shop only while it is connected. The refusal comes before pricing
+and again before the first payment is verified; a payment that releases goods
+already made goes through. A poll counts only for the integration in use, and
+a switch forgets the last one. Nothing is stored to resume: the first
+compatible poll lets the next purchase through. The catalogue lists a card
+only where the door would price it, while a silent merchant's card still
+answers its unpaid GET with its challenge, so an outside listing keeps it
+(ADR-0012). A busy merchant's cards stay listed. `seller_busy` and
 `seller_not_taking_orders` are retryable and charge nothing.
 
 ## Alternatives rejected
 
 Fifty unpaid purchases per merchant: anyone could hold all fifty and stop sales
-without paying. A limit per buyer or per address on price questions: an agent
-has no identity before it pays, and addresses are cheap. Stopping a silent
+without paying. Counting the connector in touch whenever Agentify runs: a
+merchant left on a shop with none connected (ADR-0036) stayed listed, and each
+price question waited out its ten seconds for `seller_busy`. Asking the
+dashboard at each purchase whether a shop is connected: it reads another
+part's records and still misses a connector that stopped polling. A limit per
+buyer or per address on price questions: an agent has no identity before it
+pays, and addresses are cheap. Stopping a silent
 merchant's selling as a pause: it would need resuming by hand after an ordinary
 restart. Recording contact on every call with the merchant's key: a publishing
 script would count as a running worker. A field on each catalogue card saying

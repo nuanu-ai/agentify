@@ -596,7 +596,7 @@ export interface CatalogEntry {
   readonly integration: Integration;
   /**
    * The latest poll recorded for that merchant (`lastContact`), or null where
-   * none ever was: a seller whose own code has gone quiet takes no purchase.
+   * none ever was: a seller whose integration has gone quiet takes no purchase.
    */
   readonly lastContact: number | null;
 }
@@ -825,15 +825,22 @@ export interface Store {
 
   /**
    * Records that one of this merchant's processes speaking this build's contract polled their stream at this
-   * instant. The mark never goes backwards, since two gateway processes write
+   * instant through `through`, written only while the merchant sells through
+   * it and read under the switch's lock (`switchIntegration`), so the poll of
+   * an integration being left never counts for the one taking over. The mark
+   * never goes backwards, since two gateway processes write
    * it from two clocks without serialising, and it outlives a restart: a
    * restarted gateway that knew of no poll would refuse every sale
    * until each merchant's process polled again. A merchant that is not there
    * is not an error, and nothing is written.
    */
-  noteContact(merchantId: string, at: number): Promise<void>;
+  noteContact(merchantId: string, at: number, through: Integration): Promise<void>;
 
-  /** The latest poll speaking this build's contract, or null where none was confirmed. */
+  /**
+   * The latest poll speaking this build's contract of the integration the
+   * merchant sells through, or null where none was confirmed since they
+   * switched to it.
+   */
   lastContact(merchantId: string): Promise<number | null>;
 
   /**
@@ -985,6 +992,9 @@ export interface Store {
    * One transaction, holding the merchant's row against the birth of an
    * order (`admitOrder`), so no order can be made for a card in
    * the moment it goes off sale.
+   *
+   * A switch forgets the merchant's last poll (`noteContact`): the
+   * integration being left polled, not the one taking over.
    *
    * `analytics` is recorded in that transaction only when the switch stopped
    * the merchant's selling.

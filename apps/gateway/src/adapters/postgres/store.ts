@@ -595,12 +595,17 @@ export class PostgresStore implements Store {
       );
   }
 
-  async noteContact(merchantId: string, at: number): Promise<void> {
+  async noteContact(merchantId: string, at: number, through: Integration): Promise<void> {
     // Selected rather than inserted as values, so a merchant who is not there
-    // writes nothing instead of failing the foreign key.
+    // writes nothing instead of failing the foreign key. The row lock waits
+    // for a switch under way and then reads the integration it wrote, so a
+    // poll of the integration being left is never written after the switch
+    // forgot the last one.
     await this.#db.execute(sql`
       insert into ${merchantContact} (merchant_id, polled_at, contract_version)
-      select ${merchants.id}, ${new Date(at)}, ${CONTRACT_VERSION} from ${merchants} where ${merchants.id} = ${merchantId}
+      select ${merchants.id}, ${new Date(at)}, ${CONTRACT_VERSION} from ${merchants}
+       where ${merchants.id} = ${merchantId} and ${merchants.integration} = ${through}
+       for key share
       on conflict (merchant_id)
       do update set polled_at = case
         when ${merchantContact.contractVersion} = excluded.contract_version
@@ -927,6 +932,7 @@ export class PostgresStore implements Store {
           updatedAt: sql`now()`,
         })
         .where(eq(merchants.id, merchantId));
+      await tx.delete(merchantContact).where(eq(merchantContact.merchantId, merchantId));
       if (sellingPaused) await recordWith(tx, analytics, undefined, new Date());
       return { switched: true, sellingPaused };
     });
