@@ -7,7 +7,10 @@ Status: accepted; developed on equal terms with the SDK (the product owner,
 caches of a shop's products and settings and a small pool of reused guest
 carts; on 2026-10-28 he decided that a cart whose state is in doubt is never
 used again and that a new one is opened automatically at most once per shop
-every ten minutes.
+every ten minutes. On 2026-10-07 he chose to refuse at once a paid download
+whose shop did not answer, because five hand-overs could not wait out an
+outage; since hand-overs last three hours (ADR-0004, his word of 2026-10-28)
+such a download waits for the shop instead.
 
 ## Context
 
@@ -33,8 +36,7 @@ Simple products of two classes are imported by the conditions the merchant
 guide lists (`apps/docs/woocommerce.md`); anything else is named and skipped. A
 card is priced at every purchase. The price answer's `quote_reference`, stamped
 with the price (ADR-0049), names the product and the settings it is sold under,
-and the fresh read at payment must match it. A product read is reused for five
-seconds and the settings for three minutes. A download, with one non-public
+and the fresh read at payment must match it. A download, with one non-public
 file on the shop's origin and no download limit or expiry, sells on an
 asynchronous card that delivers WooCommerce's permission URL, a bearer secret.
 
@@ -50,26 +52,32 @@ one-cent match are ADR-0041; another currency is ADR-0044.
 Carts belong to the shop's address: two accounts connected to one shop share
 them and the ten-minute allowance, while keys and caches stay per account. A
 cart is retired only when a change's outcome is unknown or the shop refuses its
-session; opening a slot's first cart and renewing an idle empty one before it
-expires do not spend the allowance. Paid orders have carts that free questions
-never take, and polling never waits for a cart. The counts are in
+session. Paid orders have carts that free questions never take. The caches,
+the counts and what spends the allowance are in
 [research 90](../research/90-unpaid-price-questions-design.md).
 
 The connector fills orders as the merchant's worker inside Agentify's process
 ([research 35](../research/35-one-process.md)); on the live channel an imported
 card sells once the operator approves its merchant. One paid WooCommerce order
-is recorded per sale before it answers, and the ledger moves forward only:
-`precreate_refused` for a refusal proved before the create request, then
-`create_unknown` once it is sent, never resent on its own, until a validated,
-correlated answer makes it `placed`. A placed download is final; a placed parcel
-is followed until it ships or the shop ends it. A download's paid failure is
-recovered only on the merchant's recovery page for one order: after a
-pre-create refusal it may create the shop order once, for a shop connected again
-whose product still qualifies (the product owner, 2026-10-26), and an unknown
-create binds only an order the merchant names, matched on every fact of the sale
-([research 54](../research/54-self-service.md)). A mismatch, like a parcel whose
-address is erased (ADR-0032), stays unfulfilled; no staffed recovery queue is
-part of the service (the product owner, 2026-10-19).
+is recorded per sale before it answers, and the ledger moves forward only. A
+download whose shop does not answer its product check (no answer, an answer
+cut off, a 408, a 429 or a 5xx) is kept as `shop_silent` and answers nothing,
+so its next hand-over asks again. A hand-over that reaches the shop takes the
+sale over; any answer that does not show the product still qualifies, the
+shop's own no or one that cannot be read, makes it `precreate_refused`. A
+create request sent makes it `create_unknown`, never resent on its own, until a
+validated, correlated answer makes it `placed`. A placed download is final; a
+placed parcel is followed until it ships or the shop ends it.
+
+A download's paid failure is recovered only on the merchant's recovery page for
+one unfulfilled order. After a pre-create refusal the page may create the shop
+order once, for a shop connected again under a new grant whose product still
+qualifies (the product owner, 2026-10-26); after a silence it may do so under
+the grant the shop already gave, since nothing refused it. An unknown create
+binds only an order the merchant names, matched on every fact of the sale
+([research 54](../research/54-self-service.md)). A mismatch, like a parcel
+whose address is erased (ADR-0032), stays unfulfilled; no staffed recovery
+queue is part of the service (the product owner, 2026-10-19).
 
 ## Consequences
 
