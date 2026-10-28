@@ -87,7 +87,10 @@ the readers here 50 to 60 ms for the page of product cards, 150 to 230 ms for
 250,000 distinct attributes, 120 to 190 ms for unclosed `div` tags, and 100
 to 150 ms for a page of numbers. The hand-rolled readers took 15 to 140 ms on
 the same inputs and read them wrongly. The tests hold each such shape to
-500 ms.
+two seconds of the test process's CPU time, the least of three reads. They held
+it to 500 ms until 28 October 2026, when GitHub's shared runners took about 540
+ms of CPU for the page of numbers that takes 113 ms here; a reader that retries
+from every opening takes minutes, so two seconds still tells the two apart.
 
 ## How a price is recognised
 
