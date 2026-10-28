@@ -57,7 +57,8 @@ owner's to decide, and until then is a limit a parcel sells with.
 | --- | --- | --- |
 | How long a merchant has to ship: the connector publishes every parcel with seven days, a constant of its own rather than the merchant's word | product owner | ADR-0023 |
 | Whether to translate a region's code by the shop's own list, since WooCommerce writes the regions of 37 of its 69 listed countries its own way and an agent naming such a region is told "not available" | product owner | `41-woo-parcel-probe.md` |
-| Whether the guest session each price question leaves in the merchant's shop for 48 hours, with the destination in it, is acceptable, and whether the connection screen says so | product owner | `41-woo-parcel-probe.md` |
+| Whether the guest sessions the connector keeps in a merchant's shop are acceptable, each holding the last destination priced in it for up to 48 hours: usually sixteen or fewer, at most about 300; and whether the connection screen says so | product owner | `41-woo-parcel-probe.md`, `90-unpaid-price-questions-design.md` |
+| What a paid parcel order does when the shop has no usable paid cart free: today it answers nothing and spends one of its hand-overs | product owner | `90-unpaid-price-questions-design.md` |
 | How slow a shop may be: a parcel's price is several requests to the shop within five seconds, 0.9–2.8 seconds each from outside, so a slow shop loses sales to "not available" | product owner | `41-woo-parcel-probe.md` |
 | The backups taken before a buyer's address is erased, which keep it with no upper bound: the portal and the contract say so since 2026-10-26, and whether a retention bounds every copy is open | product owner | ADR-0029 |
 
@@ -75,6 +76,7 @@ owner's to decide, and until then is a limit a parcel sells with.
 | How the scanner's limits stated on its documentation page are held equal to the worker's literals, which no test compares | engineering | — |
 | How the release preflight's fixtures, snapshots of `docker compose config` taken by hand, are kept in step with `compose.yaml`; their synthetic encryption key also decodes to 33 bytes where the scanner needs 32 | engineering | — |
 | A test path for the idempotency of `verify`, which no route can reach without a live payment | engineering | — |
+| Whether Coinbase's facilitator refuses an empty wallet's payment at verification or only at settlement on Base; on Base Sepolia it refused at verification without naming a cause | engineering, by a measurement | `90-unpaid-price-questions-design.md` |
 | How a flood of purchase requests for one merchant is kept from slowing every other merchant's sales through the one database pool they share: an unpaid request reads the card and the merchant before any limit can refuse it | architect | `87-unpaid-price-questions.md` |
 | How a flood of signed payments for one merchant is kept from using up the payment facilitator's rate limit, which every merchant's payments share through one key: which of our own checks come before the facilitator is called, and how many of its calls one merchant may hold at once | architect | `87-unpaid-price-questions.md` |
 | Whether the Bazaar's crawler accepts a card at a real listing; its validator accepts the declaration on both methods | a real listing | `26-discovery-method-on-get.md`, ADR-0012 |
