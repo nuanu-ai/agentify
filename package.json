@@ -53,7 +53,7 @@
     "scanner:test:admin-door": "vitest run --project integration apps/web/admin-door.integration.test.ts",
     "scanner:db:migrate": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-database db:migrate",
     "scanner:dev": "node ops/scripts/with-env.mjs pnpm --parallel --filter @agentify/web --filter @agentify/scanner-worker dev",
-    "scanner:test:integration:inner": "pnpm scanner:build && vitest run --project integration apps/scanner-worker/src/analytics-outbox.integration.test.ts && vitest run --project integration apps/scanner-worker/src/scan-job.integration.test.ts && vitest run --project integration apps/web/lib/server/p4.integration.test.ts && vitest run --project integration apps/web/lib/server/p5.integration.test.ts",
+    "scanner:test:integration:inner": "pnpm scanner:build && vitest run --project integration apps/scanner-worker/src/analytics-outbox.integration.test.ts && vitest run --project integration apps/scanner-worker/src/scan-job.integration.test.ts && vitest run --project integration apps/web/lib/server/p4.integration.test.ts && vitest run --project integration apps/web/lib/server/p5.integration.test.ts && vitest run --project integration apps/web/lib/server/health.integration.test.ts",
     "scanner:dev:web": "node ops/scripts/with-env.mjs pnpm --filter @agentify/web dev",
     "scanner:dev:worker": "node ops/scripts/with-env.mjs pnpm --filter @agentify/scanner-worker dev",
     "scanner:db:generate": "pnpm --filter @agentify/scanner-database db:generate",
