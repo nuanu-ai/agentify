@@ -147,9 +147,10 @@ scored.
 
 ## Spending cap
 
-At most 0.30 test USDC, at 0.01 a purchase, and the owner funds the two buyer
-wallets with exactly their share: 0.21 for the wallet that buys from A and C,
-0.04 for the one that buys from B. The planned spend is 0.25: 0.12 for A's
+At most 0.30 test USDC, at 0.01 a purchase. The organiser sends the two buyer
+wallets exactly their share from its holding wallet, which the owner funds at
+Circle's faucet: 0.21 for the wallet that buys from A and C, 0.04 for the one
+that buys from B. The planned spend is 0.25: 0.12 for A's
 twelve purchases in step 1, 0.04 for B's four, 0.04 for C's four, 0.02 for A's
 two during the junk burst, 0.02 for T-04's two purchases near the end of a
 price and 0.01 for T-06's order. The flood, the junk payments and every

@@ -740,9 +740,14 @@ done in the days before the run.
 
    Buyers pay in test USDC on Base Sepolia from [Circle's faucet](https://faucet.circle.com),
    which asks for a captcha, so a person requests it, and which hands out a
-   limited amount at a time. Fund each buyer's signer with exactly its total
-   budget and set the per-purchase limit in the client, as "People and
-   independent first attempts" describes; a buyer needs no ETH. A payout (M)
+   fixed amount at a time. That amount rarely equals a buyer's budget, so the
+   organiser keeps one holding wallet, gives the owner its address to fund at
+   the faucet, and from it sends each buyer's signer exactly its total budget;
+   those transfers pay the network's fee in test ETH, which the holding wallet
+   gets from a faucet for Base Sepolia ETH. The organiser makes every buyer's
+   key itself, so no key passes between people. Set the per-purchase limit in
+   the client, as "People and independent first attempts" describes; a buyer
+   needs no ETH. A payout (M)
    is a transaction sent by whoever holds the wallet that sends it, which pays
    the network's fee in test ETH on Base Sepolia; the organiser funds that
    wallet from a faucet for Base Sepolia ETH, records which, and the gas cap
@@ -948,14 +953,15 @@ operator stops the run there until they have done it.
    carts, so C's samples are spaced at least six seconds apart and nothing
    floods the shop. T-07 runs on a local copy of the lab behind the controlled
    Woo fault instead, with a merchant of that stack.
-5. Have the owner fund two buyer wallets on Base Sepolia at Circle's faucet,
-   which asks for a captcha, each with exactly the budget research note 91
-   gives it: one for the purchases from A and C, one for those from B. The
-   wallets are the real bound on what the run can spend. The running agent
-   funds no wallet and answers no captcha. The owner hands the keys over
-   privately; one copy is kept, and no key enters the repository, a report or
-   a log. On the local stack the buyers' keys are any test keys, since nothing
-   is paid there.
+5. Make two buyer wallets on Base Sepolia and send each, from the holding
+   wallet of step 4 of "Starting and running a run on the test channel",
+   exactly the budget research note 91 gives it: one for the purchases from A
+   and C, one for those from B. The wallets are the real bound on what the run
+   can spend. Where the holding wallet holds too little, the owner funds it at
+   Circle's faucet, which asks for a captcha; the running agent answers no
+   captcha. One copy of each key is kept, and no key enters the repository, a
+   report or a log. On the local stack the buyers' keys are any test keys,
+   since nothing is paid there.
 6. Get the access the measurements need, for the run's window: read access to
    the test channel's metrics in the observability stack
    ([research note 53](53-self-hosted-observability.md)), or a person who
