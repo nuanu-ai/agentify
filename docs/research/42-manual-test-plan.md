@@ -44,8 +44,9 @@ or a sequence of clicks.
   chosen for the run, including its limits and the information the buyer may
   disclose. Do not supply a catalogue ID or an Agentify-specific purchasing script.
 - Returning merchant: “Review yesterday's business, find what needs your
-  attention and resolve what you can.” Give only merchant-owned records and
-  the dashboard, not the organiser's explanation of the incomplete sales.
+  attention and resolve what you can.” Give the dashboard, merchant-owned
+  records, and the merchant's own goods and stated policy as a real merchant
+  has them (K), but not the organiser's explanation of the incomplete sales.
 
 A team member may rehearse all stories. They cannot provide evidence of a
 newcomer's understanding. Use an outside engineer for the SDK first attempt
@@ -1284,9 +1285,12 @@ Prepare paid delivered, accepted overdue, synchronous expired with nothing
 charged and unresolved payment orders, plus an older unfulfilled order outside
 the first page. Let the
 merchant's event response be lost. Use an independent reader who did not create
-the orders. Give only the public UI, docs and merchant-owned operation records;
-allow the SDK if their role normally uses it. Our SQL and private logs are not
-their tools.
+the orders. Give the public UI, docs and merchant-owned operation records, and
+the merchant's own goods and stated policy as a real merchant has them, since
+delivering an overdue order and applying the merchant's remedy (K-02) need
+both; allow the SDK if their role normally uses it. The organiser's
+explanation of the incomplete sales stays withheld, and our SQL and private
+logs are not their tools.
 
 | ID / priority | Situation and attempt | Required result and evidence |
 | --- | --- | --- |
