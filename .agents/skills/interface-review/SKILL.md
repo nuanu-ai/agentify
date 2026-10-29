@@ -175,8 +175,8 @@ the hedge above goes because it names nothing. Check this before any cut.
   a price in another currency, lists of 0, 1, 51 and 200 rows with more than 50
   unresolved. The gallery's examples are short; where data is missing, lengthen
   the text with the browser's script tool and label the screenshot as edited.
-- Widths: 1440, 1024, 768 and 390 pixels; tablet and phone are layouts of
-  their own. The page never scrolls sideways; a wide table may, inside its box.
+- Widths: 1440, 1024, 768 and 375 pixels, the last being the phone width the
+  test plan's U stories use; tablet and phone are layouts of their own. The page never scrolls sideways; a wide table may, inside its box.
 - Keyboard: every action reachable by Tab, the focus ring visible and never
   under a sticky header or banner, Enter submits, a disclosure opens.
 - 200% zoom: everything readable, nothing cut off, no sideways page scroll.
