@@ -79,8 +79,10 @@ export interface ClientOptions {
    * difference between a sale and a rehearsal, and every answer from the wrong
    * one parses perfectly. Left out, the client is still built, and every call
    * that has to reach the gateway throws a `TypeError` naming both addresses.
-   * A value that is not an http or https address is refused when the client
-   * is built.
+   * A value that is not an https address is refused when the client is built,
+   * since every call carries the API key: plain `http:` is taken for
+   * `localhost`, a `*.localhost` name, `127.0.0.0/8`, `[::1]`, and a name with
+   * no dot, meant for a container on a private network (`http://gateway:3000`).
    */
   readonly baseUrl?: string | undefined;
 }
@@ -476,9 +478,25 @@ const keyOf = (apiKey: string | undefined): string => {
 };
 
 /**
+ * Where plain http is taken: this machine, or a name with no dot, meant for a
+ * container on a private network. Nothing here proves such a name stays
+ * private; the rule turns away the addresses that plainly cross a network.
+ */
+const PLAIN_HTTP_TAKEN =
+  "http:// is taken for localhost, a *.localhost name, 127.0.0.0/8, [::1] and a name with no dot, meant for a container on a private network, such as http://localhost:3000";
+
+const plainHttpStaysClose = (hostname: string): boolean =>
+  hostname === "localhost" ||
+  hostname.endsWith(".localhost") ||
+  hostname === "[::1]" ||
+  /^127\.\d+\.\d+\.\d+$/.test(hostname) ||
+  (!hostname.includes(".") && !hostname.startsWith("["));
+
+/**
  * The address as given, checked as far as it can be without using it. A value
- * that is not an http or https address is refused at once; an address not
- * given at all is refused by the first call that needs it.
+ * that is neither an https address nor an http one that stays close is refused
+ * at once; an address not given at all is refused by the first call that
+ * needs it.
  */
 const addressOf = (baseUrl: string | undefined): string => {
   if (baseUrl === undefined) return "";
@@ -493,7 +511,13 @@ const addressOf = (baseUrl: string | undefined): string => {
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new TypeError(
-      `baseUrl is not an http address: ${JSON.stringify(baseUrl)} — the gateway is reached over https, and over http only where the two run on one machine`,
+      `baseUrl is not an https address: ${JSON.stringify(baseUrl)} — the gateway is reached over https; ${PLAIN_HTTP_TAKEN}`,
+    );
+  }
+
+  if (parsed.protocol === "http:" && !plainHttpStaysClose(parsed.hostname)) {
+    throw new TypeError(
+      `baseUrl is plain http to ${parsed.hostname}: ${JSON.stringify(baseUrl)} — every call carries the API key, which plain http would send unencrypted, so the gateway is reached over https; ${PLAIN_HTTP_TAKEN}`,
     );
   }
 
@@ -511,11 +535,12 @@ const assertEveryKindIsRegistered = (kind: never): never => {
  * `https://agentify.ad` once live, named in `baseUrl`.
  *
  * Building it calls nothing. It throws a `TypeError` at once when `apiKey` is
- * missing or blank and when `baseUrl` is given but is not an http or https
- * address. Left without `baseUrl`, it is still built, and every call that has to
- * reach the gateway throws a `TypeError` naming both addresses, since there is
- * no default to fall back on. Whether the key opens that gateway is learned at
- * the first call.
+ * missing or blank and when `baseUrl` is given but is not an https address,
+ * or a plain `http:` one on this machine or a name with no dot (see
+ * `ClientOptions.baseUrl`). Left without `baseUrl`, it is still built, and
+ * every call that has to reach the gateway throws a `TypeError` naming both
+ * addresses, since there is no default to fall back on. Whether the key opens
+ * that gateway is learned at the first call.
  *
  * Returns the client: `catalog.publish` for cards, `orders` to read and close
  * orders, `on` to register handlers, and `start` and `stop` for the

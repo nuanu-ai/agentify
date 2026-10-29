@@ -44,7 +44,9 @@ which is constant-time by construction. A key carries a label, what it was made
 for (ADR-0014 §5), when it was created and disabled, and its last use, written
 at most once every few minutes. No key issues, lists or disables keys; a
 signed-in dashboard session does. Disabling one is instant and touches no other
-key and no session.
+key and no session. Every SDK call carries the key, so the SDK refuses a gateway
+address over plain http unless it names the merchant's own machine or a name
+with no dot, meant for a container on a private network.
 
 Every route a merchant's key reaches acts on that key's merchant alone: the card
 list, the orders, the receipts, the pause switches, the worker poll and the

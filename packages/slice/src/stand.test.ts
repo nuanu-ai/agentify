@@ -204,7 +204,7 @@ describe("a stand pointed at a gateway elsewhere", () => {
     const connected = await post(
       new URLSearchParams({
         action: "connect",
-        address: `http://0.0.0.0:${gatewayPort}`,
+        address: `http://localhost:${gatewayPort}`,
         api_key: "the-key-the-stand-connects-with",
       }),
     );
@@ -216,7 +216,7 @@ describe("a stand pointed at a gateway elsewhere", () => {
     expect(bought.status).toBe(303);
     await waitUntil(() => purchases > 0, 1_000);
     expect(purchases).toBe(1);
-    expect(purchaseAuthorities).toEqual([`0.0.0.0:${gatewayPort}`]);
+    expect(purchaseAuthorities).toEqual([`localhost:${gatewayPort}`]);
   }, 15_000);
 });
 
