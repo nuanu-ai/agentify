@@ -59,7 +59,7 @@
 #
 #   AGENTIFY_SITE_ADDRESS   what Caddy listens on            :8080
 #   AGENTIFY_PUBLIC_ORIGIN  what a browser types             http://localhost:8080
-#   AGENTIFY_WEB_PUBLISH    the web port published here      8080:8080
+#   AGENTIFY_WEB_PUBLISH    the web port published here      127.0.0.1:8080:8080
 #   AGENTIFY_COOKIE_SECURE  Secure on the session cookie     false
 #   AGENTIFY_FACILITATOR_URL  how payments are facilitated   sandbox:scripted
 #   AGENTIFY_PAYMENT_NETWORK  the chain payments use         eip155:84532
@@ -67,14 +67,17 @@
 #   CDP_API_KEY_ID             Coinbase facilitator key ID   absent
 #   CDP_API_KEY_SECRET         Coinbase facilitator secret   absent
 #   AGENTIFY_SURFACE_MODE     the channel the pages name      sandbox
-#   AGENTIFY_POSTGRES_PUBLISH  the database port published   5432:5432
-#                           here, or a narrower bind
+#   AGENTIFY_POSTGRES_PUBLISH  the database port published   127.0.0.1:5432:5432
+#                           here
 #   TOKEN_HMAC_SECRET       what signs a report link         a sandbox value
 #   REPORT_IDENTITY_SECRET  what the scanner shows the       a sandbox value
 #                           dashboard's private route
 #
 # The two *_PUBLISH variables move the ports of a stack run from this file
-# alone. The deployed channels replace them in their overlays instead:
+# alone. Their defaults listen on this machine only, because the database
+# password and the seeded merchant's key here are sandbox values anybody can
+# read; publishing either port on another interface is a choice made by setting
+# its variable. The deployed channels replace them in their overlays instead:
 # deploy/compose.public.yaml publishes no database port, the test channel's
 # deploy/compose.agentify-test.yaml binds the web door to
 # AGENTIFY_TEST_LISTEN_ADDRESS, and deploy/compose.hetzner-commerce.yaml
@@ -135,7 +138,7 @@ services:
       # server; the suite uses a database of its own on it, never `agentify`.
       # Compose refuses an empty entry, so AGENTIFY_POSTGRES_PUBLISH always names a
       # mapping; deploy/compose.public.yaml removes the port altogether.
-      - "${AGENTIFY_POSTGRES_PUBLISH:-5432:5432}"
+      - "${AGENTIFY_POSTGRES_PUBLISH:-127.0.0.1:5432:5432}"
     volumes:
       - agentify-postgres:/var/lib/postgresql/data
       # Creates the test suites' databases on a new volume only. On an existing one
@@ -514,9 +517,10 @@ services:
     image: "${AGENTIFY_WEB_IMAGE:-agentify-web}"
     restart: unless-stopped
     ports:
-      # AGENTIFY_HOST_PORT moves the host side when 8080 is taken: an ssh tunnel on
-      # 127.0.0.1:8080 wins over Docker's wildcard and makes a healthy stack look
-      # broken. `pnpm buy` runs on the host and does not follow it; point it with
+      # AGENTIFY_HOST_PORT moves the host side when 8080 is taken, for instance by
+      # an ssh tunnel listening on 127.0.0.1:8080, which keeps the stack from
+      # taking that port. `pnpm buy` runs on the host and does not follow it;
+      # point it with
       #
       #   GATEWAY_URL=http://localhost:8090 pnpm buy
       #
@@ -527,7 +531,7 @@ services:
       # address the stack names itself by: set AGENTIFY_PUBLIC_ORIGIN as well, or
       # every status_url, payment challenge and dashboard link keeps naming
       # localhost.
-      - "${AGENTIFY_WEB_PUBLISH:-${AGENTIFY_HOST_PORT:-8080}:8080}"
+      - "${AGENTIFY_WEB_PUBLISH:-127.0.0.1:${AGENTIFY_HOST_PORT:-8080}:8080}"
     environment:
       # A bare port locally, which is what keeps Caddy's automatic HTTPS off; a
       # hostname on a server, which is what turns it on. deploy/Caddyfile says
