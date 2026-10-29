@@ -109,13 +109,22 @@ const within = <T>(promise: Promise<T>, ms: number): Promise<T | "not answered">
 /** Room for a loaded machine, where the database and the timers are slow. */
 const LOADED = { timeout: 5_000, interval: 100 };
 
-/** Waits out any ready reading kept from before, so the next ready one is read afresh. */
+/**
+ * Waits out any ready reading kept from before and any reading an earlier test
+ * left running past its limit, until a check is answered by a reading of its
+ * own: the database's state unknown is the answer given while such a reading
+ * is still unsettled, not one read afresh.
+ */
 const untilNotReady = async () => {
   await workerGone();
-  await vi.waitFor(async () => expect((await check()).status).not.toBe(200), {
-    timeout: 8_000,
-    interval: 250,
-  });
+  await vi.waitFor(
+    async () =>
+      expect(await check()).toMatchObject({
+        status: 503,
+        body: { dependencies: { database: "ok" } },
+      }),
+    { timeout: 10_000, interval: 250 },
+  );
 };
 
 describe("the readiness probe", () => {
