@@ -7,6 +7,7 @@
 
 import { type IncomingHttpHeaders, request } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fromSite, ORIGIN, refusalOf, stubOfflineScanner } from "../testing/api";
 import { ask, testScanner } from "../testing/scanner";
 
 afterEach(() => {
@@ -394,4 +395,83 @@ describe("a request that fails where nothing caught it", () => {
     ]);
     expect(lines.join("\n")).not.toContain("browser_posthog_requires_key_and_host");
   });
+});
+
+describe("a request's body", () => {
+  const KIB = 1024;
+  const padded = (bytes: number) => JSON.stringify({ padding: "x".repeat(bytes) });
+
+  it("is refused with 413 and words, before any route reads it, where its stated length is over 64 KiB", async () => {
+    stubOfflineScanner();
+
+    const answered = await fromSite("/api/v1/consent", "POST", padded(1024 * KIB));
+
+    expect(answered.status).toBe(413);
+    expect(answered.headers.get("cache-control")).toBe("no-store");
+    const refusal = await refusalOf(answered);
+    expect(refusal).toMatchObject({ code: "body_too_large", retryable: false });
+    expect(refusal.message).toMatch(/64 KiB/);
+  });
+
+  it("is refused with 413 where it is streamed with no length and runs past 64 KiB", async () => {
+    stubOfflineScanner();
+    const chunk = new TextEncoder().encode("x".repeat(32 * KIB));
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent++ < 4) controller.enqueue(chunk);
+        else controller.close();
+      },
+    });
+
+    const answered = await ask("/api/v1/consent", {
+      method: "POST",
+      headers: { origin: ORIGIN, "content-type": "application/json" },
+      body,
+      duplex: "half",
+    } as RequestInit);
+
+    expect(answered.status).toBe(413);
+    expect((await refusalOf(answered)).code).toBe("body_too_large");
+  });
+
+  /** A body of exactly this many bytes, which the consent route reads as no choice. */
+  const exactly = (bytes: number) => {
+    const shell = JSON.stringify({ padding: "" });
+    return JSON.stringify({ padding: "x".repeat(bytes - shell.length) });
+  };
+
+  it.each([
+    ["stated", (bytes: number) => exactly(bytes)],
+    [
+      "streamed",
+      (bytes: number) =>
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(exactly(bytes)));
+            controller.close();
+          },
+        }),
+    ],
+  ])(
+    "reaches the route that reads it at exactly 64 KiB, its length %s, and not a byte more",
+    async (_how, body) => {
+      stubOfflineScanner();
+      const send = (bytes: number) =>
+        ask("/api/v1/consent", {
+          method: "POST",
+          headers: { origin: ORIGIN, "content-type": "application/json" },
+          body: body(bytes),
+          duplex: "half",
+        } as RequestInit);
+
+      const atLimit = await send(64 * KIB);
+      const past = await send(64 * KIB + 1);
+
+      expect(atLimit.status).toBe(400);
+      expect((await refusalOf(atLimit)).code).toBe("invalid_consent");
+      expect(past.status).toBe(413);
+      expect((await refusalOf(past)).code).toBe("body_too_large");
+    },
+  );
 });

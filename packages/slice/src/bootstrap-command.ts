@@ -10,11 +10,10 @@
  *
  * It spends real money on a real chain, from the wallet whose key is in the
  * environment, paid into the merchant's payout split. `SMOKE_MAX_USD`
- * caps one purchase and `SMOKE_TOTAL_USD` the whole run. Only the per-purchase
- * cap is handed to the payment client as its spend control, because the client
- * otherwise has a hidden default of $1 a payment that silently drops anything
- * larger before it is signed; the run total is held by this command's own
- * check before each purchase. Without `--confirm` it reads every challenge,
+ * caps one purchase and `SMOKE_TOTAL_USD` the whole run. Both are held by the
+ * payment client, in front of every signature, against the price the payment
+ * itself asks for and the record it keeps of every payment it has signed in
+ * this run. Without `--confirm` it reads every challenge,
  * runs every gate, prints what a run would cost and signs nothing.
  *
  * Which chain a purchase lands on is the gateway's own `PAYMENT_NETWORK`. This
@@ -44,6 +43,7 @@
 import { isTestnetChain } from "@agentify/core";
 import { x402Client } from "@x402/core/client";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
+import type { PaymentRequirements } from "@x402/core/types";
 import { findDefaultAsset } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
@@ -152,6 +152,8 @@ export type PurchaseOutcome =
        * had to say, which is where a refusal actually lives.
        */
       readonly facilitatorSaid: FacilitatorWord;
+      /** What the payment that left this process was signed for, or null where none did. */
+      readonly signed: string | null;
     }
   /**
    * No signed payment ever left this process, so nothing was charged: the
@@ -163,7 +165,7 @@ export type PurchaseOutcome =
    * A signed payment went out and the exchange did not come back. The money may
    * have moved; nobody here knows.
    */
-  | { readonly kind: "unreachable"; readonly why: string };
+  | { readonly kind: "unreachable"; readonly why: string; readonly signed: string | null };
 
 /** One page of the discovery catalog, read for the two things a walk needs. */
 interface DiscoveryPage {
@@ -177,7 +179,22 @@ export interface Reach {
   readonly buyerAddress: string;
   catalog(): Promise<readonly CatalogCard[]>;
   challenge(itemId: string): Promise<Challenge>;
-  purchase(itemId: string, params: Readonly<Record<string, unknown>>): Promise<PurchaseOutcome>;
+  /**
+   * One paid call. Nothing is signed for a payment on another network, in
+   * another asset or to another payee than `quoted` names, in an asset other
+   * than the one this run signed first, or past either cap.
+   */
+  purchase(
+    itemId: string,
+    params: Readonly<Record<string, unknown>>,
+    quoted: Challenge,
+  ): Promise<PurchaseOutcome>;
+  /**
+   * What every payment signed in this run was signed for, whatever became of
+   * it, in the smallest unit of the one asset the run signs in. The caps are
+   * held against this and nothing else.
+   */
+  signedSoFar(): bigint;
   discoveryPage(offset: number, limit: number): Promise<DiscoveryPage>;
   sleep(ms: number): Promise<void>;
   now(): number;
@@ -251,7 +268,9 @@ export function dollarsOf(atomic: bigint, decimals: number): string {
 }
 
 /**
- * Whether one purchase fits inside both caps, given what the run has spent.
+ * Whether one purchase fits inside both caps, given what the run has already
+ * counted against them: what it plans to spend before this purchase, while it
+ * is being planned, and every payment it has signed, once it is buying.
  *
  * Both are inclusive: a product priced at exactly the cap is payable, because a
  * cap of five cents that refuses a five-cent product is a cap of four. The
@@ -262,6 +281,7 @@ export function dollarsOf(atomic: bigint, decimals: number): string {
 export function withinCaps(purchase: {
   readonly price: bigint;
   readonly spent: bigint;
+  readonly counted: "planned" | "signed";
   readonly max: bigint;
   readonly total: bigint;
   readonly decimals: number;
@@ -278,7 +298,10 @@ export function withinCaps(purchase: {
     return {
       ok: false,
       why:
-        `it costs ${money(purchase.price)}, this run has already spent ${money(purchase.spent)}, ` +
+        `it costs ${money(purchase.price)}, ` +
+        (purchase.counted === "planned"
+          ? `the products before it in this run would spend ${money(purchase.spent)}, `
+          : `this run has already signed payments for ${money(purchase.spent)}, whatever became of them, `) +
         `and the ceiling on the run is ${money(purchase.total)} (SMOKE_TOTAL_USD)`,
     };
   }
@@ -648,8 +671,6 @@ export function readSettings(
 interface Attempt {
   readonly card: CatalogCard;
   readonly challenge: Challenge;
-  /** The price in atomic units, where the challenge could be read in dollars. */
-  readonly price: bigint;
   readonly decimals: number;
 }
 
@@ -672,7 +693,7 @@ export async function runBootstrap(
   say(`buyer: ${reach.buyerAddress} (the public address; the key is never printed)`);
   say(`target: ${settings.baseUrl}`);
   say(
-    `caps: $${settings.maxUsd} per purchase, $${settings.totalUsd} for the run — the per-purchase cap is also the payment client's own; the run total is held by this command`,
+    `caps: $${settings.maxUsd} per purchase, $${settings.totalUsd} for the run — held by the payment client before each signature, against its record of every payment signed in this run`,
   );
   say(
     settings.confirm
@@ -751,14 +772,14 @@ export async function runBootstrap(
     const price = BigInt(challenge.amount);
     spent += price;
     spentDecimals = decimals;
-    attempts.push({ card, challenge, price, decimals });
+    attempts.push({ card, challenge, decimals });
     say(`  would spend $${dollarsOf(price, decimals)}`);
   }
 
   if (attempts.length === 0) {
     say("");
     say("Nothing passed the gates, so nothing was bought.");
-    summarise(cards, verdicts, 0n, 0, say);
+    summarise(cards, verdicts, { settled: 0n, unknown: 0n, signed: reach.signedSoFar() }, 0, say);
     return 1;
   }
 
@@ -783,8 +804,10 @@ export async function runBootstrap(
   say("");
   say("--confirm: buying now.");
 
-  /** What actually left the wallet, as opposed to what the challenges quoted. */
+  /** What receipts and order statuses say settled. */
   let paid = 0n;
+  /** What payments with no verdict were signed for: nobody here knows if it moved. */
+  let unknown = 0n;
   /** Products that settled, keyed by the resource address a listing uses. */
   const settled = new Map<
     string,
@@ -807,7 +830,7 @@ export async function runBootstrap(
   let calledOff: string | null = null;
 
   for (const attempt of attempts) {
-    const { card, challenge, price, decimals } = attempt;
+    const { card, challenge, decimals } = attempt;
     say("");
     say(`${card.id} — buying`);
 
@@ -817,37 +840,21 @@ export async function runBootstrap(
       continue;
     }
 
-    // Checked again, against what has actually been spent rather than against
-    // the plan. A purchase that cost more than its challenge quoted, or one that
-    // settled after this command decided it had not, moves this number, and the
-    // cap that matters is the one in front of the next payment.
-    const room = withinCaps({
-      price,
-      spent: paid,
-      max: capOr(settings.maxUsd, decimals),
-      total: capOr(settings.totalUsd, decimals),
-      decimals,
-    });
-    if (!room.ok) {
-      say(`  NOT ATTEMPTED: ${room.why}`);
-      verdicts.set(card.id, { said: "not attempted", why: room.why });
-      continue;
-    }
-
-    const outcome = await reach.purchase(card.id, settings.answers);
+    const outcome = await reach.purchase(card.id, settings.answers, challenge);
     const payment = whatBecameOfThePayment(outcome, challenge.network);
+    spentDecimals = decimals;
 
     switch (payment.paid) {
       case "settled": {
-        // What was actually settled where the scheme says so, and the quoted
-        // amount otherwise. The two differ on schemes that settle less than they
-        // authorise, and counting the authorisation would overstate the run.
-        const actually = settledAmount(outcome) ?? price;
+        // What was actually settled where the scheme says so, and otherwise what
+        // the payment was signed for. The two differ on schemes that settle less
+        // than they authorise, and counting the authorisation would overstate
+        // what moved.
+        const actually = settledAmount(outcome) ?? signedAmount(outcome) ?? 0n;
         paid += actually;
-        spentDecimals = decimals;
         say(`  settled: ${payment.transaction ?? "no transaction named"} — ${payment.note}`);
         say(
-          `  spent $${dollarsOf(actually, decimals)}, $${dollarsOf(paid, decimals)} so far this run`,
+          `  settled $${dollarsOf(actually, decimals)}, $${dollarsOf(paid, decimals)} so far this run`,
         );
         settled.set(challenge.resourceUrl, { itemId: card.id, transaction: payment.transaction });
         break;
@@ -864,6 +871,7 @@ export async function runBootstrap(
         break;
       }
       case "unresolved": {
+        unknown += signedAmount(outcome) ?? 0n;
         say(`  NO VERDICT: ${payment.why}`);
         verdicts.set(card.id, { said: "unresolved", why: payment.why });
         break;
@@ -877,7 +885,13 @@ export async function runBootstrap(
     await watchTheCatalog(reach, settled, settings.waitMs, verdicts, say);
   }
 
-  summarise(cards, verdicts, paid, spentDecimals, say);
+  summarise(
+    cards,
+    verdicts,
+    { settled: paid, unknown, signed: reach.signedSoFar() },
+    spentDecimals,
+    say,
+  );
 
   const everyone = cards.map((card) => verdicts.get(card.id));
   const listed = everyone.filter((verdict) => verdict?.said === "listed").length;
@@ -928,6 +942,7 @@ export function gateOneProduct(
   const room = withinCaps({
     price: BigInt(challenge.amount),
     spent: run.spent,
+    counted: "planned",
     max,
     total,
     decimals: challenge.decimals,
@@ -935,9 +950,25 @@ export function gateOneProduct(
   return room.ok ? null : room.why;
 }
 
-/** A cap in atomic units. Only ever called where `gateOneProduct` already read it. */
+/**
+ * A cap in atomic units. `gateOneProduct` has already read it for every quote a
+ * run buys on; anywhere else a cap that cannot be read is a ceiling of nothing,
+ * which refuses rather than lets through.
+ */
 function capOr(dollars: string, decimals: number): bigint {
   return atomicOf(dollars, decimals) ?? 0n;
+}
+
+/** What the payment that left this process was signed for, where one did. */
+function signedAmount(outcome: PurchaseOutcome): bigint | null {
+  if (outcome.kind === "client_refused" || outcome.signed === null) {
+    return null;
+  }
+  try {
+    return BigInt(outcome.signed);
+  } catch {
+    return null;
+  }
 }
 
 /** What the settlement says was actually settled, where it says anything. */
@@ -1075,10 +1106,14 @@ async function walkOnce(
  * spend control, a scheme it has no signer for), and the server's refusal comes
  * back as a quiet 402 whose only content is a header.
  *
- * The client is given the run's own cap as its spend control because it
- * otherwise has a hidden default of one dollar a payment, and drops a challenge
- * above it before anything is signed, with no error and no sign a payment was
- * attempted.
+ * Both caps are held here, in front of every signature, against the price the
+ * payment itself asks for and this client's own record of what it has signed
+ * in this run. The library's per-payment cap is switched off so that a refusal
+ * names this command's settings; its list of known assets is kept. Every
+ * signature is also held to the quote the run was planned on, which was read
+ * from an earlier request: a payment on another network, in another asset or to
+ * another payee is not signed, and neither is one in an asset other than the
+ * one the run signed first, because a total over two tokens is no total.
  *
  * `endpoints` exists so the walk can be exercised against a server in this
  * process. Nothing but a test passes it.
@@ -1090,10 +1125,77 @@ export function overTheNetwork(
   const account = privateKeyToAccount(settings.buyerKey as `0x${string}`);
   const client = new x402Client();
   registerExactEvmScheme(client, { signer: account });
-  client.setSpendControls({ maxAmountPerPayment: `$${settings.maxUsd}` });
+  client.setSpendControls({ maxAmountPerPayment: false });
 
   /** What each leg of one exchange came to. Cleared at the start of a purchase. */
   let legs: { readonly signed: boolean; readonly word: FacilitatorWord }[] = [];
+  /** The challenge the purchase under way was planned on. */
+  let quotedNow: Challenge | null | undefined = null;
+  /** What this purchase's payment was signed for, once it has been. */
+  let signedFor: string | null = null;
+  /**
+   * Every payment signed in this run, whatever became of it: an authorisation
+   * the gateway refused can still be spent until its deadline. One asset, the
+   * one the run signed first.
+   */
+  let ledger: { readonly network: string; readonly asset: string; readonly amount: bigint } | null =
+    null;
+
+  const whyNotSign = (asked: PaymentRequirements): string | null => {
+    const quoted = quotedNow;
+    if (quoted === null || quoted === undefined) {
+      return "no quote was handed to this purchase, so there is nothing to hold its payment to";
+    }
+    if (typeof asked.amount !== "string" || !/^\d+$/.test(asked.amount)) {
+      return (
+        "the payment names no amount in the token's smallest unit, as a version-one challenge " +
+        "does not, so there is nothing to hold against the caps"
+      );
+    }
+    if (asked.network !== quoted.network) {
+      return `the payment asks to be made on ${asked.network}, and the product was quoted on ${quoted.network}`;
+    }
+    if (asked.asset.toLowerCase() !== quoted.asset.toLowerCase()) {
+      return `the payment asks for ${asked.asset}, and the product was quoted in ${quoted.asset}`;
+    }
+    if (asked.payTo.trim().toLowerCase() !== quoted.payTo.trim().toLowerCase()) {
+      return `the payment is to be paid to ${asked.payTo}, and the product was quoted as paid to ${quoted.payTo}`;
+    }
+    if (quoted.decimals === null) {
+      return `${quoted.asset} on ${quoted.network} has no dollar amount to hold against the caps`;
+    }
+    if (
+      ledger !== null &&
+      (ledger.network !== asked.network || ledger.asset.toLowerCase() !== asked.asset.toLowerCase())
+    ) {
+      return (
+        `this run has already signed in ${ledger.asset} on ${ledger.network} and holds its caps in ` +
+        `that one asset, so a payment in ${asked.asset} on ${asked.network} is not signed`
+      );
+    }
+    const room = withinCaps({
+      price: BigInt(asked.amount),
+      spent: ledger?.amount ?? 0n,
+      counted: "signed",
+      max: capOr(settings.maxUsd, quoted.decimals),
+      total: capOr(settings.totalUsd, quoted.decimals),
+      decimals: quoted.decimals,
+    });
+    return room.ok ? null : room.why;
+  };
+
+  client.onBeforePaymentCreation(async ({ selectedRequirements }) => {
+    const why = whyNotSign(selectedRequirements);
+    return why === null ? undefined : { abort: true, reason: why };
+  });
+  client.onAfterPaymentCreation(async ({ selectedRequirements: asked }) => {
+    signedFor = asked.amount;
+    ledger = {
+      network: asked.network,
+      asset: asked.asset,
+      amount: (ledger?.amount ?? 0n) + BigInt(asked.amount),
+    };
+  });
 
   const traced: typeof fetch = async (input, init) => {
     const request = input instanceof Request ? input : new Request(input, init);
@@ -1203,8 +1305,10 @@ export function overTheNetwork(
       };
     },
 
-    async purchase(itemId, params) {
+    async purchase(itemId, params, quoted) {
       legs = [];
+      quotedNow = quoted;
+      signedFor = null;
       let answered: Response;
       try {
         answered = await payFetch(purchaseUrl(itemId), {
@@ -1223,7 +1327,7 @@ export function overTheNetwork(
         // the exchange always makes an unpaid call first, so a client that
         // refuses after reading the price has already left one behind.
         return legs.some((leg) => leg.signed)
-          ? { kind: "unreachable", why }
+          ? { kind: "unreachable", why, signed: signedFor }
           : { kind: "client_refused", why };
       }
 
@@ -1245,7 +1349,7 @@ export function overTheNetwork(
         if (settlement === null) {
           const why = messageOf(thrown);
           return legs.some((leg) => leg.signed)
-            ? { kind: "unreachable", why }
+            ? { kind: "unreachable", why, signed: signedFor }
             : { kind: "client_refused", why };
         }
       }
@@ -1265,6 +1369,7 @@ export function overTheNetwork(
         // whose PAYMENT-REQUIRED is about a payment rather than about the price.
         // No such leg, or a leg with no header, carries no facilitator verdict.
         facilitatorSaid: legs.filter((leg) => leg.signed).at(-1)?.word ?? { heard: "nothing" },
+        signed: signedFor,
       };
     },
 
@@ -1287,6 +1392,8 @@ export function overTheNetwork(
       return { total: typeof total === "number" ? total : 0, resources };
     },
 
+    signedSoFar: () => ledger?.amount ?? 0n,
+
     sleep: (ms) => new Promise((wake) => setTimeout(wake, ms)),
     now: () => Date.now(),
   };
@@ -1296,7 +1403,7 @@ export function overTheNetwork(
 function summarise(
   cards: readonly CatalogCard[],
   verdicts: ReadonlyMap<string, Verdict>,
-  paid: bigint,
+  money: { readonly settled: bigint; readonly unknown: bigint; readonly signed: bigint },
   decimals: number,
   say: (line: string) => void,
 ): void {
@@ -1307,7 +1414,17 @@ function summarise(
     say(`${card.id}: ${wordFor(verdict)}`);
   }
   say("");
-  say(`spent this run: $${dollarsOf(paid, decimals)}`);
+  say(
+    `settled this run: $${dollarsOf(money.settled, decimals)} — what receipts and order statuses say moved`,
+  );
+  if (cards.some((card) => verdicts.get(card.id)?.said === "unresolved")) {
+    say(
+      `signed with no known outcome: $${dollarsOf(money.unknown, decimals)} — whether this was charged is not known here`,
+    );
+  }
+  say(
+    `signed this run: $${dollarsOf(money.signed, decimals)} — the payment client's record of every payment it signed, whatever became of it, which both caps are held against`,
+  );
 }
 
 function wordFor(verdict: Verdict | undefined): string {

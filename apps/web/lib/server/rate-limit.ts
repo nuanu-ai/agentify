@@ -13,7 +13,8 @@ export type RateKind =
   | "recovery_email_hour"
   | "recovery_ip_hour"
   | "merchant_ip_hour"
-  | "merchant_email_hour";
+  | "merchant_email_hour"
+  | "consent_ip_hour";
 
 type AtomicRateEntry = Readonly<{
   keyHash: string;

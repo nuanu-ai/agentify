@@ -6,7 +6,7 @@ import {
   type CheckResult,
   type ScanJobV1,
 } from "@agentify/scanner-contracts";
-import { createUuidV7 } from "@agentify/scanner-database";
+import { createUuidV7, DELETED_TARGET_URL, type ScanClaim } from "@agentify/scanner-database";
 import type { ScanRunner } from "./scan-runner.js";
 
 export type TerminalCommit = {
@@ -26,7 +26,7 @@ export type TerminalCommit = {
 
 export interface ScanJobRepository {
   /** Atomic queued/running-stale -> running CAS. Terminal scans return terminal. */
-  claim(job: ScanJobV1): Promise<"claimed" | "terminal" | "in_progress">;
+  claim(job: ScanJobV1): Promise<ScanClaim>;
   heartbeat(scanId: string, attemptNo: number, at: Date): Promise<void>;
   upsertCheck(scanId: string, attemptNo: number, check: CheckResult, at: Date): Promise<boolean>;
   /** One transaction: score/terminal status/scan_completed unique business event. */
@@ -45,6 +45,7 @@ type ScanJobMetric = (
   | { name: "scan_job_terminal"; value: 1; status: string }
   | { name: "scan_job_skipped_terminal"; value: 1 }
   | { name: "scan_job_claim_conflict"; value: 1 }
+  | { name: "scan_job_skipped_deleted"; value: 1 }
   | { name: "scan_job_failure"; value: 1; code: string }
   | { name: "browser_observation_enqueue_failed"; value: 1 }
 ) & { scanId: string; attemptNo: number };
@@ -90,8 +91,9 @@ export const processScanJob = async (
   job: ScanJobV1,
   dependencies: ProcessScanJobDependencies,
 ): Promise<"committed" | "skipped"> => {
+  const now = dependencies.now ?? (() => new Date());
   const claim = await dependencies.repository.claim(job);
-  if (claim === "terminal") {
+  if (claim.state === "terminal") {
     dependencies.emitMetric?.({
       name: "scan_job_skipped_terminal",
       value: 1,
@@ -100,9 +102,25 @@ export const processScanJob = async (
     });
     return "skipped";
   }
-  if (claim === "in_progress") {
+  if (claim.state === "in_progress") {
     dependencies.emitMetric?.({
       name: "scan_job_claim_conflict",
+      value: 1,
+      scanId: job.scan_id,
+      attemptNo: job.attempt_no,
+    });
+    return "skipped";
+  }
+  if (claim.canonicalTargetUrl === DELETED_TARGET_URL) {
+    await dependencies.repository.markSystemFailure(
+      job.scan_id,
+      job.attempt_no,
+      "data_anonymized",
+      false,
+      now(),
+    );
+    dependencies.emitMetric?.({
+      name: "scan_job_skipped_deleted",
       value: 1,
       scanId: job.scan_id,
       attemptNo: job.attempt_no,
@@ -116,7 +134,6 @@ export const processScanJob = async (
     attemptNo: job.attempt_no,
   });
 
-  const now = dependencies.now ?? (() => new Date());
   const heartbeat = setInterval(() => {
     void dependencies.repository.heartbeat(job.scan_id, job.attempt_no, now()).catch(() => {
       // Heartbeat failure is observable by repository metrics; final CAS still protects state.
@@ -126,20 +143,23 @@ export const processScanJob = async (
 
   try {
     const progressivelyWritten = new Set<number>();
-    const evaluation = await dependencies.runner.run(job, {
-      onChecksComplete: async (checks) => {
-        for (const check of checks) {
-          const written = await dependencies.repository.upsertCheck(
-            job.scan_id,
-            job.attempt_no,
-            check,
-            now(),
-          );
-          if (!written) throw new Error("scan_attempt_fenced");
-          progressivelyWritten.add(check.id);
-        }
+    const evaluation = await dependencies.runner.run(
+      { ...job, canonical_target_url: claim.canonicalTargetUrl },
+      {
+        onChecksComplete: async (checks) => {
+          for (const check of checks) {
+            const written = await dependencies.repository.upsertCheck(
+              job.scan_id,
+              job.attempt_no,
+              check,
+              now(),
+            );
+            if (!written) throw new Error("scan_attempt_fenced");
+            progressivelyWritten.add(check.id);
+          }
+        },
       },
-    });
+    );
     for (const check of evaluation.checks) {
       if (progressivelyWritten.has(check.id)) continue;
       const written = await dependencies.repository.upsertCheck(

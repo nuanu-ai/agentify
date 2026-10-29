@@ -1,12 +1,12 @@
 import type { ScanEvaluation } from "@agentify/scanner";
 import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
+import { DELETED_TARGET_URL, type ScanClaim } from "@agentify/scanner-database";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { processScanJob, type ScanJobRepository, type TerminalCommit } from "./scan-job.js";
-import type { ScanRunOptions } from "./scan-runner.js";
+import type { ScanRunOptions, ScanTarget } from "./scan-runner.js";
 
 const job: ScanJobV1 = {
   scan_id: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
-  canonical_target_url: "https://example.com/",
   segment: "store",
   rubric_version: "gtm-v1.0.0",
   deadline_at: new Date(Date.now() + 55_000).toISOString(),
@@ -40,7 +40,9 @@ const evaluation: ScanEvaluation = {
   findings: { negativeCheckIds: [], positiveCheckId: 1 },
 };
 
-const repository = (claim: "claimed" | "terminal" | "in_progress" = "claimed") => {
+const repository = (
+  claim: ScanClaim = { state: "claimed", canonicalTargetUrl: "https://example.com/" },
+) => {
   const state: {
     claimed: boolean;
     checks: Map<number, CheckResult>;
@@ -121,7 +123,7 @@ describe("scan job lifecycle", () => {
   });
 
   it("skips an immutable terminal scan on redelivery", async () => {
-    const { repo, state } = repository("terminal");
+    const { repo, state } = repository({ state: "terminal" });
     const runner = {
       run: async () => {
         throw new Error("terminal scan must not run again");
@@ -134,6 +136,46 @@ describe("scan job lifecycle", () => {
       }),
     ).resolves.toBe("skipped");
     expect(state.claimed).toBe(true);
+    expect(state.checks.size).toBe(0);
+    expect(state.terminal).toBeUndefined();
+  });
+
+  it("scans the site its scan's own row names, whatever address a job queued earlier carries", async () => {
+    const { repo } = repository({ state: "claimed", canonicalTargetUrl: "https://row.example/" });
+    let scanned: string | undefined;
+    const runner = {
+      run: async (target: ScanTarget) => {
+        scanned = target.canonical_target_url;
+        return { ...evaluation, requestCount: 1 };
+      },
+    };
+    const queuedEarlier = { ...job, canonical_target_url: "https://queued-earlier.example/" };
+    await expect(
+      processScanJob(queuedEarlier, { repository: repo, runner: runner as never }),
+    ).resolves.toBe("committed");
+    expect(scanned).toBe("https://row.example/");
+  });
+
+  it("fetches nothing for a scan whose address was deleted, and closes it for good", async () => {
+    const { repo, state } = repository({
+      state: "claimed",
+      canonicalTargetUrl: DELETED_TARGET_URL,
+    });
+    const runner = {
+      run: async () => {
+        throw new Error("a deleted address must not be scanned");
+      },
+    };
+    const metrics: string[] = [];
+    await expect(
+      processScanJob(job, {
+        repository: repo,
+        runner: runner as never,
+        emitMetric: (metric) => metrics.push(metric.name),
+      }),
+    ).resolves.toBe("skipped");
+    expect(metrics).toEqual(["scan_job_skipped_deleted"]);
+    expect(state.failure).toMatchObject({ code: "data_anonymized", retryable: false });
     expect(state.checks.size).toBe(0);
     expect(state.terminal).toBeUndefined();
   });
@@ -178,7 +220,7 @@ describe("scan job lifecycle", () => {
       return false;
     };
     const runner = {
-      run: async (_job: ScanJobV1, options: ScanRunOptions) => {
+      run: async (_target: ScanTarget, options: ScanRunOptions) => {
         await options.onChecksComplete?.([check]);
         return { ...evaluation, requestCount: 1 };
       },

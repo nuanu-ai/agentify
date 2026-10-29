@@ -100,6 +100,22 @@ describe("checking the facilitator key now", () => {
     expect(coinbase.asked).toStrictEqual([]);
   });
 
+  it("names a facilitator by its host, never by an address that carries credentials", async () => {
+    for (const facilitatorUrl of [
+      "https://user:s3cr3t@facilitator.invalid/x402?key=s3cr3t",
+      "https://user:s3cr3t@api.cdp.coinbase.com/platform/v2/x402?key=s3cr3t",
+    ]) {
+      const checked = await checkFacilitatorKey(
+        payment({ facilitatorUrl, cdpApiKeyId: null, cdpApiKeySecret: null }),
+        coinbaseAnswering(400).post,
+        () => AT,
+      );
+
+      expect(checked.said).toContain(new URL(facilitatorUrl).host);
+      expect(checked.said).not.toContain("s3cr3t");
+    }
+  });
+
   it("never hands on what Coinbase said in its own words", async () => {
     for (const status of [400, 401, 403, 503]) {
       const checked = await checkFacilitatorKey(

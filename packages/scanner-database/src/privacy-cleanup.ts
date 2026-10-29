@@ -20,8 +20,13 @@ import {
   waitlistEntries,
 } from "./schema.js";
 
+/** What a scan's address reads once the person behind the scan is deleted. */
+export const DELETED_TARGET_URL = "redacted://deleted";
+
 const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
 const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
+const RAW_ANALYTICS_EVENT_RETENTION_MS = 13 * 30 * 86_400_000;
+const RAW_ANALYTICS_EVENT_DELETE_BATCH = 1_000;
 
 export async function listUnverifiedLeadRetentionCandidates(
   db: Database,
@@ -59,6 +64,41 @@ async function deleteExpiredRateLimitState(db: Database, now = new Date()) {
       .returning({ keyHash: rateWindows.keyHash }),
   ]);
   return events.length + windows.length;
+}
+
+const analyticsEventRetentionCutoff = (now: Date) =>
+  new Date(now.getTime() - RAW_ANALYTICS_EVENT_RETENTION_MS);
+
+/** How many raw analytics events the retention cleanup would delete at `now`. */
+export async function countRetainedAnalyticsEvents(db: Database, now = new Date()) {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(analyticsEvents)
+    .where(lt(analyticsEvents.occurredAt, analyticsEventRetentionCutoff(now)));
+  return row?.count ?? 0;
+}
+
+/**
+ * Deletes in bounds so no single statement holds a long lock on the events
+ * table, and repeats until nothing overdue is left, since the cleanup runs once
+ * a night. An event's sends in the delivery outbox go with it by cascade.
+ */
+async function deleteRetainedAnalyticsEvents(db: Database, now: Date) {
+  const cutoff = analyticsEventRetentionCutoff(now);
+  let deleted = 0;
+  for (;;) {
+    const overdue = db
+      .select({ id: analyticsEvents.id })
+      .from(analyticsEvents)
+      .where(lt(analyticsEvents.occurredAt, cutoff))
+      .limit(RAW_ANALYTICS_EVENT_DELETE_BATCH);
+    const removed = await db
+      .delete(analyticsEvents)
+      .where(inArray(analyticsEvents.id, overdue))
+      .returning({ id: analyticsEvents.id });
+    deleted += removed.length;
+    if (removed.length < RAW_ANALYTICS_EVENT_DELETE_BATCH) return deleted;
+  }
 }
 
 export async function anonymizeLeadData(
@@ -168,8 +208,8 @@ export async function anonymizeLeadData(
         .set({
           leadId: null,
           sessionId: anonymizedSessionId,
-          submittedUrlRedacted: "redacted://deleted",
-          canonicalTargetUrl: "redacted://deleted",
+          submittedUrlRedacted: DELETED_TARGET_URL,
+          canonicalTargetUrl: DELETED_TARGET_URL,
           targetHost: "deleted.invalid",
           targetHash: sql`'deleted:' || ${scans.id}::text`,
           accessTokenHash: sql`'deleted:' || ${scans.id}::text`,
@@ -227,9 +267,11 @@ export async function runRetentionCleanup(
     );
     if (result.status === "anonymized") leadsAnonymized += 1;
   }
+  const analyticsEventsDeleted = await deleteRetainedAnalyticsEvents(db, now);
   return {
     registrationIntentsDeleted,
     rateLimitRowsDeleted,
+    analyticsEventsDeleted,
     leadsAnonymized,
     candidatesProcessed: candidates.length,
   } as const;

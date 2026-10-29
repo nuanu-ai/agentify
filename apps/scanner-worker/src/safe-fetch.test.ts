@@ -703,6 +703,11 @@ describe("a body the transport cannot decode or that never decodes to anything",
       Buffer.concat([Buffer.from([0x1f, 0x8b]), Buffer.alloc(64 * 1024, 7)]),
       Buffer.alloc(64 * 1024, 7),
     ),
+    "/unsupported-encoding": endless(
+      { "content-type": "text/html", "content-encoding": "zstd" },
+      Buffer.alloc(64 * 1024, 7),
+      Buffer.alloc(64 * 1024, 7),
+    ),
     "/empty-blocks.xml.gz": endless(
       { "content-type": "application/x-gzip" },
       gzipHeader,
@@ -758,6 +763,12 @@ describe("a body the transport cannot decode or that never decodes to anything",
   it("closes the connection when a body cannot be decoded", async () => {
     const artifact = await read("/corrupt-encoding", false);
     expect(artifact).toMatchObject({ errorCode: "network_error", body: "", decodedBytes: 0 });
+    expect(artifact.durationMs).toBeLessThan(5_000);
+  });
+
+  it("closes the connection when a body comes in an encoding the scanner cannot read", async () => {
+    const artifact = await read("/unsupported-encoding", false);
+    expect(artifact).toMatchObject({ body: "", decodedBytes: 0 });
     expect(artifact.durationMs).toBeLessThan(5_000);
   });
 

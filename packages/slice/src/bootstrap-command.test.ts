@@ -73,12 +73,13 @@ const aCard = (id: string, params: CatalogCard["params"] = {}): CatalogCard => (
   params,
 });
 
-const settled = (over: Record<string, unknown> = {}): PurchaseOutcome => ({
+const settled = (over: Record<string, unknown> = {}, signed = "10000"): PurchaseOutcome => ({
   kind: "answered",
   status: 200,
   body: { status: "delivered", delivered: { access_code: "abc" } },
   settlement: { success: true, transaction: A_TRANSACTION, ...over },
   facilitatorSaid: { heard: "nothing" },
+  signed,
 });
 
 /** A run: what the way out answered, and everything the command said. */
@@ -96,6 +97,7 @@ function aRun(options: {
   const discoveryRequests: number[] = [];
   let walk = 0;
   let clock = 0;
+  let signedSoFar = 0n;
 
   const reach: Reach = {
     buyerAddress: options.buyer ?? ITS_ADDRESS,
@@ -105,10 +107,15 @@ function aRun(options: {
       return held;
     },
     challenge: async (itemId) => options.challenges?.(itemId) ?? aChallenge(),
-    purchase: async (itemId) => {
+    purchase: async (itemId, _params, quoted) => {
       bought.push(itemId);
-      return options.purchases?.(itemId) ?? settled();
+      const outcome = options.purchases?.(itemId) ?? settled({}, quoted.amount);
+      if (outcome.kind !== "client_refused" && outcome.signed !== null) {
+        signedSoFar += BigInt(outcome.signed);
+      }
+      return outcome;
     },
+    signedSoFar: () => signedSoFar,
     discoveryPage: async (offset) => {
       discoveryRequests.push(offset);
       const shown = options.walks?.[Math.min(walk, (options.walks?.length ?? 1) - 1)] ?? [];
@@ -136,7 +143,14 @@ describe("the caps", () => {
     // A cap of five cents that refuses a five-cent product is a cap of four, and
     // the person who set it would never find out which one they had.
     expect(
-      withinCaps({ price: 50_000n, spent: 0n, max: 50_000n, total: 500_000n, decimals: 6 }).ok,
+      withinCaps({
+        price: 50_000n,
+        spent: 0n,
+        counted: "signed",
+        max: 50_000n,
+        total: 500_000n,
+        decimals: 6,
+      }).ok,
     ).toBe(true);
   });
 
@@ -144,6 +158,7 @@ describe("the caps", () => {
     const refused = withinCaps({
       price: 60_000n,
       spent: 0n,
+      counted: "signed",
       max: 50_000n,
       total: 500_000n,
       decimals: 6,
@@ -159,7 +174,13 @@ describe("the caps", () => {
     // Each of these is inside the per-purchase cap. What they are not inside is
     // the run, and a command that only ever checked one payment at a time would
     // spend a budget one affordable purchase at a time.
-    const room = { price: 40_000n, max: 50_000n, total: 100_000n, decimals: 6 };
+    const room = {
+      price: 40_000n,
+      counted: "signed",
+      max: 50_000n,
+      total: 100_000n,
+      decimals: 6,
+    } as const;
 
     expect(withinCaps({ ...room, spent: 0n }).ok).toBe(true);
     expect(withinCaps({ ...room, spent: 40_000n }).ok).toBe(true);
@@ -174,7 +195,13 @@ describe("the caps", () => {
     // Three ten-cent purchases against thirty cents. Read as floats,
     // 0.1 + 0.1 + 0.1 is 0.30000000000000004 and the third is refused — a budget
     // eaten by the arithmetic rather than by anything anybody bought.
-    const room = { price: 100_000n, max: 100_000n, total: 300_000n, decimals: 6 };
+    const room = {
+      price: 100_000n,
+      counted: "signed",
+      max: 100_000n,
+      total: 300_000n,
+      decimals: 6,
+    } as const;
 
     expect(withinCaps({ ...room, spent: 0n }).ok).toBe(true);
     expect(withinCaps({ ...room, spent: 100_000n }).ok).toBe(true);
@@ -231,6 +258,7 @@ describe("what a paid call came to", () => {
         body: {},
         settlement: null,
         facilitatorSaid: { heard: "no reason" },
+        signed: "10000",
       },
       BASE_SEPOLIA,
     );
@@ -258,6 +286,7 @@ describe("what a paid call came to", () => {
         body: { status: "payment_unresolved" },
         settlement: null,
         facilitatorSaid: { heard: "nothing" },
+        signed: "10000",
       },
       BASE_SEPOLIA,
     );
@@ -277,6 +306,7 @@ describe("what a paid call came to", () => {
         body: { status: "in_progress", order_id: "ord_1" },
         settlement: null,
         facilitatorSaid: { heard: "nothing" },
+        signed: "10000",
       },
       BASE_SEPOLIA,
     );
@@ -295,6 +325,7 @@ describe("what a paid call came to", () => {
           body: { status: word },
           settlement: null,
           facilitatorSaid: { heard: "nothing" },
+          signed: "10000",
         },
         BASE_SEPOLIA,
       );
@@ -310,6 +341,7 @@ describe("what a paid call came to", () => {
         body: "<html>ok</html>",
         settlement: null,
         facilitatorSaid: { heard: "nothing" },
+        signed: "10000",
       },
       BASE_SEPOLIA,
     );
@@ -416,7 +448,7 @@ describe("a whole run", () => {
     expect(await run.run(["--confirm"])).toBe(0);
     expect(run.bought).toStrictEqual(["itm_1"]);
     expect(run.text()).toContain("LISTED");
-    expect(run.text()).toContain("spent this run: $0.01");
+    expect(run.text()).toContain("settled this run: $0.01");
   });
 
   it("buys only the product it was named", async () => {
@@ -497,7 +529,7 @@ describe("a whole run", () => {
     );
     expect(run.bought).toStrictEqual(["itm_1", "itm_2"]);
     expect(run.text()).toContain("SMOKE_TOTAL_USD");
-    expect(run.text()).toContain("spent this run: $0.04");
+    expect(run.text()).toContain("settled this run: $0.04");
   });
 
   it("refuses a chain where the money is real unless somebody said so out loud", async () => {
@@ -541,6 +573,7 @@ describe("a whole run", () => {
           heard: "verdict",
           error: "invalid_exact_evm_payload_authorization_value",
         },
+        signed: "10000",
       }),
     });
 
@@ -548,7 +581,7 @@ describe("a whole run", () => {
     expect(run.discoveryRequests).toStrictEqual([]);
     expect(run.text()).toContain("PURCHASE REFUSED");
     expect(run.text()).toContain("invalid_exact_evm_payload_authorization_value");
-    expect(run.text()).toContain("spent this run: $0");
+    expect(run.text()).toContain("settled this run: $0");
   });
 
   it("counts nothing spent when a settle was against nothing", async () => {
@@ -557,7 +590,7 @@ describe("a whole run", () => {
     expect(await run.run(["--confirm"])).toBe(1);
     expect(run.slept).toStrictEqual([]);
     expect(run.text()).toContain("settles against nothing");
-    expect(run.text()).toContain("spent this run: $0");
+    expect(run.text()).toContain("settled this run: $0");
     expect(run.text()).not.toContain("SETTLED, NOT YET LISTED");
   });
 
@@ -582,7 +615,41 @@ describe("a whole run", () => {
 
     await run.run(["--confirm"], { SMOKE_WAIT_MINUTES: "0" });
 
-    expect(run.text()).toContain("spent this run: $0.004");
+    expect(run.text()).toContain("settled this run: $0.004");
+  });
+
+  it("counts a settle that names no amount at what its payment was signed for", async () => {
+    const run = aRun({
+      purchases: () => ({ ...settled(), signed: "30000" }),
+      walks: [[]],
+    });
+
+    await run.run(["--confirm"], { SMOKE_WAIT_MINUTES: "0" });
+
+    expect(run.text()).toContain("settled this run: $0.03");
+  });
+
+  it("does not report a payment nobody can account for as nothing spent", async () => {
+    // "Settled: $0" and "nobody knows" are different answers about a wallet, and
+    // the summary has to give the second one where it is the one that is true.
+    const run = aRun({
+      catalog: [aCard("itm_1"), aCard("itm_2")],
+      purchases: (itemId) =>
+        itemId === "itm_1"
+          ? { kind: "unreachable", why: "socket hang up", signed: "30000" }
+          : settled({}, "10000"),
+      walks: [[]],
+    });
+
+    await run.run(["--confirm"], {
+      SMOKE_MAX_USD: "0.03",
+      SMOKE_TOTAL_USD: "0.05",
+      SMOKE_WAIT_MINUTES: "0",
+    });
+
+    expect(run.text()).toContain("settled this run: $0.01");
+    expect(run.text()).toContain("signed with no known outcome: $0.03");
+    expect(run.text()).toContain("signed this run: $0.04");
   });
 
   it("says nothing was bought rather than nothing was wrong when the catalog is empty", async () => {
@@ -630,6 +697,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
     answer: (
       path: string,
       signed: boolean,
+      method: string,
     ) => {
       readonly status?: number;
       readonly body: string;
@@ -641,7 +709,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
     server = createServer((request, response) => {
       asked.push(request.url ?? "");
       const signed = request.headers["payment-signature"] !== undefined;
-      const said = answer(request.url ?? "", signed);
+      const said = answer(request.url ?? "", signed, request.method ?? "");
       if (said === null) {
         request.socket.destroy();
         return;
@@ -667,7 +735,15 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
   };
 
   /** A challenge in the shape the protocol carries one, for the fake gateway. */
-  const challengeHeader = (over: { readonly error?: string } = {}): string =>
+  const challengeHeader = (
+    over: {
+      readonly error?: string;
+      readonly amount?: string;
+      readonly network?: `${string}:${string}`;
+      readonly asset?: string;
+      readonly payTo?: string;
+    } = {},
+  ): string =>
     encodePaymentRequiredHeader({
       x402Version: 2,
       ...(over.error === undefined ? {} : { error: over.error }),
@@ -679,10 +755,10 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       accepts: [
         {
           scheme: "exact",
-          network: BASE_SEPOLIA,
-          asset: USDC_ON_BASE_SEPOLIA,
-          amount: "10000",
-          payTo: A_MERCHANT,
+          network: over.network ?? BASE_SEPOLIA,
+          asset: over.asset ?? USDC_ON_BASE_SEPOLIA,
+          amount: over.amount ?? "10000",
+          payTo: over.payTo ?? A_MERCHANT,
           maxTimeoutSeconds: 300,
           extra: { name: "USDC", version: "2" },
         },
@@ -782,7 +858,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       },
     }));
 
-    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {}, aChallenge());
 
     expect(outcome).toMatchObject({
       kind: "answered",
@@ -802,7 +878,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       headers: { "PAYMENT-REQUIRED": challengeHeader() },
     }));
 
-    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {}, aChallenge());
 
     expect(outcome).toMatchObject({ facilitatorSaid: { heard: "no reason" } });
   });
@@ -824,7 +900,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
         : { status: 402, body: "{}", headers: { "PAYMENT-REQUIRED": challengeHeader() } },
     );
 
-    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {}, aChallenge());
 
     expect(whatBecameOfThePayment(outcome, BASE_SEPOLIA)).toMatchObject({
       paid: "settled",
@@ -846,13 +922,284 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
     const outcome = await overTheNetwork({ ...settingsFor(base), maxUsd: "0.001" }).purchase(
       "itm_1",
       {},
+      aChallenge(),
     );
 
     expect(outcome.kind).toBe("client_refused");
     expect(whatBecameOfThePayment(outcome, BASE_SEPOLIA)).toMatchObject({
       paid: "refused",
-      why: expect.stringContaining("spendControls.maxAmountPerPayment"),
+      why: expect.stringContaining("SMOKE_MAX_USD"),
     });
+    expect(outcome.kind === "client_refused" && outcome.why).not.toContain("spendControls");
+  });
+
+  /**
+   * A gateway that quotes each product on GET and asks, on the POST that is
+   * paid, for whatever `asks` says, settling every signed payment unless told
+   * to refuse it. Which products were signed for is kept in order.
+   */
+  const aGateway = (
+    asks: (itemId: string) => {
+      readonly quote: string;
+      /** Where the quote and, unless `header` says otherwise, the payment are asked for. */
+      readonly on?: Parameters<typeof challengeHeader>[0];
+      readonly header?: Parameters<typeof challengeHeader>[0];
+      readonly body?: unknown;
+      readonly refuse?: boolean;
+      /** The answer to the signed request never arrives. */
+      readonly drop?: boolean;
+      /** What the receipt says was settled. */
+      readonly settledAmount?: string;
+    },
+  ) => {
+    const signedFor: string[] = [];
+    const base = serving((path, signed, method) => {
+      const itemId = decodeURIComponent(path.split("/")[2] ?? "");
+      const ask = asks(itemId);
+      if (signed) {
+        signedFor.push(itemId);
+        if (ask.drop) return null;
+        return ask.refuse
+          ? {
+              status: 402,
+              body: "{}",
+              headers: { "PAYMENT-REQUIRED": challengeHeader({ error: "insufficient_funds" }) },
+            }
+          : {
+              status: 200,
+              body: JSON.stringify({ status: "delivered" }),
+              headers: {
+                "PAYMENT-RESPONSE": encodePaymentResponseHeader({
+                  success: true,
+                  transaction: A_TRANSACTION,
+                  network: BASE_SEPOLIA,
+                  ...(ask.settledAmount === undefined ? {} : { amount: ask.settledAmount }),
+                }),
+              },
+            };
+      }
+      const quoted = { ...ask.on, amount: ask.quote };
+      if (method === "GET") {
+        return {
+          status: 402,
+          body: "{}",
+          headers: { "PAYMENT-REQUIRED": challengeHeader(quoted) },
+        };
+      }
+      return ask.body === undefined
+        ? {
+            status: 402,
+            body: "{}",
+            headers: { "PAYMENT-REQUIRED": challengeHeader({ ...quoted, ...ask.header }) },
+          }
+        : { status: 402, body: JSON.stringify(ask.body) };
+    });
+    return { base, signedFor };
+  };
+
+  /** Quotes every product first, as a run does, then buys them in order. */
+  const quoteThenBuy = async (base: string, items: readonly string[], over: Partial<Settings>) => {
+    const reach = overTheNetwork({ ...settingsFor(base), ...over });
+    const quotes: Challenge[] = [];
+    for (const itemId of items) {
+      quotes.push(await reach.challenge(itemId));
+    }
+    const outcomes: PurchaseOutcome[] = [];
+    for (const [at, itemId] of items.entries()) {
+      outcomes.push(await reach.purchase(itemId, {}, quotes[at] as Challenge));
+    }
+    return Object.assign(outcomes, { reach });
+  };
+
+  const refusal = (outcome: PurchaseOutcome | undefined): string =>
+    outcome?.kind === "client_refused" ? outcome.why : `not refused: ${outcome?.kind}`;
+
+  it("does not sign a payment whose price rose past what the run has left", async () => {
+    // Two cents bought, then a product quoted at one cent asks for four at the
+    // payment: six against a five-cent run.
+    const gateway = aGateway((itemId) =>
+      itemId === "itm_1" ? { quote: "20000" } : { quote: "10000", header: { amount: "40000" } },
+    );
+
+    const [, second] = await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {
+      maxUsd: "0.05",
+      totalUsd: "0.05",
+    });
+
+    expect(gateway.signedFor).toStrictEqual(["itm_1"]);
+    expect(second?.kind).toBe("client_refused");
+    expect(whatBecameOfThePayment(second as PurchaseOutcome, BASE_SEPOLIA)).toMatchObject({
+      paid: "refused",
+      why: expect.stringContaining("SMOKE_TOTAL_USD"),
+    });
+  });
+
+  it("signs a payment that still fits what the run has left", async () => {
+    const gateway = aGateway((itemId) =>
+      itemId === "itm_1" ? { quote: "20000" } : { quote: "10000", header: { amount: "30000" } },
+    );
+
+    const [, second] = await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {
+      maxUsd: "0.05",
+      totalUsd: "0.05",
+    });
+
+    expect(gateway.signedFor).toStrictEqual(["itm_1", "itm_2"]);
+    expect(second).toMatchObject({ kind: "answered", signed: "30000" });
+  });
+
+  it("keeps the record of what the run signed that its summary reads", async () => {
+    const gateway = aGateway(() => ({ quote: "20000" }));
+
+    const bought = await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {
+      maxUsd: "0.05",
+      totalUsd: "0.05",
+    });
+
+    expect(bought.reach.signedSoFar()).toBe(40000n);
+  });
+
+  it("holds the next payment against what an unanswered one was signed for", async () => {
+    const gateway = aGateway((itemId) =>
+      itemId === "itm_1" ? { quote: "30000", drop: true } : { quote: "30000" },
+    );
+
+    const [first, second] = await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {
+      maxUsd: "0.05",
+      totalUsd: "0.05",
+    });
+
+    expect(first).toMatchObject({ kind: "unreachable", signed: "30000" });
+    expect(gateway.signedFor).toStrictEqual(["itm_1"]);
+    expect(refusal(second)).toContain("has already signed payments for $0.03");
+  });
+
+  it("holds the next payment against what was signed, not against what a receipt says settled", async () => {
+    const gateway = aGateway(() => ({ quote: "30000", settledAmount: "0" }));
+
+    await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {
+      maxUsd: "0.05",
+      totalUsd: "0.05",
+    });
+
+    expect(gateway.signedFor).toStrictEqual(["itm_1"]);
+  });
+
+  it("counts a payment the gateway refused against the run, because what was signed can still be spent", async () => {
+    const gateway = aGateway((itemId) =>
+      itemId === "itm_1" ? { quote: "30000", refuse: true } : { quote: "30000" },
+    );
+
+    await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {
+      maxUsd: "0.05",
+      totalUsd: "0.05",
+    });
+
+    expect(gateway.signedFor).toStrictEqual(["itm_1"]);
+  });
+
+  it("does not sign a payment asked for on another network, even in the same token", async () => {
+    // The default-asset table gives HPP's test and live chains one token
+    // address, so the asset alone cannot tell a test payment from a real one.
+    const sharedAsset = "0x401eCb1D350407f13ba348573E5630B83638E30D";
+    const gateway = aGateway(() => ({
+      quote: "10000",
+      on: { network: "eip155:181228", asset: sharedAsset },
+      header: { network: "eip155:190415" },
+    }));
+
+    const [outcome] = await quoteThenBuy(await gateway.base, ["itm_1"], {});
+
+    expect(gateway.signedFor).toStrictEqual([]);
+    expect(refusal(outcome)).toContain("eip155:190415");
+    expect(refusal(outcome)).toContain("eip155:181228");
+  });
+
+  it("does not sign a payment to anybody but the payee the product was quoted with", async () => {
+    const elsewhere = "0x0000000000000000000000000000000000000bad";
+    const gateway = aGateway(() => ({ quote: "10000", header: { payTo: elsewhere } }));
+
+    const [outcome] = await quoteThenBuy(await gateway.base, ["itm_1"], {});
+
+    expect(gateway.signedFor).toStrictEqual([]);
+    expect(refusal(outcome)).toContain(elsewhere);
+    expect(refusal(outcome)).toContain(A_MERCHANT);
+  });
+
+  it("signs a whole run in one asset, the one it signed first", async () => {
+    const gateway = aGateway((itemId) =>
+      itemId === "itm_1"
+        ? { quote: "10000" }
+        : {
+            quote: "10000",
+            on: {
+              network: "eip155:2201",
+              asset: "0x78Cf24370174180738C5B8E352B6D14c83a6c9A9",
+            },
+          },
+    );
+
+    const [, second] = await quoteThenBuy(await gateway.base, ["itm_1", "itm_2"], {});
+
+    expect(gateway.signedFor).toStrictEqual(["itm_1"]);
+    expect(refusal(second)).toContain("eip155:2201");
+    expect(refusal(second)).toContain("one asset");
+  });
+
+  it("refuses in words a purchase handed no quote", async () => {
+    const gateway = aGateway(() => ({ quote: "10000" }));
+
+    const outcome = await overTheNetwork(settingsFor(await gateway.base)).purchase(
+      "itm_1",
+      {},
+      undefined as unknown as Challenge,
+    );
+
+    expect(gateway.signedFor).toStrictEqual([]);
+    expect(refusal(outcome)).toContain("no quote");
+  });
+
+  it("refuses a purchase quoted in an amount it could not read in dollars", async () => {
+    const gateway = aGateway(() => ({ quote: "10000" }));
+
+    const outcome = await overTheNetwork(settingsFor(await gateway.base)).purchase(
+      "itm_1",
+      {},
+      aChallenge({ decimals: null }),
+    );
+
+    expect(gateway.signedFor).toStrictEqual([]);
+    expect(refusal(outcome)).toContain("no dollar amount");
+  });
+
+  it("says in words why it will not sign a challenge that names no amount", async () => {
+    const gateway = aGateway(() => ({
+      quote: "10000",
+      body: {
+        x402Version: 1,
+        error: "",
+        accepts: [
+          {
+            scheme: "exact",
+            network: "base-sepolia",
+            maxAmountRequired: "10000",
+            resource: "https://agentify.example/x402/itm_1/purchase",
+            description: "A room for the night",
+            mimeType: "application/json",
+            payTo: A_MERCHANT,
+            maxTimeoutSeconds: 300,
+            asset: USDC_ON_BASE_SEPOLIA,
+            extra: { name: "USDC", version: "2" },
+          },
+        ],
+      },
+    }));
+
+    const [outcome] = await quoteThenBuy(await gateway.base, ["itm_1"], {});
+
+    expect(gateway.signedFor).toStrictEqual([]);
+    expect(outcome?.kind).toBe("client_refused");
+    expect(outcome?.kind === "client_refused" && outcome.why).toContain("no amount");
   });
 
   it.each([
@@ -898,7 +1245,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       };
     });
 
-    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {}, aChallenge());
     const payment = whatBecameOfThePayment(outcome, BASE_SEPOLIA);
 
     expect(signatures).toStrictEqual(lost.signed ? [false, true] : [false]);
@@ -906,6 +1253,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
       lost.receipt !== null ? "answered" : lost.signed ? "unreachable" : "client_refused",
     );
     expect(payment.paid).toBe(lost.paid);
+    if (lost.signed) expect(outcome).toMatchObject({ signed: "10000" });
     if (payment.paid === "unresolved") {
       expect(payment.why).toContain("not known here");
       expect(payment.why).not.toContain("nothing was charged");
@@ -922,7 +1270,7 @@ describe("reading a gateway and the discovery catalog, over a real socket", () =
         : { status: 402, body: "{}", headers: { "PAYMENT-REQUIRED": challengeHeader() } };
     });
 
-    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {});
+    const outcome = await overTheNetwork(settingsFor(base)).purchase("itm_1", {}, aChallenge());
     const payment = whatBecameOfThePayment(outcome, BASE_SEPOLIA);
 
     expect(signedSeen).toBe(true);

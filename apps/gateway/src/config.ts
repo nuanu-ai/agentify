@@ -54,6 +54,21 @@ function hostOf(url: string): string | null {
   return new URL(url).hostname.replace(/\.+$/, "");
 }
 
+/**
+ * A facilitator address as a log line or an operator's page may repeat it: the
+ * host and port where there is a host, because the whole address may carry
+ * credentials in its user information, path or query, and the value itself
+ * where there is none, such as `sandbox:scripted`.
+ */
+export function facilitatorNamed(url: string): string {
+  const host = hostOf(url);
+  if (!host) {
+    return JSON.stringify(url);
+  }
+  const { port } = new URL(url);
+  return port === "" ? host : `${host}:${port}`;
+}
+
 const isUnder = (host: string, domain: string): boolean =>
   host === domain || host.endsWith(`.${domain}`);
 
@@ -632,7 +647,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     ];
     if (missing.length > 0) {
       problems.push(
-        `FACILITATOR_URL is ${JSON.stringify(environmentValues.FACILITATOR_URL)}, which is Coinbase's ` +
+        `FACILITATOR_URL names ${facilitatorNamed(environmentValues.FACILITATOR_URL)}, which is Coinbase's ` +
           `facilitator and takes no request without credentials, and ${missing.join(" and ")} ` +
           `${missing.length === 1 ? "is" : "are"} not set — nothing would be verified and nothing ` +
           "would be settled, and the first to find that out would be a buyer",
@@ -642,7 +657,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
     // Credentials go to the one facilitator host only, so any other Coinbase
     // host would come up sending none and be refused at the first charge.
     problems.push(
-      `FACILITATOR_URL is ${JSON.stringify(environmentValues.FACILITATOR_URL)}, which is a host of ` +
+      `FACILITATOR_URL names ${facilitatorNamed(environmentValues.FACILITATOR_URL)}, which is a host of ` +
         `Coinbase's that this gateway cannot sign a request for — the facilitator it knows is at ` +
         `${CDP_FACILITATOR_DOMAIN}, and credentials go there and nowhere else. Pointed here it would ` +
         "send none, and a facilitator that takes no request without them refuses every verify and " +
@@ -694,7 +709,7 @@ export function loadConfig(environment: Record<string, string | undefined>): Gat
   ) {
     problems.push(
       `PAYMENT_NETWORK is ${JSON.stringify(network)}, where the money is real, and FACILITATOR_URL ` +
-        `is ${JSON.stringify(environmentValues.FACILITATOR_URL)} — a live chain settles through ` +
+        `names ${facilitatorNamed(environmentValues.FACILITATOR_URL)} — a live chain settles through ` +
         `${CDP_FACILITATOR_URL} and nothing else, with CDP_API_KEY_ID and CDP_API_KEY_SECRET both ` +
         "set. Nothing else here can verify or settle, and every other value either takes payments " +
         "that never happened or sends credentials somewhere they were not issued for",

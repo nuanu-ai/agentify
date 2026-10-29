@@ -89,6 +89,57 @@ describe("creating a client", () => {
   it("refuses an address that is not one", () => {
     expect(() => createClient({ apiKey: API_KEY, baseUrl: "gateway.invalid" })).toThrow(/address/i);
   });
+
+  it("names the http address that would work when the scheme is left off a local one", () => {
+    // `localhost:3000` parses as an address whose scheme is `localhost:`.
+    expect(() => createClient({ apiKey: API_KEY, baseUrl: "localhost:3000" })).toThrow(
+      /http:\/\/localhost:3000/,
+    );
+  });
+
+  it("refuses plain http off this machine before the key is sent anywhere", async () => {
+    // 0.0.0.0 is not loopback, yet a connection to it still lands on a
+    // listener here, so whatever the client would send is heard rather than
+    // assumed.
+    const heard: string[] = [];
+    const listener = createServer((request, response) => {
+      heard.push(`${request.method} ${request.url}`);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, id: "cat-1" }));
+    });
+    await new Promise<void>((resolve) => listener.listen(0, "0.0.0.0", resolve));
+    const port = (listener.address() as AddressInfo).port;
+
+    try {
+      let refused: unknown;
+      let built: AgentifyClient | undefined;
+      try {
+        built = createClient({ apiKey: API_KEY, baseUrl: `http://0.0.0.0:${port}` });
+      } catch (thrown) {
+        refused = thrown;
+      }
+      await built?.catalog.publish(card);
+
+      expect(heard).toStrictEqual([]);
+      expect(refused).toBeInstanceOf(TypeError);
+      expect(String(refused)).toMatch(/https/);
+      expect(() =>
+        createClient({ apiKey: API_KEY, baseUrl: "http://gateway.example.com" }),
+      ).toThrow(TypeError);
+
+      // Where plain http stays on this machine or on a private network's
+      // single-label name, and https anywhere, the client is built.
+      expect(createClient({ apiKey: API_KEY, baseUrl: `http://127.0.0.1:${port}` })).toBeDefined();
+      expect(createClient({ apiKey: API_KEY, baseUrl: "http://app:3000" })).toBeDefined();
+      expect(createClient({ apiKey: API_KEY, baseUrl: "http://[::1]:3000" })).toBeDefined();
+      expect(createClient({ apiKey: API_KEY, baseUrl: "http://shop.localhost" })).toBeDefined();
+      expect(
+        createClient({ apiKey: API_KEY, baseUrl: "https://gateway.example.com" }),
+      ).toBeDefined();
+    } finally {
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
 });
 
 describe("publishing a card", () => {

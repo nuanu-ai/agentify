@@ -6,7 +6,6 @@ import { segmentSchema } from "./enums.js";
 export const scanJobV1Schema = z
   .object({
     scan_id: uuidV7Schema,
-    canonical_target_url: z.url({ protocol: /^https$/ }),
     submitted_without_scheme: z.boolean().optional(),
     segment: segmentSchema,
     rubric_version: z.literal(SCAN_RUBRIC_VERSION),

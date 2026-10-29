@@ -558,6 +558,7 @@ export const analyticsEvents = pgTable(
       .on(table.leadId, table.scanId, table.name)
       .where(sql`${table.name} = 'registration_completed'`),
     index("analytics_events_name_occurred_idx").on(table.name, table.occurredAt),
+    index("analytics_events_occurred_idx").on(table.occurredAt),
     index("analytics_events_segment_name_occurred_idx").on(
       table.segment,
       table.name,

@@ -186,6 +186,75 @@ describe("consent persistence", () => {
     expect(told.textContent).toMatch(/could not save/i);
   });
 
+  const tooManyNewVisits = async () =>
+    new Response(
+      JSON.stringify({
+        error: {
+          code: "consent_rate_limited",
+          message: "Too many new choices have been saved recently. Try again later.",
+          retryable: true,
+          retry_after_seconds: 1200,
+          request_id: "019f5b6a-4b9f-7000-8000-0000000000f2",
+        },
+      }),
+      { status: 429, headers: { "content-type": "application/json", "retry-after": "1200" } },
+    );
+
+  it("tells a visitor whose allowing choice the site refuses what the site said", async () => {
+    globalThis.fetch = tooManyNewVisits;
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Allow optional analytics" }));
+
+    const told = await screen.findByRole("status");
+    expect(told.textContent).toMatch(/Try again later/);
+    expect(told.textContent).toMatch(/choice saved before, if any, still applies/i);
+    expect(window.localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps a declining choice in this browser and goes, even where the site refuses to record it", async () => {
+    globalThis.fetch = tooManyNewVisits;
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Essential only" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Privacy choices" })).toBeNull(),
+    );
+    expect(readCurrentConsent(window.localStorage)?.categories).toMatchObject({
+      product_analytics: false,
+      ads_measurement: false,
+    });
+  });
+
+  it("stays and keeps nothing where the site refuses a declining choice for another reason, which may leave an earlier choice in force there", async () => {
+    globalThis.fetch = async () =>
+      Response.json(
+        {
+          error: {
+            code: "consent_unavailable",
+            message: "Consent preferences could not be saved.",
+            retryable: true,
+            request_id: "019f5b6a-4b9f-7000-8000-0000000000f3",
+          },
+        },
+        { status: 503 },
+      );
+    const user = userEvent.setup();
+    render(<ConsentBanner brand="Agentify" />);
+
+    await user.click(screen.getByRole("button", { name: "Essential only" }));
+
+    const told = (await screen.findByRole("status")).textContent;
+    expect(told).toMatch(/could not save/i);
+    expect(told).toMatch(/choice saved before, if any, still applies/i);
+    expect(told).not.toMatch(/no optional analytics were enabled/i);
+    expect(window.localStorage.getItem(CONSENT_STORAGE_KEY)).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Privacy choices" })).not.toBeNull();
+  });
+
   it("stores only the optional categories the visitor selected", async () => {
     globalThis.fetch = async () => new Response(null, { status: 201 });
     const user = userEvent.setup();

@@ -31,6 +31,7 @@ import {
   merchantOrderList,
   NO_SUCH_ITEM,
   NO_SUCH_ORDER,
+  NOT_AUTHORISED,
   OK,
   PAYMENT_REQUIRED,
   type Refused,
@@ -232,7 +233,8 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     answer_order: {
       serve: async (call) =>
         answeredOrder(
-          call.response,
+          gateway,
+          call,
           await gateway.answerOrder(
             merchantOf(call),
             call.params.order_id ?? "",
@@ -245,7 +247,8 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     deliver_order: {
       serve: async (call) =>
         answeredOrder(
-          call.response,
+          gateway,
+          call,
           await gateway.deliverOrder(
             merchantOf(call),
             call.params.order_id ?? "",
@@ -259,7 +262,8 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     refuse_order: {
       serve: async (call) =>
         answeredOrder(
-          call.response,
+          gateway,
+          call,
           await gateway.refuseOrder(
             merchantOf(call),
             call.params.order_id ?? "",
@@ -273,7 +277,8 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     close_order: {
       serve: async (call) =>
         answeredOrder(
-          call.response,
+          gateway,
+          call,
           await gateway.closeOrder(
             merchantOf(call),
             call.params.order_id ?? "",
@@ -286,7 +291,8 @@ export function handlersFor(gateway: Gateway): Partial<Record<RouteName, Mounted
     accept_order: {
       serve: async (call) =>
         answeredOrder(
-          call.response,
+          gateway,
+          call,
           await gateway.acceptOrder(
             merchantOf(call),
             call.params.order_id ?? "",
@@ -406,12 +412,21 @@ const OFF_SALE_WORDS: Readonly<Record<OffSale["code"], string>> = {
   seller_not_taking_orders: SELLER_NOT_TAKING_ORDERS,
 };
 
-function answeredOrder(
-  response: RouteCall["response"],
+async function answeredOrder(
+  gateway: Gateway,
+  call: RouteCall,
   answered: { readonly ok: boolean } | null,
-): RouteAnswer {
+): Promise<RouteAnswer> {
   if (answered === null) {
-    return refusedWith(response, NO_SUCH_ORDER);
+    // An order call finds nothing through a key revoked after the door let it
+    // in. The order is there, so that call is answered as the door answers a
+    // revoked key rather than told the order does not exist.
+    return refusedWith(
+      call.response,
+      (await gateway.keyStillWorks(merchantOf(call), callersKey(call)))
+        ? NO_SUCH_ORDER
+        : NOT_AUTHORISED,
+    );
   }
   return { status: answered.ok ? OK : CONFLICT, document: answered };
 }

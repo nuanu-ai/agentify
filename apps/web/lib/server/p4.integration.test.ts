@@ -26,7 +26,6 @@ import {
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Params } from "react-router";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-
 import { action as requestDataActionRoute } from "../../app/routes/api/v1/account.data-request";
 import { action as unsubscribeActionRoute } from "../../app/routes/api/v1/account.unsubscribe";
 import { action as persistAttributionRoute } from "../../app/routes/api/v1/attribution";
@@ -761,26 +760,41 @@ describe("P4 dashboard-owned scanner identity", () => {
       lastUtmCampaign: "autumn",
     });
     expect(await eventsOf(declined?.id ?? "")).toEqual(["landing_view"]);
-    const measured = await acceptScan(
-      post(
-        "/api/v1/scans",
-        {
-          url: "https://allowed.example/",
-          segment: "store",
-          landing_variant: "store-v2",
-          turnstile_token: null,
-        },
-        {
-          cookie,
-          "idempotency-key": `allowed-${createUuidV7()}`,
-          "x-forwarded-for": "203.0.113.44",
-        },
-      ),
-    );
+    const scanFrom = (url: string, segment: string, landingVariant: string) =>
+      acceptScan(
+        post(
+          "/api/v1/scans",
+          { url, segment, landing_variant: landingVariant, turnstile_token: null },
+          {
+            cookie,
+            "idempotency-key": `allowed-${createUuidV7()}`,
+            "x-forwarded-for": "203.0.113.44",
+          },
+        ),
+      );
+    const measured = await scanFrom("https://allowed.example/", "owner", "owner-v2");
     expect(measured.status).toBe(202);
     // A different landing from the one the attribution above recorded, so
     // this is the scan's own write.
-    expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
+    expect(await visitorSession()).toMatchObject({ lastLandingVariant: "owner-v2" });
+
+    // A tab opened before the site changed its landing still scans, and the
+    // landing it names, which the site no longer serves, is kept nowhere.
+    const fromOldTab = await scanFrom("https://old-tab.example/", "store", "store-v0");
+    expect(fromOldTab.status).toBe(202);
+    const { scan_id: oldTabScan } = (await fromOldTab.json()) as { scan_id: string };
+    expect(await visitorSession()).toMatchObject({
+      firstLandingVariant: "store-v1",
+      lastLandingVariant: "owner-v2",
+    });
+    expect(
+      (
+        await pool.query<{ landing_variant: string }>(
+          "select landing_variant from analytics_events where name = 'scan_started' and scan_id = $1",
+          [oldTabScan],
+        )
+      ).rows,
+    ).toEqual([{ landing_variant: "unknown" }]);
   });
 
   it("expires a partner's click cookie the browser may still hold once its visitor saves a choice without ads measurement", async () => {
@@ -821,6 +835,100 @@ describe("P4 dashboard-owned scanner identity", () => {
     expect(allowed.headers.getSetCookie().join("\n")).not.toContain("clickid=");
   });
 
+  it("stops one address opening new anonymous visits by saving choices past its hour, in words, and still lets a returning visitor change theirs", async () => {
+    const { pool } = getDatabase();
+    await pool.query("delete from rate_limit_events where kind = 'consent_ip_hour'");
+    const choose = (headers: Record<string, string>) =>
+      persistConsent(
+        new Request("http://localhost:3000/api/v1/consent", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            "x-forwarded-for": "203.0.113.91",
+            ...headers,
+          },
+          body: JSON.stringify({
+            policy_version: CONSENT_POLICY_VERSION,
+            categories: {
+              essential_processing: true,
+              product_analytics: false,
+              ads_measurement: false,
+              marketing_email: false,
+              dataset_reuse: false,
+            },
+          }),
+        }),
+      );
+    const sessionCount = async () =>
+      Number(
+        (await pool.query<{ count: string }>("select count(*)::text as count from sessions"))
+          .rows[0]?.count,
+      );
+
+    const first = await choose({});
+    expect(first.status).toBe(201);
+    const returning = first.headers.getSetCookie()[0]?.split(";")[0] ?? "";
+    for (let opened = 1; opened < 30; opened += 1) expect((await choose({})).status).toBe(201);
+    const before = await sessionCount();
+
+    const refused = await choose({});
+    const stale = await choose({ cookie: "agentify_anonymous=a-cookie-naming-no-visit" });
+
+    for (const answered of [refused, stale]) {
+      expect(answered.status).toBe(429);
+      expect(answered.headers.get("set-cookie")).toBeNull();
+      expect(Number(answered.headers.get("retry-after"))).toBeGreaterThan(0);
+      const { error } = (await answered.json()) as { error: { code: string; message: string } };
+      expect(error.code).toBe("consent_rate_limited");
+      expect(error.message).toMatch(/try again later/i);
+    }
+    expect(await sessionCount()).toBe(before);
+    expect((await choose({ cookie: returning })).status).toBe(201);
+    expect((await choose({ "x-forwarded-for": "198.51.100.23" })).status).toBe(201);
+  });
+
+  it("counts new visits from addresses that name no visitor in one shared hour, larger than one visitor's", async () => {
+    const { pool } = getDatabase();
+    await pool.query("delete from rate_limit_events where kind = 'consent_ip_hour'");
+    const choose = (headers: Record<string, string>) =>
+      persistConsent(
+        new Request("http://localhost:3000/api/v1/consent", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost:3000",
+            "content-type": "application/json",
+            ...headers,
+          },
+          body: JSON.stringify({
+            policy_version: CONSENT_POLICY_VERSION,
+            categories: {
+              essential_processing: true,
+              product_analytics: false,
+              ads_measurement: false,
+              marketing_email: false,
+              dataset_reuse: false,
+            },
+          }),
+        }),
+      );
+    // No address at all, and an ingress's own private one: neither names a visitor.
+    const nobody: Record<string, string>[] = [{}, { "x-forwarded-for": "10.0.0.7" }];
+
+    for (let opened = 0; opened < 300; opened += 1) {
+      expect((await choose(nobody[opened % 2] ?? {})).status).toBe(201);
+    }
+
+    for (const headers of nobody) {
+      const refused = await choose(headers);
+      expect(refused.status).toBe(429);
+      expect(((await refused.json()) as { error: { code: string } }).error.code).toBe(
+        "consent_rate_limited",
+      );
+    }
+    expect((await choose({ "x-forwarded-for": "198.51.100.24" })).status).toBe(201);
+  });
+
   it("keeps attribution neutral and both accepted registration links usable", async () => {
     const { db } = getDatabase();
     const attributionRequest = (campaign: string, fbclidHash: string) =>
@@ -833,7 +941,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         },
         body: JSON.stringify({
           segment: "owner",
-          landing_variant: "owner-v1",
+          landing_variant: "owner-v2",
           touch: {
             utm_source: "meta",
             utm_campaign: campaign,
@@ -872,7 +980,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         },
         body: JSON.stringify({
           segment: "owner",
-          landing_variant: "owner-v1",
+          landing_variant: "owner-v2",
           touch: { utm_term: "person@example.com" },
         }),
       }),
@@ -2177,7 +2285,6 @@ describe("P4 dashboard-owned scanner identity", () => {
       getDatabase().db.transaction(async (tx) => {
         await enqueueScanInTransaction(tx, {
           scanId: rollbackScanId,
-          canonicalTargetUrl: "https://rollback.example/",
           submittedWithoutScheme: false,
           segment: "owner",
         });
@@ -2198,6 +2305,27 @@ describe("P4 dashboard-owned scanner identity", () => {
       "delete from pgboss.job where data->>'scan_id' = any($1::text[])",
       [[first.scanId, rollbackScanId]],
     );
+  });
+
+  it("queues a scan by its id alone, so the queue keeps no address of the site after the scan's own row forgets it", async () => {
+    const { scanId } = await createOrReplayScan(
+      {
+        url: "https://queue-names-the-scan.example/",
+        segment: "owner",
+        landing_variant: "owner-v1",
+        turnstile_token: null,
+      },
+      `queue-names-the-scan-${createUuidV7()}`,
+      undefined,
+    );
+    const queued = await getDatabase().pool.query<{ data: Record<string, unknown> }>(
+      "select data from pgboss.job where data->>'scan_id' = $1",
+      [scanId],
+    );
+    expect(queued.rows).toHaveLength(1);
+    expect(queued.rows[0]?.data).toMatchObject({ scan_id: scanId, attempt_no: 1 });
+    expect(JSON.stringify(queued.rows[0]?.data)).not.toContain("queue-names-the-scan");
+    await getDatabase().pool.query("delete from pgboss.job where data->>'scan_id' = $1", [scanId]);
   });
 
   it("atomically gates the scan after the free ones, at the limits the operator page states, and commits both buckets together", async () => {

@@ -325,6 +325,28 @@ describe("loadConfig", () => {
     ).toBe("https://api.cdp.coinbase.com/platform/v2/x402");
   });
 
+  it("names a refused Coinbase facilitator by its host, never by an address that carries credentials", () => {
+    for (const url of [
+      "https://user:s3cr3t@api.cdp.coinbase.com/platform/v2/x402?key=s3cr3t",
+      "https://user:s3cr3t@api.coinbase.com/platform/v2/x402?key=s3cr3t",
+    ]) {
+      const refused = refusalFor({ ...required, FACILITATOR_URL: url });
+      expect(refused).toContain("FACILITATOR_URL");
+      expect(refused).toMatch(/api(\.cdp)?\.coinbase\.com/);
+      expect(refused).not.toContain("s3cr3t");
+    }
+
+    const live = refusalFor({
+      ...required,
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://user:s3cr3t@api.cdp.coinbase.com/platform/v2/x402?key=s3cr3t",
+      CDP_API_KEY_ID: "key-id",
+      CDP_API_KEY_SECRET: "secret",
+    });
+    expect(live).toContain("https://api.cdp.coinbase.com/platform/v2/x402");
+    expect(live).not.toContain("s3cr3t");
+  });
+
   it("will not start unauthenticated against a Coinbase host it does not know", () => {
     // Fails closed: the gateway authenticates against exactly one Coinbase
     // host, and any other would get a client with no credentials that fails at

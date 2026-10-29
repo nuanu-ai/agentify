@@ -436,7 +436,7 @@ const BROKEN_SITEMAP = new Set(["missing", "refused", "corrupt", "empty", "not_s
 const sitemapKey = (url: string): string | undefined => {
   try {
     const canonical = canonicalizeTarget(url);
-    return `${canonical.hostname.replace(/\.$/, "")}${canonical.pathname}${canonical.search}`;
+    return `${canonical.hostname}${canonical.pathname}${canonical.search}`;
   } catch {
     return undefined;
   }

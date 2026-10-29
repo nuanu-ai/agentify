@@ -35,19 +35,33 @@ type TerminalCommitData = {
   };
 };
 
+/**
+ * A claimed scan carries the address to scan from its own row: the queued job
+ * names only the scan, so the queue keeps no address once the row forgets it.
+ */
+export type ScanClaim =
+  | { state: "claimed"; canonicalTargetUrl: string }
+  | { state: "terminal" }
+  | { state: "in_progress" };
+
 export function createScanJobRepository(db: Database) {
   return {
-    async claim(job: ScanJobV1): Promise<"claimed" | "terminal" | "in_progress"> {
+    async claim(job: ScanJobV1): Promise<ScanClaim> {
       return await db.transaction(async (tx) => {
-        const result = await tx.execute<{ status: string; attempt_no: number }>(
-          sql`select status, attempt_no from scans where id = ${job.scan_id} for update`,
+        const result = await tx.execute<{
+          status: string;
+          attempt_no: number;
+          canonical_target_url: string;
+        }>(
+          sql`select status, attempt_no, canonical_target_url from scans where id = ${job.scan_id} for update`,
         );
         const current = result.rows[0];
         if (!current) throw new Error("scan_not_found");
-        if (["completed", "partial", "failed"].includes(current.status)) return "terminal";
-        if (current.attempt_no > job.attempt_no) return "in_progress";
+        if (["completed", "partial", "failed"].includes(current.status))
+          return { state: "terminal" };
+        if (current.attempt_no > job.attempt_no) return { state: "in_progress" };
         if (current.status === "running" && current.attempt_no >= job.attempt_no)
-          return "in_progress";
+          return { state: "in_progress" };
         if (job.attempt_no > current.attempt_no) {
           await tx.delete(scanChecks).where(eq(scanChecks.scanId, job.scan_id));
         }
@@ -60,7 +74,7 @@ export function createScanJobRepository(db: Database) {
             workerHeartbeatAt: new Date(),
           })
           .where(eq(scans.id, job.scan_id));
-        return "claimed";
+        return { state: "claimed", canonicalTargetUrl: current.canonical_target_url };
       });
     },
 

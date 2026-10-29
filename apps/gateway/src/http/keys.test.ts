@@ -11,7 +11,14 @@ import type { Card } from "@nuanu-ai/agentify-contracts";
 import { decodePaymentRequiredHeader } from "@x402/core/http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { keyDigest } from "../app/merchants.js";
-import { type Harness, harness, loggedWhile, type Served, serve } from "../testing/harness.js";
+import {
+  buyOverHttp,
+  type Harness,
+  harness,
+  loggedWhile,
+  type Served,
+  serve,
+} from "../testing/harness.js";
 import { PAYMENT_REQUIRED_HEADER } from "./x402.js";
 
 const PAY_TO = "0x0000000000000000000000000000000000000001";
@@ -333,6 +340,52 @@ describe("disabling a key", () => {
 
     expect(disabled).toMatchObject({ id: made.keyId });
     expect(await opensTheDoor(served, made.secret)).toBe(false);
+  });
+
+  it("lets an order call through a key revoked before it lands change nothing, and answers it as a revoked key", async () => {
+    // The door admitted the call while the key worked; the revocation lands
+    // between the door and the order's write, as one from the dashboard or
+    // another process can.
+    const { served, harnessed } = await started();
+    const { merchant } = harnessed;
+    const itemId = await publish(served, merchant.key, {
+      ...cardFor("later-room", "A room confirmed later"),
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3_600,
+    });
+    await buyOverHttp(harnessed, served, itemId, {
+      merchantId: merchant.id,
+      onOrder: () => ({ accepted: {} }),
+    });
+    const listed = await served.call("GET", "/v0/orders", { headers: bearer(merchant.key) });
+    const orderId = (listed.body as { orders: { id: string }[] }).orders[0]?.id ?? "";
+    const other = await harnessed.addKey(merchant.id, "another worker of the merchant's");
+
+    const { store } = harnessed;
+    const writeOrder = store.withOrder.bind(store);
+    store.withOrder = async (...args) => {
+      store.withOrder = writeOrder;
+      await harnessed.gateway.disableMerchantKey(merchant.id, merchant.keyId);
+      return writeOrder(...args);
+    };
+    const revokedMeanwhile = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
+      body: { access_code: "from-a-revoked-key" },
+      headers: bearer(merchant.key),
+    });
+
+    expect(revokedMeanwhile.status).toBe(401);
+    expect(refusalIn(revokedMeanwhile)).toStrictEqual(
+      refusalIn(await served.call("GET", "/v0/cards", { headers: bearer(merchant.key) })),
+    );
+    const after = await served.call("GET", `/v0/orders/${orderId}`, { headers: bearer(other) });
+    expect((after.body as { status: string }).status).toBe("in_progress");
+    expect(JSON.stringify(after.body)).not.toContain("from-a-revoked-key");
+
+    const delivered = await served.call("POST", `/v0/orders/${orderId}/deliver`, {
+      body: { access_code: "from-a-working-key" },
+      headers: bearer(other),
+    });
+    expect(delivered.status, JSON.stringify(delivered.body)).toBe(200);
   });
 
   it("answers another merchant's key exactly as a key that never existed", async () => {

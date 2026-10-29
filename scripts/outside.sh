@@ -9,11 +9,19 @@
 # It needs the network (the install pulls zod from the registry), so it lives
 # beside `pnpm smoke`, not inside `pnpm test`. `@nuanu-ai/agentify-contracts` is
 # packed as well, because a merchant who installs the SDK installs both.
+#
+# Given a directory, it copies the two tarballs it checked there once every
+# check has passed, so a release can publish the very files checked here.
 
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/agentify-outside.XXXXXX")"
+keep=""
+if [ -n "${1:-}" ]; then
+  mkdir -p "$1"
+  keep="$(cd "$1" && pwd)"
+fi
 
 failures=0
 
@@ -280,6 +288,10 @@ contains "it explains itself to whoever typed it" \
 echo
 if [ "$failures" -eq 0 ]; then
   echo "The package works outside this repository."
+  if [ -n "$keep" ]; then
+    cp "$scratch"/nuanu-ai-agentify-*.tgz "$keep"/
+    echo "The tarballs it checked are in $keep."
+  fi
 else
   echo "$failures check(s) failed: the package does not work outside this repository."
 fi

@@ -403,6 +403,13 @@ class TheTimer(ReleaseTest):
         self.assertEqual(self.tick(), 0)
         self.assertEqual((self.activations(), self.said), ([], ""))
 
+    def test_releases_nothing_a_branch_of_the_tags_name_points_at(self):
+        # Only an administrator moves the tag; anyone who may push could name a
+        # branch deploy-test, and the timer runs what it takes as root.
+        self.push(f"{self.first}:refs/heads/deploy-test")
+        self.assertEqual(self.tick(), 0, self.said)
+        self.assertEqual((self.activations(), self.said), ([], ""))
+
     def test_activates_a_new_revision_once_and_then_stays_silent(self):
         self.tag("deploy-test", self.first)
         self.assertEqual(self.tick(), 0, self.said)

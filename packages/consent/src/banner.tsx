@@ -38,6 +38,16 @@ export function BannerAnswered() {
   return <style>{".consent-banner{display:none}"}</style>;
 }
 
+/** Keeps a choice in this browser alone; false where the browser would not keep it. */
+const keptHere = (snapshot: ConsentSnapshot): boolean => {
+  try {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(snapshot));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 /** Tab and Shift+Tab go round the dialog's own controls, as long as it is open. */
 const keepTabInside = (event: KeyPress<HTMLElement>) => {
   if (event.key !== "Tab") return;
@@ -175,6 +185,16 @@ function ConsentPreferencesPanel(props: {
 /** A choice sent whose answer never came, or could not be read: it may have been recorded. */
 class ChoiceUnanswered extends Error {}
 
+/** A choice the site answered it did not record, with the site's own words. */
+class ChoiceRefused extends Error {
+  constructor(
+    readonly code: unknown,
+    readonly words: string,
+  ) {
+    super("consent_refused");
+  }
+}
+
 /**
  * The bar that asks a visitor how their visit may be measured, until they
  * choose, and the preferences it and the page's "Privacy choices" open. The
@@ -282,10 +302,19 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
     // Only the site's own refusal, in its error shape, says the choice was not
     // recorded; a proxy's error page in its place says nothing either way.
     const body = (await response.json().catch(() => null)) as {
-      error?: { message?: unknown };
+      error?: { code?: unknown; message?: unknown };
     } | null;
     if (typeof body?.error?.message !== "string") throw new ChoiceUnanswered();
-    throw new Error("consent_refused");
+    throw new ChoiceRefused(body.error.code, body.error.message);
+  };
+
+  const held = (product: boolean, ads: boolean, snapshot: ConsentSnapshot) => {
+    setProductAnalytics(product);
+    setAdsMeasurement(ads);
+    if (preferencesOpen) closePreferences();
+    else window.requestAnimationFrame(() => returnFocus(null));
+    setVisible(false);
+    window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: snapshot }));
   };
 
   const save = async (product: boolean, ads: boolean) => {
@@ -307,19 +336,32 @@ export function ConsentBanner({ brand }: Readonly<{ brand: string }>) {
           recorded = true;
         },
       });
-      setProductAnalytics(product);
-      setAdsMeasurement(ads);
-      if (preferencesOpen) closePreferences();
-      else window.requestAnimationFrame(() => returnFocus(null));
-      setVisible(false);
-      window.dispatchEvent(new CustomEvent(CONSENT_CHANGED_EVENT, { detail: snapshot }));
+      held(product, ads, snapshot);
     } catch (failure) {
+      // The site refuses a choice this way only where it would open a new
+      // visit, so it holds no earlier choice of this visitor's to measure by.
+      // Declining then needs nothing of the site, and holds in this browser.
+      // Any other refusal may leave an earlier allowing choice in force there.
+      if (
+        failure instanceof ChoiceRefused &&
+        failure.code === "consent_rate_limited" &&
+        !product &&
+        !ads &&
+        keptHere(snapshot)
+      ) {
+        held(product, ads, snapshot);
+        return;
+      }
       setError(
         recorded
           ? "Your choices were saved, but this browser would not keep them, so you may be asked again."
           : failure instanceof ChoiceUnanswered
             ? "No answer came back, so we cannot tell whether your choices were saved. Choose again: the choice saved last is the one that holds."
-            : "We could not save your choices. No optional analytics were enabled.",
+            : // Unsaved, the choice changed nothing: whatever the site recorded
+              // before, an allowing choice included, still holds there.
+              `We could not save your choices${
+                failure instanceof ChoiceRefused ? `: ${failure.words}` : "."
+              } The choice saved before, if any, still applies.`,
       );
     } finally {
       setSaving(false);

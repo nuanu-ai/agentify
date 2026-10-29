@@ -2920,7 +2920,7 @@ export class Gateway {
       // door letting it in and this point found no held poll to end
       // (`disableMerchantKey`). Answered at once, because the next poll is the
       // door's to refuse.
-      if (keyId !== null && !(await this.#keyStillWorks(merchantId, keyId))) {
+      if (keyId !== null && !(await this.keyStillWorks(merchantId, keyId))) {
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
       // Asked once the poll is held, so a switch either came before this read
@@ -2990,7 +2990,8 @@ export class Gateway {
     }
   }
 
-  async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {
+  /** Whether this merchant's key exists and has not been disabled. */
+  async keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {
     const keys = await this.runtime.store.keysOf(merchantId);
     return keys.some((key) => key.id === keyId && key.disabledAt === null);
   }
@@ -3003,7 +3004,7 @@ export class Gateway {
    */
   async #keyConfirmed(merchantId: string, keyId: string): Promise<boolean> {
     try {
-      return await this.#keyStillWorks(merchantId, keyId);
+      return await this.keyStillWorks(merchantId, keyId);
     } catch (thrown) {
       console.error(
         `[gateway] the key of a poll of ${merchantId} could not be read, so what it drew goes back on the stream: ${failureNamed(thrown)}`,
@@ -3822,12 +3823,16 @@ const overWithNothingHeld = (record: StoredOrder): boolean =>
  */
 /**
  * The merchant an order call is held to, and how they made it: a key is their
- * worker, a session is a person in the dashboard. A caller who says neither
- * is left unnamed rather than guessed.
+ * worker, a session is a person in the dashboard. A key's call lands only
+ * while that key works, read under the order's own hold, so a revocation that
+ * arrives after the door let the call in still stops it. A caller who says
+ * neither is left unnamed rather than guessed.
  */
 function actingAs(merchantId: string, by: Caller | undefined): ActingMerchant {
   if (by === undefined) return { merchantId };
-  return { merchantId, actor: by.kind === "key" ? "merchant_worker" : "human" };
+  return by.kind === "key"
+    ? { merchantId, keyId: by.keyId, actor: "merchant_worker" }
+    : { merchantId, actor: "human" };
 }
 
 function refusedCall(rejection: TransitionRejection): CallError {

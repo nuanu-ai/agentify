@@ -23,7 +23,7 @@ because it is public.
 
 | Channel | Address | What runs there | How a revision gets there |
 | --- | --- | --- | --- |
-| TEST | `test.agentify.ad` | any commit that was the head of a pushed branch | the `deploy-test` tag moved to it; the host's timer releases it within a minute of its images being built ("Releasing to test") |
+| TEST | `test.agentify.ad` | any commit that was the head of a pushed branch | a repository administrator moves the `deploy-test` tag to it; the host's timer releases it within a minute of its images being built ("Releasing to test") |
 | PRODUCTION | `agentify.ad` | a commit of `main` tagged `app-v<release>` | a person runs `agentify-release app-v<release>` on the host once the tag is pushed ("Releasing to production") |
 
 The servers pull rather than being pushed to (ADR-0016), and the same
@@ -32,7 +32,7 @@ The servers pull rather than being pushed to (ADR-0016), and the same
 ```mermaid
 flowchart LR
     B[branch] -- pull request and review --> M[main]
-    B -. move deploy-test .-> T[test.agentify.ad]
+    B -. an administrator moves deploy-test .-> T[test.agentify.ad]
     M -- tag app-v*, then agentify-release --> P[agentify.ad]
     M -- tag app-v* --> N[npm: the SDK and the contracts]
 ```
@@ -163,9 +163,11 @@ in the Actions tab.
 
 Then try the npm publication without publishing anything: in GitHub Actions,
 run **Publish Agentify SDK** from `main` by hand, with the tag you are about to
-create as `release_tag` and `dry_run` left on. It takes `main`'s head, resolves
-the versions the tag would publish, and runs the gates and `pnpm outside` as
-the real run will, so a refusal shows before the tag that cannot be moved.
+create as `release_tag`. A run started by hand only checks and never publishes.
+It takes `main`'s head, resolves the versions the tag would publish, and runs
+the gates and `pnpm outside` as the tag's run will, so a refusal shows before
+the tag that cannot be moved. It does not wait for CI and does not ask the
+registry whether the package names exist; the tag's run does both.
 
 The tag is the acceptance, and only repository administrators can create an
 `app-v*` tag; once pushed, a release tag can be neither moved nor deleted.
@@ -236,12 +238,29 @@ The workflow refuses a tag that is not `app-v*`, a tagged commit that is not on
 `main`, a package version that is not a stable `x.y.z` or is still `0.0.0`, and
 a workspace whose publishable packages are anything but those two. It waits up
 to 25 minutes for `ci.yml` to succeed on the push of that exact commit to
-`main`, runs the gates and `pnpm outside` again, and publishes through npm
-Trusted Publishing, with provenance and no stored token. A green run is not
-the evidence by itself: its last step reads both versions back from the
-registry, checks that `latest` names them, and installs and imports them in an
-empty directory. A run that fails after publishing is run again from the
-Actions tab; it finds nothing left to publish and checks again.
+`main`, runs the gates and `pnpm outside` again, and publishes the very
+tarballs `pnpm outside` checked through npm Trusted Publishing, with provenance
+and no stored token. A green run is not the evidence by itself: its last job
+reads both versions back from the registry, checks that `latest` names them,
+and installs and imports them in an empty directory. A run that fails after
+publishing has its failed jobs run again from the Actions tab; the publishing
+job skips a version the registry already holds, and the last job checks again.
+
+Those checks are steps in a file that any branch can change, so they are not
+what keeps a branch from publishing. The run has three jobs. The first checks
+the release, runs the gates and `pnpm outside`, and keeps the two tarballs that
+command checked. The second publishes them, and it alone can obtain the
+identity npm accepts: it starts only on a tag push after the first succeeded,
+and it runs in the GitHub environment `production`, which admits a job only
+from an `app-v*` tag. npm accepts a publication only from this workflow's job
+in that environment, so a branch, whatever it changes in the workflow, can
+neither enter the environment nor publish without it. That job installs and
+builds nothing from the workspace: it sets up Node.js and the npm version that
+supports Trusted Publishing, fetches the tarballs and runs `npm publish` on
+each version the registry does not hold. The third job reads the release back
+without the identity. Publishing needs no secret and no variable, so the
+environment holds none: anything kept there would be readable by every job
+that enters it.
 
 npm attaches a trusted publisher only to a package name that already exists,
 so a new package name needs one publication by hand before the workflow can
@@ -249,23 +268,48 @@ take it over, and the workflow refuses while a name is missing. An owner of
 the `nuanu-ai` npm organization, with two-factor authentication, publishes the
 tarball `pnpm pack` makes from the exact commit after its CI succeeded (a
 plain `npm publish` from the package's directory would publish the source
-manifest, with its `workspace:*` ranges), and then trusts the workflow:
+manifest, with its `workspace:*` ranges). No npm token is kept in the
+repository or in GitHub; the short-lived session of an interactive
+`npm login` is enough for that one publication. The two packages went through
+this once, and their earlier releases are the `sdk-v0.1.0` to `sdk-v0.2.5`
+tags.
+
+A trust, which npm calls a trusted publisher configuration, binds the
+repository, the workflow's file name and the environment, never the branch or
+the tag. A trust without the environment accepts this workflow run from any
+branch, so every trust of these two packages names `production`. npm cannot
+edit a trust, only revoke one and create another; it expires a new trust that
+the workflow has not published through within two days; and `npm trust` needs
+npm 11.15.0 or later. So an owner trusts the
+workflow for a package in the two days before the tag that publishes a new
+version of that package:
 
 ```sh
-npm trust github <package> --repo nuanu-ai/agentify --file publish-sdk.yml --allow-publish --yes
+npm trust github <package> --repo nuanu-ai/agentify --file publish-sdk.yml --env production --allow-publish --yes
 npm trust list <package>
 ```
 
-No npm token is kept in the repository or in GitHub; the short-lived session
-of an interactive `npm login` is enough for that one publication. The two
-packages went through this once, and their earlier releases are the
-`sdk-v0.1.0` to `sdk-v0.2.5` tags.
+npm's documentation says that every field of a trust must match exactly, but
+it does not promise that a token from a job outside any environment is refused
+by a trust that names one. So after a release through a new trust, an owner
+confirms the binding once. On a `spike/` branch, edit
+`.github/workflows/publish-sdk.yml` itself, keeping its file name, since npm
+refuses a copy under another name for the file name alone. Give a job
+`id-token: write` and no `environment:`, and have it run `npm publish` on the
+tarball of the version just released. A refusal for want of authentication
+(401, `ENEEDAUTH`) means the environment held; a 403 saying that it cannot
+publish over a previously published version means npm accepted the identity
+and the binding does not hold. Delete the branch afterwards.
 
 ## Releasing to test
 
 There is one TEST channel and it is shared, so tell the other person before
-moving it. A TEST release is the `deploy-test` tag: run **Deploy TEST** from
-`main` in GitHub Actions with a branch, tag or SHA, or move the tag yourself.
+moving it. A TEST release is the `deploy-test` tag, and it runs the
+candidate's own activation as root on the TEST host, so the repository's
+ruleset "Only admins move the TEST tag" lets only an administrator create, move
+or delete the tag; anyone else, GitHub Actions included, is refused. The
+host's timer takes the tag alone, never a branch of the same name. An
+administrator moves it from their own checkout:
 
 ```sh
 git push origin my-branch

@@ -65,7 +65,6 @@ export async function enqueueScanInTransaction(
   tx: DatabaseTransaction,
   input: {
     scanId: string;
-    canonicalTargetUrl: string;
     submittedWithoutScheme: boolean;
     segment: Segment;
     deadlineAt?: Date;
@@ -80,7 +79,6 @@ export async function enqueueScanInTransaction(
 
   const payload: ScanJobV1 = {
     scan_id: input.scanId,
-    canonical_target_url: input.canonicalTargetUrl,
     ...(input.submittedWithoutScheme ? { submitted_without_scheme: true } : {}),
     segment: input.segment,
     rubric_version: SCAN_RUBRIC_VERSION,

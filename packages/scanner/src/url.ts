@@ -36,18 +36,20 @@ export const canonicalizeTarget = (input: string): URL => {
     throw new UrlPolicyError("scheme_blocked");
   if (url.username || url.password) throw new UrlPolicyError("credentials_blocked");
   if (url.hostname.length > 253) throw new UrlPolicyError("hostname_too_long");
-  // Read without the dot a fully qualified name may end in, which names the
-  // same host: "shop.localhost." is "shop.localhost".
-  if (BLOCKED_HOST_SUFFIX.test(url.hostname.replace(/\.$/, "")))
-    throw new UrlPolicyError("hostname_blocked");
+  // The dot a fully qualified name may end in names the same host, so it is
+  // dropped: "shop.com." is the site "shop.com". A name with an empty label
+  // anywhere else, as "shop.com..", names none.
+  const hostname = url.hostname.endsWith(".") ? url.hostname.slice(0, -1) : url.hostname;
+  if (hostname.split(".").includes("")) throw new UrlPolicyError("hostname_invalid");
+  url.hostname = hostname;
+  if (BLOCKED_HOST_SUFFIX.test(url.hostname)) throw new UrlPolicyError("hostname_blocked");
   const numericCandidate = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(numericCandidate) !== 0 || looksLikeObfuscatedIpv4(numericCandidate))
     throw new UrlPolicyError("numeric_host_blocked");
   // A name without a dot, such as "shop", is no public website's, nor is one
   // with an underscore, which public DNS gives no website but a container
   // network's own resolver does.
-  if (!url.hostname.replace(/\.$/, "").includes("."))
-    throw new UrlPolicyError("single_label_host_blocked");
+  if (!url.hostname.includes(".")) throw new UrlPolicyError("single_label_host_blocked");
   if (url.hostname.includes("_")) throw new UrlPolicyError("hostname_invalid");
   if (url.port && url.port !== "80" && url.port !== "443") throw new UrlPolicyError("port_blocked");
 

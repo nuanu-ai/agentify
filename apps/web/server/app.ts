@@ -4,7 +4,8 @@
  * short. Every answer carries the security headers; an address with a trailing
  * or a repeated slash is sent to the one without it; the browser's built files
  * are served with a year's cache and the files copied from `public/` as they
- * are.
+ * are; a request's body is read whole before any route sees it, and one over
+ * 64 KiB is refused with 413.
  *
  * `trust proxy` stays off: what the scanner knows of a visitor's address it
  * reads from the `X-Forwarded-For` the edge writes, and Express would put a
@@ -17,6 +18,7 @@
 
 import { METHODS, type Server } from "node:http";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import * as build from "virtual:react-router/server-build";
 import { classifyHttpRoute, listenForMetrics, telemetry } from "@agentify/observability";
 import { precompressedFrom } from "@agentify/ui/assets";
@@ -31,7 +33,7 @@ import express, {
 import { matchRoutes, type RouteObject, type ServerBuild } from "react-router";
 import { pageOf, SECURITY_HEADERS, UNKEPT_PAGE_CACHE } from "../lib/server/answer-headers";
 import { retryDueDataCopies } from "../lib/server/data-copy";
-import { logBackgroundFailure, logUnhandledRequestError } from "../lib/server/http";
+import { errorResponse, logBackgroundFailure, logUnhandledRequestError } from "../lib/server/http";
 import { retryPendingScannerIdentityDeletions } from "../lib/server/scanner-identity-deletion";
 import { startPrivacyRetries } from "./privacy-retries";
 
@@ -110,6 +112,67 @@ const decodes = (path: string): boolean => {
 const plainly = (response: Response, status: number, words: string): void => {
   response.status(status).setHeader("cache-control", UNKEPT_PAGE_CACHE);
   response.type("text/plain").send(words);
+};
+
+/**
+ * The most a request's body may carry. What the scanner's routes take is a few
+ * fields of JSON, and a body is read whole before a route sees it.
+ */
+const BODY_LIMIT_BYTES = 64 * 1024;
+
+/**
+ * A request's body read whole, or `null` once it runs past the limit, counted
+ * as the bytes arrive, since a body sent in chunks states no length. A body
+ * whose sender goes away before it ends is `undefined`.
+ */
+const boundedBody = (request: Request): Promise<Buffer | null | undefined> =>
+  new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let length = 0;
+    const take = (chunk: Buffer) => {
+      length += chunk.length;
+      if (length <= BODY_LIMIT_BYTES) {
+        chunks.push(chunk);
+        return;
+      }
+      request.off("data", take);
+      request.pause();
+      resolve(null);
+    };
+    request.on("data", take);
+    request.once("end", () => resolve(Buffer.concat(chunks)));
+    request.once("close", () => resolve(undefined));
+  });
+
+/**
+ * The request as React Router's adapter reads it, its body the bytes already
+ * read rather than the socket they came from; everything else is the
+ * request's own.
+ */
+const carrying = (request: Request, body: Buffer): Request => {
+  const bytes = Readable.from([body]);
+  const replay = Object.create(request) as Request;
+  for (const name of ["on", "once", "off", "pause", "resume", "destroy"] as const) {
+    Object.defineProperty(replay, name, { value: bytes[name].bind(bytes) });
+  }
+  Object.defineProperty(replay, "readable", { get: () => bytes.readable });
+  return replay;
+};
+
+/** The API's refusal of a body over the limit; the connection is closed rather than read to its end. */
+const tooLarge = async (request: Request, response: Response): Promise<void> => {
+  const refusal = errorResponse(
+    new Request(new URL(request.originalUrl, "http://scanner.invalid"), {
+      method: request.method,
+      headers: { "x-request-id": request.get("x-request-id") ?? "" },
+    }),
+    413,
+    "body_too_large",
+    "The request body is larger than 64 KiB, the most this server reads.",
+  );
+  response.status(refusal.status).setHeader("connection", "close");
+  for (const [name, value] of refusal.headers) response.setHeader(name, value);
+  response.send(await refusal.text());
 };
 
 export function scannerApp(parts: ScannerParts): Express {
@@ -193,7 +256,21 @@ export function scannerApp(parts: ScannerParts): Express {
     next();
   });
 
-  app.use(createRequestHandler({ build, mode: parts.mode }));
+  const handleRouted = createRequestHandler({ build, mode: parts.mode });
+  app.use(async (request, response, next) => {
+    if (request.method === "GET" || request.method === "HEAD") {
+      await handleRouted(request, response, next);
+      return;
+    }
+    if (Number(request.get("content-length") ?? 0) > BODY_LIMIT_BYTES) {
+      await tooLarge(request, response);
+      return;
+    }
+    const body = await boundedBody(request);
+    if (body === undefined) return;
+    if (body === null) await tooLarge(request, response);
+    else await handleRouted(carrying(request, body), response, next);
+  });
 
   app.use((thrown: unknown, request: Request, response: Response, next: NextFunction) => {
     if (response.headersSent) {

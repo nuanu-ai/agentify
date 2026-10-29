@@ -4,8 +4,8 @@
 #
 # The tag is `app-v<release>`; its number is the application's and says
 # nothing about the SDK and contracts versions, which come from their
-# manifests. Changesets publishes only what the registry does not hold yet, so
-# a tag whose versions are already public publishes nothing.
+# manifests. The workflow publishes only what the registry does not hold yet,
+# so a tag whose versions are already public publishes nothing.
 #
 # The workflow appends this command's stdout to GITHUB_OUTPUT, so stdout is a
 # deliberately tiny machine contract. Explanations and refusals go to stderr.

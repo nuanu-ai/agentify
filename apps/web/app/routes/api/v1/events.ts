@@ -1,7 +1,8 @@
-import { clientAnalyticsEventRequestSchema } from "@agentify/scanner-contracts";
+import { clientAnalyticsEventRequestSchema, type Segment } from "@agentify/scanner-contracts";
 import { emitStoredBusinessEvent, scans, sessions } from "@agentify/scanner-database";
 import { eq } from "drizzle-orm";
 
+import { servesLandingVariant } from "../../../../content/landing";
 import { ownedLead, visitorOf } from "../../../../lib/server/auth";
 import { getServerConfig } from "../../../../lib/server/config";
 import { readCookie } from "../../../../lib/server/cookies";
@@ -16,6 +17,14 @@ import {
 import { methods } from "../../../../lib/server/methods";
 import { ANONYMOUS_COOKIE, authorizeScan } from "../../../../lib/server/scans";
 
+/** An event names no landing variant, or the one the site serves for its segment. */
+const servesVariant = ({
+  segment,
+  landing_variant,
+}: Readonly<{ segment?: Segment; landing_variant?: string }>): boolean =>
+  landing_variant === undefined ||
+  (segment !== undefined && servesLandingVariant(segment, landing_variant));
+
 async function recordEvent(request: Request): Promise<Response> {
   if (!hasSameOrigin(request)) {
     return errorResponse(request, 403, "invalid_origin", "The request origin is not allowed.");
@@ -23,7 +32,7 @@ async function recordEvent(request: Request): Promise<Response> {
   const parsed = clientAnalyticsEventRequestSchema.safeParse(
     await request.json().catch(() => null),
   );
-  if (!parsed.success) {
+  if (!parsed.success || !servesVariant(parsed.data)) {
     return errorResponse(request, 400, "invalid_event", "The analytics event is invalid.");
   }
 

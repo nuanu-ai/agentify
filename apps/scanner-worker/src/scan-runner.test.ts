@@ -3,14 +3,14 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { gzipSync } from "node:zlib";
 import { type FetchArtifact, scanStopReason } from "@agentify/scanner";
-import type { CheckResult, ScanJobV1 } from "@agentify/scanner-contracts";
+import type { CheckResult } from "@agentify/scanner-contracts";
 import { describe, expect, it } from "vitest";
 import {
   NodePinnedTransport,
   type PinnedTransport,
   type PinnedTransportRequest,
 } from "./safe-fetch.js";
-import { isSameSite, ScanRunner } from "./scan-runner.js";
+import { isSameSite, ScanRunner, type ScanTarget } from "./scan-runner.js";
 
 const product = JSON.stringify({
   "@type": "Product",
@@ -22,7 +22,7 @@ const product = JSON.stringify({
 const html = `<html><head><title>Store</title><script type="application/ld+json">${product}</script><link rel="alternate" hreflang="en" href="https://example.com/en"><link rel="alternate" hreflang="de" href="https://example.com/de"></head><body><h1>Store</h1><main>${"Public product information for deterministic scanner integration. ".repeat(12)}<a href="/products/widget">Widget $19.00 USD</a><meta property="product:price" content="19"></main></body></html>`;
 const robots = `User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml\nContent-Signal: search=yes, ai-input=no, ai-train=no\n${["GPTBot", "ChatGPT-User", "ClaudeBot", "Claude-User", "PerplexityBot", "Google-Extended"].map((agent) => `User-agent: ${agent}\nAllow: /`).join("\n")}`;
 
-const job: ScanJobV1 = {
+const job: ScanTarget = {
   scan_id: "018f3f56-2ec8-7b16-8f66-5b8f93f3251f",
   canonical_target_url: "https://example.com/",
   segment: "store",

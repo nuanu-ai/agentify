@@ -99,6 +99,20 @@ describe("IP and URL SSRF policy", () => {
   });
 
   it.each([
+    "https://Shop.com./path?ok=1",
+    "shop.com./path?ok=1",
+    "https://shop.com.:443/path?ok=1",
+  ])("reads an address ending in a dot as the same site: %s", (target) =>
+    expect(canonicalizeTarget(target).toString()).toBe("https://shop.com/path?ok=1"),
+  );
+
+  it("follows a redirect to an address ending in a dot as the same site", () => {
+    expect(
+      validateRedirect(new URL("https://shop.com/"), "https://shop.com./cart").toString(),
+    ).toBe("https://shop.com/cart");
+  });
+
+  it.each([
     "file:///etc/passwd",
     "https://user:pass@example.com/",
     "http://127.0.0.1/",
@@ -113,6 +127,8 @@ describe("IP and URL SSRF policy", () => {
     "https://shop.localhost./",
     "https://example.local./",
     "https://a.internal./",
+    "https://shop.com../",
+    "https://shop..com/",
     "https://example.com:8080/",
     "https://example.com/?access_token=secret",
     "https://example.com/?signature=x",
