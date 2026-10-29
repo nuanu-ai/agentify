@@ -211,8 +211,10 @@ jobs:
             npm publish "$tarball" --provenance --access public --tag "$DIST_TAG"
           }
 
-          publish "release-packs/nuanu-ai-agentify-contracts-${CONTRACTS_VERSION}.tgz" @nuanu-ai/agentify-contracts "$CONTRACTS_VERSION"
-          publish "release-packs/nuanu-ai-agentify-${SDK_VERSION}.tgz" @nuanu-ai/agentify "$SDK_VERSION"
+          # The leading ./ keeps npm from reading `release-packs/<file>` as a
+          # GitHub repository named release-packs and cloning it.
+          publish "./release-packs/nuanu-ai-agentify-contracts-${CONTRACTS_VERSION}.tgz" @nuanu-ai/agentify-contracts "$CONTRACTS_VERSION"
+          publish "./release-packs/nuanu-ai-agentify-${SDK_VERSION}.tgz" @nuanu-ai/agentify "$SDK_VERSION"
 
   confirm:
     needs: [verify, publish]
