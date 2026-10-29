@@ -91,7 +91,7 @@ are evidence; no invented speed threshold decides whether a screen is clear.
 
 ### When the participants are AI agents
 
-An organising agent may run this protocol and hand each role to a subagent.
+An organising agent may run this protocol and hand each role to another agent.
 Everything above still holds, but an agent's context leaks more easily than a
 person's, and three things need care.
 
@@ -104,13 +104,23 @@ for. A brief that hints at the answer makes the attempt an assisted one, and
 it is recorded as assisted rather than as an independent first attempt.
 
 The roles that stand for outsiders, which are the merchant, the engineer, the
-buyer and the returning merchant, work in a directory that does not contain
-this repository and are told not to look for it. Each has only the equipment
-its real counterpart has: the engineer a terminal, the npm registry and the
-public documentation site; the buyer the declared buyer environment below; the
+buyer and the returning merchant, each run as a session of its own whose
+configuration loads neither this project's instructions nor any memory, in a
+directory outside this repository, and are told not to look for it. A
+subagent started from the organiser's own session does not qualify even when
+its history is empty, because the runtime that starts it hands it the
+project's charter and a summary of memory before the brief, as an earlier run
+found. Before giving the brief, the organiser asks the participant what it
+knows about Agentify and about this run, and records the answer. An answer
+naming anything an outsider would not know, such as the project's charter,
+internal names, this plan or an earlier run, means the isolation failed, and
+the attempt is recorded as assisted. Each role has only the equipment its real
+counterpart has: the engineer a terminal, the npm registry and the public
+documentation site; the buyer the declared buyer environment below; the
 merchant and the returning merchant a browser with the public site and the
 dashboard. For every participant, record the model, its reasoning effort, its
-tools, the exact brief and what its working directory held.
+tools, the configuration its session loaded, the exact brief and what its
+working directory held.
 
 What an agent's attempt measures depends on the role. An engineer's AI coding
 assistant working only from the npm package and the public documentation is a
