@@ -891,8 +891,13 @@ not use. A run that includes any T story or J-09 prepares the load stand and
 records it, in the run's private report under "Scope and prerequisites",
 before its first story of any letter. That way the baseline is read before
 anything moves, and no other story's purchase lands on the load stand's
-merchants. Nothing on the load stand is taken from the existing catalogue: on
-the test channel some cards on sale belong to a merchant whose shop is no
+merchants. Its cards are paused as soon as they are published and are on sale
+only inside the window block T runs in, which on the test channel comes after
+the independent first attempts (Run selection and completion), because a
+buyer looking for goods in an independent attempt reads the whole catalogue
+and would otherwise meet the load stand's cards at 0.01 USD among the goods it
+chooses from. Nothing on the load stand is taken from the existing catalogue:
+on the test channel some cards on sale belong to a merchant whose shop is no
 longer connected, and a card the run did not publish is not the run's to
 measure. The steps are done in order, and a step that needs the owner or the
 operator stops the run there until they have done it.
@@ -909,7 +914,8 @@ operator stops the run there until they have done it.
 2. Have the owner agree the window. On the test channel, T-02, T-03, T-04 and
    T-06 load the channel or spend, and they run only inside a window the owner
    agreed, written in UTC, together with who else uses the channel and the lab
-   in it. T-03 needs that agreement by name, because its junk payments reach
+   in it. The window opens only after the independent first attempts have
+   ended. T-03 needs that agreement by name, because its junk payments reach
    Coinbase's facilitator. The run moves no tag: where the channel does not run
    the revision under test, the run stops and asks.
 3. Create two SDK merchants, A and B, on each channel the run uses: the local
@@ -928,12 +934,15 @@ operator stops the run there until they have done it.
    later, logs every hand-over with the order's identifier and the time, and
    keeps one record per order identifier, so that a repeat is answered from
    the record. Its source and installed versions go into the evidence, and it
-   runs and polls throughout, except where T-06 stops it.
+   runs and polls throughout, except where T-06 stops it. Once its cards are
+   published, the merchant pauses all sales on Cards and resumes them only
+   when the window of block T opens.
 4. Connect a WooCommerce merchant, C, on the test channel only, after steps 2
    and 3 of "Starting and running a run on the test channel": an organiser's
    setup account with a seller name, a site and a payout wallet, connected to
    the lab shop on a profile the operator names and records, the basic profile
-   unless the run says otherwise. C imports, and the organiser records the
+   unless the run says otherwise. C imports, pauses all sales on Cards until
+   the window of block T opens, as A and B do, and the organiser records the
    number of the download T-02 buys against its SKU. The lab shop serves
    several test accounts at once, and accounts connected to one shop share its
    carts, so C's samples are spaced at least six seconds apart and nothing
@@ -1100,7 +1109,9 @@ purchase. Their predictions, sample sizes, spending cap of 0.30 test USDC, stop
 conditions and decision rule are fixed in
 [research note 91](91-load-and-timing.md) and executed literally, and the
 results the rows below require count as predictions fixed with it. They run
-on the load stand and only once it is recorded (Preparation and boundaries).
+on the load stand and only once it is recorded (Preparation and boundaries),
+and on the test channel only after the independent first attempts (Run
+selection and completion).
 Three readings stay apart in every result: a figure from the gateway's
 histograms describes a window, a client timer describes one call, and a chain
 read describes neither and is never added to them. On the local stack the
@@ -1436,10 +1447,14 @@ story rather than every permutation of the same cause.
 ## Run selection and completion
 
 Start with independent A, U and B attempts before teaching participants.
-A fresh participant's first attempt is spent only on a path with no blocker
-already known: when an earlier review has found a dead end there, record it as
-a known finding and run the independent attempt once its fix reaches the test
-channel. Stories that need an instrument the run lacks wait for it rather than
+Block T on the test channel runs after those first attempts and never during
+them, because its load, and what it spends of the limits everyone on the
+channel shares, would change what the participants meet; the load stand is
+still prepared and recorded before the first story, with its cards paused
+(The load stand). A fresh participant's first attempt is spent only on a path
+with no blocker already known: when an earlier review has found a dead end
+there, record it as a known finding and run the independent attempt once its
+fix reaches the test channel. Stories that need an instrument the run lacks wait for it rather than
 being run without their fault. Establish one verified SDK sale and one verified Woo download sale, then
 exercise failures and recovery. Start L's bounded observation after its
 prerequisites and perform independent work while it waits. K is a separate
