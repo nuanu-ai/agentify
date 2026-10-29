@@ -171,11 +171,13 @@ a sign-in link. Google sign-in passes through none of these limits, and the
 refusal screen offers it. The scanner itself takes ten scans an hour from one
 client address, asking for a challenge after the third, and ten scans of one
 shop a day; on the test channel every visitor reads as one client address.
-Budget a run's email links and scans across its participants, and let
-participants sign in with Google where a story does not need an emailed link.
-During a run on the test channel, a refusal naming visitors the site cannot
-tell apart is the expected limit, not a finding, while its words and its
-recovery path are still judged (E-01).
+Budget a run's email links and scans across its participants. A newcomer role
+signs in by emailed link alone, for the reason step 4 of "Starting and running
+a run on the test channel" gives, so on the test channel its links come out of
+the thirty shared each hour; every other account signs in with Google where
+its story does not need an emailed link. During a run on the test channel, a
+refusal naming visitors the site cannot tell apart is the expected limit, not
+a finding, while its words and its recovery path are still judged (E-01).
 
 The purchase door refuses three kinds of purchase before anything is charged,
 and all of them shape any story that buys from an SDK merchant. For a merchant
@@ -498,9 +500,9 @@ deployment facts this public plan leaves out, the shop's address among them.
 Every `./lab.sh` command below is run by the operator on the fixture host.
 Moments in these steps are written in UTC, as the lab's request log reads
 them, while the dashboard shows each moment in the reader's own zone and names
-that zone, so the two are compared through it. Funding the
-buyers' wallets and admitting the participants' Google accounts (step 4) wait
-on others, so they are done in the days before the run.
+that zone, so the two are compared through it. Funding the buyers' wallets
+and listing Google accounts as test users (step 4) wait on others, so they are
+done in the days before the run.
 
 1. Agree the run with the other person who uses the test channel and the lab
    before changing either: which revision the channel will run, which profiles
@@ -665,24 +667,34 @@ on others, so they are done in the days before the run.
 4. Prepare the accounts and the money. The run uses two merchants and two
    buyers (item 2 above), and the stand's operator merchant besides (Goods and
    instruments). A first attempt needs a dashboard address that has never
-   signed in on the test channel. The operator can start an address over
-   ("Starting an address over on TEST" in deploy/README.md), but that is
-   refused for an account whose merchant has an order or a receipt, so an
-   address a paid run has used is replaced by a new mailbox rather than a plus
-   or dot variant of it. A variant is a separate account to the dashboard, but
-   its links land in the same inbox as the original's, so a reader cannot tell
-   which account a link belongs to, and Google sign-in returns the account's
-   own address rather than the variant, which reaches the original's account.
-   Participants sign in with Google where a story does not need an emailed
-   link, within the limits above; where the test channel's Google project
-   admits only listed test users, whoever administers that project lists each
-   participant's account first ("Google sign-in"). The organiser's own setup
-   merchants, those not playing a participant, set a seller name and a payout
-   wallet in Settings before importing from the shop, and the site as well for
-   parcels; a participant finds those steps on their own, and telling them is
-   assistance. The person playing the shop owner signs in to WooCommerce as
-   the lab's administrator, whose password the operator hands over privately
-   from the lab's `.env`; it never goes into a report.
+   signed in on the test channel, so each newcomer role gets a plus address of
+   a mailbox the organiser reads, with a suffix no earlier run has used, such
+   as the run's date and the role. The dashboard treats a plus address as an
+   account of its own, as E-02 expects of any variant. The participant signs
+   in to it by emailed link only, because Google sign-in returns the mailbox's
+   own address and so lands in the mailbox's existing account. The links
+   arrive in the shared inbox, which also holds other runs' mail, so the
+   organiser picks the participant's message by the address it was sent to and
+   hands the participant that one message, never the mailbox. A newcomer's
+   merchant, whether the participant creates it or is handed it, starts empty,
+   with no cards, keys or orders of an earlier run: an earlier run's open
+   orders would show on its screens as work of its own and count towards the
+   ten unfulfilled orders that stop all its sales. The organiser's own
+   merchants are separate accounts. A used account is never erased to make it
+   look new, since what it holds belongs to the run that used it, and the
+   operator's way of starting an address over ("Starting an address over on
+   TEST" in deploy/README.md) refuses one whose merchant has an order or a
+   receipt in any case. Every other account signs in with Google where its
+   story does not need an emailed link, within the limits above; where the
+   test channel's Google project admits only listed test users, whoever
+   administers that project lists each such account first ("Google sign-in").
+   The organiser's own setup merchants, those not playing a participant, set a
+   seller name and a payout wallet in Settings before importing from the shop,
+   and the site as well for parcels; a participant finds those steps on their
+   own, and telling them is assistance. The person playing the shop owner
+   signs in to WooCommerce as the lab's administrator, whose password the
+   operator hands over privately from the lab's `.env`; it never goes into a
+   report.
 
    A rate saved for a shop priced in rupiah belongs to the account, the
    shop's address and the currency, and outlives switches and reconnections
