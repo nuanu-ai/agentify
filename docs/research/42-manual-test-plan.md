@@ -66,8 +66,14 @@ alone is not the spending guard. The simplest total limit that a tool enforces
 is the wallet itself: fund the buyer's signer with exactly the run's total
 budget in test USDC, which it cannot exceed whatever it decides; an x402 buyer
 signs an authorisation and pays no gas. The per-purchase limit comes from the
-client's own maximum-payment setting. Record the client/tool versions and
-capabilities before the run, not after seeing a failure.
+client's own maximum-payment setting, and a client's default for that setting
+is part of the declared limit. The standard x402 client, `@x402/core` from
+release 2.23.0, refuses any payment above 1 USD unless its
+`maxAmountPerPayment` is changed, so a buyer whose run allows more stops before
+paying, and one whose run allows less is held only to 1 USD. The organiser sets
+it to the run's per-purchase limit and records the value before the buyer
+starts. Record the client/tool versions and capabilities before the run, not
+after seeing a failure.
 
 A missing declared tool capability blocks that variant. A product response that
 the declared ordinary client cannot read is a product finding. Keep the failed
