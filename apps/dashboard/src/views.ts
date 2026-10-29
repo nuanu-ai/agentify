@@ -228,7 +228,7 @@ export const cardsView = (
   const stopped = cards.selling === "paused";
   // A card the other integration published goes on sale only when the
   // merchant switches integration, which no switch of its own can do, so it is
-  // counted under the list rather than listed beside its imported twin.
+  // counted under the list rather than listed beside the cards that sell.
   const listed = cards.cards.filter((entry) => !integration.offSale.includes(entry.id));
   const elsewhere = cards.cards.length - listed.length;
   const rows = listed.map((entry): CardRow => {

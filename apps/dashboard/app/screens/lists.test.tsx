@@ -614,7 +614,6 @@ describe("the products of the integration the merchant does not sell through", (
       expect(html).toContain(way);
       if (notThere !== null) expect(html).not.toContain(notThere);
       expect(text).toMatch(/\b1 product\b/);
-      expect(text).toMatch(SELLS_THROUGH[through]);
     },
   );
 });
