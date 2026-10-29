@@ -705,15 +705,16 @@ export function describeOperatorFigures(
         await ready(store, C);
         await store.publishCard(C, aCard("sku-1", "async"), NOW - DAY);
         await store.noteContact(C, NOW - 60_000, "api");
-        // On their WooCommerce shop with nothing polling for them, as when the
-        // shop is no longer connected.
+        // Moved to their WooCommerce shop, which nothing polls for, as when it
+        // is no longer connected; their code polled just before.
         await ready(store, "mch_d");
+        await store.noteContact("mch_d", NOW - 60_000, "api");
         await store.switchIntegration("mch_d", "woocommerce");
         await store.publishCard("mch_d", aCard("woo-1", "async"), NOW - DAY, "woocommerce");
 
         expect(without(await reader.figures.workers(LIVE))).toStrictEqual({
           connectedWithin: 1,
-          everConnected: 3,
+          everConnected: 4,
           silent: [
             { merchantId: "mch_d", name: "Merchant mch_d", since: null },
             { merchantId: B, name: "Merchant mch_b", since: NOW - HOUR },

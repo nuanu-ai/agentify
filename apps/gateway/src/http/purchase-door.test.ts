@@ -291,6 +291,28 @@ describe("a purchase that charges before its goods", () => {
 
     expect(answered.status).toBe(402);
   });
+
+  it("is priced at the code's first poll after a trip to a shop and back, however lately the code polled before it", async () => {
+    // A poll soon after another is not written again, and on the shop the
+    // connector's polls took the place of the code's.
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    const itemId = await selling(harnessed, prepaidCard);
+    await workOnce(harnessed, {}, 0);
+    await harnessed.gateway.sellThrough(merchantId, "woocommerce");
+    harnessed.advance(1_000);
+    await workOnce(harnessed, { through: "woocommerce" }, 0);
+    await harnessed.gateway.sellThrough(merchantId, "api");
+    await harnessed.gateway.setSelling(merchantId, "open");
+    harnessed.advance(1_000);
+    await workOnce(harnessed, {}, 0);
+
+    const answered = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect(answered.status).toBe(402);
+  });
 });
 
 describe("a worker's contract admission", () => {

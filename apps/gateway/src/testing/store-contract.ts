@@ -588,22 +588,26 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         expect(await store.lastContact(A)).toBe(8_000);
       });
 
-      it("is the poll of the integration the merchant sells through, forgotten when they switch", async () => {
+      it("is the poll of the integration the merchant sells through, kept across a switch and counted for no other", async () => {
         // The connector polls a shop's stream after its merchant has moved back
-        // to their code, and the code may never have polled.
+        // to their code, and the code may not be running.
         const store = await twoMerchants();
         await store.publishCard(A, card("woo-1", "A mug"), 1_000, "woocommerce");
+        await store.noteContact(A, 4_000, "api");
         await store.noteContact(A, 5_000, "woocommerce");
 
-        expect(await store.lastContact(A)).toBeNull();
-        await store.noteContact(A, 6_000, "api");
+        expect(await store.lastContact(A)).toBe(4_000);
         await store.switchIntegration(A, "woocommerce");
         expect(await store.lastContact(A)).toBeNull();
         expect((await store.catalogEntries())[0]?.lastContact).toBeNull();
-        await store.noteContact(A, 7_000, "woocommerce");
-        // Asking for the integration already in use is no switch.
+        // Earlier than the code's, from another process's clock: the code's
+        // later mark lends the shop nothing.
+        await store.noteContact(A, 3_000, "woocommerce");
+        expect(await store.lastContact(A)).toBe(3_000);
+        await store.switchIntegration(A, "api");
+        expect(await store.lastContact(A)).toBeNull();
         await store.switchIntegration(A, "woocommerce");
-        expect(await store.lastContact(A)).toBe(7_000);
+        expect(await store.lastContact(A)).toBe(3_000);
       });
     });
 
