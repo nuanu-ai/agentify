@@ -30,7 +30,7 @@ export function AnalyticsRuntime({ config }: Readonly<{ config: BrowserAnalytics
         // Not fetched, so not recorded: the next page's trigger tries again.
         return;
       }
-      await delivery.deliver(config, event, snapshot);
+      await delivery.deliver(config, event);
     },
     [config],
   );

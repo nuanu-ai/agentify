@@ -56,12 +56,18 @@ export const dispatchConsentedBrowserEvent = async (input: {
   return delivered;
 };
 
+/**
+ * Records the event, then delivers it under the visitor's choice as it stands
+ * once the record is back, which another tab may have changed meanwhile; with
+ * no choice standing, nothing is delivered.
+ */
 export async function recordThenDeliverWithConsent<T>(input: {
-  consent: ConsentSnapshot;
+  currentConsent: () => ConsentSnapshot | undefined;
   recordBusinessEvent: () => Promise<T>;
   deliverToBrowserDestinations: (recorded: T, consent: ConsentSnapshot) => Promise<void>;
 }): Promise<T> {
   const recorded = await input.recordBusinessEvent();
-  await input.deliverToBrowserDestinations(recorded, input.consent);
+  const consent = input.currentConsent();
+  if (consent) await input.deliverToBrowserDestinations(recorded, consent);
   return recorded;
 }

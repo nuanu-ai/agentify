@@ -7,7 +7,7 @@ import {
 } from "@agentify/analytics/browser";
 import { type BrowserAnalyticsConfig, CONSENT_CHANGED_EVENT } from "@agentify/consent";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { LANDING_SEGMENT_ATTRIBUTE, LANDING_VARIANT_ATTRIBUTE } from "../lib/landing-announcement";
 import { onSite } from "../testing/on-site";
 import { AnalyticsRuntime } from "./analytics-runtime";
@@ -97,6 +97,87 @@ describe("a visit before and after the visitor's choice", () => {
         segment: "store",
         landing_variant: "store-v1",
       },
+    });
+  });
+});
+
+describe("a choice withdrawn in another tab while an event is being recorded", () => {
+  const POSTHOG_HOST = "https://posthog.agentify.invalid";
+  const measured: BrowserAnalyticsConfig = {
+    ...config,
+    posthog: { key: "phc_test_key", host: POSTHOG_HOST, destinationEnvironment: "test" },
+  };
+  const choice = (productAnalytics: boolean) =>
+    createConsentSnapshot({
+      policyVersion: CONSENT_POLICY_VERSION,
+      decisions: { product_analytics: productAnalytics },
+      source: "banner",
+    });
+
+  // PostHog keeps the `fetch` it found when it started, so one recorder
+  // stands for the whole block rather than one per test.
+  const asked: string[] = [];
+  let whileRecording = () => {};
+  const original = globalThis.fetch;
+  beforeAll(() => {
+    globalThis.fetch = async (input) => {
+      const url = String(input instanceof Request ? input.url : input);
+      asked.push(url);
+      if (new URL(url, "http://localhost").pathname !== "/api/v1/events") {
+        return Response.json({ status: 1 });
+      }
+      whileRecording();
+      return Response.json({
+        status: "recorded",
+        event_id: "01990000-0000-7000-8000-000000000002",
+        segment: "store",
+        landing_variant: "store-v1",
+      });
+    };
+  });
+  afterAll(() => {
+    globalThis.fetch = original;
+  });
+
+  const landOnStore = () => {
+    const landing = document.createElement("div");
+    landing.setAttribute(LANDING_SEGMENT_ATTRIBUTE, "store");
+    landing.setAttribute(LANDING_VARIANT_ATTRIBUTE, "store-v1");
+    document.body.append(landing);
+    window.history.replaceState({}, "", "/store");
+    localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(choice(true)));
+  };
+
+  /**
+   * Well past the few seconds PostHog holds a capture before it sends its
+   * batch, which it offers no way to hurry, so a loaded machine still sends it
+   * in time.
+   */
+  const PAST_POSTHOG_BATCH_MS = 10_000;
+  const toPosthog = (from: number) =>
+    asked.slice(from).filter((url) => url.startsWith(POSTHOG_HOST));
+
+  it("is not sent to PostHog by this tab", async () => {
+    landOnStore();
+    whileRecording = () => localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(choice(false)));
+    const from = asked.length;
+
+    render(onSite(<AnalyticsRuntime config={measured} />));
+    await waitFor(() => expect(asked.slice(from)).toContain("/api/v1/events"));
+    await new Promise((resolve) => setTimeout(resolve, PAST_POSTHOG_BATCH_MS));
+
+    expect(toPosthog(from)).toEqual([]);
+  });
+
+  it("leaves the event sent to PostHog where the choice still allows it", async () => {
+    landOnStore();
+    whileRecording = () => {};
+    const from = asked.length;
+
+    render(onSite(<AnalyticsRuntime config={measured} />));
+
+    await waitFor(() => expect(toPosthog(from)).not.toEqual([]), {
+      timeout: PAST_POSTHOG_BATCH_MS,
     });
   });
 });

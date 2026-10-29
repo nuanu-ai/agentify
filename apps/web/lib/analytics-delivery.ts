@@ -6,7 +6,7 @@
  * it.
  */
 
-import type { ConsentSnapshot } from "@agentify/analytics/browser";
+import { readCurrentConsent } from "@agentify/analytics/browser";
 import {
   type BrowserAnalyticsConfig,
   metaPixelOf,
@@ -39,11 +39,7 @@ const META_CLIENT_EVENT = {
   registration_started: "RegistrationStart",
 } as const;
 
-export async function deliver(
-  config: BrowserAnalyticsConfig,
-  event: PendingEvent,
-  snapshot: ConsentSnapshot,
-): Promise<void> {
+export async function deliver(config: BrowserAnalyticsConfig, event: PendingEvent): Promise<void> {
   const eventIdKey = `agentify.analytics.event-id.${event.onceKey}`;
   const candidateEventId =
     window.sessionStorage.getItem(eventIdKey) ?? createClientOwnedEventId(event.name);
@@ -53,7 +49,7 @@ export async function deliver(
     : null;
   try {
     await recordThenDeliverWithConsent({
-      consent: snapshot,
+      currentConsent: () => readCurrentConsent(window.localStorage),
       recordBusinessEvent: async () => {
         const response = await fetch("/api/v1/events", {
           method: "POST",
