@@ -162,7 +162,6 @@ describe("canonical contracts", () => {
     expect(
       scanJobV1Schema.safeParse({
         scan_id: "019b41a0-7c51-7d63-84bd-a5a20faef497",
-        canonical_target_url: "https://example.com/",
         submitted_without_scheme: true,
         segment: "owner",
         rubric_version: "gtm-v1.0.0",

@@ -73,7 +73,10 @@ const unavailableArtifact = (url: URL, errorCode: string): FetchArtifact => ({
   errorCode,
 });
 
-const skeletonArtifacts = (job: ScanJobV1, target: URL, robots: FetchArtifact): ScanArtifacts => ({
+/** A queued scan with the address its own row holds, which the job itself does not carry. */
+export type ScanTarget = ScanJobV1 & { canonical_target_url: string };
+
+const skeletonArtifacts = (job: ScanTarget, target: URL, robots: FetchArtifact): ScanArtifacts => ({
   segment: job.segment,
   canonicalTargetUrl: target.toString(),
   robots,
@@ -112,7 +115,7 @@ export class ScanRunner {
   constructor(private readonly dependencies: ScanRunnerDependencies) {}
 
   async run(
-    job: ScanJobV1,
+    job: ScanTarget,
     options: ScanRunOptions = {},
   ): Promise<ScanEvaluation & { requestCount: number }> {
     const startedAt = Date.now();

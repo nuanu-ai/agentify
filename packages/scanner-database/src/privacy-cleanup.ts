@@ -20,6 +20,9 @@ import {
   waitlistEntries,
 } from "./schema.js";
 
+/** What a scan's address reads once the person behind the scan is deleted. */
+export const DELETED_TARGET_URL = "redacted://deleted";
+
 const REGISTRATION_INTENT_RETENTION_MS = 7 * 86_400_000;
 const UNVERIFIED_LEAD_RETENTION_MS = 30 * 86_400_000;
 const RAW_ANALYTICS_EVENT_RETENTION_MS = 13 * 30 * 86_400_000;
@@ -205,8 +208,8 @@ export async function anonymizeLeadData(
         .set({
           leadId: null,
           sessionId: anonymizedSessionId,
-          submittedUrlRedacted: "redacted://deleted",
-          canonicalTargetUrl: "redacted://deleted",
+          submittedUrlRedacted: DELETED_TARGET_URL,
+          canonicalTargetUrl: DELETED_TARGET_URL,
           targetHost: "deleted.invalid",
           targetHash: sql`'deleted:' || ${scans.id}::text`,
           accessTokenHash: sql`'deleted:' || ${scans.id}::text`,

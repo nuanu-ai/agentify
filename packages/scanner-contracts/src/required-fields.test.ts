@@ -391,20 +391,12 @@ const contracts = [
     schema: scanJobV1Schema,
     valid: {
       scan_id: uuid,
-      canonical_target_url: "https://example.com/",
       segment: "owner",
       rubric_version: "gtm-v1.0.0",
       deadline_at: timestamp,
       attempt_no: 1,
     },
-    required: [
-      "scan_id",
-      "canonical_target_url",
-      "segment",
-      "rubric_version",
-      "deadline_at",
-      "attempt_no",
-    ],
+    required: ["scan_id", "segment", "rubric_version", "deadline_at", "attempt_no"],
   },
   {
     name: "sendReportLinkRequestSchema",

@@ -2177,7 +2177,6 @@ describe("P4 dashboard-owned scanner identity", () => {
       getDatabase().db.transaction(async (tx) => {
         await enqueueScanInTransaction(tx, {
           scanId: rollbackScanId,
-          canonicalTargetUrl: "https://rollback.example/",
           submittedWithoutScheme: false,
           segment: "owner",
         });
@@ -2198,6 +2197,27 @@ describe("P4 dashboard-owned scanner identity", () => {
       "delete from pgboss.job where data->>'scan_id' = any($1::text[])",
       [[first.scanId, rollbackScanId]],
     );
+  });
+
+  it("queues a scan by its id alone, so the queue keeps no address of the site after the scan's own row forgets it", async () => {
+    const { scanId } = await createOrReplayScan(
+      {
+        url: "https://queue-names-the-scan.example/",
+        segment: "owner",
+        landing_variant: "owner-v1",
+        turnstile_token: null,
+      },
+      `queue-names-the-scan-${createUuidV7()}`,
+      undefined,
+    );
+    const queued = await getDatabase().pool.query<{ data: Record<string, unknown> }>(
+      "select data from pgboss.job where data->>'scan_id' = $1",
+      [scanId],
+    );
+    expect(queued.rows).toHaveLength(1);
+    expect(queued.rows[0]?.data).toMatchObject({ scan_id: scanId, attempt_no: 1 });
+    expect(JSON.stringify(queued.rows[0]?.data)).not.toContain("queue-names-the-scan");
+    await getDatabase().pool.query("delete from pgboss.job where data->>'scan_id' = $1", [scanId]);
   });
 
   it("atomically gates the scan after the free ones, at the limits the operator page states, and commits both buckets together", async () => {

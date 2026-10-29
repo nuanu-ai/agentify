@@ -573,7 +573,6 @@ describe("the migrated scanner database", () => {
         const repository = createScanJobRepository(db);
         const scanJob: ScanJobV1 = {
           scan_id: scanValues[0] as string,
-          canonical_target_url: "https://example.com/",
           segment: "store",
           rubric_version: "gtm-v1.0.0",
           deadline_at: new Date(Date.now() + 55_000).toISOString(),
@@ -590,11 +589,16 @@ describe("the migrated scanner database", () => {
           userImpactCode: "robots_policy_discoverability",
           durationMs: 1,
         };
-        await expect(repository.claim(scanJob)).resolves.toBe("claimed");
+        await expect(repository.claim(scanJob)).resolves.toEqual({
+          state: "claimed",
+          canonicalTargetUrl: "https://example.com/",
+        });
         await expect(
           repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date()),
         ).resolves.toBe(true);
-        await expect(repository.claim({ ...scanJob, attempt_no: 2 })).resolves.toBe("claimed");
+        await expect(repository.claim({ ...scanJob, attempt_no: 2 })).resolves.toMatchObject({
+          state: "claimed",
+        });
         await expect(
           repository.upsertCheck(scanJob.scan_id, 1, scanCheck, new Date()),
         ).resolves.toBe(false);

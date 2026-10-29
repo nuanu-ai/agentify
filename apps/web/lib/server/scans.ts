@@ -196,7 +196,6 @@ export async function createOrReplayScan(
       if (!conflict && existing.status === "accepted") {
         await enqueueScanInTransaction(tx, {
           scanId: existing.id,
-          canonicalTargetUrl: existing.canonicalTargetUrl,
           submittedWithoutScheme: existing.submittedWithoutScheme,
           segment: existing.segment,
         });
@@ -237,7 +236,6 @@ export async function createOrReplayScan(
     });
     await enqueueScanInTransaction(tx, {
       scanId,
-      canonicalTargetUrl: normalized.canonical,
       submittedWithoutScheme,
       segment: body.segment,
     });
