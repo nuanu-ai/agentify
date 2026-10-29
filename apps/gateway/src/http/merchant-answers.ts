@@ -22,6 +22,7 @@ import type { StoredOrder } from "../ports/store.js";
  */
 export const OK = 200;
 export const BAD_REQUEST = 400;
+const UNAUTHORISED = 401;
 export const PAYMENT_REQUIRED = 402;
 const NOT_FOUND = 404;
 export const CONFLICT = 409;
@@ -46,6 +47,16 @@ export const NO_SUCH_ITEM: Refused = {
   status: NOT_FOUND,
   code: "no_such_item",
   message: "there is no such product",
+};
+
+/**
+ * One answer for no key, an unknown key and a revoked key, so a guesser learns
+ * nothing.
+ */
+export const NOT_AUTHORISED: Refused = {
+  status: UNAUTHORISED,
+  code: "not_authorised",
+  message: "this call is behind the merchant's key",
 };
 
 /**

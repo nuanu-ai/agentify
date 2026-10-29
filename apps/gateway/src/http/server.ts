@@ -30,7 +30,7 @@ import type { Gateway } from "../app/gateway.js";
 import { checksBeforeSending } from "../app/written.js";
 import { failureNamed } from "../failure-named.js";
 import { sourceRevisionOf } from "../health-facts.js";
-import { FAILED, GATEWAY_FAILED } from "./merchant-answers.js";
+import { FAILED, GATEWAY_FAILED, NOT_AUTHORISED } from "./merchant-answers.js";
 import { handlersFor } from "./routes.js";
 import { presentedPayment } from "./x402.js";
 
@@ -335,9 +335,9 @@ async function answer(
     return;
   }
   if (caller === REFUSED) {
-    // One answer for no key, an unknown key and a revoked key, so a guesser
-    // learns nothing.
-    response.status(401).json(refusal("not_authorised", "this call is behind the merchant's key"));
+    response
+      .status(NOT_AUTHORISED.status)
+      .json(refusal(NOT_AUTHORISED.code, NOT_AUTHORISED.message));
     return;
   }
 
