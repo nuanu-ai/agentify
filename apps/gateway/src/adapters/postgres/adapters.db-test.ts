@@ -323,10 +323,10 @@ if (databaseUrl === null) {
       );
       const reader = postgresOperatorReader(contract.db, "eip155:84532");
       const asked = { at: now, surface: "test" } as const;
-      await pool.query("insert into merchant_contact (merchant_id, polled_at) values ($1, $2)", [
-        A,
-        new Date(now + 5_000),
-      ]);
+      await pool.query(
+        "insert into merchant_contact (merchant_id, polled_at, integration) values ($1, $2, 'api')",
+        [A, new Date(now + 5_000)],
+      );
 
       try {
         for (const version of [null, "4", "999"]) {
@@ -576,37 +576,6 @@ if (databaseUrl === null) {
           released.resolve();
           await paying;
           queue.remindWithin = arm;
-        }
-      });
-    });
-
-    describe("a poll written while a switch of integration is under way", () => {
-      afterEach(async () => {
-        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
-        await pool.query("update merchants set integration = 'api' where id = $1", [A]);
-      });
-
-      it("waits for the switch, and is not taken for the poll of the integration taking over", async () => {
-        // The connector polled for the shop as its merchant moved back to their
-        // code, which may not be running.
-        await pool.query("update merchants set integration = 'woocommerce' where id = $1", [A]);
-        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
-        const switching = await pool.connect();
-        try {
-          await switching.query("begin");
-          await switching.query("select id from merchants where id = $1 for update", [A]);
-
-          const noted = store.noteContact(A, now, "woocommerce");
-          expect(await settledWithin(noted, 300)).toBe(false);
-
-          await switching.query("update merchants set integration = 'api' where id = $1", [A]);
-          await switching.query("delete from merchant_contact where merchant_id = $1", [A]);
-          await switching.query("commit");
-          await noted;
-
-          expect(await store.lastContact(A)).toBeNull();
-        } finally {
-          switching.release();
         }
       });
     });

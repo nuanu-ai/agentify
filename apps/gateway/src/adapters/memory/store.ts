@@ -104,6 +104,12 @@ const noEnvelopes: Envelopes = {
 const answeredFor = (held: StoredOrder): boolean =>
   held.order.state === "unfulfilled" && held.answerable === true;
 
+/** A merchant's latest recorded poll and the integration that made it. */
+interface Contact {
+  readonly at: number;
+  readonly through: Integration;
+}
+
 /** What `MemoryStore#holdings` hands the operator's memory reader. */
 export interface MemoryHoldings {
   readonly merchants: readonly StoredMerchant[];
@@ -113,8 +119,8 @@ export interface MemoryHoldings {
   readonly orders: readonly { readonly record: StoredOrder; readonly writtenAt: number }[];
   readonly receipts: readonly { readonly merchantId: string; readonly receipt: Receipt }[];
   readonly splits: readonly RecordedPayoutSplit[];
-  /** The latest poll recorded for each merchant. */
-  readonly contact: ReadonlyMap<string, number>;
+  /** The latest poll recorded for each merchant, and the integration that made it. */
+  readonly contact: ReadonlyMap<string, Contact>;
   /** Every analytics event recorded, none of which this store ever sends. */
   readonly analytics: readonly { readonly event: AnalyticsEvent; readonly at: Date }[];
 }
@@ -145,8 +151,8 @@ export class MemoryStore implements Store {
   readonly #orders = new Map<string, StoredOrder>();
   /** When each order was last written, by this store's clock, as Postgres stamps a row. */
   readonly #written = new Map<string, number>();
-  /** The latest poll recorded for each merchant. */
-  readonly #contact = new Map<string, number>();
+  /** The latest poll recorded for each merchant, and the integration that made it. */
+  readonly #contact = new Map<string, Contact>();
   readonly #receipts = new Map<string, { merchantId: string; receipt: Receipt }>();
   /** Which order owns which payment, so no payment is spent on two. */
   #paymentLock: Promise<unknown> = Promise.resolve();
@@ -487,11 +493,13 @@ export class MemoryStore implements Store {
 
   async noteContact(merchantId: string, at: number, through: Integration): Promise<void> {
     if (this.#merchants.get(merchantId)?.integration !== through) return;
-    this.#contact.set(merchantId, Math.max(this.#contact.get(merchantId) ?? at, at));
+    const held = this.#contact.get(merchantId);
+    const latest = held?.through === through ? Math.max(held.at, at) : at;
+    this.#contact.set(merchantId, { at: latest, through });
   }
 
   async lastContact(merchantId: string): Promise<number | null> {
-    return this.#contact.get(merchantId) ?? null;
+    return this.#inUse(merchantId);
   }
 
   async workingKey(digest: string): Promise<StoredKey | null> {
@@ -669,8 +677,16 @@ export class MemoryStore implements Store {
       sellerSite: this.#merchants.get(card.merchantId)?.sellerSite ?? null,
       liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
       integration: this.#merchants.get(card.merchantId)?.integration ?? "api",
-      lastContact: this.#contact.get(card.merchantId) ?? null,
+      lastContact: this.#inUse(card.merchantId),
     }));
+  }
+
+  /** The merchant's last poll where the integration they sell through made it. */
+  #inUse(merchantId: string): number | null {
+    const held = this.#contact.get(merchantId);
+    return held !== undefined && held.through === this.#merchants.get(merchantId)?.integration
+      ? held.at
+      : null;
   }
 
   async setCardPaused(
@@ -744,7 +760,6 @@ export class MemoryStore implements Store {
           (card) => card.merchantId === merchantId && card.integration === to && !card.paused,
         );
       row.integration = to;
-      this.#contact.delete(merchantId);
       if (sellingPaused) {
         row.selling = "paused";
         await this.#recordWith(analytics, undefined, this.#now());

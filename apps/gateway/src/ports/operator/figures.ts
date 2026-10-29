@@ -84,7 +84,7 @@ export interface UnknownPayments extends Read, Tally {
 interface SilentMerchant {
   readonly merchantId: string;
   readonly name: string;
-  /** Their last poll, or null where none was ever recorded. */
+  /** The last poll of the integration they sell through, or null where it made none. */
   readonly since: number | null;
 }
 
@@ -92,7 +92,10 @@ interface SilentMerchant {
 export const SILENT_NAMED_AT_MOST = 20;
 
 export interface Workers extends Read {
-  /** How many merchants' compatible processes polled within the purchase guard's window. */
+  /**
+   * How many merchants' integrations in use polled with a compatible contract
+   * within the purchase guard's window.
+   */
   readonly connectedWithin: number;
   /** How many merchants' processes ever polled. */
   readonly everConnected: number;

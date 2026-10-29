@@ -140,8 +140,10 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
       const {
         rows: [contact],
       } = await tx.execute<{ within: number; ever: number }>(sql`
-        select (count(*) filter (where contract_version = ${CONTRACT_VERSION} and polled_at >= ${quiet}))::int as within, count(*)::int as ever
-          from merchant_contact`);
+        select (count(*) filter (where mc.contract_version = ${CONTRACT_VERSION} and mc.polled_at >= ${quiet}
+                                     and mc.integration = m.integration))::int as within, count(*)::int as ever
+          from merchant_contact mc
+          join merchants m on m.id = mc.merchant_id`);
       const { rows } = await tx.execute<{
         id: string;
         name: string;
@@ -150,7 +152,7 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
       }>(sql`
         select m.id, m.name, ${msOf(sql`mc.polled_at`)} as polled_at, (count(*) over ())::int as of
           from merchants m
-          left join merchant_contact mc on mc.merchant_id = m.id
+          left join merchant_contact mc on mc.merchant_id = m.id and mc.integration = m.integration
          where m.selling = 'open' and ${ready(asked, scope.network)}
            and (mc.contract_version is distinct from ${CONTRACT_VERSION} or mc.polled_at < ${quiet})
            and exists (select 1 from cards c

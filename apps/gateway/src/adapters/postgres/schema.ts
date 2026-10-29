@@ -148,14 +148,29 @@ export const merchantKeys = pgTable(
  * from the merchant's own, which every birth of an order holds while it
  * writes: a poll writing here waits for no purchase.
  */
-export const merchantContact = pgTable("merchant_contact", {
-  merchantId: text("merchant_id")
-    .primaryKey()
-    .references(() => merchants.id, { onDelete: "cascade" }),
-  polledAt: timestamp("polled_at", { withTimezone: true, mode: "date" }).notNull(),
-  /** Only a matching version establishes readiness; null establishes none. */
-  contractVersion: text("contract_version"),
-});
+export const merchantContact = pgTable(
+  "merchant_contact",
+  {
+    merchantId: text("merchant_id")
+      .primaryKey()
+      .references(() => merchants.id, { onDelete: "cascade" }),
+    polledAt: timestamp("polled_at", { withTimezone: true, mode: "date" }).notNull(),
+    /** Only a matching version establishes readiness; null establishes none. */
+    contractVersion: text("contract_version"),
+    /**
+     * Which integration polled: the poll counts only while the merchant sells
+     * through it, and the row outlives a switch, as the record that they were
+     * once in touch.
+     */
+    integration: text("integration").notNull(),
+  },
+  (table) => [
+    check(
+      "merchant_contact_integration_known",
+      sql`${table.integration} in ('api', 'woocommerce')`,
+    ),
+  ],
+);
 
 export const cards = pgTable(
   "cards",

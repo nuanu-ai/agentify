@@ -62,9 +62,9 @@ polled for ten minutes for the integration the merchant sells through: a
 compatible process of their own code, or the WooCommerce connector, which
 polls for a shop only while it is connected. The refusal comes before pricing
 and again before the first payment is verified; a payment that releases goods
-already made goes through. A poll counts only for the integration in use, and
-a switch forgets the last one. Nothing is stored to resume: the first
-compatible poll lets the next purchase through. The catalogue lists a card
+already made goes through. A recorded poll names the integration that made
+it and counts only while the merchant sells through that one. Nothing is
+stored to resume: the first compatible poll lets the next purchase through. The catalogue lists a card
 only where the door would price it, while a silent merchant's card still
 answers its unpaid GET with its challenge, so an outside listing keeps it
 (ADR-0012). A busy merchant's cards stay listed. `seller_busy` and
@@ -74,12 +74,10 @@ answers its unpaid GET with its challenge, so an outside listing keeps it
 
 Fifty unpaid purchases per merchant: anyone could hold all fifty and stop sales
 without paying. Counting the connector in touch whenever Agentify runs: a
-merchant left on a shop with none connected (ADR-0036) stayed listed, and each
-price question waited out its ten seconds for `seller_busy`. Asking the
-dashboard at each purchase whether a shop is connected: it reads another
-part's records and still misses a connector that stopped polling. A limit per
-buyer or per address on price questions: an agent has no identity before it
-pays, and addresses are cheap. Stopping a silent
+shop with none connected (ADR-0036) stayed listed, answering `seller_busy`.
+Asking the dashboard whether a shop is connected: it misses a connector that
+stopped polling. A limit per buyer or per address on price questions: an
+agent has no identity before it pays, and addresses are cheap. Stopping a silent
 merchant's selling as a pause: it would need resuming by hand after an ordinary
 restart. Recording contact on every call with the merchant's key: a publishing
 script would count as a running worker. A field on each catalogue card saying

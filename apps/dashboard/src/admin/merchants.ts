@@ -120,7 +120,7 @@ const connectionOf = (
   row: Pick<MerchantRow, "integration" | "keys" | "lastContactAt">,
 ): MerchantListRow["connection"] => {
   if (row.integration === "woocommerce")
-    return { said: "Selling through a connected shop", at: null };
+    return { said: "Selling through a WooCommerce shop", at: null };
   if (row.lastContactAt !== null)
     return { said: "Worker last connected", at: at(row.lastContactAt) };
   if (row.keys.working > 0) return { said: "Key issued, never connected", at: null };

@@ -732,7 +732,8 @@ export class Gateway {
   /**
    * When this process last wrote each merchant's poll down
    * (`CONTACT_WRITTEN_EVERY_MS`), for each integration apart, so the first poll
-   * after a switch is written however lately the other integration's was.
+   * after a switch is written even when one of the integration left behind is
+   * still being written as the switch goes through.
    */
   readonly #contactWritten: Readonly<Record<Integration, Map<string, number>>> = {
     api: new Map(),
@@ -1279,6 +1280,10 @@ export class Gateway {
     });
     if (switched.switched) {
       this.#letGo(merchantId, () => true);
+      // The first poll after a switch is written at once, even back on an
+      // integration whose poll this process wrote moments ago.
+      this.#contactWritten.api.delete(merchantId);
+      this.#contactWritten.woocommerce.delete(merchantId);
     }
     return switched;
   }

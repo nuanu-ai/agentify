@@ -597,27 +597,35 @@ export class PostgresStore implements Store {
 
   async noteContact(merchantId: string, at: number, through: Integration): Promise<void> {
     // Selected rather than inserted as values, so a merchant who is not there
-    // writes nothing instead of failing the foreign key. The row lock waits
-    // for a switch under way and then reads the integration it wrote, so a
-    // poll of the integration being left is never written after the switch
-    // forgot the last one.
+    // writes nothing instead of failing the foreign key, and a poll of the
+    // integration not in use writes nothing over the one in use. A poll that
+    // races a switch can still write the integration being left; the row then
+    // counts for nobody until the integration in use writes its next poll.
     await this.#db.execute(sql`
-      insert into ${merchantContact} (merchant_id, polled_at, contract_version)
-      select ${merchants.id}, ${new Date(at)}, ${CONTRACT_VERSION} from ${merchants}
+      insert into ${merchantContact} (merchant_id, polled_at, contract_version, integration)
+      select ${merchants.id}, ${new Date(at)}, ${CONTRACT_VERSION}, ${through} from ${merchants}
        where ${merchants.id} = ${merchantId} and ${merchants.integration} = ${through}
-       for key share
       on conflict (merchant_id)
       do update set polled_at = case
         when ${merchantContact.contractVersion} = excluded.contract_version
+         and ${merchantContact.integration} = excluded.integration
           then greatest(${merchantContact.polledAt}, excluded.polled_at)
         else excluded.polled_at end,
-        contract_version = excluded.contract_version`);
+        contract_version = excluded.contract_version,
+        integration = excluded.integration`);
   }
 
   async lastContact(merchantId: string): Promise<number | null> {
     const [row] = await this.#db
       .select({ polledAt: merchantContact.polledAt })
       .from(merchantContact)
+      .innerJoin(
+        merchants,
+        and(
+          eq(merchants.id, merchantContact.merchantId),
+          eq(merchants.integration, merchantContact.integration),
+        ),
+      )
       .where(
         and(
           eq(merchantContact.merchantId, merchantId),
@@ -798,6 +806,7 @@ export class PostgresStore implements Store {
         and(
           eq(merchantContact.merchantId, merchants.id),
           eq(merchantContact.contractVersion, CONTRACT_VERSION),
+          eq(merchantContact.integration, merchants.integration),
         ),
       )
       .orderBy(cards.asOf);
@@ -932,7 +941,6 @@ export class PostgresStore implements Store {
           updatedAt: sql`now()`,
         })
         .where(eq(merchants.id, merchantId));
-      await tx.delete(merchantContact).where(eq(merchantContact.merchantId, merchantId));
       if (sellingPaused) await recordWith(tx, analytics, undefined, new Date());
       return { switched: true, sellingPaused };
     });
