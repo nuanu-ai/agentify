@@ -126,16 +126,6 @@ const deliveryOf = (card: MerchantCard["card"]): Delivery => {
 };
 
 /**
- * What stands in a card's last column: the card's own switch, or why it has
- * none. A card published by the integration not in use is the one with words
- * of its own: the banner names no reason for it, and only its row can say
- * which of the cards came from which integration.
- */
-export type CardControl =
-  | Readonly<{ kind: "switch"; verb: "pause" | "resume" }>
-  | Readonly<{ kind: "reason"; text: string; to: string }>;
-
-/**
  * The integration the merchant sells through, and their cards that are off
  * sale because the other one published them.
  */
@@ -144,44 +134,12 @@ export interface CardsIntegration {
   readonly offSale: readonly string[];
 }
 
-/**
- * Every card keeps its own switch whatever holds the whole account, because
- * those holds lift at once, the moment the approval lands or a name or a
- * wallet is set: a card paused before then stays paused, and a Resume pressed
- * meanwhile can be taken back. A card published by the integration not in use
- * is offered none, and its word does not say its own pause either: the move
- * between integrations is made on the WooCommerce page, which its words lead
- * to. They name only the merchant's choice: the state beside them already
- * says the card is off sale, and naming a sale would be wrong where a shop's
- * Connect was never approved or the code never ran.
- */
-const cardControl = (entry: MerchantCard, integration: CardsIntegration): CardControl => {
-  if (integration.offSale.includes(entry.id)) {
-    return {
-      kind: "reason",
-      text:
-        integration.through === "woocommerce"
-          ? "You sell through WooCommerce"
-          : "You sell through your code",
-      to: "/woocommerce",
-    };
-  }
-  return { kind: "switch", verb: entry.paused ? "resume" : "pause" };
-};
-
-/**
- * A card published by the integration not in use is off sale whatever its own
- * switch says, so it never reads paused by the merchant: resuming it would not
- * put it on sale.
- */
-const cardWord = (entry: MerchantCard, integration: CardsIntegration): Word =>
-  integration.offSale.includes(entry.id)
-    ? CARD_WORDS.offSale
-    : entry.paused
-      ? CARD_WORDS.pausedByYou
-      : entry.selling === "open"
-        ? CARD_WORDS.onSale
-        : CARD_WORDS.offSale;
+const cardWord = (entry: MerchantCard): Word =>
+  entry.paused
+    ? CARD_WORDS.pausedByYou
+    : entry.selling === "open"
+      ? CARD_WORDS.onSale
+      : CARD_WORDS.offSale;
 
 /**
  * Built from the route table, not written out, so the two cannot drift. The
@@ -206,7 +164,13 @@ interface CardRow {
   readonly price: string;
   readonly delivery: Delivery;
   readonly state: Word;
-  readonly control: CardControl;
+  /**
+   * The card's own switch, kept whatever holds the whole account, because
+   * those holds lift at once, the moment the approval lands or a name or a
+   * wallet is set: a card paused before then stays paused, and a Resume
+   * pressed meanwhile can be taken back.
+   */
+  readonly verb: "pause" | "resume";
 }
 
 export interface CardsView {
@@ -219,11 +183,17 @@ export interface CardsView {
    */
   readonly listing: Listing<CardRow>;
   /**
-   * Present only when there are no cards: the sentence, and the ways to a
-   * first card, the shop beside the SDK where this dashboard offers it. What
-   * the account lacks to publish is the banner's to say.
+   * Present only when the integration in use has published no card: the
+   * sentence, and the ways to its first card. What the account lacks to
+   * publish is the banner's to say.
    */
-  readonly empty: null | Readonly<{ says: string; ways: Readonly<{ woo: boolean }> }>;
+  readonly empty: null | Readonly<{
+    says: string;
+    /** The SDK's guide, and the words of the way to the WooCommerce page where this dashboard has one. */
+    ways: Readonly<{ sdk: boolean; woo: string | null }>;
+  }>;
+  /** Under the cards, how many the integration not in use published, which are not listed. */
+  readonly elsewhere: string | null;
   /** The line under the cards about what their switches do, and where the rest is. */
   readonly note: Readonly<{ says: string; rest: Rest }>;
   /** Over the rows, where the search was read as a whole product code, which it says. */
@@ -256,8 +226,13 @@ export const cardsView = (
   query: URLSearchParams = new URLSearchParams(),
 ): CardsView => {
   const stopped = cards.selling === "paused";
-  const rows = cards.cards.map((entry): CardRow => {
-    const state = cardWord(entry, integration);
+  // A card the other integration published goes on sale only when the
+  // merchant switches integration, which no switch of its own can do, so it is
+  // counted under the list rather than listed beside its imported twin.
+  const listed = cards.cards.filter((entry) => !integration.offSale.includes(entry.id));
+  const elsewhere = cards.cards.length - listed.length;
+  const rows = listed.map((entry): CardRow => {
+    const state = cardWord(entry);
     return {
       id: entry.id,
       off: state !== CARD_WORDS.onSale,
@@ -268,7 +243,7 @@ export const cardsView = (
       price: money(entry.card.price),
       delivery: deliveryOf(entry.card),
       state,
-      control: cardControl(entry, integration),
+      verb: entry.paused ? "resume" : "pause",
     };
   });
   const asked = askedIn(query, CARD_SEGMENT_KEYS);
@@ -307,15 +282,51 @@ export const cardsView = (
       },
       showAll: "Show all products",
     }),
-    empty:
-      cards.cards.length > 0
-        ? null
-        : { says: "You haven't published any products yet.", ways: { woo: wooAvailable } },
+    empty: listed.length > 0 ? null : emptyOf(integration.through, elsewhere, wooAvailable),
+    elsewhere: elsewhereOf(integration.through, elsewhere),
     note: switchesNote(cards.selling),
     byCode: byCode
       ? `Only the ${coded === 1 ? "product" : "products"} with the product code “${asked.q}”.`
       : null,
   };
+};
+
+/**
+ * A merchant on the shop gets their first products by importing them on the
+ * WooCommerce page, not from the SDK. One back on their code with only the
+ * shop's products is told their code has published none, since a sentence
+ * that they published nothing would contradict the count under it.
+ */
+const emptyOf = (
+  through: Integration,
+  elsewhere: number,
+  wooAvailable: boolean,
+): NonNullable<CardsView["empty"]> =>
+  through === "woocommerce"
+    ? {
+        says: "Your shop's products haven't been imported yet.",
+        ways: { sdk: false, woo: wooAvailable ? "Open WooCommerce page" : null },
+      }
+    : {
+        says:
+          elsewhere === 0
+            ? "You haven't published any products yet."
+            : "Your code hasn't published any products yet.",
+        ways: { sdk: true, woo: wooAvailable ? "Connect a WooCommerce shop" : null },
+      };
+
+/**
+ * They come back on sale only when the merchant switches integration, which
+ * is the integration pages' to offer; the switch takes the other
+ * integration's products off sale, so it is not one to make in passing here.
+ */
+const elsewhereOf = (through: Integration, count: number): string | null => {
+  if (count === 0) return null;
+  const products = withUnit(count, count === 1 ? "product" : "products");
+  const are = count === 1 ? "is" : "are";
+  return through === "woocommerce"
+    ? `${products} your code published ${are} off sale while you sell through WooCommerce.`
+    : `${products} imported from your shop ${are} off sale while you sell through your own code.`;
 };
 
 const WHAT_A_PAUSE_DOES: Rest = {

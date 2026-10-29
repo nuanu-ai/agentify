@@ -1,5 +1,5 @@
 import { Button } from "@agentify/ui";
-import type { CardControl, CardsView } from "../../src/views.js";
+import type { CardsView } from "../../src/views.js";
 import { CodeCopy } from "../components/copy.js";
 import { Cell, List, ListEmpty, Row } from "../components/list.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
@@ -10,41 +10,24 @@ import styles from "./cards.module.css";
 
 type Place = CardsView["listing"]["place"];
 
-const Control = ({
+const Switch = ({
   id,
-  control,
+  verb,
   place,
-  base,
-}: Readonly<{ id: string; control: CardControl; place: Place; base: string }>) => {
-  if (control.kind === "reason") {
-    return (
-      <Cell at="note">
-        <a href={`${base}${control.to}`}>{control.text}</a>
-      </Cell>
-    );
-  }
-  return (
-    <Cell at="action">
-      <PostForm
-        className="inline"
-        action={`/products?${new URLSearchParams({ [control.verb]: id })}`}
-      >
-        {(pending) => (
-          <>
-            <KeptPlace place={place} />
-            <Button
-              compact
-              variant={control.verb === "resume" ? "primary" : "secondary"}
-              pending={pending}
-            >
-              {control.verb === "resume" ? "Resume" : "Pause"}
-            </Button>
-          </>
-        )}
-      </PostForm>
-    </Cell>
-  );
-};
+}: Readonly<{ id: string; verb: "pause" | "resume"; place: Place }>) => (
+  <Cell at="action">
+    <PostForm className="inline" action={`/products?${new URLSearchParams({ [verb]: id })}`}>
+      {(pending) => (
+        <>
+          <KeptPlace place={place} />
+          <Button compact variant={verb === "resume" ? "primary" : "secondary"} pending={pending}>
+            {verb === "resume" ? "Resume" : "Pause"}
+          </Button>
+        </>
+      )}
+    </PostForm>
+  </Cell>
+);
 
 /** The control that stops or restarts all selling, for the end of the page's title bar. */
 export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
@@ -69,25 +52,33 @@ export function AllSelling({ view }: Readonly<{ view: CardsView }>) {
 
 export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: string }>) {
   const { listing, empty, note } = view;
+  const elsewhere =
+    view.elsewhere === null ? null : <p className={styles.elsewhere}>{view.elsewhere}</p>;
   if (empty !== null) {
     return (
-      <ListEmpty>
-        <p>{empty.says}</p>
-        <div className={styles.ways}>
-          <a className="button button-primary" href="/docs/quickstart">
-            Publish products through the SDK
-          </a>
-          {empty.ways.woo ? (
-            <a className="button button-secondary" href={`${base}/woocommerce`}>
-              Connect a WooCommerce shop
-            </a>
-          ) : null}
-        </div>
-      </ListEmpty>
+      <>
+        <ListEmpty>
+          <p>{empty.says}</p>
+          <div className={styles.ways}>
+            {empty.ways.sdk ? (
+              <a className="button button-primary" href="/docs/quickstart">
+                Publish products through the SDK
+              </a>
+            ) : null}
+            {empty.ways.woo === null ? null : (
+              <a
+                className={`button ${empty.ways.sdk ? "button-secondary" : "button-primary"}`}
+                href={`${base}/woocommerce`}
+              >
+                {empty.ways.woo}
+              </a>
+            )}
+          </div>
+        </ListEmpty>
+        {elsewhere}
+      </>
     );
   }
-  // The last column holds a button, unless a card has a reason of its own to say there.
-  const reasoned = listing.rows.some((row) => row.control.kind === "reason");
   return (
     <>
       <ListTools
@@ -104,7 +95,7 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
       ) : (
         <List
           label="Products"
-          columns={`minmax(12rem, 1fr) 7rem 12rem 8.5rem ${reasoned ? "minmax(6.5rem, 12rem)" : "6.5rem"}`}
+          columns="minmax(12rem, 1fr) 7rem 12rem 8.5rem 6.5rem"
           head={["Product", { text: "Price", end: true }, "Delivery", "State", ""]}
         >
           {listing.rows.map((row) => (
@@ -132,12 +123,13 @@ export function CardsScreen({ view, base }: Readonly<{ view: CardsView; base: st
               <Cell at="state">
                 <Word word={row.state} />
               </Cell>
-              <Control id={row.id} control={row.control} place={listing.place} base={base} />
+              <Switch id={row.id} verb={row.verb} place={listing.place} />
             </Row>
           ))}
         </List>
       )}
       <CutNote cut={listing.cut} />
+      {elsewhere}
       <p className={styles.note}>
         {note.says}
         <Rest rest={note.rest} />
