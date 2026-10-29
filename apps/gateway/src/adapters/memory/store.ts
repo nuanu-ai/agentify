@@ -105,10 +105,16 @@ const answeredFor = (held: StoredOrder): boolean =>
   held.order.state === "unfulfilled" && held.answerable === true;
 
 /** A merchant's latest recorded poll and the integration that made it. */
-interface Contact {
+export interface Contact {
   readonly at: number;
   readonly through: Integration;
+  /** False once the merchant has switched since: the poll then counts for no integration. */
+  readonly counts: boolean;
 }
+
+/** The poll of the merchant's own code, the only one the operator calls their worker's. */
+export const codePoll = (held: Contact | undefined): number | null =>
+  held?.through === "api" ? held.at : null;
 
 /** What `MemoryStore#holdings` hands the operator's memory reader. */
 export interface MemoryHoldings {
@@ -494,12 +500,16 @@ export class MemoryStore implements Store {
   async noteContact(merchantId: string, at: number, through: Integration): Promise<void> {
     if (this.#merchants.get(merchantId)?.integration !== through) return;
     const held = this.#contact.get(merchantId);
-    const latest = held?.through === through ? Math.max(held.at, at) : at;
-    this.#contact.set(merchantId, { at: latest, through });
+    const latest = held?.counts === true ? Math.max(held.at, at) : at;
+    this.#contact.set(merchantId, { at: latest, through, counts: true });
   }
 
   async lastContact(merchantId: string): Promise<number | null> {
-    return this.#inUse(merchantId);
+    return this.#counting(merchantId);
+  }
+
+  async pollRecorded(merchantId: string): Promise<number | null> {
+    return this.#contact.get(merchantId)?.at ?? null;
   }
 
   async workingKey(digest: string): Promise<StoredKey | null> {
@@ -677,16 +687,17 @@ export class MemoryStore implements Store {
       sellerSite: this.#merchants.get(card.merchantId)?.sellerSite ?? null,
       liveApprovedAt: this.#merchants.get(card.merchantId)?.liveApprovedAt ?? null,
       integration: this.#merchants.get(card.merchantId)?.integration ?? "api",
-      lastContact: this.#inUse(card.merchantId),
+      lastContact: this.#counting(card.merchantId),
     }));
   }
 
-  /** The merchant's last poll where the integration they sell through made it. */
-  #inUse(merchantId: string): number | null {
+  /**
+   * The merchant's last poll while it counts. Only the integration they sell
+   * through writes one, and a switch stops it counting.
+   */
+  #counting(merchantId: string): number | null {
     const held = this.#contact.get(merchantId);
-    return held !== undefined && held.through === this.#merchants.get(merchantId)?.integration
-      ? held.at
-      : null;
+    return held?.counts === true ? held.at : null;
   }
 
   async setCardPaused(
@@ -760,6 +771,8 @@ export class MemoryStore implements Store {
           (card) => card.merchantId === merchantId && card.integration === to && !card.paused,
         );
       row.integration = to;
+      const held = this.#contact.get(merchantId);
+      if (held !== undefined) this.#contact.set(merchantId, { ...held, counts: false });
       if (sellingPaused) {
         row.selling = "paused";
         await this.#recordWith(analytics, undefined, this.#now());

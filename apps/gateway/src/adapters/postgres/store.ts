@@ -636,6 +636,15 @@ export class PostgresStore implements Store {
     return row?.polledAt.getTime() ?? null;
   }
 
+  async pollRecorded(merchantId: string): Promise<number | null> {
+    const [row] = await this.#db
+      .select({ polledAt: merchantContact.polledAt })
+      .from(merchantContact)
+      .where(eq(merchantContact.merchantId, merchantId))
+      .limit(1);
+    return row?.polledAt.getTime() ?? null;
+  }
+
   async workingKey(digest: string): Promise<StoredKey | null> {
     // Disabled keys are excluded in the predicate, so a revoked key and one
     // never issued get the same answer.
@@ -941,6 +950,10 @@ export class PostgresStore implements Store {
           updatedAt: sql`now()`,
         })
         .where(eq(merchants.id, merchantId));
+      await tx
+        .update(merchantContact)
+        .set({ contractVersion: null })
+        .where(eq(merchantContact.merchantId, merchantId));
       if (sellingPaused) await recordWith(tx, analytics, undefined, new Date());
       return { switched: true, sellingPaused };
     });

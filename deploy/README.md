@@ -362,11 +362,13 @@ to the same rule: a worker that has not reconnected cannot be counted as selling
 
 A card also leaves the catalog for its seller's own state, whatever is
 released: while the seller has left too many paid orders without delivery or
-closure, or while the seller's own process has not polled for ten minutes.
-A stop longer than those ten minutes, such as a long restore or long
-migrations, leaves every seller of their own code silent when the release
-starts, until their worker polls again, which the SDK's worker does within
-half a minute. So activation reads the catalog again for up to 45 seconds
+closure, or while nothing has polled for ten minutes for the integration the
+seller sells through, which is their own process or, for a WooCommerce shop,
+Agentify's connector, polling only for a shop that is connected. A stop longer than
+those ten minutes, such as a long restore or long migrations, leaves every
+seller silent when the release starts, until something polls for them again:
+the SDK's worker does within half a minute, and the connector polls for each
+connected shop shortly after the start. So activation reads the catalog again for up to 45 seconds
 while cards are gone and not named, and holds only what is still gone after
 that to the rules here. For each card gone and not named, activation asks its purchase address with a
 GET, as a crawler does, and a card whose look is refused with

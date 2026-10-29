@@ -48,7 +48,7 @@ interface WaitingMerchant {
   readonly sellerSite: string | null;
   readonly createdAt: number;
   readonly integration: Integration;
-  /** When the integration they sell through last polled, or null where no poll was recorded. */
+  /** When their own code last polled, or null where it never did; a shop's connector is not it. */
   readonly lastContact: number | null;
   /** How many cards they have published, on sale or not. */
   readonly cardsPublished: number;

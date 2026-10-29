@@ -63,7 +63,8 @@ compatible process of their own code, or the WooCommerce connector, which
 polls for a shop only while it is connected. The refusal comes before pricing
 and again before the first payment is verified; a payment that releases goods
 already made goes through. A recorded poll names the integration that made
-it and counts only while the merchant sells through that one. Nothing is
+it and counts only while the merchant sells through that one, until they
+next switch: a switch keeps the record and stops it counting. Nothing is
 stored to resume: the first compatible poll lets the next purchase through. The catalogue lists a card
 only where the door would price it, while a silent merchant's card still
 answers its unpaid GET with its challenge, so an outside listing keeps it

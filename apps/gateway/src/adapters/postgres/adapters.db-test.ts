@@ -323,10 +323,10 @@ if (databaseUrl === null) {
       );
       const reader = postgresOperatorReader(contract.db, "eip155:84532");
       const asked = { at: now, surface: "test" } as const;
-      await pool.query(
-        "insert into merchant_contact (merchant_id, polled_at) values ($1, $2)",
-        [A, new Date(now + 5_000)],
-      );
+      await pool.query("insert into merchant_contact (merchant_id, polled_at) values ($1, $2)", [
+        A,
+        new Date(now + 5_000),
+      ]);
 
       try {
         for (const version of [null, "4", "999"]) {
@@ -361,14 +361,14 @@ if (databaseUrl === null) {
       // An older gateway named no integration and wrote only the code's polls,
       // and it kept them across a switch to a shop.
       await pool.query("update merchants set integration = 'woocommerce' where id = $1", [A]);
-      const card = await store.publishCard(A, syncCard, now, "woocommerce");
-      const reader = postgresOperatorReader(contract.db, "eip155:84532");
-      await pool.query(
-        "insert into merchant_contact (merchant_id, polled_at, contract_version) values ($1, $2, $3)",
-        [A, new Date(now), CONTRACT_VERSION],
-      );
-
       try {
+        const card = await store.publishCard(A, syncCard, now, "woocommerce");
+        const reader = postgresOperatorReader(contract.db, "eip155:84532");
+        await pool.query(
+          "insert into merchant_contact (merchant_id, polled_at, contract_version) values ($1, $2, $3)",
+          [A, new Date(now), CONTRACT_VERSION],
+        );
+
         expect(await store.lastContact(A)).toBeNull();
         expect(
           (await store.catalogEntries()).find((entry) => entry.card.id === card.id)?.lastContact,
@@ -376,9 +376,15 @@ if (databaseUrl === null) {
         const workers = await reader.figures.workers({ at: now, surface: "test" });
         expect(workers.connectedWithin).toBe(0);
         expect(workers.silent).toMatchObject([{ merchantId: A, since: null }]);
+        // The connector's first poll is the shop's, however late the code's clock ran.
+        await store.noteContact(A, now - 5_000, "woocommerce");
+        expect(await store.lastContact(A)).toBe(now - 5_000);
       } finally {
         await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
-        await pool.query("delete from cards where id = $1", [card.id]);
+        await pool.query(
+          "delete from cards where merchant_id = $1 and integration = 'woocommerce'",
+          [A],
+        );
         await pool.query("update merchants set integration = 'api' where id = $1", [A]);
       }
     });

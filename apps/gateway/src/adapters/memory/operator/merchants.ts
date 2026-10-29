@@ -27,7 +27,7 @@ import { type Tally, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
 import { byBytes, pageIn } from "../../../ports/paging.js";
 import type { StoredMerchant } from "../../../ports/store.js";
-import type { MemoryHoldings } from "../store.js";
+import { codePoll, type MemoryHoldings } from "../store.js";
 import { type SettledSale, settledSales } from "./figures-standing.js";
 import type { MemoryScope } from "./index.js";
 
@@ -93,7 +93,7 @@ function factsOf(
     }),
     missing,
     keys: { issued: keys.length, working: keys.filter((key) => key.disabledAt === null).length },
-    lastContactAt: holdings.contact.get(merchant.id)?.at ?? null,
+    lastContactAt: codePoll(holdings.contact.get(merchant.id)),
     cards: { onSale: cards.filter(onSale).length, published: cards.length },
     thirtyDays: {
       from,

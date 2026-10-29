@@ -155,14 +155,18 @@ export const merchantContact = pgTable(
       .primaryKey()
       .references(() => merchants.id, { onDelete: "cascade" }),
     polledAt: timestamp("polled_at", { withTimezone: true, mode: "date" }).notNull(),
-    /** Only a matching version establishes readiness; null establishes none. */
+    /**
+     * Only a matching version establishes readiness; null establishes none,
+     * which is what a switch leaves.
+     */
     contractVersion: text("contract_version"),
     /**
      * Which integration polled: the poll counts only while the merchant sells
      * through it, and the row outlives a switch, as the record that they were
-     * once in touch.
+     * once in touch. A build that names no integration writes only its code's
+     * polls, hence the default.
      */
-    integration: text("integration").notNull(),
+    integration: text("integration").notNull().default("api"),
   },
   (table) => [
     check(

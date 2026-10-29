@@ -90,7 +90,8 @@ function judged(scope: OperatorScope, at: number, surface: SurfaceMode, only?: s
         (select count(*)::int from merchant_keys k where k.merchant_id = s.id) as keys_issued,
         (select count(*)::int from merchant_keys k
           where k.merchant_id = s.id and k.disabled_at is null) as keys_working,
-        (select ${ms("mc.polled_at")} from merchant_contact mc where mc.merchant_id = s.id) as last_contact,
+        (select ${ms("mc.polled_at")} from merchant_contact mc
+          where mc.merchant_id = s.id and mc.integration = 'api') as last_contact,
         (select count(*)::int from orders o
           where o.merchant_id = s.id
             and o.created_at between ${from} and ${now}) as orders_counted,

@@ -325,7 +325,8 @@
           "name": "integration",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'api'"
         }
       },
       "indexes": {},

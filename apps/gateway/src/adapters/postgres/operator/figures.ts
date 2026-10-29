@@ -72,7 +72,8 @@ export const postgresOperatorFigures = (scope: OperatorScope): OperatorFigures =
         of: number;
       }>(sql`
         select m.id, m.name, m.service_name, m.seller_site, ${msOf(sql`m.created_at`)} as created_at, m.integration,
-               (select ${msOf(sql`mc.polled_at`)} from merchant_contact mc where mc.merchant_id = m.id) as polled_at,
+               (select ${msOf(sql`mc.polled_at`)} from merchant_contact mc
+                 where mc.merchant_id = m.id and mc.integration = 'api') as polled_at,
                (select count(*)::int from cards c where c.merchant_id = m.id) as cards,
                (count(*) over ())::int as of
           from merchants m
