@@ -1,38 +1,43 @@
 name: Publish Agentify SDK
 
+# Only the publish job can obtain the identity npm accepts for these packages,
+# and only through the production environment, which GitHub admits for app-v*
+# tags alone. The checks in the verify job are steps a branch can edit, so they
+# are not what keeps a branch from publishing; the environment is. The publish
+# job installs and builds nothing: it publishes the tarballs verify checked.
+
 on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: app-v* tag name to validate
+        description: app-v* tag name to check main's head against, without publishing
         required: true
         type: string
-      dry_run:
-        description: Check the candidate on main without npm publish
-        required: true
-        default: true
-        type: boolean
   push:
     tags:
       - 'app-v*'
 
 permissions:
-  actions: read
   contents: read
-  id-token: write
 
 concurrency:
   group: sdk-release-${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  verify:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    outputs:
+      dist_tag: ${{ steps.release.outputs.dist_tag }}
+      contracts_version: ${{ steps.release.outputs.contracts_version }}
+      sdk_version: ${{ steps.release.outputs.sdk_version }}
 
     steps:
       - name: Check out the release source
@@ -49,7 +54,7 @@ jobs:
           if git fetch --no-tags origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}" 2>/dev/null; then
             tag_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
             test "$tag_commit" = "$GITHUB_SHA"
-          elif [ "$DRY_RUN" != 'true' ]; then
+          elif [ "$GITHUB_EVENT_NAME" = 'push' ]; then
             echo "release tag ${RELEASE_TAG} does not exist" >&2
             exit 1
           else
@@ -61,7 +66,7 @@ jobs:
         run: ./scripts/scan-secrets.sh . HEAD
 
       - name: Require the tagged commit to pass CI
-        if: env.DRY_RUN != 'true'
+        if: github.event_name == 'push'
         uses: actions/github-script@v8
         with:
           script: |
@@ -122,10 +127,20 @@ jobs:
           pnpm build
 
       - name: Verify the packed SDK outside the workspace
-        run: pnpm outside
+        run: pnpm outside release-packs
+
+      - name: Keep the checked tarballs for the publish job
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-packs
+          path: release-packs/*.tgz
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
 
       - name: Require the npm package names to be bootstrapped
-        if: env.DRY_RUN != 'true'
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           missing=0
@@ -137,18 +152,93 @@ jobs:
           done
           test "$missing" -eq 0
 
-      - name: Publish unpublished package versions
-        if: env.DRY_RUN != 'true'
-        env:
-          NPM_CONFIG_PROVENANCE: 'true'
-        run: pnpm exec changeset publish --tag "${{ steps.release.outputs.dist_tag }}"
+  publish:
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
+      CONTRACTS_VERSION: ${{ needs.verify.outputs.contracts_version }}
+      SDK_VERSION: ${{ needs.verify.outputs.sdk_version }}
+
+    steps:
+      - name: Check out the Node.js version file
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .nvmrc
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+          registry-url: 'https://registry.npmjs.org'
+
+      # Node's bundled npm may predate npm Trusted Publishing support.
+      - name: Install npm with Trusted Publishing support
+        run: npm install -g npm@11.6.2
+
+      - name: Fetch the tarballs verify checked
+        uses: actions/download-artifact@v8
+        with:
+          name: release-packs
+          path: release-packs
+
+      # Contracts first: the SDK's manifest names the contracts version exactly.
+      - name: Publish the package versions the registry does not hold yet
+        run: |
+          set -euo pipefail
+          publish() {
+            local tarball="$1" name="$2" version="$3"
+            local packed
+            packed="$(tar -xOzf "$tarball" package/package.json |
+              node -p 'const m = JSON.parse(require("fs").readFileSync(0, "utf8")); m.name + "@" + m.version')"
+            if [ "$packed" != "$name@$version" ]; then
+              echo "$tarball carries $packed, not the $name@$version verify resolved" >&2
+              return 1
+            fi
+
+            if [ "$(npm view "$name@$version" version 2>/dev/null)" = "$version" ]; then
+              echo "$name@$version is already on npm"
+              return 0
+            fi
+            npm publish "$tarball" --provenance --access public --tag "$DIST_TAG"
+          }
+
+          publish "release-packs/nuanu-ai-agentify-contracts-${CONTRACTS_VERSION}.tgz" @nuanu-ai/agentify-contracts "$CONTRACTS_VERSION"
+          publish "release-packs/nuanu-ai-agentify-${SDK_VERSION}.tgz" @nuanu-ai/agentify "$SDK_VERSION"
+
+  confirm:
+    needs: [verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out the Node.js version file
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .nvmrc
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Verify the registry accepted the exact release
-        if: env.DRY_RUN != 'true'
         run: |
           set -euo pipefail
 
-          # The registry records a publish some time after `changeset publish`
+          # The registry records a publish some time after `npm publish`
           # reports it, and not both packages at once: the contracts package can
           # lag the SDK by minutes. A short wait fails a release whose rerun
           # then finds nothing left to publish.
@@ -170,18 +260,18 @@ jobs:
             return 1
           }
 
-          expect_version "@nuanu-ai/agentify-contracts@${{ steps.release.outputs.contracts_version }}" "${{ steps.release.outputs.contracts_version }}"
-          expect_version "@nuanu-ai/agentify@${{ steps.release.outputs.sdk_version }}" "${{ steps.release.outputs.sdk_version }}"
-          expect_version "@nuanu-ai/agentify-contracts@${{ steps.release.outputs.dist_tag }}" "${{ steps.release.outputs.contracts_version }}"
-          expect_version "@nuanu-ai/agentify@${{ steps.release.outputs.dist_tag }}" "${{ steps.release.outputs.sdk_version }}"
+          expect_version "@nuanu-ai/agentify-contracts@${{ needs.verify.outputs.contracts_version }}" "${{ needs.verify.outputs.contracts_version }}"
+          expect_version "@nuanu-ai/agentify@${{ needs.verify.outputs.sdk_version }}" "${{ needs.verify.outputs.sdk_version }}"
+          expect_version "@nuanu-ai/agentify-contracts@${{ needs.verify.outputs.dist_tag }}" "${{ needs.verify.outputs.contracts_version }}"
+          expect_version "@nuanu-ai/agentify@${{ needs.verify.outputs.dist_tag }}" "${{ needs.verify.outputs.sdk_version }}"
 
           install_dir="$(mktemp -d)"
           trap 'rm -rf "$install_dir"' EXIT
           cd "$install_dir"
           npm init --yes >/dev/null
           npm install --ignore-scripts --no-audit --no-fund --save-exact \
-            "@nuanu-ai/agentify-contracts@${{ steps.release.outputs.contracts_version }}" \
-            "@nuanu-ai/agentify@${{ steps.release.outputs.sdk_version }}"
+            "@nuanu-ai/agentify-contracts@${{ needs.verify.outputs.contracts_version }}" \
+            "@nuanu-ai/agentify@${{ needs.verify.outputs.sdk_version }}"
           node --input-type=module -e '
             const contracts = await import("@nuanu-ai/agentify-contracts");
             const sdk = await import("@nuanu-ai/agentify");

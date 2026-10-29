@@ -29,17 +29,18 @@ can move a registry tag. How a release runs, waits, fails and is restored is
 `deploy/README.md`.
 
 A PRODUCTION release is an `app-v*` tag, which only repository administrators
-can create. The tag publishes the SDK and the contracts to npm through Trusted
-Publishing as soon as it is pushed, behind the same main-ancestry and CI
-checks. Production takes the tagged revision only when a person with access to
-the nuanu mesh runs the release on the host, never by a timer, since a
-production release stops the applications and migrates the live database. The
-command refuses it unless the build was a push to `main`, `main`'s CI run for
-the commit succeeded and the commit moves forward from the revision the host
-runs. So npm can hold a version production does not run, for a while or at
-all: a merchant's contract is the published package and its documentation,
-not the revision production runs, and every published version is still one
-revision `main` reviewed and an administrator tagged.
+can create. Pushing it publishes the SDK and the contracts to npm through
+Trusted Publishing, after the main-ancestry and CI checks in the tagged
+revision's own workflow; npm accepts only the workflow's job in the GitHub
+environment `production`, which GitHub admits only from an `app-v*` tag.
+Production takes the tagged revision only when a person with access to the
+nuanu mesh runs the release on the host, never by a timer, since it stops the
+applications and migrates the live database. The command refuses it unless the
+build was a push to `main`, `main`'s CI run for the commit succeeded and the
+commit moves forward from the revision the host runs. So npm can hold a
+version production does not run: a merchant's contract is the published
+package and its documentation, and every published version is a revision an
+administrator tagged, reviewed on `main` while tags go only on `main`.
 
 A TEST release is the `deploy-test` tag, which a timer on the test host
 follows. It takes any commit with exactly one successful image build, and
