@@ -112,10 +112,6 @@ export interface Contact {
   readonly counts: boolean;
 }
 
-/** The poll of the merchant's own code, the only one the operator calls their worker's. */
-export const codePoll = (held: Contact | undefined): number | null =>
-  held?.through === "api" ? held.at : null;
-
 /** What `MemoryStore#holdings` hands the operator's memory reader. */
 export interface MemoryHoldings {
   readonly merchants: readonly StoredMerchant[];

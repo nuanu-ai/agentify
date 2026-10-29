@@ -620,8 +620,8 @@ export function describeOperatorFigures(
             createdAt,
           );
         }
-        // Tried a shop, whose connector polled for it, and came back to code
-        // that never ran.
+        // Tried a shop, whose connector polled for it, and came back to their
+        // code: the connector's poll is the one on record.
         await store.switchIntegration("mch_d", "woocommerce");
         await store.noteContact("mch_d", NOW - 60_000, "woocommerce");
         await store.switchIntegration("mch_d", "api");
@@ -652,7 +652,7 @@ export function describeOperatorFigures(
               merchantId: "mch_d",
               createdAt: NOW - 2 * DAY,
               integration: "api",
-              lastContact: null,
+              lastContact: NOW - 60_000,
             }),
           ],
         });

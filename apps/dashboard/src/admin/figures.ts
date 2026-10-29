@@ -571,7 +571,7 @@ const needsYouOf = (
         ? "Sells through a WooCommerce shop."
         : merchant.lastContact === null
           ? "Worker never connected."
-          : `Worker last seen ${durationWritten(at - merchant.lastContact)} ago.`;
+          : `Last connected ${durationWritten(at - merchant.lastContact)} ago.`;
     return {
       merchantId: merchant.merchantId,
       name: merchant.serviceName,

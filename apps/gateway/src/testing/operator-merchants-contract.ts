@@ -374,7 +374,7 @@ export function describeOperatorMerchants(
         await store.setCardPaused("mch_a", first ?? "", true);
         await merchant(store, "mch_b", 2_000, SELLS);
         // mch_b tried a shop, whose connector polled for it, and came back to
-        // code that never ran.
+        // their code: the connector's poll is the one on record.
         await store.switchIntegration("mch_b", "woocommerce");
         await store.noteContact("mch_b", AT - 20_000, "woocommerce");
         await store.switchIntegration("mch_b", "api");
@@ -432,7 +432,7 @@ export function describeOperatorMerchants(
         });
         const b = list.rows.find((row) => row.id === "mch_b");
         expect(b?.keys).toStrictEqual({ issued: 1, working: 1 });
-        expect(b?.lastContactAt).toBeNull();
+        expect(b?.lastContactAt).toBe(AT - 20_000);
         expect(b?.thirtyDays.settled).toStrictEqual({ amount: "9.00", count: 1 });
       });
 

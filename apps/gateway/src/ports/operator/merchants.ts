@@ -110,7 +110,7 @@ export interface MerchantRow {
   readonly missing: readonly MerchantFinding[];
   /** Keys issued in all, and how many of them still work. */
   readonly keys: { readonly issued: number; readonly working: number };
-  /** The latest poll of the merchant's own code, or null where it never polled; a shop's connector is not it. */
+  /** The latest poll on record, by their code or their shop's connector; null where nothing ever polled. */
   readonly lastContactAt: number | null;
   readonly cards: { readonly onSale: number; readonly published: number };
   readonly thirtyDays: ThirtyDays;

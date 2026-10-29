@@ -21,7 +21,7 @@ import {
 import { commissionOn, dollarsOf, microsOf, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
 import type { Integration } from "../../../ports/store.js";
-import { type Contact, codePoll } from "../store.js";
+import type { Contact } from "../store.js";
 import {
   namedAndPaid,
   onSale,
@@ -65,7 +65,7 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
         sellerSite: merchant.sellerSite,
         createdAt: merchant.createdAt,
         integration: merchant.integration,
-        lastContact: codePoll(contact.get(merchant.id)),
+        lastContact: contact.get(merchant.id)?.at ?? null,
         cardsPublished: cards.filter((card) => card.merchantId === merchant.id).length,
       })),
     };
