@@ -1965,7 +1965,7 @@ describe("the worker's calls over HTTP", () => {
       notJson = await refusedFor({}, "{ this is not json");
       tooLarge = await refusedFor({}, JSON.stringify({ note: "x".repeat(300_000) }));
       // `compress` is a registered coding the parser cannot inflate; a body
-      // under gzip, deflate or brotli never reaches this branch.
+      // under gzip, deflate, brotli or zstd never reaches this branch.
       encodingRefused = await refusedFor({ "content-encoding": "compress" }, "{}");
       encodingBroken = await refusedFor({ "content-encoding": "gzip" }, halfGzip);
       // The charset on the content-type rather than the content coding: a
