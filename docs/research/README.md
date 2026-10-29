@@ -76,8 +76,9 @@ name. Notes written in Russian stay in Russian.
 | [88-what-the-scanner-could-not-read](88-what-the-scanner-could-not-read.md) | how a scanner check tells a document it read from one it could not read, why an unsettled check lowers coverage and not the score, and how results name one cause | — | English | current |
 | [89-scanner-page-reading](89-scanner-page-reading.md) | how the scanner splits a page as the HTML standard does, recognises a price in any currency and reads the product feed check's facts, why it does not use parse5, and what the reading still gets wrong | — | English | current |
 | [90-unpaid-price-questions-design](90-unpaid-price-questions-design.md) | the design for purchases nobody pays for, as built: a price under the gateway's stamp, the order born at a verified payment, gates and lanes per merchant, WooCommerce's guest carts, the evidence and what stays exposed, and every alternative weighed with its source | ADR-0023, ADR-0043, ADR-0049 | English | current |
+| [91-load-and-timing](91-load-and-timing.md) | a pre-registered protocol for load and timing: endpoint latency, the gateway's new per-phase purchase metrics, settlement landing and an isolation flood, with predictions and decision rules fixed against release app-v0.28.0, for the local stack and the test channel | — | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,
-`43-one-frontend-stack/`, `47-one-docs-stack/`, `55-woo-shop-census/` and
-`56-woo-tax-probe/`.
+`43-one-frontend-stack/`, `47-one-docs-stack/`, `55-woo-shop-census/`,
+`56-woo-tax-probe/` and `91-load-and-timing/`.
