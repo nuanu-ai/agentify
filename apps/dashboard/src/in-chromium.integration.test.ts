@@ -409,6 +409,16 @@ describe("a copy out of a page", () => {
 describe("a click under the dashboard's prefix", () => {
   it("marks the section or filter chosen before its page arrives, and says the page is coming", async () => {
     const page = await onTheCards();
+    // Held back so the page is still on its way when read; a fast runner
+    // otherwise draws Receipts before the bar's moment has passed.
+    await page.route(
+      `${origin}${BASE}/receipts.data*`,
+      async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        await route.fallback();
+      },
+      { times: 1 },
+    );
 
     await linkTo(page, "Receipts").click();
     await page.waitForTimeout(400);

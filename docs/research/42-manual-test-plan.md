@@ -44,8 +44,9 @@ or a sequence of clicks.
   chosen for the run, including its limits and the information the buyer may
   disclose. Do not supply a catalogue ID or an Agentify-specific purchasing script.
 - Returning merchant: “Review yesterday's business, find what needs your
-  attention and resolve what you can.” Give only merchant-owned records and
-  the dashboard, not the organiser's explanation of the incomplete sales.
+  attention and resolve what you can.” Give the dashboard, merchant-owned
+  records, and the merchant's own goods and stated policy as a real merchant
+  has them (K), but not the organiser's explanation of the incomplete sales.
 
 A team member may rehearse all stories. They cannot provide evidence of a
 newcomer's understanding. Use an outside engineer for the SDK first attempt
@@ -66,8 +67,14 @@ alone is not the spending guard. The simplest total limit that a tool enforces
 is the wallet itself: fund the buyer's signer with exactly the run's total
 budget in test USDC, which it cannot exceed whatever it decides; an x402 buyer
 signs an authorisation and pays no gas. The per-purchase limit comes from the
-client's own maximum-payment setting. Record the client/tool versions and
-capabilities before the run, not after seeing a failure.
+client's own maximum-payment setting, and a client's default for that setting
+is part of the declared limit. The standard x402 client, `@x402/core` from
+release 2.23.0, refuses any payment above 1 USD unless its
+`maxAmountPerPayment` is changed, so a buyer whose run allows more stops before
+paying, and one whose run allows less is held only to 1 USD. The organiser sets
+it to the run's per-purchase limit and records the value before the buyer
+starts. Record the client/tool versions and capabilities before the run, not
+after seeing a failure.
 
 A missing declared tool capability blocks that variant. A product response that
 the declared ordinary client cannot read is a product finding. Keep the failed
@@ -84,7 +91,7 @@ are evidence; no invented speed threshold decides whether a screen is clear.
 
 ### When the participants are AI agents
 
-An organising agent may run this protocol and hand each role to a subagent.
+An organising agent may run this protocol and hand each role to another agent.
 Everything above still holds, but an agent's context leaks more easily than a
 person's, and three things need care.
 
@@ -97,24 +104,49 @@ for. A brief that hints at the answer makes the attempt an assisted one, and
 it is recorded as assisted rather than as an independent first attempt.
 
 The roles that stand for outsiders, which are the merchant, the engineer, the
-buyer and the returning merchant, work in a directory that does not contain
-this repository and are told not to look for it. Each has only the equipment
-its real counterpart has: the engineer a terminal, the npm registry and the
-public documentation site; the buyer the declared buyer environment below; the
+buyer and the returning merchant, each run as a session of its own whose
+configuration loads neither this project's instructions nor any memory, in a
+directory outside this repository, and are told not to look for it. A
+subagent started from the organiser's own session does not qualify even when
+its history is empty, because the runtime that starts it hands it the
+project's charter and a summary of memory before the brief, as an earlier run
+found. Before giving the brief, the organiser asks the participant what it
+knows about Agentify and about this run, and records the answer. An answer
+naming anything an outsider would not know, such as the project's charter,
+internal names, this plan or an earlier run, means the isolation failed, and
+the attempt is recorded as assisted. Each role has only the equipment its real
+counterpart has: the engineer a terminal, the npm registry and the public
+documentation site; the buyer the declared buyer environment below; the
 merchant and the returning merchant a browser with the public site and the
 dashboard. For every participant, record the model, its reasoning effort, its
-tools, the exact brief and what its working directory held.
+tools, the configuration its session loaded, the exact brief and what its
+working directory held.
 
 What an agent's attempt measures depends on the role. An engineer's AI coding
 assistant working only from the npm package and the public documentation is a
 genuine DX measurement, because that is how many outside engineers now
 integrate. An AI buyer is the AX measurement itself, since the buyers this
-product serves are agents. A person's understanding of a screen is only
-approximated by an agent reading it: report that result as an agent's reading,
-and keep the verdict on human screen comprehension "not measured" until a
-person who took no part in the work has read those screens.
+product serves are agents. An agent cannot stand for a person reading a
+screen, but it can judge a screen as an expert in interfaces does, including
+whether the screen and its words read as generated. Every U story, and every
+screen a participant passed through, therefore gets the expert review that
+block U describes, which gives the verdict on the screens; whether a
+particular newcomer understood them is a separate line that only a person who
+took no part in the work can measure.
 
 ## Preparation and boundaries
+
+At the start of preparing a run, the organiser asks the product owner once, in
+a single message, for what only the product owner can give: the window on the
+shared test channel and the lab, with the authority to use them in it;
+authority for block G; funding for the buyers' wallets, since Circle's faucet
+asks for a captcha that a person answers; the listing of Google accounts as
+test users; and agreement to anything that spends real money. Everything else
+the organiser answers from the code, the tests, the history in git and this
+plan, which already hold such answers as which cart an old WooCommerce
+rounding defect concerned. Where an answer found this way shows that the plan
+is wrong, the organiser records the inaccuracy as a finding against the
+protocol and does not put it to the product owner as a question.
 
 Record the following before running a story:
 
@@ -140,6 +172,18 @@ Record the following before running a story:
    sign-in links, customer addresses, private download links or public-status
    capabilities to this public repository.
 
+Before the first participant acts, the organiser checks that every access the
+run needs works unattended for the whole window: the test channel's host and
+the lab's fixture host, the log store, the mailbox the newcomers' sign-in links
+reach, and the chain endpoint that payments are read from. A signing agent
+that waits for someone to unlock it, or a passphrase asked for halfway through,
+stops the run at the moment that access is needed. Log capture of every
+service the run uses, on the local stack and on the test channel, starts
+before the first participant's first action and runs until the report is
+written, because a container recreated before its logs were exported takes
+its early output with it, and the search of the logs for keys and addresses
+(I-08) can then cover only the part of the run whose lines were kept.
+
 The limits on mail and scans are shared by everyone using a channel at the
 same moment, and a run on the test channel spends them for others too. The
 dashboard sends one email address at most one sign-in link a minute and three
@@ -159,11 +203,13 @@ a sign-in link. Google sign-in passes through none of these limits, and the
 refusal screen offers it. The scanner itself takes ten scans an hour from one
 client address, asking for a challenge after the third, and ten scans of one
 shop a day; on the test channel every visitor reads as one client address.
-Budget a run's email links and scans across its participants, and let
-participants sign in with Google where a story does not need an emailed link.
-During a run on the test channel, a refusal naming visitors the site cannot
-tell apart is the expected limit, not a finding, while its words and its
-recovery path are still judged (E-01).
+Budget a run's email links and scans across its participants. A newcomer role
+signs in by emailed link alone, for the reason step 4 of "Starting and running
+a run on the test channel" gives, so on the test channel its links come out of
+the thirty shared each hour; every other account signs in with Google where
+its story does not need an emailed link. During a run on the test channel, a
+refusal naming visitors the site cannot tell apart is the expected limit, not
+a finding, while its words and its recovery path are still judged (E-01).
 
 The purchase door refuses three kinds of purchase before anything is charged,
 and all of them shape any story that buys from an SDK merchant. For a merchant
@@ -194,12 +240,21 @@ sixteen started in a second, with sixteen more waiting briefly. A question that
 gets no place sells a synchronous card at its card price; on an asynchronous
 card or a parcel it is refused with HTTP 429 `seller_busy` and
 `Retry-After: 2`, retryable and with nothing charged. A price check that is
-asked and stays silent on such a card answers `seller_busy` with
-`Retry-After: 10`. Payment checks wait in lanes per merchant: four at once for
-payments the paying wallet's own key signed, two for any other signature, and
-a payment that finds no place within two seconds gets `seller_busy` with
-`Retry-After: 2`. No banner or log line marks a busy merchant; a run that wants
-to reach these bounds does so on purpose, as J-09 does.
+asked and stays silent on such a card, past the ten seconds a merchant has to
+answer or the nine the WooCommerce connector gives itself, answers
+`seller_busy` with `Retry-After: 10`. A price holds three minutes, counted to
+when the paid request arrives. Payment checks wait in two lanes per merchant:
+four at once and sixteen waiting for a payment its wallet's own key signed,
+once that wallet's balance and nonce have been read from the chain, and two at
+once and four waiting for any other. Each paying wallet holds at most one place
+and one place in line at a merchant, and a payment that finds no place within
+two seconds gets `seller_busy` with `Retry-After: 2`. The local stack reads no
+wallet from a chain, so every payment there, an honest buyer's included, waits
+in the second lane, and its sandbox facilitator verifies any payment it is
+shown. No banner or log line marks a busy merchant. The gateway counts the
+refusals and the waits it asked for in its metrics
+([research note 91](91-load-and-timing.md)), and a run that wants to reach
+these bounds does so on purpose, as J-09 and block T do.
 
 Whatever the integration and on either channel, a merchant with ten or more
 paid orders they took on and left without delivery or closure (`unfulfilled`)
@@ -477,9 +532,9 @@ deployment facts this public plan leaves out, the shop's address among them.
 Every `./lab.sh` command below is run by the operator on the fixture host.
 Moments in these steps are written in UTC, as the lab's request log reads
 them, while the dashboard shows each moment in the reader's own zone and names
-that zone, so the two are compared through it. Funding the
-buyers' wallets and admitting the participants' Google accounts (step 4) wait
-on others, so they are done in the days before the run.
+that zone, so the two are compared through it. Funding the buyers' wallets
+and listing Google accounts as test users (step 4) wait on others, so they are
+done in the days before the run.
 
 1. Agree the run with the other person who uses the test channel and the lab
    before changing either: which revision the channel will run, which profiles
@@ -579,7 +634,7 @@ on others, so they are done in the days before the run.
    the lab's server-owned `.env`. Settings readings and the request log
    survive it. Agentify is not told, so each connected merchant's integration
    still names the shop and the cards it imported stay listed. While the
-   shop's keys are gone, a buyer who buys one of those cards waits about five
+   shop's keys are gone, a buyer who buys one of those cards waits about ten
    seconds, the time the gateway waits for a price, and is answered with
    HTTP 429 `seller_busy` and `Retry-After: 10`, saying that the seller's price
    check did not name a price; nothing is charged and no order is written. After the merchant connects again, and until their next
@@ -644,24 +699,34 @@ on others, so they are done in the days before the run.
 4. Prepare the accounts and the money. The run uses two merchants and two
    buyers (item 2 above), and the stand's operator merchant besides (Goods and
    instruments). A first attempt needs a dashboard address that has never
-   signed in on the test channel. The operator can start an address over
-   ("Starting an address over on TEST" in deploy/README.md), but that is
-   refused for an account whose merchant has an order or a receipt, so an
-   address a paid run has used is replaced by a new mailbox rather than a plus
-   or dot variant of it. A variant is a separate account to the dashboard, but
-   its links land in the same inbox as the original's, so a reader cannot tell
-   which account a link belongs to, and Google sign-in returns the account's
-   own address rather than the variant, which reaches the original's account.
-   Participants sign in with Google where a story does not need an emailed
-   link, within the limits above; where the test channel's Google project
-   admits only listed test users, whoever administers that project lists each
-   participant's account first ("Google sign-in"). The organiser's own setup
-   merchants, those not playing a participant, set a seller name and a payout
-   wallet in Settings before importing from the shop, and the site as well for
-   parcels; a participant finds those steps on their own, and telling them is
-   assistance. The person playing the shop owner signs in to WooCommerce as
-   the lab's administrator, whose password the operator hands over privately
-   from the lab's `.env`; it never goes into a report.
+   signed in on the test channel, so each newcomer role gets a plus address of
+   a mailbox the organiser reads, with a suffix no earlier run has used, such
+   as the run's date and the role. The dashboard treats a plus address as an
+   account of its own, as E-02 expects of any variant. The participant signs
+   in to it by emailed link only, because Google sign-in returns the mailbox's
+   own address and so lands in the mailbox's existing account. The links
+   arrive in the shared inbox, which also holds other runs' mail, so the
+   organiser picks the participant's message by the address it was sent to and
+   hands the participant that one message, never the mailbox. A newcomer's
+   merchant, whether the participant creates it or is handed it, starts empty,
+   with no cards, keys or orders of an earlier run: an earlier run's open
+   orders would show on its screens as work of its own and count towards the
+   ten unfulfilled orders that stop all its sales. The organiser's own
+   merchants are separate accounts. A used account is never erased to make it
+   look new, since what it holds belongs to the run that used it, and the
+   operator's way of starting an address over ("Starting an address over on
+   TEST" in deploy/README.md) refuses one whose merchant has an order or a
+   receipt in any case. Every other account signs in with Google where its
+   story does not need an emailed link, within the limits above; where the
+   test channel's Google project admits only listed test users, whoever
+   administers that project lists each such account first ("Google sign-in").
+   The organiser's own setup merchants, those not playing a participant, set a
+   seller name and a payout wallet in Settings before importing from the shop,
+   and the site as well for parcels; a participant finds those steps on their
+   own, and telling them is assistance. The person playing the shop owner
+   signs in to WooCommerce as the lab's administrator, whose password the
+   operator hands over privately from the lab's `.env`; it never goes into a
+   report.
 
    A rate saved for a shop priced in rupiah belongs to the account, the
    shop's address and the currency, and outlives switches and reconnections
@@ -675,9 +740,14 @@ on others, so they are done in the days before the run.
 
    Buyers pay in test USDC on Base Sepolia from [Circle's faucet](https://faucet.circle.com),
    which asks for a captcha, so a person requests it, and which hands out a
-   limited amount at a time. Fund each buyer's signer with exactly its total
-   budget and set the per-purchase limit in the client, as "People and
-   independent first attempts" describes; a buyer needs no ETH. A payout (M)
+   fixed amount at a time. That amount rarely equals a buyer's budget, so the
+   organiser keeps one holding wallet, gives the owner its address to fund at
+   the faucet, and from it sends each buyer's signer exactly its total budget;
+   those transfers pay the network's fee in test ETH, which the holding wallet
+   gets from a faucet for Base Sepolia ETH. The organiser makes every buyer's
+   key itself, so no key passes between people. Set the per-purchase limit in
+   the client, as "People and independent first attempts" describes; a buyer
+   needs no ETH. A payout (M)
    is a transaction sent by whoever holds the wallet that sends it, which pays
    the network's fee in test ETH on Base Sepolia; the organiser funds that
    wallet from a faucet for Base Sepolia ETH, records which, and the gas cap
@@ -816,6 +886,98 @@ on others, so they are done in the days before the run.
    Reports and evidence go to the run's private location ("Report and
    evidence").
 
+### The load stand
+
+The T stories and J-09 load the product and time it, and they run on a set of
+merchants, cards, wallets and access prepared for them alone, called the load
+stand here. It is a different thing from the stand of Goods and instruments,
+the organiser's console merchant in `packages/slice`, which the load stand does
+not use. A run that includes any T story or J-09 prepares the load stand and
+records it, in the run's private report under "Scope and prerequisites",
+before its first story of any letter. That way the baseline is read before
+anything moves, and no other story's purchase lands on the load stand's
+merchants. Its cards are paused as soon as they are published and are on sale
+only inside the window block T runs in, which on the test channel comes after
+the independent first attempts (Run selection and completion), because a
+buyer looking for goods in an independent attempt reads the whole catalogue
+and would otherwise meet the load stand's cards at 0.01 USD among the goods it
+chooses from. Nothing on the load stand is taken from the existing catalogue:
+on the test channel some cards on sale belong to a merchant whose shop is no
+longer connected, and a card the run did not publish is not the run's to
+measure. The steps are done in order, and a step that needs the owner or the
+operator stops the run there until they have done it.
+
+1. Read the baseline before changing anything. On the test channel: the
+   running revision, read the four ways step 1 of "Starting and running a run
+   on the test channel" describes, with `/healthz`'s revision and contract
+   version; the commit the `deploy-test` tag names; the versions npm serves;
+   the identifier of every card on sale in the catalogue; the lab's
+   `./lab.sh status` as the operator reads it; and the host's load on the
+   service-health dashboard. On the local stack: its revision, and that its
+   facilitator is the sandbox's. The run ends by restoring what this step
+   recorded.
+2. Have the owner agree the window. On the test channel, T-02, T-03, T-04 and
+   T-06 load the channel or spend, and they run only inside a window the owner
+   agreed, written in UTC, together with who else uses the channel and the lab
+   in it. The window opens only after the independent first attempts have
+   ended. T-03 needs that agreement by name, because its junk payments reach
+   Coinbase's facilitator. The run moves no tag: where the channel does not run
+   the revision under test, the run stops and asks.
+3. Create two SDK merchants, A and B, on each channel the run uses: the local
+   stack for T-01, T-05 and J-09, and the test channel for T-02, T-03, T-04
+   and T-06. Each is an organiser's setup account, signed in on that channel's
+   dashboard, with a seller name, a site, a payout wallet the organiser holds
+   and one key issued on Keys. Each runs a merchant program written for the run
+   from the public quickstart, on `@nuanu-ai/agentify` 0.11.0 and
+   `@nuanu-ai/agentify-contracts` 0.17.0 installed from npm in the run's
+   private folder, with nothing else of this repository. It publishes two
+   cards: a synchronous card at a fixed price of 0.01 USD with no price check,
+   and an asynchronous card with a price check and a delivery deadline of an
+   hour, whose handler answers 0.01 USD after a delay the program reads from
+   its environment, zero unless a story sets it. It delivers a synchronous
+   order at once, takes an asynchronous order on and delivers it a second
+   later, logs every hand-over with the order's identifier and the time, and
+   keeps one record per order identifier, so that a repeat is answered from
+   the record. Its source and installed versions go into the evidence, and it
+   runs and polls throughout, except where T-06 stops it. Once its cards are
+   published, the merchant pauses all sales on Cards and resumes them only
+   when the window of block T opens.
+4. Connect a WooCommerce merchant, C, on the test channel only, after steps 2
+   and 3 of "Starting and running a run on the test channel": an organiser's
+   setup account with a seller name, a site and a payout wallet, connected to
+   the lab shop on a profile the operator names and records, the basic profile
+   unless the run says otherwise. C imports, pauses all sales on Cards until
+   the window of block T opens, as A and B do, and the organiser records the
+   number of the download T-02 buys against its SKU. The lab shop serves
+   several test accounts at once, and accounts connected to one shop share its
+   carts, so C's samples are spaced at least six seconds apart and nothing
+   floods the shop. T-07 runs on a local copy of the lab behind the controlled
+   Woo fault instead, with a merchant of that stack.
+5. Make two buyer wallets on Base Sepolia and send each, from the holding
+   wallet of step 4 of "Starting and running a run on the test channel",
+   exactly the budget research note 91 gives it: one for the purchases from A
+   and C, one for those from B. The wallets are the real bound on what the run
+   can spend. Where the holding wallet holds too little, the owner funds it at
+   Circle's faucet, which asks for a captcha; the running agent answers no
+   captcha. One copy of each key is kept, and no key enters the repository, a
+   report or a log. On the local stack the buyers' keys are any test keys,
+   since nothing is paid there.
+6. Get the access the measurements need, for the run's window: read access to
+   the test channel's metrics in the observability stack
+   ([research note 53](53-self-hosted-observability.md)), or a person who
+   exports them; read-only access to the test channel's database, for each
+   paid order's `settleStartedAt` and for counting orders; and a Base Sepolia
+   endpoint for block times. On the local stack, the gateway's metrics and its
+   database.
+7. At the end, clean up and record it: every key the run issued revoked on
+   Keys; every card the run published paused, so that the cards on sale are
+   exactly those step 1 recorded; C's sales paused and the lab on the profile
+   step 1 recorded, as step 7 of "Starting and running a run on the test
+   channel" ends a run; the merchant programs stopped; and the `deploy-test`
+   tag where step 1 found it. Unresolved orders are listed in the report and
+   never erased, and the other person who uses the test channel is told what
+   the run left.
+
 ## Reading the stories
 
 P0 concerns money, goods, identity, privacy, lost obligations or unsafe actions
@@ -859,6 +1021,22 @@ a 375-pixel viewport or real phone, 200% zoom, keyboard navigation and a screen
 reader for sign-in and key issuance. Populate long real product names, addresses,
 amounts and status labels. Check focus, readable values, control labels,
 wrapping, horizontal scrolling and whether banners cover a decision.
+
+Every U story, and every screen a participant passed through in another block,
+gets an expert review by the method of the interface review skill
+(`.agents/skills/interface-review/SKILL.md`): a first look at the first
+viewport, a walk through the task in the words of the participant's brief,
+the usability heuristics, and the signs of an interface or copy that reads as
+generated rather than made by a person. Three reviewers with no shared context
+each review the actual rendered screens at the widths above, and their
+findings are merged into one list that names who found each. Heuristic
+evaluation and the cognitive walkthrough are expert methods by design, carried
+out without users, so the review's findings are evidence about the screen
+itself, and they are reported as the expert review inside the story's UX
+result. A finding's severity follows "Reading the stories". Whether a
+particular newcomer understood the screen is a separate line of that result,
+measured only when a person who took no part in the work reads it, and the
+verdict on the screen does not wait for it.
 
 For each story, save the first visible viewport and the participant's
 interpretation before they act. Looking through normal page content is allowed;
@@ -928,7 +1106,43 @@ before the action began is a different experiment, not a successful race test.
 | J-07 / P0 | Lose the poll response carrying order.unfulfilled while the merchant process stays up. Separately stop it overnight and restart. | Events may be lost under their contract. Periodic open-order reads find every still-unfulfilled paid order without relying on a restart or an exact event count. The merchant can deliver late until closure or close future Agentify fulfillment and arrange the remedy with the buyer. No event or read establishes that a refund occurred. During the overnight stop, from ten minutes after the last poll, plus up to thirty seconds for how often a poll is written down, new purchases of the merchant's cards charged before their goods are refused before payment as seller_not_taking_orders and the dashboard says since when the integration has not connected, while synchronous purchases end uncharged on their own; the first poll after the restart lifts it with nothing switched back on. |
 | J-08 / P0 | Model definite pre-broadcast refusal, pending response, completely lost response/hash, and late success for synchronous and prepaid orders. Restart between acceptance and callback; race chain recovery with the original answer, the deadline and merchant closure. Include finalized transfer, cancellation, unused expiry, unavailable RPC and mismatched proof. Run ordinary facilitator payments with unavailable RPC and with an explicitly empty RPC setting. On the local stack the payment adapter fault control gives the facilitator's side: `settle-failed` the definite refusal, `settle-lost` the lost answer and `settle-late` the late success, held past the gateway's own wait and under the thirty seconds after which its client gives up, with a merchant closure sent during the hold. It offers no pending answer, so that variant is blocked until a facilitator model can answer pending; that the gateway would keep it unknown, as it keeps a lost one, is a reading of the code and no substitute. An unavailable RPC is `AGENTIFY_PAYMENT_RPC_URL` naming an address where nothing answers, for this variant alone: the application is recreated with it and again without it before any other variant. With `settle-lost` the unanswered charge is then left for a recovery that cannot read, which has not been tried. Showing that ordinary payments make no RPC call, apart from the chain-identifier question the gateway asks once as it starts, needs a listener at that address that records what reaches it, which no instrument here is; the explicitly empty setting is the local stack's own. Nothing models the chain that recovery reads, so the races with chain recovery, the finalized transfer, cancellation, unused expiry and mismatched proof are blocked until a model of the chain exists; with payment recovery's chain address left empty, a lost answer stays unresolved on the local stack for good. | Ordinary payments make no RPC calls. Only overdue unanswered attempts are checked, using the default public Base endpoint unless configured otherwise; an empty setting disables chain calls. Unknown evidence stays payment_unresolved and never permits another charge. Verified recovery releases saved synchronous goods unless fulfillment is closed; a prepaid order past its payment deadline becomes paid and unfulfilled without a fresh handover. After merchant closure, the original payment outcome may update but goods stay withheld; a payment completing then is J-10. One attempt completes once; any receipt and merchant message commit with its state. Chain receipts use block time and never invent a facilitator header. Compare buyer, merchant and dashboard. Label simulated evidence; real payment acceptance needs a separate capped TEST purchase. |
 | J-10 / P0 | Close fulfillment of a synchronous order and of a prepaid order while each one's charge is unanswered, with a closing message that says nothing was charged. Then let the original charge complete late: once through the facilitator's late answer and once through chain recovery. Lose the poll response carrying the resulting event in one variant. Then close each order again with a corrected message, retry that closure, and repeat with a charge that completes as failed. On the local stack the facilitator's late answer is the payment adapter fault control's `settle-late`, and the late failure its `settle-failed` with a hold, each held past the gateway's own wait and under the thirty seconds after which its client gives up. Completion through chain recovery is blocked until a model of the chain exists, and the lost poll response until a cut can be chosen by what a poll answer carries (J-07). | When the charge completes, the merchant receives order.unfulfilled with reason paid_after_closure; a lost event is recovered because the order is on orders.list({ open: true }) and under Needs you with its close action, while it still reads fulfillment_closed with payment_status paid and no goods are released. The second closure records its own time and message, takes the order off the open list and Needs you, and its retry keeps that second record. The agent reads payment_status paid, the merchant's newest message as theirs, and Agentify's own merchant_closed sentence that the order was paid and no refund is confirmed. A charge that completes as failed sends nothing and lists nothing. Compare the merchant's process, dashboard and the agent's document. |
-| J-09 / P1 | Send 200 unpaid quote requests with bounded concurrency against a controlled merchant while one normal buyer buys from the same merchant and another from a second merchant. Restore normal traffic afterwards. | No order is written for any unpaid request. Once the merchant's four price questions and sixteen waiting are taken, a further one waits briefly and is then refused with 429 seller_busy and Retry-After: 2 on an asynchronous card or a parcel, or sold at the card price on a synchronous card, and nothing is charged or asked of the merchant for it; the normal buyer of the same merchant may be refused the same way and succeeds on a retry once a place frees, within seconds. Its payment is checked in a lane of its own and never waits behind the unpaid flood. The buyer of the second merchant is unaffected, and normal sales resume as soon as the flood stops. Measure normal buyer delay, price fallback/refusal and recovery. Screens show no unpaid attempts and distinguish fulfilled sales, paid unfulfilled orders and unknown payments. Do not prescribe unlimited throughput; failure of a documented deadline or misleading successful price is a finding. Never run this load against shared TEST without agreement. |
+| J-09 / P1 | Flood one merchant's price questions while honest buyers pay: unpaid purchase requests at merchant A's asynchronous card with a price check, above its gate, while one buyer buys that card and another buys from merchant B. Stop the flood and buy from A again. It runs as T-01, on the load stand's local stack, at the rates, sample sizes and stop conditions [research note 91](91-load-and-timing.md) fixes, and never against the shared test channel without the owner's agreement. | No order is written for any unpaid request: the orders added equal the honest purchases. Once A's four price questions are under way and sixteen wait, or sixteen have started in the second, a further one waits up to two seconds and is then refused with 429 seller_busy and Retry-After: 2 on an asynchronous card or a parcel, or sold at the card price on a synchronous card, and nothing is charged or asked of the merchant for it. A's buyer may be refused the same way and succeeds on a retry once a place frees, within seconds; its payment never waits behind the flood, which asks prices and pays nothing. B's buyer is never answered seller_busy, and normal sales resume as soon as the flood stops. The gateway's counts of gate refusals and Retry-After answers rise with the refusals the buyers saw. Measure normal buyer delay, price fallback or refusal, and recovery. Screens show no unpaid attempts and distinguish fulfilled sales, paid unfulfilled orders and unknown payments. No throughput beyond the stated bounds is prescribed; a missed documented deadline or a misleading successful price is a finding. |
+
+## T. Load and time
+
+These stories load the product on purpose and time each party's share of a
+purchase. Their predictions, sample sizes, spending cap of 0.30 test USDC, stop
+conditions and decision rule are fixed in
+[research note 91](91-load-and-timing.md) and executed literally, and the
+results the rows below require count as predictions fixed with it. They run
+on the load stand and only once it is recorded (Preparation and boundaries),
+and on the test channel only after the independent first attempts (Run
+selection and completion).
+Three readings stay apart in every result: a figure from the gateway's
+histograms describes a window, a client timer describes one call, and a chain
+read describes neither and is never added to them. On the local stack the
+sandbox facilitator verifies any payment and no wallet is read, so what a
+local story shows about payments is a local result and says nothing about the
+buyer lane.
+
+| ID / priority | Situation and attempt | Required result and evidence |
+| --- | --- | --- |
+| T-01 / P1 | A free flood on the load stand's local stack, research note 91's step 4 and J-09's run. B's buyer buys B's asynchronous card ten times with no load. Unpaid purchase requests then go to A's asynchronous card, about thirty at once and thirty a second for sixty seconds, while A's buyer buys that card and B's buyer buys ten more times. The flood stops and A's buyer buys once more. Count the orders before and after, and read the gateway's gate refusals and Retry-After answers. | J-09's result and note 91's: the orders added equal the honest purchases; A's buyer is priced or answered 429 seller_busy with Retry-After: 2, is never charged for a refusal and completes within five tries; B's buyer is never answered seller_busy and stays within the note's margin; every answer to the flood is a 402 or a 429 with Retry-After: 2, and a 5xx is a finding. No junk payment is sent here, since the sandbox facilitator would admit it as a pretend sale (T-03). |
+| T-02 / P1 | Timings on the test channel, note 91's steps 1 to 3, inside the owner's window with nothing else of the run loading the channel: unpaid 402s of A's two cards and C's download, status reads of one order, A's twelve purchases, B's four and C's four; then the window's per-phase histograms and counters with `agentify_build_info`, and each paid order's settlement landing from the read-only database and the chain. | Each of note 91's predictions is reported with its result, pass, fail, indicative or "I don't know", and its basis. Endpoint times come from the client timer, phases from the histograms and landing from the database and the chain, and none is added to another. The revision behind the figures is the one `agentify_build_info` names, beside the four-way read. Every paid purchase ends delivered or in progress with one charge; one that does not is a finding before it is a timing. |
+| T-03 / P0 | Junk payments against the payment lanes, note 91's step 5, on the test channel only and only with the owner's agreement to it by name: payments built from fresh challenges of A's fixed-price card, one price each, with random signature bytes, ten at once and at most three hundred in thirty seconds, first all naming one payer and then each naming a fresh one. During the burst A's buyer buys A's fixed-price card twice. The test channel calls Coinbase's facilitator with a key of its own, not production's, as a comparison of the keys' fingerprints on both hosts showed on 2026-10-29, so junk payments there cannot use up production's access. | Nothing is charged and no order is written for any junk payment: each is refused by the facilitator as not verified or turned away by a gate. Naming one payer, at most one is checked and one waits at A at any moment, and the rest are answered at once with 429 seller_busy and Retry-After: 2, in words saying that the wallet already has a payment being checked at this seller. Naming fresh payers, at most two are checked and four wait, and the rest are answered seller_busy with Retry-After: 2 in the seller's words. The verify histogram shows them in the unproven lane, refused. A's buyer, whose own key signs and whose wallet is read, is checked in the proven lane, and both purchases complete with no seller_busy: the product owner's rule that paid work never waits behind unpaid work. The burst stops at the first answer that is neither seller_busy nor a refusal of the payment as not verified, or at the first failure of A's buyer, and the stop is recorded with its reason. |
+| T-04 / P0 | A payment near the end of a price's three minutes, on the test channel. Ask A's fixed-price synchronous card for its 402, sign at once, and present the payment about 170 seconds after the price was named. Record the challenge's maxTimeoutSeconds, the authorisation's validBefore, and the moments of naming, signing and presenting by the buyer's clock and the gateway's. With another price, sign at once and present at about 190 seconds. Repeat the 170-second payment on A's asynchronous card. | Both payments presented at about 170 seconds arrive within the term and buy, with one charge each: Coinbase's facilitator verifies and settles an authorisation signed for 215 seconds and presented with about 45 left. Record the facilitator's own answers, not the gateway's arithmetic (C-09); a refusal by the facilitator there is a finding against the 215-second window, whatever the arithmetic says. The payment at about 190 seconds is refused with 409 payment_not_taken, not retryable, saying that nothing was charged and the price has expired, and nothing is charged. `agentify_price_to_payment_seconds` holds an observation near each of the three moments. |
+| T-05 / P1 | A price answered at about nine seconds, on the local stack. Restart A's merchant program with its price delay at nine seconds and ask its asynchronous card's price once, then five times at once. Restart it with the delay at eleven seconds and ask once. Read `agentify_price_answer_duration_seconds` and `agentify_gate_refusals_total` before and after. | The single question is answered after about nine seconds with a 402 carrying the merchant's price, and the histogram records it as answered for the SDK. Of five asked at once, four take A's places for about nine seconds, and the fifth waits two seconds, never more than half the answer window, and is answered 429 seller_busy with Retry-After: 2, with nothing written; the price gate's refusal count rises by one. At eleven seconds the merchant is late: the question is answered after about ten seconds with 429 seller_busy and Retry-After: 10, the histogram records it as silent, and the merchant's late answer prices nothing. A synchronous card with a price check would sell at its card price instead (C-07); the load stand has none. |
+| T-06 / P0 | A merchant's process stopped for twenty minutes after a paid asynchronous order, on the test channel, after T-02's purchases from A. Stop A's merchant program. Within a minute, well inside the ten minutes after which the door refuses such purchases, buy A's asynchronous card, whose deadline is an hour. Keep the program stopped for twenty minutes, then start it again. About eleven minutes into the stop, try one more purchase of that card and read A's dashboard. | The purchase is charged once and answers in_progress with its status address. Eleven minutes in, the new purchase is refused before payment with 409 seller_not_taking_orders, retryable and with nothing charged, and the dashboard says since when the integration has not connected (J-07). After the restart the order reaches the program within fifteen minutes, the longest pause between hand-overs, well inside the three hours hand-overs last and the card's hour. It is delivered once, with one record in the program, one charge on the chain and one receipt, and its status address reads delivered. The first poll lifts the banner with nothing switched back on. A second charge, a second effect, or an order left unfulfilled while its hand-overs and its deadline had time left is a failure. Record each hand-over the program logged and when; whether hand-overs were attempted while no process polled is not known, and the log shows only those that reached the program. |
+| T-07 / P0 | A WooCommerce shop silent past the window, on the local stack: H-07's silent-shop variant, timed, on a copy of the basic profile behind the controlled Woo fault. With the edge dropping every connection to the shop, ask a download's price. Then clear the fault, ask a valid price, make the shop drop every connection again and pay. Leave the shop silent until the order's deadline, then restore it and recover the order from the merchant's own Orders page without reconnecting. The application runs with its default delivery deadline for asynchronous orders set to thirty minutes in its environment (`DEFAULT_ASYNC_FULFILLMENT_MS`), through a Compose override kept with the run's evidence, so that the download's deadline falls inside the run. That override has not been tried, and the run records it as its deviation. | The price asked of the silent shop is answered after about ten seconds with 429 seller_busy and Retry-After: 10, with nothing charged and no order written; the connector stops waiting at nine. The paid download is never refused: it is handed over again with growing pauses, each attempt meeting a dropped connection in the edge's log, and it reads unfulfilled at its deadline with no shop order. The recovery page then creates the shop order once under the existing connection and releases the download, and `./lab.sh orders <Agentify order ID>` in the copy lists exactly one shop order. The shortened deadline is a local setting, so nothing here times the default day. |
+
+T-01 and T-05 run first, on the local stack, and need nobody's agreement. On
+the test channel T-02 comes before the rest, so that nothing else of the run
+loads the channel while its timings are taken. T-04 and T-06 follow, and T-06
+comes after A's purchases for T-02 because stopping A's program refuses A's
+asynchronous card to everyone ten minutes in. T-03 goes last in the window, so
+that whatever its junk payments draw from Coinbase's facilitator cannot spoil a
+timing. T-07 runs whenever the controlled Woo fault's stack is up for H-05 to
+H-08.
 
 ## D. The SDK makes the safe path the ordinary one
 
@@ -1117,9 +1331,12 @@ Prepare paid delivered, accepted overdue, synchronous expired with nothing
 charged and unresolved payment orders, plus an older unfulfilled order outside
 the first page. Let the
 merchant's event response be lost. Use an independent reader who did not create
-the orders. Give only the public UI, docs and merchant-owned operation records;
-allow the SDK if their role normally uses it. Our SQL and private logs are not
-their tools.
+the orders. Give the public UI, docs and merchant-owned operation records, and
+the merchant's own goods and stated policy as a real merchant has them, since
+delivering an overdue order and applying the merchant's remedy (K-02) need
+both; allow the SDK if their role normally uses it. The organiser's
+explanation of the incomplete sales stays withheld, and our SQL and private
+logs are not their tools.
 
 | ID / priority | Situation and attempt | Required result and evidence |
 | --- | --- | --- |
@@ -1143,7 +1360,7 @@ over static data does not cover them.
 | I-05 / P0 | Request deletion as a report-only person and as a merchant owner. Cancel once, confirm once, switch accounts in another tab, and lose the accepted request's response. After cleanup check old private/report/share/image links and sign in again. | Intentional identity is preserved; requested versus completed deletion is clear. Reports and shares are inaccessible after completion, while merchant business records survive their documented boundary. Do not claim immediate backup erasure or that a merchant's account is deleted with scanner data. |
 | I-06 / P1 | Choose essential-only consent, run a scan/register, then allow and withdraw measurement, including another tab. Inspect browser traffic and authorised server records. | Product analytics and ads measurement stay off until allowed and stop after withdrawal, in every open tab. Necessary consent, identity and scan records are not mistaken for prohibited analytics. Browser-only evidence leaves server behavior unmeasured. The privacy explanation matches what the person just chose. The report of a registration to the ad tracker does not follow this choice; I-07 checks it. Nor do the dashboard's product analytics, which its server sends and the switch in its Settings stops; I-09 checks them. |
 | I-07 / P0 | With essential-only consent, open sign-in through an address carrying the ad tracker's click identifier and register a new address by emailed link; repeat with Google. Then sign in again, create a merchant, arrive from the ad with an address that already has a verified account, refuse a Google return, and sign in without a click. Run the dashboard locally with its own receiver: the test channel never reports. | Nothing is asked on screen. Each new account is reported once whatever the privacy choices; a repeated delivery of that same report is allowed. The report carries the click identifier and the event alone, never the address or anything else about the person. The other attempts report nothing. The registration report's copy of the click identifier is gone from authorised server records after delivery, or after a day without it; the copy kept for a merchant's first card is checked apart, against its own rule of [what an ad brought](../decisions/0039-what-an-ad-brought-is-reported-to-its-tracker.md): no click outlives 30 days from the registration. The privacy page says the report goes whatever the choices and keeps it apart from the banner's categories. Delivery to the real tracker needs its own logs and the marketing team's agreement; never register from a real ad click on the live channel as a rehearsal, since it counts as a paid registration. |
-| I-08 / P0 | After the run, search every log line it produced, on the host and in the shared log stack the channel ships its logs to ([research note 53](53-self-hosted-observability.md)), for each of the run's buyer keys, for status addresses (`/x402/orders/…/status`), for WooCommerce order keys (`wc_order_…`), for the order, uid and key values of WooCommerce download links and for the parcel's delivery address. The run includes a sale through the SDK, a WooCommerce download, a parcel, a merchant handler that throws, a WooCommerce refusal and a payment recovery; any of these the run lacks is made for this story. | None of them appears in any line. Each order's lines are found by its identifier, which opens nothing, from the gateway and the WooCommerce worker alike. A hit is a P0 privacy finding, reported with its line's source, time and wording and with the value itself masked. Lines shipped before the release under test are not part of the run. How long the shared stack keeps lines is not recorded, so a clean search there says nothing about lines older than the run. |
+| I-08 / P0 | After the run, search every log line it produced, on the host and in the shared log stack the channel ships its logs to ([research note 53](53-self-hosted-observability.md)), for each of the run's buyer keys, for status addresses (`/x402/orders/…/status`), for WooCommerce order keys (`wc_order_…`), for the order, uid and key values of WooCommerce download links and for the parcel's delivery address. The run includes a sale through the SDK, a WooCommerce download, a parcel, a merchant handler that throws, a WooCommerce refusal and a payment recovery; any of these the run lacks is made for this story. | None of them appears in any line. Each order's lines are found by its identifier, which opens nothing, from the gateway and the WooCommerce worker alike. A hit is a P0 privacy finding, reported with its line's source, time and wording and with the value itself masked. Lines shipped before the release under test are not part of the run. The search covers what the run's log capture kept (Preparation and boundaries), and a stretch of the run it missed is named in the result. How long the shared stack keeps lines is not recorded, so a clean search there says nothing about lines older than the run. |
 | I-09 / P0 | Product analytics sent from the server. Run the dashboard locally with product analytics switched on and a receiver of the organiser's own, the only place a sandbox sends them; on the test channel only where its deployment sends them and the analytics team agrees, since those events reach the team's test site. Walk one merchant through signing in, creating the merchant, its settings, publishing a card, an SDK sale, a sale from the rupiah shop (H-18), a refused purchase and pausing all sales. Lose the receiver's answer to one event before its status line, or hold it past the five seconds the sender waits; an answer cut after its status is read counts as received. Then have the receiver answer 503 so that events about the merchant wait to be sent again, and while they wait turn product analytics off in Settings, let an agent buy from that merchant, turn them on again, let the receiver answer normally and buy once more. Read every request the receiver got. | Each request carries one event of the analytics team's contract, commerce-v1, which names ten, with only that event's fields; the event whose answer was lost arrives again with the same event_id and timestamp, and events from the test channel carry its internal tag. A person, a merchant, a card, an order or a payment attempt appears only as a reference of 32 hexadecimal digits, the same for the same thing in every event, and a person's only as the event's user where that person acted. No name, email address, wallet, key, identifier as Agentify writes it, shop or delivery address, card or order content, or error text appears anywhere in a request. An amount appears only with a payment observed paid, and the rupiah sale's is the US dollars paid, with no rupiah amount and no rate. Once analytics are off, nothing about that person or their merchant leaves, whoever acted, the agent's purchase included, and neither does what was waiting when the switch was turned; turned on again, only what is recorded afterwards leaves, the one exception the design accepts being an event whose transaction was still open at that moment. The privacy page says that, where a deployment is set to send them, the dashboard's server sends these events to Nuanu Analytics, names it among the processors, says what an event carries and never carries, and says that the consent banner does not stop them while the switch in Settings does, together with what is waiting to be sent; a privacy page that presents product analytics only as a choice in the consent banner, or a claim on it that the receiver's requests contradict, is a finding. A failure is a request outside the contract, any of those values in one, an event leaving after the switch was turned off, or one recorded before it was turned on again leaving afterwards. |
 
 ## L. A buyer actually finds the product in an external catalogue
@@ -1236,10 +1453,14 @@ story rather than every permutation of the same cause.
 ## Run selection and completion
 
 Start with independent A, U and B attempts before teaching participants.
-A fresh participant's first attempt is spent only on a path with no blocker
-already known: when an earlier review has found a dead end there, record it as
-a known finding and run the independent attempt once its fix reaches the test
-channel. Stories that need an instrument the run lacks wait for it rather than
+Block T on the test channel runs after those first attempts and never during
+them, because its load, and what it spends of the limits everyone on the
+channel shares, would change what the participants meet; the load stand is
+still prepared and recorded before the first story, with its cards paused
+(The load stand). A fresh participant's first attempt is spent only on a path
+with no blocker already known: when an earlier review has found a dead end
+there, record it as a known finding and run the independent attempt once its
+fix reaches the test channel. Stories that need an instrument the run lacks wait for it rather than
 being run without their fault. Establish one verified SDK sale and one verified Woo download sale, then
 exercise failures and recovery. Start L's bounded observation after its
 prerequisites and perform independent work while it waits. K is a separate
@@ -1250,8 +1471,9 @@ A release check is a selected subset, not full readiness: A-03/A-04, B-02,
 J-01/J-02, D-04/D-06/D-07, E-02/E-03, H-01/H-03/H-08, I-08, M-01/M-02 and
 one morning-after U-02/K-01 recovery; I-08 belongs to every release check
 because any change can add a log line. Add C-09 for changes to the payment
-window, D-08 for changes to the contracts or the SDK, J-09 and J-07's
-overnight variant for changes to the purchase door, B-07/B-08 for changes to
+window, D-08 for changes to the contracts or the SDK, J-09, J-07's overnight
+variant and block T for changes to the purchase door, its gates, its time
+limits or the gateway's purchase metrics, B-07/B-08 for changes to
 what an agent reads at the door or on the test channel, U-06/U-07 for
 documentation and site-frame changes, F for parcel changes, H-12 and H-18 to
 H-23 for changes to how a shop in another currency is admitted, priced or
@@ -1333,9 +1555,12 @@ evidence; participants and what each knew; real products; integrations;
 facilitator/network; tools/faults available; budgets and observation windows.
 
 ## Verdict
-SDK, Woo, human screen comprehension, buyer independence, SDK self-service,
+SDK, Woo, the screens by expert review, buyer independence, SDK self-service,
 scanner/privacy and external discovery: ready / not ready / not measured,
-with the evidence and unresolved findings that determine each.
+with the evidence and unresolved findings that determine each. A newcomer's
+own understanding of the screens is a line of its own, measured with a person
+who took no part in the work or not measured, and it does not decide the
+screens' verdict.
 State the exact merchant/device/product scope, exclusions and limitations.
 
 ## Stories
@@ -1345,8 +1570,9 @@ State the exact merchant/device/product scope, exclusions and limitations.
 ## Findings
 For each: real user consequence; steps; predicted result and source; observed
 result; revision and reproducibility; private evidence references; whether
-assistance was needed. Static suspicion, reproduced defect and accepted
-product limit are different labels.
+assistance was needed; for a finding of the expert review, the reviewers who
+found it. Static suspicion, reproduced defect and accepted product limit are
+different labels.
 
 ## Money and goods
 Per-order evidence rows; actual merchant/provider effects; receipts and
@@ -1410,6 +1636,7 @@ Implementation evidence for the organiser lives in the
 [gateway](../../apps/gateway/src/app/gateway.ts),
 [payment edge](../../apps/gateway/src/http/x402.ts),
 [authorisation window](../../apps/gateway/src/app/payment-window.ts),
+[purchase metrics](../../apps/gateway/src/app/purchase-metrics.ts),
 [returning payments](../../apps/gateway/src/app/returning-payment.ts),
 [payment recovery](../../apps/gateway/src/adapters/x402/recovery.ts),
 [Postgres store](../../apps/gateway/src/adapters/postgres/store.ts),
@@ -1428,7 +1655,8 @@ The [tax probe](56-woo-tax-probe.md), the
 [proposal for shops in another currency](58-woo-shop-currency.md) and
 [what Nuanu Analytics is relied on to do](84-nuanu-analytics-ingest.md) record
 the measurements and the open checks behind H-13 to H-16, H-18 to H-23 and
-I-09.
+I-09, and [research note 91](91-load-and-timing.md) fixes the predictions
+behind block T and J-09.
 
 This plan does not certify chain/provider security, a disaster-recovery restore,
 all browser/mail-client combinations, production capacity or carrier delivery.

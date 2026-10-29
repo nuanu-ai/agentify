@@ -69,6 +69,7 @@ name. Notes written in Russian stay in Russian.
 | [56-woo-tax-probe](56-woo-tax-probe.md) | a pre-registered probe of WooCommerce shops with tax calculation on, with its shop, script and data | ADR-0023 | English | current |
 | [57-sign-in-mail-limits](57-sign-in-mail-limits.md) | how many sign-in and report links the dashboard mails, and what the channel's ceiling protects and costs | — | English | current |
 | [58-woo-shop-currency](58-woo-shop-currency.md) | a proposal for selling from a WooCommerce shop priced in another currency at a rate its merchant sets, with the rate sources checked and the legal frame in Indonesia | ADR-0023 | English | current |
+| [83-worker-throughput](83-worker-throughput.md) | how many orders and price questions a merchant's SDK process and each WooCommerce connection work on at once, with the pre-registered check of that bound and its results | — | English | current |
 | [84-nuanu-analytics-ingest](84-nuanu-analytics-ingest.md) | what Nuanu Analytics is relied on to do with a server-sent event, where that comes from, and the check still owed | ADR-0042 | English | current |
 | [85-operator-admin](85-operator-admin.md) | who the operator's admin serves and why, what it does and never does, how its actions are protected, how it is built, and its screens | ADR-0010, ADR-0014, ADR-0026, ADR-0040 | English | current |
 | [86-one-bar](86-one-bar.md) | the bar at the top of every page: who it serves, what it holds on a wide and a narrow window, and how it knows who is signed in | ADR-0026 | English | current |
@@ -76,8 +77,9 @@ name. Notes written in Russian stay in Russian.
 | [88-what-the-scanner-could-not-read](88-what-the-scanner-could-not-read.md) | how a scanner check tells a document it read from one it could not read, why an unsettled check lowers coverage and not the score, and how results name one cause | — | English | current |
 | [89-scanner-page-reading](89-scanner-page-reading.md) | how the scanner splits a page as the HTML standard does, recognises a price in any currency and reads the product feed check's facts, why it does not use parse5, and what the reading still gets wrong | — | English | current |
 | [90-unpaid-price-questions-design](90-unpaid-price-questions-design.md) | the design for purchases nobody pays for, as built: a price under the gateway's stamp, the order born at a verified payment, gates and lanes per merchant, WooCommerce's guest carts, the evidence and what stays exposed, and every alternative weighed with its source | ADR-0023, ADR-0043, ADR-0049 | English | current |
+| [91-load-and-timing](91-load-and-timing.md) | a pre-registered protocol for load and timing: endpoint latency, the gateway's new per-phase purchase metrics, settlement landing and an isolation flood, with predictions and decision rules fixed against release app-v0.28.0, for the local stack and the test channel | — | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,
-`43-one-frontend-stack/`, `47-one-docs-stack/`, `55-woo-shop-census/` and
-`56-woo-tax-probe/`.
+`43-one-frontend-stack/`, `47-one-docs-stack/`, `55-woo-shop-census/`,
+`56-woo-tax-probe/` and `91-load-and-timing/`.
