@@ -18,6 +18,7 @@ import {
   sessions,
 } from "@agentify/scanner-database";
 import { and, eq, sql } from "drizzle-orm";
+import { servesLandingVariant } from "../../content/landing";
 import { robotsReasonFor } from "../robots-notice";
 import { ownedLead, type Visitor } from "./auth";
 import { getServerConfig } from "./config";
@@ -167,12 +168,21 @@ export async function createOrReplayScan(
         .where(eq(consentSnapshots.id, session.consentSnapshotId))
         .limit(1)
     )[0];
+    // A tab opened before the site changed its landing names one it no longer
+    // serves; the scan goes ahead and that landing is kept nowhere.
+    const landingVariant = servesLandingVariant(body.segment, body.landing_variant)
+      ? body.landing_variant
+      : undefined;
     if (consent && consentAllowsMeasurement(consent.categories as Partial<ConsentCategories>)) {
       await tx
         .update(sessions)
         .set({
-          firstLandingVariant: session.firstLandingVariant ?? body.landing_variant,
-          lastLandingVariant: body.landing_variant,
+          ...(landingVariant === undefined
+            ? {}
+            : {
+                firstLandingVariant: session.firstLandingVariant ?? landingVariant,
+                lastLandingVariant: landingVariant,
+              }),
           lastSeenAt: new Date(),
         })
         .where(eq(sessions.id, session.id));
@@ -231,7 +241,7 @@ export async function createOrReplayScan(
       consentSnapshotId: session.consentSnapshotId,
       scanId,
       segment: body.segment,
-      landingVariant: body.landing_variant,
+      landingVariant: landingVariant ?? "unknown",
       properties: { challenge_used: Boolean(body.turnstile_token) },
     });
     await enqueueScanInTransaction(tx, {

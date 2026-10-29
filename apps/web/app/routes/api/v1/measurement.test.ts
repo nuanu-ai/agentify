@@ -57,6 +57,16 @@ describe("a campaign's attribution", () => {
     expect((await refusalOf(answered)).code).toBe("invalid_attribution");
   });
 
+  it.each([
+    ["names a landing variant the site does not have", { ...touch, landing_variant: "store-v9" }],
+    ["names another segment's landing variant", { ...touch, landing_variant: "owner-v2" }],
+  ])("is refused before anything is kept when it %s", async (_why, body) => {
+    const answered = await attribute(body, { cookie: RETURNING_VISITOR });
+
+    expect(answered.status).toBe(400);
+    expect((await refusalOf(answered)).code).toBe("invalid_attribution");
+  });
+
   it("keeps nothing of a visitor who has no cookie yet, and sets none", async () => {
     const answered = await attribute(touch);
 
@@ -107,6 +117,19 @@ describe("a page's event", () => {
     ["names a scan by something other than its id", event("results_viewed", { scan_id: "1" })],
   ])("is refused when it %s", async (_why, body) => {
     const answered = await report(body);
+
+    expect(answered.status).toBe(400);
+    expect((await refusalOf(answered)).code).toBe("invalid_event");
+  });
+
+  it.each([
+    ["a landing variant the site does not have", "store-v9"],
+    ["another segment's landing variant", "owner-v2"],
+  ])("is refused before anything is kept when a landing view names %s", async (_why, variant) => {
+    const answered = await report(
+      event("landing_view", { segment: "store", landing_variant: variant }),
+      { cookie: RETURNING_VISITOR },
+    );
 
     expect(answered.status).toBe(400);
     expect((await refusalOf(answered)).code).toBe("invalid_event");

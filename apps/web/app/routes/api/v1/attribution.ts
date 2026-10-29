@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { servesLandingVariant } from "../../../../content/landing";
 import { persistAttributionTouch } from "../../../../lib/server/attribution";
 import { readCookie } from "../../../../lib/server/cookies";
 import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
@@ -29,7 +30,8 @@ const requestSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .refine(({ segment, landing_variant }) => servesLandingVariant(segment, landing_variant));
 
 async function attribute(request: Request): Promise<Response> {
   if (!hasSameOrigin(request))

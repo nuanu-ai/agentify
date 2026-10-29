@@ -761,26 +761,41 @@ describe("P4 dashboard-owned scanner identity", () => {
       lastUtmCampaign: "autumn",
     });
     expect(await eventsOf(declined?.id ?? "")).toEqual(["landing_view"]);
-    const measured = await acceptScan(
-      post(
-        "/api/v1/scans",
-        {
-          url: "https://allowed.example/",
-          segment: "store",
-          landing_variant: "store-v2",
-          turnstile_token: null,
-        },
-        {
-          cookie,
-          "idempotency-key": `allowed-${createUuidV7()}`,
-          "x-forwarded-for": "203.0.113.44",
-        },
-      ),
-    );
+    const scanFrom = (url: string, segment: string, landingVariant: string) =>
+      acceptScan(
+        post(
+          "/api/v1/scans",
+          { url, segment, landing_variant: landingVariant, turnstile_token: null },
+          {
+            cookie,
+            "idempotency-key": `allowed-${createUuidV7()}`,
+            "x-forwarded-for": "203.0.113.44",
+          },
+        ),
+      );
+    const measured = await scanFrom("https://allowed.example/", "owner", "owner-v2");
     expect(measured.status).toBe(202);
     // A different landing from the one the attribution above recorded, so
     // this is the scan's own write.
-    expect(await visitorSession()).toMatchObject({ lastLandingVariant: "store-v2" });
+    expect(await visitorSession()).toMatchObject({ lastLandingVariant: "owner-v2" });
+
+    // A tab opened before the site changed its landing still scans, and the
+    // landing it names, which the site no longer serves, is kept nowhere.
+    const fromOldTab = await scanFrom("https://old-tab.example/", "store", "store-v0");
+    expect(fromOldTab.status).toBe(202);
+    const { scan_id: oldTabScan } = (await fromOldTab.json()) as { scan_id: string };
+    expect(await visitorSession()).toMatchObject({
+      firstLandingVariant: "store-v1",
+      lastLandingVariant: "owner-v2",
+    });
+    expect(
+      (
+        await pool.query<{ landing_variant: string }>(
+          "select landing_variant from analytics_events where name = 'scan_started' and scan_id = $1",
+          [oldTabScan],
+        )
+      ).rows,
+    ).toEqual([{ landing_variant: "unknown" }]);
   });
 
   it("expires a partner's click cookie the browser may still hold once its visitor saves a choice without ads measurement", async () => {
@@ -833,7 +848,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         },
         body: JSON.stringify({
           segment: "owner",
-          landing_variant: "owner-v1",
+          landing_variant: "owner-v2",
           touch: {
             utm_source: "meta",
             utm_campaign: campaign,
@@ -872,7 +887,7 @@ describe("P4 dashboard-owned scanner identity", () => {
         },
         body: JSON.stringify({
           segment: "owner",
-          landing_variant: "owner-v1",
+          landing_variant: "owner-v2",
           touch: { utm_term: "person@example.com" },
         }),
       }),

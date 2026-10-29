@@ -121,3 +121,7 @@ export const LANDINGS = {
     segmentPhase: "Checking local business signals",
   },
 } as const satisfies Record<Segment, LandingConfig>;
+
+/** Whether a landing variant is the one the site serves for its segment now. */
+export const servesLandingVariant = (segment: Segment, variant: string): boolean =>
+  LANDINGS[segment].variant === variant;
