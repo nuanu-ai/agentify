@@ -122,7 +122,14 @@ export function problemsWith(channel, resolved) {
   // Coinbase's, but a test chain must keep accepting sandbox:scripted, because
   // the laptop requires exactly that pairing.
   equal("app", "PAYMENT_NETWORK", app.PAYMENT_NETWORK, wanted.network);
-  equal("app", "FACILITATOR_URL", app.FACILITATOR_URL, wanted.facilitator);
+  // The rejected address is not repeated: one may carry credentials, and this
+  // refusal is kept in the release journal.
+  if (app.FACILITATOR_URL !== wanted.facilitator) {
+    problems.push(
+      `app: FACILITATOR_URL is not the ${channel} channel's facilitator, which is ` +
+        JSON.stringify(wanted.facilitator),
+    );
+  }
 
   // Activation hands the application's environment to the checks it runs
   // before the stop one line per variable, so a secret with a line break in it

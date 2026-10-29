@@ -20,6 +20,7 @@ import { seedSandboxKey } from "./app/merchants.js";
 import { RefusedToStart } from "./app/recorded-splits.js";
 import type { Runtime } from "./app/runtime.js";
 import {
+  facilitatorNamed,
   type GatewayConfig,
   isFacilitatorAt,
   isSandboxFacilitator,
@@ -90,7 +91,7 @@ const SETTLE_ON_A_TEST_CHAIN: readonly string[] = [
  */
 export function announceTheEnvironment(config: GatewayConfig): void {
   const { network, facilitatorUrl } = config.payment;
-  const where = `${network} through ${facilitatorUrl}`;
+  const where = `${network} through ${facilitatorNamed(facilitatorUrl)}`;
 
   switch (config.surfaceMode) {
     case "sandbox":

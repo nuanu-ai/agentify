@@ -74,7 +74,7 @@ describe("the first line of the log", () => {
       `${PUBLIC_X402_FACILITATOR_URL}//`,
     ]) {
       const said = await firstLineThrough(known);
-      expect(said).toContain(known);
+      expect(said).toContain(new URL(known).host);
       expect(said).toContain("TEST");
       expect(said).toContain("eip155:84532");
       expect(said).toMatch(/settle.*test funds/);
@@ -87,8 +87,17 @@ describe("the first line of the log", () => {
     const model = "http://host.docker.internal:8790/";
     const said = await firstLineThrough(model);
 
-    expect(said).toContain(model);
+    expect(said).toContain("host.docker.internal:8790");
     expect(said).toMatch(/not know.*settle/);
     expect(said).toContain("TEST");
+  });
+
+  it("names the facilitator by its host, never by an address that carries credentials", async () => {
+    const said = await firstLineThrough(
+      "https://user:s3cr3t@facilitator.invalid:8790/x402?key=s3cr3t",
+    );
+
+    expect(said).toContain("facilitator.invalid:8790");
+    expect(said).not.toContain("s3cr3t");
   });
 });

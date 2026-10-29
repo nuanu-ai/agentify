@@ -680,6 +680,19 @@ describe("the release entry point", () => {
     expectNoFixtureSecrets(stderr, wrong);
   });
 
+  it("names the channel's facilitator without repeating a rejected address that carries credentials", () => {
+    const rejected = "https://user:s3cr3t@facilitator.invalid/x402?key=s3cr3t";
+    const result = runCli(
+      "test",
+      JSON.stringify(withEnv(TEST_CHANNEL, "app", "FACILITATOR_URL", rejected)),
+    );
+    const stderr = result.stderr ?? "";
+    expect(result.status).toBe(65);
+    expect(stderr).toContain("app: FACILITATOR_URL");
+    expect(stderr).toContain("https://api.cdp.coinbase.com/platform/v2/x402");
+    expect(stderr).not.toContain("s3cr3t");
+  });
+
   it.each(SEEDED_CHANNELS)(
     "refuses %s seed keys at the release command before stopping",
     (channel, config, prefix) => {

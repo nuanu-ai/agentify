@@ -12,7 +12,7 @@ import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { type FacilitatorConfig, HTTPFacilitatorClient } from "@x402/core/server";
 import type { PaymentPayload, PaymentRequirements, SettleResponse } from "@x402/core/types";
 import { SETTLE_REQUEST_MS, VERIFY_REQUEST_MS } from "../../app/payment-window.js";
-import { isCdpFacilitator, type PaymentConfig } from "../../config.js";
+import { facilitatorNamed, isCdpFacilitator, type PaymentConfig } from "../../config.js";
 
 /** The facilitator's HTTP client, with a check's time for checks and a charge's for charges. */
 class TimedFacilitatorClient extends HTTPFacilitatorClient {
@@ -101,7 +101,7 @@ export function facilitatorClientFor(payment: PaymentConfig): HTTPFacilitatorCli
   const { cdpApiKeyId, cdpApiKeySecret } = payment;
   if (cdpApiKeyId === null || cdpApiKeySecret === null) {
     throw new Error(
-      `the facilitator at ${payment.facilitatorUrl} takes no request without credentials, and ` +
+      `the facilitator at ${facilitatorNamed(payment.facilitatorUrl)} takes no request without credentials, and ` +
         "CDP_API_KEY_ID or CDP_API_KEY_SECRET is not set, so there is no client to build",
     );
   }

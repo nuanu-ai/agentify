@@ -12,7 +12,7 @@ import {
   facilitatorClientFor,
   refusedWith,
 } from "./adapters/x402/client.js";
-import { isCdpFacilitator, type PaymentConfig } from "./config.js";
+import { facilitatorNamed, isCdpFacilitator, type PaymentConfig } from "./config.js";
 
 export type FacilitatorKeyCheck = {
   /** When the check was made. */
@@ -43,7 +43,7 @@ export async function checkFacilitatorKey(
   post: typeof fetch = fetch,
   clock: () => number = Date.now,
 ): Promise<FacilitatorKeyCheck> {
-  const notCoinbase = `${payment.facilitatorUrl} is not Coinbase's facilitator, so there is no key to ask Coinbase about`;
+  const notCoinbase = `${facilitatorNamed(payment.facilitatorUrl)} is not Coinbase's facilitator, so there is no key to ask Coinbase about`;
   if (!isCdpFacilitator(payment.facilitatorUrl)) {
     return { checkedAt: clock(), outcome: "not_coinbase", said: notCoinbase };
   }
