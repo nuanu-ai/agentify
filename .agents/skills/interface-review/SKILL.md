@@ -34,9 +34,24 @@ because one-off values are how surfaces drift into looking like different
 products. Where impeccable or the Vercel guidelines disagree with these rules,
 ours win: impeccable bans the small label above a heading, and our tokens
 define one, `.eyebrow`. No rule says how often a page may use it, so a reviewer
-records a page that puts one over every section as a sign of step 4 and leaves
-the limit to the owner. `pnpm gallery` draws every state into
+records a working screen that puts one over every section as a sign of step 4
+and leaves the limit to the owner. `pnpm gallery` draws every state into
 `packages/gallery/dist/index.html`.
+
+## Public pages are marketing's
+
+The site's public pages, the front page, /sell and /agentic-shop (their words
+are in `landing.ts`, `sell.ts` and `agentic-shop.ts` under `apps/web/content`),
+are written and designed by the marketing team, and a page that has to
+persuade earns more expression than a working screen. On them the review stays
+strict about four
+things: every promise is true of the product and its contracts, the fifth gate
+included; the shared header and footer; layout that breaks at any width, zoom
+or keyboard; and anything a reader would misread about money or about what
+Agentify does. Everything else, from section structure, labels and imagery to
+the voice and length of the copy and the signs of step 4, is reported as a
+suggestion to the marketing team, with no severity. The scanner's pages, the
+documentation, Privacy, Terms and the dashboard get the whole review.
 
 ## Method, in this order
 
@@ -126,8 +141,7 @@ Signs in the interface, each met on this product's screens:
   widths, so they jump left and right down a list of checks.
 - Boxes as the structure: a card in a card in a card, every block bordered and
   shadowed, a big number over a small label as the default way to show a count.
-- A small label over every heading, so the label stops marking anything: the
-  sell page puts one over each of its sections.
+- A small label over every heading, so the label stops marking anything.
 - Machine data as content: full identifiers and addresses as the main text,
   times to the second in UTC, internal state names as chips, Title Case names.
 - Browser defaults left in place: a select's arrow pressed to its edge, money in
