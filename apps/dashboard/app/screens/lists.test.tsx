@@ -522,11 +522,8 @@ describe("the state of each card", () => {
       selling,
       cards: more.map((one, at) => ({ ...entry, id: `itm_${at}`, ...one })),
     });
-  const wordsOf = (list: ReturnType<typeof listOf>, offSale: readonly string[] = []) =>
-    cardsView(list, "https://agentify.ad", false, {
-      through: "api",
-      offSale,
-    }).listing.rows.map((row) => row.state.text);
+  const wordsOf = (list: ReturnType<typeof listOf>) =>
+    cardsView(list, "https://agentify.ad").listing.rows.map((row) => row.state.text);
 
   it("tells a card on sale from one the merchant paused and one held by the account", () => {
     const list = listOf(
@@ -538,43 +535,88 @@ describe("the state of each card", () => {
 
     expect(wordsOf(list)).toStrictEqual(["On sale", "Paused by you", "Off sale"]);
   });
+});
+
+describe("the products of the integration the merchant does not sell through", () => {
+  const entry = cards.cards[0];
+  if (entry === undefined) throw new Error("the example catalogue has no card");
+  const listOf = (count: number) =>
+    MerchantCardListSchema.parse({
+      selling: "open",
+      cards: Array.from({ length: count }, (_, at) => ({
+        ...entry,
+        id: `itm_${at}`,
+        card: { ...entry.card, merchant_item_id: `room-${at}`, title: `Room ${at}` },
+      })),
+    });
+  const screen = (
+    list: ReturnType<typeof listOf>,
+    through: "api" | "woocommerce",
+    offSale: readonly string[],
+  ) =>
+    served(() => (
+      <CardsScreen
+        view={cardsView(list, "https://agentify.ad", true, { through, offSale })}
+        base=""
+      />
+    ));
+  const rowsIn = (html: string) =>
+    [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(([, row = ""]) => row);
+
+  /** The integration in use, as the page names it to say why the rest is off sale. */
+  const SELLS_THROUGH = { woocommerce: /WooCommerce/, api: /your own code/ } as const;
 
   it.each([
-    ["the shop published, while the code sells", "api", /your code/i],
-    ["the code published, while the shop sells", "woocommerce", /WooCommerce/],
+    ["the code published, while the shop sells", "woocommerce"],
+    ["the shop published, while the code sells", "api"],
   ] as const)(
-    "says beside a card %s which integration the merchant chose, with the way to the switch and no switch of its own",
-    (_which, through, says) => {
-      // The banner names no reason for it: only this card's row can say which
-      // of the merchant's cards came from the integration not in use.
-      const list = listOf("open", { selling: "paused", paused: false });
-      const html = served(() => (
-        <CardsScreen
-          view={cardsView(list, "https://agentify.ad", false, { through, offSale: ["itm_0"] })}
-          base=""
-        />
-      ));
-      const row = /<li class="list-row[^"]*">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
-      const note = readable(/<div class="cell cell-note">([\s\S]*?)<\/div>/.exec(row)?.[1] ?? "");
+    "leaves out of the list the products %s, and says how many there are",
+    (_which, through) => {
+      // Only a switch of integration puts them on sale, which no switch of
+      // their own can do, and the same product imported and published by the
+      // code read as a pair of duplicates.
+      const html = screen(listOf(3), through, ["itm_1", "itm_2"]);
+      const rows = rowsIn(html);
+      const text = readable(html);
 
-      expect(note).toMatch(says);
-      // The state beside it already says the card is off sale.
-      expect(note).not.toMatch(/off sale/i);
-      // The choice between the two is the merchant's, not a sale anybody makes:
-      // a shop never approved sells nothing, and neither does code never run.
-      expect(readable(row)).not.toMatch(/\bsells\b/);
-      expect(row).toContain('href="/woocommerce"');
-      expect(row).not.toContain("<form");
+      expect(rows.map((row) => /cell-title">([^<]*)</.exec(row)?.[1])).toStrictEqual(["Room 0"]);
+      expect(rows[0]).toContain("<form");
+      expect(text).toContain("All 1");
+      expect(text).toMatch(/\b2 products\b/);
+      expect(text).toMatch(SELLS_THROUGH[through]);
     },
   );
 
-  it("does not call a card paused by the merchant while the other integration holds it", () => {
-    // Resuming it would not put it on sale, so "Paused by you" would send the
-    // merchant to a switch that changes nothing.
-    const list = listOf("open", { selling: "paused", paused: true });
-
-    expect(wordsOf(list, ["itm_0"])).toStrictEqual(["Off sale"]);
+  it("says nothing of the other integration where it published nothing", () => {
+    expect(readable(screen(listOf(2), "woocommerce", []))).not.toMatch(SELLS_THROUGH.woocommerce);
   });
+
+  it.each([
+    [
+      "sells through the shop and has imported nothing yet to the WooCommerce page",
+      "woocommerce",
+      'href="/woocommerce"',
+      'href="/docs/quickstart"',
+    ],
+    [
+      "went back to their code and has published nothing from it to the SDK's guide",
+      "api",
+      'href="/docs/quickstart"',
+      null,
+    ],
+  ] as const)(
+    "leads a merchant who %s, and still says how many products the other integration published",
+    (_which, through, way, notThere) => {
+      const html = screen(listOf(1), through, ["itm_0"]);
+      const text = readable(html);
+
+      expect(rowsIn(html)).toStrictEqual([]);
+      expect(html).toContain(way);
+      if (notThere !== null) expect(html).not.toContain(notThere);
+      expect(text).toMatch(/\b1 product\b/);
+      expect(text).toMatch(SELLS_THROUGH[through]);
+    },
+  );
 });
 
 describe("how a card is delivered", () => {
