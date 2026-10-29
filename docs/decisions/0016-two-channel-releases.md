@@ -1,7 +1,7 @@
 # 0016. Two isolated release channels
 
 Date: 2026-08-28
-Status: accepted (the product owner's live word, updated 2026-09-24)
+Status: accepted (the product owner's live word, updated 2026-10-29)
 
 ## Context
 
@@ -43,14 +43,16 @@ package and its documentation, and every published version is a revision an
 administrator tagged, reviewed on `main` while tags go only on `main`.
 
 A TEST release is the `deploy-test` tag, which a timer on the test host
-follows. It takes any commit with exactly one successful image build, and
-activation comes from the candidate itself, so whoever can push a branch here
-can run that commit's activation as root on the test host.
+follows. It takes any commit with exactly one successful image build and runs
+that commit's own activation as root, so the timer takes the tag and never a
+branch of its name, and only an administrator can move the tag: a ruleset
+refuses everyone else, the workflows' token too, since a rule admitting it
+would admit any branch's workflow.
 
 The GitHub workflows check the candidate's reachable Git history for secrets
-before CI tests, image publication, channel selection or SDK publication, and
-stop on a finding or an unavailable scanner; old fixture findings are
-suppressed by exact fingerprints.
+before CI tests, image publication or SDK publication, and stop on a finding or
+an unavailable scanner; old fixture findings are suppressed by exact
+fingerprints.
 
 ## Alternatives rejected
 

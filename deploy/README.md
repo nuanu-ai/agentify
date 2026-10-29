@@ -23,7 +23,7 @@ because it is public.
 
 | Channel | Address | What runs there | How a revision gets there |
 | --- | --- | --- | --- |
-| TEST | `test.agentify.ad` | any commit that was the head of a pushed branch | the `deploy-test` tag moved to it; the host's timer releases it within a minute of its images being built ("Releasing to test") |
+| TEST | `test.agentify.ad` | any commit that was the head of a pushed branch | a repository administrator moves the `deploy-test` tag to it; the host's timer releases it within a minute of its images being built ("Releasing to test") |
 | PRODUCTION | `agentify.ad` | a commit of `main` tagged `app-v<release>` | a person runs `agentify-release app-v<release>` on the host once the tag is pushed ("Releasing to production") |
 
 The servers pull rather than being pushed to (ADR-0016), and the same
@@ -32,7 +32,7 @@ The servers pull rather than being pushed to (ADR-0016), and the same
 ```mermaid
 flowchart LR
     B[branch] -- pull request and review --> M[main]
-    B -. move deploy-test .-> T[test.agentify.ad]
+    B -. an administrator moves deploy-test .-> T[test.agentify.ad]
     M -- tag app-v*, then agentify-release --> P[agentify.ad]
     M -- tag app-v* --> N[npm: the SDK and the contracts]
 ```
@@ -304,8 +304,12 @@ and the binding does not hold. Delete the branch afterwards.
 ## Releasing to test
 
 There is one TEST channel and it is shared, so tell the other person before
-moving it. A TEST release is the `deploy-test` tag: run **Deploy TEST** from
-`main` in GitHub Actions with a branch, tag or SHA, or move the tag yourself.
+moving it. A TEST release is the `deploy-test` tag, and it runs the
+candidate's own activation as root on the TEST host, so the repository's
+ruleset "Only admins move the TEST tag" lets only an administrator create, move
+or delete the tag; anyone else, GitHub Actions included, is refused. The
+host's timer takes the tag alone, never a branch of the same name. An
+administrator moves it from their own checkout:
 
 ```sh
 git push origin my-branch
