@@ -3,7 +3,13 @@ import { z } from "zod";
 import { getServerConfig } from "../../../../lib/server/config";
 import { CONSENT_COOKIE, persistConsentSnapshot } from "../../../../lib/server/consent";
 import { cookieHeader, readCookie } from "../../../../lib/server/cookies";
-import { errorResponse, hasSameOrigin } from "../../../../lib/server/http";
+import {
+  clientAddress,
+  errorResponse,
+  hasSameOrigin,
+  waitResponse,
+  waitSeconds,
+} from "../../../../lib/server/http";
 import { methods } from "../../../../lib/server/methods";
 
 const categoriesSchema = z
@@ -42,7 +48,17 @@ async function consent(request: Request): Promise<Response> {
     const result = await persistConsentSnapshot({
       anonymousToken: readCookie(request, CONSENT_COOKIE),
       decisions: parsed.data.categories,
+      clientAddress: clientAddress(request),
     });
+    if (!result.saved) {
+      return waitResponse(
+        request,
+        429,
+        "consent_rate_limited",
+        "Too many new choices have been saved recently. Try again later.",
+        waitSeconds(result.retryAt),
+      );
+    }
     const response = Response.json(
       { status: "saved", policy_version: CONSENT_POLICY_VERSION },
       { status: 201, headers: { "Cache-Control": "no-store" } },
