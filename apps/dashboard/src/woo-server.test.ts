@@ -2851,28 +2851,22 @@ describe("one integration at a time", () => {
     expect(await running.harnessed.gateway.sellsThrough(merchantId)).toBe("woocommerce");
   });
 
-  it("says beside each card the code published why it is off sale while the shop sells, and holds nothing against the account", async () => {
+  it("counts the cards the code published instead of listing them while the shop sells, and holds nothing against the account", async () => {
     // Selling through the shop is how the account works, not a hold on its
-    // sales, so the banner says nothing of it; the rows say which cards it
-    // leaves off sale, and offer no switch that would put them back.
+    // sales, so the banner says nothing of it. The code's cards go on sale
+    // again only when the merchant switches back, which no switch of theirs
+    // can do, so they are counted under the list rather than listed.
     const running = await started();
     await running.signIn();
     await publishedByTheCode(running);
     await connectTheShop(running);
 
     const html = (await running.get("/products")).html;
-    const rows = [...html.matchAll(/<li class="list-row[^"]*">([\s\S]*?)<\/li>/g)].map(
-      ([, row = ""]) => row,
-    );
 
     expect([...html.matchAll(/data-reason="([^"]+)"/g)]).toStrictEqual([]);
-    expect(rows).not.toHaveLength(0);
-    for (const row of rows) {
-      expect(readable(row)).toContain("Off sale");
-      expect(readable(row)).toMatch(/WooCommerce/);
-      expect(row).toContain('href="/woocommerce"');
-      expect(row).not.toMatch(/<form/);
-    }
+    expect(html).not.toMatch(/<li class="list-row/);
+    expect(readable(html)).toMatch(/\b1 product\b/);
+    expect(html).toContain('href="/woocommerce"');
   });
 });
 

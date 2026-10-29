@@ -59,11 +59,11 @@ SDK whenever a merchant sells through the shop, connected or not.
 ## Consequences
 
 A merchant cannot sell imported products and products from their own code at
-once; the Connect screen says so before anything changes, and the Products
-screen says it beside every product that is off sale for this reason. ADR-0023 no longer
-calls the connector experimental (the product owner, 2026-10-11), and the
-connector is offered on the live channel as a production option (the product
-owner, 2026-10-26). The contract and the SDK do not change.
+once, and the dashboard says so before the switch and for as long as it holds.
+ADR-0023 no longer calls the connector experimental (the product owner,
+2026-10-11), and the connector is offered on the live channel as a production
+option (the product owner, 2026-10-26). The contract and the SDK do not
+change.
 
 Rejected: routing by the publishing integration, for the cost and the gaps
 above; switching at Connect, which takes the code's cards off sale for an

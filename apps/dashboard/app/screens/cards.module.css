@@ -39,6 +39,14 @@
   font-size: var(--text-small);
 }
 
+/* Under the cards, the count of the ones the integration not in use
+   published, close above the line about the switches. */
+.elsewhere {
+  margin: 0 0 var(--space-control);
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+
 /* The line under the cards about what their switches do. */
 .note {
   margin: 0 0 var(--space-section);

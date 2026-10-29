@@ -1737,7 +1737,7 @@ const CARDS: GalleryState[] = [
       screen: "Products",
       when: "A merchant who switched to their WooCommerce shop looks at their cards.",
       cause:
-        "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, and each of those rows says why.",
+        "The merchant sells through the shop, which holds nothing against the account, so no banner is drawn; the cards their code published are off sale until they switch back, so they are left out of the list and counted under it.",
     },
     ((shop) =>
       cardsView(shop, ORIGIN.test, true, {
@@ -1766,11 +1766,25 @@ const CARDS: GalleryState[] = [
       screen: "Products",
       when: "A merchant who imported products from their WooCommerce shop switched back to selling through their own code.",
       cause:
-        "The code sells, so the cards the shop published are off sale; no banner reason covers them, so each of those rows says why.",
+        "The code sells, so the cards the shop published are off sale; they are left out of the list and counted under it.",
     },
     cardsView(cardsOf("open", ON_SALE), ORIGIN.test, true, {
       through: "api",
       offSale: [idOf("itm", "number")],
+    }),
+    "test",
+  ),
+  cards(
+    {
+      id: "dashboard-cards-shop-before-import",
+      screen: "Products",
+      when: "A merchant whose code had published products connected their WooCommerce shop and has not imported from it yet.",
+      cause:
+        "The shop's keys arrived, so the merchant sells through it, and it has published nothing; the code's cards are off sale and counted under the empty list.",
+    },
+    cardsView(CATALOGUE, ORIGIN.test, true, {
+      through: "woocommerce",
+      offSale: CATALOGUE.cards.map((entry) => entry.id),
     }),
     "test",
   ),
