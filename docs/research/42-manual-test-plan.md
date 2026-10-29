@@ -158,6 +158,13 @@ Record the following before running a story:
    sign-in links, customer addresses, private download links or public-status
    capabilities to this public repository.
 
+Before the first participant acts, the organiser checks that every access the
+run needs works unattended for the whole window: the test channel's host and
+the lab's fixture host, the log store, the mailbox the newcomers' sign-in links
+reach, and the chain endpoint that payments are read from. A signing agent
+that waits for someone to unlock it, or a passphrase asked for halfway through,
+stops the run at the moment that access is needed.
+
 The limits on mail and scans are shared by everyone using a channel at the
 same moment, and a run on the test channel spends them for others too. The
 dashboard sends one email address at most one sign-in link a minute and three
