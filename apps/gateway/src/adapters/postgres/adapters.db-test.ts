@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 import { transition } from "@agentify/core";
-import type { Card, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import { type Card, CONTRACT_VERSION, type WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool, type PoolClient } from "pg";
@@ -324,7 +324,7 @@ if (databaseUrl === null) {
       const reader = postgresOperatorReader(contract.db, "eip155:84532");
       const asked = { at: now, surface: "test" } as const;
       await pool.query(
-        "insert into merchant_contact (merchant_id, polled_at, integration) values ($1, $2, 'api')",
+        "insert into merchant_contact (merchant_id, polled_at) values ($1, $2)",
         [A, new Date(now + 5_000)],
       );
 
@@ -354,6 +354,32 @@ if (databaseUrl === null) {
         await pool.query("delete from merchant_keys where id = $1", ["mk_worker_contract"]);
         await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
         await pool.query("delete from cards where id = $1", [card.id]);
+      }
+    });
+
+    it("keeps a shop's product off sale on a poll an older gateway wrote for the merchant's code", async () => {
+      // An older gateway named no integration and wrote only the code's polls,
+      // and it kept them across a switch to a shop.
+      await pool.query("update merchants set integration = 'woocommerce' where id = $1", [A]);
+      const card = await store.publishCard(A, syncCard, now, "woocommerce");
+      const reader = postgresOperatorReader(contract.db, "eip155:84532");
+      await pool.query(
+        "insert into merchant_contact (merchant_id, polled_at, contract_version) values ($1, $2, $3)",
+        [A, new Date(now), CONTRACT_VERSION],
+      );
+
+      try {
+        expect(await store.lastContact(A)).toBeNull();
+        expect(
+          (await store.catalogEntries()).find((entry) => entry.card.id === card.id)?.lastContact,
+        ).toBeNull();
+        const workers = await reader.figures.workers({ at: now, surface: "test" });
+        expect(workers.connectedWithin).toBe(0);
+        expect(workers.silent).toMatchObject([{ merchantId: A, since: null }]);
+      } finally {
+        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
+        await pool.query("delete from cards where id = $1", [card.id]);
+        await pool.query("update merchants set integration = 'api' where id = $1", [A]);
       }
     });
 

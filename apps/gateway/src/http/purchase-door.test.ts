@@ -292,6 +292,28 @@ describe("a purchase that charges before its goods", () => {
     expect(answered.status).toBe(402);
   });
 
+  it("is refused at once for a seller brought back to their WooCommerce shop after a trip to their code, however lately the connector polled before it", async () => {
+    // A shop's keys landing while it is being disconnected bring the merchant
+    // back to a shop the dashboard then forgets, which nothing polls for.
+    const { harnessed, served } = await started();
+    const merchantId = harnessed.merchant.id;
+    await harnessed.gateway.sellThrough(merchantId, "woocommerce");
+    const itemId = (
+      await harnessed.store.publishCard(merchantId, prepaidCard, harnessed.now(), "woocommerce")
+    ).id;
+    await workOnce(harnessed, { through: "woocommerce" }, 0);
+    await harnessed.gateway.sellThrough(merchantId, "api");
+    await harnessed.gateway.sellThrough(merchantId, "woocommerce");
+
+    const refused = await served.call("POST", `/x402/${itemId}/purchase`, {
+      body: { params: {} },
+    });
+
+    expect(refused.status).toBe(409);
+    expect((refused.body as Refused).error.code).toBe("seller_not_taking_orders");
+    expect(await harnessed.store.orders(merchantId)).toStrictEqual([]);
+  });
+
   it("is priced at the code's first poll after a trip to a shop and back, however lately the code polled before it", async () => {
     // A poll soon after another is not written again, and on the shop the
     // connector's polls took the place of the code's.

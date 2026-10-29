@@ -373,6 +373,11 @@ export function describeOperatorMerchants(
         const [first] = await merchant(store, "mch_a", 1_000, { ...SELLS, cards: 3 });
         await store.setCardPaused("mch_a", first ?? "", true);
         await merchant(store, "mch_b", 2_000, SELLS);
+        // mch_b tried a shop, whose connector polled for it, and came back to
+        // code that never ran.
+        await store.switchIntegration("mch_b", "woocommerce");
+        await store.noteContact("mch_b", AT - 20_000, "woocommerce");
+        await store.switchIntegration("mch_b", "api");
         await store.addKey({ id: "mk_1", merchantId: "mch_a", label: "one", digest: "d1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: "mch_a", label: "two", digest: "d2" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: "mch_b", label: "b", digest: "d3" }, 1_000);

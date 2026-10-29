@@ -620,6 +620,11 @@ export function describeOperatorFigures(
             createdAt,
           );
         }
+        // Tried a shop, whose connector polled for it, and came back to code
+        // that never ran.
+        await store.switchIntegration("mch_d", "woocommerce");
+        await store.noteContact("mch_d", NOW - 60_000, "woocommerce");
+        await store.switchIntegration("mch_d", "api");
         const read = await reader.figures.waitingForAdmission(LIVE);
         expect(read.merchants.map((merchant) => merchant.merchantId)).toStrictEqual([
           "mch_y",
@@ -643,7 +648,12 @@ export function describeOperatorFigures(
               lastContact: NOW - 3 * 60_000,
               cardsPublished: 1,
             },
-            expect.objectContaining({ merchantId: "mch_d", createdAt: NOW - 2 * DAY }),
+            expect.objectContaining({
+              merchantId: "mch_d",
+              createdAt: NOW - 2 * DAY,
+              integration: "api",
+              lastContact: null,
+            }),
           ],
         });
         expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(4);
@@ -711,16 +721,25 @@ export function describeOperatorFigures(
         await store.noteContact("mch_d", NOW - 60_000, "api");
         await store.switchIntegration("mch_d", "woocommerce");
         await store.publishCard("mch_d", aCard("woo-1", "async"), NOW - DAY, "woocommerce");
+        // Back on their shop after a trip to their code, as when the shop's
+        // keys land while it is being disconnected; the connector polled before.
+        await ready(store, "mch_e");
+        await store.switchIntegration("mch_e", "woocommerce");
+        await store.publishCard("mch_e", aCard("woo-1", "async"), NOW - DAY, "woocommerce");
+        await store.noteContact("mch_e", NOW - 60_000, "woocommerce");
+        await store.switchIntegration("mch_e", "api");
+        await store.switchIntegration("mch_e", "woocommerce");
 
         expect(without(await reader.figures.workers(LIVE))).toStrictEqual({
           connectedWithin: 1,
-          everConnected: 4,
+          everConnected: 5,
           silent: [
             { merchantId: "mch_d", name: "Merchant mch_d", since: null },
             { merchantId: B, name: "Merchant mch_b", since: NOW - HOUR },
             { merchantId: A, name: "Merchant mch_a", since: NOW - 11 * 60_000 },
+            { merchantId: "mch_e", name: "Merchant mch_e", since: NOW - 60_000 },
           ],
-          silentOf: 3,
+          silentOf: 4,
         });
       });
     });
