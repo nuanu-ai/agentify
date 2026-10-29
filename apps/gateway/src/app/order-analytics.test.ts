@@ -198,6 +198,7 @@ describe("the order an agent's purchase writes", () => {
   it("names the WooCommerce connector as the integration of an order for a card it published", async () => {
     open = await harness();
     await open.gateway.sellThrough(open.merchant.id, "woocommerce");
+    await open.gateway.poll(open.merchant.id, 0, { through: "woocommerce" });
     const itemId = await published(open, "async", "woocommerce");
 
     const offer = await priced(open, itemId);

@@ -238,7 +238,7 @@ async function aGatewayPayingThrough(
   });
   // As though their worker had just polled: nothing is sold for a seller
   // whose process is silent.
-  await store.noteContact(merchant.id, clock());
+  await store.noteContact(merchant.id, clock(), "api");
   const served = await serve({ gateway });
 
   return {

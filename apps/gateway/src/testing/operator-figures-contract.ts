@@ -601,7 +601,7 @@ export function describeOperatorFigures(
           NOW - 5 * DAY,
         );
         await store.publishCard(A, aCard("sku-1"), NOW - 4 * DAY);
-        await store.noteContact(A, NOW - 3 * 60_000);
+        await store.noteContact(A, NOW - 3 * 60_000, "api");
         await store.addMerchant({ id: B, name: "Only named" }, NOW - 9 * DAY);
         await store.setServiceName(B, "Only named", NOW - 9 * DAY);
         await ready(store, C);
@@ -620,6 +620,11 @@ export function describeOperatorFigures(
             createdAt,
           );
         }
+        // Tried a shop, whose connector polled for it, and came back to their
+        // code: the connector's poll is the one on record.
+        await store.switchIntegration("mch_d", "woocommerce");
+        await store.noteContact("mch_d", NOW - 60_000, "woocommerce");
+        await store.switchIntegration("mch_d", "api");
         const read = await reader.figures.waitingForAdmission(LIVE);
         expect(read.merchants.map((merchant) => merchant.merchantId)).toStrictEqual([
           "mch_y",
@@ -643,7 +648,12 @@ export function describeOperatorFigures(
               lastContact: NOW - 3 * 60_000,
               cardsPublished: 1,
             },
-            expect.objectContaining({ merchantId: "mch_d", createdAt: NOW - 2 * DAY }),
+            expect.objectContaining({
+              merchantId: "mch_d",
+              createdAt: NOW - 2 * DAY,
+              integration: "api",
+              lastContact: NOW - 60_000,
+            }),
           ],
         });
         expect((await reader.figures.merchantCounts(LIVE)).waitingForAdmission).toBe(4);
@@ -696,24 +706,40 @@ export function describeOperatorFigures(
         const { store, reader } = await open();
         await ready(store, A);
         await store.publishCard(A, aCard("sku-1", "async"), NOW - DAY);
-        await store.noteContact(A, NOW - 11 * 60_000);
+        await store.noteContact(A, NOW - 11 * 60_000, "api");
         // Silent too, with only a card paid after its goods, which the
         // catalogue leaves out all the same.
         await ready(store, B);
         await store.publishCard(B, aCard("sku-1", "sync"), NOW - DAY);
-        await store.noteContact(B, NOW - HOUR);
+        await store.noteContact(B, NOW - HOUR, "api");
         await ready(store, C);
         await store.publishCard(C, aCard("sku-1", "async"), NOW - DAY);
-        await store.noteContact(C, NOW - 60_000);
+        await store.noteContact(C, NOW - 60_000, "api");
+        // Moved to their WooCommerce shop, which nothing polls for, as when it
+        // is no longer connected; their code polled just before.
+        await ready(store, "mch_d");
+        await store.noteContact("mch_d", NOW - 60_000, "api");
+        await store.switchIntegration("mch_d", "woocommerce");
+        await store.publishCard("mch_d", aCard("woo-1", "async"), NOW - DAY, "woocommerce");
+        // Back on their shop after a trip to their code, as when the shop's
+        // keys land while it is being disconnected; the connector polled before.
+        await ready(store, "mch_e");
+        await store.switchIntegration("mch_e", "woocommerce");
+        await store.publishCard("mch_e", aCard("woo-1", "async"), NOW - DAY, "woocommerce");
+        await store.noteContact("mch_e", NOW - 60_000, "woocommerce");
+        await store.switchIntegration("mch_e", "api");
+        await store.switchIntegration("mch_e", "woocommerce");
 
         expect(without(await reader.figures.workers(LIVE))).toStrictEqual({
           connectedWithin: 1,
-          everConnected: 3,
+          everConnected: 5,
           silent: [
+            { merchantId: "mch_d", name: "Merchant mch_d", since: null },
             { merchantId: B, name: "Merchant mch_b", since: NOW - HOUR },
             { merchantId: A, name: "Merchant mch_a", since: NOW - 11 * 60_000 },
+            { merchantId: "mch_e", name: "Merchant mch_e", since: NOW - 60_000 },
           ],
-          silentOf: 2,
+          silentOf: 4,
         });
       });
     });
@@ -756,7 +782,7 @@ export function describeOperatorFigures(
         // Took every step, and sold.
         await ready(store, A);
         await store.addKey({ id: "key_a", merchantId: A, label: "k", digest: "d".repeat(64) }, NOW);
-        await store.noteContact(A, NOW - 60_000);
+        await store.noteContact(A, NOW - 60_000, "api");
         await store.publishCard(A, aCard("sku-1"), NOW - DAY);
         await storeAcceptedOrder(store, aSale("ord_a"));
         // Connected a shop, which only the dashboard knows, and was admitted.

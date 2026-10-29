@@ -253,6 +253,13 @@
       "when": 1793182660319,
       "tag": "0035_order_redelivery_window",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793195505996,
+      "tag": "0036_contact_names_its_integration",
+      "breakpoints": true
     }
   ]
 }

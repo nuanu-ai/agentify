@@ -373,11 +373,16 @@ export function describeOperatorMerchants(
         const [first] = await merchant(store, "mch_a", 1_000, { ...SELLS, cards: 3 });
         await store.setCardPaused("mch_a", first ?? "", true);
         await merchant(store, "mch_b", 2_000, SELLS);
+        // mch_b tried a shop, whose connector polled for it, and came back to
+        // their code: the connector's poll is the one on record.
+        await store.switchIntegration("mch_b", "woocommerce");
+        await store.noteContact("mch_b", AT - 20_000, "woocommerce");
+        await store.switchIntegration("mch_b", "api");
         await store.addKey({ id: "mk_1", merchantId: "mch_a", label: "one", digest: "d1" }, 1_000);
         await store.addKey({ id: "mk_2", merchantId: "mch_a", label: "two", digest: "d2" }, 1_000);
         await store.addKey({ id: "mk_b", merchantId: "mch_b", label: "b", digest: "d3" }, 1_000);
         await store.disableKeyOf("mch_a", "mk_2", 1_500);
-        await store.noteContact("mch_a", AT - 20_000);
+        await store.noteContact("mch_a", AT - 20_000, "api");
         await storeAcceptedOrder(
           store,
           order("ord_in", "mch_a", FROM, "delivered_unpaid", { payment: "settle_failed" }),
@@ -427,7 +432,7 @@ export function describeOperatorMerchants(
         });
         const b = list.rows.find((row) => row.id === "mch_b");
         expect(b?.keys).toStrictEqual({ issued: 1, working: 1 });
-        expect(b?.lastContactAt).toBeNull();
+        expect(b?.lastContactAt).toBe(AT - 20_000);
         expect(b?.thirtyDays.settled).toStrictEqual({ amount: "9.00", count: 1 });
       });
 
@@ -489,7 +494,7 @@ export function describeOperatorMerchants(
         );
         await store.noteKeyUse("mk_new", 3_000, "agentify-sdk/0.9.0");
         await store.disableKeyOf("mch_a", "mk_old", 2_500);
-        await store.noteContact("mch_a", 3_000);
+        await store.noteContact("mch_a", 3_000, "api");
 
         const record = (await merchants.merchant("mch_a", LIVE)) as MerchantRecord;
 

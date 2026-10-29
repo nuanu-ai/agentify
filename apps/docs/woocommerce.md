@@ -494,7 +494,7 @@ Agentify does not keep its delivery address.
 Disconnecting removes the keys your shop gave Agentify and switches you back
 to your own code. The shop's products stay on Products, off sale, and the
 products your code published come back with selling stopped until you resume
-it there.
+it there. Once resumed, they are on sale from your code's first poll.
 
 The orders still waiting on the shop have to end first, because once it is
 disconnected nothing reads the shop: a parcel ends when it is marked

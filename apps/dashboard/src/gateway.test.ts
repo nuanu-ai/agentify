@@ -1020,6 +1020,7 @@ describe("what an order's record says beside its document", () => {
       "woocommerce",
     );
     if (!published.ok) throw new Error(`the card was refused: ${JSON.stringify(published)}`);
+    expect((await client.pollWorker(0)).ok).toBe(true);
     const offered = await harnessed.gateway.beginPurchase(published.id, {});
     if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
     await harnessed.gateway.payPurchase(

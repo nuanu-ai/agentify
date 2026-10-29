@@ -102,10 +102,10 @@ than buying anew. A paid request that fails on Agentify's side before anything
 was written for it, for a reason that will not pass by itself, is answered
 with HTTP 500 and `gateway_failed`, not retryable, and nothing was charged.
 
-The rule about polling covers every purchase sold through your own code,
-whatever its mode. Without a process of
-yours running, the buyer of a purchase that charges before its goods would pay
-for goods nothing is there to make, and a synchronous purchase could only lapse
+The rule about polling covers every purchase, whatever its mode. Without a
+process of yours running, the buyer of a purchase that charges before its
+goods would pay for goods nothing is there to make, and a synchronous
+purchase could only lapse
 after its buyer had signed and waited. While it holds, your cards are not in
 Agentify's catalogue, though a look at one still answers with its payment
 challenge, so that listings other people build from those answers keep it
@@ -116,9 +116,10 @@ already made goes through. {{Silent-after}} without a poll is when it starts ref
 and Agentify notices within half a minute after that. A process whose every
 handler is busy asks for no new work and so does not poll either: one held up
 that long by slow handlers is counted as quiet too, which keeps buyers from
-paying for orders it has no room to take. A shop connected through
-WooCommerce is never refused for it, because its orders are filled inside
-Agentify; a shop that fails answers its price question with the failure.
+paying for orders it has no room to take. A WooCommerce shop is counted by the
+polls of Agentify's connector, which polls for a shop only while it is
+connected, so a shop that is no longer connected is refused the same way; a
+connected shop that fails answers its price question with the failure.
 This refusal is retryable, as `seller_busy` is, and neither charges anything.
 
 The rule about orders left without delivery or closure counts only an order a
@@ -226,9 +227,11 @@ When the dashboard says this, check the process that should be polling:
 - It reaches the address you gave the client. A poll that does not get
   through is reported as `poll_failed` too.
 
-A WooCommerce shop is never counted this way, because Agentify's connector
-takes the shop's orders and nothing of yours polls, so while your shop sells
-for you the dashboard does not say this.
+While you sell through a WooCommerce shop, nothing of yours polls: Agentify's
+connector polls for you, and only while the shop is connected. When the
+dashboard says this to you then, open the WooCommerce screen. If it shows no
+connected shop, connect the shop again, or go back to your code from the same
+screen.
 
 ## What is not settled yet
 

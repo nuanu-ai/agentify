@@ -93,7 +93,7 @@ function factsOf(
     }),
     missing,
     keys: { issued: keys.length, working: keys.filter((key) => key.disabledAt === null).length },
-    lastContactAt: holdings.contact.get(merchant.id) ?? null,
+    lastContactAt: holdings.contact.get(merchant.id)?.at ?? null,
     cards: { onSale: cards.filter(onSale).length, published: cards.length },
     thirtyDays: {
       from,

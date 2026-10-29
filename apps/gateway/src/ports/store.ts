@@ -596,7 +596,8 @@ export interface CatalogEntry {
   readonly integration: Integration;
   /**
    * The latest poll recorded for that merchant (`lastContact`), or null where
-   * none ever was: a seller whose own code has gone quiet takes no purchase.
+   * the integration they sell through made none: a seller whose integration
+   * has gone quiet takes no purchase.
    */
   readonly lastContact: number | null;
 }
@@ -825,16 +826,29 @@ export interface Store {
 
   /**
    * Records that one of this merchant's processes speaking this build's contract polled their stream at this
-   * instant. The mark never goes backwards, since two gateway processes write
+   * instant through `through`, written only while the merchant sells through
+   * it. The record names the integration and outlives a switch, though it
+   * counts only until the merchant next switches. The
+   * mark never goes backwards while it counts, since two gateway processes write
    * it from two clocks without serialising, and it outlives a restart: a
    * restarted gateway that knew of no poll would refuse every sale
    * until each merchant's process polled again. A merchant that is not there
    * is not an error, and nothing is written.
    */
-  noteContact(merchantId: string, at: number): Promise<void>;
+  noteContact(merchantId: string, at: number, through: Integration): Promise<void>;
 
-  /** The latest poll speaking this build's contract, or null where none was confirmed. */
+  /**
+   * The latest poll speaking this build's contract that the integration the
+   * merchant sells through made since they last switched; null where none was
+   * confirmed.
+   */
   lastContact(merchantId: string): Promise<number | null>;
+
+  /**
+   * The latest poll on record for the merchant, whichever integration made it
+   * and whether or not it counts; null where none was ever recorded.
+   */
+  pollRecorded(merchantId: string): Promise<number | null>;
 
   /**
    * The key a request presented, found by its digest, or null where there is no
@@ -980,7 +994,8 @@ export interface Store {
   /**
    * Moves this merchant to the other integration, or says which orders hold
    * it where it is (`IntegrationSwitch`). Switching to the one they already
-   * sell through changes nothing and is not refused.
+   * sell through changes nothing and is not refused. A switch keeps the
+   * merchant's last poll on record and stops it counting (`lastContact`).
    *
    * One transaction, holding the merchant's row against the birth of an
    * order (`admitOrder`), so no order can be made for a card in

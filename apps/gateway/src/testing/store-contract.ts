@@ -361,7 +361,7 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         await store.setPayoutWallet(A, NO_WALLET, paid, 30_000);
         await store.setServiceName(A, "A's own shop", 30_000);
         await store.setSellerSite(A, "https://a.example", 30_000);
-        await store.noteContact(A, 30_000);
+        await store.noteContact(A, 30_000, "api");
 
         const entries = await store.catalogEntries();
 
@@ -579,13 +579,42 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         const store = await twoMerchants();
 
         expect(await store.lastContact(A)).toBeNull();
-        await store.noteContact(A, 5_000);
-        await store.noteContact(A, 3_000);
+        await store.noteContact(A, 5_000, "api");
+        await store.noteContact(A, 3_000, "api");
 
         expect(await store.lastContact(A)).toBe(5_000);
         expect(await store.lastContact(B)).toBeNull();
-        await store.noteContact(A, 8_000);
+        await store.noteContact(A, 8_000, "api");
         expect(await store.lastContact(A)).toBe(8_000);
+      });
+
+      it("is the poll the integration the merchant sells through made since they last switched, and stays on record", async () => {
+        // The connector polls a shop's stream after its merchant has moved back
+        // to their code, and the code may not be running; a merchant brought
+        // back to a shop nobody connected has nothing polling for them.
+        const store = await twoMerchants();
+        await store.publishCard(A, card("woo-1", "A mug"), 1_000, "woocommerce");
+        await store.noteContact(A, 4_000, "api");
+        await store.noteContact(A, 5_000, "woocommerce");
+
+        expect(await store.lastContact(A)).toBe(4_000);
+        await store.switchIntegration(A, "woocommerce");
+        expect(await store.lastContact(A)).toBeNull();
+        expect((await store.catalogEntries())[0]?.lastContact).toBeNull();
+        expect(await store.pollRecorded(A)).toBe(4_000);
+        // Earlier than the code's, from another process's clock: the code's
+        // later mark lends the shop nothing.
+        await store.noteContact(A, 3_000, "woocommerce");
+        expect(await store.lastContact(A)).toBe(3_000);
+        await store.switchIntegration(A, "api");
+        expect(await store.lastContact(A)).toBeNull();
+        await store.switchIntegration(A, "woocommerce");
+        expect(await store.lastContact(A)).toBeNull();
+        expect(await store.pollRecorded(A)).toBe(3_000);
+        expect(await store.pollRecorded(B)).toBeNull();
+        // The first poll after the trip is the record, whatever its clock.
+        await store.noteContact(A, 2_000, "woocommerce");
+        expect(await store.lastContact(A)).toBe(2_000);
       });
     });
 

@@ -20,6 +20,8 @@ import {
 } from "../../../ports/operator/figures.js";
 import { commissionOn, dollarsOf, microsOf, tallyOf } from "../../../ports/operator/money.js";
 import { paymentUnknown } from "../../../ports/operator/orders.js";
+import type { Integration } from "../../../ports/store.js";
+import type { Contact } from "../store.js";
 import {
   namedAndPaid,
   onSale,
@@ -31,6 +33,16 @@ import {
 import type { MemoryScope } from "./index.js";
 
 const sum = (values: readonly bigint[]): bigint => values.reduce((all, one) => all + one, 0n);
+
+/** The last poll of the integration the merchant sells through, counting or not. */
+const inUse = (
+  polled: Contact | undefined,
+  merchant: { readonly integration: Integration },
+): number | null => (polled?.through === merchant.integration ? polled.at : null);
+
+/** The merchant's last poll while it counts, as the door reads it. */
+const counting = (polled: Contact | undefined): number | null =>
+  polled?.counts === true ? polled.at : null;
 
 const talliedSales = (sales: readonly SettledSale[]) =>
   tallyOf(sum(sales.map((sale) => sale.micros)), sales.length);
@@ -53,7 +65,7 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
         sellerSite: merchant.sellerSite,
         createdAt: merchant.createdAt,
         integration: merchant.integration,
-        lastContact: contact.get(merchant.id) ?? null,
+        lastContact: contact.get(merchant.id)?.at ?? null,
         cardsPublished: cards.filter((card) => card.merchantId === merchant.id).length,
       })),
     };
@@ -96,17 +108,19 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
       .filter(
         (merchant) =>
           merchant.selling === "open" &&
-          merchant.integration === "api" &&
           ready(merchant, asked) &&
-          silentAt(contact.get(merchant.id) ?? null, asked.at) &&
+          silentAt(counting(contact.get(merchant.id)), asked.at) &&
           cards.some(
-            (card) => card.merchantId === merchant.id && !card.paused && card.integration === "api",
+            (card) =>
+              card.merchantId === merchant.id &&
+              !card.paused &&
+              card.integration === merchant.integration,
           ),
       )
       .map((merchant) => ({
         merchantId: merchant.id,
         name: merchant.name,
-        since: contact.get(merchant.id) ?? null,
+        since: inUse(contact.get(merchant.id), merchant),
       }))
       .sort(
         (one, other) =>
@@ -115,7 +129,9 @@ export const memoryOperatorFigures = (scope: MemoryScope): OperatorFigures => ({
       );
     return {
       readAt: asked.at,
-      connectedWithin: [...contact.values()].filter((polled) => !silentAt(polled, asked.at)).length,
+      connectedWithin: merchants.filter(
+        (merchant) => !silentAt(counting(contact.get(merchant.id)), asked.at),
+      ).length,
       everConnected: contact.size,
       silent: silent.slice(0, SILENT_NAMED_AT_MOST),
       silentOf: silent.length,

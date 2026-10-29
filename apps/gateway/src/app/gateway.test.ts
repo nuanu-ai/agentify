@@ -2132,7 +2132,7 @@ describe("the price question", () => {
     const publishedAt = asTimestamp(harnessed.now());
 
     harnessed.advance(90 * 60_000);
-    await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now());
+    await harnessed.store.noteContact(harnessed.merchant.id, harnessed.now(), "api");
     const purchasedAt = asTimestamp(harnessed.now());
     expect(purchasedAt).not.toBe(publishedAt);
 
@@ -3295,6 +3295,9 @@ describe("one integration at a time", () => {
       "woocommerce",
     );
     if (!result.ok) throw new Error(`importing failed: ${JSON.stringify(result.error.problems)}`);
+    // As the connector does for a connected shop, without which nothing of
+    // the shop's is on sale.
+    await harnessed.gateway.poll(harnessed.merchant.id, 0, { through: "woocommerce" });
     return result.id;
   };
 
@@ -3436,6 +3439,9 @@ describe("one integration at a time", () => {
     expect(cards.selling).toBe("paused");
     expect((await harnessed.gateway.catalog()).items).toStrictEqual([]);
     await harnessed.gateway.setSelling(harnessed.merchant.id, "open");
+    // The code's polls from before the shop say nothing of it now.
+    expect((await harnessed.gateway.catalog()).items).toStrictEqual([]);
+    await harnessed.gateway.poll(harnessed.merchant.id, 0);
     expect((await harnessed.gateway.catalog()).items.map((item) => item.fulfillment)).toHaveLength(
       1,
     );

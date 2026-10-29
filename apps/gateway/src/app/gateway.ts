@@ -372,8 +372,8 @@ export type PurchaseAttempt =
    */
   | { readonly step: "failed_before_charge" }
   /**
-   * The seller's own process has not polled for longer than
-   * `SILENT_AFTER_MS`; nothing was charged.
+   * Nothing of the integration the seller sells through has polled for
+   * longer than `SILENT_AFTER_MS`; nothing was charged.
    */
   | { readonly step: "seller_not_taking_orders" }
   /**
@@ -414,7 +414,7 @@ interface HowTheySell {
   readonly integration: Integration;
   /** Whether they have as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
-  /** Their own code's latest recorded poll, or null where none ever was. */
+  /** The latest recorded poll of the integration they sell through, or null where none was. */
   readonly lastContact: number | null;
 }
 
@@ -425,7 +425,6 @@ const saleFactsOf = (stored: StoredCard, theirs: HowTheySell): SaleFacts => ({
   fulfillment: stored.card.fulfillment,
   sellerSite: theirs.sellerSite,
   unserved: theirs.unserved,
-  through: theirs.integration,
   lastContact: theirs.lastContact,
 });
 
@@ -471,9 +470,7 @@ interface SaleFacts {
   readonly sellerSite: string | null;
   /** Whether its seller has as many paid orders left unserved as the door allows. */
   readonly unserved: boolean;
-  /** The integration its seller sells through. */
-  readonly through: Integration;
-  /** Its seller's latest recorded poll, or null where none ever was. */
+  /** The latest recorded poll of the integration its seller sells through, or null. */
   readonly lastContact: number | null;
 }
 
@@ -489,10 +486,10 @@ interface SaleFacts {
  *
  * A seller silent beyond `SILENT_AFTER_MS` is refused whatever the card's
  * mode: a synchronous purchase would charge nothing, but nobody would draw
- * its order, so it could only lapse after the buyer had signed and waited. A
- * shop sold through the connector is never silent, since the connector runs
- * inside Agentify. A seller whose price questions or payment checks are full
- * is not off sale: places free within seconds, and anybody can fill them
+ * its order, so it could only lapse after the buyer had signed and waited.
+ * A shop's polls are the connector's, which draws a shop's stream only while
+ * the shop is connected. A seller whose price questions or payment checks are
+ * full is not off sale: places free within seconds, and anybody can fill them
  * without paying, so they must not empty a seller's listing.
  */
 const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
@@ -503,7 +500,7 @@ const offSaleNow = (facts: SaleFacts, at: number): OffSale | null => {
     return { code: "not_selling", transient: false, message: SELLER_SITE_REQUIRED };
   }
   if (facts.unserved) return { code: "seller_not_fulfilling", transient: false };
-  if (facts.through === "api" && silentAt(facts.lastContact, at)) {
+  if (silentAt(facts.lastContact, at)) {
     return { code: "seller_not_taking_orders", transient: true };
   }
   return null;
@@ -732,8 +729,16 @@ export class Gateway {
    * the poll draws (`#drawFor`).
    */
   readonly #held = new Map<string, Set<HeldPoll>>();
-  /** When this process last wrote each merchant's poll down (`CONTACT_WRITTEN_EVERY_MS`). */
-  readonly #contactWritten = new Map<string, number>();
+  /**
+   * When this process last wrote each merchant's poll down
+   * (`CONTACT_WRITTEN_EVERY_MS`), for each integration apart, so the first poll
+   * after a switch is written even when one of the integration left behind is
+   * still being written as the switch goes through.
+   */
+  readonly #contactWritten: Readonly<Record<Integration, Map<string, number>>> = {
+    api: new Map(),
+    woocommerce: new Map(),
+  };
   /** When this process last logged each merchant's refusals for unserved orders. */
   readonly #unservedLogged = new Map<string, number>();
   readonly #edge: PaymentEdge;
@@ -998,7 +1003,6 @@ export class Gateway {
                 fulfillment: entry.card.card.fulfillment,
                 sellerSite: entry.sellerSite,
                 unserved: stopped.has(entry.card.merchantId),
-                through: entry.integration,
                 lastContact: entry.lastContact,
               },
               at,
@@ -1160,11 +1164,11 @@ export class Gateway {
 
   /**
    * What the dashboard says over every page about a merchant, from one read of
-   * their row, and of their cards only while their own process is silent:
+   * their row, and of their cards only while their integration is silent:
    * whether they are selling and through which integration, the name they
    * sell under, the wallet paid now, whether the operator has approved them
    * for live sales, and, while purchases of theirs are refused for that
-   * silence, when their process last polled (null where it never has), and
+   * silence, when their integration last polled (null where it never has), and
    * whether as many of their purchases wait for payment as the door allows,
    * so that the next is refused, and whether as many of their paid orders are
    * left unserved as the door allows; and, on the live channel while an
@@ -1223,20 +1227,16 @@ export class Gateway {
   }
 
   /**
-   * When this merchant's process last polled, where the silence since is what
-   * refuses a purchase of theirs and keeps their cards out of the catalogue:
-   * they sell through their own code, nothing else holds their sales, and a
-   * card of theirs is on sale. Null where nothing is refused for it.
+   * When the integration this merchant sells through last polled, where the
+   * silence since is what refuses a purchase of theirs and keeps their cards
+   * out of the catalogue: nothing else holds their sales, and a card of that
+   * integration is on sale. Null where nothing is refused for it.
    */
   async #refusedForSilence(
     merchant: StoredMerchant,
     at: number,
   ): Promise<{ readonly since: number | null } | null> {
-    if (
-      merchant.selling !== "open" ||
-      merchant.integration !== "api" ||
-      !sellableBy(merchant, this.runtime.config, at)
-    ) {
+    if (merchant.selling !== "open" || !sellableBy(merchant, this.runtime.config, at)) {
       return null;
     }
     const since = await this.runtime.store.lastContact(merchant.id);
@@ -1244,7 +1244,9 @@ export class Gateway {
       return null;
     }
     const cards = await this.runtime.store.cards(merchant.id);
-    const onSale = cards.some((stored) => !stored.paused && stored.integration === "api");
+    const onSale = cards.some(
+      (stored) => !stored.paused && stored.integration === merchant.integration,
+    );
     return onSale ? { since } : null;
   }
 
@@ -1278,6 +1280,10 @@ export class Gateway {
     });
     if (switched.switched) {
       this.#letGo(merchantId, () => true);
+      // The first poll after a switch is written at once, even back on an
+      // integration whose poll this process wrote moments ago.
+      this.#contactWritten.api.delete(merchantId);
+      this.#contactWritten.woocommerce.delete(merchantId);
     }
     return switched;
   }
@@ -2574,7 +2580,7 @@ export class Gateway {
       payingMerchant !== null &&
       before.order.mode.settle === "on_purchase" &&
       takesANewPayment(before.order) &&
-      (await this.#outOfTouch(payingMerchant.id, payingMerchant.integration, arrivedAt))
+      silentAt(await this.runtime.store.lastContact(payingMerchant.id), arrivedAt)
     ) {
       return { step: "seller_not_taking_orders" };
     }
@@ -2925,12 +2931,7 @@ export class Gateway {
         await quietFor(Math.min(waitMs, this.runtime.config.worker.pollWaitMs), signal);
         return { contract_version: CONTRACT_VERSION, envelopes: [] };
       }
-      // Only the merchant's own code is noted: the shop connector's polls,
-      // made while the shop sells or after, are never that code being in
-      // touch, and a merchant may switch back to the code at any moment.
-      if (through === "api") {
-        await this.#noteContact(merchantId);
-      }
+      await this.#noteContact(merchantId, through);
       return await this.#drawFor(merchantId, waitMs, signal, keyId);
     } finally {
       holding.delete(held);
@@ -2968,38 +2969,25 @@ export class Gateway {
   }
 
   /**
-   * Writes down that this merchant's process polled, unless this process wrote
-   * it within `CONTACT_WRITTEN_EVERY_MS`. A failure is only logged, as for a
-   * key's last use: the poll goes on, and the next one writes it.
+   * Writes down that this merchant's process polled through `through`, unless
+   * this process wrote it within `CONTACT_WRITTEN_EVERY_MS`. A failure is only
+   * logged, as for a key's last use: the poll goes on, and the next one writes
+   * it.
    */
-  async #noteContact(merchantId: string): Promise<void> {
+  async #noteContact(merchantId: string, through: Integration): Promise<void> {
     const at = this.runtime.clock();
-    const written = this.#contactWritten.get(merchantId);
+    const written = this.#contactWritten[through].get(merchantId);
     if (written !== undefined && at - written < CONTACT_WRITTEN_EVERY_MS) {
       return;
     }
     try {
-      await this.runtime.store.noteContact(merchantId, at);
-      this.#contactWritten.set(merchantId, at);
+      await this.runtime.store.noteContact(merchantId, at, through);
+      this.#contactWritten[through].set(merchantId, at);
     } catch (thrown) {
       console.error(
         `[gateway] the poll of ${merchantId} was not written down: ${failureNamed(thrown)}`,
       );
     }
-  }
-
-  /**
-   * Whether a seller selling through their own code has gone without a poll
-   * for longer than the guard allows. A shop's orders are filled by the
-   * connector inside Agentify, which runs whenever Agentify does, so a seller
-   * selling through it is never out of touch; a shop that fails answers its
-   * price question with the failure.
-   */
-  async #outOfTouch(merchantId: string, through: Integration, at: number): Promise<boolean> {
-    if (through !== "api") {
-      return false;
-    }
-    return silentAt(await this.runtime.store.lastContact(merchantId), at);
   }
 
   async #keyStillWorks(merchantId: string, keyId: string): Promise<boolean> {

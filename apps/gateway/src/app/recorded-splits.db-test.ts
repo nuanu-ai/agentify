@@ -145,7 +145,7 @@ const aMerchant = async (database: ReturnType<typeof aDatabase>, id: string): Pr
   await database.store.addMerchant({ id, name: id }, NOW);
   await setServiceName(database.store, id, `Shop ${id}`, NOW);
   await database.store.setSellerSite(id, "https://shop.example.com", NOW);
-  await database.store.noteContact(id, NOW);
+  await database.store.noteContact(id, NOW, "api");
   return id;
 };
 

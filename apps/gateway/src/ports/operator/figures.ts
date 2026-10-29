@@ -48,7 +48,7 @@ interface WaitingMerchant {
   readonly sellerSite: string | null;
   readonly createdAt: number;
   readonly integration: Integration;
-  /** When their own process last polled, or null where no poll was ever recorded. */
+  /** The latest poll on record, by their code or their shop's connector; null where nothing ever polled. */
   readonly lastContact: number | null;
   /** How many cards they have published, on sale or not. */
   readonly cardsPublished: number;
@@ -84,7 +84,7 @@ export interface UnknownPayments extends Read, Tally {
 interface SilentMerchant {
   readonly merchantId: string;
   readonly name: string;
-  /** Their last poll, or null where none was ever recorded. */
+  /** The last poll of the integration they sell through, or null where it made none. */
   readonly since: number | null;
 }
 
@@ -92,15 +92,18 @@ interface SilentMerchant {
 export const SILENT_NAMED_AT_MOST = 20;
 
 export interface Workers extends Read {
-  /** How many merchants' compatible processes polled within the purchase guard's window. */
+  /**
+   * How many merchants' integrations in use polled with a compatible contract
+   * within the purchase guard's window.
+   */
   readonly connectedWithin: number;
   /** How many merchants' processes ever polled. */
   readonly everConnected: number;
   /**
-   * The merchants selling through their own code, with a card on sale, whose
-   * process has not polled with a compatible contract within the guard's window, so purchases
-   * are being refused and their cards left out of the catalogue; the longest
-   * silent first.
+   * The merchants with a card on sale whose integration, their own code or
+   * the connector of their shop, has not polled with a compatible contract
+   * within the guard's window, so purchases are being refused and their cards
+   * left out of the catalogue; the longest silent first.
    */
   readonly silent: readonly SilentMerchant[];
   readonly silentOf: number;

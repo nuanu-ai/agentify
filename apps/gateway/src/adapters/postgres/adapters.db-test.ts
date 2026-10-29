@@ -24,7 +24,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 import { transition } from "@agentify/core";
-import type { Card, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
+import { type Card, CONTRACT_VERSION, type WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool, type PoolClient } from "pg";
@@ -267,7 +267,7 @@ if (databaseUrl === null) {
 
     /** Accepted history comes from the same signed admission and settlement path as a buyer's purchase. */
     const acceptedPurchaseFixture = async (offer: PricedPurchase) => {
-      await store.noteContact(offer.merchantId, now);
+      await store.noteContact(offer.merchantId, now, "api");
       const buyer = aWallet("the PostgreSQL fixture buyer");
       const signed = await signedFor(gateway, offer, buyer, {
         nonce: `0x${randomUUID().replaceAll("-", "")}`,
@@ -347,13 +347,45 @@ if (databaseUrl === null) {
           const funnel = await reader.figures.funnel(asked, { merchantIds: [] });
           expect(funnel.steps.find((step) => step.step === "connected")?.merchants).toBe(1);
         }
-        await store.noteContact(A, now);
+        await store.noteContact(A, now, "api");
         expect(await store.lastContact(A)).toBe(now);
         expect((await gateway.catalog()).items.map((item) => item.id)).toContain(card.id);
       } finally {
         await pool.query("delete from merchant_keys where id = $1", ["mk_worker_contract"]);
         await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
         await pool.query("delete from cards where id = $1", [card.id]);
+      }
+    });
+
+    it("keeps a shop's product off sale on a poll an older gateway wrote for the merchant's code", async () => {
+      // An older gateway named no integration and wrote only the code's polls,
+      // and it kept them across a switch to a shop.
+      await pool.query("update merchants set integration = 'woocommerce' where id = $1", [A]);
+      try {
+        const card = await store.publishCard(A, syncCard, now, "woocommerce");
+        const reader = postgresOperatorReader(contract.db, "eip155:84532");
+        await pool.query(
+          "insert into merchant_contact (merchant_id, polled_at, contract_version) values ($1, $2, $3)",
+          [A, new Date(now), CONTRACT_VERSION],
+        );
+
+        expect(await store.lastContact(A)).toBeNull();
+        expect(
+          (await store.catalogEntries()).find((entry) => entry.card.id === card.id)?.lastContact,
+        ).toBeNull();
+        const workers = await reader.figures.workers({ at: now, surface: "test" });
+        expect(workers.connectedWithin).toBe(0);
+        expect(workers.silent).toMatchObject([{ merchantId: A, since: null }]);
+        // The connector's first poll is the shop's, however late the code's clock ran.
+        await store.noteContact(A, now - 5_000, "woocommerce");
+        expect(await store.lastContact(A)).toBe(now - 5_000);
+      } finally {
+        await pool.query("delete from merchant_contact where merchant_id = $1", [A]);
+        await pool.query(
+          "delete from cards where merchant_id = $1 and integration = 'woocommerce'",
+          [A],
+        );
+        await pool.query("update merchants set integration = 'api' where id = $1", [A]);
       }
     });
 
@@ -1056,7 +1088,7 @@ if (databaseUrl === null) {
         },
         now,
       );
-      await store.noteContact(A, now);
+      await store.noteContact(A, now, "api");
       const offered = await gateway.beginPurchase(card.id, {});
       if (offered.step !== "pay") throw new Error(`no price was offered: ${offered.step}`);
       await acceptedPurchaseFixture(offered.order);

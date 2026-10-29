@@ -289,6 +289,20 @@ describe("a copy of an address's data", () => {
     });
   });
 
+  it("holds the merchant's last poll however they have sold since", async () => {
+    const channel = await aChannel();
+    const merchantId = channel.harnessed.merchant.id;
+    const polled = await channel.harnessed.store.lastContact(merchantId);
+    if (polled === null) throw new Error("the merchant's worker never polled");
+    const moved = await channel.harnessed.store.switchIntegration(merchantId, "woocommerce");
+    if (!moved.switched) throw new Error("the merchant did not move to their shop");
+
+    await channel.copy();
+
+    const { copy } = attachedCopy(channel.mails);
+    expect(copy.dashboard.merchant.last_polled_at).toBe(new Date(polled).toISOString());
+  });
+
   it("holds nothing of anybody else: a colleague on the same merchant, a buyer or another merchant", async () => {
     const channel = await aChannel();
 

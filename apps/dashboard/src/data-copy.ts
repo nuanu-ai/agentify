@@ -285,7 +285,7 @@ async function merchantCopyOf(sources: CopySources, merchantId: string, accountI
   if (merchant === null) return null;
   const [keys, polledAt, cards, orders, networks, shop, journal] = await Promise.all([
     store.keysOf(merchantId),
-    store.lastContact(merchantId),
+    store.pollRecorded(merchantId),
     store.cards(merchantId),
     store.orders(merchantId),
     store.networksWithPayoutSplits(),

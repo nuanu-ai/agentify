@@ -574,9 +574,9 @@ const RETRYABLE: Readonly<Record<ErrorCode, boolean>> = {
   // its price did not come in time; nothing was charged, and the same call
   // goes through once a place frees.
   seller_busy: true,
-  // The seller's own process comes back by itself, after a restart or a lost
-  // connection, and the same call goes through at its first poll; nobody has
-  // to switch anything back on.
+  // The seller's own process, or the connector of their shop, comes back by
+  // itself after a restart or a lost connection, and the same call goes
+  // through at its first poll; nobody has to switch anything back on.
   seller_not_taking_orders: true,
   // Only the seller can lift it, by delivering or closing the orders they left
   // unserved, and nothing tells a buyer when that will be.

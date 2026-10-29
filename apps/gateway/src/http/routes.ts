@@ -9,7 +9,7 @@
  */
 
 import { outcomeFor } from "@agentify/core";
-import { durationInWords, SILENT_AFTER_MS, UNSERVED_AT_MOST } from "@agentify/core/published";
+import { UNSERVED_AT_MOST } from "@agentify/core/published";
 import type {
   OrderListQuery,
   PurchaseRequest,
@@ -396,7 +396,8 @@ async function cardPaused(
 const SELLER_NOT_FULFILLING = `this seller has ${UNSERVED_AT_MOST} or more paid orders they took on and left without delivery or closure, so Agentify takes no new purchase from them and nothing was charged; this lasts until the seller delivers or closes some of those orders, and nothing says when that will be, so do not try again soon`;
 
 /** Why a purchase of a seller whose own system has gone quiet is refused. */
-const SELLER_NOT_TAKING_ORDERS = `this seller is not taking orders right now, and nothing was charged: their system has not been in touch with Agentify for at least ${durationInWords(SILENT_AFTER_MS, "minute")}, so nobody would pick up the order; try again later`;
+const SELLER_NOT_TAKING_ORDERS =
+  "this seller is not taking orders right now, and nothing was charged: their system is not in touch with Agentify, so nobody would pick up the order; try again later";
 
 /** What a refusal at the door says for each reason a card is off sale. */
 const OFF_SALE_WORDS: Readonly<Record<OffSale["code"], string>> = {
