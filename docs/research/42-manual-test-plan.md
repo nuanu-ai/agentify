@@ -126,10 +126,13 @@ What an agent's attempt measures depends on the role. An engineer's AI coding
 assistant working only from the npm package and the public documentation is a
 genuine DX measurement, because that is how many outside engineers now
 integrate. An AI buyer is the AX measurement itself, since the buyers this
-product serves are agents. A person's understanding of a screen is only
-approximated by an agent reading it: report that result as an agent's reading,
-and keep the verdict on human screen comprehension "not measured" until a
-person who took no part in the work has read those screens.
+product serves are agents. An agent cannot stand for a person reading a
+screen, but it can judge a screen as an expert in interfaces does, including
+whether the screen and its words read as generated. Every U story, and every
+screen a participant passed through, therefore gets the expert review that
+block U describes, which gives the verdict on the screens; whether a
+particular newcomer understood them is a separate line that only a person who
+took no part in the work can measure.
 
 ## Preparation and boundaries
 
@@ -1004,6 +1007,22 @@ reader for sign-in and key issuance. Populate long real product names, addresses
 amounts and status labels. Check focus, readable values, control labels,
 wrapping, horizontal scrolling and whether banners cover a decision.
 
+Every U story, and every screen a participant passed through in another block,
+gets an expert review by the method of the interface review skill
+(`.agents/skills/interface-review/SKILL.md`): a first look at the first
+viewport, a walk through the task in the words of the participant's brief,
+the usability heuristics, and the signs of an interface or copy that reads as
+generated rather than made by a person. Three reviewers with no shared context
+each review the actual rendered screens at the widths above, and their
+findings are merged into one list that names who found each. Heuristic
+evaluation and the cognitive walkthrough are expert methods by design, carried
+out without users, so the review's findings are evidence about the screen
+itself, and they are reported as the expert review inside the story's UX
+result. A finding's severity follows "Reading the stories". Whether a
+particular newcomer understood the screen is a separate line of that result,
+measured only when a person who took no part in the work reads it, and the
+verdict on the screen does not wait for it.
+
 For each story, save the first visible viewport and the participant's
 interpretation before they act. Looking through normal page content is allowed;
 opening code or documentation to decode current state counts as a failure of
@@ -1515,9 +1534,12 @@ evidence; participants and what each knew; real products; integrations;
 facilitator/network; tools/faults available; budgets and observation windows.
 
 ## Verdict
-SDK, Woo, human screen comprehension, buyer independence, SDK self-service,
+SDK, Woo, the screens by expert review, buyer independence, SDK self-service,
 scanner/privacy and external discovery: ready / not ready / not measured,
-with the evidence and unresolved findings that determine each.
+with the evidence and unresolved findings that determine each. A newcomer's
+own understanding of the screens is a line of its own, measured with a person
+who took no part in the work or not measured, and it does not decide the
+screens' verdict.
 State the exact merchant/device/product scope, exclusions and limitations.
 
 ## Stories
@@ -1527,8 +1549,9 @@ State the exact merchant/device/product scope, exclusions and limitations.
 ## Findings
 For each: real user consequence; steps; predicted result and source; observed
 result; revision and reproducibility; private evidence references; whether
-assistance was needed. Static suspicion, reproduced defect and accepted
-product limit are different labels.
+assistance was needed; for a finding of the expert review, the reviewers who
+found it. Static suspicion, reproduced defect and accepted product limit are
+different labels.
 
 ## Money and goods
 Per-order evidence rows; actual merchant/provider effects; receipts and
