@@ -1,4 +1,5 @@
 import {
+  countRetainedAnalyticsEvents,
   listUnverifiedLeadRetentionCandidates,
   rateLimitEvents,
   rateWindows,
@@ -39,6 +40,7 @@ async function main() {
           overdueRegistrationIntents: overdueRegistrationIntents.rows[0]?.count ?? 0,
           expiredRateLimitRows: expiredRateLimits.rows[0]?.count ?? 0,
           unverifiedLeadCandidates: candidates.length,
+          overdueAnalyticsEvents: await countRetainedAnalyticsEvents(db),
         })}\n`,
       );
     } else {

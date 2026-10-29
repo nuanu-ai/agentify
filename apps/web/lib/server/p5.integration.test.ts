@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import {
   analyticsEvents,
   consentSnapshots,
+  countRetainedAnalyticsEvents,
   createDatabase,
   createUuidV7,
   dataCopyRequests,
+  deliveryOutbox,
   leadScans,
   leads,
   migrateDatabase,
@@ -19,7 +21,7 @@ import {
   sessions,
   waitlistEntries,
 } from "@agentify/scanner-database";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { action as dataRequestRoute } from "../../app/routes/api/v1/account.data-request";
@@ -575,6 +577,77 @@ describe("P5 privacy and terminal scanner identity deletion", () => {
     expect(
       await db.select().from(rateWindows).where(eq(rateWindows.keyHash, "boundary-fixed-rate")),
     ).toHaveLength(0);
+  });
+
+  it("deletes every raw analytics event older than thirteen months with its undelivered sends, and keeps a younger one", async () => {
+    const fixture = await createLeadFixture("retention-events");
+    const now = new Date("2026-09-17T12:00:00.000Z");
+    const daysAgo = (days: number) => new Date(now.getTime() - days * 86_400_000);
+    const eventAt = (occurredAt: Date) => ({
+      id: createUuidV7(),
+      eventId: createUuidV7(),
+      name: "scan_completed",
+      occurredAt,
+      sessionId: fixture.sessionId,
+      leadId: fixture.leadId,
+      scanId: fixture.scanId,
+      segment: "owner" as const,
+      landingVariant: "default",
+      consentSnapshotId: fixture.consentId,
+    });
+    const oldPending = eventAt(daysAgo(391));
+    const oldDeadLettered = eventAt(daysAgo(391));
+    const old = [
+      oldPending,
+      oldDeadLettered,
+      ...Array.from({ length: 999 }, () => eventAt(daysAgo(391))),
+    ];
+    const young = eventAt(daysAgo(389));
+    const { db } = getDatabase();
+    await db.insert(analyticsEvents).values([...old, young]);
+    await db.insert(deliveryOutbox).values([
+      {
+        id: createUuidV7(),
+        eventId: oldPending.eventId,
+        destination: "posthog",
+        payload: {},
+        status: "pending",
+      },
+      {
+        id: createUuidV7(),
+        eventId: oldDeadLettered.eventId,
+        destination: "posthog",
+        payload: {},
+        status: "dead_letter",
+      },
+      { id: createUuidV7(), eventId: young.eventId, destination: "posthog", payload: {} },
+    ]);
+
+    await expect(countRetainedAnalyticsEvents(db, now)).resolves.toBe(1_001);
+    await expect(executeRetentionCleanup({ now, batchSize: 10 })).resolves.toMatchObject({
+      analyticsEventsDeleted: 1_001,
+    });
+
+    const kept = await db
+      .select({ eventId: analyticsEvents.eventId })
+      .from(analyticsEvents)
+      .where(eq(analyticsEvents.leadId, fixture.leadId));
+    expect(kept).toEqual([{ eventId: young.eventId }]);
+    expect(
+      await db
+        .select({ eventId: deliveryOutbox.eventId })
+        .from(deliveryOutbox)
+        .where(
+          inArray(deliveryOutbox.eventId, [
+            oldPending.eventId,
+            oldDeadLettered.eventId,
+            young.eventId,
+          ]),
+        ),
+    ).toEqual([{ eventId: young.eventId }]);
+    await expect(executeRetentionCleanup({ now, batchSize: 10 })).resolves.toMatchObject({
+      analyticsEventsDeleted: 0,
+    });
   });
 });
 
