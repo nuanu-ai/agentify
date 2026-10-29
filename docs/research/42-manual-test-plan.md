@@ -116,6 +116,18 @@ person who took no part in the work has read those screens.
 
 ## Preparation and boundaries
 
+At the start of preparing a run, the organiser asks the product owner once, in
+a single message, for what only the product owner can give: the window on the
+shared test channel and the lab, with the authority to use them in it;
+authority for block G; funding for the buyers' wallets, since Circle's faucet
+asks for a captcha that a person answers; the listing of Google accounts as
+test users; and agreement to anything that spends real money. Everything else
+the organiser answers from the code, the tests, the history in git and this
+plan, which already hold such answers as which cart an old WooCommerce
+rounding defect concerned. Where an answer found this way shows that the plan
+is wrong, the organiser records the inaccuracy as a finding against the
+protocol and does not put it to the product owner as a question.
+
 Record the following before running a story:
 
 1. The actual running application revision, its image/release evidence, the
