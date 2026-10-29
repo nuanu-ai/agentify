@@ -384,6 +384,23 @@ export function loadConfig(environment: Record<string, string | undefined>): Das
     );
   }
 
+  // A name with no dot is meant for a container on a private network, such as
+  // the relay on the stack's own network; nothing here proves it stays there.
+  const mailProvider = sandboxMail ? null : new URL(values.MAIL_URL);
+  if (
+    mailProvider !== null &&
+    mailProvider.protocol === "http:" &&
+    !NOWHERE_ELSE.has(mailProvider.hostname) &&
+    (mailProvider.hostname.includes(".") || mailProvider.hostname.startsWith("["))
+  ) {
+    problems.push(
+      `MAIL_URL is ${JSON.stringify(values.MAIL_URL)}, plain http to a host across a network, so` +
+        " MAIL_API_KEY and every sign-in link would travel unencrypted; use the provider's https" +
+        " address, or http to this machine or to a name with no dot, meant for a container on a" +
+        " private network",
+    );
+  }
+
   // Every link in every message would point at the reader's own computer.
   if (!sandboxMail && NOWHERE_ELSE.has(new URL(values.PUBLIC_BASE_URL).hostname)) {
     problems.push(

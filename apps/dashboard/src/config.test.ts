@@ -303,6 +303,24 @@ describe("where the dashboard's two messages go", () => {
     // A path is joined onto this, so a trailing slash would double up.
     expect(config.publicBaseUrl).toBe("https://agentify.example");
   });
+
+  it("refuses a provider over plain http across a network, which would carry its key and sign-in links unencrypted", () => {
+    const withProvider = (mailUrl: string) =>
+      given({
+        MAIL_URL: mailUrl,
+        MAIL_API_KEY: "re_a_real_looking_key",
+        MAIL_FROM: "Agentify <no-reply@mail.example.com>",
+        PUBLIC_BASE_URL: "https://agentify.example",
+      });
+
+    expect(() => loadConfig(withProvider("http://api.resend.com"))).toThrow(
+      /MAIL_URL .*plain http.*unencrypted/,
+    );
+    // The outbound relay beside the dashboard is reached by its container's
+    // name on the stack's own network.
+    expect(loadConfig(withProvider("http://outbound:8081")).mailUrl).toBe("http://outbound:8081");
+    expect(loadConfig(withProvider("http://127.0.0.1:8081")).mailUrl).toBe("http://127.0.0.1:8081");
+  });
 });
 
 describe("telling the ad tracker that somebody it sent signed up", () => {
