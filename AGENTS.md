@@ -116,11 +116,14 @@ accepted for execution (ADR-0028; the product owner, 2026-10-19).
 
 ## Decisions
 - An ADR records a decision that is expensive to reverse: a dependency in a
-  published package's tree, a schema on disk, a wire contract, a security
-  boundary, what money means, and the custody boundary that keeps Agentify
-  from holding money or goods. Everything else — screens, flows, internal
-  mechanics, process topology, toolchain, release procedure and operations —
-  is a design note in `docs/research/` and is rewritten freely.
+  published package's tree, a stored record that a migration cannot cheaply
+  reshape (what was paid, owed or promised, and what another party keeps or
+  reads back), a wire contract, a security boundary, what money means, and the
+  custody boundary that keeps Agentify from holding money or goods. Everything
+  else — screens, flows and the notices sent along them, internal mechanics
+  and the tables that serve them, process topology, toolchain, release
+  procedure and operations — is a design note in `docs/research/` and is
+  rewritten freely.
 - One decision — one file in `docs/decisions/` (format `NNNN-slug.md`), with a
   ceiling of about sixty lines: context, the decision, the alternatives
   rejected. Enough to reconstruct the reasoning, not to exhaust the subject;
