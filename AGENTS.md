@@ -213,6 +213,15 @@ design advice. Installation sources and update instructions are in
   of the state machine. One file, two readers: the page renders the very file
   the test runs — likeness between two copies is not a check. Documentation
   and code cannot drift apart silently.
+- A test's stand-in for a service Agentify does not run (an exchange-rate
+  feed, a merchant's shop, the facilitator, the chain, a sign-in provider)
+  says only what that service was seen to answer: a recorded response, or a
+  fact taken from one, kept with its source and the date it was read. An
+  answer written by hand is a claim about the world that a reviewer cannot
+  check by reading the test, and the test keeps passing when the claim is
+  false. A failure any network peer can produce, such as a timeout, a refused
+  connection or a bare server error, needs no recording; an error the service
+  states in its own words does.
 - Delete first. Until the first external merchant, backward compatibility is
   not a value: a refactor removes the old shape in the same change rather than
   keeping it beside the new one — no deprecated aliases, no migration shims,
