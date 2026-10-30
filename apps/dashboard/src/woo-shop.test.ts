@@ -2932,10 +2932,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
   it("renews an observed empty cart after its shop-declared token expiry", async () => {
     let time = 1_800_000_000_000;
     let sessions = 0;
+    let lapsedSent = 0;
     const contents = new Map<string, boolean>();
     stand = await shopAnswering((asked) => {
       let token = asked.cartToken;
       const lapsed = lapsedAt(token, time);
+      if (lapsed) lapsedSent += 1;
       if (lapsed && asked.method !== "GET") return wooRefusal("woocommerce_rest_missing_nonce");
       if (token === undefined || lapsed) {
         sessions += 1;
@@ -2960,6 +2962,8 @@ describe("the shop's own shipping rate for a parcel's place", () => {
       expect([...contents.values()]).toStrictEqual([false, false]);
       expect(await runtime.shippingRates("28", JAKARTA)).toMatchObject({ ok: true });
       expect(sessions).toBe(2);
+      // A runtime that sent a lapsed token would recover and show the same results above.
+      expect(lapsedSent).toBe(0);
     } finally {
       clock.mockRestore();
     }

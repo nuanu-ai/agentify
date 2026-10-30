@@ -73,7 +73,10 @@ verification can carry: its first block has no label, and two codes it files
 under settlement, `smart_wallet_deployment_failed` and
 `unsupported_payload_type`, are among Coinbase's verification reasons. The
 check therefore counts every code in that file as a possible verification
-code. Five of them appear in neither of Coinbase's lists and could be either:
+code. The cost is that a future x402 code only a settlement sends, which the
+table cannot read, fails the run, and putting it under `awaitingDecision` to
+let the run pass is no decision by the product owner. Five of the file's codes
+appear in neither of Coinbase's lists and could be either:
 `asset_not_deployed_contract`, `invalid_exact_evm_transfer_event_mismatch`,
 `invalid_transaction_state`, `eip6492_factory_not_allowed` and
 `settlement_pending`; the table reads all five.
@@ -81,7 +84,9 @@ code. Five of them appear in neither of Coinbase's lists and could be either:
 The facilitator recording also keeps a short list of codes awaiting a
 decision: codes a newer version names that the table does not read, each with
 the version and the date it was first seen, until the product owner decides
-how the gateway reads them.
+how the gateway reads them. The decision on the two codes it holds is the
+question "How the gateway reads two refusal codes its table does not know" in
+`00-open-questions.md`, under Money.
 
 ## How the live check runs
 

@@ -35,8 +35,9 @@
  *
  * It exits 1 when a recorded fact no longer holds, and 2 when none changed but
  * something could not be checked. No answer, a refusal to answer (401, 403,
- * 429 or a server error) and a page that is not the JSON the service sends,
- * such as a challenge page in front of Coinbase, are never read as a change.
+ * 429 or a server error) and a page that is not JSON, such as a challenge page
+ * in front of Coinbase, are never read as a change, while JSON from Coinbase
+ * that the dashboard cannot read as its rates is.
  */
 
 import { readFileSync } from "node:fs";
@@ -129,13 +130,17 @@ const now = (): string => new Date().toISOString();
 
 const SHOP_CURRENCIES = wooCommerce.currencies.codes;
 
-/** The codes `body` rates one US dollar in, or why it is not Coinbase's answer for one. */
-const ratedIn = (body: string): readonly string[] | string => {
+/**
+ * The codes `body` rates one US dollar in, null for a body that is not JSON,
+ * which is no answer from Coinbase, or why the JSON is not what the dashboard
+ * reads.
+ */
+const ratedIn = (body: string): readonly string[] | string | null => {
   let answer: { data?: { currency?: unknown; rates?: unknown } };
   try {
     answer = JSON.parse(body);
   } catch {
-    return "it is not JSON";
+    return null;
   }
   const rates = answer.data?.rates;
   if (answer.data?.currency !== "USD") return "it is not for one US dollar";
@@ -166,11 +171,25 @@ const coinbase = async (): Promise<void> => {
   const rated = `Coinbase rates one US dollar in every currency WooCommerce ${wooCommerce.release} offers a shop except these`;
   await checking(rated, coinbaseRates.url, async () => {
     const recorded = ratedIn(coinbaseRates.body);
-    if (typeof recorded === "string") throw new Error(`the recorded answer: ${recorded}`);
+    if (recorded === null || typeof recorded === "string") {
+      throw new Error(`the recorded answer is not Coinbase's: ${recorded ?? "not JSON"}`);
+    }
+    const recordedLine = `${coinbaseRates.readAt.toISOString()}: ${listed(without(SHOP_CURRENCIES, recorded))}`;
     const answered = await get(coinbaseRates.url);
-    const live = answered.ok ? ratedIn(await answered.text()) : `HTTP ${answered.status}`;
+    if (!answered.ok) throw new Unanswered(`${coinbaseRates.url} answered HTTP ${answered.status}`);
+    const live = ratedIn(await answered.text());
+    if (live === null) {
+      throw new Unanswered(`${coinbaseRates.url} answered with a page that is not JSON`);
+    }
     if (typeof live === "string") {
-      throw new Unanswered(`${coinbaseRates.url} gave no rates for one US dollar: ${live}`);
+      say({
+        outcome: "changed",
+        fact: rated,
+        source: coinbaseRates.url,
+        recorded: recordedLine,
+        live: `${now()}: the answer is not one the dashboard reads, since ${live}`,
+      });
+      return;
     }
     const nowRated = within(SHOP_CURRENCIES, live);
     const thenRated = within(SHOP_CURRENCIES, recorded);
@@ -180,7 +199,7 @@ const coinbase = async (): Promise<void> => {
       outcome: added.length + dropped.length === 0 ? "holds" : "changed",
       fact: rated,
       source: coinbaseRates.url,
-      recorded: `${coinbaseRates.readAt.toISOString()}: ${listed(without(SHOP_CURRENCIES, recorded))}`,
+      recorded: recordedLine,
       live:
         `${now()}: ${listed(without(SHOP_CURRENCIES, live))}` +
         (added.length > 0 ? `; now rates ${listed(added)}` : "") +
