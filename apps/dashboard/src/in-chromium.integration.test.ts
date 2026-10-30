@@ -1001,6 +1001,24 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
       return { name: pair.slice(0, equals), value: pair.slice(equals + 1), url: testOrigin };
     }),
   );
+  const plain = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 375, height: 812 },
+  });
+  await plain.addCookies(await context.cookies());
+  try {
+    const page = await plain.newPage();
+    await page.goto(`${testOrigin}${BASE}/products`);
+    const welcome = page.getByRole("dialog", { name: "This is the test environment" });
+    await welcome.waitFor();
+    const bounds = await welcome.boundingBox();
+    expect(bounds).not.toBeNull();
+    expect(bounds?.y).toBeGreaterThanOrEqual(0);
+    expect((bounds?.y ?? 0) + (bounds?.height ?? 0)).toBeLessThanOrEqual(812);
+    expect(await welcome.getByRole("button", { name: "Start testing" }).isVisible()).toBe(true);
+  } finally {
+    await plain.close();
+  }
   const page = await context.newPage();
   try {
     await page.goto(`${testOrigin}${BASE}/products`);
@@ -1120,6 +1138,29 @@ it("checks a WooCommerce shop on Products, invalidates edited results and keeps 
       return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
     }),
   );
+  const plain = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 375, height: 900 },
+  });
+  await plain.addCookies(await context.cookies());
+  try {
+    const page = await plain.newPage();
+    await page.goto(`${testOrigin}${BASE}/products`);
+    expect(await page.getByRole("textbox", { name: "Shop address" }).isVisible()).toBe(true);
+    await page.getByRole("textbox", { name: "Shop address" }).fill("woo.nuanu.ai");
+    // This first request also checks the SSR path before the lazy module is warm.
+    first = false;
+    await page.getByRole("button", { name: "Check my shop", exact: true }).click();
+    expect(await page.getByRole("button", { name: "Connect shop", exact: true }).isVisible()).toBe(
+      true,
+    );
+    expect(
+      await page.getByText("1 of 3 products looks ready to sell.", { exact: true }).isVisible(),
+    ).toBe(true);
+  } finally {
+    await plain.close();
+    first = true;
+  }
   const page = await context.newPage();
   try {
     for (const width of [1440, 1024, 768, 375]) {

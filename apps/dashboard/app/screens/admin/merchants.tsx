@@ -28,9 +28,9 @@ import { ActionForm, InPlace, opensOn } from "../../components/admin/action-form
 import { PressAnswer } from "../../components/admin/press-answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
 import { shortened } from "../../components/copy.js";
-import { CutNote, ListTools, NothingHere } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
+import { CutNote, ListTools, NothingHere } from "../listing.js";
 import { JournalList } from "./journal.js";
 
 /** An identifier shown short that opens to its whole value; no copy button, since the workspace runs no script. */

@@ -14,14 +14,24 @@ import {
   SurfaceNote,
   WorkHeader,
 } from "@agentify/ui";
-import type { ReactNode } from "react";
+import { lazy, type ReactNode, Suspense } from "react";
 import { Link, useActionData, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import type { Chrome, DrawnFor, Gated } from "../answer.js";
-import { TestWelcome } from "../screens/onboarding.js";
-import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
+// Server-rendered conditional content is styled before its client module loads.
+import "../dialogs/test-welcome.module.css";
+import "../notices/account-banner.module.css";
+import "../dialogs/locked-dialog.module.css";
+
+const AccountBanner = lazy(() =>
+  import("../notices/account-banner.js").then(({ AccountBanner }) => ({ default: AccountBanner })),
+);
+
+const TestWelcome = lazy(() =>
+  import("../dialogs/test-welcome.js").then(({ TestWelcome }) => ({ default: TestWelcome })),
+);
 
 /**
  * Each section is also a destination the sign-in returns to, so a section
@@ -125,14 +135,20 @@ export function Frame({
               </div>
             </div>
             <div className="app-content">
-              <AccountBanner notes={framed?.account ?? []} />
+              {framed !== undefined && framed.account.length > 0 ? (
+                <Suspense fallback={null}>
+                  <AccountBanner notes={framed.account} />
+                </Suspense>
+              ) : null}
               {children}
             </div>
           </main>
         </div>
       </div>
       {framed?.onboarding?.step.acknowledgeTest ? (
-        <TestWelcome {...(pressed?.problem === undefined ? {} : { problem: pressed.problem })} />
+        <Suspense fallback={null}>
+          <TestWelcome {...(pressed?.problem === undefined ? {} : { problem: pressed.problem })} />
+        </Suspense>
       ) : null}
       <SiteFooter surface="dashboard" link={Link} />
     </div>

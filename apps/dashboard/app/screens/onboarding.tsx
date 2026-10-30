@@ -1,13 +1,13 @@
-import { Button, Field } from "@agentify/ui";
+import { Button } from "@agentify/ui";
 import { useEffect, useState } from "react";
 import { Link, useRevalidator, useSearchParams } from "react-router";
 import type { KeysView } from "../../src/keys.js";
 import type { Platform } from "../../src/next-step.js";
 import type { OnboardingView } from "../../src/onboarding.js";
 import wooMark from "../assets/woocommerce.png";
-import { LockedDialog } from "../components/locked-dialog.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { CreateKeyForm } from "./create-key.js";
 import styles from "./onboarding.module.css";
 
 const PLATFORMS = [
@@ -88,81 +88,6 @@ function PlatformChoice({
         </p>
       ) : null}
     </section>
-  );
-}
-
-export function TestWelcome({ problem }: Readonly<{ problem?: string }>) {
-  const [understood, setUnderstood] = useState(false);
-  const [alive, setAlive] = useState(false);
-  useEffect(() => setAlive(true), []);
-  return (
-    <LockedDialog
-      title="This is the test environment"
-      focusAfter='button[data-platform="woocommerce"]'
-    >
-      <ul className={styles.testFacts}>
-        <li>Money here isn't real. Buyers pay in test USDC on Base Sepolia.</li>
-        <li>
-          This is a separate account. Nothing here carries over to your real dashboard at
-          agentify.ad.
-        </li>
-        <li>If you connect your real shop, orders made here are test orders. Don't ship them.</li>
-      </ul>
-      <PostForm action="/products">
-        {(pending) => (
-          <>
-            <input type="hidden" name="intent" value="acknowledge-test" />
-            <label className={styles.check}>
-              <input
-                type="checkbox"
-                name="understood"
-                value="yes"
-                required
-                checked={understood}
-                onChange={(event) => setUnderstood(event.target.checked)}
-              />
-              I've read and understood
-            </label>
-            <Button pending={pending} disabled={alive && !understood}>
-              Start testing
-            </Button>
-            {problem === undefined ? null : (
-              <p className="problem" role="alert">
-                {problem}
-              </p>
-            )}
-          </>
-        )}
-      </PostForm>
-    </LockedDialog>
-  );
-}
-
-export function CreateKeyForm({ view, action }: Readonly<{ view: KeysView; action: string }>) {
-  return (
-    <PostForm action={action} className={styles.keyForm} replace={false}>
-      {(pending) => (
-        <>
-          <input type="hidden" name="intent" value="create-key" />
-          <Field
-            label="Key name"
-            id="label"
-            name="label"
-            type="text"
-            autoComplete="off"
-            placeholder="Order worker, production"
-            maxLength={100}
-            defaultValue={view.typed}
-            autoFocus={view.startNew}
-            required
-            {...(view.problem === null ? {} : { error: view.problem })}
-          />
-          <Button id="create-api-key" pending={pending}>
-            Create key
-          </Button>
-        </>
-      )}
-    </PostForm>
   );
 }
 

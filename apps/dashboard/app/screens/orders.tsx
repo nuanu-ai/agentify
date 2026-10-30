@@ -15,14 +15,14 @@ import {
   ListEmpty,
   RowMore,
 } from "../components/list.js";
-import { CutNote, KeptPlace, ListTools, NothingHere } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
 import { NotLoaded } from "../components/not-loaded.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
-import { Transfer } from "../components/transfer.js";
 import { Word } from "../components/word.js";
+import { CutNote, KeptPlace, ListTools, NothingHere } from "./listing.js";
 import styles from "./orders.module.css";
+import { Transfer } from "./transfer.js";
 
 type Order = OrdersView["listing"]["rows"][number];
 

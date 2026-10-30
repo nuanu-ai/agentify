@@ -12,7 +12,8 @@ import type { ReactElement } from "react";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { keysView, newKeyView } from "../../src/keys.js";
-import { KeysScreen, NewKeyScreen } from "./keys.js";
+import { KeysScreen } from "./keys.js";
+import { NewKeyScreen } from "./new-key.js";
 
 const PERSON = "owner@example.com";
 const SECRET = "csk_test_the-secret-shown-once";

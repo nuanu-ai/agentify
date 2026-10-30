@@ -2,10 +2,10 @@ import { Button } from "@agentify/ui";
 import { Link, useLocation } from "react-router";
 import type { AccountNote, WalletChangeNote } from "../../src/account-banner.js";
 import { headingOf } from "../../src/words.js";
+import { Moment } from "../components/moment.js";
+import { PostForm } from "../components/post-form.js";
 import { Address } from "../wallet/address.js";
 import styles from "./account-banner.module.css";
-import { Moment } from "./moment.js";
-import { PostForm } from "./post-form.js";
 
 /**
  * A way to the documentation or to another site, which the dashboard's router

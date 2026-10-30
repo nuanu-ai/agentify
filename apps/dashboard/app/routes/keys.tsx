@@ -18,7 +18,8 @@ import {
 import { acted, formOf, readOnly } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { readFailedIn } from "../components/not-loaded.js";
-import { KeysScreen, NewKeyScreen } from "../screens/keys.js";
+import { KeysScreen } from "../screens/keys.js";
+import { NewKeyScreen } from "../screens/new-key.js";
 import { services, signedIn } from "../services.js";
 
 /**

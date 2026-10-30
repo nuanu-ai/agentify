@@ -14,8 +14,8 @@ import type { JournalFrom, JournalLineView, JournalView } from "../../../src/adm
 import { COULD_NOT_BE_READ } from "../../../src/admin/words.js";
 import { shortened } from "../../components/copy.js";
 import { ListEmpty } from "../../components/list.js";
-import { Pager } from "../../components/listing.js";
 import { Moment } from "../../components/moment.js";
+import { Pager } from "../listing.js";
 import styles from "./accounts.module.css";
 
 /** An identifier shown short, opening to its whole value, ready to select. */

@@ -1,0 +1,9 @@
+.keyForm {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-block);
+  max-width: 30rem;
+}
+.keyForm > :global(.field) {
+  width: 100%;
+}

@@ -283,8 +283,7 @@ describe("the banner about the account", () => {
   it("names what holds the account in a heading a screen reader can move to", async () => {
     framed("orders", { account: accountOf({ ...LIVE, sellerName: null }) });
     await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
+    const drawn = await screen.findByRole("region", { name: "About your account" });
 
     expect(within(drawn).getByRole("heading", { level: 2 })).toBeTruthy();
   });
@@ -295,8 +294,7 @@ describe("the banner about the account", () => {
       const notes = accountOf({ ...LIVE, sellerName: null, liveApproval: !multiple });
       framed("orders", { account: notes });
       await screen.findByText("The screen");
-      const drawn = banner();
-      if (drawn === null) throw new Error("no banner was drawn");
+      const drawn = await screen.findByRole("region", { name: "About your account" });
 
       expect(drawn.textContent).toMatch(/products.*off sale/i);
       expect(
@@ -389,8 +387,7 @@ describe("a waiting change of the payout wallet", () => {
     async (tab, page) => {
       framed(tab, { account: notes });
       await screen.findByText("The screen");
-      const drawn = banner();
-      if (drawn === null) throw new Error("no banner was drawn");
+      const drawn = await screen.findByRole("region", { name: "About your account" });
       const cancel = cancelIn(drawn);
       if (cancel === null) throw new Error("the banner offers no cancel");
 
@@ -411,8 +408,7 @@ describe("a waiting change of the payout wallet", () => {
   it("is said on Settings without a second cancel, which the wallet's own section holds", async () => {
     framed("settings", { account: notes });
     await screen.findByText("The screen");
-    const drawn = banner();
-    if (drawn === null) throw new Error("no banner was drawn");
+    const drawn = await screen.findByRole("region", { name: "About your account" });
 
     expect(drawn.querySelector("[data-reason]")?.getAttribute("data-reason")).toBe("wallet_change");
     expect(cancelIn(drawn)).toBeNull();

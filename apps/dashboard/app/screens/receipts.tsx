@@ -12,11 +12,11 @@ import {
   List,
   ListEmpty,
 } from "../components/list.js";
-import { CutNote } from "../components/listing.js";
 import { Moment } from "../components/moment.js";
-import { Transfer } from "../components/transfer.js";
 import { Word } from "../components/word.js";
+import { CutNote } from "./listing.js";
 import styles from "./orders.module.css";
+import { Transfer } from "./transfer.js";
 
 /**
  * When it was paid, the product, the outcome, the transfer, the amount and the

@@ -1,7 +1,8 @@
 # Merchant onboarding implementation
 
-The accepted onboarding path is built in seven slices. Each slice keeps a
-working end to the path and adds its states to the product gallery. Approval
+The accepted onboarding work is built in eight slices. The first seven build
+the functional path; the eighth adds its analytics together. Each functional
+slice keeps a working end to the path and adds its states to the product gallery. Approval
 of a layout does not establish that a provider call, a payment or a delivered
 email works.
 
@@ -14,6 +15,7 @@ email works.
 | 5 | Request for live sales, seller name, wallet after request, operator decision | Pending |
 | 6 | Publication after approval or first wallet, decision emails | Pending |
 | 7 | Withdraw a shop product when a purchase confirms it is no longer sold | Pending |
+| 8 | Path analytics vocabulary, events, contract tests and ADR-0042 | Authorised; pending |
 
 ## Slice 1: the seller site
 
@@ -218,3 +220,35 @@ the “Checked …” line directly instead of being pushed to the opposite edge
 Slice 3 uses IRT for the absent Coinbase reference-rate example. XAF has a
 reference rate and is not a truthful example of that refusal. These corrections
 are applied in the slices that implement the corresponding screens.
+
+## Dashboard script budget repair
+
+The first-visit script check found that the shared frame imported the whole
+onboarding screen for its test acknowledgement. The dashboard groups the
+`app/components` directory into every merchant page's common chunk. Conditional
+dialogs and account notices now live outside that directory, and their CSS
+remains eager. The frame loads these modules only when their facts require
+them. The Products route similarly loads the WooCommerce or onboarding screen
+only for its chosen branch. The server waits for the complete response, including where JavaScript is
+disabled. React also outlines large completed Suspense boundaries into hidden
+HTML that requires script to reveal. The renderer's internal progressive chunk
+size now keeps these boundaries inline, matching the existing whole-page
+response policy. The cold-browser owner detects the hidden-content case.
+
+The shared key form and the one-time key disclosure are separate from the key
+list. The disclosure remains a static dependency before Create key: an issued
+secret does not depend on fetching a new module after the action. List tools
+and the transaction renderer belong to the screens that use them rather than
+the universal component chunk. The alternative was changing the chunk policy
+or the 102 KB budget; both stay unchanged.
+
+Resolved content and CSS values are preserved. On client navigation, a first
+visit may briefly show “Loading…” inside Products or “Loading your shop…”. A
+conditional account notice or test acknowledgement waits for its module; the
+server response already contains it on an ordinary page load. This does not
+establish a new independent visual acceptance or browser zoom result.
+
+The product owner authorises eight slices: the first seven implement the
+functional path without new path instrumentation; slice 8 implements its
+analytics vocabulary, events, contract tests and ADR-0042 together, incorporating
+the analytics team's reply if it arrives. Existing unrelated events remain.

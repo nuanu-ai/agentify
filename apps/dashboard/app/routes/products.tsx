@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import {
   type ActionFunctionArgs,
   createContext,
@@ -16,9 +17,20 @@ import { acted, formOf, readOnly, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { readFailedIn } from "../components/not-loaded.js";
 import { AllSelling, CardsScreen } from "../screens/cards.js";
-import { NewKeyScreen } from "../screens/keys.js";
-import { OnboardingScreen } from "../screens/onboarding.js";
-import { WooPage } from "../screens/woocommerce.js";
+import { NewKeyScreen } from "../screens/new-key.js";
+import "../screens/onboarding.module.css";
+import "../screens/woocommerce.module.css";
+
+const OnboardingScreen = lazy(() =>
+  import("../screens/onboarding.js").then(({ OnboardingScreen }) => ({
+    default: OnboardingScreen,
+  })),
+);
+
+const WooPage = lazy(() =>
+  import("../screens/woocommerce.js").then(({ WooPage }) => ({ default: WooPage })),
+);
+
 import { services, signedIn } from "../services.js";
 
 const keyPressed = createContext(false);
@@ -89,7 +101,17 @@ export default function Products() {
         "screen" in pressed &&
         (pressed.screen === "shop" || pressed.screen === "import")))
   )
-    return <WooPage view={shop} onboarding elsewhere={view?.elsewhere} />;
+    return (
+      <Suspense
+        fallback={
+          <Frame tab="products" title="Products">
+            <p role="status">Loading your shop…</p>
+          </Frame>
+        }
+      >
+        <WooPage view={shop} onboarding elsewhere={view?.elsewhere} />
+      </Suspense>
+    );
   const keyView = pressed && "screen" in pressed && pressed.screen === "list" ? pressed : undefined;
   const problem =
     pressed && "problem" in pressed && typeof pressed.problem === "string"
@@ -102,15 +124,17 @@ export default function Products() {
       action={empty || view === null ? null : <AllSelling view={view} />}
     >
       {empty ? (
-        <OnboardingScreen
-          view={onboarding}
-          choose={choosingShop}
-          {...(pressed && "platform" in pressed && pressed.platform !== undefined
-            ? { selected: pressed.platform }
-            : {})}
-          {...(problem === undefined ? {} : { problem })}
-          {...(keyView === undefined ? {} : { keyView })}
-        />
+        <Suspense fallback={<p role="status">Loading…</p>}>
+          <OnboardingScreen
+            view={onboarding}
+            choose={choosingShop}
+            {...(pressed && "platform" in pressed && pressed.platform !== undefined
+              ? { selected: pressed.platform }
+              : {})}
+            {...(problem === undefined ? {} : { problem })}
+            {...(keyView === undefined ? {} : { keyView })}
+          />
+        </Suspense>
       ) : view === null ? null : (
         <CardsScreen view={view} base={chrome.base} />
       )}
