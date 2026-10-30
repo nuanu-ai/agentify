@@ -724,6 +724,20 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         ).toBeNull();
       });
 
+      it("fills an empty seller site without replacing a site chosen before the write", async () => {
+        const store = await twoMerchants();
+        expect(
+          (await store.setSellerSite(A, "https://shop.example", 3_000, undefined, true))
+            ?.sellerSite,
+        ).toBe("https://shop.example");
+        await store.setSellerSite(A, "https://seller.example", 4_000);
+        expect(
+          (await store.setSellerSite(A, "https://shop.example", 5_000, undefined, true))
+            ?.sellerSite,
+        ).toBe("https://seller.example");
+        expect((await store.merchantById(A))?.sellerSite).toBe("https://seller.example");
+      });
+
       it("is paid at a wallet only where somebody set one, and at their own, with its split recorded in the same write", async () => {
         // A wrong address here shows up first on a chain, in a payment that
         // cannot be called back. From the moment a wallet is saved a payment

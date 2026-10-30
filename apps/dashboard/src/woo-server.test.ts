@@ -31,6 +31,7 @@ import { formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
+import { WOO_SITE_CASES } from "./testing/woo-site-cases.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import type { Preflight, PricedExample, ShopSample } from "./woo-connect.js";
 import type { ReferenceRead } from "./woo-reference.js";
@@ -627,6 +628,87 @@ describe("pressing Connect", () => {
 });
 
 describe("the keys arriving from the shop", () => {
+  it.each(WOO_SITE_CASES)(
+    "keeps the seller site truthful after a confirmed connection: $id",
+    async (one) => {
+      const running = await started({ sellerSite: one.before });
+      await running.signIn();
+      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      if (one.writeFails) {
+        vi.spyOn(running.harnessed.store, "setSellerSite").mockRejectedValueOnce(
+          new Error("write unavailable"),
+        );
+      }
+
+      expect(
+        (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""))))
+          .status,
+      ).toBe(200);
+      expect(
+        (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+      ).toBe(one.after);
+      expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
+
+      const page = await running.get("/woocommerce?from=shop");
+      if (one.writeFails) {
+        const retry = formTo(page.html, "post", "/woocommerce/site");
+        expect(retry).toBeDefined();
+        expect(importFormOf(page.html)).toBe("");
+        expect((await running.post("/woocommerce/import")).status).toBe(409);
+        expect(running.read).toEqual([]);
+        expect(
+          (await running.post("/woocommerce/site", { seller_site: "https://stranger.example" }))
+            .status,
+        ).toBe(200);
+        expect(
+          (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+        ).toBe(SHOP);
+      }
+    },
+  );
+
+  it("never fills a site from a read-only grant or a callback without a valid token", async () => {
+    const running = await started({ sellerSite: null });
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(
+      (await running.postJson("/woocommerce/callback", grantedBody("not-issued"))).status,
+    ).toBe(401);
+    expect(
+      (
+        await running.postJson(
+          "/woocommerce/callback",
+          grantedBody(tokenIn(pressed.to ?? ""), "read"),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+    ).toBeNull();
+    expect((await running.post("/woocommerce/site")).status).toBe(409);
+    expect(
+      (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+    ).toBeNull();
+  });
+
+  it("keeps a valid connection when its origin has a port and offers Settings for the site", async () => {
+    const running = await started({ sellerSite: null });
+    await running.signIn();
+    const pressed = await running.post("/woocommerce/connect", { shop_url: `${SHOP}:8443` });
+    expect(
+      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""))))
+        .status,
+    ).toBe(200);
+    expect(
+      (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+    ).toBeNull();
+    const page = await running.get("/woocommerce?from=shop");
+    expect(page.html).toContain("Set your site in Settings");
+    expect(formTo(page.html, "post", "/woocommerce/site")).toBeUndefined();
+    expect((await running.post("/woocommerce/import")).status).toBe(409);
+    expect(running.read).toEqual([]);
+  });
+
   it("connects the shop the merchant typed", async () => {
     const running = await started();
     await running.signIn();
