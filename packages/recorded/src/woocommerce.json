@@ -1,10 +1,11 @@
 {
   "about": [
     "WooCommerce's own words, as the source of one release writes them: the currencies a shop can price in, and the refusals Agentify's connector or its tests name. Each refusal is the statement in the release's source that produces its code, status and message, with whitespace collapsed to single spaces; a code written with the controller's post type also names the statement that sets it.",
-    "A refusal with no status is no answer of its own: the cart lists it among its errors, in the words of the notice that raised it."
+    "A refusal with no status is no answer of its own: the cart lists it among its errors, in the words of the notice that raised it.",
+    "A release's files are read at the repository followed by the release and the file's path."
   ],
   "release": "11.2.1",
-  "source": "https://raw.githubusercontent.com/woocommerce/woocommerce/11.2.1/",
+  "repository": "https://raw.githubusercontent.com/woocommerce/woocommerce/",
   "readAt": "2026-10-30",
   "currencies": {
     "file": "plugins/woocommerce/i18n/currencies.php",

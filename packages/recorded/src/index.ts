@@ -49,8 +49,8 @@ interface WooStatement {
 /** WooCommerce's own words, as the source of one release writes them. */
 export const wooCommerce = recorded<{
   readonly release: string;
-  /** Where the release's files are read from: this followed by a `file`. */
-  readonly source: string;
+  /** Where a release's files are read from: this, the release, a slash and a `file`. */
+  readonly repository: string;
   readonly readAt: string;
   readonly currencies: { readonly file: string; readonly codes: readonly string[] };
   readonly refusals: readonly (WooStatement & {
@@ -86,5 +86,14 @@ export const facilitatorRefusals = recorded<{
     /** The file inside the package's tarball that declares the lists. */
     readonly file: string;
     readonly lists: Readonly<Record<string, readonly string[]>>;
+    /** The lists whose codes only a settlement answers with. */
+    readonly settlement: readonly string[];
+    /** Codes a newer version names that the gateway's table does not read yet. */
+    readonly awaitingDecision: readonly {
+      readonly code: string;
+      readonly list: string;
+      readonly seenIn: string;
+      readonly seenOn: string;
+    }[];
   }[];
 }>("facilitator-refusal-codes.json");

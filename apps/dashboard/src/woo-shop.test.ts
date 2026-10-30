@@ -2793,6 +2793,16 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     },
   );
 
+  /**
+   * Whether a token the stand-in issued is past the expiry it carries. The
+   * Store API takes a token it cannot validate for none: a read opens a new
+   * guest's cart, and a write is refused for want of a nonce.
+   */
+  const lapsedAt = (token: string | undefined, time: number): boolean =>
+    token !== undefined &&
+    JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp * 1000 <=
+      time;
+
   it("replaces an expired known-dirty identity through the creation budget instead of retrying its cleanup forever", async () => {
     let time = 1_800_000_000_000;
     let sessions = 0;
@@ -2800,13 +2810,7 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const contents = new Map<string, boolean>();
     stand = await shopAnswering((asked) => {
       let token = asked.cartToken;
-      // The Store API takes a token it cannot validate for none: a read opens a
-      // new guest's cart, and a write is refused for want of a nonce.
-      const lapsed =
-        token !== undefined &&
-        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
-          1000 <=
-          time;
+      const lapsed = lapsedAt(token, time);
       if (lapsed && asked.method !== "GET") return wooRefusal("woocommerce_rest_missing_nonce");
       if (token === undefined || lapsed) {
         sessions += 1;
@@ -2931,16 +2935,12 @@ describe("the shop's own shipping rate for a parcel's place", () => {
     const contents = new Map<string, boolean>();
     stand = await shopAnswering((asked) => {
       let token = asked.cartToken;
-      if (token === undefined) {
+      const lapsed = lapsedAt(token, time);
+      if (lapsed && asked.method !== "GET") return wooRefusal("woocommerce_rest_missing_nonce");
+      if (token === undefined || lapsed) {
         sessions += 1;
         token = `e30.${Buffer.from(JSON.stringify({ user_id: `guest-${sessions}`, exp: Math.floor(time / 1000) + 172800 })).toString("base64url")}.signature`;
         contents.set(token, false);
-      } else if (
-        JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")).exp *
-          1000 <=
-        time
-      ) {
-        return { status: 401, body: { code: "invalid_cart_token" } };
       }
       if (asked.url.endsWith("/add-item")) contents.set(token, true);
       if (asked.url.endsWith("/remove-item")) contents.set(token, false);

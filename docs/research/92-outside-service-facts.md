@@ -32,7 +32,9 @@ A currency
 the recording does not list makes `coinbaseRateOf` throw, so a test cannot
 name a rate Coinbase did not give. A test that needs a currency Coinbase does
 not rate uses IRT, the Iranian toman, which WooCommerce offers a shop and
-Coinbase does not list.
+Coinbase does not list. The arithmetic tests of `woo-money.test.ts` keep the
+rupiah's rate as their own number: there it is only an input to a sum, and a
+new recording should not change their expected results.
 
 WooCommerce is recorded from the source of one release, 11.2.1, read on
 2026-10-30 from `raw.githubusercontent.com/woocommerce/woocommerce/11.2.1/`.
@@ -59,8 +61,27 @@ and the 214 of `X402SettleErrorReason`, as its generated client declares them.
 From `@x402/evm` 2.23.0 come the 59 codes of the reference facilitator's exact
 scheme for EVM chains, declared in `src/exact/facilitator/errors.ts`, which the
 tarball carries inside the source map of `dist/cjs/exact/facilitator/index.js`.
-No test reads these lists yet; the live check holds the gateway's refusal
-table (`apps/gateway/src/adapters/x402/refusal-codes.ts`) against them.
+No test reads these lists yet. The live check holds the gateway's refusal
+table (`apps/gateway/src/adapters/x402/refusal-codes.ts`) against the
+verification codes only, because the gateway reads the table only when a
+verification is refused. A refused settlement is an unknown outcome whatever
+its code, except for two codes that show nothing was broadcast. Coinbase names
+its settlement list apart, so the recording marks `X402SettleErrorReason` as
+settlement. The x402 file declares
+verification and settlement codes together and does not say which a
+verification can carry: its first block has no label, and two codes it files
+under settlement, `smart_wallet_deployment_failed` and
+`unsupported_payload_type`, are among Coinbase's verification reasons. The
+check therefore counts every code in that file as a possible verification
+code. Five of them appear in neither of Coinbase's lists and could be either:
+`asset_not_deployed_contract`, `invalid_exact_evm_transfer_event_mismatch`,
+`invalid_transaction_state`, `eip6492_factory_not_allowed` and
+`settlement_pending`; the table reads all five.
+
+The facilitator recording also keeps a short list of codes awaiting a
+decision: codes a newer version names that the table does not read, each with
+the version and the date it was first seen, until the product owner decides
+how the gateway reads them.
 
 ## How the live check runs
 
@@ -72,8 +93,13 @@ is the world moving, which no change under review causes. It reads nothing
 secret. For every fact it prints the fact, its source, the recorded value and
 the live one, and whether the fact holds, changed, or could not be checked.
 A fact that changed fails the run, and so does a service that could not be
-asked, but the output names the two apart and a service that does not answer
-is never read as a change.
+asked, but the output names the two apart. No answer, a refusal to answer
+(401, 403, 429 or a server error) and a page that is not the JSON the service
+sends, such as a challenge page in front of Coinbase, all read as "could not
+check" and never as a change. GitHub sends a failed scheduled run to whoever
+last changed the workflow's cron line, and disables the workflow after 60
+days without activity in the public repository, after which it runs again
+only once someone turns it back on in the Actions tab.
 
 For Coinbase it asks for the US dollar's rates and checks that Coinbase still
 rates exactly the WooCommerce currencies it rated when recorded; a currency a
@@ -85,31 +111,47 @@ and the shape of the error body.
 
 For WooCommerce it reads the recorded release's files and checks that each
 recorded statement, with its whitespace collapsed, is still there, and that the
-currency list is the same. It asks WordPress.org for the newest WooCommerce
-release and reports a newer one without failing, so that a person decides
-when to move the recording to it; until then the recording describes the shops
-that run the recorded release. It asks no live shop.
+currency list is the same. It then asks WordPress.org for the newest
+WooCommerce release and, when that is a newer one, reads the same files at the
+newest release's tag and checks every recorded fact there too. A fact that no
+longer holds in the newest release, because a code, its status, its message or
+the whole statement is gone or changed, or the currency list differs, fails
+the run, naming the fact and the release. A newer release in which every
+recorded fact holds is reported without failing, so that a person decides
+when to move the recording to it. The recorded release alone could never fail
+after its first run, since a tag's files do not change; the newest release is
+where WooCommerce moves. It asks no live shop.
 
 For the facilitator it reads the recorded lists again from the pinned
 tarballs and checks that the gateway still pins those versions. It then reads
-the newest published version of each package and compares its codes with the
-recorded ones. A new code the gateway's table reads as unrecognised fails the
-run, and so does a code the table reads that the newest version drops, because
-the hosted facilitator answers with its current codes whatever version the
-gateway pins. A code that only names a payment the gateway does not offer
-(Permit2, an ERC-20 approval, EIP-2612, batch settlement, the `upto` scheme,
-Solana, sign-in with x) is left alone. Codes the recorded versions already name
-that the table cannot read are reported without failing: whether the gateway
-reads them is a decision about the product. The check finds the table's codes
-among the string literals of its source file, so a code moved to another file
-goes unseen.
+the newest published version of each package and compares its verification
+codes with the recorded ones, because the hosted facilitator answers with its
+current codes whatever version the gateway pins. A new verification code the
+table reads as unrecognised fails the run unless it is on the list of codes
+awaiting a decision, and so does a verification code the table reads that the
+newest version drops. A code awaiting a decision is reported on every run
+until it is decided. When the table comes to read such a code, or the newest
+version stops naming it, the run says so, so that the list does not keep codes
+that no longer wait for anything. Changes to settlement codes are reported without
+failing. A code that only names a payment the gateway does not offer (Permit2,
+an ERC-20 approval, EIP-2612, batch settlement, the `upto` scheme, Solana,
+sign-in with x) is left alone. The check finds the table's codes among the
+string literals of its source file, so a code moved to another file goes
+unseen.
 
 The check has no tests of its own; negative controls prove it. With XAF
-removed from Coinbase's recording it fails, naming XAF as a currency
-Coinbase now rates; with a WooCommerce statement rewritten to a code the
-release does not contain it fails, naming the statement it cannot find; with
-every request sent to a closed port it reports each fact as not checked and
-exits with status 2 rather than 1.
+removed from Coinbase's recording it fails, naming XAF as a currency Coinbase
+now rates. With a WooCommerce statement rewritten to a code the release does
+not contain, it fails, naming the statement it cannot find. With every request
+sent to a closed port it reports each fact as not checked and exits with
+status 2 rather than 1, as it does when a local server answers in Coinbase's
+place with a 403 or with a challenge page. With WooCommerce 9.9.0 standing in
+for the newest release it fails on the out-of-stock refusal, whose recorded
+statement 9.9.0 does not contain, and on the currency list, whose file
+WooCommerce added later; with 11.2.0 standing in, every fact holds and the run
+only reports the release. With `node_failure` taken off the list awaiting a
+decision it fails on that code, while the x402 code on the list is only
+reported.
 
 ## What the first run found
 
@@ -118,18 +160,16 @@ listed three tokens it did not list on 2026-10-21 (RITUAL, RLUSD and STABLE),
 none of them a currency a shop can price in. WooCommerce 11.2.1 was the newest
 release.
 
-The facilitator's codes have moved past the gateway's table. `@coinbase/cdp-sdk`
-1.60.0 adds `node_failure` to the verification reasons, and the table reads it
-as unrecognised, while it reads the facilitator's other reports of its own
-failure as no verdict. `@x402/evm` 2.29.0 adds
+The facilitator's verification codes have moved past the gateway's table.
+`@coinbase/cdp-sdk` 1.60.0 adds `node_failure` to the verification reasons,
+and the table reads it as unrecognised, while it reads the facilitator's other
+reports of its own failure as no verdict. `@x402/evm` 2.29.0 adds
 `invalid_exact_evm_non_canonical_signature`, which the table also reads as
-unrecognised. Already at the pinned 1.55.0, Coinbase's settlement reasons name
-`settle_exact_evm_transaction_confirmation_timed_out`,
-`settle_exact_failed_onchain` and `settle_exact_node_failure`, three codes
-about an exact payment on an EVM chain that the table does not read. Every
-code the table reads is named by one of the recorded versions. The scheduled
-run fails on the two new codes until the gateway's table reads them, or until
-the gateway's pins and the recording move to the versions that name them.
+unrecognised. Both were first seen on 2026-10-30 and are recorded as awaiting
+the product owner's decision, so each run reports them and passes. Every code
+the table reads is named by one of the recorded verification lists, and every
+verification code they name that belongs to the exact payment the gateway
+offers is one the table reads.
 
 ## Stand-ins not yet recorded
 

@@ -6,29 +6,37 @@
  *
  * For Coinbase's public exchange rates it checks which of the currencies
  * WooCommerce offers a shop Coinbase rates one US dollar in, and the shape of
- * its answer for a base currency it does not know. For WooCommerce it checks
- * that each recorded statement, and the list of currencies, is in the source
- * of the recorded release on GitHub. For the payment facilitator it reads the
- * recorded refusal codes again from the npm tarballs of the versions the
- * gateway pins, and holds the newest published versions against the gateway's
- * refusal table in both directions: a code they add that the table cannot
- * read, and a code the table reads that they drop.
+ * its answer for a base currency it does not know. For WooCommerce it reads
+ * the list of currencies and every recorded statement from the source of the
+ * recorded release on GitHub, and again from the source of the newest
+ * release: a fact that no longer holds in either fails the run, and a newer
+ * release in which every fact holds is reported, so that a person moves the
+ * recording to it. For the payment facilitator it reads the recorded refusal
+ * codes again from the npm tarballs of the versions the gateway pins, and
+ * holds the verification codes of the newest published versions against the
+ * gateway's refusal table in both directions. A code they add that the table
+ * cannot read fails the run unless the recording lists it as awaiting the
+ * product owner's decision, and so does a code the table reads that they drop.
  *
  * It leaves alone the rates themselves, which move; the other currencies and
  * tokens Coinbase lists, which come and go and are reported without failing;
- * a newer WooCommerce release or package version as such, which is reported
- * so that a person decides when to move a recording to it; every live shop,
- * since WooCommerce's source is read instead; WordPress's own codes; the
- * facilitator's answers over HTTP, which need its key; and refusal codes of
- * the payment schemes, networks and transfer methods the gateway does not
- * offer. Codes the recorded versions already name and the table cannot read
- * are reported without failing, because reading one is a decision about the
- * product. It finds the table's codes among the string literals of its source
+ * every live shop, since WooCommerce's source is read instead; WordPress's own
+ * codes; the facilitator's answers over HTTP, which need its key; settlement
+ * codes, because the gateway keeps an unfamiliar settlement refusal as an
+ * unknown outcome and reads its table only at verification; and refusal codes
+ * of the payment schemes, networks and transfer methods the gateway does not
+ * offer. The x402 file declares verification and settlement codes together
+ * without saying which a verification can carry, so each of its codes counts
+ * as a possible verification code. A code awaiting a decision is reported on
+ * every run, and so is one that the table has come to read or the newest
+ * version no longer names, so that the list does not outlive its codes. It
+ * finds the table's codes among the string literals of the table's source
  * file, so a code moved to another file goes unseen.
  *
  * It exits 1 when a recorded fact no longer holds, and 2 when none changed but
- * something could not be checked. A service that does not answer is never
- * read as a change.
+ * something could not be checked. No answer, a refusal to answer (401, 403,
+ * 429 or a server error) and a page that is not the JSON the service sends,
+ * such as a challenge page in front of Coinbase, are never read as a change.
  */
 
 import { readFileSync } from "node:fs";
@@ -66,6 +74,9 @@ const say = (finding: Finding): void => {
 /** A service that gave no readable answer, which says nothing about the fact asked. */
 class Unanswered extends Error {}
 
+/** Statuses that turn a request away unanswered: a sign-in, a block or a rate limit. */
+const TURNED_AWAY = [401, 403, 429];
+
 const get = async (url: string): Promise<Response> => {
   let answered: Response;
   try {
@@ -73,7 +84,7 @@ const get = async (url: string): Promise<Response> => {
   } catch (error) {
     throw new Unanswered(`${url} did not answer: ${(error as Error).message}`);
   }
-  if (answered.status === 429 || answered.status >= 500) {
+  if (TURNED_AWAY.includes(answered.status) || answered.status >= 500) {
     throw new Unanswered(`${url} answered HTTP ${answered.status}`);
   }
   return answered;
@@ -85,6 +96,15 @@ const read = async (url: string): Promise<string | null> => {
   if (answered.status === 404) return null;
   if (!answered.ok) throw new Unanswered(`${url} answered HTTP ${answered.status}`);
   return await answered.text();
+};
+
+/** `text` read as JSON; a page that is not JSON is no answer from the service. */
+const jsonOf = <Shape>(text: string, url: string): Shape => {
+  try {
+    return JSON.parse(text) as Shape;
+  } catch {
+    throw new Unanswered(`${url} answered with a page that is not JSON`);
+  }
 };
 
 const checking = async (fact: string, source: string, check: () => Promise<void>) => {
@@ -109,7 +129,7 @@ const now = (): string => new Date().toISOString();
 
 const SHOP_CURRENCIES = wooCommerce.currencies.codes;
 
-/** The codes `body` rates one US dollar in, or why it is not the shape the dashboard reads. */
+/** The codes `body` rates one US dollar in, or why it is not Coinbase's answer for one. */
 const ratedIn = (body: string): readonly string[] | string => {
   let answer: { data?: { currency?: unknown; rates?: unknown } };
   try {
@@ -127,12 +147,13 @@ const ratedIn = (body: string): readonly string[] | string => {
   return Object.keys(rates);
 };
 
-const shapeOf = (status: number, body: string): string => {
+/** The status and the body's fields with their types, or null for a body that is not JSON. */
+const shapeOf = (status: number, body: string): string | null => {
   let value: unknown;
   try {
     value = JSON.parse(body);
   } catch {
-    return `HTTP ${status}, not JSON`;
+    return null;
   }
   if (typeof value !== "object" || value === null) return `HTTP ${status}, ${typeof value}`;
   const fields = Object.entries(value)
@@ -148,16 +169,8 @@ const coinbase = async (): Promise<void> => {
     if (typeof recorded === "string") throw new Error(`the recorded answer: ${recorded}`);
     const answered = await get(coinbaseRates.url);
     const live = answered.ok ? ratedIn(await answered.text()) : `HTTP ${answered.status}`;
-    const recordedLine = `${coinbaseRates.readAt.toISOString()}: ${listed(without(SHOP_CURRENCIES, recorded))}`;
     if (typeof live === "string") {
-      say({
-        outcome: "changed",
-        fact: rated,
-        source: coinbaseRates.url,
-        recorded: recordedLine,
-        live: `${now()}: the answer is not the recorded shape, ${live}`,
-      });
-      return;
+      throw new Unanswered(`${coinbaseRates.url} gave no rates for one US dollar: ${live}`);
     }
     const nowRated = within(SHOP_CURRENCIES, live);
     const thenRated = within(SHOP_CURRENCIES, recorded);
@@ -167,7 +180,7 @@ const coinbase = async (): Promise<void> => {
       outcome: added.length + dropped.length === 0 ? "holds" : "changed",
       fact: rated,
       source: coinbaseRates.url,
-      recorded: recordedLine,
+      recorded: `${coinbaseRates.readAt.toISOString()}: ${listed(without(SHOP_CURRENCIES, recorded))}`,
       live:
         `${now()}: ${listed(without(SHOP_CURRENCIES, live))}` +
         (added.length > 0 ? `; now rates ${listed(added)}` : "") +
@@ -191,8 +204,13 @@ const coinbase = async (): Promise<void> => {
   await checking(refused, coinbaseUnknownBase.url, async () => {
     const answered = await get(coinbaseUnknownBase.url);
     const body = await answered.text();
-    const recorded = shapeOf(coinbaseUnknownBase.status, coinbaseUnknownBase.body);
     const live = shapeOf(answered.status, body);
+    if (live === null) {
+      throw new Unanswered(
+        `${coinbaseUnknownBase.url} answered HTTP ${answered.status} with a page that is not JSON`,
+      );
+    }
+    const recorded = shapeOf(coinbaseUnknownBase.status, coinbaseUnknownBase.body);
     say({
       outcome: live === recorded ? "holds" : "changed",
       fact: refused,
@@ -232,77 +250,125 @@ const contradiction = (refusal: WooRefusal): string | null => {
   return null;
 };
 
-const woo = async (): Promise<void> => {
-  const { release, source } = wooCommerce;
-  const files = new Map<string, Promise<string | null>>();
-  const fileOf = (file: string): Promise<string | null> => {
-    const known = files.get(file) ?? read(`${source}${file}`);
-    files.set(file, known);
-    return known;
+interface WooFact {
+  readonly fact: string;
+  readonly source: string;
+  readonly recorded: string;
+  /** What the release's source lacks of the fact, or null where it holds. */
+  readonly missing: string | null;
+}
+
+/** Every recorded WooCommerce fact, held against the source of `release`. */
+const wooFactsAt = async (release: string): Promise<readonly WooFact[]> => {
+  const at = (file: string) => `${wooCommerce.repository}${release}/${file}`;
+  const files = new Map<string, string | null>();
+  const fileOf = async (file: string): Promise<string | null> => {
+    if (!files.has(file)) files.set(file, await read(at(file)));
+    return files.get(file) ?? null;
   };
+  const recorded = `${wooCommerce.readAt}, ${wooCommerce.release}`;
 
   const { currencies } = wooCommerce;
-  const offered = `WooCommerce ${release} offers a shop these ${currencies.codes.length} currencies`;
-  await checking(offered, `${source}${currencies.file}`, async () => {
-    const text = await fileOf(currencies.file);
-    const live =
-      text === null
-        ? []
-        : [...text.matchAll(/^\s*'([A-Z]{3})'\s*=>/gm)].map(([, code]) => code ?? "");
-    const added = without(live, currencies.codes);
-    const dropped = without(currencies.codes, live);
-    say({
-      outcome: added.length + dropped.length === 0 ? "holds" : "changed",
-      fact: offered,
-      source: `${source}${currencies.file}`,
-      recorded: `${wooCommerce.readAt}: ${currencies.codes.length} currencies`,
-      live:
-        text === null
-          ? `${now()}: no such file in ${release}`
-          : `${now()}: ${live.length} currencies; added ${listed(added)}; dropped ${listed(dropped)}`,
-    });
-  });
+  const text = await fileOf(currencies.file);
+  const offered =
+    text === null
+      ? null
+      : [...text.matchAll(/^\s*'([A-Z]{3})'\s*=>/gm)].map(([, code]) => code ?? "");
+  const added = offered === null ? [] : without(offered, currencies.codes);
+  const dropped = offered === null ? [] : without(currencies.codes, offered);
+  const facts: WooFact[] = [
+    {
+      fact: `WooCommerce ${release} offers a shop the ${currencies.codes.length} recorded currencies`,
+      source: at(currencies.file),
+      recorded: `${recorded}: ${currencies.codes.length} currencies`,
+      missing:
+        offered === null
+          ? `no file ${currencies.file}`
+          : added.length + dropped.length === 0
+            ? null
+            : `added ${listed(added)}; dropped ${listed(dropped)}`,
+    },
+  ];
 
   for (const refusal of wooCommerce.refusals) {
-    const fact =
-      refusal.status === null
-        ? `WooCommerce ${release} lists a cart's errors under ${refusal.code}`
-        : `WooCommerce ${release} refuses with ${refusal.code}, HTTP ${refusal.status}, "${refusal.message}"`;
-    const at = `${source}${refusal.file}`;
-    await checking(fact, at, async () => {
-      const recorded = `${wooCommerce.readAt}: ${refusal.statement}`;
-      const contradicted = contradiction(refusal);
-      if (contradicted !== null) {
-        say({ outcome: "changed", fact, source: at, recorded, live: contradicted });
-        return;
-      }
-      for (const said of [refusal, ...(refusal.postType === undefined ? [] : [refusal.postType])]) {
-        const text = await fileOf(said.file);
-        if (text === null || !collapsed(text).includes(said.statement)) {
-          const missing = text === null ? `no file ${said.file}` : `no "${said.statement}"`;
-          say({ outcome: "changed", fact, source: at, recorded, live: `${now()}: ${missing}` });
-          return;
-        }
-      }
-      say({ outcome: "holds", fact, source: at, recorded, live: `${now()}: the same statement` });
+    let missing = contradiction(refusal);
+    for (const said of [refusal, ...(refusal.postType === undefined ? [] : [refusal.postType])]) {
+      if (missing !== null) break;
+      const source = await fileOf(said.file);
+      if (source === null) missing = `no file ${said.file}`;
+      else if (!collapsed(source).includes(said.statement)) missing = `no "${said.statement}"`;
+    }
+    facts.push({
+      fact:
+        refusal.status === null
+          ? `WooCommerce ${release} lists a cart's errors under ${refusal.code}`
+          : `WooCommerce ${release} refuses with ${refusal.code}, HTTP ${refusal.status}, "${refusal.message}"`,
+      source: at(refusal.file),
+      recorded: `${recorded}: ${refusal.statement}`,
+      missing,
     });
   }
 
-  const newest = `WooCommerce ${release} is the newest release`;
+  // A release GitHub holds none of the files for is one it has no tag for yet.
+  if ([...files.values()].every((one) => one === null)) {
+    throw new Unanswered(`GitHub holds none of the recorded files at ${at("")}`);
+  }
+  return facts;
+};
+
+const woo = async (): Promise<void> => {
+  const { release, repository } = wooCommerce;
+  await checking(
+    `The facts recorded from WooCommerce ${release}`,
+    `${repository}${release}/`,
+    async () => {
+      for (const one of await wooFactsAt(release)) {
+        say({
+          outcome: one.missing === null ? "holds" : "changed",
+          fact: one.fact,
+          source: one.source,
+          recorded: one.recorded,
+          live: `${now()}: ${one.missing ?? "the same"}`,
+        });
+      }
+    },
+  );
+
+  const newest = "The newest WooCommerce release keeps every recorded fact";
   await checking(newest, WOO_RELEASES, async () => {
     const text = await read(WOO_RELEASES);
-    const version = text === null ? undefined : (JSON.parse(text) as { version?: string }).version;
-    if (version === undefined) throw new Unanswered(`${WOO_RELEASES} named no version`);
-    say({
-      outcome: version === release ? "holds" : "notice",
-      fact: newest,
-      source: WOO_RELEASES,
-      recorded: release,
-      live:
-        version === release
-          ? `${now()}: ${version}`
-          : `${now()}: ${version} is out; the recording stays at ${release} until a person moves it`,
-    });
+    const latest =
+      text === null ? undefined : jsonOf<{ version?: string }>(text, WOO_RELEASES).version;
+    if (latest === undefined) throw new Unanswered(`${WOO_RELEASES} named no version`);
+    if (latest === release) {
+      say({
+        outcome: "holds",
+        fact: `WooCommerce ${release}, the recorded release, is the newest`,
+        source: WOO_RELEASES,
+        recorded: release,
+        live: `${now()}: ${latest}`,
+      });
+      return;
+    }
+    const broken = (await wooFactsAt(latest)).filter((one) => one.missing !== null);
+    for (const one of broken) {
+      say({
+        outcome: "changed",
+        fact: one.fact,
+        source: one.source,
+        recorded: one.recorded,
+        live: `${now()}: ${one.missing}`,
+      });
+    }
+    if (broken.length === 0) {
+      say({
+        outcome: "notice",
+        fact: `WooCommerce ${latest} is out, and every recorded fact holds in it`,
+        source: WOO_RELEASES,
+        recorded: release,
+        live: `${now()}: ${latest}; the recording stays at ${release} until a person moves it`,
+      });
+    }
   });
 };
 
@@ -373,26 +439,35 @@ const codesIn = (text: string, file: string, list: string): readonly string[] | 
 
 /** The package's file at `version`, or null where npm has no such version. */
 const packedFile = async (name: string, version: string, file: string): Promise<string | null> => {
-  const manifest = await read(`${REGISTRY}/${name}/${version}`);
+  const at = `${REGISTRY}/${name}/${version}`;
+  const manifest = await read(at);
   if (manifest === null) return null;
-  const tarball = (JSON.parse(manifest) as { dist?: { tarball?: string } }).dist?.tarball;
+  const tarball = jsonOf<{ dist?: { tarball?: string } }>(manifest, at).dist?.tarball;
   if (tarball === undefined) throw new Unanswered(`npm named no tarball for ${name}@${version}`);
   const answered = await get(tarball);
   if (!answered.ok) throw new Unanswered(`${tarball} answered HTTP ${answered.status}`);
-  return fileInTarball(Buffer.from(await answered.arrayBuffer()), file);
+  const packed = Buffer.from(await answered.arrayBuffer());
+  try {
+    return fileInTarball(packed, file);
+  } catch {
+    throw new Unanswered(`${tarball} answered with something that is not a gzipped tarball`);
+  }
 };
 
 const facilitator = async (): Promise<void> => {
-  const named = new Set<string>();
+  const verifying = new Set<string>();
+  const awaiting = new Set<string>();
   for (const vocabulary of facilitatorRefusals.packages) {
-    const { package: name, version, file, lists } = vocabulary;
+    const { package: name, version, file, lists, settlement, awaitingDecision } = vocabulary;
     const at = `${REGISTRY}/${name}/${version}`;
-    for (const codes of Object.values(lists)) for (const code of codes) named.add(code);
+    for (const [list, codes] of Object.entries(lists)) {
+      if (!settlement.includes(list)) for (const code of codes) verifying.add(code);
+    }
+    for (const known of awaitingDecision) awaiting.add(known.code);
 
-    const pinned = `The gateway pins ${name} at the recorded version`;
     say({
       outcome: GATEWAY_PINS[name] === version ? "holds" : "changed",
-      fact: pinned,
+      fact: `The gateway pins ${name} at the recorded version`,
       source: "apps/gateway/package.json",
       recorded: version,
       live: GATEWAY_PINS[name] ?? "not a dependency",
@@ -401,14 +476,13 @@ const facilitator = async (): Promise<void> => {
     await checking(`${name}@${version} names the recorded refusal codes`, at, async () => {
       const text = await packedFile(name, version, file);
       for (const [list, codes] of Object.entries(lists)) {
-        const fact = `${name}@${version} names these ${codes.length} refusal codes in ${list}`;
         const live = text === null ? null : codesIn(text, file, list);
         say({
           outcome:
             live !== null && without(live, codes).length + without(codes, live).length === 0
               ? "holds"
               : "changed",
-          fact,
+          fact: `${name}@${version} names these ${codes.length} refusal codes in ${list}`,
           source: `${at}, ${file}`,
           recorded: `${facilitatorRefusals.readAt}: ${codes.length} codes`,
           live:
@@ -419,68 +493,96 @@ const facilitator = async (): Promise<void> => {
       }
     });
 
-    const newest = `The newest ${name} names no refusal code the gateway's table cannot read, and drops none it reads`;
-    await checking(newest, `${REGISTRY}/${name}/latest`, async () => {
-      const manifest = await read(`${REGISTRY}/${name}/latest`);
+    const fact = `The newest ${name} adds no verification code the gateway's table cannot read, and drops none it reads`;
+    const latestAt = `${REGISTRY}/${name}/latest`;
+    await checking(fact, latestAt, async () => {
+      const manifest = await read(latestAt);
       const latest =
-        manifest === null ? undefined : (JSON.parse(manifest) as { version?: string }).version;
+        manifest === null ? undefined : jsonOf<{ version?: string }>(manifest, latestAt).version;
       if (latest === undefined) throw new Unanswered(`npm named no latest version of ${name}`);
-      if (latest === version) {
-        say({
-          outcome: "holds",
-          fact: newest,
-          source: `${REGISTRY}/${name}/latest`,
-          recorded: version,
-          live: `${now()}: ${latest}, the recorded version`,
-        });
-        return;
-      }
-      const text = await packedFile(name, latest, file);
-      const drift: string[] = [];
-      const beside: string[] = [];
+      const text = latest === version ? null : await packedFile(name, latest, file);
+      const newestIn = (list: string): readonly string[] => {
+        if (latest === version) return lists[list] ?? [];
+        const codes = text === null ? null : codesIn(text, file, list);
+        if (codes === null)
+          throw new Unanswered(`${name}@${latest} declares no ${list} in ${file}`);
+        return codes;
+      };
+
+      const failing: string[] = [];
+      const waiting: string[] = [];
+      const noted: string[] = [];
       for (const [list, codes] of Object.entries(lists)) {
-        const live = text === null ? null : codesIn(text, file, list);
-        if (live === null) throw new Unanswered(`${name}@${latest} declares no ${list} in ${file}`);
-        for (const code of without(live, codes)) {
+        const settles = settlement.includes(list);
+        const newest = newestIn(list);
+        // A settlement refusal is never read by the table, so its reading is not shown.
+        const told = (change: string, code: string, reading: string) =>
+          `${list} ${change} ${code}${settles ? "" : ` (${reading})`}`;
+        for (const code of without(newest, codes)) {
           const reading = readingOf(code);
-          const unread = reading === "unrecognised" && !OTHER_PAYMENTS.test(code);
-          (unread ? drift : beside).push(`${list} adds ${code} (${reading})`);
+          const said = told("adds", code, reading);
+          if (settles || reading !== "unrecognised" || OTHER_PAYMENTS.test(code)) noted.push(said);
+          else if (!awaiting.has(code)) failing.push(said);
         }
-        for (const code of without(codes, live)) {
+        for (const code of without(codes, newest)) {
           const reading = readingOf(code);
-          (reading === "unrecognised" ? beside : drift).push(`${list} drops ${code} (${reading})`);
+          const said = told("drops", code, reading);
+          (settles || reading === "unrecognised" ? noted : failing).push(said);
         }
       }
+      for (const known of awaitingDecision) {
+        const reading = readingOf(known.code);
+        if (reading !== "unrecognised") {
+          noted.push(`${known.code} awaits a decision, and the table now reads it (${reading})`);
+        } else if (!newestIn(known.list).includes(known.code)) {
+          noted.push(`${known.code} awaits a decision, and ${known.list} no longer names it`);
+        } else {
+          waiting.push(
+            `${known.list} names ${known.code} (unrecognised), first seen in ${known.seenIn} on ${known.seenOn}`,
+          );
+        }
+      }
+
       say({
-        outcome: drift.length === 0 ? "holds" : "changed",
-        fact: newest,
-        source: `${REGISTRY}/${name}/latest`,
+        outcome: failing.length === 0 ? "holds" : "changed",
+        fact,
+        source: latestAt,
         recorded: version,
-        live: `${now()}: ${latest}${drift.length === 0 ? "" : `; ${drift.join("; ")}`}`,
+        live: `${now()}: ${latest}${failing.length === 0 ? "" : `; ${failing.join("; ")}`}`,
       });
-      if (beside.length > 0) {
+      if (waiting.length > 0) {
         say({
           outcome: "notice",
-          fact: `The newest ${name} also changes codes the gateway already reads or leaves alone`,
-          source: `${REGISTRY}/${name}/latest`,
+          fact: `The newest ${name} adds verification codes the gateway's table cannot read, awaiting the product owner's decision`,
+          source: latestAt,
           recorded: version,
-          live: `${now()}: ${latest}; ${beside.join("; ")}`,
+          live: `${now()}: ${latest}; ${waiting.join("; ")}`,
+        });
+      }
+      if (noted.length > 0) {
+        say({
+          outcome: "notice",
+          fact: `The newest ${name} also changes codes the gateway reads, keeps unknown at settlement or leaves alone`,
+          source: latestAt,
+          recorded: version,
+          live: `${now()}: ${latest}; ${noted.join("; ")}`,
         });
       }
     });
   }
 
-  const unnamed = without(TABLE_CODES, [...named]);
-  const unread = [...named].filter(
-    (code) => !OTHER_PAYMENTS.test(code) && readingOf(code) === "unrecognised",
+  const unnamed = without(TABLE_CODES, [...verifying]);
+  const unread = [...verifying].filter(
+    (code) =>
+      !OTHER_PAYMENTS.test(code) && !awaiting.has(code) && readingOf(code) === "unrecognised",
   );
   if (unnamed.length + unread.length > 0) {
     say({
       outcome: "notice",
-      fact: "The gateway's refusal table and the recorded versions' codes differ",
+      fact: "The gateway's refusal table and the recorded verification codes differ",
       source: "apps/gateway/src/adapters/x402/refusal-codes.ts",
-      recorded: `named by the recorded versions and read as unrecognised: ${listed(unread)}`,
-      live: `read by the gateway's table and named by no recorded version: ${listed(unnamed)}`,
+      recorded: `named by the recorded versions at verification and read as unrecognised: ${listed(unread)}`,
+      live: `read by the gateway's table and named by no recorded verification list: ${listed(unnamed)}`,
     });
   }
 };

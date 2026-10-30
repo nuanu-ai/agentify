@@ -1,7 +1,8 @@
 {
   "about": [
     "The refusal codes the payment facilitator's own packages name, read from their npm tarballs at the versions the gateway pins. Coinbase's SDK lists what its hosted facilitator answers a verification and a settlement with; the x402 reference facilitator's exact scheme for EVM chains declares its codes in one source file, which its tarball carries inside a source map.",
-    "Each list keeps the codes in the order the file declares them."
+    "Each list keeps the codes in the order the file declares them. A list named under settlement holds codes only a settlement answers with; the gateway keeps an unfamiliar settlement refusal as an unknown outcome, so it holds only the other lists against its refusal table. The x402 file declares verification and settlement codes together without saying which a verification can carry: its first block has no label, and two codes it files under settlement are among Coinbase's verification reasons. So all of its codes count as possible verification codes.",
+    "Under awaitingDecision are codes a newer version names that the gateway's refusal table does not read, with the version and the date they were first seen, kept until the product owner decides how the gateway reads them."
   ],
   "readAt": "2026-10-30",
   "packages": [
@@ -423,7 +424,16 @@
           "invalid_bazaar_extension",
           "unknown_error"
         ]
-      }
+      },
+      "settlement": ["X402SettleErrorReason"],
+      "awaitingDecision": [
+        {
+          "code": "node_failure",
+          "list": "X402VerifyInvalidReason",
+          "seenIn": "1.60.0",
+          "seenOn": "2026-10-30"
+        }
+      ]
     },
     {
       "package": "@x402/evm",
@@ -491,7 +501,16 @@
           "smart_wallet_deployment_failed",
           "settlement_pending"
         ]
-      }
+      },
+      "settlement": [],
+      "awaitingDecision": [
+        {
+          "code": "invalid_exact_evm_non_canonical_signature",
+          "list": "src/exact/facilitator/errors.ts",
+          "seenIn": "2.29.0",
+          "seenOn": "2026-10-30"
+        }
+      ]
     }
   ]
 }
