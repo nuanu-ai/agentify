@@ -206,6 +206,19 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         ),
       );
       await sellThroughTheShop(connection.accountId, connection.permissions);
+      if (connection.permissions === "read_write") {
+        try {
+          const person = await identity.byId(connection.accountId);
+          if (person?.merchant !== null && person?.merchant !== undefined) {
+            await clientFor({ merchantId: person.merchant.id, email: person.email }).fillSellerSite(
+              new URL(connection.shopUrl).origin,
+            );
+          }
+        } catch {
+          // The connection is already saved: a failed callback would make WooCommerce revoke it.
+          console.error("[dashboard] the connected shop's site could not be filled");
+        }
+      }
       response.json({ ok: true });
     })().catch(() => {
       // A failure, so the shop takes its key back rather than keeping one

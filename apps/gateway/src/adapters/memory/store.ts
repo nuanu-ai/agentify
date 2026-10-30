@@ -302,11 +302,13 @@ export class MemoryStore implements Store {
     sellerSite: string,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
+    onlyIfEmpty = false,
   ): Promise<StoredMerchant | null> {
     const row = this.#merchants.get(id);
     if (row === undefined) {
       return null;
     }
+    if (onlyIfEmpty && row.sellerSite !== null) return this.#storedMerchantOf(row);
     const changed = row.sellerSite !== sellerSite;
     row.sellerSite = sellerSite;
     const merchant = this.#storedMerchantOf(row);

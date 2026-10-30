@@ -736,6 +736,11 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
             ?.sellerSite,
         ).toBe("https://seller.example");
         expect((await store.merchantById(A))?.sellerSite).toBe("https://seller.example");
+        await Promise.all([
+          store.setSellerSite(B, "https://seller.example", 6_000),
+          store.setSellerSite(B, "https://shop.example", 7_000, undefined, true),
+        ]);
+        expect((await store.merchantById(B))?.sellerSite).toBe("https://seller.example");
       });
 
       it("is paid at a wallet only where somebody set one, and at their own, with its split recorded in the same write", async () => {

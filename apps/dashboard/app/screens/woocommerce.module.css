@@ -19,6 +19,15 @@
   margin: 0 0 var(--space-card);
 }
 
+.site {
+  margin: 0 0 var(--space-card);
+  overflow-wrap: anywhere;
+}
+
+.site > :global(.button) {
+  margin-top: var(--space-block);
+}
+
 .notice > :global(.button) {
   margin-top: var(--space-block);
 }

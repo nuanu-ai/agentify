@@ -341,8 +341,9 @@ export class PostgresStore implements Store {
     sellerSite: string,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
+    onlyIfEmpty = false,
   ): Promise<StoredMerchant | null> {
-    return this.#setListing(id, { sellerSite }, at, analytics);
+    return this.#setListing(id, { sellerSite }, at, analytics, onlyIfEmpty);
   }
 
   /**
@@ -355,6 +356,7 @@ export class PostgresStore implements Store {
     listing: { readonly serviceName: string | null } | { readonly sellerSite: string },
     at: number,
     analytics: AnalyticsOf<StoredMerchant> | undefined,
+    onlyIfEmpty = false,
   ): Promise<StoredMerchant | null> {
     return await this.#db.transaction(async (tx) => {
       const [before] = await tx
@@ -364,6 +366,9 @@ export class PostgresStore implements Store {
         .for("no key update");
       if (before === undefined) {
         return null;
+      }
+      if (onlyIfEmpty && before.sellerSite !== null) {
+        return (await this.#merchantsWhere(tx, eq(merchants.id, id)))[0] ?? null;
       }
       await tx
         .update(merchants)

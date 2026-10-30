@@ -1407,6 +1407,20 @@ export class Gateway {
     return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
   }
 
+  /** Fills a missing seller site, preserving any site chosen before the write lands. */
+  async fillSellerSite(merchantId: string, site: string, askedBy: Caller): Promise<SellerName> {
+    const merchant = await setSellerSite(
+      this.runtime.store,
+      merchantId,
+      site,
+      this.runtime.clock(),
+      setupResult(merchantId, actedBy(askedBy), "seller_site", { outcome: "completed" }),
+      true,
+    );
+    if (merchant === null) throw new Error("the merchant whose site was being filled is missing");
+    return { seller_name: merchant.serviceName, seller_site: merchant.sellerSite };
+  }
+
   /**
    * Records setup steps the API refused before anything was written, such as
    * a seller name the contract does not carry, one result for each step the

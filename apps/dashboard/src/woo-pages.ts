@@ -123,6 +123,7 @@ export interface WooPages {
   ): Promise<Readonly<Record<string, ConnectorSale>>>;
   /** The shop screen, with what its address carried. */
   shop(person: Person, query: URLSearchParams): Promise<Outcome<WooShopView>>;
+  useShopSite(person: Person): Promise<Outcome<WooShopView>>;
   connect(person: Person, form: FormData): Promise<Outcome<WooShopView>>;
   importCatalogue(person: Person): Promise<Outcome<WooShopView | WooImportView>>;
   /**
@@ -391,23 +392,25 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
    * in Settings and `unsetIn` leaves it out: on live the import asks it on its
    * own, and the banner over the page says it is missing.
    */
-  const unsetOf = async (gateway: GatewayClient): Promise<Answer<readonly Unset[]>> => {
-    const [name, wallet] = await Promise.all([gateway.sellerName(), gateway.payoutWallet()]);
-    if (!name.ok) {
-      return name;
+  const unsetOf = async (
+    gateway: GatewayClient,
+  ): Promise<Answer<{ settings: readonly Unset[]; site: string | null }>> => {
+    const [seller, wallet] = await Promise.all([gateway.seller(), gateway.payoutWallet()]);
+    if (!seller.ok) {
+      return seller;
     }
     if (!wallet.ok) {
       return wallet;
     }
     const door = readinessOf(
       {
-        sellerName: name.document,
+        sellerName: seller.document.name,
         payoutWallet: wallet.document.payout_wallet,
         liveApproval: UNKNOWN,
       },
       config.surfaceMode,
     );
-    return { ok: true, document: unsetIn(door) };
+    return { ok: true, document: { settings: unsetIn(door), site: seller.document.site } };
   };
 
   /**
@@ -415,8 +418,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
    * after any of the four presses is refused), and a forgotten answer in one of
    * them would look like a merchant who has set nothing. The integration
    * failing to read fails the page: drawn without it, the page would offer or
-   * hide the switch on a guess. The settings failing to read hold nothing, and
-   * the code's products failing to count are said without a number.
+   * hide the switch on a guess. Unread settings also fail the page: an unread
+   * site must not look empty. Products that could not be counted have no number.
    */
   const drawTheShop = async (
     person: Person,
@@ -431,6 +434,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       unsetOf(gateway),
     ]);
     if (!integration.ok) return problemOf(integration);
+    if (!unset.ok) return problemOf(unset);
     const { through, offSale } = integration.document;
     return {
       kind: "view",
@@ -443,7 +447,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           // while the shop is, the shop's while the code is.
           codeProducts:
             through === "woocommerce" ? offSale.length : await codeProductsBeside(gateway, offSale),
-          unset: unset.ok ? unset.document : null,
+          unset: unset.document.settings,
+          sellerSite: unset.document.site,
           testMoney: config.surfaceMode !== "live",
           ...(rate === null ? {} : { rate }),
         },
@@ -538,12 +543,23 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       await resulted({ outcome: "failed", reason_code: "internal_error" });
       return problemOf(unset);
     }
-    if (unset.document.length > 0) {
+    if (unset.document.site === null) {
+      await resulted({ outcome: "blocked", reason_code: "seller_site_missing" });
+      return await drawTheShop(
+        person,
+        { importing: "Nothing was imported: set your shop's site before importing.", ...saved },
+        409,
+      );
+    }
+    if (unset.document.settings.length > 0) {
       // Counted as the gateway counts a card refused for the same lack.
-      await resulted({ outcome: "blocked", reason_code: publishRefusalReason(unset.document) });
+      await resulted({
+        outcome: "blocked",
+        reason_code: publishRefusalReason(unset.document.settings),
+      });
       noted(
         person,
-        `pressed Import while the publish door would refuse every card with ${unset.document.join(" and ")}, so the shop at` +
+        `pressed Import while the publish door would refuse every card with ${unset.document.settings.join(" and ")}, so the shop at` +
           ` ${connection.shopUrl} was not read and nothing was published`,
       );
       // The screen holds Import for what is unset; a press that got here was
@@ -551,7 +567,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       return await drawTheShop(
         person,
         {
-          importing: `Nothing was imported: set your ${settingsNamed(unset.document)} in Settings first.`,
+          importing: `Nothing was imported: set your ${settingsNamed(unset.document.settings)} in Settings first.`,
           ...saved,
         },
         409,
@@ -830,6 +846,23 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         cameBack: once(query.getAll("from")) === "shop",
         ...(typeof typed === "string" ? { typed } : {}),
       });
+    },
+
+    async useShopSite(person) {
+      const connection = await shops.connectionOf(person.id);
+      if (connection === null || connection.permissions !== "read_write") {
+        return await drawTheShop(
+          person,
+          { problem: "Connect your shop with read and write access first." },
+          409,
+        );
+      }
+      const saved = await gatewayAs(person).fillSellerSite(originOf(connection));
+      return await drawTheShop(
+        person,
+        saved.ok ? { siteSaved: true } : { siteProblem: saved.why },
+        saved.ok ? 200 : 503,
+      );
     },
 
     async connect(person, form) {

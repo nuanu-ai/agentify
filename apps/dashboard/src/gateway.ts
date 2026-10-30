@@ -237,6 +237,7 @@ export interface GatewayClient {
   /** Either is null where none was given. */
   seller(): Promise<Answer<{ readonly name: string | null; readonly site: string | null }>>;
   setSellerSite(site: string): Promise<Answer<string | null>>;
+  fillSellerSite(site: string): Promise<Answer<string | null>>;
   payoutWallet(): Promise<Answer<PayoutWallet>>;
   payoutSplits(): Promise<Answer<PayoutSplits>>;
   /** The only way a wallet is set; no HTTP route does it. */
@@ -734,6 +735,16 @@ export const gatewayFor = (
         const held = answered(
           API_ROUTES.set_seller_name,
           await application.setSellerName(merchantId, asked.value, caller),
+        );
+        return held.ok ? done(held.document.seller_site) : held;
+      }),
+    fillSellerSite: (site) =>
+      call("filling the shop's site", async () => {
+        const asked = sent(API_ROUTES.set_seller_name, { seller_site: site });
+        if (!asked.ok) return asked.refused;
+        const held = answered(
+          API_ROUTES.set_seller_name,
+          await application.fillSellerSite(merchantId, site, caller),
         );
         return held.ok ? done(held.document.seller_site) : held;
       }),

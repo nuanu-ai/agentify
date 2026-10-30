@@ -91,10 +91,11 @@ export async function setSellerSite(
   sellerSite: string,
   at: number,
   analytics?: AnalyticsOf<StoredMerchant>,
+  onlyIfEmpty = false,
 ): Promise<StoredMerchant | null> {
   // Throws with the schema's own words, which say the form the site takes.
   SellerSiteSchema.parse(sellerSite);
-  return store.setSellerSite(merchantId, sellerSite, at, analytics);
+  return store.setSellerSite(merchantId, sellerSite, at, analytics, onlyIfEmpty);
 }
 
 /**

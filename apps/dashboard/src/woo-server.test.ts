@@ -188,7 +188,7 @@ interface Standing {
    * what the merchant has set); or publishing failing in our own code, as when
    * a database goes away.
    */
-  readonly silent?: "everything" | "publishing" | "publishing fails";
+  readonly silent?: "everything" | "publishing" | "publishing fails" | "site writing";
   /** The sandbox where a test does not say. */
   readonly channel?: Channel;
   /**
@@ -322,6 +322,12 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           clientFor: (acting: Acting, answerWithinMs?: number) => {
             const quiet = gatewayFor(silenced(harnessed.gateway), acting, SILENT_FOR_MS);
             if (silent === "everything") return quiet;
+            if (silent === "site writing") {
+              return {
+                ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
+                fillSellerSite: gatewayFor(harnessed.gateway, acting, SILENT_FOR_MS).fillSellerSite,
+              };
+            }
             return {
               ...gatewayFor(harnessed.gateway, acting, answerWithinMs),
               publishCard:
@@ -628,6 +634,52 @@ describe("pressing Connect", () => {
 });
 
 describe("the keys arriving from the shop", () => {
+  it("reads a site saved after the retry page stopped waiting", async () => {
+    const running = await started({ sellerSite: null, silent: "site writing" });
+    const store = running.harnessed.store;
+    const write = store.setSellerSite.bind(store);
+    const spy = vi
+      .spyOn(store, "setSellerSite")
+      .mockRejectedValueOnce(new Error("write unavailable"));
+    await running.signIn();
+    const connect = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await running.postJson("/woocommerce/callback", grantedBody(tokenIn(connect.to ?? "")));
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let finished = () => {};
+    const written = new Promise<void>((resolve) => {
+      finished = resolve;
+    });
+    spy.mockImplementationOnce(async (...args) => {
+      await held;
+      const saved = await write(...args);
+      finished();
+      return saved;
+    });
+    try {
+      const retried = await running.post("/woocommerce/site");
+      expect(retried.status).toBe(503);
+      expect(readable(retried.html)).toMatch(
+        /\bunknown\b|\b(?:could not|couldn't|cannot|can't) confirm\b|\bmay or may not\b/i,
+      );
+      expect(formTo(retried.html, "post", "/woocommerce/site")).toBeDefined();
+      expect(
+        (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+      ).toBeNull();
+    } finally {
+      release();
+    }
+    await written;
+    expect(
+      (await running.harnessed.gateway.sellerName(running.harnessed.merchant.id)).seller_site,
+    ).toBe(SHOP);
+    expect(
+      formTo((await running.get("/woocommerce")).html, "post", "/woocommerce/site"),
+    ).toBeUndefined();
+  });
+
   it.each(WOO_SITE_CASES)(
     "keeps the seller site truthful after a confirmed connection: $id",
     async (one) => {
@@ -1011,9 +1063,7 @@ describe("importing the catalogue", () => {
   });
 
   it("publishes a physical product as a parcel, once the merchant has given the shop's site", async () => {
-    // A parcel's card is held back from a merchant with no site, because the
-    // site is where a buyer asks about a parcel that did not come. The import
-    // says so and never fills the site in for the merchant.
+    // Approving the shop supplies the site a parcel's buyer needs.
     const running = await started({
       sellerSite: null,
       catalogue: async () => ({
@@ -1033,17 +1083,7 @@ describe("importing the catalogue", () => {
     });
     await connected(running);
 
-    const held = await running.post("/woocommerce/import");
-
-    expect(held.status).toBe(200);
-    expect(await cardsOf(running)).toHaveLength(0);
-    expect(readable(held.html)).toMatch(/shop's site in Settings/);
-    expect(readable(held.html)).not.toMatch(/\/v0\//);
-
-    await running.harnessed.gateway.setSellerName(running.harnessed.merchant.id, {
-      seller_site: SHOP,
-    });
-    await running.post("/woocommerce/import");
+    expect((await running.post("/woocommerce/import")).status).toBe(200);
 
     const listed = (await cardsOf(running)) as unknown as readonly {
       card: { fulfillment: string; ship_within_seconds?: number; result?: unknown };
@@ -3122,7 +3162,7 @@ describe("the analytics of a shop's connection and its imports", () => {
     expect(imports(running).map((event) => event.fields)).toStrictEqual([COMPLETED_IMPORT]);
   });
 
-  it("records an import with every card refused as blocked by the first card's reason", async () => {
+  it("records the missing site before reading any product when filling it failed", async () => {
     const running = await started({
       sellerSite: null,
       catalogue: async () => ({
@@ -3131,6 +3171,9 @@ describe("the analytics of a shop's connection and its imports", () => {
       }),
       inspectProduct: parcelsAndDownloads,
     });
+    vi.spyOn(running.harnessed.store, "setSellerSite").mockRejectedValueOnce(
+      new Error("write unavailable"),
+    );
     await connectedFor(running);
 
     await running.post("/woocommerce/import");
@@ -3140,9 +3183,10 @@ describe("the analytics of a shop's connection and its imports", () => {
         ...COMPLETED_IMPORT,
         outcome: "blocked",
         reason_code: "seller_site_missing",
-        failed_count: 1,
+        failed_count: 0,
       },
     ]);
+    expect(running.read).toEqual([]);
   });
 
   it("records an import that could not start, and why", async () => {

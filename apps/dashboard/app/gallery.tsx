@@ -72,6 +72,7 @@ import {
   whatIsWrongWithTheSite,
 } from "../src/seller-name.js";
 import { type Settings, settingsView } from "../src/settings-view.js";
+import { WOO_SITE_CASES } from "../src/testing/woo-site-cases.js";
 import type { Viewer } from "../src/viewer.js";
 import {
   CLOSURE_NOTES,
@@ -558,6 +559,7 @@ const WAITING = PayoutWalletSchema.parse({
 
 const shopRead = (state: ShopState, more: Partial<ShopRead> = {}): ShopRead => ({
   state,
+  sellerSite: SHOP,
   testMoney: true,
   through: "woocommerce",
   ...more,
@@ -2612,6 +2614,37 @@ const shopPress = (
   });
 
 const WOOCOMMERCE: GalleryState[] = [
+  ...WOO_SITE_CASES.map((one) =>
+    shop(
+      {
+        id: `dashboard-woocommerce-site-${one.id}`,
+        screen: "WooCommerce",
+        when: one.when,
+        cause: one.cause,
+      },
+      shopOn(
+        shopRead(
+          { ...CONNECTED, shop: { ...CONNECTED.shop, shopUrl: "https://shop.example.com" } },
+          { sellerSite: one.after },
+        ),
+        { cameBack: true },
+      ),
+    ),
+  ),
+  shop(
+    {
+      id: "dashboard-woocommerce-site-port",
+      screen: "WooCommerce",
+      when: "A merchant connects a shop on a port without a seller site.",
+      cause: "The connection is valid, but a seller site must be an https domain without a port.",
+    },
+    shopOn(
+      shopRead(
+        { ...CONNECTED, shop: { ...CONNECTED.shop, shopUrl: "https://shop.example.com:8443" } },
+        { sellerSite: null },
+      ),
+    ),
+  ),
   shop(
     {
       id: "dashboard-woocommerce",

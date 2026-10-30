@@ -336,6 +336,8 @@ function SwitchPanel({
 /** Why Import is held, in a line under it, with the page that puts it right. */
 function HeldLine({ held, base }: Readonly<{ held: ImportHeld; base: string }>) {
   switch (held.kind) {
+    case "site":
+      return <p className="quiet">Set your shop's site first.</p>;
     case "settings":
       return (
         <p className="quiet">
@@ -484,6 +486,8 @@ function Connected({
   base,
 }: Readonly<{ connection: ConnectionView; view: WooShopView; base: string }>) {
   const { rate } = connection;
+  const site = connection.site;
+  const needsSite = site !== null && site.kind !== "saved";
   const rateFirst = rate !== null && rate.current === null;
   // Selling through the code, nothing can be imported; the rate is the
   // shop's setting all the same, kept for when the merchant switches.
@@ -506,12 +510,43 @@ function Connected({
   return (
     <>
       <Status connection={connection} view={view} base={base} />
-      <div className="settings-grid">
-        {connection.readOnly ? (
-          <ReadOnlyPanel connection={connection} view={view} base={base} />
-        ) : null}
-        {panels}
-      </div>
+      {site === null ? null : site.kind === "saved" ? (
+        <p className={styles.site}>
+          Buyers' agents will see {site.origin} as your shop's site.{" "}
+          <a href={`${base}/settings`}>Change it in Settings</a>.
+        </p>
+      ) : site.kind === "invalid" ? (
+        <div className={styles.site}>
+          <p>
+            {site.origin} can't be your shop's site
+            {new URL(site.origin).port !== ""
+              ? " because it has a port."
+              : ". Set an https domain without a port in Settings."}
+          </p>
+          <a className="button button-primary" href={`${base}/settings`}>
+            Set your site in Settings
+          </a>
+        </div>
+      ) : (
+        <div className={styles.site}>
+          {site.problem === null ? null : (
+            <p className="problem" role="alert">
+              {site.problem}
+            </p>
+          )}
+          <PostForm action="/woocommerce/site" className="issue">
+            {(pending) => <Button pending={pending}>Use {site.origin} as your shop's site</Button>}
+          </PostForm>
+        </div>
+      )}
+      {needsSite ? null : (
+        <div className="settings-grid">
+          {connection.readOnly ? (
+            <ReadOnlyPanel connection={connection} view={view} base={base} />
+          ) : null}
+          {panels}
+        </div>
+      )}
     </>
   );
 }

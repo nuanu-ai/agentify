@@ -12,6 +12,7 @@
 
 import type { Integration } from "@agentify/gateway";
 import { keepUnits, withUnit } from "@agentify/ui/units";
+import { SellerSiteSchema } from "@nuanu-ai/agentify-contracts";
 import { type MomentView, momentView } from "./views.js";
 import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
@@ -234,6 +235,7 @@ const SETTING_NAMES: Readonly<Record<Unset, string>> = Object.freeze({
  * says which, so a press is not spent on reading a shop for nothing.
  */
 export type ImportHeld =
+  | Readonly<{ kind: "site" }>
   | Readonly<{ kind: "settings"; what: string }>
   | Readonly<{ kind: "rate"; currency: string }>
   /** Coinbase gives no rate for the shop's currency, so no rate can be saved and nothing sells. */
@@ -241,6 +243,11 @@ export type ImportHeld =
 
 /** The shop the keys came from, the one state in which anything can be sold. */
 export interface ConnectionView {
+  readonly site: null | Readonly<{
+    kind: "saved" | "retry" | "invalid";
+    origin: string;
+    problem: string | null;
+  }>;
   /** The shop's address, which Connect again sends. */
   readonly shopUrl: string;
   readonly shop: string;
@@ -349,6 +356,7 @@ export interface WooShopView {
 
 /** What our rows and the gateway said when the screen was drawn. */
 export interface ShopRead {
+  readonly sellerSite?: string | null;
   readonly state: ShopState;
   readonly through: Integration;
   /** The products the merchant's code published; null where they could not be counted. */
@@ -370,6 +378,8 @@ export interface ShopRead {
 
 /** What the screen is drawn in answer to, where it answers a press or a return. */
 export interface ShopAnswer {
+  readonly siteSaved?: boolean;
+  readonly siteProblem?: string;
   readonly addressProblem?: string;
   readonly problem?: Said;
   readonly leaving?: Said;
@@ -447,6 +457,7 @@ export const settingsNamed = (unset: readonly Unset[]): string =>
   unset.map((one) => SETTING_NAMES[one]).join(" and ");
 
 const heldImport = (read: ShopRead): ImportHeld | null => {
+  if (read.sellerSite === null) return { kind: "site" };
   const unset = read.unset ?? [];
   if (unset.length > 0) {
     return { kind: "settings", what: settingsNamed(unset) };
@@ -473,6 +484,19 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
     connection:
       state.kind === "connected"
         ? {
+            site:
+              read.sellerSite === null && state.shop.permissions === "read_write"
+                ? {
+                    kind: SellerSiteSchema.safeParse(new URL(state.shop.shopUrl).origin).success
+                      ? "retry"
+                      : "invalid",
+                    origin: new URL(state.shop.shopUrl).origin,
+                    problem: answer.siteProblem ?? null,
+                  }
+                : (answer.cameBack === true || answer.siteSaved === true) &&
+                    read.sellerSite === new URL(state.shop.shopUrl).origin
+                  ? { kind: "saved", origin: read.sellerSite, problem: null }
+                  : null,
             shopUrl: state.shop.shopUrl,
             shop: shopNameOf(state.shop.shopUrl),
             connectedAt: momentView(state.shop.connectedAt.toISOString()),

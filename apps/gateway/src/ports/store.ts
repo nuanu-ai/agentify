@@ -647,8 +647,8 @@ export interface Store {
    * transaction. It never rejects: a failure is one line in the log.
    *
    * A fact that must be recorded together with a business write is recorded by
-   * the store method that commits the write. That method takes an optional last
-   * argument `analytics?: AnalyticsEvent | ((committed: R) => AnalyticsEvent |
+   * the store method that commits the write. That method takes an optional
+   * parameter `analytics?: AnalyticsEvent | ((committed: R) => AnalyticsEvent |
    * null)`, where `R` is what the method resolves with, and records the event
    * in the same transaction only when the write committed something, nothing
    * when the function returns null; the memory store keeps it beside the
@@ -718,12 +718,14 @@ export interface Store {
    * or null where there is no such merchant. The value must already be
    * validated, by `setSellerSite` in `app/merchants.ts`. `analytics` is
    * recorded only when the site the row held is a different one.
+   * `onlyIfEmpty` compares under the same write lock, preserving a site chosen meanwhile.
    */
   setSellerSite(
     id: string,
     sellerSite: string,
     at: number,
     analytics?: AnalyticsOf<StoredMerchant>,
+    onlyIfEmpty?: boolean,
   ): Promise<StoredMerchant | null>;
 
   /**

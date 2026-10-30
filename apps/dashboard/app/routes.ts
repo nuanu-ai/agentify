@@ -83,6 +83,7 @@ export default [
         route("woocommerce/connect", "routes/woocommerce-connect.tsx"),
         route("woocommerce/import", "routes/woocommerce-import.tsx"),
         route("woocommerce/rate", "routes/woocommerce-rate.tsx"),
+        route("woocommerce/site", "routes/woocommerce-site.tsx"),
         route("woocommerce/switch", "routes/woocommerce-switch.tsx"),
         route("woocommerce/disconnect", "routes/woocommerce-disconnect.tsx"),
       ]),
