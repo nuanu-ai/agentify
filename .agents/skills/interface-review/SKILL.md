@@ -38,6 +38,31 @@ records a working screen that puts one over every section as a sign of step 4
 and leaves the limit to the owner. `pnpm gallery` draws every state into
 `packages/gallery/dist/index.html`.
 
+### Buttons and links
+
+No token says when a control is a button and when it is a link, so the rule is
+written here. A screen that breaks it is a finding against heuristic 4, since
+the same move then looks different from one screen to the next.
+
+1. A button makes something happen: it saves, sends, starts a job or opens
+   Coinbase Wallet's window. A link takes the reader to another page or to
+   the documentation and changes nothing.
+2. A screen has one filled button, for the step the screen exists for. A
+   second button, where one is needed, is outlined and offers an equal
+   alternative, as creating a Coinbase wallet does beside saving the address
+   of a wallet the merchant already has.
+3. Buttons stand in one row at the end of the step they finish, the filled
+   one first. A link does not join that row.
+4. Only a page nested inside a section has a way back, always in the same
+   place: a link above the heading that names the parent, "← Orders" on an
+   order. A section the menu opens has none, because the menu is the way back.
+5. A link to the documentation sits inside the sentence it explains, and only
+   where the reader needs it, beside what did not pass, never on a line of its
+   own in case someone wonders.
+6. Where going to another page is the only next step a screen offers, as
+   "Back to the dashboard" is on the page for an address that does not exist,
+   that link is drawn as the filled button and stays a link.
+
 ## Public pages are marketing's
 
 The site's public pages, the front page, /sell and /agentic-shop (their words
