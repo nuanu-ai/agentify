@@ -9,7 +9,9 @@
  *
  * A page's first visit counts the scripts React Router's document names for
  * it, with what they import: its entry, and the modules of every route from
- * the root to the page. The route table is among them only where routes are
+ * the root to the page, plus conditional modules the route's handle declares
+ * for its default initial view. Other initially selected states require the
+ * application's native browser measurement. The route table is among them only where routes are
  * sent up front; under lazy discovery a page carries its own routes inline
  * and asks for others as links to them appear. What a page can load later,
  * through an `import()` that waits for a consent, a step or a click, is
@@ -65,7 +67,8 @@ const reached = (manifest: ViteManifest, files: Iterable<string>, later: boolean
 /**
  * The scripts a visit to the route `routeId` loads before anything is clicked,
  * as React Router's `<Scripts>` names them under the build's own route
- * discovery, with what they import; each relative to the client build.
+ * discovery, plus its declared default initial modules and their imports;
+ * each relative to the client build.
  */
 export function firstVisitScripts(
   build: Pick<ServerBuild, "assets" | "routes" | "routeDiscovery" | "ssr">,
@@ -81,6 +84,19 @@ export function firstVisitScripts(
   for (let id: string | undefined = routeId; id !== undefined; id = build.routes[id]?.parentId) {
     const route = build.assets.routes[id];
     if (route === undefined) continue;
+    const handle = (
+      build.routes[id]?.module as
+        | {
+            handle?: { initialScripts?: readonly string[] };
+          }
+        | undefined
+    )?.handle;
+    for (const source of handle?.initialScripts ?? []) {
+      const initial = manifest[source];
+      if (initial === undefined || !initial.file.endsWith(".js"))
+        throw new Error(`${id}: initial script is absent from the build: ${source}`);
+      urls.push(initial.file);
+    }
     urls.push(
       route.module,
       ...[

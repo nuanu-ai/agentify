@@ -10,19 +10,24 @@
  */
 
 import type { MerchantKey } from "@agentify/gateway";
+import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
+import { MerchantCardListSchema } from "@nuanu-ai/agentify-contracts";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import type { GatewayClient } from "../../src/gateway.js";
 import { identityFor } from "../../src/identity.js";
+import { newKeyView } from "../../src/keys.js";
 import { pageServicesFor } from "../../src/page-services.js";
 import { TEST_AUTH_SECRET } from "../../src/testing/secrets.js";
+import { cardsView } from "../../src/views.js";
 import { chromeOf } from "../answer.js";
 import { ErrorBoundary } from "../root.js";
 import { services, signedIn } from "../services.js";
 import { shouldRevalidate as gateShouldRevalidate } from "./gate.js";
 import Keys, { action, loader, shouldRevalidate } from "./keys.js";
+import Products from "./products.js";
 
 const PERSON = "owner@example.com";
 const SECRET = "csk_test_the-secret-shown-once";
@@ -225,4 +230,74 @@ describe("issuing a key where the page's script runs", () => {
 
     expect(keptWithTheSecret).toBe(false);
   });
+});
+
+it("keeps the issued secret when Products also receives its first published card", async () => {
+  const view = cardsView(
+    MerchantCardListSchema.parse({
+      selling: "open",
+      cards: [
+        {
+          id: "itm_1",
+          as_of: "2026-08-26T09:00:00Z",
+          selling: "open",
+          paused: false,
+          card: {
+            merchant_item_id: "room-101",
+            title: "A room for the night",
+            description: "One night in room 101",
+            price: { amount: "80.00", currency: "USD" },
+            result: { access_code: { type: "string" } },
+            fulfillment: "sync",
+          },
+        },
+      ],
+    }),
+    "https://agentify.ad",
+  );
+  const chrome = {
+    base: "",
+    surface: { mode: "sandbox", attribute: SURFACE_MARKER_ATTRIBUTE, words: SURFACE_WORDS.sandbox },
+  };
+  const Stub = createRoutesStub([
+    {
+      id: "root",
+      path: "/",
+      Component: Outlet,
+      children: [
+        {
+          id: "routes/gate",
+          Component: Outlet,
+          children: [
+            {
+              id: "routes/merchant-only",
+              Component: Outlet,
+              children: [
+                {
+                  id: "routes/products",
+                  path: "products",
+                  Component: Products,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]);
+  render(
+    <Stub
+      initialEntries={["/products"]}
+      hydrationData={{
+        loaderData: {
+          root: chrome,
+          "routes/gate": { who: PERSON },
+          "routes/merchant-only": { account: [] },
+          "routes/products": view,
+        },
+        actionData: { "routes/products": newKeyView("the second worker", SECRET) },
+      }}
+    />,
+  );
+  expect(await screen.findByDisplayValue(SECRET)).toBeTruthy();
 });

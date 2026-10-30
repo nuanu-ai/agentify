@@ -19,15 +19,12 @@ import { Link, useActionData, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import type { Chrome, DrawnFor, Gated } from "../answer.js";
+import { AccountBanner } from "../notices/account-banner.js";
 import { useGoingTo } from "./going-to.js";
 // Server-rendered conditional content is styled before its client module loads.
 import "../dialogs/test-welcome.module.css";
 import "../notices/account-banner.module.css";
 import "../dialogs/locked-dialog.module.css";
-
-const AccountBanner = lazy(() =>
-  import("../notices/account-banner.js").then(({ AccountBanner }) => ({ default: AccountBanner })),
-);
 
 const TestWelcome = lazy(() =>
   import("../dialogs/test-welcome.js").then(({ TestWelcome }) => ({ default: TestWelcome })),
@@ -135,11 +132,7 @@ export function Frame({
               </div>
             </div>
             <div className="app-content">
-              {framed !== undefined && framed.account.length > 0 ? (
-                <Suspense fallback={null}>
-                  <AccountBanner notes={framed.account} />
-                </Suspense>
-              ) : null}
+              <AccountBanner notes={framed?.account ?? []} />
               {children}
             </div>
           </main>

@@ -4,9 +4,9 @@ import { type ActionFunctionArgs, useActionData } from "react-router";
 import { acted } from "../answer.js";
 import { WooPage } from "../screens/woocommerce.js";
 import { signedIn } from "../services.js";
-import { WOOCOMMERCE, wooPagesIn } from "../woocommerce.js";
+import { WOO_SHOP_PAGE, wooPagesIn } from "../woocommerce.js";
 
-export const handle = WOOCOMMERCE;
+export const handle = WOO_SHOP_PAGE;
 
 export async function action(asked: ActionFunctionArgs) {
   const { context } = asked;

@@ -107,7 +107,7 @@ import {
 import { money, SITE_IN_SETTINGS } from "../src/words.js";
 import { ADMIN_STATES, frameIn } from "./admin-gallery/index.js";
 import type { Chrome, Gated, Trouble } from "./answer.js";
-import { shortened } from "./components/copy.js";
+import { shortened } from "./display/copy.js";
 import routes from "./routes.js";
 
 // --- the route tree, drawn ---------------------------------------------------

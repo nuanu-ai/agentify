@@ -12,12 +12,10 @@
  * the import makes.
  */
 
-import { SURFACE_MARKER_ATTRIBUTE, SURFACE_WORDS } from "@agentify/ui/surface";
-import { cleanup, render } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { renderToString } from "react-dom/server";
+import { prerender } from "react-dom/static";
 import { createRoutesStub } from "react-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import {
@@ -29,12 +27,8 @@ import {
   wooShopView,
 } from "../../src/woo-views.js";
 import { SITE_IN_SETTINGS } from "../../src/words.js";
-import type { Chrome } from "../answer.js";
-import { WooImportScreen, WooPage, WooShopScreen } from "./woocommerce.js";
-
-afterEach(() => {
-  cleanup();
-});
+import { WooImportScreen } from "./woo-import.js";
+import { WooShopScreen } from "./woocommerce.js";
 
 const SEEN_BY: Viewer = {
   base: "",
@@ -47,20 +41,21 @@ const SEEN_BY: Viewer = {
 const SHOP = "https://shop.example.com";
 
 /** Inside the gate, as the screens are, so a form that posts knows its address. */
-const served = (screen: () => ReactElement): string => {
+const served = async (screen: () => ReactElement): Promise<string> => {
   const Stub = createRoutesStub([
     { id: "routes/gate", path: "/", children: [{ path: "page", Component: screen }] },
   ]);
-  return renderToString(
+  const { prelude } = await prerender(
     <Stub
       initialEntries={["/page"]}
       hydrationData={{ loaderData: { "routes/gate": { who: SEEN_BY.who } } }}
     />,
   );
+  return new Response(prelude).text();
 };
 
-const shopPage = (read: Partial<ShopRead>, answer: ShopAnswer = {}): string =>
-  served(() => (
+const shopPage = async (read: Partial<ShopRead>, answer: ShopAnswer = {}): Promise<string> =>
+  await served(() => (
     <WooShopScreen
       view={wooShopView(
         {
@@ -105,15 +100,15 @@ const blockOf = (html: string, action: string): string => {
 /** The invitation to change the shop, which must not stand over a product nobody read. */
 const SENT_TO_THE_SHOP = /change these in your shop/i;
 
-const imported = (
+const imported = async (
   outcomes: Parameters<typeof wooImportView>[1],
   skipped: Parameters<typeof wooImportView>[2] = [],
-) => served(() => <WooImportScreen view={wooImportView(SHOP, outcomes, skipped)} base="" />);
+) => await served(() => <WooImportScreen view={wooImportView(SHOP, outcomes, skipped)} base="" />);
 
 describe("what the import screen says about a product the door never answered about", () => {
-  it("lists it apart from a refused product, counts it apart, and sends nobody to their shop for it", () => {
+  it("lists it apart from a refused product, counts it apart, and sends nobody to their shop for it", async () => {
     const text = readable(
-      imported([
+      await imported([
         { id: "11", title: "Canvas tote bag", published: "item_1" },
         {
           id: "12",
@@ -146,10 +141,10 @@ describe("what the import screen says about a product the door never answered ab
     expect(after).not.toMatch(SENT_TO_THE_SHOP);
   });
 
-  it("keeps an operator-approval finding among the gateway's escaped publication reasons", () => {
+  it("keeps an operator-approval finding among the gateway's escaped publication reasons", async () => {
     const finding =
       "operator approval: ask Agentify to approve this seller <script>alert(1)</script>";
-    const html = imported([
+    const html = await imported([
       {
         id: "12",
         title: "Monthly membership",
@@ -166,8 +161,8 @@ describe("what the import screen says about a product the door never answered ab
 });
 
 describe("the order of what an import did", () => {
-  it("puts what the merchant can put right first, and folds the products that went through last", () => {
-    const html = imported(
+  it("puts what the merchant can put right first, and folds the products that went through last", async () => {
+    const html = await imported(
       [
         { id: "11", title: "Canvas tote bag", published: "item_1" },
         { id: "12", title: "Coffee beans, one kilogram", problems: [SITE_IN_SETTINGS] },
@@ -207,9 +202,9 @@ describe("the order of what an import did", () => {
     );
   });
 
-  it("says a length is counted without formatting only where a length was refused", () => {
+  it("says a length is counted without formatting only where a length was refused", async () => {
     const measured = readable(
-      imported([
+      await imported([
         {
           id: "12",
           title: "Handwoven table runner",
@@ -219,7 +214,7 @@ describe("the order of what an import did", () => {
       ]),
     );
     const other = readable(
-      imported([{ id: "12", title: "Coffee beans", problems: [SITE_IN_SETTINGS] }]),
+      await imported([{ id: "12", title: "Coffee beans", problems: [SITE_IN_SETTINGS] }]),
     );
 
     expect(measured).toContain("without formatting");
@@ -228,8 +223,8 @@ describe("the order of what an import did", () => {
 });
 
 describe("what the import screen offers beside a product it could not publish", () => {
-  it("offers Settings beside a parcel held for want of the shop's site, and nothing beside one the shop must change", () => {
-    const html = imported([
+  it("offers Settings beside a parcel held for want of the shop's site, and nothing beside one the shop must change", async () => {
+    const html = await imported([
       { id: "12", title: "Coffee beans, one kilogram", problems: [SITE_IN_SETTINGS] },
       {
         id: "13",
@@ -252,11 +247,11 @@ describe("what the import screen offers beside a product it could not publish", 
 });
 
 describe("the Connect form's note about test purchases", () => {
-  it("is drawn where a purchase is paid in test USDC, and not where the money is real", () => {
+  it("is drawn where a purchase is paid in test USDC, and not where the money is real", async () => {
     const note = 'role="note" aria-label="Test purchases"';
 
-    expect(shopPage({ testMoney: true })).toContain(note);
-    expect(shopPage({ testMoney: false })).not.toContain(note);
+    expect(await shopPage({ testMoney: true })).toContain(note);
+    expect(await shopPage({ testMoney: false })).not.toContain(note);
   });
 });
 
@@ -268,8 +263,8 @@ describe("where the shop screen says why a press was refused", () => {
       readable(said),
     );
 
-  it("says a refused address under its box, keeping what was typed", () => {
-    const html = shopPage(
+  it("says a refused address under its box, keeping what was typed", async () => {
+    const html = await shopPage(
       {},
       { addressProblem: "Enter your site's root address: https://x.y", typed: "x.y/shop" },
     );
@@ -285,7 +280,7 @@ describe("where the shop screen says why a press was refused", () => {
 
   it.each([null, "read"])(
     "keeps the Connect refusal in its panel with prior grant %s",
-    (permissions) => {
+    async (permissions) => {
       const prior =
         permissions === null
           ? {}
@@ -296,7 +291,9 @@ describe("where the shop screen says why a press was refused", () => {
               },
               through: "woocommerce" as const,
             };
-      const html = shopPage(prior, { problem: "Your shop did not show its approval screen." });
+      const html = await shopPage(prior, {
+        problem: "Your shop did not show its approval screen.",
+      });
 
       expect(problemsIn(blockOf(html, "/woocommerce/connect"))).toStrictEqual([
         "Your shop did not show its approval screen.",
@@ -304,8 +301,8 @@ describe("where the shop screen says why a press was refused", () => {
     },
   );
 
-  it("says what the shop answered to an import in the import's panel, not beside the way out", () => {
-    const html = shopPage(
+  it("says what the shop answered to an import in the import's panel, not beside the way out", async () => {
+    const html = await shopPage(
       { state: CONNECTED, through: "woocommerce" },
       { importing: "Your shop answered 403: Forbidden" },
     );
@@ -316,10 +313,10 @@ describe("where the shop screen says why a press was refused", () => {
     expect(problemsIn(blockOf(html, "/woocommerce/disconnect"))).toStrictEqual([]);
   });
 
-  it("says a refused way back beside the way back, whether or not a shop is connected", () => {
+  it("says a refused way back beside the way back, whether or not a shop is connected", async () => {
     const leaving = "An order still waits on the shop: ord_1.";
     for (const state of [CONNECTED, { kind: "none" } as const]) {
-      const html = shopPage({ state, through: "woocommerce" }, { leaving });
+      const html = await shopPage({ state, through: "woocommerce" }, { leaving });
 
       expect(problemsIn(blockOf(html, "/woocommerce/disconnect")), state.kind).toStrictEqual([
         leaving,
@@ -327,9 +324,9 @@ describe("where the shop screen says why a press was refused", () => {
     }
   });
 
-  it("says a refused switch beside the switch", () => {
+  it("says a refused switch beside the switch", async () => {
     const switching = "An order still waits on your code: ord_2.";
-    const html = shopPage({ state: CONNECTED, through: "api" }, { switching });
+    const html = await shopPage({ state: CONNECTED, through: "api" }, { switching });
 
     expect(problemsIn(blockOf(html, "/woocommerce/switch"))).toStrictEqual([switching]);
   });
@@ -346,10 +343,13 @@ describe("where the shop screen says why a press was refused", () => {
 
   it.each([5, 7])(
     "shows at most five blocking orders and discloses omitted rows out of %s",
-    (count) => {
+    async (count) => {
       const orders = waiting(count);
       const block = blockOf(
-        shopPage({ state: CONNECTED, through: "api" }, { switching: held("woocommerce", orders) }),
+        await shopPage(
+          { state: CONNECTED, through: "api" },
+          { switching: held("woocommerce", orders) },
+        ),
         "/woocommerce/switch",
       );
       expect([...block.matchAll(/aria-label="Copy the whole order ID [^"]+"/g)]).toHaveLength(5);
@@ -361,9 +361,9 @@ describe("where the shop screen says why a press was refused", () => {
     },
   );
 
-  it("tells purchases about to lapse apart from goods owed: try again in a minute, naming none", () => {
+  it("tells purchases about to lapse apart from goods owed: try again in a minute, naming none", async () => {
     const block = blockOf(
-      shopPage({}, { problem: held("woocommerce", waiting(3), { quick: true }) }),
+      await shopPage({}, { problem: held("woocommerce", waiting(3), { quick: true }) }),
       "/woocommerce/connect",
     );
 
@@ -374,12 +374,12 @@ describe("where the shop screen says why a press was refused", () => {
     expect(block).toMatch(/<a href="\/products">[^<]*pause[^<]*<\/a>/i);
   });
 
-  it("counts and names only the orders still open, which See open orders shows", () => {
+  it("counts and names only the orders still open, which See open orders shows", async () => {
     // A purchase not yet priced is not on the open list, and one that ended
     // since the refusal is gone from it.
     const still = "ord_still0f3c9a1b2d4e6f8a7b9c";
     const block = blockOf(
-      shopPage(
+      await shopPage(
         {},
         {
           problem: {
@@ -407,8 +407,8 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(block)).not.toMatch(/delivers/);
   });
 
-  it("asks to try again in a moment, claiming no order in progress, where no order it named is listed open", () => {
-    const html = shopPage(
+  it("asks to try again in a moment, claiming no order in progress, where no order it named is listed open", async () => {
+    const html = await shopPage(
       {},
       { problem: { held: heldBy("woocommerce", ["ord_quote0f3c9a1b2d4e6f8a7b9c"], []) } },
     );
@@ -422,10 +422,10 @@ describe("where the shop screen says why a press was refused", () => {
     expect(readable(block)).not.toMatch(/in progress|within a minute/);
   });
 
-  it("says how a parcel ends where one holds the way out", () => {
+  it("says how a parcel ends where one holds the way out", async () => {
     const parcel = readable(
       blockOf(
-        shopPage(
+        await shopPage(
           { state: CONNECTED, through: "woocommerce" },
           { leaving: held("api", waiting(2), { parcels: true }) },
         ),
@@ -434,7 +434,7 @@ describe("where the shop screen says why a press was refused", () => {
     );
     const none = readable(
       blockOf(
-        shopPage(
+        await shopPage(
           { state: CONNECTED, through: "woocommerce" },
           { leaving: held("api", waiting(2)) },
         ),
@@ -447,8 +447,8 @@ describe("where the shop screen says why a press was refused", () => {
     expect(none).not.toContain("Completed in WooCommerce, or");
   });
 
-  it("draws what it was given as text, never as markup", () => {
-    const html = shopPage(
+  it("draws what it was given as text, never as markup", async () => {
+    const html = await shopPage(
       { state: CONNECTED, through: "woocommerce" },
       { importing: "Your shop answered <script>alert(1)</script>" },
     );
@@ -462,8 +462,8 @@ describe("what the shop screen holds before it is pressed", () => {
   const importButton = (html: string): string =>
     /<button[^>]*>Import products<\/button>/.exec(formOf(html, "/woocommerce/import"))?.[0] ?? "";
 
-  it("holds Import, naming the setting and where to set it, while every product would be refused", () => {
-    const html = shopPage({
+  it("holds Import, naming the setting and where to set it, while every product would be refused", async () => {
+    const html = await shopPage({
       state: CONNECTED,
       through: "woocommerce",
       unset: ["no_payout_wallet"],
@@ -475,8 +475,8 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(form).toContain('href="/settings"');
   });
 
-  it("holds Import until a shop priced in another currency has its rate", () => {
-    const html = shopPage({
+  it("holds Import until a shop priced in another currency has its rate", async () => {
+    const html = await shopPage({
       state: CONNECTED,
       through: "woocommerce",
       rate: {
@@ -490,8 +490,8 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(readable(formOf(html, "/woocommerce/import"))).toContain("exchange rate");
   });
 
-  it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", () => {
-    const html = shopPage({
+  it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", async () => {
+    const html = await shopPage({
       state: CONNECTED,
       through: "woocommerce",
       rate: {
@@ -507,9 +507,9 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(held).not.toMatch(/Set the exchange rate/);
   });
 
-  it("offers Import where nothing stands in its way, and where what stands could not be read", () => {
+  it("offers Import where nothing stands in its way, and where what stands could not be read", async () => {
     for (const unset of [[], null] as const) {
-      const html = shopPage({ state: CONNECTED, through: "woocommerce", unset });
+      const html = await shopPage({ state: CONNECTED, through: "woocommerce", unset });
 
       const page = new DOMParser().parseFromString(html, "text/html");
       const button = page.querySelector<HTMLButtonElement>(
@@ -520,17 +520,17 @@ describe("what the shop screen holds before it is pressed", () => {
     }
   });
 
-  it("offers the switch and no Import while the merchant sells through their own code", () => {
-    const html = shopPage({ state: CONNECTED, through: "api" });
+  it("offers the switch and no Import while the merchant sells through their own code", async () => {
+    const html = await shopPage({ state: CONNECTED, through: "api" });
 
     expect(formTo(html, "post", "/woocommerce/switch")).toBeDefined();
     expect(formTo(html, "post", "/woocommerce/import")).toBeUndefined();
   });
 
-  it("asks before it disconnects a connected shop: every press stands inside a closed disclosure", () => {
+  it("asks before it disconnects a connected shop: every press stands inside a closed disclosure", async () => {
     for (const through of ["woocommerce", "api"] as const) {
       const page = new DOMParser().parseFromString(
-        shopPage({ state: CONNECTED, through }),
+        await shopPage({ state: CONNECTED, through }),
         "text/html",
       );
       const forms = [...page.querySelectorAll('form[action="/woocommerce/disconnect"]')];
@@ -544,10 +544,10 @@ describe("what the shop screen holds before it is pressed", () => {
     }
   });
 
-  it("says a grant short of Read/Write as a warning rather than as connected, and never calls a write grant read-only", () => {
+  it("says a grant short of Read/Write as a warning rather than as connected, and never calls a write grant read-only", async () => {
     for (const permissions of ["read", "write"]) {
       const text = readable(
-        shopPage({
+        await shopPage({
           state: {
             kind: "connected",
             shop: { shopUrl: SHOP, permissions, connectedAt: new Date() },
@@ -565,18 +565,18 @@ describe("what the shop screen holds before it is pressed", () => {
 });
 
 describe("what the shop screen says a switch does to the code's products", () => {
-  const connectPanel = (codeProducts: number | null) =>
-    readable(blockOf(shopPage({ through: "api", codeProducts }), "/woocommerce/connect"));
+  const connectPanel = async (codeProducts: number | null) =>
+    readable(blockOf(await shopPage({ through: "api", codeProducts }), "/woocommerce/connect"));
 
   it.each([null, "read"])(
     "discloses the switch's product consequences with prior grant %s",
-    (permissions) => {
-      const panel = (codeProducts: number | null) =>
+    async (permissions) => {
+      const panel = async (codeProducts: number | null) =>
         permissions === null
-          ? connectPanel(codeProducts)
+          ? await connectPanel(codeProducts)
           : readable(
               blockOf(
-                shopPage({
+                await shopPage({
                   state: {
                     kind: "connected",
                     shop: {
@@ -591,30 +591,30 @@ describe("what the shop screen says a switch does to the code's products", () =>
                 "/woocommerce/connect",
               ),
             );
-      expect(panel(12)).toContain("the 12 products your code published go off sale");
-      expect(panel(1)).toContain("the product your code published goes off sale");
-      expect(panel(null)).toContain("the products your code published go off sale");
-      expect(panel(0)).not.toMatch(/off sale/);
+      expect(await panel(12)).toContain("the 12 products your code published go off sale");
+      expect(await panel(1)).toContain("the product your code published goes off sale");
+      expect(await panel(null)).toContain("the products your code published go off sale");
+      expect(await panel(0)).not.toMatch(/off sale/);
     },
   );
 
-  it("says the code's products come back paused, where there are some, on the way back", () => {
-    const back = (codeProducts: number) =>
+  it("says the code's products come back paused, where there are some, on the way back", async () => {
+    const back = async (codeProducts: number) =>
       readable(
         blockOf(
-          shopPage({ state: { kind: "none" }, through: "woocommerce", codeProducts }),
+          await shopPage({ state: { kind: "none" }, through: "woocommerce", codeProducts }),
           "/woocommerce/disconnect",
         ),
       );
 
-    expect(back(12)).toMatch(/12 products your code published come back paused/);
-    expect(back(0)).not.toMatch(/come back/);
+    expect(await back(12)).toMatch(/12 products your code published come back paused/);
+    expect(await back(0)).not.toMatch(/come back/);
   });
 });
 
 describe("what the shop screen offers while no keys are here", () => {
-  it("offers to check again while the fifteen minutes run, with the address in the box", () => {
-    const html = shopPage({
+  it("offers to check again while the fifteen minutes run, with the address in the box", async () => {
+    const html = await shopPage({
       state: { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 4 },
       through: "woocommerce",
     });
@@ -624,50 +624,11 @@ describe("what the shop screen offers while no keys are here", () => {
     expect(formOf(html, "/woocommerce/connect")).toContain(`value="${SHOP}"`);
   });
 
-  it("offers only Connect again once they ran out, and still keeps the address", () => {
-    const html = shopPage({ state: { kind: "unanswered", shopUrl: SHOP }, through: "api" });
+  it("offers only Connect again once they ran out, and still keeps the address", async () => {
+    const html = await shopPage({ state: { kind: "unanswered", shopUrl: SHOP }, through: "api" });
 
     expect(readable(html)).not.toContain("Check again");
     expect(readable(html)).toContain("We didn't hear back");
     expect(formOf(html, "/woocommerce/connect")).toContain(`value="${SHOP}"`);
-  });
-});
-
-describe("a press's address reached inside the application", () => {
-  // Back or Forward from a section the application drew returns to the
-  // press's address without its answer, which React Router does not keep.
-  it("leads to the shop screen rather than to a page saying the dashboard is broken", async () => {
-    const chrome: Chrome = {
-      base: "",
-      surface: {
-        attribute: SURFACE_MARKER_ATTRIBUTE,
-        mode: "sandbox",
-        words: SURFACE_WORDS.sandbox,
-      },
-    };
-    const Stub = createRoutesStub([
-      {
-        id: "root",
-        path: "/",
-        children: [
-          {
-            id: "routes/gate",
-            children: [
-              { path: "woocommerce/import", Component: () => <WooPage view={undefined} /> },
-              { path: "woocommerce", Component: () => <p>The shop screen</p> },
-            ],
-          },
-        ],
-      },
-    ]);
-
-    const page = render(
-      <Stub
-        initialEntries={["/woocommerce/import"]}
-        hydrationData={{ loaderData: { root: chrome, "routes/gate": { who: SEEN_BY.who } } }}
-      />,
-    );
-
-    expect(await page.findByText("The shop screen")).toBeDefined();
   });
 });

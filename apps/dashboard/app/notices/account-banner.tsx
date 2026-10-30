@@ -1,7 +1,7 @@
 import { Button } from "@agentify/ui";
 import { Link, useLocation } from "react-router";
 import type { AccountNote, WalletChangeNote } from "../../src/account-banner.js";
-import { headingOf } from "../../src/words.js";
+import { headingOf } from "../../src/account-heading.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Address } from "../wallet/address.js";

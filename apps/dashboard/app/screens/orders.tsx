@@ -3,11 +3,9 @@ import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router";
 import type { ClosurePressed, ClosureUnlisted, OrdersView, ToldOrders } from "../../src/views.js";
 import { COUNTS_TOWARD_THE_STOP } from "../../src/words.js";
-import { Ident, shortened } from "../components/copy.js";
 import {
   Cell,
   DayHeading,
-  DisclosedRow,
   Fact,
   Facts,
   Group,
@@ -20,6 +18,8 @@ import { NotLoaded } from "../components/not-loaded.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
+import { Ident, shortened } from "../display/copy.js";
+import { DisclosedRow } from "./disclosed-row.js";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "./listing.js";
 import styles from "./orders.module.css";
 import { Transfer } from "./transfer.js";

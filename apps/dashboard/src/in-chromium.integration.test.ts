@@ -14,9 +14,10 @@
  * the browser says about its cache.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
+import { randomIds } from "@agentify/gateway";
 import { type Harness, harness } from "@agentify/gateway/testing";
 import { firstVisitScripts, type ViteManifest } from "@agentify/ui/budget";
 import { dragUp, launchChromium } from "@agentify/ui/chromium";
@@ -29,6 +30,7 @@ import { DRAWN_FOR } from "./drawn-for.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { builtPages } from "./pages.js";
+import { SCRIPT_BUDGET } from "./script-budget.js";
 import { buildApp } from "./server.js";
 import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
@@ -220,6 +222,32 @@ describe("the page data Chromium keeps", () => {
     await page.context().close();
   });
 });
+
+/** Initial conditional modules count too, even where the route graph calls them dynamic. */
+const scriptsRequestedBy = (page: Page): Set<string> => {
+  const scripts = new Set<string>();
+  page.on("request", (request) => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith(`${BASE}/assets/`) && pathname.endsWith(".js")) {
+      scripts.add(pathname.slice(`${BASE}/`.length));
+    }
+  });
+  return scripts;
+};
+
+const withinScriptBudget = async (state: string, page: Page, scripts: ReadonlySet<string>) => {
+  await page.waitForLoadState("networkidle");
+  const files = await Promise.all(
+    [...scripts].map(async (script) => ({
+      script,
+      bytes: (await stat(fileURLToPath(new URL(`../dist/client/${script}.br`, import.meta.url))))
+        .size,
+    })),
+  );
+  const bytes = files.reduce((sum, file) => sum + file.bytes, 0);
+  console.info("[initial scripts]", JSON.stringify({ state, bytes, limit: SCRIPT_BUDGET, files }));
+  expect(bytes, `${state}: initial script bytes`).toBeLessThanOrEqual(SCRIPT_BUDGET);
+};
 
 describe("a page's first visit in Chromium", () => {
   it.each([
@@ -911,11 +939,15 @@ it.each(["products", "keys"])(
     );
     const page = await context.newPage();
     try {
+      const scripts = scriptsRequestedBy(page);
       await page.goto(`${origin}${BASE}/${section}`);
+      await withinScriptBudget(`${section}: code entry`, page, scripts);
       await page.getByRole("textbox", { name: "Key name" }).fill("Worker" + "x".repeat(94));
+      const beforeIssue = [...scripts].sort();
       await page.getByRole("button", { name: "Create key", exact: true }).click();
       const dialog = page.getByRole("dialog", { name: "Copy your new key" });
       await dialog.waitFor();
+      expect([...scripts].sort(), "issuance must not fetch disclosure code").toEqual(beforeIssue);
       if (section === "products") {
         await page.waitForTimeout(11_000);
         expect(await dialog.isVisible()).toBe(true);
@@ -989,7 +1021,13 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
   const link = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
   const signedIn = await identity.openLink(link.searchParams.get("token") ?? "");
   if (signedIn.status !== "opened") throw new Error("the test sign-in did not open");
-  const app = buildApp(config, { pages: await builtPages(), gateway: isolated.gateway, identity });
+  const testShops = memoryWooShops();
+  const app = buildApp(config, {
+    pages: await builtPages(),
+    gateway: isolated.gateway,
+    identity,
+    wooShops: testShops,
+  });
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const testOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -1021,8 +1059,9 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
   }
   const page = await context.newPage();
   try {
+    const scripts = scriptsRequestedBy(page);
     await page.goto(`${testOrigin}${BASE}/products`);
-    await page.waitForLoadState("networkidle");
+    await withinScriptBudget("TEST acknowledgement and platform choice", page, scripts);
     const dialog = page.getByRole("dialog", { name: "This is the test environment" });
     await dialog.waitFor();
     const start = dialog.getByRole("button", { name: "Start testing" });
@@ -1046,6 +1085,74 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
     expect(await page.getByRole("dialog").count()).toBe(0);
     await page.reload();
     expect(await page.getByRole("dialog").count()).toBe(0);
+
+    const existing = await identity.make("existing-test-shop@example.com", isolated.merchant.id);
+    if (existing === null) throw new Error("the existing shop identity was not created");
+    await identity.choosePlatform(existing.id, "woocommerce");
+    await identity.requestLink(existing.email, "default", ONE_CLIENT);
+    const existingLink = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+    const existingSession = await identity.openLink(existingLink.searchParams.get("token") ?? "");
+    if (existingSession.status !== "opened")
+      throw new Error("the existing shop sign-in did not open");
+    for (const state of ["new", "paused", "connected"] as const) {
+      if (state === "paused") {
+        const card = await isolated.gateway.publishCard(isolated.merchant.id, {
+          merchant_item_id: "room-101",
+          title: "A room for the night",
+          description: "One night in room 101",
+          price: { amount: "80.00", currency: "USD" },
+          result: { access_code: { type: "string" } },
+          fulfillment: "sync",
+        });
+        if (!card.ok) throw new Error("the existing shop product was not published");
+        await isolated.gateway.setSelling(isolated.merchant.id, "paused");
+      }
+      if (state === "connected")
+        await testShops.connect({
+          accountId: existing.id,
+          shopUrl: "https://woo.nuanu.ai",
+          consumerKey: "ck_browser_fixture",
+          consumerSecret: "cs_browser_fixture",
+          permissions: "read_write",
+          revision: "browser-fixture-connection",
+          connectedAt: new Date("2026-10-30T12:00:00Z"),
+          currency: { code: "USD", decimals: 2 },
+        });
+      const firstVisit = await browser.newContext();
+      await firstVisit.addCookies(
+        existingSession.setCookies.map((line) => {
+          const pair = line.split(";")[0] ?? "";
+          const at = pair.indexOf("=");
+          return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
+        }),
+      );
+      try {
+        const entry = await firstVisit.newPage();
+        const initial = scriptsRequestedBy(entry);
+        await entry.goto(`${testOrigin}${BASE}/${state === "new" ? "products" : "woocommerce"}`);
+        await withinScriptBudget(
+          state === "new"
+            ? "TEST and Woo entry"
+            : state === "paused"
+              ? "TEST, Woo and paused account"
+              : "TEST, connected Woo and paused account",
+          entry,
+          initial,
+        );
+        expect(
+          await entry.getByRole("dialog", { name: "This is the test environment" }).isVisible(),
+        ).toBe(true);
+        if (state === "connected")
+          expect(await entry.getByText("Connected", { exact: true }).count()).toBe(1);
+        else
+          expect(
+            await entry.getByRole("textbox", { name: "Shop address", includeHidden: true }).count(),
+          ).toBe(1);
+        if (state !== "new") expect(await entry.locator("[data-reason=paused]").count()).toBe(1);
+      } finally {
+        await firstVisit.close();
+      }
+    }
   } finally {
     await context.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -1055,7 +1162,7 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
 });
 
 it("checks a WooCommerce shop on Products, invalidates edited results and keeps the action below the result at four widths", async () => {
-  const isolated = await harness();
+  const isolated = await harness({}, { ids: randomIds });
   const mails: Message[] = [];
   const config = loadConfig({
     DATABASE_URL: "postgres://nobody@nowhere/unused",
@@ -1162,11 +1269,13 @@ it("checks a WooCommerce shop on Products, invalidates edited results and keeps 
     first = true;
   }
   const page = await context.newPage();
+  const scripts = scriptsRequestedBy(page);
   try {
     for (const width of [1440, 1024, 768, 375]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${testOrigin}${BASE}/products`);
       await page.waitForLoadState("networkidle");
+      if (width === 1440) await withinScriptBudget("Products: Woo shop entry", page, scripts);
       const address = page.getByRole("textbox", { name: "Shop address" });
       await address.fill("woo.nuanu.ai/");
       const check = page.getByRole("button", { name: "Check my shop", exact: true });
@@ -1198,6 +1307,50 @@ it("checks a WooCommerce shop on Products, invalidates edited results and keeps 
       expect(await shops.grantFor(person.id)).toBeNull();
       expect(new URL(page.url()).pathname).toBe(`${BASE}/products`);
     }
+
+    const published = await isolated.gateway.publishCard(isolated.merchant.id, {
+      merchant_item_id: "pending-delivery",
+      title: "A room for the night",
+      description: "One night in room 101",
+      price: { amount: "80.00", currency: "USD" },
+      result: { access_code: { type: "string" } },
+      fulfillment: "async",
+      fulfill_deadline_seconds: 3600,
+    });
+    if (!published.ok) throw new Error("the blocking product was not published");
+    const offered = await isolated.gateway.beginPurchase(published.id, {});
+    if (offered.step !== "pay") throw new Error("the blocking order was not priced");
+    const paid = await isolated.gateway.payPurchase(
+      offered.order.priceOffer.stamp,
+      "BLOCKING_ORDER_PAYMENT",
+      "BLOCKING_ORDER_PAYMENT",
+      undefined,
+      { itemId: offered.order.itemId, params: offered.order.params },
+    );
+    if (paid.step !== "under_way") throw new Error("the blocking order was not accepted");
+    const orderId = paid.order.order.id;
+    const refusal = await browser.newContext({ javaScriptEnabled: false });
+    await refusal.addCookies(await context.cookies());
+    try {
+      const plainPage = await refusal.newPage();
+      await plainPage.goto(`${testOrigin}${BASE}/woocommerce`);
+      await plainPage.getByRole("textbox", { name: "Shop address" }).fill("woo.nuanu.ai");
+      await plainPage.getByRole("button", { name: "Check my shop", exact: true }).click();
+      const orders = plainPage.getByRole("list", { name: "The orders still open" });
+      expect(await orders.isVisible()).toBe(true);
+      await orders.locator("summary").click();
+      expect(await orders.locator(".ident-all").textContent()).toBe(orderId);
+    } finally {
+      await refusal.close();
+    }
+    await context.grantPermissions([], { origin: testOrigin });
+    await page.goto(`${testOrigin}${BASE}/woocommerce`);
+    await page.getByRole("textbox", { name: "Shop address" }).fill("woo.nuanu.ai");
+    await page.getByRole("button", { name: "Check my shop", exact: true }).click();
+    const orders = page.getByRole("list", { name: "The orders still open" });
+    await orders.getByRole("button", { name: /Copy the whole order ID/ }).click();
+    await expect.poll(() => orders.locator(".copy-whole").textContent()).toBe(orderId);
+    expect(await orders.locator(".copy-whole").isVisible()).toBe(true);
   } finally {
     release.resolve();
     await context.close();

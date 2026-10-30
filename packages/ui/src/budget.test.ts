@@ -96,12 +96,17 @@ beforeEach(() => {
 const at = (key: Script) => `/assets/${SCRIPTS[key][0]}`;
 
 /** A build of a front page and one other page, with routes discovered as `mode` says. */
-const built = (mode: "lazy" | "initial"): ServerBuild => {
+const built = (mode: "lazy" | "initial", initialScripts: readonly string[] = []): ServerBuild => {
   const page = { default: () => null };
   return {
     routes: {
       root: { id: "root", path: "", module: page },
-      "routes/home": { id: "routes/home", parentId: "root", index: true, module: page },
+      "routes/home": {
+        id: "routes/home",
+        parentId: "root",
+        index: true,
+        module: { ...page, handle: { initialScripts } },
+      },
       "routes/other": { id: "routes/other", parentId: "root", path: "other", module: page },
     },
     assets: {
@@ -124,10 +129,14 @@ const built = (mode: "lazy" | "initial"): ServerBuild => {
   } as unknown as ServerBuild;
 };
 
-const fits = async (mode: "lazy" | "initial", limit: number): Promise<boolean> => {
+const fits = async (
+  mode: "lazy" | "initial",
+  limit: number,
+  initialScripts: readonly string[] = [],
+): Promise<boolean> => {
   const failures = await brokenBudget({
     label: "[test]",
-    build: built(mode),
+    build: built(mode, initialScripts),
     clientDirectory: client,
     assetsAt,
     limitOf: () => limit,
@@ -139,6 +148,17 @@ describe("a page's first visit, as the speed budget weighs it", () => {
   it("is its own scripts and what they import, not the route table, where routes are discovered as they are needed", async () => {
     expect(await fits("lazy", weight(...PAGE))).toBe(true);
     expect(await fits("lazy", weight(...PAGE) - 1)).toBe(false);
+  });
+
+  it("counts a declared initial conditional module against the same limit", async () => {
+    expect(await fits("lazy", weight(...PAGE, "later"), ["lib/later.ts"])).toBe(true);
+    expect(await fits("lazy", weight(...PAGE, "later") - 1, ["lib/later.ts"])).toBe(false);
+  });
+
+  it("refuses an initial declaration that the build cannot resolve", async () => {
+    await expect(fits("lazy", weight(...PAGE), ["missing.ts"])).rejects.toThrow(
+      /initial.*missing\.ts/i,
+    );
   });
 
   it("takes in the route table where every route is sent up front", async () => {

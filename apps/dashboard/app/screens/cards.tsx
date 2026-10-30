@@ -1,10 +1,10 @@
 import { Button } from "@agentify/ui";
 import type { CardsView } from "../../src/views.js";
-import { CodeCopy } from "../components/copy.js";
 import { Cell, List, ListEmpty, Row } from "../components/list.js";
 import { PostForm } from "../components/post-form.js";
 import { Rest } from "../components/rest.js";
 import { Word } from "../components/word.js";
+import { CodeCopy } from "../display/copy.js";
 import styles from "./cards.module.css";
 import { CutNote, KeptPlace, ListTools, NothingHere } from "./listing.js";
 

@@ -27,9 +27,9 @@ import type { StepUpView } from "../../../src/admin/step-up.js";
 import { ActionForm, InPlace, opensOn } from "../../components/admin/action-form.js";
 import { PressAnswer } from "../../components/admin/press-answer.js";
 import { CouldNotBeRead, OrderState } from "../../components/admin/unknown.js";
-import { shortened } from "../../components/copy.js";
 import { Moment } from "../../components/moment.js";
 import { Word } from "../../components/word.js";
+import { shortened } from "../../display/copy.js";
 import { CutNote, ListTools, NothingHere } from "../listing.js";
 import { JournalList } from "./journal.js";
 

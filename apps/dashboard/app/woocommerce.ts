@@ -8,6 +8,12 @@ import { services } from "./services.js";
  */
 export const WOOCOMMERCE = { woocommerce: true } as const;
 
+/** The default shop screen starts disconnected; connected visits are measured in Chromium. */
+export const WOO_SHOP_PAGE = {
+  ...WOOCOMMERCE,
+  initialScripts: ["app/screens/woo-connecting.tsx"],
+} as const;
+
 /**
  * The connector's server half. A route that finds none was answered by a
  * dashboard with no shop store, which the mount never does, so it is a defect.

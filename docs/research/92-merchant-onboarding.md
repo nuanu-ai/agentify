@@ -227,8 +227,9 @@ The first-visit script check found that the shared frame imported the whole
 onboarding screen for its test acknowledgement. The dashboard groups the
 `app/components` directory into every merchant page's common chunk. Conditional
 dialogs and account notices now live outside that directory, and their CSS
-remains eager. The frame loads these modules only when their facts require
-them. The Products route similarly loads the WooCommerce or onboarding screen
+remains eager. The first-test acknowledgement loads when its facts require it. The account
+banner stays in the initial graph: a paused account needs it on first hydration,
+which the native browser owner verifies. The Products route similarly loads the WooCommerce or onboarding screen
 only for its chosen branch. The server waits for the complete response, including where JavaScript is
 disabled. React also outlines large completed Suspense boundaries into hidden
 HTML that requires script to reveal. The renderer's internal progressive chunk
@@ -240,15 +241,50 @@ list. The disclosure remains a static dependency before Create key: an issued
 secret does not depend on fetching a new module after the action. List tools
 and the transaction renderer belong to the screens that use them rather than
 the universal component chunk. The alternative was changing the chunk policy
-or the 102 KB budget; both stay unchanged.
+or the 102 KiB budget; both stay unchanged.
 
 Resolved content and CSS values are preserved. On client navigation, a first
 visit may briefly show “Loading…” inside Products or “Loading your shop…”. A
-conditional account notice or test acknowledgement waits for its module; the
-server response already contains it on an ordinary page load. This does not
+first-test acknowledgement waits for its module on client navigation; the
+account notice is eager. The server response already contains them on an ordinary page load. This does not
 establish a new independent visual acceptance or browser zoom result.
 
 The product owner authorises eight slices: the first seven implement the
 functional path without new path instrumentation; slice 8 implements its
 analytics vocabulary, events, contract tests and ADR-0042 together, incorporating
 the analytics team's reply if it arrives. Existing unrelated events remain.
+
+
+## Native first-visit budget correction
+
+The initial route graph does not by itself describe every first visit. A paused
+account rendered the conditionally loaded account notice immediately, and the
+native browser correctly found scripts that the static graph called later. The
+account notice is eager. Its heading formatter is separate from order vocabulary,
+and order disclosure and copy controls belong to the screens that use them.
+
+Products loads the catalog, onboarding or WooCommerce branch as needed. The
+catalog's initial module is declared in the route handle and traversed by the
+budget tool; a declared source missing from the build fails rather than being ignored. The
+unchanged native equality checks the actual default visit against this graph.
+The same 102 KiB limit is also checked against actual initial requests for code,
+platform choice with TEST acknowledgement, Woo, and Woo with TEST and a paused
+account. No filename whitelist or larger limit is used.
+
+The code form and its disclosure load together before Create key. Native proof
+requires issuance to fetch no new script, and an issued secret takes priority
+over catalog or shop data that arrived with it. WooCommerce loads its disconnected or connected panels for the current state;
+both keep the same shop context and eager CSS. The default disconnected module
+is also declared in the route handle. Native measurements include TEST with a
+paused account and each WooCommerce state. The import-result table and refusal
+details load after their respective presses. The server still waits for
+complete markup; no special server import or top-level await is added for the
+tests. Existing screen assertions use asynchronous prerender, matching the
+server's complete-render policy. Cold no-script refusal and denied clipboard
+copy are exercised through the actual local application.
+
+The client navigation assertion is isolated from asynchronous server prerender
+in its own test file. The combined file reports a nested Router after asynchronous server prerender;
+the unchanged client assertion passes alone. The two readers have separate test
+environments.
+No production workaround or weaker assertion is added for that interaction.

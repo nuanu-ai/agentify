@@ -16,14 +16,20 @@ import type { WooImportView, WooShopView } from "../../src/woo-views.js";
 import { acted, formOf, readOnly, useChrome } from "../answer.js";
 import { Frame } from "../components/frame.js";
 import { readFailedIn } from "../components/not-loaded.js";
-import { AllSelling, CardsScreen } from "../screens/cards.js";
-import { NewKeyScreen } from "../screens/new-key.js";
 import "../screens/onboarding.module.css";
+import "../screens/cards.module.css";
+import "../screens/keys.module.css";
 import "../screens/woocommerce.module.css";
 
-const OnboardingScreen = lazy(() =>
-  import("../screens/onboarding.js").then(({ OnboardingScreen }) => ({
-    default: OnboardingScreen,
+const ProductsCatalog = lazy(() =>
+  import("../screens/products-catalog.js").then(({ ProductsCatalog }) => ({
+    default: ProductsCatalog,
+  })),
+);
+
+const ProductsOnboarding = lazy(() =>
+  import("../screens/products-onboarding.js").then(({ ProductsOnboarding }) => ({
+    default: ProductsOnboarding,
   })),
 );
 
@@ -32,6 +38,9 @@ const WooPage = lazy(() =>
 );
 
 import { services, signedIn } from "../services.js";
+
+// The catalog is the default initial branch; newcomer branches are measured in Chromium.
+export const handle = { initialScripts: ["app/screens/products-catalog.tsx"] };
 
 const keyPressed = createContext(false);
 
@@ -84,6 +93,8 @@ export default function Products() {
   const [query] = useSearchParams();
   const view = useLoaderData<typeof loader>();
   const pressed = useActionData<typeof action>();
+  const issued =
+    pressed && "screen" in pressed && pressed.screen === "issued" ? pressed : undefined;
   const frame = useRouteLoaderData<FrameView>("routes/merchant-only");
   const onboarding = frame?.onboarding;
   const empty = (view === null || view.empty !== null) && onboarding !== undefined;
@@ -94,6 +105,7 @@ export default function Products() {
   const choosingShop =
     query.get("ways") === "choose" && shop?.screen === "shop" && shop.connection === null;
   if (
+    issued === undefined &&
     !choosingShop &&
     shop !== undefined &&
     (onboarding?.step.page === "shop" ||
@@ -117,29 +129,33 @@ export default function Products() {
     pressed && "problem" in pressed && typeof pressed.problem === "string"
       ? pressed.problem
       : undefined;
+  if (!empty && view !== null && issued === undefined)
+    return (
+      <Suspense
+        fallback={
+          <Frame tab="products" title="Products">
+            <p role="status">Loading…</p>
+          </Frame>
+        }
+      >
+        <ProductsCatalog view={view} base={chrome.base} />
+      </Suspense>
+    );
   return (
-    <Frame
-      tab="products"
-      title="Products"
-      action={empty || view === null ? null : <AllSelling view={view} />}
-    >
-      {empty ? (
+    <Frame tab="products" title="Products">
+      {empty || issued !== undefined ? (
         <Suspense fallback={<p role="status">Loading…</p>}>
-          <OnboardingScreen
-            view={onboarding}
+          <ProductsOnboarding
+            {...(onboarding === undefined ? {} : { view: onboarding })}
             choose={choosingShop}
             {...(pressed && "platform" in pressed && pressed.platform !== undefined
               ? { selected: pressed.platform }
               : {})}
             {...(problem === undefined ? {} : { problem })}
             {...(keyView === undefined ? {} : { keyView })}
+            {...(issued === undefined ? {} : { issued })}
           />
         </Suspense>
-      ) : view === null ? null : (
-        <CardsScreen view={view} base={chrome.base} />
-      )}
-      {pressed && "screen" in pressed && pressed.screen === "issued" ? (
-        <NewKeyScreen view={pressed} doneTo="/products" />
       ) : null}
     </Frame>
   );

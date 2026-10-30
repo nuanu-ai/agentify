@@ -1,11 +1,11 @@
 import { Button } from "@agentify/ui";
 import { Link } from "react-router";
 import type { KeysView, NoCall } from "../../src/keys.js";
-import { Ident } from "../components/copy.js";
 import { Cell, List, Row } from "../components/list.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
+import { Ident } from "../display/copy.js";
 import { CreateKeyForm } from "./create-key.js";
 import styles from "./keys.module.css";
 
