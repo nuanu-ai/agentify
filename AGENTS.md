@@ -168,6 +168,17 @@ accepted for execution (ADR-0028; the product owner, 2026-10-19).
 - The quality test: the document is read by a person who took no part in the
   sessions, without a glossary and without git archaeology.
 
+## Project skills
+
+Skills live in `.agents/skills/`, the repository location Codex discovers
+from the project root and its subdirectories. Read and apply the relevant
+skill before doing its work: `ponytail` for coding and code review,
+`test-audit` for tests, `humanizer` for prose, and `impeccable` for interface
+design. For Agentify screens, also apply `interface-review`; its product
+rules and the instruction hierarchy above take precedence over general
+design advice. Installation sources and update instructions are in
+[the skills guide](.agents/README.md).
+
 ## Code
 - Before writing, changing, reviewing or auditing tests, read
   `.agents/skills/test-audit/SKILL.md` and its Agentify proof policy.

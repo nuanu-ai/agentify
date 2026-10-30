@@ -11,6 +11,7 @@
       "!**/node_modules",
       "!**/dist",
       "!.claude",
+      "!.agents/skills/impeccable",
       "!apps/gateway/drizzle",
       "!apps/docs/diagrams",
       "!packages/scanner-database/migrations",
