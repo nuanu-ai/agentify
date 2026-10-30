@@ -9,7 +9,7 @@ email works.
 | --- | --- | --- |
 | 1 | Seller site from the confirmed shop origin | Implemented on the branch |
 | 2 | Next-step function, platform choice, code instructions, test acknowledgement | Implemented on the branch; analytics belongs to authorised slice 8 |
-| 3 | Public catalogue assessment before asking for access | Pending |
+| 3 | Public catalogue assessment before asking for access | Engineering checkpoint; protected catalogue dependency remains in slice 4 |
 | 4 | Stored shop jobs, automatic checks, grouped results and synchronization | Pending |
 | 5 | Request for live sales, seller name, wallet after request, operator decision | Pending |
 | 6 | Publication after approval or first wallet, decision emails | Pending |
@@ -124,6 +124,81 @@ slice, which collects the path vocabulary, events, contract tests and
 ADR-0042 together. The optional practice link goes directly to the existing
 How to start documentation. No empty tracking route is kept. This slice does
 not count those actions, and no claim about their frequency follows from it.
+
+## Slice 3: check the public catalogue before access
+
+Check my shop reads at most the first 100 public products in one request.
+The same answer supplies the catalogue count, the currency sample and its
+written decimals. A missing, invalid or contradictory count stays unknown.
+A partial list retains its total and read count even when none of the read
+products looks ready. A successful empty list differs from a blocked or
+unreadable list. Known count and price facts survive missing readiness fields,
+so an unread estimate cannot silently bypass the size or currency door.
+
+The estimate infers managed stock only for products in stock and not on
+backorder, from nonempty availability text or a non-null low-stock quantity,
+including zero. Its groups are disjoint: unavailable is tested before variable,
+then inferred stock, then a ready simple product. A variable product out of
+stock is counted as unavailable. The alternative was to put every variable
+product in options regardless of availability; the selected order avoids
+counting a product twice. The estimate does not invent the private shipping,
+download or tax facts checked after connection.
+
+The address accepts bare hosts, http and a trailing slash, and shows the
+normalized HTTPS origin without removing www. Credentials, paths, queries and
+fragments keep the address refusal. HTML from WordPress at status 200 or 404
+is the Plain-permalink refusal; a forbidden response remains unknown even if
+it carries WordPress assets, since a firewall can serve that page. A readable
+HTML page without WordPress traces asks the merchant to check the shop address.
+No second WordPress or grant-page probe runs on the first Check.
+
+The one form keeps its result between the address and its button. Editing
+invalidates it immediately. Without script, Connect carries the checked
+origin; a different origin checks again and cannot receive a grant. Every
+explicit Connect repeats the read-only size, currency, current-shop and open
+orders guards. Only after that does it inspect the actual approval page and
+persist the existing one-time grant. A refusal of the approval page keeps the
+estimate and Connect shop; a check-stage refusal keeps Check my shop. The
+sentence about the upcoming WooCommerce approval appears only with a current
+assessment and Connect shop; the test-purchase warning also appears before
+the first check. Less than Read/Write access remains a warning, and a
+write-only grant is not called read-only.
+
+All reads needed for the response, including the existing shop view, share
+one fifteen-second budget. The answer is drawn from those collected facts,
+without repeating gateway, catalogue or reference reads after the check. An
+unread account is a failed account read, rather than a guessed empty shop.
+The outer check starts no subsequent stage after its deadline, and late results cannot issue a grant. The existing
+signed-in frame retains its own bounded read and rendering lifecycle.
+
+IRT is the unsupported-rate example. The product owner verified Coinbase's
+USD rates on 30 October 2026: IRR and XAF are present, IRT is absent. This is
+an observed example, not a fixed list of currencies Coinbase supports. No
+commerce-v1 path vocabulary or events are introduced here; they belong to the
+authorised eighth slice.
+
+The three equally weighted platform tiles remain an explicit product-owner
+choice above the general one-filled-control rule. The inherited key window
+keeps its disclosure through automatic polling until Done, pauses code polling
+while a native dialog is open and resumes it afterward. It puts Copy and Done
+in one final row, and the Node.js prerequisite precedes the
+installation control, following the interface review's action-order rule.
+
+Verification at this checkpoint includes 321 focused unit tests across seven
+files, the workspace typecheck, the portal build with seven included examples
+and programs, and four real Chromium cases. The new browser case uses the
+actual application at four widths and verifies pending controls, edit
+invalidation, Enter, result-before-action geometry and no grant from Check.
+The other three retain native dialog and TEST acknowledgement proof after the
+presentation fixes. Final proof and capture provenance accompany the handoff.
+
+**Open dependency on slice 4:** the current full import still reads its list
+through the anonymous Store API before protected per-product inspection. A
+shop whose public list is closed has not been proved to complete the accepted
+"After you connect, we read them directly" path. Slice 4 must supply the
+protected catalogue read and its proof before this draft, undeployed task can
+be described as ready for release. This slice does not claim end-to-end
+acceptance of that branch, independent visual acceptance or live shop coverage.
 
 ## Implementation corrections accepted on 30 October
 

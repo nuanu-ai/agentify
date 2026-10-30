@@ -1,11 +1,17 @@
 import { Button, Field } from "@agentify/ui";
 import { withUnit } from "@agentify/ui/units";
-import { type ComponentProps, createContext, type ReactNode, useContext } from "react";
+import {
+  type ComponentProps,
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { Link, Navigate } from "react-router";
 import type {
   ConnectionView,
   ImportHeld,
-  NoKeysYet,
   RateView,
   Refusal,
   WooImportView,
@@ -40,7 +46,7 @@ function ShopAgain({
   base,
   children,
   className,
-}: Readonly<{ base: string; children: ReactNode; className: string }>) {
+}: Readonly<{ base: string; children: ReactNode; className: string | undefined }>) {
   const onboarding = useContext(ProductsShop);
   return (
     <a className={className} href={`${base}${onboarding ? "/products" : "/woocommerce"}`}>
@@ -63,7 +69,7 @@ const codeProducts = (count: number | null): string =>
     ? "the products your code published"
     : count === 1
       ? "the product your code published"
-      : `the ${count} products your code published`;
+      : `the ${count.toLocaleString("en-US")} products your code published`;
 
 /** Said before a Connect: nothing changes for the code's products until the shop's keys arrive. */
 const offSaleOnKeys = (count: number | null): string =>
@@ -83,7 +89,21 @@ function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }
   if (said.orders.length === 0) {
     return (
       <>
-        <p className="problem">{said.says}</p>
+        <p className="problem">
+          {said.says}
+          {said.follow === "integrations" ? (
+            <>
+              {" "}
+              Open <a href={`${base}/integrations`}>Integrations</a> to disconnect it.
+            </>
+          ) : null}
+          {said.follow === "pause" ? (
+            <>
+              {" "}
+              <a href={`${base}/orders?show=open`}>See open orders</a>.
+            </>
+          ) : null}
+        </p>
         {said.follow === "pause" ? (
           <p>
             If new purchases keep arriving, <a href={`${base}/products`}>pause all sales</a> first.
@@ -98,7 +118,9 @@ function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }
   }
   return (
     <div className={styles.refusal}>
-      <p className="problem">{said.says}</p>
+      <p className="problem">
+        {said.says} <a href={`${base}/orders?show=open`}>See open orders</a>.
+      </p>
       <ul className={styles.orders} aria-label="The orders still open">
         {said.orders.map((order) => (
           <li key={order}>
@@ -107,7 +129,6 @@ function Problem({ said, base }: Readonly<{ said: Refusal | null; base: string }
         ))}
         {said.more === 0 ? null : <li>and {said.more} more</li>}
       </ul>
-      <a href={`${base}/orders?show=open`}>See open orders</a>
     </div>
   );
 }
@@ -144,37 +165,88 @@ function PanelHead({
   );
 }
 
+function Estimate({ view }: Readonly<{ view: WooShopView }>) {
+  const read = view.preview;
+  if (read === null || read.kind === "refused") return null;
+  if (read.kind === "unread")
+    return (
+      <p>
+        We couldn't read the public product list of {new URL(view.typed).host}, so we can't tell yet
+        which products would sell. After you connect, we read them directly.
+      </p>
+    );
+  const { estimate: count, sample } = read;
+  const n = (value: number) => value.toLocaleString("en-US");
+  const products = count.read === 1 ? "product" : "products";
+  const look = count.ready === 1 ? "looks" : "look";
+  return (
+    <>
+      <p>
+        {count.total !== null && count.total > count.read
+          ? `Your shop lists ${n(count.total)} products. We looked at the first ${n(count.read)}, and ${count.ready === 0 ? "none look" : `${n(count.ready)} ${look}`} ready to sell.`
+          : count.ready === 0
+            ? `We looked at ${n(count.read)} ${products}, and none look ready to sell.`
+            : count.total === count.read
+              ? `${n(count.ready)} of ${n(count.total)} ${products} ${look} ready to sell.`
+              : `We looked at ${n(count.read)} ${products}, and ${n(count.ready)} ${look} ready to sell.`}
+      </p>
+      {count.options + count.stock === 0 ? null : (
+        <p>
+          {count.options === 0
+            ? ""
+            : `${n(count.options)} ${count.options === 1 ? "has" : "have"} options such as size or colour`}
+          {count.options > 0 && count.stock > 0 ? ", and " : ""}
+          {count.stock === 0
+            ? ""
+            : `${n(count.stock)} ${count.stock === 1 ? "counts its" : "count their"} stock`}
+          : <a href={`${GUIDE}#what-can-be-imported`}>Agentify can't sell those yet</a>.
+        </p>
+      )}
+      {count.unavailable === 0 ? null : (
+        <p>
+          {n(count.unavailable)} {count.unavailable === 1 ? "is" : "are"} out of stock or not for
+          sale.
+        </p>
+      )}
+      {sample === null || sample.currency === "USD" ? null : (
+        <p>
+          Your shop prices in {sample.currency}. After connecting, you'll set how many{" "}
+          {sample.currency} one US dollar buys.
+        </p>
+      )}
+      <p>
+        We see whether products ship or download, and your tax and shipping settings, only after you
+        connect.
+      </p>
+    </>
+  );
+}
+
 function ConnectPanel({
   view,
   base,
   wide,
 }: Readonly<{ view: WooShopView; base: string; wide: boolean }>) {
+  const [typed, setTyped] = useState(view.typed);
+  const [edited, setEdited] = useState(false);
+  useEffect(() => {
+    setTyped(view.typed);
+    setEdited(false);
+  }, [view]);
+  const checked =
+    !edited && (view.preview !== null || (view.noKeysYet !== null && view.problem === null));
+  const waiting =
+    !edited && view.preview === null && view.problem === null && view.noKeysYet?.waiting === true;
   return (
-    <section className={wide ? "settings-panel settings-wide" : "settings-panel"}>
-      <PanelHead title="Connect your shop" said={<Problem said={view.problem} base={base} />}>
-        <p>
-          You approve access in WooCommerce, so Agentify never sees your shop password.{" "}
-          <a href={`${GUIDE}#what-can-be-imported`}>What can be imported</a>
-        </p>
-        {view.connectSwitches && view.codeProducts !== 0 ? (
-          <p>
-            When your shop sends its keys, {offSaleOnKeys(view.codeProducts)} until you disconnect
-            the shop.
-          </p>
-        ) : null}
-        {view.testMoney ? (
-          <p role="note" aria-label="Test purchases">
-            A test purchase here makes a paid order in the shop you connect, marked as paid in test
-            USDC; if it is your real shop, do not ship for it.
-          </p>
-        ) : null}
-      </PanelHead>
-      <ShopForm action="/woocommerce/connect" className={`issue ${styles.row}`}>
+    <section className={`${styles.connect} ${wide ? "settings-wide" : ""}`}>
+      <h2>Connect your WooCommerce shop</h2>
+      <ShopForm
+        action="/woocommerce/connect"
+        className={styles.checkForm}
+        answeredWithinMs={15_000}
+      >
         {(pending) => (
           <>
-            {/* Text rather than url: the browser's own check would refuse an
-                address typed without its scheme before the refusal that names
-                the address meant. */}
             <Field
               label="Shop address"
               name="shop_url"
@@ -183,12 +255,65 @@ function ConnectPanel({
               autoComplete="url"
               autoCapitalize="none"
               spellCheck={false}
-              placeholder="https://shop.example.com"
-              defaultValue={view.typed}
-              {...(view.addressProblem === null ? {} : { error: view.addressProblem })}
+              placeholder="shop.example.com"
+              value={typed}
+              onChange={(event) => {
+                setTyped(event.target.value);
+                setEdited(true);
+              }}
+              {...(edited || view.addressProblem === null ? {} : { error: view.addressProblem })}
               required
             />
-            <Button pending={pending}>Connect</Button>
+            <input
+              type="hidden"
+              name="checked_shop"
+              value={checked ? view.typed : ""}
+              autoComplete="off"
+            />
+            <div className={styles.estimate} aria-live="polite">
+              {edited ? null : (
+                <>
+                  <Problem said={view.problem} base={base} />
+                  {view.preview !== null ? (
+                    <Estimate view={view} />
+                  ) : view.noKeysYet === null || view.problem !== null ? null : (
+                    <p>{view.noKeysYet.why}</p>
+                  )}
+                  {waiting ? (
+                    <ShopAgain base={base} className={styles.checkAgain}>
+                      Check again
+                    </ShopAgain>
+                  ) : null}
+                </>
+              )}
+            </div>
+            <div className={styles.beforeConnect}>
+              {!edited && view.preview !== null ? (
+                <p>
+                  Next, WooCommerce asks you to approve access. Agentify never sees your shop
+                  password.
+                </p>
+              ) : null}
+              {view.testMoney ? (
+                <p role="note" aria-label="Test purchases">
+                  A test purchase here makes a paid order in the shop you connect, marked as paid in
+                  test USDC; if it is your real shop, do not ship for it.
+                </p>
+              ) : null}
+              {view.connectSwitches && view.codeProducts !== 0 ? (
+                <p>
+                  When your shop connects, {offSaleOnKeys(view.codeProducts)} until you disconnect
+                  the shop.
+                </p>
+              ) : null}
+            </div>
+            <Button variant={waiting ? "secondary" : "primary"} pending={pending}>
+              {!checked
+                ? "Check my shop"
+                : view.preview === null && view.noKeysYet !== null
+                  ? "Connect again"
+                  : "Connect shop"}
+            </Button>
           </>
         )}
       </ShopForm>
@@ -224,24 +349,10 @@ function WayBackPanel({ view, base }: Readonly<{ view: WooShopView; base: string
   );
 }
 
-function NoKeysNotice({ said, base }: Readonly<{ said: NoKeysYet; base: string }>) {
-  return (
-    <Notice what={said.what} why={said.why}>
-      {said.waiting ? (
-        <ShopAgain base={base} className="button button-secondary button-compact">
-          Check again
-        </ShopAgain>
-      ) : null}
-    </Notice>
-  );
-}
-
 function NotConnected({ view, base }: Readonly<{ view: WooShopView; base: string }>) {
   return (
     <>
-      {view.noKeysYet !== null ? (
-        <NoKeysNotice said={view.noKeysYet} base={base} />
-      ) : view.wayBack ? (
+      {view.wayBack ? (
         <Notice
           what="No shop is connected, so nothing sells"
           why="Connect your shop, or go back to selling through your own code."
@@ -268,7 +379,7 @@ function Status({
   return (
     <div className={styles.status}>
       <p className={styles.state}>
-        <Word word={connection.readOnly ? NO_READ_WRITE : CONNECTED} />
+        <Word word={connection.access !== "read_write" ? NO_READ_WRITE : CONNECTED} />
         <span className={styles.shop}>{connection.shop}</span>
         <span className={styles.since}>
           since <Moment at={connection.connectedAt} />
@@ -284,7 +395,7 @@ function Status({
           <p>
             Disconnect {connection.shop}?{" "}
             {connection.onCode
-              ? "Agentify forgets its keys; its products are already off sale."
+              ? "Agentify disconnects it; its products are already off sale."
               : `Its products go off sale.${view.codeProducts === 0 ? "" : ` ${comeBack(view.codeProducts)}`} A late parcel marked Completed after that no longer counts as shipped.`}
           </p>
           <ShopForm action="/woocommerce/disconnect" className={styles.confirmPress}>
@@ -315,16 +426,23 @@ function ReadOnlyPanel({
         said={<Problem said={view.problem} base={base} />}
       >
         <p>
-          Your shop didn't grant Read/Write access, so Agentify can't create orders there and agents
-          can't buy. Connect again and approve Read/Write.
+          {connection.access === "read"
+            ? "Your shop gave Agentify read-only access, so Agentify can't create orders there and agents can't buy. Connect again and approve Read/Write access."
+            : "Your shop didn't grant Read/Write access, so Agentify can't create orders there and agents can't buy. Connect again and approve Read/Write access."}
           {connection.onCode && view.codeProducts !== 0
-            ? ` When the new keys arrive, ${offSaleOnKeys(view.codeProducts)}.`
+            ? ` When the shop connects, ${offSaleOnKeys(view.codeProducts)}.`
             : null}
         </p>
       </PanelHead>
       <ShopForm action="/woocommerce/connect" className="issue">
         {(pending) => (
           <>
+            <input
+              type="hidden"
+              name="checked_shop"
+              value={connection.shopUrl}
+              autoComplete="off"
+            />
             <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
             <Button pending={pending}>Connect again</Button>
           </>
@@ -528,7 +646,7 @@ function Connected({
           key="import"
           connection={connection}
           keysArrived={view.keysArrived}
-          wide={rate === null && !connection.readOnly}
+          wide={rate === null && connection.access === "read_write"}
           base={base}
         />,
         ...(rate !== null && !rateFirst ? [<RatePanel key="rate" rate={rate} />] : []),
@@ -567,7 +685,7 @@ function Connected({
       )}
       {needsSite ? null : (
         <div className="settings-grid">
-          {connection.readOnly ? (
+          {connection.access !== "read_write" ? (
             <ReadOnlyPanel connection={connection} view={view} base={base} />
           ) : null}
           {panels}
@@ -582,7 +700,7 @@ export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base
   return (
     <div className={styles.page}>
       {onboarding && view.connection === null ? (
-        <p>
+        <p className={styles.otherWays}>
           <Link to="/products?ways=choose">← Other ways to add products</Link>
         </p>
       ) : null}

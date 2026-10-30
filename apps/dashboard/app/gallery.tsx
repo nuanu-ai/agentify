@@ -85,7 +85,7 @@ import {
   receiptsView,
 } from "../src/views.js";
 import { cardsFromTheShop, type StoreProduct } from "../src/woo-catalog.js";
-import { whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
+import { noReferenceFor, whatIsWrongWithTheShopUrl } from "../src/woo-connect.js";
 import { gapOf } from "../src/woo-money.js";
 import { findingsOf, rateFarSays } from "../src/woo-pages.js";
 import { CREATE_UNKNOWN } from "../src/woo-recovery.js";
@@ -4084,6 +4084,25 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
             ? { rate: { currency: IN_RUPIAH, current: null, reference: COINBASE_RUPIAH } }
             : {}),
         }),
+        row === 7
+          ? {
+              typed: SHOP,
+              preview: {
+                kind: "read",
+                sample: { currency: "USD", decimals: 2 },
+                estimate: {
+                  read: 100,
+                  total: 1240,
+                  ready: 72,
+                  options: 21,
+                  stock: 4,
+                  unavailable: 3,
+                },
+              },
+            }
+          : row === 8
+            ? { typed: SHOP, preview: { kind: "unread" } }
+            : {},
       ),
     };
   }
@@ -4102,6 +4121,54 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
   );
   return row === 5 ? { ...state, scene: { shows: "This is the test environment" } } : state;
 });
+
+const SHOP_ESTIMATES: GalleryState[] = [
+  { id: "complete", read: 3, total: 3, ready: 1, options: 1, stock: 1, unavailable: 0 },
+  { id: "zero-ready", read: 2, total: 2, ready: 0, options: 1, stock: 1, unavailable: 0 },
+  { id: "partial-zero", read: 100, total: 1240, ready: 0, options: 60, stock: 37, unavailable: 3 },
+  { id: "empty", read: 0, total: 0, ready: 0, options: 0, stock: 0, unavailable: 0 },
+  { id: "total-unknown", read: 100, total: null, ready: 72, options: 21, stock: 4, unavailable: 3 },
+].map(({ id, ...estimate }) =>
+  shopPress(
+    {
+      id: `dashboard-shop-estimate-${id}`,
+      screen: "WooCommerce",
+      when: "A merchant checks their public catalogue before approving access.",
+      cause: "A single public first page supplies an estimate; missing totals remain unknown.",
+    },
+    "connect",
+    shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 0, testMoney: false }), {
+      typed: SHOP,
+      preview: { kind: "read", estimate, sample: { currency: "USD", decimals: 2 } },
+    }),
+    { mode: "live" },
+  ),
+);
+SHOP_ESTIMATES.push(
+  ...[
+    {
+      id: "limit",
+      problem:
+        "shop.example.com lists 2,001 products. Agentify reads up to 2,000 in one go, so it can't bring this shop over yet.",
+    },
+    { id: "irt", problem: noReferenceFor("IRT") },
+  ].map(({ id, problem }) =>
+    shopPress(
+      {
+        id: `dashboard-shop-check-${id}`,
+        screen: "WooCommerce",
+        when: "A merchant checks a shop that cannot connect yet.",
+        cause: "The check refuses before asking the shop for access.",
+      },
+      "connect",
+      shopOn(shopRead({ kind: "none" }, { through: "api", codeProducts: 0, testMoney: false }), {
+        typed: SHOP,
+        problem,
+      }),
+      { mode: "live" },
+    ),
+  ),
+);
 
 const codeCase = ONBOARDING_CASES.find((one) => one.row === 20);
 if (codeCase === undefined) throw new Error("the onboarding situations have no code setup");
@@ -4217,6 +4284,7 @@ export const gallery: GallerySurface = {
     ...SIGNING_IN,
     ...SETTING_UP,
     ...ONBOARDING,
+    ...SHOP_ESTIMATES,
     ...CODE_KEYS,
     ...CODE_CONNECTIONS,
     ...CARDS,

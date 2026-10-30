@@ -11,7 +11,7 @@ import {
   EXAMPLE_PAGE,
   isTheGrantScreen as inspectGrantScreen,
   pricedExampleOfTheShop,
-  sampleOfTheShop,
+  publicShopOf,
   theStateToken,
   whatIsWrongWithTheShopUrl,
 } from "./woo-connect.js";
@@ -27,12 +27,14 @@ const shopAnswering = async (
     body?: string;
     location?: string;
     type?: string;
+    headers?: Record<string, string>;
   },
 ): Promise<{ url: string; close: () => Promise<void> }> => {
   const server: Server = createServer((request, response) => {
     const said = answer(request.url ?? "/", request.method ?? "");
     response.writeHead(said.status, {
       "content-type": said.type ?? "text/html; charset=UTF-8",
+      ...said.headers,
       ...(said.location === undefined ? {} : { location: said.location }),
     });
     response.end(said.body ?? "");
@@ -57,6 +59,12 @@ afterEach(async () => {
 });
 
 describe("the address a merchant types", () => {
+  it("accepts ordinary shop addresses without guessing a path or removing www", () => {
+    for (const typed of ["shop.example.com", "www.shop.example.com/", "http://shop.example.com/"]) {
+      expect(whatIsWrongWithTheShopUrl(typed), typed).toBeNull();
+    }
+  });
+
   it("takes an https shop", () => {
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com")).toBeNull();
     expect(whatIsWrongWithTheShopUrl("https://shop.example.com/")).toBeNull();
@@ -89,9 +97,7 @@ describe("the address a merchant types", () => {
 
   it("names, in a refusal, the address the merchant most likely meant", () => {
     for (const typed of [
-      "shop.example.com",
       "shop.example.com/wp-admin/admin.php?page=wc-settings",
-      "http://shop.example.com",
       "https://shop.example.com/wp-admin/",
       "https://owner:secret@shop.example.com",
     ]) {
@@ -108,7 +114,7 @@ describe("the address a merchant types", () => {
   });
 
   it("refuses what is not an address at all", () => {
-    for (const typed of ["", "   ", "shop.example.com", "ftp://shop.example.com", "https://"]) {
+    for (const typed of ["", "   ", "ftp://shop.example.com", "https://"]) {
       expect(whatIsWrongWithTheShopUrl(typed)).not.toBeNull();
     }
   });
@@ -261,10 +267,19 @@ describe("the currency a shop prices in, asked before Connect", () => {
   // Only a clear answer counts: null is "not known", and Connect then goes on
   // as before, so every case here that is not a product priced in a currency
   // must come back null rather than as a guess.
-  const pricedIn = async (url: string) => (await sampleOfTheShop(url, fetch))?.currency ?? null;
+  const pricedIn = async (url: string) => {
+    const read = await publicShopOf(url, fetch);
+    return read.kind === "read" ? (read.sample?.currency ?? null) : null;
+  };
   const storeProduct = (currency: unknown, minorUnit = 2) => ({
     id: 7,
     name: "Batik scarf",
+    type: "simple",
+    is_purchasable: true,
+    is_in_stock: true,
+    is_on_backorder: false,
+    stock_availability: { text: "" },
+    low_stock_remaining: null,
     prices: { price: "15000000", currency_code: currency, currency_minor_unit: minorUnit },
   });
 
@@ -286,9 +301,9 @@ describe("the currency a shop prices in, asked before Connect", () => {
             }
           : { status: 404, type: "application/json", body: '{"code":"rest_no_route"}' },
       );
-      expect(await sampleOfTheShop(shop.url, fetch), `${currency} ${minorUnit}`).toMatchObject({
-        currency,
-        decimals: minorUnit,
+      expect(await publicShopOf(shop.url, fetch), `${currency} ${minorUnit}`).toMatchObject({
+        kind: "read",
+        sample: { currency, decimals: minorUnit },
       });
       await shop.close();
       shop = null;
@@ -339,7 +354,156 @@ describe("the currency a shop prices in, asked before Connect", () => {
     const failing = async (): Promise<Response> => {
       throw new Error("the operation was aborted due to timeout");
     };
-    expect(await sampleOfTheShop("https://shop.example.com", failing)).toBeNull();
+    expect(await publicShopOf("https://shop.example.com", failing)).toEqual({ kind: "unread" });
+  });
+});
+
+describe("the anonymous catalogue estimate", () => {
+  const product = (changed: Record<string, unknown> = {}) => ({
+    type: "simple",
+    is_purchasable: true,
+    is_in_stock: true,
+    is_on_backorder: false,
+    stock_availability: { text: "" },
+    low_stock_remaining: null,
+    prices: { price: "2500", currency_code: "USD", currency_minor_unit: 2 },
+    ...changed,
+  });
+  const read = async (products: unknown, total?: string) => {
+    shop = await shopAnswering(() => ({
+      status: 200,
+      type: "application/json",
+      body: JSON.stringify(products),
+      ...(total === undefined ? {} : { headers: { "x-wp-total": total } }),
+    }));
+    return await publicShopOf(shop.url, fetch);
+  };
+
+  it("reads only the first hundred products and keeps the shop's larger total separate", async () => {
+    const asked: string[] = [];
+    shop = await shopAnswering((path) => {
+      asked.push(path);
+      return {
+        status: 200,
+        type: "application/json",
+        body: JSON.stringify(Array.from({ length: 100 }, () => product())),
+        headers: { "x-wp-total": "1240" },
+      };
+    });
+    expect(await publicShopOf(shop.url, fetch)).toMatchObject({
+      kind: "read",
+      estimate: { read: 100, total: 1240, ready: 100 },
+    });
+    expect(asked).toEqual(["/wp-json/wc/store/v1/products?per_page=100"]);
+  });
+
+  it.each([undefined, "bad", "-1", "0", "9007199254740992"])(
+    "does not invent a total from an absent or invalid count: %s",
+    async (total) => {
+      expect(await read([product()], total)).toMatchObject({
+        kind: "read",
+        estimate: { read: 1, total: null, ready: 1 },
+      });
+    },
+  );
+
+  it("distinguishes a known empty catalogue from an unread one", async () => {
+    expect(await read([], "0")).toEqual({
+      kind: "read",
+      sample: null,
+      estimate: { read: 0, total: 0, ready: 0, options: 0, stock: 0, unavailable: 0 },
+    });
+  });
+
+  it("uses disjoint stock, options and unavailable counts, never the private-field defaults", async () => {
+    expect(
+      await read(
+        [
+          product(),
+          product({ type: "variable" }),
+          product({ type: "variable", is_in_stock: false }),
+          product({ type: "grouped" }),
+          product({ type: "external" }),
+          product({ is_purchasable: false }),
+          product({ stock_availability: { text: "Only 2 left in stock" } }),
+          product({ low_stock_remaining: 0 }),
+          product({
+            stock_availability: { text: "Available on backorder" },
+            is_on_backorder: true,
+          }),
+        ],
+        "9",
+      ),
+    ).toMatchObject({
+      kind: "read",
+      estimate: { read: 9, ready: 2, options: 1, stock: 2, unavailable: 4 },
+    });
+  });
+
+  it.each([
+    "type",
+    "is_purchasable",
+    "is_in_stock",
+    "is_on_backorder",
+    "stock_availability",
+    "low_stock_remaining",
+    "prices",
+  ])("keeps missing %s unknown rather than counting a product as ready", async (field) => {
+    const one: Record<string, unknown> = product();
+    delete one[field];
+    expect(await read([one], "1")).toMatchObject({ kind: "unread" });
+  });
+
+  it("retains independently known size and prices when readiness fields are unreadable", async () => {
+    expect(
+      await read(
+        [{ prices: { price: "2500", currency_code: "IRT", currency_minor_unit: 2 } }],
+        "2001",
+      ),
+    ).toEqual({ kind: "unread", total: 2001, sample: { currency: "IRT", decimals: 2 } });
+  });
+
+  it("does not claim a single currency where the public prices disagree", async () => {
+    expect(
+      await read(
+        [
+          product(),
+          product({ prices: { price: "240000", currency_code: "IDR", currency_minor_unit: 0 } }),
+        ],
+        "2",
+      ),
+    ).toMatchObject({ kind: "read", sample: null });
+  });
+
+  it.each([
+    ["<html><script src='/wp-content/theme.js'></script></html>", /permalink.*Check my shop again/],
+    ["<html><body>A different site</body></html>", /does not look like WordPress/],
+  ])("refuses a successful page response instead of estimating zero: %s", async (body, refusal) => {
+    shop = await shopAnswering(() => ({ status: 200, body: String(body) }));
+    expect(await publicShopOf(shop.url, fetch)).toMatchObject({
+      kind: "refused",
+      why: expect.stringMatching(refusal),
+    });
+  });
+});
+
+describe("public list refusal status", () => {
+  it.each([200, 404])("recognizes a WordPress own page at status %s", async (status) => {
+    shop = await shopAnswering(() => ({
+      status,
+      body: "<html><script src='/wp-includes/wp.js'></script></html>",
+    }));
+    expect(await publicShopOf(shop.url, fetch)).toMatchObject({
+      kind: "refused",
+      why: expect.stringMatching(/permalink/),
+    });
+  });
+  it("keeps a forbidden page unknown even when a firewall includes WordPress assets", async () => {
+    shop = await shopAnswering(() => ({
+      status: 403,
+      body: "<html><script src='/wp-content/theme.js'></script>Forbidden</html>",
+    }));
+    expect(await publicShopOf(shop.url, fetch)).toEqual({ kind: "unread" });
   });
 });
 

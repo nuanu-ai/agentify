@@ -65,6 +65,13 @@ export const ONBOARDING_CASES: readonly {
     page: "shop",
     reason: null,
   },
+  ...([7, 8] as const).map((row) => ({
+    row,
+    when: row === 7 ? "Public catalogue estimate" : "Public catalogue unread",
+    facts: { ...initial, platform: "woocommerce" as const },
+    page: "shop",
+    reason: null,
+  })),
   ...([9, 10, 11, 12, 13, 14] as const).map((row) => ({
     row,
     when: {

@@ -232,27 +232,45 @@ are yours to settle; this page does not answer them.
 
 ## Connecting your shop
 
-You type the public https address at the root of your shop, and your browser
-goes there next so that WooCommerce can ask you to approve access. Approve read
-and write: with read alone, every purchase is refused before payment, because
-Agentify cannot create the order in your shop. Agentify never asks for your
-shop password.
+Choose WooCommerce on Products, type your shop's address and press **Check my
+shop**. You can type just the host, an http address or a trailing slash; the
+field shows the https origin Agentify checks, keeping `www` where you typed it.
+An address with a password, query or page path is refused rather than guessed.
+A WordPress installed in a subfolder cannot connect yet.
+
+The check reads the first 100 products in one public catalogue request and
+uses the shop's `X-WP-Total` count where it is readable. The estimate says how
+many were read and how many look ready. An absent count stays unknown, and a
+partial list is not reported as the whole shop. Options, inferred stock
+counting and products not for sale are counted separately. Stock counting is
+inferred from WooCommerce's availability text or low-stock quantity on a
+product in stock and not on backorder, so a theme or plugin can affect the
+estimate. Shipping, downloads, tax and shipping settings are checked after
+connection.
+
+The same check refuses more than 2,000 products where the shop gives that
+count, a different connected shop, open orders from your code, an unreadable
+https address or a page that is not the public product list. For a shop priced
+outside US dollars, it checks the written decimals and whether Coinbase gives
+a reference rate. Only zero or two decimals are supported for such a shop.
+Coinbase not answering is different from Coinbase giving no rate: the page
+asks you to check again. A blocked, slow or unreadable public catalogue is
+reported as unknown, never as no products. The check waits up to fifteen
+seconds and asks your shop for no access.
+
+Read the result, then press **Connect shop**. WooCommerce asks you to approve
+read and write access: with read alone, every purchase is refused before
+payment because Agentify cannot create the order in your shop. Agentify never
+asks for your shop password. Editing the address removes the estimate and
+returns to Check my shop. Without script, sending a changed address checks it
+instead of connecting it. Connect repeats the door checks, so an old estimate
+cannot bypass a shop or account restriction that changed meanwhile.
 
 Once read and write access is confirmed, the connected shop's origin fills an
 empty seller site. A site you already chose in Settings is kept. If saving
 the site fails, the connection stays and the page offers a retry without
 asking you to type the address again. A shop address with a port cannot be a
 seller site; the page leads to Settings to choose a site without one.
-
-Before your browser leaves for the shop, Agentify reads one product from your
-shop's public catalogue to learn the currency it is priced in and the decimals
-it writes. A shop priced in another currency than US dollars is refused there,
-before you approve anything and with nothing changed in how you sell, when its
-prices are written with any number of decimals other than none or two, or when
-Coinbase gives no rate for its currency. When Coinbase does not answer, Connect
-stops and asks you to press it again in a moment. When the catalogue gives no
-clear answer, because the shop has no products yet or does not serve its public
-catalogue, Connect goes ahead and the import names each product it cannot sell.
 
 Every request the connector makes to your shop names itself with the User-Agent
 `Agentify/1 (+https://agentify.ad)`, so if a firewall or security plugin in

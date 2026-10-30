@@ -35,10 +35,10 @@ import {
   noReferenceFor,
   type Preflight,
   type PricedExample,
+  type PublicShopRead,
   pricedExampleOfTheShop,
+  publicShopOf,
   referenceUnanswered,
-  type ShopSample,
-  sampleOfTheShop,
   shopUrlAs,
   theStateToken,
   whatIsWrongWithTheShopUrl,
@@ -71,6 +71,7 @@ import {
   referenceShown,
   type Said,
   type ShopAnswer,
+  type ShopRead,
   type ShopState,
   settingsNamed,
   type WooImportView,
@@ -89,7 +90,7 @@ import { SITE_IN_SETTINGS, type Unset } from "./words.js";
 export interface ShopCalls {
   readonly grantScreen: (authorizeUrl: string) => Promise<Preflight>;
   /** Null where the shop did not clearly say. */
-  readonly sample: (shopUrl: string) => Promise<ShopSample | null>;
+  readonly preview: (shopUrl: string) => Promise<PublicShopRead>;
   /** The rate guard's example, in the shop's currency at its decimals. */
   readonly example?: (shopUrl: string, currency: ShopCurrency) => Promise<PricedExample>;
   /** Coinbase's rate for one US dollar; not the shop's, but read only beside it. */
@@ -346,7 +347,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
   /** Where a shop sends the merchant back to, and posts the keys to. */
   const whereWeAre = `${config.publicBaseUrl}${base}`;
   const grantScreen = parts.shop?.grantScreen ?? isTheGrantScreen;
-  const sample = parts.shop?.sample ?? sampleOfTheShop;
+  const preview = parts.shop?.preview ?? publicShopOf;
   const example =
     parts.shop?.example ??
     ((shopUrl: string, currency: ShopCurrency) => pricedExampleOfTheShop(shopUrl, currency));
@@ -421,11 +422,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
    * hide the switch on a guess. Unread settings also fail the page: an unread
    * site must not look empty. Products that could not be counted have no number.
    */
-  const drawTheShop = async (
-    person: Person,
-    answer: ShopAnswer,
-    status = 200,
-  ): Promise<Outcome<WooShopView>> => {
+  const readTheShop = async (person: Person): Promise<Outcome<ShopRead>> => {
     const gateway = gatewayAs(person);
     const [state, integration, rate, unset] = await Promise.all([
       shopStateOf(shops, person.id),
@@ -438,23 +435,28 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     const { through, offSale } = integration.document;
     return {
       kind: "view",
-      status,
-      view: wooShopView(
-        {
-          state,
-          through,
-          // Off sale are the cards of the integration not in use: the code's
-          // while the shop is, the shop's while the code is.
-          codeProducts:
-            through === "woocommerce" ? offSale.length : await codeProductsBeside(gateway, offSale),
-          unset: unset.document.settings,
-          sellerSite: unset.document.site,
-          testMoney: config.surfaceMode !== "live",
-          ...(rate === null ? {} : { rate }),
-        },
-        answer,
-      ),
+      view: {
+        state,
+        through,
+        codeProducts:
+          through === "woocommerce" ? offSale.length : await codeProductsBeside(gateway, offSale),
+        unset: unset.document.settings,
+        sellerSite: unset.document.site,
+        testMoney: config.surfaceMode !== "live",
+        ...(rate === null ? {} : { rate }),
+      },
     };
+  };
+
+  const drawTheShop = async (
+    person: Person,
+    answer: ShopAnswer,
+    status = 200,
+  ): Promise<Outcome<WooShopView>> => {
+    const read = await readTheShop(person);
+    return read.kind === "view"
+      ? { kind: "view", status, view: wooShopView(read.view, answer) }
+      : read;
   };
 
   const codeProductsBeside = async (
@@ -868,112 +870,153 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
     async connect(person, form) {
       const named = once(form.getAll("shop_url"));
       const typed = typeof named === "string" ? named.trim() : "";
-
       const wrong = whatIsWrongWithTheShopUrl(typed);
-      if (wrong !== null) {
-        return await drawTheShop(person, { addressProblem: wrong, typed }, 400);
-      }
-      const shopUrl = shopUrlAs(typed);
-
-      // Our own address first: WooCommerce refuses a `callback_url` that is not
-      // https, so on an http deployment every Connect would end at the shop's
-      // own SSL refusal for something that is ours.
-      if (!whereWeAre.startsWith("https://")) {
-        return await drawTheShop(
-          person,
-          {
+      const shopUrl = wrong === null ? shopUrlAs(typed) : typed;
+      const connect = once(form.getAll("checked_shop")) === shopUrl;
+      const token = theStateToken();
+      let authorize = "";
+      let cachedRead: ShopRead | null = null;
+      const drawChecked = (answer: ShopAnswer, status = 200): Outcome<WooShopView> =>
+        cachedRead === null
+          ? {
+              kind: "problem",
+              problem: {
+                status: 503,
+                said: "Your account could not be checked just now. Press Check my shop again.",
+              },
+            }
+          : { kind: "view", status, view: wooShopView(cachedRead, answer) };
+      type Checked =
+        | { readonly failed: Outcome<WooShopView> }
+        | {
+            readonly problem: Said;
+            readonly status: number;
+            readonly preview?: PublicShopRead;
+            readonly address?: boolean;
+          }
+        | { readonly preview: PublicShopRead; readonly currency: ShopCurrency | null };
+      let timedOut = false;
+      let timeoutAnswer: Checked = {
+        problem: "Your account could not be checked just now. Press Check my shop again.",
+        status: 503,
+      };
+      // All work before this race is read-only. A late answer cannot create a
+      // grant after the page has already said it could not read the shop.
+      const check = async (): Promise<Checked> => {
+        const baseRead = await readTheShop(person);
+        if (timedOut) return timeoutAnswer;
+        if (baseRead.kind !== "view") return { failed: baseRead };
+        cachedRead = baseRead.view;
+        if (wrong !== null) return { problem: wrong, status: 400, address: true };
+        authorize = authorizeUrlFor(shopUrl, {
+          appName: APP_NAME,
+          userId: token,
+          returnUrl: `${whereWeAre}/woocommerce/return`,
+          callbackUrl: `${whereWeAre}/woocommerce/callback`,
+        });
+        if (!whereWeAre.startsWith("https://"))
+          return {
             problem:
               `This Agentify deployment is reachable at ${whereWeAre}, which is not https, and WooCommerce` +
-              " will not send a shop's keys to an address that is not. Nothing here can connect a" +
+              " will not send a shop's access credentials to an address that is not. Nothing here can connect a" +
               " shop until whoever runs this deployment puts it behind https.",
-            typed,
-          },
-          400,
-        );
-      }
-
-      const connected = await shops.connectionOf(person.id);
-      if (connected !== null && new URL(connected.shopUrl).origin !== new URL(shopUrl).origin) {
-        return await drawTheShop(
-          person,
-          {
-            problem: `Disconnect ${shopNameOf(connected.shopUrl)} before connecting another shop.`,
-            typed,
-          },
-          409,
-        );
-      }
-
-      // Minted first, so the address checked is character for character the
-      // address the browser is sent to.
-      const token = theStateToken();
-      const authorize = authorizeUrlFor(shopUrl, {
-        appName: APP_NAME,
-        userId: token,
-        returnUrl: `${whereWeAre}/woocommerce/return`,
-        callbackUrl: `${whereWeAre}/woocommerce/callback`,
-      });
-
-      // A shop that could sell nothing, in a currency or at decimals out of
-      // scope, is refused before the merchant approves keys whose arrival
-      // would take the code's cards off sale. Asked alongside the grant
-      // screen, so Connect waits for the slower of the two rather than both in
-      // turn.
-      //
-      // A shop with plain permalinks answers the grant address with its own
-      // front page and a 200, so a merchant sent there would land on their
-      // shop with nothing to report.
-      const [sampled, looked] = await Promise.all([sample(shopUrl), grantScreen(authorize)]);
-      const decimals = sampled === null ? null : shopDecimalsOf(String(sampled.decimals));
-      if (sampled !== null && sampled.currency !== "USD") {
-        if (decimals === null) {
-          return await drawTheShop(
-            person,
-            { problem: writesOtherDecimals(sampled.currency, sampled.decimals), typed },
-            400,
-          );
-        }
-        const listed = await reference(sampled.currency);
-        if (!listed.ok) {
-          return await drawTheShop(
-            person,
-            {
+            status: 400,
+          };
+        const connected = cachedRead.state.kind === "connected" ? cachedRead.state.shop : null;
+        if (connected !== null && new URL(connected.shopUrl).origin !== shopUrl)
+          return {
+            problem: {
+              why: `Disconnect ${shopNameOf(connected.shopUrl)} before connecting another shop.`,
+              follow: "integrations",
+            },
+            status: 409,
+          };
+        const gateway = gatewayAs(person);
+        const allowed = await gateway.maySellThrough("woocommerce");
+        if (timedOut) return timeoutAnswer;
+        if (!allowed.ok)
+          return { problem: await refusedMove(gateway, "woocommerce", allowed), status: 409 };
+        timeoutAnswer = { preview: { kind: "unread" }, currency: null };
+        const read = await preview(shopUrl);
+        if (timedOut) return timeoutAnswer;
+        if (read.kind === "refused") return { problem: read.why, status: 400 };
+        const total = read.kind === "read" ? read.estimate.total : (read.total ?? null);
+        if (total !== null && total > PRODUCTS_AT_MOST)
+          return {
+            problem: `${shopNameOf(shopUrl)} lists ${total.toLocaleString("en-US")} products. Agentify reads up to 2,000 in one go, so it can't bring this shop over yet.`,
+            status: 400,
+          };
+        const sampled = read.sample ?? null;
+        const decimals = sampled === null ? null : shopDecimalsOf(String(sampled.decimals));
+        if (sampled !== null && sampled.currency !== "USD") {
+          if (decimals === null)
+            return {
+              problem: writesOtherDecimals(sampled.currency, sampled.decimals),
+              status: 400,
+            };
+          timeoutAnswer = { problem: referenceUnanswered(sampled.currency), status: 503 };
+          const listed = await reference(sampled.currency);
+          if (timedOut) return timeoutAnswer;
+          if (!listed.ok)
+            return {
               problem:
                 listed.listed === false
                   ? noReferenceFor(sampled.currency)
                   : referenceUnanswered(sampled.currency),
-              typed,
-            },
-            listed.listed === false ? 400 : 503,
-          );
+              status: listed.listed === false ? 400 : 503,
+            };
         }
+        if (connect) {
+          timeoutAnswer = {
+            problem:
+              "Our server could not reach this shop. Check the address and shop status, then try again.",
+            status: 503,
+            preview: read,
+          };
+          const looked = await grantScreen(authorize);
+          if (timedOut) return timeoutAnswer;
+          if (!looked.ok) return { problem: looked.why, status: 400, preview: read };
+        }
+        return {
+          preview: read,
+          currency:
+            sampled === null || decimals === null ? null : { code: sampled.currency, decimals },
+        };
+      };
+      let late: ReturnType<typeof setTimeout> | undefined;
+      let checked: Checked;
+      try {
+        checked = await Promise.race([
+          check(),
+          new Promise<Checked>((resolve) => {
+            late = setTimeout(() => {
+              timedOut = true;
+              resolve(timeoutAnswer);
+            }, 15_000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(late);
       }
-      if (!looked.ok) {
-        return await drawTheShop(person, { problem: looked.why, typed }, 400);
-      }
-
-      // Only asked here: the switch is made when the keys arrive, so a
-      // merchant who never approves keeps the code's cards on sale. Asking
-      // first tells them beside the button what would refuse it now.
-      const allowed = await gatewayAs(person).maySellThrough("woocommerce");
-      if (!allowed.ok) {
-        return await drawTheShop(
-          person,
-          { problem: await refusedMove(gatewayAs(person), "woocommerce", allowed), typed },
-          409,
+      if ("failed" in checked) return checked.failed;
+      if ("problem" in checked)
+        return drawChecked(
+          {
+            ...(checked.address
+              ? { addressProblem: String(checked.problem) }
+              : { problem: checked.problem }),
+            typed: shopUrl,
+            ...(checked.preview === undefined ? {} : { preview: checked.preview }),
+          },
+          checked.status,
         );
-      }
-
-      // Written only now: a Connect nobody could complete is a row nobody comes
-      // back for. One clock reading for both fields, so "started four minutes
-      // ago" and "the fifteen minutes are up" can never disagree.
+      if (!connect || timedOut) return drawChecked({ preview: checked.preview, typed: shopUrl });
       const startedAt = new Date();
       await shops.beginGrant({
         token,
         accountId: person.id,
         shopUrl,
-        currency:
-          sampled === null || decimals === null ? null : { code: sampled.currency, decimals },
+        currency: checked.currency,
         startedAt,
         expiresAt: new Date(startedAt.getTime() + GRANT_MINUTES * 60_000),
       });

@@ -33,6 +33,10 @@ import { buildApp } from "./server.js";
 import { ONE_CLIENT } from "./testing/link-sends.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 
+import { publicShopOf } from "./woo-connect.js";
+import { catalogueOf, inspectProductInTheShop, inspectProductsInTheShop } from "./woo-shop.js";
+import { memoryWooShops } from "./woo-shops.js";
+
 const PERSON = "owner@example.com";
 const SLOW_MS = 1_500;
 const BASE = "/dashboard";
@@ -1031,3 +1035,133 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
     await isolated.stop();
   }
 });
+
+it("checks a WooCommerce shop on Products, invalidates edited results and keeps the action below the result at four widths", async () => {
+  const isolated = await harness();
+  const mails: Message[] = [];
+  const config = loadConfig({
+    DATABASE_URL: "postgres://nobody@nowhere/unused",
+    AUTH_SECRET: TEST_AUTH_SECRET,
+    PAYMENT_NETWORK: "eip155:84532",
+    FACILITATOR_URL: "sandbox:scripted",
+    BASE_PATH: BASE,
+    PUBLIC_BASE_URL: "https://dashboard.example.com",
+  });
+  const identity = identityFor(config, {
+    postman: async (message) => {
+      mails.push(message);
+      return "accepted";
+    },
+  });
+  const person = await identity.make("shop-check@example.com", isolated.merchant.id);
+  if (person === null) throw new Error("the shop account was not created");
+  await identity.choosePlatform(person.id, "woocommerce");
+  await identity.requestLink(person.email, "default", ONE_CLIENT);
+  const link = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+  const signedIn = await identity.openLink(link.searchParams.get("token") ?? "");
+  if (signedIn.status !== "opened") throw new Error("the shop sign-in did not open");
+  const shops = memoryWooShops();
+  const product = {
+    type: "simple",
+    is_purchasable: true,
+    is_in_stock: true,
+    is_on_backorder: false,
+    stock_availability: { text: "" },
+    low_stock_remaining: null,
+    prices: { price: "2500", currency_code: "USD", currency_minor_unit: 2 },
+  };
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let first = true;
+  const app = express();
+  app.use(
+    "/styles",
+    express.static(
+      fileURLToPath(new URL("../../../packages/visual/public/styles", import.meta.url)),
+    ),
+  );
+  app.use(
+    buildApp(config, {
+      pages: await builtPages(),
+      gateway: isolated.gateway,
+      identity,
+      wooShops: shops,
+      shop: {
+        preview: (url) =>
+          publicShopOf(url, async () => {
+            if (first) {
+              first = false;
+              entered.resolve();
+              await release.promise;
+            }
+            return Response.json(
+              [product, { ...product, type: "variable" }, { ...product, low_stock_remaining: 0 }],
+              { headers: { "x-wp-total": "3" } },
+            );
+          }),
+        grantScreen: async () => ({
+          ok: false,
+          why: "This local browser test never leaves for approval.",
+        }),
+        catalogue: catalogueOf,
+        inspectProduct: inspectProductInTheShop,
+        inspectProducts: inspectProductsInTheShop,
+      },
+    }),
+  );
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const testOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const context = await browser.newContext();
+  await context.addCookies(
+    signedIn.setCookies.map((line) => {
+      const pair = line.split(";")[0] ?? "";
+      const at = pair.indexOf("=");
+      return { name: pair.slice(0, at), value: pair.slice(at + 1), url: testOrigin };
+    }),
+  );
+  const page = await context.newPage();
+  try {
+    for (const width of [1440, 1024, 768, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${testOrigin}${BASE}/products`);
+      await page.waitForLoadState("networkidle");
+      const address = page.getByRole("textbox", { name: "Shop address" });
+      await address.fill("woo.nuanu.ai/");
+      const check = page.getByRole("button", { name: "Check my shop", exact: true });
+      const clicked = check.click();
+      if (width === 1440) {
+        await entered.promise;
+        await expect.poll(() => check.isEnabled()).toBe(false);
+        expect(await address.getAttribute("readonly")).not.toBeNull();
+        release.resolve();
+      }
+      await clicked;
+      const connect = page.getByRole("button", { name: "Connect shop", exact: true });
+      await connect.waitFor();
+      expect(await address.inputValue()).toBe("https://woo.nuanu.ai");
+      const result = page.getByText("1 of 3 products looks ready to sell.", { exact: true });
+      const geometry = await result.boundingBox();
+      const press = await connect.boundingBox();
+      expect((geometry?.y ?? 0) + (geometry?.height ?? 0)).toBeLessThan(press?.y ?? 0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      );
+      expect(await shops.grantFor(person.id)).toBeNull();
+      await address.fill("www.woo.nuanu.ai");
+      expect(await result.count()).toBe(0);
+      expect(await connect.count()).toBe(0);
+      await address.press("Enter");
+      await connect.waitFor();
+      expect(await address.inputValue()).toBe("https://www.woo.nuanu.ai");
+      expect(await shops.grantFor(person.id)).toBeNull();
+      expect(new URL(page.url()).pathname).toBe(`${BASE}/products`);
+    }
+  } finally {
+    release.resolve();
+    await context.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await identity.close();
+    await isolated.stop();
+  }
+}, 40_000);

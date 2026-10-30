@@ -15,6 +15,7 @@ import { keepUnits, withUnit } from "@agentify/ui/units";
 import { SellerSiteSchema } from "@nuanu-ai/agentify-contracts";
 import { type MomentView, momentView } from "./views.js";
 import { merchantItemIdFor, type SkippedProduct } from "./woo-catalog.js";
+import type { PublicShopRead } from "./woo-connect.js";
 import { GRANT_MINUTES } from "./woo-connect.js";
 import { gapOf } from "./woo-money.js";
 import type { ReferenceRead } from "./woo-reference.js";
@@ -85,15 +86,15 @@ const minutesAgo = (minutes: number): string =>
 export const noKeysYet = (state: ShopState): NoKeysYet | null => {
   if (state.kind === "waiting") {
     return {
-      what: "Waiting for your shop's keys",
-      why: `You started connecting ${shopNameOf(state.shopUrl)} ${minutesAgo(state.startedMinutesAgo)}. If you approved, the keys arrive in a moment. If you closed the approval screen, connect again.`,
+      what: "Waiting for your shop to connect",
+      why: `You started connecting ${shopNameOf(state.shopUrl)} ${minutesAgo(state.startedMinutesAgo)}. If you approved access, the connection finishes in a moment. If you closed the approval screen, connect again.`,
       waiting: true,
     };
   }
   if (state.kind === "unanswered") {
     return {
-      what: "No keys came from your shop",
-      why: `No keys came from ${shopNameOf(state.shopUrl)} within ${withUnit(GRANT_MINUTES, "minutes")}, and we can't tell why. Connect again.`,
+      what: "Your shop has not connected",
+      why: `We didn't hear back from ${shopNameOf(state.shopUrl)} within ${withUnit(GRANT_MINUTES, "minutes")}, and we can't tell why. Connect again.`,
       waiting: false,
     };
   }
@@ -123,7 +124,7 @@ export interface Refusal {
    * purchases about to lapse hold a move and new ones can keep arriving, or
    * Products where an import already running publishes what it reads.
    */
-  readonly follow: "pause" | "products" | null;
+  readonly follow: "pause" | "products" | "integrations" | null;
 }
 
 /**
@@ -176,7 +177,7 @@ export const heldBy = (
  */
 export type Said =
   | string
-  | Readonly<{ why: string }>
+  | Readonly<{ why: string; follow?: "integrations" }>
   | Readonly<{ held: Held }>
   | Readonly<{ running: true }>;
 
@@ -199,7 +200,7 @@ const heldSays = ({ to, orders, quick, parcels }: Held): string => {
 const refusalOf = (said: Said | undefined): Refusal | null => {
   if (said === undefined) return null;
   if (typeof said === "string") return { says: said, orders: [], more: 0, follow: null };
-  if ("why" in said) return { says: said.why, orders: [], more: 0, follow: null };
+  if ("why" in said) return { says: said.why, orders: [], more: 0, follow: said.follow ?? null };
   if ("running" in said) {
     return {
       says: "An import of your shop is already running. Import again once it ends to see a result here.",
@@ -256,7 +257,7 @@ export interface ConnectionView {
    * The shop granted less than read and write, which cannot create a single
    * order, so every purchase is refused before payment.
    */
-  readonly readOnly: boolean;
+  readonly access: "read" | "read_write" | "other";
   /**
    * The merchant sells through their own code while this shop is connected: an
    * order of the code's open when the keys arrived refused the switch, or a
@@ -319,6 +320,7 @@ export interface WooShopView {
    * the connection says on a reload or tomorrow.
    */
   readonly keysArrived: boolean;
+  readonly preview: PublicShopRead | null;
   readonly connection: ConnectionView | null;
   /**
    * The way back to the merchant's own code, for one who sells through a shop
@@ -378,6 +380,7 @@ export interface ShopRead {
 
 /** What the screen is drawn in answer to, where it answers a press or a return. */
 export interface ShopAnswer {
+  readonly preview?: PublicShopRead;
   readonly siteSaved?: boolean;
   readonly siteProblem?: string;
   readonly addressProblem?: string;
@@ -480,6 +483,7 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
   const leavingUnplaced = state.kind !== "connected" && !wayBack;
   return {
     screen: "shop",
+    preview: answer.preview ?? null,
     keysArrived: answer.cameBack === true && state.kind === "connected",
     connection:
       state.kind === "connected"
@@ -500,7 +504,12 @@ export const wooShopView = (read: ShopRead, answer: ShopAnswer): WooShopView => 
             shopUrl: state.shop.shopUrl,
             shop: shopNameOf(state.shop.shopUrl),
             connectedAt: momentView(state.shop.connectedAt.toISOString()),
-            readOnly: state.shop.permissions !== "read_write",
+            access:
+              state.shop.permissions === "read"
+                ? "read"
+                : state.shop.permissions === "read_write"
+                  ? "read_write"
+                  : "other",
             onCode: read.through === "api",
             switching: refusalOf(answer.switching),
             importing: refusalOf(answer.importing),

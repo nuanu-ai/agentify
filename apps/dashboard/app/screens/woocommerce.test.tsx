@@ -556,8 +556,9 @@ describe("what the shop screen holds before it is pressed", () => {
         }),
       );
 
-      expect(text, permissions).toContain("didn't grant Read/Write access");
-      expect(text, permissions).not.toMatch(/read-only/i);
+      expect(text, permissions).toContain("can't create orders");
+      if (permissions === "write") expect(text).not.toMatch(/read-only/i);
+      else expect(text).toMatch(/read-only access/i);
       expect(text, permissions).not.toContain("Connected");
     }
   });
@@ -627,7 +628,7 @@ describe("what the shop screen offers while no keys are here", () => {
     const html = shopPage({ state: { kind: "unanswered", shopUrl: SHOP }, through: "api" });
 
     expect(readable(html)).not.toContain("Check again");
-    expect(readable(html)).toContain("No keys came");
+    expect(readable(html)).toContain("We didn't hear back");
     expect(formOf(html, "/woocommerce/connect")).toContain(`value="${SHOP}"`);
   });
 });

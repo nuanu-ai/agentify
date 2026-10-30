@@ -33,7 +33,12 @@ import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { WOO_SITE_CASES } from "./testing/woo-site-cases.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
-import type { Preflight, PricedExample, ShopSample } from "./woo-connect.js";
+import {
+  type Preflight,
+  type PricedExample,
+  publicShopOf,
+  type ShopSample,
+} from "./woo-connect.js";
 import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
@@ -68,6 +73,9 @@ const aProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
   short_description: "",
   is_purchasable: true,
   is_in_stock: true,
+  is_on_backorder: false,
+  stock_availability: { text: "" },
+  low_stock_remaining: null,
   status: "publish",
   virtual: true,
   downloadable: true,
@@ -346,8 +354,17 @@ const started = async (standing: Standing = {}): Promise<Running> => {
           ? { ok: true }
           : await standing.grantScreen(authorizeUrl);
       },
-      sample: async (shopUrl) =>
-        standing.sample === undefined ? IN_DOLLARS : await standing.sample(shopUrl),
+      preview: async (shopUrl) => {
+        if (standing.shop !== undefined) return await publicShopOf(shopUrl, standing.shop);
+        const sample = standing.sample === undefined ? IN_DOLLARS : await standing.sample(shopUrl);
+        return sample === null
+          ? { kind: "unread" }
+          : {
+              kind: "read",
+              sample,
+              estimate: { read: 1, total: 1, ready: 1, stock: 0, options: 0, unavailable: 0 },
+            };
+      },
       example: async (shopUrl, currency) =>
         standing.example === undefined
           ? { kind: "unanswered" }
@@ -550,12 +567,263 @@ const grantedBody = (token: string, permissions = "read_write") => ({
 const bannerIn = (html: string): string =>
   readable(/<section class="account-banner"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "");
 
+describe("checking a shop before asking for access", () => {
+  it("leaves the integration and grant untouched until the second explicit press", async () => {
+    const running = await started();
+    await running.signIn();
+    const checked = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(checked.status).toBe(200);
+    expect(checked.to).toBeNull();
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    expect(await running.shops.connectionOf(running.accountId)).toBeNull();
+    expect(
+      (await running.harnessed.gateway.integrationOf(running.harnessed.merchant.id)).through,
+    ).toBe("api");
+    expect(running.asked).toEqual([]);
+    expect(formTo(checked.html, "post", "/woocommerce/connect")).toBeDefined();
+  });
+
+  it("checks a changed address without script instead of granting it", async () => {
+    const running = await started();
+    await running.signIn();
+    const checked = await running.post("/woocommerce/connect", {
+      shop_url: "https://second.example.com",
+      checked_shop: SHOP,
+    });
+    expect(checked.status).toBe(200);
+    expect(checked.to).toBeNull();
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    expect(running.asked).toEqual([]);
+    expect(checked.html).toContain('value="https://second.example.com"');
+  });
+
+  it("does not mistake inferred managed stock for a ready product", async () => {
+    const running = await started({
+      shop: async () =>
+        Response.json(
+          [
+            {
+              ...aProduct(),
+              is_on_backorder: false,
+              stock_availability: { text: "" },
+              low_stock_remaining: null,
+            },
+            {
+              ...aProduct({ id: 2 }),
+              is_on_backorder: false,
+              stock_availability: { text: "24 in stock" },
+              low_stock_remaining: null,
+            },
+            {
+              ...aProduct({ id: 3 }),
+              is_on_backorder: false,
+              stock_availability: { text: "" },
+              low_stock_remaining: 0,
+            },
+          ],
+          { headers: { "x-wp-total": "3" } },
+        ),
+    });
+    await running.signIn();
+    const checked = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(checked.status).toBe(200);
+    expect(readable(checked.html)).toContain("1 of 3 products looks ready to sell");
+    expect(readable(checked.html)).toContain("2 count their stock");
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+});
+
+describe("the public shop door", () => {
+  const publicProduct = (changed: Record<string, unknown> = {}) => ({
+    ...aProduct(),
+    is_on_backorder: false,
+    stock_availability: { text: "" },
+    low_stock_remaining: null,
+    ...changed,
+  });
+
+  it.each([
+    {
+      total: "1240",
+      products: [publicProduct()],
+      ready: "Your shop lists 1,240 products",
+      checked: true,
+    },
+    {
+      total: "1",
+      products: [publicProduct({ type: "variable" })],
+      ready: "none look ready",
+      checked: true,
+    },
+    {
+      total: "1240",
+      products: [publicProduct({ type: "variable" })],
+      ready: "Your shop lists 1,240 products. We looked at the first 1, and none look ready",
+      checked: true,
+    },
+    { total: "0", products: [], ready: "We looked at 0 products", checked: true },
+    { total: "2001", products: [publicProduct()], ready: "reads up to 2,000", checked: false },
+  ])("keeps the estimate honest and refuses an oversized shop: $total", async (one) => {
+    const running = await started({
+      shop: async () => Response.json(one.products, { headers: { "x-wp-total": one.total } }),
+    });
+    await running.signIn();
+    const page = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(readable(page.html)).toContain(one.ready);
+    const form = formTo(page.html, "post", "/woocommerce/connect");
+    expect(form?.presses.map((button) => button.label)).toEqual([
+      one.checked ? "Connect shop" : "Check my shop",
+    ]);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+
+  it.each([
+    { total: "2001", currency: "USD", decimals: 2, reason: /reads up to 2,000/ },
+    { total: "1", currency: "IRT", decimals: 2, reason: /Coinbase gives no rate/ },
+    { total: "1", currency: "KWD", decimals: 3, reason: /3 decimals/ },
+  ])("retains the $currency/$total door when readiness fields are missing", async (one) => {
+    const running = await started({
+      shop: async () =>
+        Response.json(
+          [
+            {
+              prices: {
+                price: "2500",
+                currency_code: one.currency,
+                currency_minor_unit: one.decimals,
+              },
+            },
+          ],
+          { headers: { "x-wp-total": one.total } },
+        ),
+      reference: async () => ({ ok: false, listed: false }),
+    });
+    await running.signIn();
+    const page = await running.post("/woocommerce/connect", { shop_url: SHOP, checked_shop: SHOP });
+    expect(page.status).toBe(400);
+    expect(readable(page.html)).toMatch(one.reason);
+    expect(
+      formTo(page.html, "post", "/woocommerce/connect")?.presses.map((button) => button.label),
+    ).toEqual(["Check my shop"]);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+
+  it("does not redraw a checked result from a second gateway read", async () => {
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<Response>();
+    const running = await started({
+      shop: async () => {
+        entered.resolve();
+        return await released.promise;
+      },
+    });
+    await running.signIn();
+    const pending = running.post("/woocommerce/connect", { shop_url: SHOP });
+    await entered.promise;
+    const unavailable = vi
+      .spyOn(running.harnessed.store, "merchantById")
+      .mockRejectedValue(new Error("gateway stopped after the check started"));
+    try {
+      released.resolve(Response.json([publicProduct()], { headers: { "x-wp-total": "1" } }));
+      const page = await pending;
+      expect(page.status).toBe(200);
+      expect(
+        formTo(page.html, "post", "/woocommerce/connect")?.presses.map((button) => button.label),
+      ).toEqual(["Connect shop"]);
+      expect(readable(page.html)).toContain("1 of 1 product looks ready");
+    } finally {
+      unavailable.mockRestore();
+    }
+  });
+
+  it("keeps an unread catalogue distinct from no ready products and still offers access", async () => {
+    const running = await started({ shop: async () => new Response("Forbidden", { status: 403 }) });
+    await running.signIn();
+    const page = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(readable(page.html)).toContain("can't tell yet");
+    expect(readable(page.html)).not.toContain("none look ready");
+    expect(
+      formTo(page.html, "post", "/woocommerce/connect")?.presses.map((button) => button.label),
+    ).toEqual(["Connect shop"]);
+  });
+
+  it("rechecks the current size even when an old or forged form claims the address was checked", async () => {
+    let total = "1";
+    const running = await started({
+      shop: async () => Response.json([publicProduct()], { headers: { "x-wp-total": total } }),
+    });
+    await running.signIn();
+    const checked = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const form = formTo(checked.html, "post", "/woocommerce/connect");
+    total = "2001";
+    const refused = await running.post(
+      "/woocommerce/connect",
+      Object.fromEntries(form?.fields ?? []),
+    );
+    expect(refused.status).toBe(400);
+    expect(refused.to).toBeNull();
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    expect(running.asked).toEqual([]);
+  });
+
+  it("retains the Connect action after a grant-screen refusal", async () => {
+    const running = await started({
+      grantScreen: async () => ({ ok: false, why: "The approval page did not answer." }),
+    });
+    await running.signIn();
+    const refused = await connectAsDrawn(running, SHOP);
+    expect(refused.status).toBe(400);
+    expect(
+      formTo(refused.html, "post", "/woocommerce/connect")?.presses.map((button) => button.label),
+    ).toEqual(["Connect shop"]);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+  });
+
+  it("ends the whole read-only door after fifteen seconds and never grants on a late approval answer", async () => {
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<Preflight>();
+    const running = await started({
+      grantScreen: async () => {
+        entered.resolve();
+        return await released.promise;
+      },
+    });
+    await running.signIn();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pending = running.post("/woocommerce/connect", { shop_url: SHOP, checked_shop: SHOP });
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync(15_000);
+      const page = await pending;
+      expect(page.status).toBe(503);
+      expect(page.to).toBeNull();
+      expect(await running.shops.grantFor(running.accountId)).toBeNull();
+      released.resolve({ ok: true });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+      released.resolve({ ok: true });
+    }
+  });
+});
+
+/** Follow the current Check/Connect form as a browser without script does. */
+const connectAsDrawn = async (running: Running, address: string): Promise<Visit> => {
+  const checked = await running.post("/woocommerce/connect", { shop_url: address });
+  const form = formsIn(checked.html).find(
+    (form) => form.method === "post" && form.action.endsWith("/woocommerce/connect"),
+  );
+  if (!form?.fields.get("checked_shop")) return checked;
+  return await running.post("/woocommerce/connect", Object.fromEntries(form.fields));
+};
+
 describe("pressing Connect", () => {
   it("sends the merchant to their own shop with all five parameters", async () => {
     const running = await started();
     await running.signIn();
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.status).toBe(303);
     const to = new URL(pressed.to ?? "");
@@ -574,7 +842,7 @@ describe("pressing Connect", () => {
     const running = await started({ base: "/dashboard" });
     await running.signIn();
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.status).toBe(303);
     const to = new URL(pressed.to ?? "");
@@ -590,7 +858,7 @@ describe("pressing Connect", () => {
     const running = await started();
     await running.signIn();
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: "https://магазин.рф" });
+    const pressed = await connectAsDrawn(running, "https://магазин.рф");
 
     expect(pressed.status).toBe(303);
     const to = new URL(pressed.to ?? "");
@@ -604,21 +872,18 @@ describe("pressing Connect", () => {
     // address would measure something nobody is about to visit.
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     expect(running.asked).toEqual([pressed.to]);
   });
 
-  it("refuses a shop on plain http without asking it anything", async () => {
+  it("normalizes a shop on plain http before asking over https", async () => {
     const running = await started();
     await running.signIn();
 
-    const pressed = await running.post("/woocommerce/connect", {
-      shop_url: "http://shop.example.com",
-    });
+    const pressed = await connectAsDrawn(running, "http://shop.example.com");
 
-    expect(pressed.status).toBe(400);
-    expect(pressed.html).toContain("https");
-    expect(running.asked).toEqual([]);
+    expect(pressed.status).toBe(303);
+    expect(new URL(pressed.to ?? "").origin).toBe("https://shop.example.com");
   });
 
   it("refuses a shop whose grant screen we never reached, and sends nobody there", async () => {
@@ -628,7 +893,7 @@ describe("pressing Connect", () => {
     });
     await running.signIn();
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.status).toBe(400);
     expect(pressed.html).toContain("permalink");
@@ -653,7 +918,7 @@ describe("the keys arriving from the shop", () => {
       .spyOn(store, "setSellerSite")
       .mockRejectedValueOnce(new Error("write unavailable"));
     await running.signIn();
-    const connect = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const connect = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", grantedBody(tokenIn(connect.to ?? "")));
     let release = () => {};
     const held = new Promise<void>((resolve) => {
@@ -696,7 +961,7 @@ describe("the keys arriving from the shop", () => {
     async (one) => {
       const running = await started({ sellerSite: one.before });
       await running.signIn();
-      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      const pressed = await connectAsDrawn(running, SHOP);
       if (one.writeFails) {
         vi.spyOn(running.harnessed.store, "setSellerSite").mockRejectedValueOnce(
           new Error("write unavailable"),
@@ -733,7 +998,7 @@ describe("the keys arriving from the shop", () => {
   it("never fills a site from a read-only grant or a callback without a valid token", async () => {
     const running = await started({ sellerSite: null });
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     expect(
       (await running.postJson("/woocommerce/callback", grantedBody("not-issued"))).status,
     ).toBe(401);
@@ -757,7 +1022,7 @@ describe("the keys arriving from the shop", () => {
   it("keeps a valid connection when its origin has a port and offers Settings for the site", async () => {
     const running = await started({ sellerSite: null });
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: `${SHOP}:8443` });
+    const pressed = await connectAsDrawn(running, `${SHOP}:8443`);
     expect(
       (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""))))
         .status,
@@ -775,7 +1040,7 @@ describe("the keys arriving from the shop", () => {
   it("connects the shop the merchant typed", async () => {
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     const token = tokenIn(pressed.to ?? "");
 
     const posted = await running.postJson("/woocommerce/callback", grantedBody(token));
@@ -793,7 +1058,7 @@ describe("the keys arriving from the shop", () => {
     // still tells the shop to take its key back.
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     const carried = "cs_a-secret-from-the-shop\n[dashboard] forged";
     Object.assign(running.shops, {
       connectFromGrant: async () => {
@@ -820,7 +1085,7 @@ describe("the keys arriving from the shop", () => {
     // a page: WooCommerce takes back the key it minted when the post fails.
     const running = await started();
     await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await connectAsDrawn(running, SHOP);
 
     const posted = await running.postJson(
       "/woocommerce/callback",
@@ -834,7 +1099,7 @@ describe("the keys arriving from the shop", () => {
   it("refuses a token that already worked", async () => {
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     const token = tokenIn(pressed.to ?? "");
 
     expect((await running.postJson("/woocommerce/callback", grantedBody(token))).status).toBe(200);
@@ -885,10 +1150,8 @@ describe("the keys arriving from the shop", () => {
   it("refuses an older callback after the merchant starts a newer Connect", async () => {
     const running = await started();
     await running.signIn();
-    const first = await running.post("/woocommerce/connect", { shop_url: SHOP });
-    const second = await running.post("/woocommerce/connect", {
-      shop_url: "https://second.example.com",
-    });
+    const first = await connectAsDrawn(running, SHOP);
+    const second = await connectAsDrawn(running, "https://second.example.com");
 
     expect(
       (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(first.to ?? ""))))
@@ -904,7 +1167,7 @@ describe("the keys arriving from the shop", () => {
   it("does not let an in-flight older callback replace a newer Connect", async () => {
     const running = await started();
     await running.signIn();
-    const first = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const first = await connectAsDrawn(running, SHOP);
     const firstToken = tokenIn(first.to ?? "");
     const spent = Promise.withResolvers<void>();
     const finish = Promise.withResolvers<void>();
@@ -944,7 +1207,7 @@ describe("the keys arriving from the shop", () => {
     async ({ field, value }) => {
       const running = await started();
       await running.signIn();
-      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      const pressed = await connectAsDrawn(running, SHOP);
       const token = tokenIn(pressed.to ?? "");
       const body: Record<string, unknown> = { ...grantedBody(token) };
       if (value === undefined) delete body[field];
@@ -968,7 +1231,7 @@ describe("the keys arriving from the shop", () => {
   it("keeps what the shop actually granted rather than what we asked for", async () => {
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     const token = tokenIn(pressed.to ?? "");
 
     await running.postJson("/woocommerce/callback", grantedBody(token, "read"));
@@ -982,7 +1245,7 @@ describe("the keys arriving from the shop", () => {
   it("offers a shop that granted read alone a Connect again at its own address, which goes to that shop", async () => {
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""), "read"));
 
     const seen = await running.get("/woocommerce");
@@ -1009,26 +1272,19 @@ describe("the page the shop sends the browser back to, with a session on the req
     // sends, and on a screen somebody else can walk up to.
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     const token = tokenIn(pressed.to ?? "");
 
     const came = await running.get(`/woocommerce/return?success=1&user_id=${token}`);
 
-    expect(came.status).toBe(303);
-    expect(came.to).toBe("/woocommerce?from=shop");
+    expect(came).toMatchObject({ status: 303, to: "/woocommerce?from=shop" });
   });
 });
 
 describe("importing the catalogue", () => {
   const connected = async (running: Running): Promise<void> => {
     await running.signIn();
-    // The drawn-for mark is sent here rather than read off the Connect page,
-    // because one test below has no gateway, and with none every page drawn is
-    // the error page.
-    const pressed = await running.post("/woocommerce/connect", {
-      shop_url: SHOP,
-      [DRAWN_FOR]: PERSON,
-    });
+    const pressed = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
       consumer_key: "ck_a",
@@ -1205,7 +1461,7 @@ describe("importing the catalogue", () => {
         });
       const file = { id: "dl_guide", name: "Guide", file: `${SHOP}/protected/guide.txt` };
       if (at.pathname === "/wp-json/wc/store/v1/products") {
-        const page = Number(at.searchParams.get("page"));
+        const page = Number(at.searchParams.get("page") ?? "1");
         const per = Number(at.searchParams.get("per_page"));
         const first = (page - 1) * per + 1;
         const last = Math.min(page * per, count);
@@ -1257,7 +1513,11 @@ describe("importing the catalogue", () => {
     };
 
   const storePages = (seen: readonly string[]) =>
-    seen.filter((one) => one.startsWith("/wp-json/wc/store/v1/products"));
+    seen.filter(
+      (one) =>
+        one.startsWith("/wp-json/wc/store/v1/products") &&
+        new URL(one, SHOP).searchParams.has("page"),
+    );
 
   it("imports a shop of exactly two thousand products whole", async () => {
     const seen: string[] = [];
@@ -1988,7 +2248,7 @@ describe("what the integrations screen says about a shop", () => {
   // happened; "connect a WooCommerce shop" in any state but none would tell a
   // merchant their Connect failed.
   const approve = async (running: Running, permissions = "read_write"): Promise<void> => {
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
       consumer_key: "ck_a-key-nobody-may-read",
@@ -2056,14 +2316,14 @@ describe("what the integrations screen says about a shop", () => {
 
     expect((await running.get("/integrations")).html).toContain('href="/woocommerce"');
     expect(text).toContain("4 minutes ago");
-    expect(text).toMatch(/Waiting for your shop's keys/);
+    expect(text).toMatch(/You started connecting/);
     expect(text).not.toContain("Connect a shop");
   });
 
   it("counts a Connect pressed moments ago without claiming a whole minute", async () => {
     const running = await started();
     await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await connectAsDrawn(running, SHOP);
 
     expect(await settings(running)).toContain("less than a minute ago");
   });
@@ -2080,7 +2340,7 @@ describe("what the integrations screen says about a shop", () => {
     const text = readable(screen.html);
 
     expect(text).toContain(new URL(SHOP).host);
-    expect(text).toMatch(/No keys came .* within 15 minutes, and we can't tell why/);
+    expect(text).toMatch(/We didn't hear back .* within 15 minutes, and we can't tell why/);
     expect(text).toContain("Connect again");
     expect(screen.html).toContain(`href="/woocommerce"`);
     expect(text).not.toMatch(/could not reach us/);
@@ -2187,7 +2447,7 @@ describe("coming back from the shop with no session on the request", () => {
     // must strip the token too, or an unspent token would stay in the address.
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     const token = tokenIn(pressed.to ?? "");
 
     const came = await cameBack(running, `?success=1&user_id=${token}`);
@@ -2222,7 +2482,7 @@ describe("coming back from the shop with no session on the request", () => {
 
     const withAShop = await started();
     await withAShop.signIn();
-    const pressed = await withAShop.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(withAShop, SHOP);
     await withAShop.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
       consumer_key: "ck_a-key-nobody-may-read",
@@ -2240,7 +2500,7 @@ describe("coming back from the shop with no session on the request", () => {
     // email in between would turn a successful Connect into a loop.
     const running = await started();
     await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await connectAsDrawn(running, SHOP);
 
     const stripped = await cameBack(running);
     const landed = await running.getWithoutCookie(stripped.to ?? "/woocommerce/return");
@@ -2249,13 +2509,13 @@ describe("coming back from the shop with no session on the request", () => {
 
     const text = readable((await running.get("/woocommerce?from=shop")).html);
 
-    expect(text).toMatch(/Waiting for your shop's keys/);
+    expect(text).toMatch(/You started connecting/);
   });
 
   it("shows the merchant their real state once the cookie does travel", async () => {
     const running = await started();
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
       consumer_key: "ck_a",
@@ -2276,14 +2536,14 @@ describe("coming back from the shop with no session on the request", () => {
     // and it is the same settings page a plain reload gives.
     const running = await started();
     await running.signIn();
-    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    await connectAsDrawn(running, SHOP);
 
     const came = await running.get("/woocommerce/return?success=0&user_id=anything");
     const back = await running.get(came.to ?? "");
     const reloaded = await running.get("/woocommerce?from=shop");
 
     expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(back.html)).toMatch(/Waiting for your shop's keys/);
+    expect(readable(back.html)).toMatch(/You started connecting/);
     expect(readable(back.html)).not.toMatch(/\bConnected\b/);
     expect(back.html).toBe(reloaded.html);
   });
@@ -2299,7 +2559,7 @@ describe("coming back from the shop with no session on the request", () => {
     const reloaded = await running.get("/woocommerce?from=shop");
 
     expect(came.to).toBe("/woocommerce?from=shop");
-    expect(readable(back.html)).toContain("Connect your shop");
+    expect(readable(back.html)).toContain("Connect your WooCommerce shop");
     expect(back.html).toBe(reloaded.html);
   });
 });
@@ -2596,7 +2856,7 @@ describe("one integration at a time", () => {
     (await running.harnessed.gateway.catalog()).items.map((item) => item.id);
 
   const connectTheShop = async (running: Running): Promise<void> => {
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     expect(pressed.status).toBe(303);
     await running.postJson("/woocommerce/callback", {
       user_id: tokenIn(pressed.to ?? ""),
@@ -2616,7 +2876,7 @@ describe("one integration at a time", () => {
     await running.signIn();
     const card = await publishedByTheCode(running);
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.status).toBe(303);
     expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
@@ -2624,7 +2884,7 @@ describe("one integration at a time", () => {
     expect((await theCodePolls(running)).status).toBe(200);
     const page = await running.get("/woocommerce");
     expect(await running.harnessed.gateway.sellsThrough(running.harnessed.merchant.id)).toBe("api");
-    expect(readable(page.html)).toContain("Waiting for your shop's keys");
+    expect(readable(page.html)).toContain("You started connecting");
     expect(readable(page.html)).not.toMatch(/come back paused|already off sale/);
     expect(page.html).not.toContain('action="/woocommerce/disconnect"');
     const rows = [
@@ -2660,7 +2920,7 @@ describe("one integration at a time", () => {
     const running = await started();
     await running.signIn();
     const card = await publishedByTheCode(running);
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     await paidFor(running, card);
 
     const callback = await running.postJson(
@@ -2684,7 +2944,7 @@ describe("one integration at a time", () => {
     const running = await started();
     await running.signIn();
     const card = await publishedByTheCode(running);
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     const callback = await running.postJson(
       "/woocommerce/callback",
@@ -2710,7 +2970,7 @@ describe("one integration at a time", () => {
     await running.signIn();
     const card = await publishedByTheCode(running);
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.to).toBeNull();
     expect(readable(pressed.html)).toContain("KWD with 3 decimals");
@@ -2728,7 +2988,7 @@ describe("one integration at a time", () => {
     const running = await started({ sample: async () => null });
     await running.signIn();
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.status).toBe(303);
     expect(new URL(pressed.to ?? "").pathname).toBe("/wc-auth/v1/authorize");
@@ -2739,7 +2999,7 @@ describe("one integration at a time", () => {
     await running.signIn();
     const orderId = await paidFor(running, await publishedByTheCode(running));
 
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
 
     expect(pressed.status).toBe(409);
     expect(pressed.to).toBeNull();
@@ -2784,14 +3044,11 @@ describe("one integration at a time", () => {
     const refused = await disconnectAsDrawn(running);
 
     expect(refused.status).toBe(409);
-    expect(refused.html).toMatch(/<p class="problem">[^<]+<\/p>/);
     expect(formTo(refused.html, "post", "/woocommerce/disconnect")?.presses).toHaveLength(1);
     expect(refused.html).toContain(orderId);
     expect(await running.shops.connectionOf(running.accountId)).not.toBeNull();
 
-    const replaced = await running.post("/woocommerce/connect", {
-      shop_url: "https://other.example.com",
-    });
+    const replaced = await connectAsDrawn(running, "https://other.example.com");
 
     expect(replaced.status).toBe(409);
     expect(replaced.to).toBeNull();
@@ -2805,9 +3062,7 @@ describe("one integration at a time", () => {
     await connectTheShop(running);
     const before = await running.shops.connectionOf(running.accountId);
 
-    const replaced = await running.post("/woocommerce/connect", {
-      shop_url: "https://other.example.com",
-    });
+    const replaced = await connectAsDrawn(running, "https://other.example.com");
 
     expect(replaced.status).toBe(409);
     expect(replaced.to).toBeNull();
@@ -2815,9 +3070,7 @@ describe("one integration at a time", () => {
     expect(await running.shops.grantFor(running.accountId)).toBeNull();
 
     expect((await disconnectAsDrawn(running)).status).toBe(303);
-    const connected = await running.post("/woocommerce/connect", {
-      shop_url: "https://other.example.com",
-    });
+    const connected = await connectAsDrawn(running, "https://other.example.com");
     expect(connected.status).toBe(303);
     expect(new URL(connected.to ?? "").origin).toBe("https://other.example.com");
   });
@@ -2829,6 +3082,7 @@ describe("one integration at a time", () => {
 
     const renewed = await running.post("/woocommerce/connect", {
       shop_url: "https://SHOP.example.com:443/",
+      checked_shop: SHOP,
     });
     expect(renewed.status).toBe(303);
     const callback = await running.postJson("/woocommerce/callback", {
@@ -3003,10 +3257,7 @@ describe("one integration at a time", () => {
 describe("the analytics of a shop's connection and its imports", () => {
   const connectedFor = async (running: Running): Promise<void> => {
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", {
-      shop_url: SHOP,
-      [DRAWN_FOR]: PERSON,
-    });
+    const pressed = await connectAsDrawn(running, SHOP);
     await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
   };
 
@@ -3283,7 +3534,7 @@ describe("a shop priced in another currency than US dollars", () => {
 
   const connectedIn = async (running: Running): Promise<void> => {
     await running.signIn();
-    const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const pressed = await connectAsDrawn(running, SHOP);
     expect(pressed.status).toBe(303);
     await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? "")));
     await running.get("/woocommerce");
@@ -3314,15 +3565,15 @@ describe("a shop priced in another currency than US dollars", () => {
 
     it("refuses a currency Coinbase gives no rate for, in plain words, and changes nothing", async () => {
       const running = await started({
-        sample: async () => ({ ...IN_RUPIAH, currency: "XAF" }),
+        sample: async () => ({ ...IN_RUPIAH, currency: "IRT" }),
         reference: async () => ({ ok: false, listed: false }),
       });
       await running.signIn();
 
-      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      const pressed = await connectAsDrawn(running, SHOP);
 
       expect(pressed.to).toBeNull();
-      expect(readable(pressed.html)).toContain("Coinbase gives no rate for XAF");
+      expect(readable(pressed.html)).toContain("Coinbase gives no rate for IRT");
       expect(await running.shops.grantFor(running.accountId)).toBeNull();
     });
 
@@ -3333,12 +3584,12 @@ describe("a shop priced in another currency than US dollars", () => {
       });
       await running.signIn();
 
-      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      const pressed = await connectAsDrawn(running, SHOP);
 
       expect(pressed.to).toBeNull();
       const said = readable(pressed.html);
       expect(said).toContain("did not answer");
-      expect(said).toContain("press Connect again");
+      expect(said).toContain("press Check my shop again");
       expect(said).not.toContain("gives no rate");
       expect(await running.shops.grantFor(running.accountId)).toBeNull();
     });
@@ -3353,7 +3604,7 @@ describe("a shop priced in another currency than US dollars", () => {
       });
       await running.signIn();
 
-      const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
+      const pressed = await connectAsDrawn(running, SHOP);
 
       expect(pressed.status).toBe(303);
       expect(asked).toEqual([]);
@@ -3807,7 +4058,14 @@ describe("the WooCommerce path on Products", () => {
       "woocommerce",
     );
     expect(before.html).toMatch(/<span aria-current="page">Products<\/span>/);
-    const pressed = await running.post("/products?woo=connect", { shop_url: SHOP });
+    const checked = await running.post("/products?woo=connect", { shop_url: SHOP });
+    expect(checked.status).toBe(200);
+    expect(checked.html).toMatch(/<span aria-current="page">Products<\/span>/);
+    const form = formTo(checked.html, "post", "/products?woo=connect");
+    const pressed = await running.post(
+      "/products?woo=connect",
+      Object.fromEntries(form?.fields ?? []),
+    );
     expect(pressed.status).toBe(303);
     expect(
       (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""))))

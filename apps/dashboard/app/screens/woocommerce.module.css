@@ -266,3 +266,54 @@
     margin-left: 0;
   }
 }
+
+/* The address, its result and the one next action read in that order. */
+.connect {
+  max-width: 600px;
+  min-width: 0;
+}
+
+.connect h2 {
+  margin: 0 0 var(--space-card);
+  font-size: var(--text-section);
+}
+
+.otherWays {
+  margin: 0 0 var(--space-card);
+}
+
+.checkForm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-block);
+}
+
+.checkForm > :global(.field) {
+  width: 100%;
+}
+
+.estimate,
+.beforeConnect {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.estimate:empty {
+  display: none;
+}
+
+.estimate p,
+.beforeConnect p {
+  margin: 0;
+}
+
+.estimate p + p,
+.beforeConnect p + p {
+  margin-top: var(--space-control);
+}
+
+.checkAgain {
+  display: inline-block;
+  margin-top: var(--space-control);
+}
