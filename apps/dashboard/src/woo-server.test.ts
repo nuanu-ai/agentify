@@ -27,7 +27,7 @@ import { type Acting, gatewayFor } from "./gateway.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
-import { formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
+import { formsIn, formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
@@ -398,7 +398,13 @@ const started = async (standing: Standing = {}): Promise<Running> => {
   const visit = async (
     method: string,
     path: string,
-    given: { body?: string; type?: string; noCookie?: boolean; origin?: string } = {},
+    given: {
+      body?: string;
+      type?: string;
+      noCookie?: boolean;
+      origin?: string;
+      prefetch?: boolean;
+    } = {},
   ): Promise<Visit> => {
     const form = given.body !== undefined && given.type === undefined;
     const marked =
@@ -414,6 +420,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       redirect: "manual",
       headers: {
         ...(options.origin === undefined ? {} : { origin: options.origin }),
+        ...(options.prefetch ? { purpose: "prefetch" } : {}),
         ...(jar.size === 0 || options.noCookie === true
           ? {}
           : { cookie: [...jar].map(([name, value]) => `${name}=${value}`).join("; ") }),
@@ -488,6 +495,10 @@ const started = async (standing: Standing = {}): Promise<Running> => {
       // A browser shows the screen the link leads to, and the forms a test then
       // presses are that screen's.
       if (opened.to?.startsWith("/") === true) await visit("GET", opened.to);
+      // Connector tests subsequently press its forms, including when the
+      // landing page has no form of its own.
+      if (shownMark === undefined && opened.to?.startsWith("/") === true)
+        await visit("GET", `${base}/woocommerce`, { prefetch: true });
       return opened;
     },
     async signOut() {
@@ -1634,7 +1645,7 @@ describe("importing the catalogue", () => {
     const form = importFormOf(screen.html);
 
     expect(screen.status).toBe(200);
-    expect(screen.html).toContain('data-reason="no_payout_wallet"');
+    expect(screen.html).not.toContain('data-reason="no_payout_wallet"');
     expect(form).toMatch(/<button[^>]*\bdisabled\b[^>]*>Import products</);
     expect(readable(form)).toMatch(/wallet/i);
     expect(form).toContain('href="/settings"');
@@ -1949,7 +1960,7 @@ describe("importing the catalogue", () => {
           // Before a press the button is held and the line under it names
           // what is missing, as the banner does; a press that came anyway is
           // answered the same way.
-          expect(named(bannerIn(screen))).toStrictEqual(door);
+          expect(named(bannerIn(screen))).toEqual([]);
           expect(named(lineIn(screen))).toStrictEqual(door);
           expect(pressed.status).toBe(door.length === 0 ? 200 : 409);
           if (door.length > 0) {
@@ -2084,19 +2095,16 @@ describe("what the integrations screen says about a shop", () => {
     ).toBe(SHOP);
   });
 
-  it("offers the SDK first and the shop path after it, from an empty catalogue", async () => {
+  it("recognizes an established code integration instead of asking it to choose a platform", async () => {
     const running = await started();
     await running.signIn();
-
     const html = (await running.get("/products")).html;
-    const empty = html.slice(html.indexOf('class="list list-empty"'));
-
-    expect(/<a class="button button-primary" href="([^"]*)"/.exec(empty)?.[1]).toBe(
-      "/docs/quickstart",
-    );
-    expect(empty.indexOf('href="/woocommerce"')).toBeGreaterThan(
-      empty.indexOf('href="/docs/quickstart"'),
-    );
+    expect(
+      formsIn(html)
+        .flatMap((form) => form.presses)
+        .some((press) => press.name === "platform"),
+    ).toBe(false);
+    expect(html).toContain('href="/settings"');
   });
 
   it("says a connected shop granted less than it needs to sell anything", async () => {
@@ -2988,7 +2996,7 @@ describe("one integration at a time", () => {
     expect([...html.matchAll(/data-reason="([^"]+)"/g)]).toStrictEqual([]);
     expect(html).not.toMatch(/<li class="list-row/);
     expect(readable(html)).toMatch(/\b1 product\b/);
-    expect(html).toContain('href="/woocommerce"');
+    expect(formTo(html, "post", "/products?woo=import")).toBeDefined();
   });
 });
 
@@ -3778,5 +3786,40 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await pricesOnSale(running)).toStrictEqual([]);
       expect(await running.shops.currentRate(running.accountId, SHOP, "USD")).toBeNull();
     });
+  });
+});
+
+describe("the WooCommerce path on Products", () => {
+  it("opens the existing shop form directly and keeps Products active through Connect and callback return", async () => {
+    const running = await started();
+    await running.signIn();
+    await running.identity.choosePlatform(running.accountId, "woocommerce");
+    expect((await running.post("/products?woo=constructor")).status).toBe(404);
+    const before = await running.get("/products");
+    expect(formTo(before.html, "post", "/products?woo=connect")).toBeDefined();
+    const alternatives = await running.get("/products?ways=choose");
+    expect(
+      formsIn(alternatives.html)
+        .flatMap((form) => form.presses)
+        .filter((press) => press.name === "platform"),
+    ).toHaveLength(3);
+    expect((await running.identity.onboardingChoices(running.accountId)).platform).toBe(
+      "woocommerce",
+    );
+    expect(before.html).toMatch(/<span aria-current="page">Products<\/span>/);
+    const pressed = await running.post("/products?woo=connect", { shop_url: SHOP });
+    expect(pressed.status).toBe(303);
+    expect(
+      (await running.postJson("/woocommerce/callback", grantedBody(tokenIn(pressed.to ?? ""))))
+        .status,
+    ).toBe(200);
+    const returned = await running.get("/woocommerce/return?success=1");
+    expect(returned.to).toBe("/products?from=shop");
+    const connected = await running.get(returned.to ?? "/products");
+    expect(connected.html).toMatch(/<span aria-current="page">Products<\/span>/);
+    expect(formTo(connected.html, "post", "/products?woo=import")).toBeDefined();
+    const integrations = await running.get("/woocommerce");
+    expect(integrations.html).toMatch(/<span aria-current="page">Integrations<\/span>/);
+    expect(formTo(integrations.html, "post", "/woocommerce/import")).toBeDefined();
   });
 });

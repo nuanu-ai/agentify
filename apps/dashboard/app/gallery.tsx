@@ -47,6 +47,7 @@ import { type Answer, lateAnswer, type PayoutSplits } from "../src/gateway.js";
 import { integrationsView } from "../src/integrations-view.js";
 import { keysView, newKeyView } from "../src/keys.js";
 import { inViewersZone } from "../src/moments.js";
+import { nextStepOf } from "../src/next-step.js";
 import {
   askViewOf,
   cancelledByTyping,
@@ -72,12 +73,14 @@ import {
   whatIsWrongWithTheSite,
 } from "../src/seller-name.js";
 import { type Settings, settingsView } from "../src/settings-view.js";
+import { ONBOARDING_CASES } from "../src/testing/onboarding-cases.js";
 import { WOO_SITE_CASES } from "../src/testing/woo-site-cases.js";
 import type { Viewer } from "../src/viewer.js";
 import {
   CLOSURE_NOTES,
   cardsView,
   type FrameView,
+  momentView,
   ordersView,
   receiptsView,
 } from "../src/views.js";
@@ -1578,50 +1581,6 @@ const CARDS: GalleryState[] = [
     cardsAt("/products?show=off-sale", CATALOGUE),
     "live",
     { path: "/products?show=off-sale" },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-none",
-      screen: "Products",
-      when: "A merchant opens Products before their code has published anything.",
-      cause: "The gateway lists no cards, and everything publishing needs is set.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.live),
-    "live",
-  ),
-  cards(
-    {
-      id: "dashboard-cards-first-on-live",
-      screen: "Products",
-      when: "A merchant who has just signed up on the live site opens the dashboard for the first time.",
-      cause:
-        "No cards, no payout wallet and no approval yet, so the banner names both and leads to the test channel's dashboard, where the first sale is made.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live", { liveApproval: false, payout: { wallet: null } })) },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-none-without-name",
-      screen: "Products",
-      when: "A new merchant skipped choosing a seller name and opens Products.",
-      cause:
-        "The merchant has no seller name, so every card their code publishes would be refused.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.live),
-    "live",
-    { account: bannerOf(seenBy("live", { sellerName: null })) },
-  ),
-  cards(
-    {
-      id: "dashboard-cards-none-with-woocommerce",
-      screen: "Products",
-      when: "A merchant on the test site opens Products before publishing anything.",
-      cause: "No cards, and this dashboard offers the WooCommerce connector beside the SDK.",
-    },
-    cardsView(cardsOf("open", []), ORIGIN.test, true),
-    "test",
   ),
   cards(
     {
@@ -3278,7 +3237,30 @@ const pressIn = (page: Document, words: string, before: (page: Document) => void
   button.click();
 };
 
+const copyIssuedKey = (page: Document) => {
+  clipboardGranted(page);
+  const button = [...(page.querySelector("dialog")?.querySelectorAll("button") ?? [])].find(
+    (one) => one.textContent?.trim() === "Copy",
+  );
+  if (button === undefined) throw new Error("the new-key dialog has no Copy button");
+  button.click();
+};
+
 const KEYS: GalleryState[] = [
+  at(
+    {
+      id: "dashboard-keys-issued-without-script",
+      screen: "The new key",
+      when: "A key was issued in a browser without script",
+      cause: "The one-time secret is delivered in the issuing response.",
+    },
+    {
+      path: "/keys",
+      mode: "live",
+      loaded: { "routes/keys": null },
+      pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+    },
+  ),
   keys(
     {
       id: "dashboard-keys-none",
@@ -3378,20 +3360,23 @@ const KEYS: GalleryState[] = [
       },
     },
   ),
-  at(
-    {
-      id: "dashboard-keys-issued",
-      screen: "The new key",
-      when: "A merchant presses Create key.",
-      cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
-    },
-    {
-      path: "/keys",
-      mode: "live",
-      loaded: { "routes/keys": null },
-      pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
-    },
-  ),
+  {
+    ...at(
+      {
+        id: "dashboard-keys-issued",
+        screen: "The new key",
+        when: "A merchant presses Create key.",
+        cause: "The gateway issued the key, and this answer is the only time its secret is shown.",
+      },
+      {
+        path: "/keys",
+        mode: "live",
+        loaded: { "routes/keys": null },
+        pressed: { "routes/keys": newKeyView("The order worker on our server", SECRET) },
+      },
+    ),
+    scene: { shows: "Copy your new key" },
+  },
   {
     ...at(
       {
@@ -3409,7 +3394,7 @@ const KEYS: GalleryState[] = [
       },
     ),
     scene: {
-      steps: [{ shows: "Copy key", does: (page) => pressIn(page, "Copy key", clipboardGranted) }],
+      steps: [{ shows: "Copy your new key", does: (page) => copyIssuedKey(page) }],
       shows: "Copied.",
     },
   },
@@ -4018,6 +4003,212 @@ const ADMIN: GalleryState[] = ADMIN_STATES.map(
     ),
 );
 
+const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) => {
+  const step = nextStepOf(facts);
+  const keys = keysView(
+    facts.keys === 0
+      ? []
+      : [
+          {
+            id: "key_gallery_onboarding",
+            label: "Order worker",
+            created_at: "2026-10-30T08:00:00Z",
+            last_used_at: null,
+            disabled_at: null,
+          },
+        ],
+  );
+  const onboarding = {
+    mode: facts.mode,
+    step,
+    keys,
+    contact: facts.contact === null ? null : momentView(facts.contact),
+    origin: ORIGIN[facts.mode],
+    unread: facts.unread,
+  };
+  const notes = accountOf(
+    seenBy(facts.mode, {
+      sellerName: facts.sellerName ? "Freeland" : null,
+      payout: { wallet: facts.payoutWallet ? PAID_INTO : null },
+      liveApproval: facts.liveApproved,
+    }),
+    {
+      selling: facts.selling,
+      ...(facts.withdrawn
+        ? {
+            withdrawn: {
+              at: "2026-10-30T08:00:00Z",
+              note: "Choose a seller name that belongs to your business.",
+            },
+          }
+        : {}),
+    },
+  )
+    .filter((note) => note.reason === step.reason)
+    .slice(0, 1);
+  let view = cardsView(
+    facts.cards > 0
+      ? facts.withdrawn
+        ? cardsOf(
+            "open",
+            ON_SALE.map((product) => ({ product, selling: "paused" as const })),
+          )
+        : CATALOGUE
+      : cardsOf("open", []),
+    ORIGIN[facts.mode],
+    true,
+  );
+  if (step.page === "shop") {
+    const state: ShopState =
+      facts.shop === "connected" || facts.shop === "read-only"
+        ? {
+            kind: "connected",
+            shop: {
+              shopUrl: SHOP,
+              permissions: facts.shop === "read-only" ? "read" : "read_write",
+              connectedAt: new Date("2026-10-30T08:00:00Z"),
+            },
+          }
+        : facts.shop === "waiting"
+          ? { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 2 }
+          : facts.shop === "unanswered"
+            ? { kind: "unanswered", shopUrl: SHOP }
+            : { kind: "none" };
+    view = {
+      ...view,
+      shop: shopOn(
+        shopRead(state, {
+          testMoney: facts.mode !== "live",
+          through: facts.through,
+          ...(row === 13
+            ? { rate: { currency: IN_RUPIAH, current: null, reference: COINBASE_RUPIAH } }
+            : {}),
+        }),
+      ),
+    };
+  }
+  const state = at(
+    {
+      id: `dashboard-onboarding-${row}`,
+      screen: "Products",
+      when,
+      cause: `Accepted onboarding situation ${row}.`,
+    },
+    {
+      path: "/products",
+      mode: facts.mode,
+      loaded: { "routes/merchant-only": { account: notes, onboarding }, "routes/products": view },
+    },
+  );
+  return row === 5 ? { ...state, scene: { shows: "This is the test environment" } } : state;
+});
+
+const codeCase = ONBOARDING_CASES.find((one) => one.row === 20);
+if (codeCase === undefined) throw new Error("the onboarding situations have no code setup");
+const CODE_KEYS: GalleryState[] = [false, true].map((copied) => ({
+  ...at(
+    {
+      id: `dashboard-products-key-${copied ? "copied" : "issued"}`,
+      screen: "Products",
+      when: copied ? "The new API key was copied" : "A key was issued from code setup",
+      cause: "The same protected key disclosure is used on Products and API keys.",
+    },
+    {
+      path: "/products",
+      mode: "live",
+      loaded: {
+        "routes/products": cardsView(cardsOf("open", []), ORIGIN.live),
+        "routes/merchant-only": {
+          account: [],
+          onboarding: {
+            mode: "live",
+            step: nextStepOf({ ...codeCase.facts, keys: 1 }),
+            keys: keysView([WORKER]),
+            contact: null,
+            origin: ORIGIN.live,
+            unread: false,
+          },
+        },
+      },
+      pressed: { "routes/products": newKeyView("The order worker on our server", SECRET) },
+    },
+  ),
+  scene: copied
+    ? { steps: [{ shows: "Copy your new key", does: copyIssuedKey }], shows: "Copied." }
+    : { shows: "Copy your new key" },
+}));
+
+const CODE_CONNECTIONS: GalleryState[] = (
+  [
+    {
+      id: "profile",
+      mode: "live",
+      wallet: false,
+      approved: false,
+      when: "Code connected before a payout wallet was added",
+    },
+    {
+      id: "approval",
+      mode: "live",
+      wallet: true,
+      approved: false,
+      when: "Code and profile are ready for the current email approval step",
+    },
+    {
+      id: "ready",
+      mode: "live",
+      wallet: true,
+      approved: true,
+      when: "An approved merchant has connected code but no product yet",
+    },
+    {
+      id: "test-wallet",
+      mode: "test",
+      wallet: false,
+      approved: false,
+      when: "Code connected on test before a test wallet was added",
+    },
+  ] as const
+).map((one) => {
+  const contact = "2026-10-30T09:00:00Z";
+  const facts = {
+    ...codeCase.facts,
+    mode: one.mode,
+    keys: 1,
+    contact,
+    contactAlive: true,
+    payoutWallet: one.wallet,
+    liveApproved: one.approved,
+    testAcknowledged: true,
+  };
+  return at(
+    {
+      id: `dashboard-code-connected-${one.id}`,
+      screen: "Products",
+      when: one.when,
+      cause: "The existing publication rule selects the remaining profile or approval step.",
+    },
+    {
+      path: "/products",
+      mode: one.mode,
+      loaded: {
+        "routes/products": cardsView(cardsOf("open", []), ORIGIN[one.mode]),
+        "routes/merchant-only": {
+          account: [],
+          onboarding: {
+            mode: one.mode,
+            step: nextStepOf(facts),
+            keys: keysView([WORKER]),
+            contact: momentView(contact),
+            origin: ORIGIN[one.mode],
+            unread: false,
+          },
+        },
+      },
+    },
+  );
+});
+
 export const gallery: GallerySurface = {
   id: "dashboard",
   name: "Seller dashboard",
@@ -4025,6 +4216,9 @@ export const gallery: GallerySurface = {
   states: [
     ...SIGNING_IN,
     ...SETTING_UP,
+    ...ONBOARDING,
+    ...CODE_KEYS,
+    ...CODE_CONNECTIONS,
     ...CARDS,
     ...ORDERS,
     ...RECEIPTS,

@@ -68,7 +68,7 @@ describe("the copy button beside a new key", () => {
     shown();
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Copy key"));
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     });
 
     expect(held).toBe(SECRET);
@@ -80,10 +80,10 @@ describe("the copy button beside a new key", () => {
     shown();
 
     await act(async () => {
-      fireEvent.click(screen.getByText("Copy key"));
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
     });
 
-    expect(screen.getByRole("status").textContent).toMatch(/could not copy.*select.*key/i);
-    expect(screen.getByText(SECRET)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(/couldn.t copy.*select.*key/i);
+    expect(screen.getByDisplayValue(SECRET)).toBeTruthy();
   });
 });

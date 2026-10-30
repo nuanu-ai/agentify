@@ -15,10 +15,11 @@ import {
   WorkHeader,
 } from "@agentify/ui";
 import type { ReactNode } from "react";
-import { Link, useRouteLoaderData } from "react-router";
+import { Link, useActionData, useRouteLoaderData } from "react-router";
 import type { SectionDestination } from "../../src/dashboard-entry.js";
 import type { FrameView } from "../../src/views.js";
 import type { Chrome, DrawnFor, Gated } from "../answer.js";
+import { TestWelcome } from "../screens/onboarding.js";
 import { AccountBanner } from "./account-banner.js";
 import { useGoingTo } from "./going-to.js";
 
@@ -72,6 +73,7 @@ export function Frame({
   if (gate === undefined) {
     throw new Error("the frame was drawn outside the gate, where no address is known");
   }
+  const pressed = useActionData<{ problem?: string }>();
   const going = useGoingTo();
   const marked =
     going === null
@@ -129,6 +131,9 @@ export function Frame({
           </main>
         </div>
       </div>
+      {framed?.onboarding?.step.acknowledgeTest ? (
+        <TestWelcome {...(pressed?.problem === undefined ? {} : { problem: pressed.problem })} />
+      ) : null}
       <SiteFooter surface="dashboard" link={Link} />
     </div>
   );

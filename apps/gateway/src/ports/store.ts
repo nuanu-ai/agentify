@@ -955,6 +955,9 @@ export interface Store {
   /** The cards one merchant published, and nobody else's. */
   cards(merchantId: string): Promise<readonly StoredCard[]>;
 
+  /** Whether this integration has published any product, including a paused one. */
+  hasProducts(merchantId: string, integration: Integration): Promise<boolean>;
+
   /**
    * Every card the gateway holds, each with the word its own merchant is
    * selling under, for the public catalog. The word is per merchant, so one

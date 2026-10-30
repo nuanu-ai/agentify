@@ -35,8 +35,10 @@ import {
   type SegmentRule,
 } from "./listing.js";
 import { moment, withinDay } from "./moments.js";
+import type { OnboardingView } from "./onboarding.js";
 import { type SplitTerms, sharesOf } from "./shares.js";
 import type { ShopTotal } from "./woo-shops.js";
+import type { WooShopView } from "./woo-views.js";
 import {
   CARD_WORDS,
   FULFILLMENT_WORDS,
@@ -69,6 +71,7 @@ export const momentView = (iso: string): MomentView => {
 export interface FrameView {
   /** The banner's reasons, empty where the account sells as usual and everything was read. */
   readonly account: readonly AccountNote[];
+  readonly onboarding?: OnboardingView;
 }
 
 /** A link to the part of the documentation that carries the mechanism. */
@@ -174,6 +177,7 @@ interface CardRow {
 }
 
 export interface CardsView {
+  readonly shop?: WooShopView;
   /** The control that stops or restarts all selling. */
   readonly allSelling: Readonly<{ verb: "pause" | "resume"; label: string }>;
   /**

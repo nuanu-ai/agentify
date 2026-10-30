@@ -26,7 +26,7 @@ import type { ServerBuild } from "react-router";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadConfig } from "./config.js";
 import { DRAWN_FOR } from "./drawn-for.js";
-import { identityFor } from "./identity.js";
+import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { builtPages } from "./pages.js";
 import { buildApp } from "./server.js";
@@ -38,6 +38,8 @@ const SLOW_MS = 1_500;
 const BASE = "/dashboard";
 
 let harnessed: Harness;
+let onboardingIdentity: Identity;
+let onboardingMessages: Message[];
 let browser: Browser;
 let close: () => Promise<void>;
 let origin: string;
@@ -56,12 +58,14 @@ beforeAll(async () => {
     BASE_PATH: BASE,
   });
   const mails: Message[] = [];
+  onboardingMessages = mails;
   const identity = identityFor(config, {
     postman: async (message) => {
       mails.push(message);
       return "accepted";
     },
   });
+  onboardingIdentity = identity;
   await identity.make(PERSON, harnessed.merchant.id);
   // Cards enough to scroll a short window, published as the merchant's own
   // code publishes them, and one paid order awaiting delivery, so the orders
@@ -876,4 +880,154 @@ describe("a request that fails or stops on its way", () => {
     await page.context().close();
     // The site's save waits out the gateway's ten seconds before it says so.
   }, 40_000);
+});
+
+it.each(["products", "keys"])(
+  "keeps the new-key dialog protected and clears its secret on Done from %s",
+  async (section) => {
+    const email = `onboarding-${section}@example.com`;
+    const merchant = await harnessed.gateway.registerMerchant();
+    const person = await onboardingIdentity.make(email, merchant);
+    if (person === null) throw new Error("the account was not created");
+    await onboardingIdentity.choosePlatform(person.id, "api");
+    await onboardingIdentity.requestLink(email, "default", ONE_CLIENT);
+    const mail = onboardingMessages.at(-1);
+    const link = new URL(mail?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+    const signedIn = await onboardingIdentity.openLink(link.searchParams.get("token") ?? "");
+    if (signedIn.status !== "opened") throw new Error("onboarding sign-in did not open");
+    const context = await browser.newContext({
+      viewport: { width: section === "products" ? 375 : 1024, height: 812 },
+    });
+    await context.addCookies(
+      signedIn.setCookies.map((line) => {
+        const pair = line.split(";")[0] ?? "";
+        const equals = pair.indexOf("=");
+        return { name: pair.slice(0, equals), value: pair.slice(equals + 1), url: origin };
+      }),
+    );
+    const page = await context.newPage();
+    try {
+      await page.goto(`${origin}${BASE}/${section}`);
+      await page.getByRole("textbox", { name: "Key name" }).fill("Worker" + "x".repeat(94));
+      await page.getByRole("button", { name: "Create key", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Copy your new key" });
+      await dialog.waitFor();
+      if (section === "products") {
+        await page.waitForTimeout(11_000);
+        expect(await dialog.isVisible()).toBe(true);
+      }
+      const secret = await dialog.getByRole("textbox", { name: "New API key" }).inputValue();
+      expect(secret).toMatch(/^csk_test_/);
+      expect(await page.locator("dialog").evaluate((element) => element.matches(":modal"))).toBe(
+        true,
+      );
+      await page.keyboard.press("Escape");
+      expect(await dialog.isVisible()).toBe(true);
+      await page.mouse.click(1, 1);
+      expect(await dialog.isVisible()).toBe(true);
+      for (let count = 0; count < 8; count += 1) {
+        await page.keyboard.press("Tab");
+        expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+          true,
+        );
+      }
+      await dialog.getByRole("button", { name: "Done", exact: true }).click();
+      await page.waitForURL(`${origin}${BASE}/${section}`);
+      await page.waitForFunction(
+        (id) => document.activeElement?.id === id,
+        section === "products" ? "code-quickstart" : "create-api-key",
+      );
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      expect(await page.locator("body").innerHTML()).not.toContain(secret);
+      if (section === "products") {
+        await harnessed.gateway.poll(merchant, 0, { through: "api" });
+        await expect
+          .poll(() => page.getByText("Your code connected", { exact: false }).count(), {
+            timeout: 15_000,
+          })
+          .toBe(1);
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+      await page.reload();
+      expect(await page.getByRole("dialog").count()).toBe(0);
+      expect(await page.locator("body").innerHTML()).not.toContain(secret);
+    } finally {
+      await context.close();
+    }
+  },
+  40_000,
+);
+
+it("requires the test acknowledgement, keeps focus inside it and focuses the first platform after saving", async () => {
+  const channel = {
+    PAYMENT_NETWORK: "eip155:84532",
+    FACILITATOR_URL: "https://x402.org/facilitator",
+  };
+  const isolated = await harness(channel);
+  const config = loadConfig({
+    ...channel,
+    DATABASE_URL: "postgres://nobody@nowhere/unused",
+    AUTH_SECRET: TEST_AUTH_SECRET,
+    BASE_PATH: BASE,
+  });
+  const mails: Message[] = [];
+  const identity = identityFor(config, {
+    postman: async (message) => {
+      mails.push(message);
+      return "accepted";
+    },
+  });
+  const merchant = await isolated.gateway.registerMerchant();
+  await identity.make("test-welcome@example.com", merchant);
+  await identity.requestLink("test-welcome@example.com", "default", ONE_CLIENT);
+  const link = new URL(mails.at(-1)?.body.match(/https?:\/\/\S+/)?.[0] ?? "");
+  const signedIn = await identity.openLink(link.searchParams.get("token") ?? "");
+  if (signedIn.status !== "opened") throw new Error("the test sign-in did not open");
+  const app = buildApp(config, { pages: await builtPages(), gateway: isolated.gateway, identity });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const testOrigin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  await context.addCookies(
+    signedIn.setCookies.map((line) => {
+      const pair = line.split(";")[0] ?? "";
+      const equals = pair.indexOf("=");
+      return { name: pair.slice(0, equals), value: pair.slice(equals + 1), url: testOrigin };
+    }),
+  );
+  const page = await context.newPage();
+  try {
+    await page.goto(`${testOrigin}${BASE}/products`);
+    await page.waitForLoadState("networkidle");
+    const dialog = page.getByRole("dialog", { name: "This is the test environment" });
+    await dialog.waitFor();
+    const start = dialog.getByRole("button", { name: "Start testing" });
+    expect(await start.isDisabled()).toBe(true);
+    await page.keyboard.press("Escape");
+    expect(await dialog.isVisible()).toBe(true);
+    for (let count = 0; count < 4; count += 1) {
+      await page.keyboard.press("Tab");
+      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(
+        true,
+      );
+    }
+    await dialog.getByRole("checkbox", { name: "I've read and understood" }).check();
+    await start.click();
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-platform") === "woocommerce",
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    expect(await page.getByRole("dialog").count()).toBe(0);
+    await page.reload();
+    expect(await page.getByRole("dialog").count()).toBe(0);
+  } finally {
+    await context.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await identity.close();
+    await isolated.stop();
+  }
 });

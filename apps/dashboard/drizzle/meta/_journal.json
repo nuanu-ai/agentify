@@ -190,6 +190,13 @@
       "when": 1793174400000,
       "tag": "0026_woo_cart_resources",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793371457825,
+      "tag": "0027_onboarding_choices",
+      "breakpoints": true
     }
   ]
 }

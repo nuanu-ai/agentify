@@ -238,6 +238,12 @@ and write: with read alone, every purchase is refused before payment, because
 Agentify cannot create the order in your shop. Agentify never asks for your
 shop password.
 
+Once read and write access is confirmed, the connected shop's origin fills an
+empty seller site. A site you already chose in Settings is kept. If saving
+the site fails, the connection stays and the page offers a retry without
+asking you to type the address again. A shop address with a port cannot be a
+seller site; the page leads to Settings to choose a site without one.
+
 Before your browser leaves for the shop, Agentify reads one product from your
 shop's public catalogue to learn the currency it is priced in and the decimals
 it writes. A shop priced in another currency than US dollars is refused there,
@@ -386,8 +392,9 @@ nothing until its rate is set, which the page asks for first.
 
 Every product imported from WooCommerce is paid for before it is delivered or
 shipped, so buyers need your shop's site to read your cancellation, refund and
-support terms before they pay. Set the site in Settings before you import:
-products are not published without it. Products already published without a
+support terms before they pay. The connection supplies the site when none was
+set; if it could not, complete the site's recovery step before importing.
+Import reads no products while the site is missing. Products already published without a
 site leave the catalogue and refuse new purchases until you set one, and orders
 already paid go ahead as usual.
 

@@ -1204,7 +1204,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       if (signedIn !== null) {
         return {
           kind: "redirect",
-          location: `${base}/woocommerce?from=shop`,
+          location: `${base}/${(await identity.onboardingChoices(signedIn.person.id)).platform === "woocommerce" ? "products" : "woocommerce"}?from=shop`,
           setCookies: signedIn.setCookies,
         };
       }

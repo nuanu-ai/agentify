@@ -10,7 +10,7 @@
  */
 
 import type { MerchantKey } from "@agentify/gateway";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub, Outlet, RouterContextProvider, useNavigate } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
@@ -144,7 +144,7 @@ const issue = async () => {
     target: { value: "the second worker" },
   });
   fireEvent.click(screen.getByText("Create key"));
-  expect(await screen.findByText(SECRET)).toBeTruthy();
+  expect(await screen.findByDisplayValue(SECRET)).toBeTruthy();
 };
 
 describe("issuing a key where the page's script runs", () => {
@@ -172,9 +172,9 @@ describe("issuing a key where the page's script runs", () => {
 
     fireEvent.click(screen.getByText("Browser back"));
 
+    await waitFor(() => expect(screen.queryByDisplayValue(SECRET)).toBeNull());
     expect(await screen.findByText("Create key")).toBeTruthy();
-    expect(screen.queryByText("The cards page")).toBeNull();
-    expect(screen.queryByText(SECRET)).toBeNull();
+    expect(screen.queryByText("The products page")).toBeNull();
   });
 
   it("takes the secret off a page the browser keeps for Back and Forward, and draws the list when it is brought back", async () => {
@@ -201,9 +201,18 @@ describe("issuing a key where the page's script runs", () => {
     keysPage({ listAfterIssue: "answers" });
     let keptWithTheSecret: boolean | undefined;
     const leaveOnSight = new MutationObserver(() => {
-      if (keptWithTheSecret !== undefined || !document.body.textContent?.includes(SECRET)) return;
+      if (
+        keptWithTheSecret !== undefined ||
+        !document
+          .querySelector<HTMLInputElement>('input[aria-label="New API key"]')
+          ?.value.includes(SECRET)
+      )
+        return;
       window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
-      keptWithTheSecret = document.body.textContent.includes(SECRET);
+      keptWithTheSecret =
+        document
+          .querySelector<HTMLInputElement>('input[aria-label="New API key"]')
+          ?.value.includes(SECRET) === true;
     });
     leaveOnSight.observe(document.body, { characterData: true, childList: true, subtree: true });
 
@@ -211,7 +220,7 @@ describe("issuing a key where the page's script runs", () => {
       target: { value: "the second worker" },
     });
     fireEvent.click(screen.getByText("Create key"));
-    await screen.findByText(/the key for “the second worker”/);
+    await waitFor(() => expect(keptWithTheSecret).toBeDefined());
     leaveOnSight.disconnect();
 
     expect(keptWithTheSecret).toBe(false);

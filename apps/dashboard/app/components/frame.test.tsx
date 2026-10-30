@@ -303,7 +303,7 @@ describe("the banner about the account", () => {
         within(drawn)
           .getAllByRole("link")
           .map((link) => link.getAttribute("href")),
-      ).toEqual(multiple ? ["/settings", TEST_DASHBOARD] : ["/settings"]);
+      ).toEqual(["/settings"]);
       if (multiple) {
         expect(
           within(drawn)
@@ -316,9 +316,8 @@ describe("the banner about the account", () => {
     },
   );
 
-  it("leads a live merchant not yet approved to the test channel's own dashboard, and nobody else", async () => {
-    // A merchant who signed up on the live site makes the first sale on the
-    // test channel, which is another dashboard and another account.
+  it("keeps the approval banner on its channel without offering practice", async () => {
+    // Optional practice belongs only to the initial platform question.
     const toTheTest = () =>
       banner() === null
         ? []
@@ -328,7 +327,7 @@ describe("the banner about the account", () => {
 
     framed("products", { account: accountOf({ ...LIVE, liveApproval: false }) });
     await screen.findByText("The screen");
-    expect(toTheTest()).toHaveLength(1);
+    expect(toTheTest()).toHaveLength(0);
 
     for (const viewer of [
       LIVE,

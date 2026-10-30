@@ -482,7 +482,14 @@ async function attachedTo(
       const action = new URL(found);
       const token = action.searchParams.get("token") ?? "";
       const opened = await call("POST", action.pathname, { token });
-      return opened.to === null || opened.to === LATEST_REPORT ? opened : call("GET", opened.to);
+      const landing =
+        opened.to === null || opened.to === LATEST_REPORT ? opened : await call("GET", opened.to);
+      // These HTTP tests omit navigation before a later press. A real form
+      // supplies that press's gate mark even when the landing page has links only.
+      if (shownMark === undefined && landing.status === 200 && opened.to !== LATEST_REPORT) {
+        await call("GET", `${basePath}/settings`, undefined, { extra: { purpose: "prefetch" } });
+      }
+      return landing;
     },
     async makeMerchant() {
       // Pressed on the screen that offers it, as a person would.
@@ -2694,9 +2701,9 @@ describe("choosing the name buyers read", () => {
     expect(await listedAs(running)).toBe("Bright Data Plans");
   });
 
-  it("lets a merchant walk past it, and says on their cards what that costs", async () => {
-    // Skipping is allowed, but not silently: a merchant whose code then
-    // publishes a card meets a refusal, and the dashboard says so first.
+  it("lets a merchant walk past the name and keeps account setup on the page before products exist", async () => {
+    // The publishing door still owns the missing-name refusal; the empty
+    // path keeps that next step on the page instead of a global banner.
     const running = await started();
     await unname(running);
     await running.browser.signIn();
@@ -2704,7 +2711,7 @@ describe("choosing the name buyers read", () => {
     const cards = await running.browser.get("/products");
 
     expect(cards.status).toBe(200);
-    expect(reasonsIn(cards.html)).toContain("no_seller_name");
+    expect(reasonsIn(cards.html)).toEqual([]);
     expect(cards.html).toContain('href="/settings"');
     expect(await listedAs(running)).toBeNull();
   });
@@ -3448,7 +3455,7 @@ describe("a merchant who has chosen no name", () => {
     expect(finding?.code).toBe("no_seller_name");
     expect(finding?.message).toContain("POST /v0/seller-name");
     // The dashboard says the same without sending anybody to a route.
-    expect(reasonsIn(cards.html)).toContain("no_seller_name");
+    expect(reasonsIn(cards.html)).toEqual([]);
     expect(cards.html).toContain('href="/settings"');
     expect(text).not.toContain("POST /v0/seller-name");
   });
@@ -3560,28 +3567,22 @@ describe("the cards screen", () => {
     expect(text).toContain("Later, within 1 hour");
   });
 
-  it("says so plainly when a merchant has published nothing", async () => {
+  it("takes an established code integration with no products to its next step", async () => {
     const { browser } = await started();
 
     const screen = await browser.signIn();
-    const text = readable(screen.html);
 
-    expect(text).toContain("haven't published any products yet");
-    expect(screen.html).toContain('href="/docs/quickstart"');
+    expect(reasonsIn(screen.html)).toEqual([]);
+    expect(screen.html).toContain('href="/settings"');
   });
 
-  it("says an empty catalogue in the same sentence whatever the account lacks, which the banner says", async () => {
+  it("keeps account requirements on the empty Products page instead of repeating them in a banner", async () => {
     const running = await started();
     await unname(running);
     await running.browser.signIn();
-
     const html = (await running.browser.get("/products")).html;
-    const banner = html.indexOf('class="account-banner"');
-    const underIt = readable(html.slice(html.indexOf("</section>", banner)));
-
-    expect(reasonsIn(html)).toContain("no_seller_name");
-    expect(underIt).toContain("haven't published any products yet");
-    expect(underIt).not.toMatch(/seller name|choose/i);
+    expect(reasonsIn(html)).toEqual([]);
+    expect(html).toContain('href="/settings"');
   });
 
   it("puts a merchant's own text on the page as text, whatever is in it", async () => {
@@ -3938,9 +3939,12 @@ describe("a card held off sale by what its merchant lacks", () => {
           ]);
           return;
         }
-        expect([...reasonsIn(screen.html)].sort()).toStrictEqual(
-          door.map((code) => SAID_AS[code]).sort(),
-        );
+        const blockers = door.map((code) => SAID_AS[code]);
+        expect(reasonsIn(screen.html)).toEqual([
+          ["no_seller_name", "no_payout_wallet", "not_approved"].find((reason) =>
+            blockers.includes(reason),
+          ),
+        ]);
         expect(readable(row)).toContain("Off sale");
         // What the account lacks is said once, over the cards, not again in
         // every row; the card keeps its own switch, so a card paused now
@@ -3966,7 +3970,7 @@ describe("a card held off sale by what its merchant lacks", () => {
     expect(settings).not.toMatch(/approved|not approved|approval/i);
   });
 
-  it("on live, before Agentify approves, says so once on Settings, in the banner", async () => {
+  it("on live, keeps approval off the global banner before any product exists", async () => {
     const running = await started({
       gateway: { ...CHANNELS.live, ...LIVE_GATEWAY_ONLY },
       dashboard: CHANNELS.live,
@@ -3978,7 +3982,7 @@ describe("a card held off sale by what its merchant lacks", () => {
       html.replace(/<section class="account-banner"[\s\S]*?<\/section>/, ""),
     );
 
-    expect(reasonsIn(html)).toContain("not_approved");
+    expect(reasonsIn(html)).toEqual([]);
     expect(outsideTheBanner).not.toMatch(/approved/i);
   });
 
@@ -8274,5 +8278,121 @@ describe("what the pages record for product analytics", () => {
       expect((await running.browser.get(path)).status, path).toBe(200);
     }
     await settle();
+  });
+});
+
+describe("merchant onboarding choices over HTTP", () => {
+  it("keeps a failed platform save retryable without recording an answer", async () => {
+    let unavailable = true;
+    const running = await started({
+      identity: (real) => ({
+        ...real,
+        choosePlatform: async (person, platform) => {
+          if (unavailable) throw new Error("the account store is unavailable");
+          await real.choosePlatform(person, platform);
+        },
+      }),
+    });
+    await running.browser.signIn(FRESH.email);
+    const failed = await running.browser.post("/products", { platform: "api" });
+    expect(failed.status).toBe(503);
+    expect(
+      formsIn(failed.html)
+        .flatMap((form) => form.presses)
+        .filter((press) => press.name === "platform"),
+    ).toHaveLength(3);
+    const person = await running.identity.byEmail(FRESH.email);
+    expect((await running.identity.onboardingChoices(person?.id ?? "missing")).platform).toBeNull();
+    unavailable = false;
+    expect((await running.browser.post("/products", { platform: "api" })).status).toBe(303);
+    expect((await running.identity.onboardingChoices(person?.id ?? "missing")).platform).toBe(
+      "api",
+    );
+  });
+
+  it("records the selected platform, refuses unlisted input and returns to the same step after signing in again", async () => {
+    const running = await started();
+    await running.browser.signIn(FRESH.email);
+    const initial = await running.browser.get("/products");
+    const answers = formsIn(initial.html)
+      .flatMap((form) => form.presses)
+      .filter((press) => press.name === "platform");
+    expect(answers.map((answer) => answer.value)).toEqual(["woocommerce", "api", "other"]);
+    expect(reasonsIn(initial.html)).toEqual([]);
+    expect((await running.browser.post("/products", { platform: "unlisted" })).status).toBe(400);
+    expect((await running.browser.post("/products", { platform: "other" })).status).toBe(303);
+    const other = await running.browser.get("/products");
+    expect(
+      formsIn(other.html)
+        .flatMap((form) => form.presses)
+        .find((press) => press.value === "api"),
+    ).toBeDefined();
+    expect((await running.browser.post("/products", { platform: "api" })).status).toBe(303);
+    const choosing = await running.browser.get("/products?ways=choose");
+    expect(
+      formsIn(choosing.html)
+        .flatMap((form) => form.presses)
+        .filter((press) => press.name === "platform"),
+    ).toHaveLength(3);
+    const saved = await running.identity.byEmail(FRESH.email);
+    expect((await running.identity.onboardingChoices(saved?.id ?? "missing")).platform).toBe("api");
+    await running.browser.signIn(FRESH.email);
+    const returned = await running.browser.get("/products");
+    expect(
+      formsIn(returned.html).some(
+        (form) => form.action === "/products" && form.fields.has("label"),
+      ),
+    ).toBe(true);
+    const person = await running.identity.byEmail(FRESH.email);
+    expect(await running.identity.onboardingChoices(person?.id ?? "missing")).toEqual({
+      platform: "api",
+      testAcknowledged: false,
+    });
+  });
+
+  it("requires an explicit test acknowledgement and remembers it across sessions", async () => {
+    const channel = {
+      PAYMENT_NETWORK: "eip155:84532",
+      FACILITATOR_URL: "https://x402.org/facilitator",
+    };
+    const running = await started({ gateway: channel, dashboard: channel });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.get("/products")).html).toContain("<dialog");
+    expect((await running.browser.post("/products", { intent: "acknowledge-test" })).status).toBe(
+      400,
+    );
+    const person = await running.identity.byEmail(FRESH.email);
+    expect(
+      (await running.identity.onboardingChoices(person?.id ?? "missing")).testAcknowledged,
+    ).toBe(false);
+    expect(
+      (await running.browser.post("/products", { intent: "acknowledge-test", understood: "yes" }))
+        .status,
+    ).toBe(303);
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.get("/products")).html).not.toContain("<dialog");
+    expect(
+      (await running.identity.onboardingChoices(person?.id ?? "missing")).testAcknowledged,
+    ).toBe(true);
+  });
+
+  it("links to practice documentation only on the first live screen", async () => {
+    const channel = {
+      PAYMENT_NETWORK: "eip155:8453",
+      FACILITATOR_URL: "https://api.cdp.coinbase.com/platform/v2/x402",
+    };
+    const running = await started({
+      gateway: { ...channel, CDP_API_KEY_ID: "key-id", CDP_API_KEY_SECRET: "key-secret" },
+      dashboard: channel,
+    });
+    await running.browser.signIn(FRESH.email);
+    expect((await running.browser.get("/products")).html).toContain('href="/docs/#how-to-start"');
+    await running.browser.post("/products", { platform: "api" });
+    for (const path of ["/products", "/keys", "/settings"]) {
+      const page = await running.browser.get(path);
+      expect(page.html).not.toContain('href="/docs/#how-to-start"');
+      expect(page.html).not.toContain('href="https://test.agentify.ad/dashboard/sign-in"');
+      expect(reasonsIn(page.html)).toEqual([]);
+    }
   });
 });

@@ -1186,6 +1186,9 @@ export class Gateway {
       readonly takesEffectAt: number;
     } | null;
     readonly liveApproved: boolean;
+    readonly hasProducts: boolean;
+    readonly lastContact: number | null;
+    readonly contactAlive: boolean;
     readonly outOfTouch: { readonly since: number | null } | null;
     readonly unserved: boolean;
     readonly withdrawn: { readonly at: number; readonly note: string | null } | null;
@@ -1196,7 +1199,11 @@ export class Gateway {
     }
     const at = this.runtime.clock();
     const wallet = payoutWalletAt(merchant.payoutWallet, at);
+    const lastContact = await this.runtime.store.lastContact(merchant.id);
     return {
+      hasProducts: await this.runtime.store.hasProducts(merchantId, merchant.integration),
+      lastContact,
+      contactAlive: !silentAt(lastContact, at),
       selling: merchant.selling,
       through: merchant.integration,
       sellerName: merchant.serviceName,
@@ -1206,7 +1213,7 @@ export class Gateway {
           ? null
           : { address: wallet.pending.address, takesEffectAt: wallet.pending.takesEffectAt },
       liveApproved: merchant.liveApprovedAt !== null,
-      outOfTouch: await this.#refusedForSilence(merchant, at),
+      outOfTouch: await this.#refusedForSilence(merchant, at, lastContact),
       // Read while paused too, so a seller learns of it before resuming into it.
       unserved: await this.#unserved(merchant.id),
       withdrawn: await this.#standingWithdrawal(merchant),
@@ -1235,11 +1242,11 @@ export class Gateway {
   async #refusedForSilence(
     merchant: StoredMerchant,
     at: number,
+    since: number | null,
   ): Promise<{ readonly since: number | null } | null> {
     if (merchant.selling !== "open" || !sellableBy(merchant, this.runtime.config, at)) {
       return null;
     }
-    const since = await this.runtime.store.lastContact(merchant.id);
     if (!silentAt(since, at)) {
       return null;
     }

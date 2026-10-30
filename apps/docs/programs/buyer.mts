@@ -19,7 +19,7 @@ if (!BUYER_PRIVATE_KEY) {
   const { items } = (await catalog.json()) as { items: Card[] }
   const card = items.find((item) => item.id === ITEM_ID)
   if (!card)
-    throw new Error(`${ITEM_ID} is not in the catalogue. Is the process from step 4 running?`)
+    throw new Error(`${ITEM_ID} is not in the catalogue. Is the process from step 3 running?`)
 
   const client = new x402Client()
   const signer = privateKeyToAccount(BUYER_PRIVATE_KEY as `0x${string}`)

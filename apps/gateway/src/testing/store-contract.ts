@@ -267,6 +267,19 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
     };
 
     describe("a card", () => {
+      it("answers whether an integration has products without counting another merchant or hiding a paused product", async () => {
+        const store = await twoMerchants();
+        await store.publishCard(B, card("other", "B's room"), 1_000);
+        expect(await store.hasProducts(A, "api")).toBe(false);
+        const own = await store.publishCard(A, card("own", "A's room"), 2_000);
+        expect(await store.hasProducts(A, "api")).toBe(true);
+        expect(await store.hasProducts(A, "woocommerce")).toBe(false);
+        await store.setCardPaused(A, own.id, true);
+        expect(await store.hasProducts(A, "api")).toBe(true);
+        await store.publishCard(A, card("shop", "A mug"), 3_000, "woocommerce");
+        expect(await store.hasProducts(A, "woocommerce")).toBe(true);
+      });
+
       it("is changed by being published again, and keeps its catalog identifier", async () => {
         // The portal tells a merchant to change a card by publishing it again; a
         // second card would leave agents holding the address of the stale one.

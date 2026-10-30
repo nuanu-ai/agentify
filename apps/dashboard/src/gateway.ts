@@ -264,10 +264,8 @@ export interface GatewayClient {
     }>
   >;
   /**
-   * What the frame says over every page, from one read of the merchant's row
-   * and none of their cards: the selling state, the integration, the seller
-   * name, the wallet paid now with a change of it waiting, and the operator's
-   * approval for live sales.
+   * The account's standing and small navigation facts, without catalogue
+   * payloads: this read serves every section of the dashboard.
    */
   standing(): Promise<
     Answer<{
@@ -281,6 +279,9 @@ export interface GatewayClient {
         readonly takesEffectAt: number;
       } | null;
       readonly liveApproved: boolean;
+      readonly hasProducts: boolean;
+      readonly lastContact: number | null;
+      readonly contactAlive: boolean;
       /**
        * Present while the merchant's purchases are refused, and their cards
        * left out of the catalogue, because their process has not polled: when

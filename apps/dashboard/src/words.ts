@@ -138,8 +138,8 @@ export interface Way {
  * who lifts the hold: the merchant at the way it names, Agentify, or nobody,
  * since it lifts by itself. The approval says what is known, that there is
  * none, and not that a review is under way, since nothing records one; the
- * merchant cannot grant it, so the way leads to the test channel's own
- * dashboard, where test sales need none.
+ * merchant cannot grant it. Practice belongs to the first Products screen,
+ * not the account banner.
  */
 export const ACCOUNT_WORDS: Readonly<
   Record<AccountReason, Readonly<{ title: string; says: string; fix: Way | null }>>
@@ -161,7 +161,7 @@ export const ACCOUNT_WORDS: Readonly<
   not_approved: {
     title: "Not approved for live sales yet",
     says: "Agents can buy your products once Agentify approves your account. To ask, write to admin@agentify.ad.",
-    fix: { to: "https://test.agentify.ad/dashboard/sign-in", words: "Make a test sale" },
+    fix: null,
   },
   no_seller_name: {
     title: "Your products are off sale",

@@ -149,15 +149,15 @@ describe("the account banner", () => {
     expect(stopped?.says).toContain("2026-10-23 14:09:00 UTC");
     expect(stopped?.says).toContain(`“${note}”`);
     expect(stopped?.fix).toBeNull();
-    expect(notYet?.fix).not.toBeNull();
+    expect(notYet?.fix).toBeNull();
   });
 
-  it("points at the page that puts a setting right, and from the approval to the test channel's dashboard", () => {
+  it("points at the page that puts a setting right without sending live sales to another channel", () => {
     const viewer: Viewer = { ...READY, sellerName: null, liveApproval: false };
 
     expect(accountOf(viewer).map((note) => [note.reason, note.fix?.to ?? null])).toStrictEqual([
       ["no_seller_name", "/settings"],
-      ["not_approved", "https://test.agentify.ad/dashboard/sign-in"],
+      ["not_approved", null],
     ]);
   });
 

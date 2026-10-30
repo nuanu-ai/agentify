@@ -143,30 +143,36 @@ dispute — are in the [common questions](/faq).
 
 ## How to start
 
-1. Open the [test channel's dashboard](https://test.agentify.ad/dashboard),
-   enter your email address, open the link in the message and press the
-   confirmation button. That sign-in sets up your business and asks for the
-   name buyers will see.
-2. In Settings, save the wallet where your share arrives; on the test channel
-   it only ever receives test USDC. [Money](/money#if-you-have-no-wallet-yet)
-   says how to get one, and replacing a wallet you saved on the live channel
-   takes forty-eight hours ([why](/money#replacing-your-wallet)).
-3. Hand over the integration: issue an API key for your engineer, who follows
-   [The first test sale](/quickstart), or connect your WooCommerce shop
-   ([how](/woocommerce)).
-4. Make your first test purchase yourself: your engineer buys your own product on
-   the test channel with test USDC, as [the guide's sixth
+The test environment is a place to practice your integration and make your own
+test purchases. Buyers pay in test USDC on Base Sepolia. Live sales use real
+USDC on Base and a separate account at `https://agentify.ad`; nothing is
+copied between the two accounts. If you connect your real WooCommerce shop
+in the test environment, its orders are test orders: do not ship them.
+
+1. Open the [test dashboard](https://test.agentify.ad/dashboard), enter your
+   email address, open the link in the message and press the confirmation
+   button. That sign-in sets up your business and asks for the name buyers
+   will see.
+2. On Products, choose how to add your products. **With code** shows the
+   package, API key and [quickstart](/quickstart); **WooCommerce** opens the
+   shop connection ([how it works](/woocommerce)).
+3. After your code connects, save the payout wallet in Settings. For a
+   WooCommerce shop, save it before importing products. In the test
+   environment the wallet only receives test USDC.
+   [Money](/money#if-you-have-no-wallet-yet) explains how to get one.
+4. Make your first test purchase yourself, buying your own product with test
+   USDC, as [the guide's sixth
    step](/quickstart#_6-make-your-first-test-purchase) shows.
-5. Go live: sign in to the live channel's dashboard at `https://agentify.ad`
-   as a separate account and save a wallet for real money there. Nothing is
-   published live until an Agentify operator approves your business, which
-   you ask for by writing to admin@agentify.ad; once they have, have your
-   products published again with a live key, or connect your shop there and
-   import it.
+5. For live sales, sign in to your separate dashboard at
+   `https://agentify.ad` and connect your code or shop there. Save a wallet
+   for real USDC and ask for Agentify approval at admin@agentify.ad before
+   publishing. Your code publishes with a live key; a shop imports its
+   products from its live connection. Replacing a saved wallet on the live
+   account takes forty-eight hours ([why](/money#replacing-your-wallet)).
 
 What changes between the two channels:
 
-| | Test channel | Live channel |
+| | Test environment | Live sales |
 | --- | --- | --- |
 | Address | `https://test.agentify.ad` | `https://agentify.ad` |
 | Account | sign in at its dashboard | a separate account: sign in again at its dashboard |

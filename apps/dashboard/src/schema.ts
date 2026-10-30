@@ -67,10 +67,16 @@ export const accounts = pgTable(
      * name, whoever acted.
      */
     analyticsOptOut: boolean("analytics_opt_out").notNull().default(false),
+    onboardingPlatform: text("onboarding_platform"),
+    testAcknowledged: boolean("test_acknowledged").notNull().default(false),
   },
   // An empty identifier is neither a merchant nor none, and the code reading a
   // row refuses it rather than guessing.
   (table) => [
+    check(
+      "dashboard_accounts_onboarding_platform",
+      sql`${table.onboardingPlatform} is null or ${table.onboardingPlatform} in ('woocommerce', 'api', 'other')`,
+    ),
     check(
       "dashboard_accounts_merchant_named",
       sql`${table.merchantId} is null or ${table.merchantId} <> ''`,

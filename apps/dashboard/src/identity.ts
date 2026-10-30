@@ -463,6 +463,8 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
           // operator's configuration write it.
           operator: { type: "boolean", required: false, defaultValue: false, input: false },
           // Closed to input: only the settings' own press writes it.
+          onboardingPlatform: { type: "string", required: false, input: false },
+          testAcknowledged: { type: "boolean", required: false, defaultValue: false, input: false },
           analyticsOptOut: {
             type: "boolean",
             required: false,
@@ -1663,6 +1665,42 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
     },
 
     observe,
+
+    async onboardingChoices(personId) {
+      const found = await (await contextOf()).internalAdapter.findUserById(personId);
+      if (found === null) throw new Error("the account no longer exists");
+      const stored = found as { onboardingPlatform?: unknown; testAcknowledged?: unknown };
+      const platform = stored.onboardingPlatform;
+      if (
+        platform !== undefined &&
+        platform !== null &&
+        platform !== "woocommerce" &&
+        platform !== "api" &&
+        platform !== "other"
+      )
+        throw new Error("invalid stored platform");
+      return { platform: platform ?? null, testAcknowledged: stored.testAcknowledged === true };
+    },
+
+    async choosePlatform(personId, platform) {
+      if (platform !== "woocommerce" && platform !== "api" && platform !== "other")
+        throw new Error("invalid platform");
+      const changed = await (await contextOf()).adapter.update({
+        model: "user",
+        where: [{ field: "id", value: personId }],
+        update: { onboardingPlatform: platform },
+      });
+      if (changed === null) throw new Error("the account no longer exists");
+    },
+
+    async acknowledgeTest(personId) {
+      const changed = await (await contextOf()).adapter.update({
+        model: "user",
+        where: [{ field: "id", value: personId }],
+        update: { testAcknowledged: true },
+      });
+      if (changed === null) throw new Error("the account no longer exists");
+    },
 
     async analyticsOptedOut(personId) {
       const found = await (await contextOf()).internalAdapter.findUserById(personId);

@@ -672,6 +672,13 @@ export class MemoryStore implements Store {
     return this.#cards.get(id) ?? null;
   }
 
+  async hasProducts(merchantId: string, integration: Integration): Promise<boolean> {
+    for (const card of this.#cards.values()) {
+      if (card.merchantId === merchantId && card.integration === integration) return true;
+    }
+    return false;
+  }
+
   async cards(merchantId: string): Promise<readonly StoredCard[]> {
     return [...this.#cards.values()].filter((card) => card.merchantId === merchantId);
   }

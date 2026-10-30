@@ -786,6 +786,15 @@ export class PostgresStore implements Store {
     return row === undefined ? null : storedCardOf(row);
   }
 
+  async hasProducts(merchantId: string, integration: Integration): Promise<boolean> {
+    const [found] = await this.#db
+      .select({ id: cards.id })
+      .from(cards)
+      .where(and(eq(cards.merchantId, merchantId), eq(cards.integration, integration)))
+      .limit(1);
+    return found !== undefined;
+  }
+
   async cards(merchantId: string): Promise<readonly StoredCard[]> {
     const rows = await this.#db
       .select()

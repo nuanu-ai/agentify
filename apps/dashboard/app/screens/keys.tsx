@@ -1,14 +1,16 @@
-import { Button, Field } from "@agentify/ui";
-import { useLayoutEffect, useState } from "react";
+import { Button } from "@agentify/ui";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import type { KeysView, NewKeyView, NoCall } from "../../src/keys.js";
 import { Ident } from "../components/copy.js";
 import { Cell, List, Row } from "../components/list.js";
+import { LockedDialog } from "../components/locked-dialog.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
 import styles from "./keys.module.css";
+import { CreateKeyForm } from "./onboarding.js";
 
 /** A row's last call where none is recorded, by which of the two blanks it is. */
 const NO_CALL: Readonly<Record<NoCall, string>> = {
@@ -126,26 +128,7 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
             <p>Name it after the code that will use it.</p>
           </div>
         </div>
-        <PostForm className="issue" action="/keys" replace={false}>
-          {(pending) => (
-            <>
-              <Field
-                label="Key name"
-                id="label"
-                name="label"
-                type="text"
-                autoComplete="off"
-                placeholder="Order worker, production"
-                maxLength={100}
-                defaultValue={view.typed}
-                autoFocus={view.startNew}
-                required
-                {...(view.problem === null ? {} : { error: view.problem })}
-              />
-              <Button pending={pending}>Create key</Button>
-            </>
-          )}
-        </PostForm>
+        <CreateKeyForm view={view} action="/keys" />
       </section>
     </>
   );
@@ -155,7 +138,12 @@ export function KeysScreen({ view }: Readonly<{ view: KeysView }>) {
  * Copying needs the page's script; where it did not run, or the browser
  * refuses, the key is selected by hand, as the line beside the button says.
  */
-export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
+export function NewKeyScreen({
+  view,
+  doneTo = "/keys",
+}: Readonly<{ view: NewKeyView; doneTo?: string }>) {
+  const [alive, setAlive] = useState(false);
+  useEffect(() => setAlive(true), []);
   const [said, setSaid] = useState("");
   const [left, setLeft] = useState(false);
   const navigate = useNavigate();
@@ -167,7 +155,7 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
   useLayoutEffect(() => {
     const leave = () => flushSync(() => setLeft(true));
     const back = (event: PageTransitionEvent) => {
-      if (event.persisted) void navigate("/keys", { replace: true });
+      if (event.persisted) void navigate(doneTo, { replace: true });
     };
     window.addEventListener("pagehide", leave);
     window.addEventListener("pageshow", back);
@@ -175,15 +163,53 @@ export function NewKeyScreen({ view }: Readonly<{ view: NewKeyView }>) {
       window.removeEventListener("pagehide", leave);
       window.removeEventListener("pageshow", back);
     };
-  }, [navigate]);
+  }, [navigate, doneTo]);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(view.secret);
       setSaid("Copied.");
     } catch {
-      setSaid("Could not copy. Select the key above.");
+      setSaid("Couldn't copy. Select the key and copy it.");
     }
   };
+  if (alive)
+    return left ? null : (
+      <LockedDialog
+        title="Copy your new key"
+        focusAfter={doneTo === "/products" ? "#code-quickstart" : "#create-api-key"}
+      >
+        <p>
+          This is the only time we show it. We keep no readable copy, so if you lose it, create a
+          new key.
+        </p>
+        <p>{view.label}</p>
+        <input
+          aria-label="New API key"
+          className={styles.secret}
+          readOnly
+          value={view.secret}
+          onFocus={(event) => event.target.select()}
+          onClick={(event) => event.currentTarget.select()}
+        />
+        <p role="status">{said}</p>
+        <p>Keep it with your other secrets, out of source control.</p>
+        <div className={styles.secretActions}>
+          <Button type="button" onClick={() => void copy()}>
+            Copy
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setLeft(true);
+              void navigate(doneTo, { replace: true });
+            }}
+          >
+            Done
+          </Button>
+        </div>
+      </LockedDialog>
+    );
   return (
     <>
       <div className="lede">

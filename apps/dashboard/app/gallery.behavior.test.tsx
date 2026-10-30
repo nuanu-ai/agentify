@@ -14,6 +14,7 @@ import { drawnInBrowser } from "@agentify/gallery/browser";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vitest";
+import { ONBOARDING_CASES } from "../src/testing/onboarding-cases.js";
 import { gallery } from "./gallery.js";
 
 const scenes = gallery.states.flatMap((state) =>
@@ -32,4 +33,27 @@ describe("the dashboard's gallery, in the browser", () => {
 
     expect(drawn.querySelector<HTMLDetailsElement>("details.site-menu")?.open).toBe(true);
   });
+});
+
+/** The situation table also drives what the real frame draws over each page. */
+describe("onboarding situations in the frame", () => {
+  it.each(ONBOARDING_CASES)(
+    "situation $row keeps the bar to its one reason and practice to the first live visit",
+    async ({ row, facts, reason }) => {
+      const state = gallery.states.find((one) => one.id === `dashboard-onboarding-${row}`);
+      if (state === undefined) throw new Error(`the gallery has no onboarding situation ${row}`);
+      const drawn = new DOMParser().parseFromString(
+        await drawnInBrowser(state, { shows: "Products" }, { act, createRoot }),
+        "text/html",
+      );
+      expect(
+        [...drawn.querySelectorAll("[data-reason]")].map((element) =>
+          element.getAttribute("data-reason"),
+        ),
+      ).toEqual(reason === null ? [] : [reason]);
+      expect(drawn.querySelector('a[href="/docs/#how-to-start"]') !== null).toBe(
+        row === 1 && facts.mode === "live",
+      );
+    },
+  );
 });

@@ -342,6 +342,30 @@ if (databaseUrl === null) {
       await migrateEverything();
     });
 
+    it("persists onboarding choices across identity instances and limits the stored platform vocabulary", async () => {
+      const messages: Message[] = [];
+      const first = identityOn(messages);
+      const person = await first.make("onboarding@example.com", MERCHANT);
+      if (person === null) throw new Error("the account was not created");
+      expect(await first.onboardingChoices(person.id)).toEqual({
+        platform: null,
+        testAcknowledged: false,
+      });
+      await first.choosePlatform(person.id, "woocommerce");
+      await first.acknowledgeTest(person.id);
+      const otherInstance = identityOn([]);
+      expect(await otherInstance.onboardingChoices(person.id)).toEqual({
+        platform: "woocommerce",
+        testAcknowledged: true,
+      });
+      await expect(
+        pool.query("update dashboard_accounts set onboarding_platform = 'unlisted' where id = $1", [
+          person.id,
+        ]),
+      ).rejects.toThrow(/dashboard_accounts_onboarding_platform/);
+      expect((await otherInstance.onboardingChoices(person.id)).platform).toBe("woocommerce");
+    });
+
     describe("Google sign-in transactions", () => {
       afterEach(() => {
         vi.unstubAllGlobals();

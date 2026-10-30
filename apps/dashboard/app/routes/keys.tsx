@@ -67,7 +67,8 @@ export default function Keys() {
     throw new Error("the keys page was loaded after a press and drawn without its answer");
   }
   return view.screen === "issued" ? (
-    <Frame tab="keys" title="Your new key">
+    <Frame tab="keys" title="API keys">
+      {loaded === null ? null : <KeysScreen view={loaded} />}
       <NewKeyScreen view={view} />
     </Frame>
   ) : (

@@ -1,7 +1,7 @@
 import { Button, Field } from "@agentify/ui";
 import { withUnit } from "@agentify/ui/units";
-import type { ReactNode } from "react";
-import { Navigate } from "react-router";
+import { type ComponentProps, createContext, type ReactNode, useContext } from "react";
+import { Link, Navigate } from "react-router";
 import type {
   ConnectionView,
   ImportHeld,
@@ -22,6 +22,32 @@ import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
 import { Word } from "../components/word.js";
 import styles from "./woocommerce.module.css";
+
+const ProductsShop = createContext(false);
+
+/** Shop presses keep the section they were drawn in. */
+function ShopForm({ action, ...props }: ComponentProps<typeof PostForm>) {
+  const onboarding = useContext(ProductsShop);
+  return (
+    <PostForm
+      {...props}
+      action={onboarding ? `/products?woo=${action.replace("/woocommerce/", "")}` : action}
+    />
+  );
+}
+
+function ShopAgain({
+  base,
+  children,
+  className,
+}: Readonly<{ base: string; children: ReactNode; className: string }>) {
+  const onboarding = useContext(ProductsShop);
+  return (
+    <a className={className} href={`${base}${onboarding ? "/products" : "/woocommerce"}`}>
+      {children}
+    </a>
+  );
+}
 
 /** Where the connector's rules are written in full; the screens link to it once. */
 const GUIDE = "/docs/woocommerce";
@@ -143,7 +169,7 @@ function ConnectPanel({
           </p>
         ) : null}
       </PanelHead>
-      <PostForm action="/woocommerce/connect" className={`issue ${styles.row}`}>
+      <ShopForm action="/woocommerce/connect" className={`issue ${styles.row}`}>
         {(pending) => (
           <>
             {/* Text rather than url: the browser's own check would refuse an
@@ -165,7 +191,7 @@ function ConnectPanel({
             <Button pending={pending}>Connect</Button>
           </>
         )}
-      </PostForm>
+      </ShopForm>
     </section>
   );
 }
@@ -184,7 +210,7 @@ function WayBackPanel({ view, base }: Readonly<{ view: WooShopView; base: string
             : comeBack(view.codeProducts)}
         </p>
       </PanelHead>
-      <PostForm action="/woocommerce/disconnect" className="issue">
+      <ShopForm action="/woocommerce/disconnect" className="issue">
         {(pending) => (
           <>
             <input type="hidden" name="shop" value={NO_SHOP} autoComplete="off" />
@@ -193,7 +219,7 @@ function WayBackPanel({ view, base }: Readonly<{ view: WooShopView; base: string
             </Button>
           </>
         )}
-      </PostForm>
+      </ShopForm>
     </section>
   );
 }
@@ -202,9 +228,9 @@ function NoKeysNotice({ said, base }: Readonly<{ said: NoKeysYet; base: string }
   return (
     <Notice what={said.what} why={said.why}>
       {said.waiting ? (
-        <a className="button button-secondary button-compact" href={`${base}/woocommerce`}>
+        <ShopAgain base={base} className="button button-secondary button-compact">
           Check again
-        </a>
+        </ShopAgain>
       ) : null}
     </Notice>
   );
@@ -261,7 +287,7 @@ function Status({
               ? "Agentify forgets its keys; its products are already off sale."
               : `Its products go off sale.${view.codeProducts === 0 ? "" : ` ${comeBack(view.codeProducts)}`} A late parcel marked Completed after that no longer counts as shipped.`}
           </p>
-          <PostForm action="/woocommerce/disconnect" className={styles.confirmPress}>
+          <ShopForm action="/woocommerce/disconnect" className={styles.confirmPress}>
             {(pending) => (
               <>
                 <input type="hidden" name="shop" value={connection.shopUrl} autoComplete="off" />
@@ -270,7 +296,7 @@ function Status({
                 </Button>
               </>
             )}
-          </PostForm>
+          </ShopForm>
         </div>
       </details>
     </div>
@@ -296,14 +322,14 @@ function ReadOnlyPanel({
             : null}
         </p>
       </PanelHead>
-      <PostForm action="/woocommerce/connect" className="issue">
+      <ShopForm action="/woocommerce/connect" className="issue">
         {(pending) => (
           <>
             <input type="hidden" name="shop_url" value={connection.shopUrl} autoComplete="off" />
             <Button pending={pending}>Connect again</Button>
           </>
         )}
-      </PostForm>
+      </ShopForm>
     </section>
   );
 }
@@ -326,9 +352,9 @@ function SwitchPanel({
             : ` Switching takes ${codeProducts(view.codeProducts)} off sale until you disconnect the shop.`}
         </p>
       </PanelHead>
-      <PostForm action="/woocommerce/switch" className="issue">
+      <ShopForm action="/woocommerce/switch" className="issue">
         {(pending) => <Button pending={pending}>Sell through this shop</Button>}
-      </PostForm>
+      </ShopForm>
     </section>
   );
 }
@@ -372,7 +398,7 @@ function ImportPanel({
           <a href={`${GUIDE}#what-can-be-imported`}>What can be imported</a>
         </p>
       </PanelHead>
-      <PostForm action="/woocommerce/import" className="issue">
+      <ShopForm action="/woocommerce/import" className="issue">
         {(pending) => (
           <>
             <Button pending={pending} disabled={connection.held !== null}>
@@ -381,7 +407,7 @@ function ImportPanel({
             {connection.held === null ? null : <HeldLine held={connection.held} base={base} />}
           </>
         )}
-      </PostForm>
+      </ShopForm>
     </section>
   );
 }
@@ -451,7 +477,7 @@ function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
           </Facts>
         </div>
       )}
-      <PostForm
+      <ShopForm
         action="/woocommerce/rate"
         className={rate.again === null ? `issue ${styles.row}` : styles.again}
       >
@@ -475,7 +501,7 @@ function RatePanel({ rate }: Readonly<{ rate: RateView }>) {
             <Button pending={pending}>Save rate</Button>
           </>
         )}
-      </PostForm>
+      </ShopForm>
     </section>
   );
 }
@@ -534,9 +560,9 @@ function Connected({
               {site.problem}
             </p>
           )}
-          <PostForm action="/woocommerce/site" className="issue">
+          <ShopForm action="/woocommerce/site" className="issue">
             {(pending) => <Button pending={pending}>Use {site.origin} as your shop's site</Button>}
-          </PostForm>
+          </ShopForm>
         </div>
       )}
       {needsSite ? null : (
@@ -552,8 +578,14 @@ function Connected({
 }
 
 export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base: string }>) {
+  const onboarding = useContext(ProductsShop);
   return (
     <div className={styles.page}>
+      {onboarding && view.connection === null ? (
+        <p>
+          <Link to="/products?ways=choose">← Other ways to add products</Link>
+        </p>
+      ) : null}
       {view.connection === null ? (
         <NotConnected view={view} base={base} />
       ) : (
@@ -715,9 +747,9 @@ export function WooImportScreen({ view, base }: Readonly<{ view: WooImportView; 
         </Group>
       )}
       <div className={styles.ends}>
-        <a className="button button-secondary" href={`${base}/woocommerce`}>
+        <ShopAgain base={base} className="button button-secondary">
           Back to WooCommerce page
-        </a>
+        </ShopAgain>
       </div>
     </div>
   );
@@ -737,9 +769,9 @@ function AfterImport({ view, base }: Readonly<{ view: WooImportView; base: strin
     );
   }
   return (
-    <PostForm action="/woocommerce/import">
+    <ShopForm action="/woocommerce/import">
       {(pending) => <Button pending={pending}>Import again</Button>}
-    </PostForm>
+    </ShopForm>
   );
 }
 
@@ -748,7 +780,15 @@ function AfterImport({ view, base }: Readonly<{ view: WooImportView; base: strin
  * that was refused is answered with the shop screen, which says why in the
  * panel of the control that was pressed.
  */
-export function WooPage({ view }: Readonly<{ view: WooShopView | WooImportView | undefined }>) {
+export function WooPage({
+  view,
+  onboarding = false,
+  elsewhere,
+}: Readonly<{
+  view: WooShopView | WooImportView | undefined;
+  onboarding?: boolean;
+  elsewhere?: string | null;
+}>) {
   const { base } = useChrome();
   if (view === undefined) {
     // Back or Forward inside the application to a press's address, where
@@ -756,19 +796,27 @@ export function WooPage({ view }: Readonly<{ view: WooShopView | WooImportView |
     // read of the address from outside is sent there before any page is drawn.
     return <Navigate to="/woocommerce" replace />;
   }
-  return view.screen === "shop" ? (
-    <Frame tab="integrations" title="WooCommerce">
-      <WooShopScreen view={view} base={base} />
-    </Frame>
-  ) : (
-    <Frame
-      tab="integrations"
-      title="WooCommerce import"
-      heading={view.finished ? "Import finished" : "Import stopped"}
-      action={<AfterImport view={view} base={base} />}
-    >
-      <WooImportScreen view={view} base={base} />
-    </Frame>
+  return (
+    <ProductsShop.Provider value={onboarding}>
+      {view.screen === "shop" ? (
+        <Frame
+          tab={onboarding ? "products" : "integrations"}
+          title={onboarding ? "Products" : "WooCommerce"}
+        >
+          <WooShopScreen view={view} base={base} />
+          {elsewhere ? <p className="note">{elsewhere}</p> : null}
+        </Frame>
+      ) : (
+        <Frame
+          tab={onboarding ? "products" : "integrations"}
+          title={onboarding ? "Products" : "WooCommerce import"}
+          heading={view.finished ? "Import finished" : "Import stopped"}
+          action={<AfterImport view={view} base={base} />}
+        >
+          <WooImportScreen view={view} base={base} />
+        </Frame>
+      )}
+    </ProductsShop.Provider>
   );
 }
 
