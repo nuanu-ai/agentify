@@ -21,7 +21,8 @@
  * by name rather than by an import; an export only tests import, because a
  * test is an entry point too, so whether that test guards a promise anyone
  * relies on is for review; class names, since a selector is not an import;
- * shell, Python and Markdown, which it does not read; and `docs/`.
+ * shell, Python and Markdown, which it does not read; `docs/`; and `.agents/`,
+ * the vendored skills whose scripts an agent runs and another project owns.
  */
 
 import type { KnipConfig } from "knip";
@@ -63,8 +64,9 @@ export default {
         // Run by hand, as its header says, since it starts Docker containers.
         "ops/scripts/caddy-routing-smoke.mjs",
       ],
-      // `docs/` holds the record of measurements, not code anything runs.
-      project: ["**", "!docs/**"],
+      // `docs/` holds the record of measurements, not code anything runs;
+      // `.agents/` holds vendored skills, whose scripts only an agent starts.
+      project: ["**", "!docs/**", "!.agents/**"],
       // Stryker loads its test runner by the name `scripts/mutate.mjs`
       // passes it, never by an import.
       ignoreDependencies: ["@stryker-mutator/vitest-runner"],

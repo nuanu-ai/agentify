@@ -1,11 +1,14 @@
 # Architecture Decision Records
 
 One decision — one file, `NNNN-slug.md`. An ADR records a decision that is
-expensive to reverse: a dependency in a published package's tree, a schema on
-disk, a wire contract, a security boundary, what money means, and the custody
-boundary that keeps Agentify from holding money or goods. Everything else —
-screens, flows, internal mechanics, process topology, toolchain, release
-procedure and operations — is a design note in `docs/research/`, and the
+expensive to reverse: a dependency in a published package's tree, a stored
+record that a migration cannot cheaply reshape (what was paid, owed or
+promised, and what another party keeps or reads back), a wire contract, a
+security boundary, what money means, and the custody boundary that keeps
+Agentify from holding money or goods. Everything else — screens, flows and the
+notices sent along them, internal mechanics and the tables that serve them,
+process topology, toolchain, release procedure and operations — is a design
+note in `docs/research/`, and the
 measurements and surveys a decision rests on are there too
 ([index](../research/README.md)). How the product works for a merchant is the
 documentation at [agentify.ad/docs](https://agentify.ad/docs/); these files
