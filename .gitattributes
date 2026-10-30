@@ -1,0 +1,2 @@
+# Keep the vendored Windows launcher usable in Windows checkouts.
+.agents/skills/impeccable/scripts/impeccable.cmd text eol=crlf

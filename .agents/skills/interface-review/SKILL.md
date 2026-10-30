@@ -155,7 +155,7 @@ captions), emoji for icons, a modal that interrupts for nothing, state in colour
 alone, something that looks pressable and is not, navigation drawn as a button
 that a middle click cannot open, gradient text and decorative glass.
 
-Signs in the words. Run the humanizer skill (`.claude/skills/humanizer/SKILL.md`)
+Signs in the words. Run the humanizer skill (`.agents/skills/humanizer/SKILL.md`)
 over every string for the general prose tells; these are specific to screens:
 
 - Reassurance nobody asked for: "Nothing happens unless the button is pressed",
