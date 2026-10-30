@@ -23,6 +23,7 @@ and git keeps the entries that were here.
 | One look for links on the whole origin: the shared stylesheet underlines a link in running text, and the scanner reverts every link to the browser's look | product owner | — |
 | Paging and search in the dashboard's lists of cards, orders and receipts, which hold hundreds of orders without breaking but let one be found only by eye | product owner | — |
 | Selling through a WooCommerce shop and one's own code at once: the design is ready (a card remembers the integration that published it, one queue per integration) and is built when a real merchant needs it | product owner | ADR-0036 |
+| Whether a merchant sees the exchange rates their WooCommerce shop has had, in one place: every saved rate is kept as its own version, each order shows the rate it was paid at, and each change is mailed with the previous rate, but no screen lists them | product owner | — |
 | How a connected WooCommerce shop's cards follow its products as they are added, changed and removed; today only a manual import, which takes nothing off sale | product owner | ADR-0023 |
 | How a "not available" answer to a price check gives its reason, so an agent can tell "out of stock" from "not shipped there" and from "the address lacks what the merchant needs" | product owner | `37-physical-goods.md` |
 | Whether an order's other `params`, such as the email an eSIM card asks for, are erased the way a parcel's address is | product owner | ADR-0032 |
