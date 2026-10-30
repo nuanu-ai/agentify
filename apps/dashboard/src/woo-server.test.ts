@@ -7,7 +7,6 @@
  * does not work again.
  */
 
-import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
@@ -19,6 +18,7 @@ import {
   serve,
   workUntilStopped,
 } from "@agentify/gateway/testing";
+import { coinbaseRateOf, coinbaseRates } from "@agentify/recorded";
 import { CONTRACT_VERSION, MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,13 +28,14 @@ import { type Acting, gatewayFor } from "./gateway.js";
 import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
+import { coinbaseAsRecorded } from "./testing/coinbase.js";
 import { formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import type { Preflight, PricedExample, ShopSample } from "./woo-connect.js";
-import { type ReferenceRead, referenceRateOf } from "./woo-reference.js";
+import type { ReferenceRead } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
@@ -55,16 +56,6 @@ const IN_DOLLARS: ShopSample = {
   currency: "USD",
   decimals: 2,
 };
-const COINBASE_READ_AT = new Date("2026-10-21T14:52:48.000Z");
-const COINBASE_ANSWERED = readFileSync(
-  new URL("./testing/coinbase-exchange-rates.json", import.meta.url),
-  { encoding: "utf8" },
-);
-const coinbaseAsRecorded = (currency: string): Promise<ReferenceRead> =>
-  referenceRateOf(currency, {
-    request: async () => new Response(COINBASE_ANSWERED, { status: 200 }),
-    now: () => COINBASE_READ_AT,
-  });
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://dashboard.example.com";
 
@@ -3291,7 +3282,11 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
         rate: "18000",
         sessionSignedInAt: expect.any(Date),
-        reference: { rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT },
+        reference: {
+          rate: coinbaseRateOf("IDR"),
+          source: "Coinbase",
+          readAt: coinbaseRates.readAt,
+        },
         confirmed: false,
       });
       // Rp 240.000 at 18000 rupiah to the dollar, rounded up to the cent.
@@ -3590,27 +3585,27 @@ describe("a shop priced in another currency than US dollars", () => {
     it("saves nothing for a currency Coinbase answered it gives no rate for", async () => {
       const running = await started({
         ...inRupiah,
-        reference: async () => ({ ok: false, listed: false }),
+        sample: async () => ({ ...IN_RUPIAH, currency: "IRT" }),
       });
       await running.signIn();
       await running.shops.beginGrant({
-        token: "rupiah-token",
+        token: "toman-token",
         accountId: running.accountId,
         shopUrl: SHOP,
-        currency: { code: "IDR", decimals: 0 },
+        currency: { code: "IRT", decimals: 0 },
         startedAt: new Date(),
         expiresAt: new Date(Date.now() + 60_000),
       });
-      await running.postJson("/woocommerce/callback", grantedBody("rupiah-token"));
+      await running.postJson("/woocommerce/callback", grantedBody("toman-token"));
       await running.get("/woocommerce");
 
-      const refused = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      const refused = await running.post("/woocommerce/rate", { currency: "IRT", rate: "18000" });
 
       expect(refused.status).toBe(409);
-      expect(readable(refused.html)).toMatch(/Coinbase gives no rate for IDR/i);
+      expect(readable(refused.html)).toMatch(/Coinbase gives no rate for IRT/i);
       expect(rateNotices(running)).toStrictEqual([]);
       expect(await pricesOnSale(running)).toStrictEqual([]);
-      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IRT")).toBeNull();
     });
 
     it("says the rate was saved when the import it runs finds the shop now sells in another currency", async () => {

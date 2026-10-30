@@ -18,6 +18,7 @@ import type { ReactElement } from "react";
 import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
+import { coinbaseAsRecorded } from "../../src/testing/coinbase.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import {
@@ -490,14 +491,14 @@ describe("what the shop screen holds before it is pressed", () => {
     expect(readable(formOf(html, "/woocommerce/import"))).toContain("exchange rate");
   });
 
-  it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", () => {
+  it("says a shop in a currency Coinbase gives no rate for cannot sell, and asks for no rate", async () => {
     const html = shopPage({
       state: CONNECTED,
       through: "woocommerce",
       rate: {
-        currency: { code: "XAF", decimals: 0 },
+        currency: { code: "IRT", decimals: 0 },
         current: null,
-        reference: { ok: false, listed: false },
+        reference: await coinbaseAsRecorded("IRT"),
       },
     });
     const held = readable(formOf(html, "/woocommerce/import"));

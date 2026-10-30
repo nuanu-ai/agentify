@@ -3,10 +3,11 @@
  * the shop writes them, at no decimals or two, and the merchant's rate turning
  * them into the US dollars a buyer pays. The rupiah prices are the lab's
  * realistic catalogue, drawn from the census of Indonesian shops, written as
- * those shops write them, with no decimals; the reference is Coinbase's answer
- * recorded on 2026-10-21.
+ * those shops write them, with no decimals; the reference is Coinbase's rate in
+ * its recorded answer.
  */
 
+import { coinbaseRateOf } from "@agentify/recorded";
 import { describe, expect, it } from "vitest";
 import {
   dollarsAt,
@@ -21,7 +22,7 @@ import {
 const CENSUS_MEDIAN = "170000";
 const CHEAPEST = "2000";
 const DEAREST = "40500000";
-const COINBASE_IDR = "18035.292596";
+const COINBASE_IDR = coinbaseRateOf("IDR");
 
 describe("a price in a shop's own currency, turned into US dollars at the merchant's rate", () => {
   it("is the shop's amount divided by the rate, rounded up to the cent", () => {
