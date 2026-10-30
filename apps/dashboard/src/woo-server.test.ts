@@ -7,6 +7,7 @@
  * does not work again.
  */
 
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Gateway } from "@agentify/gateway";
@@ -33,7 +34,7 @@ import { testPages } from "./testing/pages.js";
 import { TEST_AUTH_SECRET } from "./testing/secrets.js";
 import { merchantItemIdFor, type StoreProduct } from "./woo-catalog.js";
 import type { Preflight, PricedExample, ShopSample } from "./woo-connect.js";
-import type { ReferenceRead } from "./woo-reference.js";
+import { type ReferenceRead, referenceRateOf } from "./woo-reference.js";
 import type { WooRequest } from "./woo-request.js";
 import {
   type CatalogueRead,
@@ -55,6 +56,15 @@ const IN_DOLLARS: ShopSample = {
   decimals: 2,
 };
 const COINBASE_READ_AT = new Date("2026-10-21T14:52:48.000Z");
+const COINBASE_ANSWERED = readFileSync(
+  new URL("./testing/coinbase-exchange-rates.json", import.meta.url),
+  { encoding: "utf8" },
+);
+const coinbaseAsRecorded = (currency: string): Promise<ReferenceRead> =>
+  referenceRateOf(currency, {
+    request: async () => new Response(COINBASE_ANSWERED, { status: 200 }),
+    now: () => COINBASE_READ_AT,
+  });
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://dashboard.example.com";
 
@@ -345,10 +355,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         standing.example === undefined
           ? { kind: "unanswered" }
           : await standing.example(shopUrl, currency),
-      reference: async (currency) =>
-        standing.reference === undefined
-          ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
-          : await standing.reference(currency),
+      reference: async (currency) => await (standing.reference ?? coinbaseAsRecorded)(currency),
       catalogue: async (shopUrl, atMost) => {
         read.push(shopUrl);
         if (standing.shop !== undefined) return await catalogueOf(shopUrl, atMost, standing.shop);
@@ -3180,15 +3187,14 @@ describe("a shop priced in another currency than US dollars", () => {
 
     it("refuses a currency Coinbase gives no rate for, in plain words, and changes nothing", async () => {
       const running = await started({
-        sample: async () => ({ ...IN_RUPIAH, currency: "XAF" }),
-        reference: async () => ({ ok: false, listed: false }),
+        sample: async () => ({ ...IN_RUPIAH, currency: "IRT" }),
       });
       await running.signIn();
 
       const pressed = await running.post("/woocommerce/connect", { shop_url: SHOP });
 
       expect(pressed.to).toBeNull();
-      expect(readable(pressed.html)).toContain("Coinbase gives no rate for XAF");
+      expect(readable(pressed.html)).toContain("Coinbase gives no rate for IRT");
       expect(await running.shops.grantFor(running.accountId)).toBeNull();
     });
 
