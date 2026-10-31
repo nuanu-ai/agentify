@@ -21,9 +21,8 @@ what the merchant's site already carries.
 A merchant gives, beside their seller name in the dashboard's settings and
 through the call that sets the name, the address of their shop's own site. A
 confirmed WooCommerce connection with read and write access also fills an empty
-site from the connected shop's origin; it never replaces an existing site. A
-failed site write leaves the connection intact and offers a retry. An origin
-that fails the site rule leaves the site empty and points to Settings. The site is an
+site from the connected shop's origin and never replaces an existing one
+([research note 92](../research/92-merchant-onboarding.md)). The site is an
 `https` origin, the scheme and a domain name — not an IP address or a single
 word — with no path, query, fragment, port or credentials, refused at the door
 in any other form. The agent reads both on every card of that merchant in our
