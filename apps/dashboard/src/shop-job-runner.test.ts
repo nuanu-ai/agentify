@@ -621,6 +621,26 @@ describe("a durable shop job", () => {
     const onSale = view?.groups.find((group) => group.group === "ready");
     expect(onSale?.reasons.map((reason) => reason.why)).not.toContain("Paused by you in Agentify");
   });
+  it("a seller's pause that fails to save leaves the shop's withdrawal with the connector", async () => {
+    const s = await setup([]);
+    const id = await s.seed(11);
+    await shopPublisherFor(
+      s.h.gateway,
+      { merchantId: s.h.merchant.id, email: s.person.email },
+      s.shops,
+    ).pause(id, "stopped_selling");
+    const fault = vi
+      .spyOn(s.h.gateway, "setCardPaused")
+      .mockRejectedValueOnce(new Error("the card store is unavailable"));
+    try {
+      await expect(s.gateway.pauseCard(id, true)).rejects.toThrow("the card store is unavailable");
+    } finally {
+      fault.mockRestore();
+    }
+    expect(await s.shops.cardPauses.list(s.h.merchant.id)).toMatchObject({
+      [id]: { reason: "stopped_selling" },
+    });
+  });
   it("a seller claiming an already connector-paused card keeps it paused through sync", async () => {
     const s = await setup([currency, item(11), complete]);
     const id = await s.seed(11);
