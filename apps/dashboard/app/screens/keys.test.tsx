@@ -7,8 +7,9 @@
  * a document here.
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { renderToString } from "react-dom/server";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it } from "vitest";
 import { keysView, newKeyView } from "../../src/keys.js";
@@ -87,4 +88,26 @@ describe("the copy button beside a new key", () => {
     expect(screen.getByRole("status").textContent).toMatch(/couldn.t copy.*select.*key/i);
     expect(screen.getByDisplayValue(SECRET)).toBeTruthy();
   });
+});
+
+describe("finishing key issuance without the page's script", () => {
+  it.each([
+    { doneTo: undefined, destination: "/keys" },
+    { doneTo: "/products", destination: "/products" },
+  ])(
+    "returns to $destination while the secret remains available to copy",
+    ({ doneTo, destination }) => {
+      const page = document.createElement("div");
+      page.innerHTML = renderToString(
+        routed(() => <NewKeyScreen view={newKeyView("a worker", SECRET)} doneTo={doneTo} />),
+      );
+
+      expect(within(page).getByText(SECRET)).toBeTruthy();
+      expect(
+        within(page)
+          .getByRole("link", { name: /done|back to your api keys/i })
+          .getAttribute("href"),
+      ).toBe(destination);
+    },
+  );
 });

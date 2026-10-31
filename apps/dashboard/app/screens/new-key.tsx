@@ -107,7 +107,9 @@ export function NewKeyScreen({
       <p className="quiet">
         {/* Followed inside the application, it takes the page's place in
             history, and the secret goes with it. */}
-        <Link to="/keys">Back to your API keys</Link>
+        <Link className="button button-secondary" to={doneTo} replace>
+          Done
+        </Link>
       </p>
     </>
   );
