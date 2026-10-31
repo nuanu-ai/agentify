@@ -116,7 +116,7 @@ export interface ShopWorkParts {
   readonly guestCart?: (url: string) => Promise<number | null>;
   readonly surfaceMode: Parameters<typeof readinessOf>[1];
 }
-const stopped = (code: NonNullable<ShopJob["stopCode"]>, why: string) => ({
+const stopped = (code: NonNullable<ShopJob["stopCode"]>, why: string | null) => ({
   status: "stopped" as const,
   stopCode: code,
   why,
@@ -178,7 +178,7 @@ export async function workShopJob(
       gateway.integration(),
     ]);
     if (!seller.ok || !wallet.ok || !approval.ok || !integration.ok)
-      return finish(stopped("unread", "Your account could not be checked. Nothing was published."));
+      return finish(stopped("internal", null));
     const door = readinessOf(
       {
         sellerName: seller.document.name,

@@ -2,6 +2,7 @@ import type { DecisionMailEvent } from "./live-sales-events.js";
 import type { Message } from "./mail.js";
 import { transactionalEmailHtml } from "./mail-template.js";
 import { momentInUtc } from "./moments.js";
+import { stoppedOnOurSide } from "./shop-jobs.js";
 
 /** The gallery and delivery worker use the same complete HTML. */
 export function decisionMessage(parts: {
@@ -65,12 +66,13 @@ export function decisionMessage(parts: {
       subject = title = approved
         ? "You're approved. No products were confirmed for sale"
         : "No products were confirmed for sale";
-      if (
-        result.status === "stopped" &&
-        (result.stopCode === "unread" ||
-          result.stopCode === "interrupted" ||
-          result.stopCode === "unknown")
-      ) {
+      if (result.status === "stopped" && stoppedOnOurSide(result)) {
+        subject = title = approved
+          ? "You're approved. Publishing stopped on our side"
+          : "Publishing stopped on our side";
+        lead = `${prefix}Agentify stopped on its side before reading ${result.host}. Nothing was published.`;
+        paragraphs = ["Sync with your shop from your dashboard."];
+      } else if (result.status === "stopped" && result.stopCode === "unread") {
         subject = title = approved
           ? "You're approved. We couldn't read your shop"
           : "We couldn't read your shop";

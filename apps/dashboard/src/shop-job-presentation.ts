@@ -1,5 +1,6 @@
 import { keepUnits } from "@agentify/ui/units";
 import type { ShopJobState, ShopJobView } from "./shop-job-view.js";
+import { stoppedOnOurSide } from "./shop-jobs.js";
 import { initialRateView } from "./woo-views.js";
 import type { Word } from "./words.js";
 
@@ -68,15 +69,17 @@ export function presentShopJob(
         ? "Add products in your shop, then check again."
         : null
       : view.status === "stopped"
-        ? view.kind === "publish" && view.stopCode === "unknown"
-          ? `We couldn't confirm the last publication. ${products(view.published)} ${view.published === 1 ? "was" : "were"} confirmed on sale during this publication. ${read}. We don't know about the rest yet.`
-          : view.kind === "publish"
-            ? view.read === 0
-              ? `We couldn't read ${view.shopHost}. No products were confirmed for sale in this sync.`
-              : `We published ${products(view.published)} and stopped after ${stoppedPublicationAt(view)} We don't know about the rest yet.`
-            : fullyRead
-              ? `${read}. ${unanswered ? "Some products could not be checked." : "The work stopped before it finished."}`
-              : `Stopped after ${stoppedAt} We don't know about the rest yet.`
+        ? stoppedOnOurSide(view)
+          ? `Agentify stopped on its side before reading your shop.${view.kind === "publish" ? " Nothing was published." : ""}`
+          : view.kind === "publish" && view.stopCode === "unknown"
+            ? `We couldn't confirm the last publication. ${products(view.published)} ${view.published === 1 ? "was" : "were"} confirmed on sale during this publication. ${read}. We don't know about the rest yet.`
+            : view.kind === "publish"
+              ? view.read === 0
+                ? `We couldn't read ${view.shopHost}. No products were confirmed for sale in this sync.`
+                : `We published ${products(view.published)} and stopped after ${stoppedPublicationAt(view)} We don't know about the rest yet.`
+              : fullyRead
+                ? `${read}. ${unanswered ? "Some products could not be checked." : "The work stopped before it finished."}`
+                : `Stopped after ${stoppedAt} We don't know about the rest yet.`
         : view.kind === "publish"
           ? view.published === 0
             ? "No products were confirmed for sale in this publication."

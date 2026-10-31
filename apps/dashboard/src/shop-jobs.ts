@@ -41,6 +41,7 @@ export interface ShopJob {
     | "reconnect"
     | "changed"
     | "unread"
+    | "internal"
     | "unknown"
     | null;
   readonly currency: ShopCurrency | null;
@@ -97,6 +98,10 @@ export interface ShopJobs {
   latest(merchantId: string): Promise<readonly ShopJob[]>;
   rows(merchantId: string, jobId: string): Promise<readonly JobProduct[]>;
 }
+/** Agentify stopped before reading a single product, so the job says nothing about the shop. */
+export const stoppedOnOurSide = (job: Pick<ShopJob, "stopCode" | "read">): boolean =>
+  job.stopCode === "internal" ||
+  ((job.stopCode === "interrupted" || job.stopCode === "unknown") && job.read === 0);
 const active = (job: ShopJob) => job.status === "queued" || job.status === "running";
 const fresh = (input: JobRequest, sequence: number): ShopJob => ({
   ...input,
