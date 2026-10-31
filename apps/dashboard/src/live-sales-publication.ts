@@ -5,7 +5,7 @@ import {
   liveRequests,
 } from "@agentify/gateway/live-sales";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 import type { DecisionMailEvent } from "./live-sales-events.js";
 import { insertNotices } from "./live-sales-intents.js";
@@ -181,16 +181,28 @@ export async function captureLivePublication(
     .where(eq(livePublications.id, intent.id));
 }
 
-/** One pending trigger per turn; an active check never consumes it. */
+type Database = NodePgDatabase;
+
+/**
+ * Every waiting trigger, so one merchant's running check delays no other
+ * merchant; the shop workers bound how many of the jobs asked for here run.
+ */
 export async function advanceLivePublication(pool: Pool, shops: WooShops): Promise<void> {
   const db = drizzle(pool);
-  const [intent] = await db
+  const intents = await db
     .select()
     .from(livePublications)
     .where(and(eq(livePublications.state, "pending"), sql`${livePublications.jobId} is null`))
-    .orderBy(asc(livePublications.createdAt))
-    .limit(1);
-  if (!intent) return;
+    .orderBy(asc(livePublications.createdAt));
+  for (const intent of intents) await advanceOne(db, shops, intent);
+}
+
+/** An active check never consumes the trigger. */
+async function advanceOne(
+  db: Database,
+  shops: WooShops,
+  intent: typeof livePublications.$inferSelect,
+): Promise<void> {
   const settle = async (next: DecisionMailEvent["next"]) =>
     db.transaction(async (tx) => {
       const [current] = await tx
