@@ -17,10 +17,8 @@ what it was shown, and only where it runs a script and is allowed to.
 
 Agentify's server records every product analytics event and is the only thing
 that sends one. The cabinet runs no analytics script, sets no cookie for it and
-loads no third-party counter; a screen shown or a problem shown on it is an
-observation the server makes while answering the request, so screen views are
-an undercount wherever the browser prefetched a link on hover and answered the
-click from its cache.
+loads no third-party counter; a screen view is the server's observation while
+answering, an undercount where the browser answered a prefetched click itself.
 
 The contract is the analytics team's `commerce-v1`, and nothing leaves outside
 it: the eleven events `agc_dashboard_viewed`, `agc_auth_result`,
@@ -38,15 +36,10 @@ with its currency. Names, email addresses, wallets, keys, raw identifiers, the
 contents of a card or an order, and free text such as an error's message never
 leave.
 
-Setup results distinguish the saved platform answer, public shop preflight,
-connection request, terminal shop check, live-sales request and operator decline.
-Preflight and check counts describe only observed products; an unread preflight
-has no counts. A connection request completed means its grant request was saved;
-`woo_connection` means access arrived. Automatic publication uses the terminal
-`woo_import` result, and connector pauses use `agc_selling_changed`. Practice is
-an authenticated navigation to the existing documentation: the server records a
-real visit and redirects, suppressing prefetches and opted-out accounts. Direct
-visits to the documentation are outside this event.
+A setup result is recorded where the server learns the step's outcome, once
+per change. A seller name counts as the `seller_name` step wherever it is
+written, in Settings or by a request for live sales. What each onboarding step
+records is in [research note 92](../research/92-merchant-onboarding.md).
 
 An event is one row in an outbox, written in the transaction of the fact it
 records, so a rolled-back fact leaves no event, and checked against the
@@ -58,12 +51,10 @@ unsent. What this relies on Nuanu to do with an event's id and time, where
 that comes from and what of it is not yet verified, is in
 [research note 84](../research/84-nuanu-analytics-ingest.md).
 
-The live channel and the test channel send to separate Nuanu sites with their
-own credentials and reference keys, the test channel's events tagged internal.
-A sandbox sends only to a receiver of its own; a laptop configured as the test
-channel sends to the TEST site, as TEST does. A person can opt out in the
-cabinet's settings, and from then on no event about them, or about the
-merchant their account names, leaves, whoever acted.
+Each channel sends to a Nuanu site of its own with its own credentials and
+reference keys, the test channel's events tagged internal. A person can opt
+out in the cabinet's settings, and from then on no event about them, or about
+the merchant their account names, leaves, whoever acted.
 
 ## Alternatives rejected
 

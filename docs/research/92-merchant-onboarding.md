@@ -309,3 +309,28 @@ keeps its own unknown result while confirmed product withdrawals proceed. A
 partial traversal cannot withdraw cards. Temporary stock shortages, whole-shop
 settings and text or card validation problems preserve the last
 published card, and each purchase still checks the shop's current availability.
+
+## What the onboarding path records
+
+Every step below is an `agc_setup_result` event of the `commerce-v1` contract,
+recorded by the server in the transaction of the fact it reports
+([ADR-0042](../decisions/0042-product-analytics-leave-from-the-server.md)).
+The saved platform answer, the public catalogue estimate before access, the
+connection request, the terminal shop check, the request for live sales and
+the operator's decline are separate steps. The estimate's and the check's
+counts describe only the products actually read, and an estimate that could
+not read the catalogue carries no counts. A completed connection request means
+the request for access was saved; `woo_connection` is the later step that says
+access arrived. A publication after admission reports through the terminal
+`woo_import` result, and a product the connector takes off sale reports through
+`agc_selling_changed`.
+
+A seller name is the `seller_name` step wherever it is written. A name saved in
+Settings and a name a request for live sales writes are the same step, recorded
+only when the name changes, so asking again under the same name counts nothing
+new.
+
+Practice is a signed-in visit to the existing documentation through the
+dashboard: the server records the visit and redirects, and records nothing for
+a browser's prefetch or for an account that opted out. A visit straight to the
+documentation is outside this event.
