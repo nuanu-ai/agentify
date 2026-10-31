@@ -2,7 +2,8 @@
  * `pnpm gallery:check`: every state of every surface in the page
  * `pnpm gallery` wrote, each drawn in Chromium from that page's own markup,
  * stylesheets and fonts, composed by the gallery's own `frame.js` as its
- * frames are. It fails on six things.
+ * frames are. It also refuses content left in React's hidden transport blocks,
+ * which the gallery's script-free frames cannot reveal. It then checks six things.
  *
  * At a small phone's, a phone's, a tablet's and a desktop's width (320, 390,
  * 768 and 1440 pixels), something on the page reaches past the window's right
@@ -75,6 +76,7 @@ import { chromium, type Page } from "playwright";
 // the package would make its React peers the gallery's own, while the gallery
 // draws each surface with that surface's React.
 import { numberThenUnit } from "../../ui/src/units.js";
+import { hasHiddenTransport } from "./page.js";
 
 const GALLERY = fileURLToPath(new URL("../dist/index.html", import.meta.url));
 const FRAME = fileURLToPath(new URL("./frame.js", import.meta.url));
@@ -497,6 +499,9 @@ const { fonts, gallery, frameDocument } = await galleryOf();
 const axe = await readFile(createRequire(import.meta.url).resolve("axe-core/axe.min.js"), "utf8");
 
 const work = Object.entries(gallery.states).flatMap(([id, state]) => {
+  if (hasHiddenTransport(state.html)) {
+    throw new Error(`The state ${id} leaves content hidden until a script reveals it.`);
+  }
   const surface = gallery.surfaces[state.surface];
   if (surface === undefined) throw new Error(`The state ${id} names no surface the gallery holds.`);
   const document = frameDocument(surface.lang, fonts, surface.css, state.html);
