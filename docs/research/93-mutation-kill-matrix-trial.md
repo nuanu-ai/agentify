@@ -221,3 +221,18 @@ The fallback the decision rule names is the list of surviving mutants. The
 scanner has 1,724 of them among 4,979 tested: 1,341 that survived and 383 with
 no covering test. Of these, 452 are string-literal mutants. `checks.ts` holds
 748, `html.ts` and `parsers.ts` 224 each, `ip.ts` 122 and `url.ts` 103.
+
+## A syntactic check against the same audit
+
+On 2026-10-30, the day before the trial, a check that reads test files without
+running them was held against the same register: Biome's own rules for tests
+(`useExpect`, `noConditionalExpect`, `noIdenticalTestTitle`, `noSkippedTests`,
+`noFocusedTests`), a script of our own and patterns written in Biome's GritQL.
+It takes about a second and a half on the whole tree, and it reached 17 of the
+audit's 1,131 non-retain verdicts (1.5%) and nothing to remove in the tree as it
+stood that day. Two of its patterns are precise, a test that compares a value
+with itself and a test that searches the source for text, but they matched four
+tests in all. The audit's reasons are about what a test means, such as another
+test's promise repeated, wording pinned or an oracle too weak to fail, and a
+check that reads the shape of a file does not see them. No syntactic check was
+added.
