@@ -894,7 +894,7 @@ const judged = async (
   ) {
     return {
       ok: false,
-      obstacle: { group: "fix", reason: "download_file", withdraw: true },
+      obstacle: { group: "fix", reason: "download_file", withdraw: false },
       why: "The product's one download does not name a readable address.",
       again: false,
       saidNo: true,
