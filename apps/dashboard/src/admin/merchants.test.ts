@@ -422,6 +422,46 @@ describe("a press whose page cannot be read again", () => {
   });
 });
 
+describe("a stale decline whose page cannot be read again", () => {
+  it("says the request it named is no longer pending, not that a decline already stood", async () => {
+    served = await adminServed({
+      channel: "live",
+      reader: (real) => ({
+        ...real,
+        merchants: {
+          ...real.merchants,
+          merchant: async () => {
+            throw new Error("the database is not answering");
+          },
+        },
+      }),
+    });
+    const merchantId = await served.harnessed.gateway.registerMerchant();
+    const ask = {
+      merchantId,
+      accountId: "acc_owner",
+      sellerName: "Coffee Roasters",
+      evidence: { integration: "api" as const, connectedAt: served.harnessed.now() },
+    };
+    const first = await served.harnessed.store.requestLiveSales(ask, served.harnessed.now());
+    if (first.kind !== "requested") throw new Error("request missing");
+    const operator = await served.signedIn(OPERATOR, { operator: true });
+    const decline = () =>
+      operator.post(`/admin/merchants/${merchantId}/decline`, {
+        ...TICKED,
+        request_id: first.request.id,
+        [REASON_FIELD]: "Use the name buyers know.",
+      });
+    await decline();
+    await served.harnessed.store.requestLiveSales(ask, served.harnessed.now() + 1);
+
+    const stale = text((await decline()).html);
+
+    expect(stale).toContain("no longer pending");
+    expect((await served.harnessed.store.liveSalesRequest(merchantId))?.state).toBe("pending");
+  });
+});
+
 describe("a merchant's uncertain shop orders", () => {
   const failing = async (): Promise<never> => {
     throw new Error("the database is not answering");
