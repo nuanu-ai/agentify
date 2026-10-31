@@ -961,8 +961,10 @@ and would otherwise meet the load stand's cards at 0.01 USD among the goods it
 chooses from. Nothing on the load stand is taken from the existing catalogue:
 on the test channel some cards on sale belong to a merchant whose shop is no
 longer connected, and a card the run did not publish is not the run's to
-measure. The steps are done in order, and a step that needs the owner or the
-operator stops the run there until they have done it.
+measure. The steps are done in order. A step that needs the owner or the
+operator waits for them, asked once as Preparation and boundaries says, and
+the steps after it wait with it, while the run goes on with the stories that
+do not need the load stand.
 
 1. Read the baseline before changing anything. On the test channel: the
    running revision, read the four ways step 1 of "Starting and running a run
@@ -979,7 +981,8 @@ operator stops the run there until they have done it.
    in it. The window opens only after the independent first attempts have
    ended. T-03 needs that agreement by name, because its junk payments reach
    Coinbase's facilitator. The run moves no tag: where the channel does not run
-   the revision under test, the run stops and asks.
+   the revision under test, the organiser asks once, the stories on the test
+   channel wait for the answer, and the run goes on with the local stack's.
 3. Create two SDK merchants, A and B, on each channel the run uses: the local
    stack for T-01 and T-05, and the test channel for T-02, T-03, T-04
    and T-06. Each is an organiser's setup account, signed in on that channel's
