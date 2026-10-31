@@ -398,8 +398,8 @@ describe("a merchant reading a shop result", async () => {
             {
               why,
               code: "card",
-              count: 3,
-              more: null,
+              count: 13,
+              more: { href: "?show_fix_card=13", left: 10 },
               rows: [
                 { id: "11", title: "Guide", why: "" },
                 { id: "12", title: "Coffee beans", why: "" },
@@ -411,7 +411,9 @@ describe("a merchant reading a shop result", async () => {
       ],
     });
     expect(readable(html).match(/Download access expires/g)).toHaveLength(1);
-    for (const title of ["Guide", "Coffee beans", "Batik sarong"])
+    // A list tells a screen reader how many items it holds, so its items are the products alone.
+    expect(html.match(/<li\b/g)).toHaveLength(3);
+    for (const title of ["Guide", "Coffee beans", "Batik sarong", "Show 50 more"])
       expect(readable(html).match(new RegExp(title, "g"))).toHaveLength(1);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");

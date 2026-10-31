@@ -10,26 +10,27 @@
 .job > p {
   max-width: 40rem;
 }
-.result {
+.job:has(> div:first-child) {
   gap: var(--space-card);
 }
-/* What the work says of itself leads the section, running or finished. */
+/* What the work says of itself leads the section, running or finished; a
+   result's statement is the one div that opens it. */
 .job > h2,
-.outcome > h2 {
+.job > div:first-child > h2 {
   font-size: var(--text-section);
 }
 .job > h2 {
   margin-bottom: calc(var(--gap-heading) - var(--space-block));
 }
-.outcome {
+.job > div:first-child {
   display: grid;
   gap: var(--space-tight);
 }
-.outcome > * {
+.job > div:first-child > * {
   max-width: 40rem;
   margin: 0;
 }
-.outcome > p {
+.job > div:first-child > p {
   color: var(--fg-2);
 }
 .progress {
@@ -52,84 +53,106 @@
     var(--raised) var(--space-tight) var(--space-block)
   );
 }
-.checkForm {
+/* The check form only holds the id its button outside it names. */
+.job > form[id] {
   display: none;
 }
 .products {
   display: grid;
   gap: var(--space-block);
 }
-.products > :global(.list-box) {
-  margin: 0;
-}
 /* The time may wrap; the button beside it does not. */
-.checked {
+.products > div:not(:global(.list)) {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-control);
 }
-.checked > span {
+.products > div:not(:global(.list)) > span {
   color: var(--muted);
   font-size: var(--text-small);
 }
-.checked > :global(.button) {
+.products > div:not(:global(.list)) > :global(.button) {
   flex: none;
   white-space: nowrap;
 }
 /* With no lists under it, the line is the step itself: the button follows
    the time instead of standing at the far edge. */
-.alone > .checked {
+.products:not(:has(> :global(.list))) > div {
   justify-content: flex-start;
   gap: var(--space-block);
 }
-.count {
-  color: var(--muted);
+/* A group is one surface: its name, then each reason's name over the list of
+   its products. Only the products are list items, so a list tells a screen
+   reader how many products it holds; the names borrow the list's day row. */
+.products > :global(.list) {
+  container-type: inline-size;
 }
-/* A group's name and a reason's are rows of the group's own list, over the
-   rows they name; the list's day row lends them its frame. */
-:global(.list) > .groupHead,
-:global(.list) > .reason {
+.products > :global(.list) > * + * {
+  border-top: var(--hairline) solid var(--line-soft);
+}
+.products > :global(.list) > :global(.list-day) + *,
+.products > :global(.list) > * + :global(.list-day) {
+  border-top-color: var(--line);
+}
+.products > :global(.list) > :global(.list-day):first-child + * {
+  border-top-color: var(--line-soft);
+}
+.products > :global(.list) > :global(.list-box) {
+  margin: 0;
+}
+.products > :global(.list) :global(.list) {
+  border: 0;
+  border-radius: 0;
+}
+/* A reason's link to more of its products. */
+.products > :global(.list) > a {
+  display: block;
+  padding: var(--space-control) 20px;
+  font-size: var(--text-small);
+}
+.products > :global(.list) > :global(.list-day) {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-snug) var(--space-control);
-}
-:global(.list) > .groupHead {
-  flex-wrap: wrap;
-  padding-block: var(--space-control);
-  border-bottom-color: var(--line-soft);
-  background: var(--surface);
-  color: var(--fg);
-  font-size: var(--text-body);
-}
-.groupHead > a {
-  font-size: var(--text-small);
-  font-weight: 500;
-}
-:global(.list) > .reason {
+  border-bottom: 0;
   color: var(--fg-2);
   font-size: var(--text-small);
   font-weight: 400;
 }
-.reason > h4 {
+.products > :global(.list) > :global(.list-day) span {
+  color: var(--muted);
+}
+.products > :global(.list) > :global(.list-day):first-child {
+  flex-wrap: wrap;
+  padding-block: var(--space-control);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+.products > :global(.list) > :global(.list-day) > a {
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+/* A reason's name can wrap; its last line keeps more than one word, and the
+   count stays at the row's end. */
+.products > :global(.list) h4 {
   margin: 0;
   font: inherit;
+  text-wrap: pretty;
 }
-.more {
-  padding: var(--space-control) 20px;
-  font-size: var(--text-small);
-}
-/* The inset of the list's own rows where its box is narrow. */
+/* The inset of the list's own rows where the surface is narrow. */
 @container (max-width: 860px) {
-  :global(.list) > :is(.groupHead, .reason, .more) {
+  .products > :global(.list) > :not(:global(.list-box)) {
     padding-inline: var(--space-block);
   }
 }
 /* The result's gaps are its own, whatever margins a next step brings along. */
-section.result > * {
+.job:has(> div:first-child) > * {
   margin-block: 0;
 }
-section.result > .products {
+.job:has(> div:first-child) > .products {
   margin-top: calc(var(--space-page) - var(--space-card));
 }

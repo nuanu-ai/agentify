@@ -1,5 +1,5 @@
 import { Button } from "@agentify/ui";
-import { type ReactNode, useId } from "react";
+import { Fragment, type ReactNode, useId } from "react";
 import { Link, useNavigation } from "react-router";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 import { Moment } from "../components/moment.js";
@@ -48,8 +48,8 @@ export function ShopJobResult({
   const nextStep = view.current && currentStop !== "reconnect" ? publish?.(view) : null;
   const hasNextStep = nextStep !== null && nextStep !== undefined && nextStep !== false;
   return (
-    <section className={`${styles.job} ${styles.result}`} aria-label="Shop products">
-      <div className={styles.outcome}>
+    <section className={styles.job} aria-label="Shop products">
+      <div>
         <h2>{view.words.heading}</h2>
         <ShopJobOutcome view={view} noProducts={noProducts} />
         {view.words.excluded ? <p>{view.words.excluded}</p> : null}
@@ -59,7 +59,7 @@ export function ShopJobResult({
         {view.kind === "publish" ? <ShopJobSyncNote view={view} /> : null}
       </div>
       {checkAction ? (
-        <PostForm id={formId} className={styles.checkForm} action={checkAction}>
+        <PostForm id={formId} action={checkAction}>
           {() => null}
         </PostForm>
       ) : null}
@@ -69,9 +69,9 @@ export function ShopJobResult({
         <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
       ) : null}
       {currentStop === "reconnect" && view.groups.length === 0 ? null : (
-        <div className={view.groups.length > 0 ? styles.products : styles.alone}>
+        <div className={styles.products}>
           {currentStop === "reconnect" ? null : (
-            <div className={styles.checked}>
+            <div>
               <span>
                 Checked <Moment at={view.when} />
               </span>
@@ -85,35 +85,38 @@ export function ShopJobResult({
             </div>
           )}
           {view.groups.map((group) => (
-            <List key={group.group} label={group.title} columns="minmax(0, 1fr) fit-content(40%)">
-              <li className={`list-day ${styles.groupHead}`}>
+            <div key={group.group} className="list">
+              <div className="list-day">
                 <h3>
-                  {group.title} <span className={styles.count}>{group.countText}</span>
+                  {group.title} <span>{group.countText}</span>
                 </h3>
                 {group.group === "unsupported" ? (
                   <a href="/docs/woocommerce#what-can-be-imported">What Agentify can sell</a>
                 ) : null}
-              </li>
-              {group.reasons.map((reason) => [
-                reason.why ? (
-                  <li key={`${reason.code} why`} className={`list-day ${styles.reason}`}>
-                    <h4>{reason.why}</h4>
-                    <span className={styles.count}>{reason.countText}</span>
-                  </li>
-                ) : null,
-                ...reason.rows.map((row) => (
-                  <Row key={`${reason.code} ${row.id}`}>
-                    <Cell at="title">{row.title}</Cell>
-                    {row.why ? <Cell at="note">{row.why}</Cell> : null}
-                  </Row>
-                )),
-                reason.more ? (
-                  <li key={`${reason.code} more`} className={styles.more}>
-                    <Link to={reason.more.href}>{reason.more.label}</Link>
-                  </li>
-                ) : null,
-              ])}
-            </List>
+              </div>
+              {group.reasons.map((reason) => (
+                <Fragment key={reason.code}>
+                  {reason.why ? (
+                    <div className="list-day">
+                      <h4>{reason.why}</h4>
+                      <span>{reason.countText}</span>
+                    </div>
+                  ) : null}
+                  <List
+                    label={reason.why ? `${group.title}: ${reason.why}` : group.title}
+                    columns="minmax(0, 1fr) fit-content(40%)"
+                  >
+                    {reason.rows.map((row) => (
+                      <Row key={row.id}>
+                        <Cell at="title">{row.title}</Cell>
+                        {row.why ? <Cell at="note">{row.why}</Cell> : null}
+                      </Row>
+                    ))}
+                  </List>
+                  {reason.more ? <Link to={reason.more.href}>{reason.more.label}</Link> : null}
+                </Fragment>
+              ))}
+            </div>
           ))}
         </div>
       )}
