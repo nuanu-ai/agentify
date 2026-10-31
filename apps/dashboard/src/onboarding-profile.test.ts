@@ -390,6 +390,16 @@ it("refuses a forged live request without server-observed integration evidence",
   expect((await served.harnessed.store.merchantById(id))?.serviceName).toBeNull();
 });
 
+it("refuses a live request from a shop whose check found nothing ready for sale", async () => {
+  const { served, browser, id } = await checkedShop("live", "fix");
+  const refused = await browser.post("/products", {
+    intent: "request-live-sales",
+    seller_name: "Freeland",
+  });
+  expect(refused.status).toBe(409);
+  expect(await served.harnessed.store.liveSalesRequest(id)).toBeNull();
+});
+
 it("does not answer a request as sent when the integration moved while it was asked", async () => {
   const { served, browser, id } = await seller();
   const store = served.harnessed.store;
