@@ -1,3 +1,4 @@
+import { Button } from "@agentify/ui";
 import { useEffect, useRef, useState } from "react";
 
 type Copied = "idle" | "copied" | "failed";
@@ -51,6 +52,21 @@ const SAID: Readonly<Record<Copied, string>> = {
   copied: "Copied",
   failed: "Could not copy; select it",
 };
+
+/** A command stays selectable when the browser cannot copy it. */
+export function CommandCopy({ value }: Readonly<{ value: string }>) {
+  const { copied, copy } = useCopy(value);
+  return (
+    <>
+      <Button variant="secondary" type="button" onClick={copy}>
+        Copy
+      </Button>
+      <span role="status">
+        {copied === "failed" ? "Couldn't copy. Select the command and copy it." : SAID[copied]}
+      </span>
+    </>
+  );
+}
 
 /**
  * An identifier's prefix up to its first underscore, then its first four and

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 import styles from "./shop-job.module.css";
 
@@ -18,11 +19,26 @@ export function ShopJobProgress({
     <section className={styles.job} aria-label="Shop products">
       <h2>{view.words.heading}</h2>
       <p role="status">{view.words.progress}</p>
-      <progress
-        max={view.total ?? undefined}
-        value={view.total === null ? undefined : view.read}
+      <div
+        role="progressbar"
+        className={styles.progress}
+        aria-valuemin={0}
+        aria-valuemax={view.total ?? undefined}
+        aria-valuenow={view.total === null ? undefined : view.read}
+        aria-valuetext={view.words.progress}
         aria-label="Products read"
-      />
+      >
+        <span
+          style={
+            {
+              "--read":
+                view.total === null
+                  ? undefined
+                  : `${Math.min(100, view.total === 0 ? 0 : (view.read / view.total) * 100)}%`,
+            } as CSSProperties
+          }
+        />
+      </div>
       <p>{notification ?? view.words.leaving}</p>
       {unread ? (
         <p role="status">Progress couldn't be refreshed. The server may still be working.</p>

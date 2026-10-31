@@ -157,7 +157,7 @@ export function presentShopJob(
           ? "See No answer from your shop below."
           : null,
       publicationUnknown: view.publicationUnknown
-        ? `Publication of ${view.publicationUnknown} ${view.current ? "is" : "was"} unconfirmed.`
+        ? `${view.current ? "This sync" : "The earlier sync"} did not confirm publication of ${view.publicationUnknown}.`
         : null,
       earlier: !view.current
         ? "This result uses an earlier connection or exchange rate. Check again for the current shop."

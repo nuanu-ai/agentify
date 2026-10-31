@@ -7,6 +7,7 @@ import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
 import wooMark from "../assets/woocommerce.png";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { Word } from "../components/word.js";
 import styles from "./onboarding.module.css";
 
 const CodeEntry = lazy(() =>
@@ -105,7 +106,7 @@ function PlatformChoice({
 function OtherWays() {
   return (
     <p className={styles.back}>
-      <Link to="/products?ways=choose">← Other ways to add products</Link>
+      <Link to="/products?ways=choose">Other ways to add products</Link>
     </p>
   );
 }
@@ -185,27 +186,30 @@ export function OnboardingScreen({
     );
   if (step.page === "other")
     return (
-      <section className={styles.code}>
+      <>
         <OtherWays />
-        <h2>We can't connect your platform automatically yet</h2>
-        <p>
-          You can still sell through Agentify: a developer, or an AI coding assistant, connects your
-          shop to our API. They start from the <a href="/docs/quickstart">quickstart</a>.
-        </p>
-        <PostForm action="/products">
-          {(pending) => (
-            <Button pending={pending} name="platform" value="api">
-              Set it up with code
-            </Button>
-          )}
-        </PostForm>
-      </section>
+        <section className={`settings-panel ${styles.code}`}>
+          <h2>We can't connect your platform automatically yet</h2>
+          <p>
+            You can still sell through Agentify: a developer, or an AI coding assistant, connects
+            your shop to our API. They start from the <a href="/docs/quickstart">quickstart</a>.
+          </p>
+          <PostForm action="/products" className="step-actions">
+            {(pending) => (
+              <Button pending={pending} name="platform" value="api">
+                Set it up with code
+              </Button>
+            )}
+          </PostForm>
+        </section>
+      </>
     );
   if (step.page === "code-silent")
     return (
-      <section className={styles.code}>
-        <p className={styles.connection} data-stale>
-          Your code last connected {view.contact === null ? "" : <Moment at={view.contact} />}.
+      <section className={styles.codeState}>
+        <p className={styles.connection}>
+          <Word word={{ text: "Your code last connected", tone: "waiting" }} />
+          <span>{view.contact === null ? "" : <Moment at={view.contact} />}</span>
         </p>
         <p>
           Agentify{" "}
@@ -221,9 +225,10 @@ export function OnboardingScreen({
     );
   if (step.page === "code-connected")
     return (
-      <section className={styles.code}>
+      <section className={styles.codeState}>
         <p className={styles.connection}>
-          Your code connected {view.contact === null ? "" : <Moment at={view.contact} />}
+          <Word word={{ text: "Your code connected", tone: "ok" }} />
+          <span>{view.contact === null ? "" : <Moment at={view.contact} />}</span>
         </p>
         {step.account === "none" && !press?.problem ? null : (
           <Suspense fallback={null}>

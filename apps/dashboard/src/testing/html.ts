@@ -113,7 +113,18 @@ export const formsIn = (html: string): ServedForm[] =>
       const name = attribute(box, "name");
       if (name !== undefined) fields.set(name, typed);
     }
-    const presses = [...inside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)]
+    const id = attribute(written, "id");
+    const buttons = [
+      ...[...inside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)].filter(
+        ([, tag = ""]) => attribute(tag, "form") === undefined,
+      ),
+      ...(id === undefined
+        ? []
+        : [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gi)].filter(
+            ([, tag = ""]) => attribute(tag, "form") === id,
+          )),
+    ];
+    const presses = buttons
       .filter(([, tag = ""]) => (attribute(tag, "type") ?? "submit").toLowerCase() === "submit")
       .map(([, tag = "", label = ""]) => ({
         name: attribute(tag, "name"),

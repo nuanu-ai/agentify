@@ -7,7 +7,7 @@
  * leaving the document, and the clock is the test's.
  */
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRoutesStub } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ANSWER_WITHIN_MS, WALLET_CHANGE_MS } from "../../src/deadlines.js";
@@ -16,6 +16,50 @@ import { PostForm } from "./post-form.js";
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+});
+
+it("a check beside another form submits its own protected action", async () => {
+  const received: FormData[] = [];
+  const Stub = createRoutesStub([
+    {
+      id: "routes/gate",
+      path: "/",
+      children: [
+        {
+          path: "products",
+          action: async ({ request }) => {
+            received.push(await request.formData());
+            return null;
+          },
+          Component: () => (
+            <>
+              <PostForm id="check-shop" action="/products">
+                {() => <input type="hidden" name="intent" value="check" />}
+              </PostForm>
+              <form>
+                <input name="seller_name" defaultValue="Not part of the check" />
+              </form>
+              <button type="submit" form="check-shop">
+                Check again
+              </button>
+            </>
+          ),
+        },
+      ],
+    },
+  ]);
+  render(
+    <Stub
+      initialEntries={["/products"]}
+      hydrationData={{ loaderData: { "routes/gate": { who: "owner@example.com" } } }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+  await waitFor(() => expect(received).toHaveLength(1));
+  expect(Object.fromEntries(received[0]?.entries() ?? [])).toEqual({
+    signed_in_as: "owner@example.com",
+    intent: "check",
+  });
 });
 
 /**

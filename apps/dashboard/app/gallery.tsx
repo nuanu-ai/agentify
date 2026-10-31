@@ -4507,7 +4507,8 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
       loaded: { "routes/merchant-only": { account: notes, onboarding }, "routes/products": view },
     },
   );
-  if (row === 5) return { ...state, scene: { shows: "This is the test environment" } };
+  if (step.acknowledgeTest && view.shop?.connection?.access !== "read_write")
+    return { ...state, scene: { shows: "This is the test environment" } };
   if (view.shop?.connection?.access === "read_write")
     return {
       ...state,
@@ -4516,6 +4517,13 @@ const ONBOARDING: GalleryState[] = ONBOARDING_CASES.map(({ row, when, facts }) =
         answers: { "GET /shop-job": { status: 200, body: view.shop.job } },
       },
     };
+  if (
+    onboarding.account.form?.wallet &&
+    onboarding.account.wallet?.coinbase !== null &&
+    onboarding.account.wallet?.coinbase !== undefined &&
+    "chain" in onboarding.account.wallet.coinbase
+  )
+    return { ...state, scene: { shows: onboarding.account.form.wallet.createWallet } };
   return state;
 });
 
@@ -4708,10 +4716,12 @@ const CODE_CONNECTIONS: GalleryState[] = (
     contact,
     contactAlive: true,
     payoutWallet: one.wallet,
+    sellerName: one.id === "ready" ? true : codeCase.facts.sellerName,
     liveApproved: one.approved,
     testAcknowledged: true,
   };
-  return at(
+  const step = nextStepOf(facts);
+  const state = at(
     {
       id: `dashboard-code-connected-${one.id}`,
       screen: "Products",
@@ -4727,16 +4737,37 @@ const CODE_CONNECTIONS: GalleryState[] = (
           account: [],
           onboarding: {
             mode: one.mode,
-            step: nextStepOf(facts),
+            step,
             keys: keysView([WORKER]),
             contact: momentView(contact),
             origin: ORIGIN[one.mode],
             unread: false,
+            account: onboardingAccountView(step, {
+              mode: one.mode,
+              sellerName: "Freeland",
+              savedWallet: one.wallet ? PAID_INTO : null,
+              nameRule: NAME_RULE,
+              wallet:
+                !one.wallet || step.account === "test-profile"
+                  ? walletEntryView(
+                      one.mode,
+                      { commissionAllocation: 1, totalAllocation: 1000 },
+                      one.mode === "test" ? 84532 : 8453,
+                    )
+                  : null,
+              email: WHO,
+              request: null,
+              decision: null,
+            }),
           },
         },
       },
     },
   );
+  return {
+    ...state,
+    scene: { shows: one.mode === "test" ? "Create a Coinbase Wallet" : "Your code connected" },
+  };
 });
 
 const REQUEST_MAIL = (["requested", "declined", "reminder"] as const).map((kind): GalleryState => {

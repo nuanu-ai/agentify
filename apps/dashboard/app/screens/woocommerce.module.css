@@ -43,7 +43,7 @@
 
 /* An address and a button in a row, as wide as an address needs. */
 .row {
-  max-width: calc(36rem + 2 * var(--space-card));
+  max-width: 40rem;
 }
 
 /* --- a refusal naming the orders that hold a switch ---------------------- */
@@ -78,7 +78,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: var(--space-tight) var(--space-block);
   margin: 0 0 var(--space-card);
 }
@@ -161,7 +161,7 @@
 /* --- the exchange rate --------------------------------------------------- */
 
 .facts {
-  margin: var(--space-block) var(--space-card) 0;
+  margin: var(--space-block) var(--panel-inset) 0;
 }
 
 .far {
@@ -174,8 +174,8 @@
   display: grid;
   justify-items: start;
   gap: var(--space-block);
-  max-width: calc(36rem + 2 * var(--space-card));
-  padding: var(--gap-actions) var(--space-card) var(--space-card);
+  max-width: 40rem;
+  padding: var(--gap-actions) var(--panel-inset) var(--panel-inset);
 }
 
 .again > :global(.field) {
@@ -190,8 +190,8 @@
    for a second look, it does not refuse. */
 .check {
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: var(--space-control);
+  border-radius: var(--radius-control);
   background: var(--notice-bg);
   color: var(--notice-ink);
   font-size: var(--text-small);
@@ -205,17 +205,19 @@
 
 /* The address, its result and the one next action read in that order. */
 .connect {
-  max-width: 600px;
+  max-width: 40rem;
   min-width: 0;
+  padding: var(--panel-inset);
 }
 
 .connect h2 {
-  margin: 0 0 var(--space-card);
-  font-size: var(--text-section);
+  margin: 0 0 var(--gap-heading);
+  font-size: var(--text-heading);
 }
 
 .otherWays {
   margin: 0 0 var(--space-card);
+  font-size: var(--text-small);
 }
 
 .checkForm {
@@ -233,6 +235,13 @@
 .beforeConnect {
   width: 100%;
   overflow-wrap: anywhere;
+  font-size: var(--text-small);
+  color: var(--fg-2);
+}
+
+.estimate > p:first-child {
+  font-size: var(--text-body);
+  color: var(--fg);
 }
 
 .estimate:empty {

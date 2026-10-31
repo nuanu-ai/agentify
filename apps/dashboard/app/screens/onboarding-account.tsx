@@ -1,4 +1,5 @@
 import { Button, Field } from "@agentify/ui";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
 import type { ShopJobView } from "../../src/shop-job-view.js";
@@ -14,11 +15,13 @@ export function OnboardingAccount({
   press,
   publish,
   job,
+  beside,
 }: Readonly<{
   job?: Pick<ShopJobView, "kind" | "status"> | null;
   view: OnboardingView;
   press?: OnboardingPress;
   publish?: Readonly<{ checkedJob: string; label: string }>;
+  beside?: ReactNode;
 }>) {
   const account = view.account;
   const requestNeedsCheck = press?.requestNeedsCheck === true && view.unread;
@@ -63,6 +66,7 @@ export function OnboardingAccount({
       <>
         {problem}
         {checkAgain}
+        {beside}
       </>
     );
   const form = account.form;
@@ -70,90 +74,96 @@ export function OnboardingAccount({
   const wallet = press?.wallet ?? account.savedWallet ?? "";
   return (
     <section className={styles.account}>
-      {requestNeedsCheck || account.link?.problem ? problem : null}
-      {account.heading ? <h2>{account.heading}</h2> : null}
-      {account.sent ? (
-        <>
-          <p>
-            {account.sent.label}
-            <Moment at={account.sent.at} />.
-          </p>
-          <p>{account.sent.reply}</p>
-        </>
-      ) : null}
-      {account.decision ? (
-        <>
-          <p>
-            {account.decision.label}
-            <Moment at={account.decision.at} />.
-          </p>
-          {account.decision.note === null ? null : (
-            <div className={styles.note}>
-              <p>{account.decision.noteLabel}</p>
-              <p>{account.decision.note}</p>
+      <section className="settings-panel">
+        <div className="lede">
+          <div>
+            {problem}
+            {account.heading && !account.decision ? <h2>{account.heading}</h2> : null}
+            {account.sent ? (
+              <>
+                <p>
+                  {account.sent.label}
+                  <Moment at={account.sent.at} />.
+                </p>
+                <p>{account.sent.reply}</p>
+              </>
+            ) : null}
+            {account.paragraphs.map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+          </div>
+        </div>
+        {!form || requestNeedsCheck ? (
+          <div className="issue">
+            <div className="step-actions">
+              {account.link ? (
+                account.link.external ? (
+                  <a className="button button-primary" href={account.link.href}>
+                    {account.link.label}
+                  </a>
+                ) : (
+                  <Link className="button button-primary" to={account.link.href}>
+                    {account.link.label}
+                  </Link>
+                )
+              ) : null}
+              {checkAgain}
+              {beside}
             </div>
-          )}
-        </>
-      ) : null}
-      {account.paragraphs.map((paragraph) => (
-        <p key={paragraph}>{paragraph}</p>
-      ))}
-      {account.link ? (
-        account.link.external ? (
-          <a className="button button-primary" href={account.link.href}>
-            {account.link.label}
-          </a>
-        ) : (
-          <Link className="button button-primary" to={account.link.href}>
-            {account.link.label}
-          </Link>
-        )
-      ) : requestNeedsCheck ? null : (
-        problem
-      )}
-      {checkAgain}
-      {form && !requestNeedsCheck ? (
-        <PostForm document action="/products" className={`issue ${styles.profile}`}>
-          {(pending) => (
-            <>
-              <input type="hidden" name="intent" value={form.intent} />
-              {form.publish && publish ? (
-                <input type="hidden" name="checked_job" value={publish.checkedJob} />
-              ) : null}
-              {form.name ? (
-                <>
-                  <p>{form.name.explanation}</p>
-                  <Field
-                    label={form.name.label}
-                    id="seller_name"
-                    name="seller_name"
-                    autoComplete="organization"
-                    defaultValue={name}
-                    required
-                    hint={account.nameRule}
-                    error={press?.nameProblem}
-                  />
-                </>
-              ) : null}
-              {form.wallet && account.wallet !== null ? (
-                <>
-                  <p>{account.wallet.purpose}</p>
-                  <p>{form.wallet.explanation}</p>
-                  <Field
-                    label={form.wallet.label}
-                    id="payout_wallet"
-                    name="payout_wallet"
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder="0x…"
-                    defaultValue={wallet}
-                    required
-                    hint={account.wallet.rule}
-                    error={press?.walletProblem}
-                  />
-                  <WalletEcho box="payout_wallet" initial={wallet} />
-                  {account.wallet.coinbase !== null && "chain" in account.wallet.coinbase ? (
+          </div>
+        ) : null}
+        {form && !requestNeedsCheck ? (
+          <PostForm document action="/products" className={`issue ${styles.profile}`}>
+            {(pending) => (
+              <>
+                <input type="hidden" name="intent" value={form.intent} />
+                {form.publish && publish ? (
+                  <input type="hidden" name="checked_job" value={publish.checkedJob} />
+                ) : null}
+                {form.name ? (
+                  <>
+                    <p>{form.name.explanation}</p>
+                    <Field
+                      label={form.name.label}
+                      id="seller_name"
+                      name="seller_name"
+                      autoComplete="organization"
+                      defaultValue={name}
+                      required
+                      hint={account.nameRule}
+                      error={press?.nameProblem}
+                    />
+                  </>
+                ) : null}
+                {form.wallet && account.wallet !== null ? (
+                  <>
+                    <p>{account.wallet.purpose}</p>
+                    <p>{form.wallet.explanation}</p>
+                    <Field
+                      label={form.wallet.label}
+                      id="payout_wallet"
+                      name="payout_wallet"
+                      autoComplete="off"
+                      spellCheck={false}
+                      placeholder="0x…"
+                      defaultValue={wallet}
+                      required
+                      hint={account.wallet.rule}
+                      error={press?.walletProblem}
+                    />
+                    <WalletEcho box="payout_wallet" initial={wallet} />
+                    <p>{account.wallet.commission}</p>
+                  </>
+                ) : null}
+                <fieldset className="step-actions" disabled={pending}>
+                  <Button pending={pending}>
+                    {form.publish && publish ? publish.label : form.submit}
+                  </Button>
+                  {form.wallet &&
+                  account.wallet?.coinbase != null &&
+                  "chain" in account.wallet.coinbase ? (
                     <CoinbaseAddress
+                      className={styles.walletAction}
                       chainId={account.wallet.coinbase.chain}
                       box="payout_wallet"
                       label={form.wallet.createWallet}
@@ -161,19 +171,16 @@ export function OnboardingAccount({
                     >
                       <p>{form.wallet.walletWindow}</p>
                     </CoinbaseAddress>
-                  ) : account.wallet.coinbase !== null && "absent" in account.wallet.coinbase ? (
+                  ) : account.wallet?.coinbase != null && "absent" in account.wallet.coinbase ? (
                     <p>{account.wallet.coinbase.absent}</p>
                   ) : null}
-                  <p>{account.wallet.commission}</p>
-                </>
-              ) : null}
-              <Button pending={pending}>
-                {form.publish && publish ? publish.label : form.submit}
-              </Button>
-            </>
-          )}
-        </PostForm>
-      ) : null}
+                  {beside}
+                </fieldset>
+              </>
+            )}
+          </PostForm>
+        ) : null}
+      </section>
     </section>
   );
 }

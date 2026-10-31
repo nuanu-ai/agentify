@@ -3358,7 +3358,8 @@ describe("one integration at a time", () => {
     const html = (await running.get("/products")).html;
 
     expect([...html.matchAll(/data-reason="([^"]+)"/g)]).toStrictEqual([]);
-    expect(html).not.toMatch(/<li class="list-row/);
+    expect(readable(html)).not.toContain(coded.title);
+    expect(readable(html)).not.toContain(coded.merchant_item_id);
     expect(readable(html)).toMatch(/\b1 product\b/);
     expect(formTo(html, "post", "/products?woo=import")).toBeDefined();
   });

@@ -4,7 +4,8 @@
 }
 .start h2,
 .code h2 {
-  font-size: var(--text-section);
+  font-size: var(--text-heading);
+  margin-bottom: var(--gap-heading);
 }
 .choices {
   display: grid;
@@ -37,21 +38,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--space-page);
-  height: var(--space-page);
+  width: var(--platform-logo-size);
+  height: var(--platform-logo-size);
   margin-bottom: var(--space-block);
   flex-shrink: 0;
 }
 .mark svg {
   display: block;
-  width: var(--space-section);
-  height: var(--space-section);
+  width: var(--platform-icon-size);
+  height: var(--platform-icon-size);
   color: var(--fg-2);
 }
 .mark img {
   display: block;
-  width: var(--space-page);
-  height: var(--space-page);
+  width: var(--platform-logo-size);
+  height: var(--platform-logo-size);
 }
 
 .choice strong {
@@ -71,8 +72,18 @@
 }
 .code {
   overflow-wrap: anywhere;
-  max-width: 46rem;
-  padding-block: var(--space-card);
+  max-width: 40rem;
+  padding: var(--panel-inset);
+  margin-block: var(--space-card);
+}
+.code > p + p {
+  margin-top: var(--gap-paragraph);
+}
+.code > p:not(.back) + h2 {
+  margin-top: var(--space-card);
+}
+.code > :global(.step-actions) {
+  margin-top: var(--gap-actions);
 }
 .steps {
   padding-left: var(--space-card);
@@ -83,6 +94,17 @@
 }
 .steps h3 {
   font-size: var(--text-heading);
+  margin-bottom: var(--gap-heading);
+}
+.steps :global(.issue) {
+  padding-block: 0;
+}
+.steps p + p,
+.steps .command + p {
+  margin-top: var(--gap-paragraph);
+}
+.steps li:last-child {
+  margin-bottom: 0;
 }
 .command {
   display: flex;
@@ -103,7 +125,8 @@
   flex-shrink: 0;
 }
 .back {
-  margin-bottom: var(--space-section);
+  margin: var(--space-card) 0;
+  font-size: var(--text-small);
 }
 
 .origin {
@@ -144,48 +167,51 @@
 }
 
 .connection {
-  margin: 0 0 var(--space-card);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-tight) var(--space-control);
+  margin: 0 0 var(--gap-paragraph);
   color: var(--fg-2);
 }
-.connection::before {
-  content: "";
-  display: inline-block;
-  width: var(--space-tight);
-  height: var(--space-tight);
-  margin-inline-end: var(--space-tight);
-  border-radius: var(--radius-pill);
-  background: var(--pass);
+.connection > span:last-child {
+  font-size: var(--text-small);
+  color: var(--muted);
 }
-.connection[data-stale]::before {
-  background: var(--partial);
+.codeState {
+  margin-block: var(--space-card);
 }
 
 .account {
-  margin-block: var(--space-section);
-  max-width: 46rem;
+  display: grid;
+  gap: var(--space-card);
+  margin-block: var(--space-card);
   overflow-wrap: anywhere;
 }
-.profile {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-block);
-  align-items: flex-start;
+.account .profile {
+  width: 100%;
+  max-width: none;
 }
 .profile > * {
   max-width: 100%;
 }
 .profile > p {
+  max-width: calc(40rem - 2 * var(--space-card));
   margin: 0;
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 .profile > :global(.field) {
   width: 100%;
+  max-width: calc(40rem - 2 * var(--space-card));
 }
-.note {
-  padding: var(--space-card);
-  background: var(--raised);
-  border-radius: var(--radius-control);
+.walletAction {
+  display: contents;
 }
-.note p:last-child {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.walletAction > p:last-child {
+  order: 1;
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-small);
 }

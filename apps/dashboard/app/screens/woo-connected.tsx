@@ -172,7 +172,7 @@ export function Connected({
                 </Suspense>
               )
             }
-            publish={(job) =>
+            publish={(job, checkAgain) =>
               account.view !== undefined &&
               (account.view.publicationPending ||
                 account.view.step.account !== "none" ||
@@ -181,6 +181,7 @@ export function Connected({
                   view={account.view}
                   job={job}
                   press={account.press}
+                  beside={checkAgain}
                   publish={
                     job.kind === "check" && job.current && job.ready > 0 && !needsSite
                       ? { checkedJob: job.id, label: job.words.publish }
@@ -188,7 +189,7 @@ export function Connected({
                   }
                 />
               ) : (job.kind === "publish" || job.ready > 0) && !needsSite ? (
-                <>
+                <div className="step-actions">
                   <ShopForm action="/woocommerce/import">
                     {(pending) => (
                       <>
@@ -199,10 +200,11 @@ export function Connected({
                       </>
                     )}
                   </ShopForm>
+                  {checkAgain}
                   {connection.held === null ? null : (
                     <HeldLine held={connection.held} base={base} />
                   )}
-                </>
+                </div>
               ) : null
             }
           />

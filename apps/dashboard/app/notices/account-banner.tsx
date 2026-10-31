@@ -3,7 +3,9 @@ import { Link, useLocation, useRouteError, useRouteLoaderData } from "react-rout
 import type { AccountNote } from "../../src/account-banner.js";
 import { headingOf } from "../../src/account-heading.js";
 import type { FrameView } from "../../src/views.js";
+import { Moment } from "../components/moment.js";
 import styles from "./account-banner.module.css";
+import { Notice } from "./notice.js";
 
 const WalletChangeReason = lazy(() =>
   import("./wallet-change-note.js").then(({ WalletChangeReason }) => ({
@@ -62,39 +64,48 @@ export function AccountBanner({ notes: allNotes }: Readonly<{ notes: readonly Ac
     here === "/products" &&
     routeError == null &&
     onboarding?.unread === false &&
-    onboarding.step.page !== "shop" &&
     onboarding.account?.decision != null;
   const notes = localDecision
     ? allNotes.filter((note) => note.reason !== "not_approved")
     : allNotes;
   const first = notes[0];
-  if (first === undefined) return null;
-  const heading = headingOf(notes);
+  const decision = localDecision ? onboarding?.account?.decision : null;
+  if (first === undefined && !decision) return null;
+  const heading = decision
+    ? (onboarding?.account?.heading ?? decision.noteLabel)
+    : headingOf(notes);
   // A line that holds a form is no paragraph, which may hold none.
-  const Line = first.change === undefined ? "p" : "div";
+  const Line = first?.change === undefined ? "p" : "div";
   return (
-    <section className="account-banner" aria-label="About your account">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 8v5M12 16.5v.5" />
-      </svg>
-      <div>
-        <h2 className={styles.heading}>{heading}</h2>
-        {notes.length === 1 ? (
-          <Line key={first.reason} data-reason={first.reason}>
-            <Reason note={first} here={here} back={back} />
-          </Line>
-        ) : (
-          <ul className={styles.reasons}>
-            {notes.map((note) => (
-              <li key={note.reason} data-reason={note.reason}>
-                {note.title === heading ? null : `${note.title}. `}
-                <Reason note={note} here={here} back={back} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </section>
+    <Notice title={heading} label="About your account">
+      {decision ? (
+        <>
+          <p>
+            {decision.label}
+            <Moment at={decision.at} />.
+          </p>
+          {decision.note === null ? null : (
+            <>
+              <p>{decision.noteLabel}</p>
+              <p className={styles.decisionNote}>{decision.note}</p>
+            </>
+          )}
+        </>
+      ) : null}
+      {first === undefined ? null : notes.length === 1 ? (
+        <Line key={first.reason} data-reason={first.reason}>
+          <Reason note={first} here={here} back={back} />
+        </Line>
+      ) : (
+        <ul className={styles.reasons}>
+          {notes.map((note) => (
+            <li key={note.reason} data-reason={note.reason}>
+              {note.title === heading ? null : `${note.title}. `}
+              <Reason note={note} here={here} back={back} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Notice>
   );
 }

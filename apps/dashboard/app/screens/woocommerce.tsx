@@ -28,7 +28,7 @@ export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base
     <div className={styles.page}>
       {onboarding && account.view?.step.otherWays && view.connection === null ? (
         <p className={styles.otherWays}>
-          <Link to="/products?ways=choose">← Other ways to add products</Link>
+          <Link to="/products?ways=choose">Other ways to add products</Link>
         </p>
       ) : null}
       {view.savedProfile ? <p role="status">{view.savedProfile}</p> : null}

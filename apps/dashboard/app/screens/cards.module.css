@@ -38,6 +38,11 @@
   gap: var(--space-tight);
 }
 
+.shopStopped > :global(.quiet) {
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+
 :global(.cell-state):has(.shopStopped) {
   max-width: 100%;
 }
@@ -55,5 +60,15 @@
 @container (width > 860px) {
   :global(.cell-state):has(.shopStopped) {
     grid-column: 4 / -1;
+  }
+}
+
+@container (max-width: 860px) {
+  :global(.list-row):has(.shopStopped) :global(.cell-state) {
+    flex-basis: 100%;
+  }
+
+  :global(.list-row):has(.shopStopped) :global(.cell-fact) {
+    flex-basis: 100%;
   }
 }

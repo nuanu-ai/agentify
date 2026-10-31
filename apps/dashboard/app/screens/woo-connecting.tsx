@@ -96,7 +96,7 @@ function ConnectPanel({
   const waiting =
     !edited && view.preview === null && view.problem === null && view.noKeysYet?.waiting === true;
   return (
-    <section className={`${styles.connect} ${wide ? "settings-wide" : ""}`}>
+    <section className={`settings-panel ${styles.connect} ${wide ? "settings-wide" : ""}`}>
       <h2>Connect your WooCommerce shop</h2>
       <ShopForm
         action="/woocommerce/connect"

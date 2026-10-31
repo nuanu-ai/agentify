@@ -102,7 +102,9 @@ export function CardsScreen({ view }: Readonly<{ view: CardsView }>) {
                 {row.shopStoppedAt ? (
                   <span className={styles.shopStopped}>
                     <Word word={row.state} />
-                    <Moment at={row.shopStoppedAt} />
+                    <span className="quiet">
+                      Off sale since <Moment at={row.shopStoppedAt} />
+                    </span>
                   </span>
                 ) : (
                   <Word word={row.state} />

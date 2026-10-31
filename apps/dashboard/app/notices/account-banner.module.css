@@ -1,7 +1,7 @@
-/* The banner's heading, at the size of a panel's heading. */
-.heading {
-  font-size: var(--text-heading);
-  line-height: var(--leading-heading);
+/* An operator's note keeps its line breaks. */
+.decisionNote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Several reasons under the banner's one heading, each a line of its own

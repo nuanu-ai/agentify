@@ -35,8 +35,63 @@ describe("the dashboard's gallery, in the browser", () => {
   });
 });
 
+describe("connected code in the gallery", () => {
+  it.each([
+    {
+      id: "dashboard-code-connected-profile",
+      action: { tag: "BUTTON", name: "Ask for live sales" },
+    },
+    {
+      id: "dashboard-code-connected-approval",
+      action: { tag: "BUTTON", name: "Ask for live sales" },
+    },
+    {
+      id: "dashboard-code-connected-ready",
+      action: { tag: "A", href: "/docs/quickstart#_4-publish-one-card" },
+    },
+    {
+      id: "dashboard-code-connected-test-wallet",
+      action: { tag: "BUTTON", name: "Save name and wallet" },
+    },
+  ])("shows the next account action in $id", async ({ id, action }) => {
+    const state = gallery.states.find((one) => one.id === id);
+    if (state === undefined) throw new Error(`the gallery has no code connection state ${id}`);
+    const drawn = new DOMParser().parseFromString(
+      await drawnInBrowser(state, { shows: "Your code connected" }, { act, createRoot }),
+      "text/html",
+    );
+    const actions = [...drawn.querySelectorAll("main button, main a")].map((element) => ({
+      tag: element.tagName,
+      name: element.textContent?.trim(),
+      href: element.getAttribute("href"),
+    }));
+
+    expect(
+      actions.some(
+        (one) =>
+          one.tag === action.tag &&
+          ("name" in action ? one.name === action.name : one.href === action.href),
+      ),
+    ).toBe(true);
+  });
+});
+
 /** The situation table also drives what the real frame draws over each page. */
 describe("onboarding situations in the frame", () => {
+  it("keeps a declined request's note visible when quiet code has no account warning", async () => {
+    const state = gallery.states.find((one) => one.id === "dashboard-onboarding-32");
+    if (!state) throw new Error("the gallery has no declined quiet-code situation");
+    const drawn = new DOMParser().parseFromString(
+      await drawnInBrowser(state, { shows: "Ask again" }, { act, createRoot }),
+      "text/html",
+    );
+    const notices = drawn.querySelectorAll('[aria-label="About your account"]');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.textContent).toContain(
+      "Choose a seller name that belongs to your business.",
+    );
+    expect(drawn.querySelector('main form button[type="submit"]')?.textContent).toBe("Ask again");
+  });
   it.each(ONBOARDING_CASES)(
     "situation $row places its account notice and offers practice only on the first live visit",
     async ({ row, facts, reason }) => {

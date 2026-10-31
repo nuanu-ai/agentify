@@ -371,7 +371,7 @@ describe("a merchant reading a shop result", async () => {
       ],
     });
     expect(readable(html).match(/Download access expires/g)).toHaveLength(1);
-    expect(html.match(/<li>/g)).toHaveLength(3);
+    expect(html.match(/<li\b/g)).toHaveLength(3);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
   });

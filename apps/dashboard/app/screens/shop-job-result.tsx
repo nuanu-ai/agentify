@@ -1,9 +1,10 @@
 import { Button } from "@agentify/ui";
-import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { type ReactNode, useId } from "react";
+import { Link, useNavigation } from "react-router";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 import { Moment } from "../components/moment.js";
 import { PostForm } from "../components/post-form.js";
+import { Cell, List, Row } from "../display/list.js";
 import styles from "./shop-job.module.css";
 
 import { ShopJobOutcome, ShopJobSyncNote } from "./shop-job-outcome.js";
@@ -14,9 +15,22 @@ interface ShopJobResultProps {
   readonly reconnect?: ReactNode;
   readonly secondaryCheck?: boolean;
   readonly checkAction?: string;
-  readonly publish?: (view: ShopJobView) => ReactNode;
+  readonly publish?: (view: ShopJobView, checkAgain: ReactNode) => ReactNode;
   readonly rate?: (view: ShopJobView) => ReactNode;
   readonly noProducts?: boolean;
+}
+function CheckButton({
+  action,
+  form,
+  secondary,
+}: Readonly<{ action: string; form: string; secondary: boolean }>) {
+  const navigation = useNavigation();
+  const pending = navigation.state !== "idle" && navigation.formAction?.endsWith(action) === true;
+  return (
+    <Button form={form} variant={secondary ? "secondary" : "primary"} pending={pending}>
+      Check again
+    </Button>
+  );
 }
 export function ShopJobResult({
   view,
@@ -28,9 +42,21 @@ export function ShopJobResult({
   rate,
   noProducts,
 }: ShopJobResultProps) {
+  const formId = useId();
   const currentStop = view.current ? view.stopCode : null;
   if (currentStop === "rate_required" && rate) return <>{rate(view)}</>;
-  const nextStep = view.current && currentStop !== "reconnect" ? publish?.(view) : null;
+  const checked = (secondary: boolean) => (
+    <span className={styles.checked}>
+      <span>
+        Checked <Moment at={view.when} />
+      </span>
+      {checkAction ? (
+        <CheckButton form={formId} action={checkAction} secondary={secondary} />
+      ) : null}
+    </span>
+  );
+  const nextStep =
+    view.current && currentStop !== "reconnect" ? publish?.(view, checked(true)) : null;
   const hasNextStep = nextStep !== null && nextStep !== undefined && nextStep !== false;
   return (
     <section className={styles.job} aria-label="Shop products">
@@ -41,28 +67,15 @@ export function ShopJobResult({
         <h3>{view.words.summary}</h3>
       ) : null}
       {view.kind === "publish" ? <ShopJobSyncNote view={view} /> : null}
+      {checkAction ? (
+        <PostForm id={formId} className={styles.checkForm} action={checkAction}>
+          {() => null}
+        </PostForm>
+      ) : null}
       {currentStop === "reconnect" ? (reconnect ?? <p>{view.words.reconnectInstruction}</p>) : null}
       {nextStep}
-      {currentStop !== "reconnect" ? (
-        <div className={styles.checked}>
-          <p>
-            Checked <Moment at={view.when} />
-          </p>
-          {checkAction ? (
-            <PostForm action={checkAction}>
-              {(pending) => (
-                <Button
-                  variant={
-                    hasNextStep || (view.current && secondaryCheck) ? "secondary" : "primary"
-                  }
-                  pending={pending}
-                >
-                  Check again
-                </Button>
-              )}
-            </PostForm>
-          ) : null}
-        </div>
+      {currentStop !== "reconnect" && !hasNextStep ? (
+        <div className="step-actions">{checked(view.current && secondaryCheck === true)}</div>
       ) : null}
       {unread ? (
         <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
@@ -84,14 +97,17 @@ export function ShopJobResult({
                   {reason.why} <span>({reason.countText})</span>
                 </p>
               ) : null}
-              <ul>
+              <List
+                label={`${group.title}${reason.why ? `: ${reason.why}` : ""}`}
+                columns="minmax(0, 1fr)"
+              >
                 {reason.rows.map((row) => (
-                  <li key={row.id}>
-                    {row.title}
-                    {row.why ? <span className="quiet"> · {row.why}</span> : null}
-                  </li>
+                  <Row key={row.id}>
+                    <Cell at="title">{row.title}</Cell>
+                    {row.why ? <Cell at="note">{row.why}</Cell> : null}
+                  </Row>
                 ))}
-              </ul>
+              </List>
               {reason.more ? <Link to={reason.more.href}>{reason.more.label}</Link> : null}
             </div>
           ))}

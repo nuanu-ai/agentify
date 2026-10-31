@@ -31,6 +31,27 @@ export default defineConfig({
       external: ["brotli-wasm"],
       output: {
         manualChunks(id) {
+          // A shop's check and profile share their small UI modules once reached;
+          // the wallet SDK keeps its own deferred import.
+          if (
+            /\/app\/(screens\/(?:shop-job(?:-outcome|-result|-progress|-summary|-observer)?))\.[jt]sx?$/.test(
+              id,
+            )
+          )
+            return "shop-job";
+          if (
+            /\/app\/(screens\/onboarding-account|wallet\/(?:address-button|address|echo))\.[jt]sx?$/.test(
+              id,
+            )
+          )
+            return "onboarding-account";
+          // Code entry shares this class map, so it cannot belong to the wallet form's chunk.
+          if (id.endsWith("/app/screens/onboarding.module.css")) return "onboarding-style";
+          if (/\/app\/screens\/(?:woocommerce|woo-connected)\.[jt]sx?$/.test(id))
+            return "woocommerce";
+          if (/\/app\/display\/(?:list|panel-head)\.[jt]sx?$/.test(id)) return "components";
+          if (/\/app\/dialogs\/(?:test-welcome|locked-dialog)\.[jt]sx?$/.test(id))
+            return "account-notes";
           return /\/packages\/ui\/(?!src\/workspace)|\/app\/components\/(?!admin)/.test(id) ||
             /\/node_modules\/react-dom\//.test(id)
             ? "components"

@@ -26,7 +26,7 @@ export function ShopJobPanel({
   initial: ShopJobView | null;
   endpoint: string;
   checkAction?: string;
-  publish?: (view: ShopJobView) => ReactNode;
+  publish?: (view: ShopJobView, checkAgain: ReactNode) => ReactNode;
   rate?: (view: ShopJobView) => ReactNode;
 }>) {
   const [view, unread] = useShopJob(initial, endpoint);

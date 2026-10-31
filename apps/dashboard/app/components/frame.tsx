@@ -138,7 +138,9 @@ export function Frame({
               </div>
             </div>
             <div className="app-content">
-              {framed?.account.length ? (
+              {framed &&
+              (framed.account.length > 0 ||
+                (marked === "products" && framed.onboarding?.account?.decision != null)) ? (
                 <Suspense fallback={null}>
                   <AccountBanner notes={framed.account} />
                 </Suspense>

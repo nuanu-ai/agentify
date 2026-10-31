@@ -96,13 +96,14 @@ export function SitePanel({
     </div>
   ) : (
     <div className={styles.site}>
+      <p>We couldn't save {site.origin} as your shop's site.</p>
       {site.problem === null ? null : (
         <p className="problem" role="alert">
           {site.problem}
         </p>
       )}
       <ShopForm action="/woocommerce/site" className="issue">
-        {(pending) => <Button pending={pending}>Use {site.origin} as your shop's site</Button>}
+        {(pending) => <Button pending={pending}>Save site</Button>}
       </ShopForm>
     </div>
   );
