@@ -1180,8 +1180,11 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 "We checked again and found no pending request. You can ask again.",
             });
           if (!asked.ok) return refused(saidOf(asked), asked.status);
-          if (asked.document.kind !== "pending" && asked.document.kind !== "requested")
-            return { kind: "redirect", location: `${base}/products` };
+          if (asked.document.kind === "moved" || asked.document.kind === "missing")
+            return refused(
+              "Your account changed while you asked, so the request wasn't sent. Check again before asking.",
+              409,
+            );
           return { kind: "redirect", location: `${base}/products` };
         }
         if (intent !== "save-onboarding-profile" && intent !== "save-onboarding-wallet")
