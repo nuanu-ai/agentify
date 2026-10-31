@@ -8,6 +8,7 @@ import { Cell, List, Row } from "../display/list.js";
 import styles from "./shop-job.module.css";
 
 import { ShopJobOutcome, ShopJobSyncNote } from "./shop-job-outcome.js";
+import { progressUnread } from "./shop-job-progress.js";
 
 interface ShopJobResultProps {
   readonly view: ShopJobView;
@@ -65,9 +66,7 @@ export function ShopJobResult({
       ) : null}
       {currentStop === "reconnect" ? (reconnect ?? <p>{view.words.reconnectInstruction}</p>) : null}
       {nextStep}
-      {unread ? (
-        <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
-      ) : null}
+      {unread ? progressUnread : null}
       {currentStop === "reconnect" && view.groups.length === 0 ? null : (
         <div className={styles.products}>
           {currentStop === "reconnect" ? null : (

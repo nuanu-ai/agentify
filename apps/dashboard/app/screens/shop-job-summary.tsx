@@ -6,7 +6,7 @@ import { PostForm } from "../components/post-form.js";
 import styles from "./shop-job.module.css";
 import { useShopJob } from "./shop-job-observer.js";
 import { ShopJobOutcome, ShopJobSyncNote } from "./shop-job-outcome.js";
-import { ShopJobProgress } from "./shop-job-progress.js";
+import { progressUnread, ShopJobProgress } from "./shop-job-progress.js";
 
 /** The catalogue keeps the result's next action; product groups belong to the shop detail. */
 export function ShopJobSummary({
@@ -28,9 +28,7 @@ export function ShopJobSummary({
   if (!view || view.status === "queued" || view.status === "running")
     return <ShopJobProgress view={view} unread={unread} notification={publication?.notification} />;
   if (publication) return <p role="status">{publication.waiting}</p>;
-  const problem = unread ? (
-    <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
-  ) : null;
+  const problem = unread ? progressUnread : null;
   if (view.current && view.status === "completed") {
     const fix = view.words.fix;
     if (fix === null) return problem;

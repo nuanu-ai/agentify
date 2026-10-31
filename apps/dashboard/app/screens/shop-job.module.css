@@ -33,20 +33,20 @@
 .job > div:first-child > p {
   color: var(--fg-2);
 }
-.progress {
+.job > [role="progressbar"] {
   width: 100%;
   height: var(--space-tight);
   border-radius: var(--radius-pill);
   background: var(--raised);
   overflow: hidden;
 }
-.progress > span {
+.job > [role="progressbar"] > span {
   display: block;
   width: var(--read, 100%);
   height: 100%;
   background: var(--accent);
 }
-.progress:not([aria-valuenow]) > span {
+.job > [role="progressbar"]:not([aria-valuenow]) > span {
   background: repeating-linear-gradient(
     90deg,
     var(--accent) 0 var(--space-tight),

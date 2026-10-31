@@ -2,6 +2,11 @@ import type { CSSProperties } from "react";
 import type { ShopJobView } from "../../src/shop-job-view.js";
 import styles from "./shop-job.module.css";
 
+/** Shown wherever a job's last read failed; one copy, since every shop screen loads this module. */
+export const progressUnread = (
+  <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
+);
+
 export function ShopJobProgress({
   view,
   unread,
@@ -21,7 +26,6 @@ export function ShopJobProgress({
       <p role="status">{view.words.progress}</p>
       <div
         role="progressbar"
-        className={styles.progress}
         aria-valuemin={0}
         aria-valuemax={view.total ?? undefined}
         aria-valuenow={view.total === null ? undefined : view.read}
@@ -40,9 +44,7 @@ export function ShopJobProgress({
         />
       </div>
       <p>{notification ?? view.words.leaving}</p>
-      {unread ? (
-        <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
-      ) : null}
+      {unread ? progressUnread : null}
     </section>
   );
 }
