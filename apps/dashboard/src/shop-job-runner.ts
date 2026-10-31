@@ -282,6 +282,10 @@ export async function workShopJob(
     if (sale === null) return finish(stopped("unread", "The shop's currency could not be read."));
     const id = String(event.product.id);
     seen.add(id);
+    if (total !== null && seen.size > total) {
+      total = null;
+      await shops.jobs.total(job.id, null);
+    }
     const title = event.product.name;
     const row: JobProduct = {
       id,
