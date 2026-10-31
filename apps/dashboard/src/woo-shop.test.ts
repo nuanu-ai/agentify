@@ -864,6 +864,68 @@ describe("the protected product check", () => {
     },
   );
 
+  /**
+   * A shop's protected list as WordPress pages it: the `status` filter
+   * (WordPress's default is every status but the bin), ordered by id, a page
+   * cut by offset from the list as it stands when that page is asked.
+   */
+  const pagedShop = (listed: () => readonly { id: number; status: string }[]) =>
+    shopAnswering((asked) => {
+      if (asked.url.includes("/settings/"))
+        return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
+      const query = new URL(asked.url, "http://shop").searchParams;
+      const status = query.get("status") ?? "any";
+      const page = Number(query.get("page") ?? 1);
+      const perPage = Number(query.get("per_page") ?? 10);
+      const all = listed().filter((one) =>
+        status === "any" ? one.status !== "trash" : one.status === status,
+      );
+      return {
+        status: 200,
+        headers: { "x-wp-total": String(all.length) },
+        body: all
+          .slice((page - 1) * perPage, page * perPage)
+          .map((one) =>
+            parcelDocument({ id: one.id, status: one.status, name: "Tote", description: "A bag." }),
+          ),
+      };
+    });
+
+  it("counts the published products the estimate counts, not drafts", async () => {
+    // The estimate before connecting sees only the shop's published products,
+    // so a shop it lets in must not be refused for its drafts afterwards.
+    const products = [
+      ...Array.from({ length: 1_950 }, (_, index) => ({ id: index + 1, status: "publish" })),
+      ...Array.from({ length: 100 }, (_, index) => ({ id: 3_000 + index, status: "draft" })),
+    ];
+    stand = await pagedShop(() => products);
+    const events = [];
+    for await (const event of connectedCatalogue(connectionTo(stand.url), fetch)) {
+      events.push(event);
+      if (event.kind === "product" || event.kind === "stopped") break;
+    }
+    expect(events).toContainEqual({ kind: "total", total: 1_950 });
+    expect(events.at(-1)).toMatchObject({ kind: "product" });
+  });
+
+  it("never calls a read complete when a product slipped between two pages", async () => {
+    // One product deleted below the page being read and one added keeps the
+    // count; every later page shifts by one and a product is never read.
+    let products = Array.from({ length: 150 }, (_, index) => ({
+      id: index + 1,
+      status: "publish",
+    }));
+    stand = await pagedShop(() => products);
+    const events = [];
+    for await (const event of connectedCatalogue(connectionTo(stand.url), fetch)) {
+      events.push(event);
+      if (event.kind === "product" && event.product.id === 100)
+        products = [...products.filter((one) => one.id !== 5), { id: 151, status: "publish" }];
+    }
+    expect(events.some((event) => event.kind === "complete")).toBe(false);
+    expect(events.at(-1)).toMatchObject({ kind: "stopped", reconnect: false });
+  });
+
   it("reads a protected catalogue when the public list is closed and learns currency without an eligible product", async () => {
     stand = await shopAnswering((asked) => {
       if (asked.url.includes("/store/")) return { status: 403, body: {} };
