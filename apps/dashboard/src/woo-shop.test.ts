@@ -869,20 +869,26 @@ describe("the protected product check", () => {
    * (WordPress's default is every status but the bin), ordered by id, a page
    * cut by offset from the list as it stands when that page is asked.
    */
-  const pagedShop = (listed: () => readonly { id: number; status: string }[]) =>
+  const pagedShop = (
+    listed: () => readonly { id: number; status: string }[],
+    claimedTotal: () => number | null = () => null,
+  ) =>
     shopAnswering((asked) => {
       if (asked.url.includes("/settings/"))
         return { status: 200, body: settingAt(asked.url, parcelSettingFor(asked.url)) };
       const query = new URL(asked.url, "http://shop").searchParams;
       const status = query.get("status") ?? "any";
+      const include = query.get("include")?.split(",");
       const page = Number(query.get("page") ?? 1);
       const perPage = Number(query.get("per_page") ?? 10);
-      const all = listed().filter((one) =>
-        status === "any" ? one.status !== "trash" : one.status === status,
+      const all = listed().filter(
+        (one) =>
+          (status === "any" ? one.status !== "trash" : one.status === status) &&
+          (include === undefined || include.includes(String(one.id))),
       );
       return {
         status: 200,
-        headers: { "x-wp-total": String(all.length) },
+        headers: { "x-wp-total": String(claimedTotal() ?? all.length) },
         body: all
           .slice((page - 1) * perPage, page * perPage)
           .map((one) =>
@@ -924,6 +930,89 @@ describe("the protected product check", () => {
     }
     expect(events.some((event) => event.kind === "complete")).toBe(false);
     expect(events.at(-1)).toMatchObject({ kind: "stopped", reconnect: false });
+  });
+
+  it.each([
+    ["withdraws it after a complete read", true],
+    ["leaves it on sale when the read is incomplete", false],
+  ] as const)("a published product turned draft in the shop: %s", async (_, complete) => {
+    // WordPress omits a draft from the published list and returns it when asked by id.
+    let products = [
+      { id: 1, status: "publish" },
+      { id: 2, status: "publish" },
+    ];
+    // A count the list does not reach keeps the read from completing.
+    let claimedTotal: number | null = null;
+    stand = await pagedShop(
+      () => products,
+      () => claimedTotal,
+    );
+    const h = await harness();
+    try {
+      const shops = memoryWooShops();
+      const person = {
+        id: "shop-owner",
+        email: "shop@example.com",
+        confirmed: true,
+        merchant: { id: h.merchant.id },
+      };
+      await shops.connect({
+        ...connectionTo(stand.url),
+        accountId: person.id,
+        revision: "granted-1",
+        permissions: "read_write",
+        connectedAt: new Date(),
+        currency: null,
+      });
+      await gatewayFor(h.gateway, {
+        merchantId: h.merchant.id,
+        email: person.email,
+      }).sellThrough("woocommerce");
+      await shops.noteCurrency(person.id, { code: "USD", decimals: 2 }, "granted-1");
+      const sync = async () => {
+        await shops.jobs.request({
+          merchantId: h.merchant.id,
+          accountId: person.id,
+          connectionRevision: "granted-1",
+          shopUrl: stand?.url ?? "",
+          kind: "publish",
+          currency: { code: "USD", decimals: 2 },
+          rate: null,
+        });
+        const job = await shops.jobs.claim();
+        if (!job) throw new Error("No accepted task");
+        await workShopJob(job, {
+          shops,
+          identity: { byId: async () => person },
+          clientFor: (who) => gatewayFor(h.gateway, who),
+          publisherFor: (who) => shopPublisherFor(h.gateway, who, shops),
+          catalogue: (keys) => connectedCatalogue(keys, fetch),
+          inspect: (keys, ids) => inspectProductsInTheShop(keys, ids, fetch),
+          guestCart: async () => null,
+          surfaceMode: "sandbox",
+        });
+        return (await shops.jobs.latest(h.merchant.id))[0];
+      };
+      expect(await sync()).toMatchObject({ status: "completed", read: 2 });
+      const draft = (await h.store.cards(h.merchant.id)).find(
+        (one) => one.card.merchant_item_id === merchantItemIdFor(stand?.url ?? "", "2"),
+      );
+      expect(draft).toMatchObject({ paused: false });
+
+      products = [
+        { id: 1, status: "publish" },
+        { id: 2, status: "draft" },
+      ];
+      if (!complete) claimedTotal = 3;
+      expect(await sync()).toMatchObject({ status: complete ? "completed" : "stopped" });
+      expect(await h.store.cardById(draft?.id ?? "")).toMatchObject({ paused: complete });
+      expect(
+        stand.asked.some((one) => one.url.includes("include=2")),
+        "the draft was asked after by id",
+      ).toBe(complete);
+    } finally {
+      await h.stop();
+    }
   });
 
   it("reads a protected catalogue when the public list is closed and learns currency without an eligible product", async () => {
