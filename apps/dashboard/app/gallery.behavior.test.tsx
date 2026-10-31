@@ -113,11 +113,11 @@ describe("connected code in the gallery", () => {
 
 /** The situation table also drives what the real frame draws over each page. */
 describe("onboarding situations in the frame", () => {
-  it("keeps a declined request's note visible when quiet code has no account warning", async () => {
+  it("keeps a declined request's note visible, without a request that would be refused, while code is quiet", async () => {
     const state = gallery.states.find((one) => one.id === "dashboard-onboarding-32");
     if (!state) throw new Error("the gallery has no declined quiet-code situation");
     const drawn = new DOMParser().parseFromString(
-      await drawnInBrowser(state, { shows: "Ask again" }, { act, createRoot }),
+      await drawnInBrowser(state, { shows: "Note from Agentify" }, { act, createRoot }),
       "text/html",
     );
     const notices = drawn.querySelectorAll('[aria-label="About your account"]');
@@ -125,7 +125,7 @@ describe("onboarding situations in the frame", () => {
     expect(notices[0]?.textContent).toContain(
       "Choose a seller name that belongs to your business.",
     );
-    expect(drawn.querySelector('main form button[type="submit"]')?.textContent).toBe("Ask again");
+    expect(drawn.querySelector('main input[name="intent"][value="request-live-sales"]')).toBeNull();
   });
   it.each(ONBOARDING_CASES)(
     "situation $row places its account notice and offers practice only on the first live visit",

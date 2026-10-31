@@ -54,6 +54,8 @@ export interface NextStep {
   readonly practice: boolean;
   readonly acknowledgeTest: boolean;
   readonly account: AccountStep;
+  /** Whether a request for live sales sent now would be taken. */
+  readonly canAsk: boolean;
   readonly otherWays: boolean;
 }
 
@@ -124,13 +126,16 @@ export function nextStepOf(facts: NextStepFacts): NextStep {
               : "none"
         : facts.request === "pending"
           ? "pending"
-          : facts.request === "declined"
-            ? "declined"
-            : facts.withdrawn
-              ? "withdrawn"
-              : connected
-                ? "request"
-                : "none"
+          : facts.request === "declined" || facts.withdrawn
+            ? // A code page shows the key and its guide only when no decision stands over it.
+              !connected && page === "code"
+              ? "none"
+              : facts.request === "declined"
+                ? "declined"
+                : "withdrawn"
+            : connected
+              ? "request"
+              : "none"
       : connected && facts.cards === 0
         ? door.missing.includes("no_seller_name") || door.missing.includes("no_payout_wallet")
           ? "test-profile"
@@ -142,6 +147,8 @@ export function nextStepOf(facts: NextStepFacts): NextStep {
     page,
     reason,
     account,
+    canAsk:
+      connected && (account === "request" || account === "declined" || account === "withdrawn"),
     otherWays: !started && facts.request === "none" && !facts.liveApproved,
     practice:
       facts.mode === "live" && page === "platform" && !started && !facts.withdrawn && !facts.unread,

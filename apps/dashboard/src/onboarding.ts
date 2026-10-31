@@ -40,15 +40,16 @@ interface AccountFacts {
 /** Present the saved account facts; values from a refused press stay with that press. */
 export function onboardingAccountView(step: NextStep, account: Readonly<AccountFacts>) {
   const state = step.account;
-  const request = state === "request" || state === "declined" || state === "withdrawn";
+  const declined = state === "declined" || state === "withdrawn";
+  const request = step.canAsk;
   const profile = state === "test-profile";
   const wallet =
     !request &&
+    !declined &&
     account.wallet !== null &&
     state !== "none" &&
     state !== "seller-name" &&
     state !== "publish-code";
-  const declined = state === "declined" || state === "withdrawn";
   return {
     active: state !== "none",
     email: account.email,
@@ -103,7 +104,13 @@ export function onboardingAccountView(step: NextStep, account: Readonly<AccountF
                   : "Meanwhile, add your payout wallet, so you can publish as soon as you're approved.",
               ]
             : declined
-              ? ["Fix what the note asks, then ask again."]
+              ? [
+                  request
+                    ? "Fix what the note asks, then ask again."
+                    : step.page === "shop"
+                      ? "Fix what the note asks. You can ask again once a check finds a product ready for sale."
+                      : "Fix what the note asks. You can ask again once your code connects.",
+                ]
               : state === "request"
                 ? ["Live sales start once Agentify approves your shop."]
                 : state === "wallet"
