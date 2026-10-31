@@ -142,6 +142,11 @@ const states: readonly {
     title: "Manual approval · connection missing",
     event: { ...base, next: "connect", publication: null },
   },
+  {
+    id: "admission-choose",
+    title: "Manual approval · several shops connected",
+    event: { ...base, next: "choose", publication: null },
+  },
   ...(["admitted", "published"] as const).flatMap((kind) => [
     {
       id: `${kind}-check-needed`,

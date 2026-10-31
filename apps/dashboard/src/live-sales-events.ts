@@ -17,7 +17,7 @@ export interface PublicationResult {
 }
 export interface DecisionMailEvent extends Omit<LiveSalesChange, "kind"> {
   readonly kind: "admitted" | "published" | "withdrawn";
-  readonly next: "wallet" | "code" | "settings" | "connect" | "products";
+  readonly next: "wallet" | "code" | "settings" | "connect" | "choose" | "products";
   readonly publication: PublicationResult | null;
 }
 export type LiveSalesMailEvent = RequestMailEvent | DecisionMailEvent;

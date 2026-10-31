@@ -112,6 +112,10 @@ export function decisionMessage(parts: {
     paragraphs = ["Connect your shop or code before publishing products."];
     action = "Open your connections";
     link = `${baseUrl}/integrations`;
+  } else if (event.next === "choose") {
+    paragraphs = [
+      "More than one person on your seller account has connected a shop, so we didn't choose one to publish from. Sync the shop you sell from on your Products page.",
+    ];
   } else {
     paragraphs = ["Check your connected shop and exchange rate before publishing products."];
   }

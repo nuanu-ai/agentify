@@ -135,7 +135,7 @@ export async function recordLiveSalesChange(
     connections.find((one) => one.accountId === request?.accountId) ??
     (connections.length === 1 ? connections[0] : undefined);
   if (!connection) {
-    await insertNotices(tx, decision(event, "products"), at);
+    await insertNotices(tx, decision(event, "choose"), at);
     return;
   }
   await tx
