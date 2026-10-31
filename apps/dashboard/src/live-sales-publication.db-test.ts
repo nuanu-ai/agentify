@@ -810,6 +810,25 @@ if (databaseUrl === null) {
         (await rows("dashboard_live_sales_mail")).map((row) => [row.event.kind, row.event.next]),
       ).toEqual([["admitted", "connect"]]);
     });
+    it("starts every admitted merchant's publication in one turn while another merchant's check runs", async () => {
+      const busy = await seller();
+      const running = await check(busy);
+      await approve(busy.merchantId);
+      const ready = [await seller(), await seller()];
+      for (const one of ready) {
+        await finishCheck((await check(one)).id);
+        await approve(one.merchantId);
+      }
+      await advanceLivePublication(pool, shops);
+      for (const one of ready)
+        expect(
+          (await shops.jobs.latest(one.merchantId)).filter((job) => job.kind === "publish"),
+        ).toMatchObject([{ status: "queued" }]);
+      expect((await shops.jobs.latest(busy.merchantId)).some((job) => job.kind === "publish")).toBe(
+        false,
+      );
+      await finishCheck(running.id);
+    });
     it("erases a pending automatic publication with its owning account", async () => {
       const one = await seller();
       await approve(one.merchantId);
