@@ -404,8 +404,12 @@ for your merchant at a time; pressing again shows that task. If Agentify
 restarts during the work, the result stays stopped, with the products already
 read and the rest explicitly unknown. A retry is a new task.
 
-The connector reads up to 2,000 products, a hundred at a time. A larger count
-reported by the public catalogue prevents connection. A shop that grows past
+The connector reads up to 2,000 published products, a hundred at a time: the
+products the public catalogue counts before you connect, and out-of-stock ones
+even where the shop hides them from its catalogue. Drafts and
+private products are not read; a product of yours on sale through Agentify
+that is no longer published is checked on its own and taken off sale. A larger
+count reported by the public catalogue prevents connection. A shop that grows past
 the limit after connecting is refused or stopped, with the result saying how
 much was read. A count the shop does not provide stays unknown while the check
 runs; a partial read is never presented as the whole shop.

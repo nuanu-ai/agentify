@@ -3144,14 +3144,18 @@ export async function* connectedCatalogue(
     short_description: z.string().default(""),
     sku: z.string().default(""),
   });
+  // Published products only: the estimate before connecting counts these, and a product in
+  // any other state is not for sale; a card whose product left this list is asked after alone.
+  const listPage = (page: number, fields = "") =>
+    askedTheShop(
+      keys,
+      `/wp-json/wc/v3/products?status=publish&orderby=id&order=asc&per_page=${PER_PAGE}&page=${page}${fields}`,
+      request,
+    );
   const seen = new Set<number>();
   let total: number | null = null;
   for (let page = 1; page <= Math.ceil(PRODUCTS_AT_MOST / PER_PAGE) + 1; page++) {
-    const answered = await askedTheShop(
-      keys,
-      `/wp-json/wc/v3/products?status=any&orderby=id&order=asc&per_page=${PER_PAGE}&page=${page}`,
-      request,
-    );
+    const answered = await listPage(page);
     if (!answered?.response.ok || answered.body === null) {
       yield {
         kind: "stopped",
@@ -3197,7 +3201,7 @@ export async function* connectedCatalogue(
       if (total > PRODUCTS_AT_MOST) {
         yield {
           kind: "stopped",
-          why: "Your shop has more than 2,000 products.",
+          why: "Your shop has more than 2,000 published products.",
           reconnect: false,
         };
         return;
@@ -3209,7 +3213,7 @@ export async function* connectedCatalogue(
           kind: "stopped",
           why: seen.has(product.id)
             ? "Your shop repeated a catalogue page. We don't know about the rest yet."
-            : "Your shop has more than 2,000 products. We stopped reading at 2,000.",
+            : "Your shop has more than 2,000 published products. We stopped reading at 2,000.",
           reconnect: false,
         };
         return;
@@ -3257,6 +3261,34 @@ export async function* connectedCatalogue(
         yield {
           kind: "stopped",
           why: "Your shop ended its catalogue before all products were read. We don't know about the rest yet.",
+          reconnect: false,
+        };
+        return;
+      }
+      // Pages are cut by offset, so a product deleted below the page being read shifts the rest
+      // and one is never read while the count stays the same; a second, ids-only pass catches it.
+      const listed = new Set<number>();
+      for (let again = 1; again <= page + 1; again++) {
+        const answeredIds = await listPage(again, "&_fields=id");
+        const documents = listedIn(answeredIds);
+        const ids = documents?.flatMap((one) => (typeof one.id === "number" ? [one.id] : []));
+        if (documents === null || ids === undefined || ids.length !== documents.length) {
+          yield { kind: "total", total: null };
+          yield {
+            kind: "stopped",
+            why: "We couldn't read the rest of your shop. We don't know about the rest yet.",
+            reconnect: accessRefused(answeredIds),
+          };
+          return;
+        }
+        for (const id of ids) listed.add(id);
+        if (ids.length < PER_PAGE) break;
+      }
+      if (listed.size !== seen.size || [...listed].some((id) => !seen.has(id))) {
+        yield { kind: "total", total: null };
+        yield {
+          kind: "stopped",
+          why: "Your catalogue changed while it was being read. Check again.",
           reconnect: false,
         };
       } else yield { kind: "complete", total: seen.size };
