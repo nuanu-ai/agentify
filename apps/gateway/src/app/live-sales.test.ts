@@ -228,11 +228,34 @@ describe("a merchant's live-sales request", () => {
       delete evidence[field];
       await expect(
         requestLiveSales(store, { ...input, evidence } as LiveSalesAsk, at, "live"),
-      ).rejects.toThrow(/\S/);
+      ).rejects.toThrow(`"${field}"`);
       expect(await store.liveSalesRequest(input.merchantId)).toBeNull();
       expect(notices).toHaveLength(0);
     },
   );
+
+  it.each([
+    ["more products read than the shop's total", { read: 3, total: 2, complete: false }],
+    ["more ready products than were read", { ready: 3, read: 2, total: 2 }],
+  ])("refuses shop evidence with %s, saying the counts disagree", async (_, counts) => {
+    const { store, notices } = await setup();
+    await store.switchIntegration(input.merchantId, "woocommerce");
+    const checked = {
+      integration: "woocommerce" as const,
+      host: "woo.nuanu.ai",
+      checkedAt: at - 1000,
+      ready: 1,
+      read: 2,
+      total: 2,
+      complete: true,
+    };
+    const evidence = { ...checked, ...counts };
+    await expect(requestLiveSales(store, { ...input, evidence }, at, "live")).rejects.toThrow(
+      "checked product counts must agree",
+    );
+    expect(await store.liveSalesRequest(input.merchantId)).toBeNull();
+    expect(notices).toHaveLength(0);
+  });
 
   it("refuses absent code contact and missing requester or name on a new request", async () => {
     const { store } = await setup();

@@ -126,8 +126,6 @@ export function checkedLiveSalesAsk(
   if (input.evidence === null)
     throw new Error("a new live-sales request needs connection evidence");
   LiveSalesEvidenceSchema.parse(input.evidence);
-  if (input.evidence.integration === "woocommerce" && input.evidence.ready === 0)
-    throw new Error("a live-sales request needs a checked ready product");
 }
 export function checkedDecline(merchantId: string, press: JournalPress): void {
   if (

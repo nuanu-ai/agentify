@@ -2165,6 +2165,33 @@ describe("importing the catalogue", () => {
     expect(await cardsOf(running)).toEqual([]);
   });
 
+  it("on the live channel, refuses a live-sales request while the shop's check found no ready product", async () => {
+    const running = await started({
+      channel: "live",
+      fresh: "named",
+      catalogue: async () => ({ ok: true, products: [aProduct()] }),
+      inspectProduct: async () => ({
+        ok: false,
+        again: false,
+        saidNo: true,
+        why: "This product cannot be imported: it is out of stock.",
+        obstacle: { group: "not_selling", reason: "out_of_stock", withdraw: false },
+      }),
+    });
+    await connected(running);
+    await running.finishJobs();
+    const merchant = (await running.identity.byId(running.accountId))?.merchant;
+    if (!merchant) throw new Error("the connected account has no merchant");
+
+    const asked = await running.post("/products", {
+      intent: "request-live-sales",
+      seller_name: "Freeland",
+    });
+
+    expect(asked.status).toBe(409);
+    expect(await running.harnessed.store.liveSalesRequest(merchant.id)).toBeNull();
+  });
+
   it("holds Import before it is pressed while no wallet is set, and says beside it where to set one", async () => {
     const running = await started({
       channel: "test",
