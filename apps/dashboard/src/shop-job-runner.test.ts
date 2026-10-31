@@ -766,6 +766,38 @@ describe("a durable shop job", () => {
       total: 2,
     });
   });
+  it("checks a connection that has no result once, and not again at the next start", async () => {
+    const s = await setup([currency, item(11), complete]);
+    const first = startShopJobs(s.parts);
+    try {
+      await vi.waitFor(
+        async () =>
+          expect((await s.shops.jobs.latest(s.h.merchant.id))[0]?.status).toBe("completed"),
+        { timeout: 5000 },
+      );
+    } finally {
+      await first.stop();
+    }
+    const looked = Promise.withResolvers<void>();
+    const next = startShopJobs({
+      ...s.parts,
+      identity: {
+        byId: async (id) => {
+          looked.resolve();
+          return await s.parts.identity.byId(id);
+        },
+      },
+    });
+    try {
+      await looked.promise;
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      await next.stop();
+    }
+    expect(await s.shops.jobs.latest(s.h.merchant.id)).toMatchObject([
+      { kind: "check", sequence: 1, status: "completed" },
+    ]);
+  });
   it("bounds the returned rows and preserves the requested fifty-row increment", async () => {
     const s = await setup([
       currency,
