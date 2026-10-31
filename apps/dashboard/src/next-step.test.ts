@@ -35,6 +35,11 @@ describe("the seller's next step", () => {
     );
   });
 
+  it("does not offer test practice to a merchant already admitted to live sales", () => {
+    expect(nextStepOf(first).practice).toBe(true);
+    expect(nextStepOf({ ...first, liveApproved: true }).practice).toBe(false);
+  });
+
   it("distinguishes a failed account read from an unstarted account", () => {
     expect(nextStepOf({ ...first, unread: true }).reason).toBe("unread");
   });
