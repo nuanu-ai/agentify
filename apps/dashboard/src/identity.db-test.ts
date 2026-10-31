@@ -55,7 +55,8 @@ if (databaseUrl === null) {
   });
 } else {
   const identityDatabaseUrl = databaseUrl;
-  const pool = new Pool({ connectionString: databaseUrl, max: 6 });
+  const poolSize = 6;
+  const pool = new Pool({ connectionString: databaseUrl, max: poolSize });
   const migrationFiles = [
     "0000_accounts.sql",
     "0001_merchant_on_account.sql",
@@ -79,6 +80,10 @@ if (databaseUrl === null) {
    * its database.
    */
   async function emptyEverything(): Promise<void> {
+    // Refusal analytics outlive their request. Borrow every client so their
+    // queued inserts finish before DDL; one query can pass them on another client.
+    const clients = await Promise.all(Array.from({ length: poolSize }, () => pool.connect()));
+    for (const client of clients) client.release();
     await pool.query("drop schema public cascade");
     await pool.query("create schema public");
     for (const file of (await readdir(gatewayMigrations))
