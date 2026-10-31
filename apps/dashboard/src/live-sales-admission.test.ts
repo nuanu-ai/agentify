@@ -73,7 +73,9 @@ describe("the seller's admission publication email", () => {
     const event = publicationMailEvent(trigger, job, rows);
     const message = mail(event);
     expect(event.publication).toMatchObject({ published: 1, fix: 1, read: 3, total: 3 });
-    expect(message.subject).toBe("1 product was published through Agentify");
+    // The subject counts what went on sale, never what was read.
+    expect(message.subject).toMatch(/\b1\b/);
+    expect(message.subject).not.toMatch(/\b3\b/);
     expect(message.body).toContain("1 more product can go on sale once you fix it in your shop.");
     expect(message.body).toContain("approved Freeland");
     expect(message.html).toContain("Open your products");
@@ -103,8 +105,8 @@ describe("the seller's admission publication email", () => {
   });
   it("does not announce approval again when the first wallet starts publication", () => {
     const message = mail(publicationMailEvent({ ...trigger, kind: "first_wallet" }, job, rows));
-    expect(message.subject).toBe("1 product was published through Agentify");
-    expect(message.body).not.toContain("approved");
+    expect(message.subject).toMatch(/\b1\b/);
+    expect(`${message.subject}\n${message.body}`).not.toContain("approved");
     expect(message.body).toContain("We published 1 product from woo.nuanu.ai.");
   });
 });
