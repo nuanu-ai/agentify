@@ -5025,6 +5025,26 @@ describe("a direct shop refusal during an unpaid purchase", () => {
       );
     },
   );
+  it.each([
+    ["id", { id: "", name: "Guide" }],
+    ["name", { id: "dl_guide", name: " " }],
+  ] as const)(
+    "keeps a card on sale whose download has an empty %s, as a fix in the shop",
+    async (_, download) => {
+      response = {
+        status: 200,
+        body: {
+          ...document(),
+          downloads: [{ ...download, file: `${origin}/protected/guide.txt` }],
+        },
+      };
+      const purchase = h.gateway.beginPurchase(itemId, {});
+      await work();
+      expect((await purchase).step).toBe("not_selling");
+      expect(await h.store.cardById(itemId)).toMatchObject({ paused: false });
+      expect(await shops.cardPauses.list(h.merchant.id)).toEqual({});
+    },
+  );
   it("does not pause a product merely because no conversion rate is set", async () => {
     currency = "EUR";
     const purchase = h.gateway.beginPurchase(itemId, {});
