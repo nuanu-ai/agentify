@@ -221,6 +221,16 @@ describe("a durable shop job", () => {
       });
     },
   );
+  it("a check that reads more products than the shop's count claims no count it outgrew", async () => {
+    const s = await setup([
+      currency,
+      { kind: "total", total: 1 },
+      item(11),
+      item(12),
+      { kind: "stopped", why: "The next page timed out.", reconnect: false },
+    ]);
+    expect(await s.run("check")).toMatchObject({ status: "stopped", read: 2, total: null });
+  });
   it("a publication without a site stops before any protected catalogue read", async () => {
     const s = await setup([currency, item(11), complete], null);
     const result = await s.run("publish", {
