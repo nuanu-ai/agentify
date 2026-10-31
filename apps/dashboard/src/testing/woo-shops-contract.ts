@@ -4,6 +4,7 @@
  * token that works once, and a sale placed in somebody's shop once.
  */
 
+import { coinbaseRateOf, coinbaseRates } from "@agentify/recorded";
 import { describe, expect, it } from "vitest";
 import type { WooOrderFacts, WooPermission, WooShops } from "../woo-shops.js";
 
@@ -26,7 +27,7 @@ const RUPIAH = {
   rate: "18000",
   setAt: NOW,
   sessionSignedInAt: new Date("2026-10-19T07:30:00.000Z"),
-  reference: { rate: "18035.292596", source: "Coinbase", readAt: NOW },
+  reference: { rate: coinbaseRateOf("IDR"), source: "Coinbase", readAt: coinbaseRates.readAt },
   confirmed: false,
 };
 const PERMISSION: WooPermission = {

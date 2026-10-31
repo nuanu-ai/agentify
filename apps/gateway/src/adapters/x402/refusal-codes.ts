@@ -96,6 +96,9 @@ const VERDICTS: Readonly<
  * (`invalid_exact_evm_signature` beside `failed_to_verify_signature`,
  * `insufficient_balance` beside `failed_to_get_balance`), so they are read as
  * its own failure. Only Coinbase's SDK names them and no source says more.
+ * It also names `node_failure`, and `settle_exact_node_failure` among its
+ * settlement codes, with nothing but the names to say one of its own nodes
+ * failed.
  * The reference facilitator gives `eip3009_not_supported` when its own read
  * of the token's authorization state fails, and the token is always USDC.
  *
@@ -113,6 +116,7 @@ const NOT_VERDICTS: Readonly<Record<Exclude<NoVerdict, "payer_contradicted">, re
       "invalid_exact_evm_failed_to_check_deployment",
       "invalid_exact_evm_failed_to_get_receipt",
       "invalid_exact_evm_failed_to_verify_signature",
+      "node_failure",
       "invalid_exact_evm_eip3009_not_supported",
     ],
     refused_agentify: [

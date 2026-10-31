@@ -12,6 +12,7 @@ import { prerender } from "react-dom/static";
 import { createRoutesStub } from "react-router";
 import { describe, expect, it } from "vitest";
 import { presentShopJob } from "../../src/shop-job-presentation.js";
+import { coinbaseAsRecorded } from "../../src/testing/coinbase.js";
 import { formTo, readable } from "../../src/testing/html.js";
 import type { Viewer } from "../../src/viewer.js";
 import {
@@ -342,7 +343,7 @@ describe("what the shop screen holds before it is pressed", () => {
   it("holds Import until a shop priced in another currency has its rate", async () => {
     for (const reference of [
       { ok: false, listed: null },
-      { ok: true, rate: "16350", source: "Coinbase", readAt: new Date("2026-10-30T12:09:00Z") },
+      await coinbaseAsRecorded("IDR"),
     ] as const) {
       const html = await shopPage({
         state: CONNECTED,
@@ -365,7 +366,7 @@ describe("what the shop screen holds before it is pressed", () => {
       expect(hint?.textContent).toContain("Coinbase");
       if (reference.ok)
         expect(hint?.textContent?.replaceAll("\u00a0", " ")).toBe(
-          "Coinbase today: 16,350 IDR per US dollar",
+          "Coinbase today: 18,035 IDR per US dollar",
         );
       expect(field?.getAttribute("value")).toBe("");
     }
@@ -376,14 +377,14 @@ describe("what the shop screen holds before it is pressed", () => {
       state: CONNECTED,
       through: "woocommerce",
       rate: {
-        currency: { code: "XAF", decimals: 0 },
+        currency: { code: "IRT", decimals: 0 },
         current: null,
-        reference: { ok: false, listed: false },
+        reference: await coinbaseAsRecorded("IRT"),
       },
     });
     expect(formOf(html, "/woocommerce/import")).toBe("");
     expect(readable(html)).toContain(
-      "Coinbase gives no rate for XAF, so no rate can be saved for this shop.",
+      "Coinbase gives no rate for IRT, so no rate can be saved for this shop.",
     );
     expect(formOf(html, "/woocommerce/rate")).toBe("");
   });

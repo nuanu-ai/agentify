@@ -1,0 +1,11 @@
+{
+  "about": "Coinbase's answer when asked for rates from a base currency it does not know. XXX is the code ISO 4217 keeps for no currency at all.",
+  "url": "https://api.coinbase.com/v2/exchange-rates?currency=XXX",
+  "readAt": "2026-10-30T18:14:19.000Z",
+  "status": 400,
+  "body": {
+    "error": "base currency not recognized",
+    "code": 3,
+    "message": "base currency not recognized"
+  }
+}

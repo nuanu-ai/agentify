@@ -19,6 +19,7 @@ import {
   serve,
   workUntilStopped,
 } from "@agentify/gateway/testing";
+import { coinbaseRateOf, coinbaseRates } from "@agentify/recorded";
 import { CONTRACT_VERSION, MERCHANT_FINDINGS } from "@nuanu-ai/agentify-contracts";
 import type { Express } from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +30,7 @@ import { type Identity, identityFor } from "./identity.js";
 import type { Message } from "./mail.js";
 import { buildApp } from "./server.js";
 import { shopPublisherFor, workShopJob } from "./shop-job-runner.js";
+import { coinbaseAsRecorded } from "./testing/coinbase.js";
 import { formsIn, formTo, importFormOf, readable, shownMarkIn } from "./testing/html.js";
 import { rewindLinkSends } from "./testing/link-sends.js";
 import { testPages } from "./testing/pages.js";
@@ -62,7 +64,6 @@ const IN_DOLLARS: ShopSample = {
   currency: "USD",
   decimals: 2,
 };
-const COINBASE_READ_AT = new Date("2026-10-21T14:52:48.000Z");
 const SHOP = "https://shop.example.com";
 const PUBLIC = "https://dashboard.example.com";
 
@@ -167,7 +168,7 @@ interface Standing {
   readonly sample?: (shopUrl: string) => Promise<ShopSample | null>;
   /** The rate guard's example product; a catalogue that did not answer where a test does not say. */
   readonly example?: (shopUrl: string, currency: ShopCurrency) => Promise<PricedExample>;
-  /** Coinbase's rupiah rate as it read on 2026-10-21 where a test does not say. */
+  /** Coinbase's recorded answer for the requested currency where a test does not say. */
   readonly reference?: (currency: string) => Promise<ReferenceRead>;
   /** Every message handed over where a test does not say. */
   readonly mailRefused?: boolean;
@@ -356,10 +357,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
         standing.example === undefined
           ? { kind: "unanswered" }
           : await standing.example(shopUrl, currency),
-      reference: async (currency) =>
-        standing.reference === undefined
-          ? { ok: true, rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT }
-          : await standing.reference(currency),
+      reference: async (currency) => await (standing.reference ?? coinbaseAsRecorded)(currency),
       inspectProduct,
       ...(standing.readOrder === undefined
         ? {}
@@ -823,7 +821,6 @@ describe("the public shop door", () => {
           ],
           { headers: { "x-wp-total": one.total } },
         ),
-      reference: async () => ({ ok: false, listed: false }),
     });
     await running.signIn();
     const page = await running.post("/woocommerce/connect", { shop_url: SHOP, checked_shop: SHOP });
@@ -3557,7 +3554,6 @@ describe("a shop priced in another currency than US dollars", () => {
     it("refuses a currency Coinbase gives no rate for, in plain words, and changes nothing", async () => {
       const running = await started({
         sample: async () => ({ ...IN_RUPIAH, currency: "IRT" }),
-        reference: async () => ({ ok: false, listed: false }),
       });
       await running.signIn();
 
@@ -3681,7 +3677,11 @@ describe("a shop priced in another currency than US dollars", () => {
       expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toMatchObject({
         rate: "18000",
         sessionSignedInAt: expect.any(Date),
-        reference: { rate: "18035.292596", source: "Coinbase", readAt: COINBASE_READ_AT },
+        reference: {
+          rate: coinbaseRateOf("IDR"),
+          source: "Coinbase",
+          readAt: coinbaseRates.readAt,
+        },
         confirmed: false,
       });
       expect(JSON.parse((await running.get("/shop-job")).html)).toMatchObject({
@@ -4042,27 +4042,27 @@ describe("a shop priced in another currency than US dollars", () => {
     it("saves nothing for a currency Coinbase answered it gives no rate for", async () => {
       const running = await started({
         ...inRupiah,
-        reference: async () => ({ ok: false, listed: false }),
+        sample: async () => ({ ...IN_RUPIAH, currency: "IRT" }),
       });
       await running.signIn();
       await running.shops.beginGrant({
-        token: "rupiah-token",
+        token: "toman-token",
         accountId: running.accountId,
         shopUrl: SHOP,
-        currency: { code: "IDR", decimals: 0 },
+        currency: { code: "IRT", decimals: 0 },
         startedAt: new Date(),
         expiresAt: new Date(Date.now() + 60_000),
       });
-      await running.postJson("/woocommerce/callback", grantedBody("rupiah-token"));
+      await running.postJson("/woocommerce/callback", grantedBody("toman-token"));
       await running.get("/woocommerce");
 
-      const refused = await running.post("/woocommerce/rate", { currency: "IDR", rate: "18000" });
+      const refused = await running.post("/woocommerce/rate", { currency: "IRT", rate: "18000" });
 
       expect(refused.status).toBe(409);
-      expect(readable(refused.html)).toMatch(/Coinbase gives no rate for IDR/i);
+      expect(readable(refused.html)).toMatch(/Coinbase gives no rate for IRT/i);
       expect(rateNotices(running)).toStrictEqual([]);
       expect(await pricesOnSale(running)).toStrictEqual([]);
-      expect(await running.shops.currentRate(running.accountId, SHOP, "IDR")).toBeNull();
+      expect(await running.shops.currentRate(running.accountId, SHOP, "IRT")).toBeNull();
     });
 
     it("keeps the saved rate when its later check finds the shop now sells in another currency", async () => {

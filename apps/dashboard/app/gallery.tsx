@@ -1,3 +1,4 @@
+import { coinbaseRateOf, coinbaseRates } from "@agentify/recorded";
 import { onboardingAccountView } from "../src/onboarding.js";
 import { presentShopJob } from "../src/shop-job-presentation.js";
 import type { ShopJobState } from "../src/shop-job-view.js";
@@ -608,9 +609,9 @@ const CONNECTED: ShopState = {
 const IN_RUPIAH = { code: "IDR", decimals: 0 } as const;
 const COINBASE_RUPIAH = {
   ok: true,
-  rate: "18035.292596",
+  rate: coinbaseRateOf("IDR"),
   source: "Coinbase",
-  readAt: new Date("2026-10-21T14:52:48Z"),
+  readAt: coinbaseRates.readAt,
 } as const;
 
 const WAITING_FOR_KEYS: ShopState = { kind: "waiting", shopUrl: SHOP, startedMinutesAgo: 3 };

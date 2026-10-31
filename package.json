@@ -30,6 +30,7 @@
     "commission-wallet": "pnpm --filter @agentify/slice run commission-wallet",
     "smoke:listing": "pnpm --filter @agentify/gateway run listing",
     "smoke:bootstrap": "pnpm --filter @agentify/slice run bootstrap",
+    "smoke:recorded": "pnpm --filter @agentify/recorded run smoke",
     "outside": "./scripts/outside.sh",
     "buy": "pnpm --filter @agentify/slice run buy",
     "stand": "pnpm --filter @agentify/slice run stand",
