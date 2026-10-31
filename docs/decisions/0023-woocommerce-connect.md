@@ -44,12 +44,9 @@ goods plus the cheapest rate the shop's cart gives the locality; no rate is no
 price. Its order ships at a rate that makes up what was paid or is refused
 before the shop is called, is taken on once the shop shows the address as sent,
 and ships when the shop completes it; the connector keeps nothing of the
-address. Tax is ADR-0041 and another currency ADR-0044. Products and settings
-are cached briefly and guest carts reused from a small pool per shop address
-(the product owner, 2026-10-27); a cart in doubt is never reused, a new one
-opens at most once per shop every ten minutes (2026-10-28), and paid orders
-never share carts with free questions
-([research 90](../research/90-unpaid-price-questions-design.md)).
+address. Tax is ADR-0041 and another currency ADR-0044. How the connector
+caches the shop's answers and reuses its guest carts is in
+[research 90](../research/90-unpaid-price-questions-design.md#woocommerce-carts).
 
 The connector fills orders as the merchant's worker inside Agentify's process
 ([research 35](../research/35-one-process.md)); on the live channel a card
