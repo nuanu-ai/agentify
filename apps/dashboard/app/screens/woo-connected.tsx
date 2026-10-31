@@ -160,7 +160,7 @@ export function Connected({
                 </Suspense>
               )
             }
-            publish={(job, checkAgain) =>
+            publish={(job) =>
               account.view !== undefined &&
               (account.view.publicationPending ||
                 account.view.step.account !== "none" ||
@@ -169,7 +169,6 @@ export function Connected({
                   view={account.view}
                   job={job}
                   press={account.press}
-                  beside={checkAgain}
                   publish={
                     job.kind === "check" && job.current && job.ready > 0 && !needsSite
                       ? { checkedJob: job.id, label: job.words.publish }
@@ -194,7 +193,6 @@ export function Connected({
                       </>
                     )}
                   </ShopForm>
-                  {checkAgain}
                   {connection.held?.kind === "settings" &&
                   !accountNotes.some((note) => note.fix?.to === "/settings") ? (
                     <p className="quiet">

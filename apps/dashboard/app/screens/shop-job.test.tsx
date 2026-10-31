@@ -195,6 +195,46 @@ describe("a merchant reading a shop result", async () => {
   );
 
   it.each([
+    [true, "button-secondary"],
+    [false, "button-primary"],
+  ] as const)(
+    "fills Check again only where the result offers no other next step (next step: %s)",
+    async (next, variant) => {
+      const view = presentShopJob({ ...result, ready: next ? 72 : 0 });
+      const Stub = createRoutesStub([
+        {
+          id: "routes/gate",
+          path: "/",
+          children: [
+            {
+              path: "woocommerce",
+              Component: () => (
+                <ShopJobResult
+                  view={view}
+                  unread={false}
+                  checkAction="/woocommerce/check"
+                  publish={() => (next ? <button type="button">Publish 72 products</button> : null)}
+                />
+              ),
+            },
+          ],
+        },
+      ]);
+      const { prelude } = await prerender(
+        <Stub
+          initialEntries={["/woocommerce"]}
+          hydrationData={{ loaderData: { "routes/gate": { who: "owner@example.com" } } }}
+        />,
+      );
+      const html = await new Response(prelude).text();
+      expect(formTo(html, "post", "/woocommerce/check")?.presses.map(({ label }) => label)).toEqual(
+        ["Check again"],
+      );
+      expect(/<button\b[^>]*>Check again<\/button>/.exec(html)?.[0]).toContain(variant);
+    },
+  );
+
+  it.each([
     [1, "1 more product can go on sale once you fix it in your shop."],
     [2, "2 more products can go on sale once you fix them in your shop."],
   ] as const)("agrees the fix instruction with %i product(s)", async (count, instruction) => {
@@ -371,7 +411,8 @@ describe("a merchant reading a shop result", async () => {
       ],
     });
     expect(readable(html).match(/Download access expires/g)).toHaveLength(1);
-    expect(html.match(/<li\b/g)).toHaveLength(3);
+    for (const title of ["Guide", "Coffee beans", "Batik sarong"])
+      expect(readable(html).match(new RegExp(title, "g"))).toHaveLength(1);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).not.toContain("<script>alert(1)</script>");
   });
@@ -403,7 +444,7 @@ describe("a merchant reading a shop result", async () => {
     });
     expect(text).toContain(first);
     expect(text).toContain(second);
-    expect(text).toContain("Different shop issues (2)");
+    expect(text).toContain("Different shop issues 2");
   });
 
   it("shows a canonical variant reason once without repeating raw shop explanations", async () => {
@@ -429,7 +470,7 @@ describe("a merchant reading a shop result", async () => {
         },
       ],
     });
-    expect(text).toContain("Has options such as size or colour (2)");
+    expect(text).toContain("Has options such as size or colour 2");
     expect(text).not.toContain("The product has size options");
     expect(text).not.toContain("The product has colour options");
   });

@@ -15,7 +15,7 @@ interface ShopJobResultProps {
   readonly reconnect?: ReactNode;
   readonly secondaryCheck?: boolean;
   readonly checkAction?: string;
-  readonly publish?: (view: ShopJobView, checkAgain: ReactNode) => ReactNode;
+  readonly publish?: (view: ShopJobView) => ReactNode;
   readonly rate?: (view: ShopJobView) => ReactNode;
   readonly noProducts?: boolean;
 }
@@ -45,28 +45,19 @@ export function ShopJobResult({
   const formId = useId();
   const currentStop = view.current ? view.stopCode : null;
   if (currentStop === "rate_required" && rate) return <>{rate(view)}</>;
-  const checked = (secondary: boolean) => (
-    <span className={styles.checked}>
-      <span>
-        Checked <Moment at={view.when} />
-      </span>
-      {checkAction ? (
-        <CheckButton form={formId} action={checkAction} secondary={secondary} />
-      ) : null}
-    </span>
-  );
-  const nextStep =
-    view.current && currentStop !== "reconnect" ? publish?.(view, checked(true)) : null;
+  const nextStep = view.current && currentStop !== "reconnect" ? publish?.(view) : null;
   const hasNextStep = nextStep !== null && nextStep !== undefined && nextStep !== false;
   return (
-    <section className={styles.job} aria-label="Shop products">
-      <h2>{view.words.heading}</h2>
-      <ShopJobOutcome view={view} noProducts={noProducts} />
-      {view.words.excluded ? <p>{view.words.excluded}</p> : null}
-      {view.current && view.status === "stopped" && view.kind === "check" && view.read > 0 ? (
-        <h3>{view.words.summary}</h3>
-      ) : null}
-      {view.kind === "publish" ? <ShopJobSyncNote view={view} /> : null}
+    <section className={`${styles.job} ${styles.result}`} aria-label="Shop products">
+      <div className={styles.outcome}>
+        <h2>{view.words.heading}</h2>
+        <ShopJobOutcome view={view} noProducts={noProducts} />
+        {view.words.excluded ? <p>{view.words.excluded}</p> : null}
+        {view.current && view.status === "stopped" && view.kind === "check" && view.read > 0 ? (
+          <p>{view.words.summary}</p>
+        ) : null}
+        {view.kind === "publish" ? <ShopJobSyncNote view={view} /> : null}
+      </div>
       {checkAction ? (
         <PostForm id={formId} className={styles.checkForm} action={checkAction}>
           {() => null}
@@ -74,45 +65,58 @@ export function ShopJobResult({
       ) : null}
       {currentStop === "reconnect" ? (reconnect ?? <p>{view.words.reconnectInstruction}</p>) : null}
       {nextStep}
-      {currentStop !== "reconnect" && !hasNextStep ? (
-        <div className="step-actions">{checked(view.current && secondaryCheck === true)}</div>
-      ) : null}
       {unread ? (
         <p role="status">Progress couldn't be refreshed. The server may still be working.</p>
       ) : null}
-      {view.groups.map((group) => (
-        <section key={group.group} className={styles.group}>
-          <h3>
-            {group.title} <span>{group.countText}</span>
-          </h3>
-          {group.group === "unsupported" ? (
-            <p>
-              Agentify can't sell <a href="/docs/woocommerce#what-can-be-imported">these yet</a>.
-            </p>
-          ) : null}
-          {group.reasons.map((reason) => (
-            <div key={reason.code}>
-              {reason.why ? (
-                <p>
-                  {reason.why} <span>({reason.countText})</span>
-                </p>
+      {currentStop === "reconnect" && view.groups.length === 0 ? null : (
+        <div className={view.groups.length > 0 ? styles.products : styles.alone}>
+          {currentStop === "reconnect" ? null : (
+            <div className={styles.checked}>
+              <span>
+                Checked <Moment at={view.when} />
+              </span>
+              {checkAction ? (
+                <CheckButton
+                  form={formId}
+                  action={checkAction}
+                  secondary={hasNextStep || (view.current && secondaryCheck === true)}
+                />
               ) : null}
-              <List
-                label={`${group.title}${reason.why ? `: ${reason.why}` : ""}`}
-                columns="minmax(0, 1fr)"
-              >
-                {reason.rows.map((row) => (
-                  <Row key={row.id}>
+            </div>
+          )}
+          {view.groups.map((group) => (
+            <List key={group.group} label={group.title} columns="minmax(0, 1fr) fit-content(40%)">
+              <li className={`list-day ${styles.groupHead}`}>
+                <h3>
+                  {group.title} <span className={styles.count}>{group.countText}</span>
+                </h3>
+                {group.group === "unsupported" ? (
+                  <a href="/docs/woocommerce#what-can-be-imported">What Agentify can sell</a>
+                ) : null}
+              </li>
+              {group.reasons.map((reason) => [
+                reason.why ? (
+                  <li key={`${reason.code} why`} className={`list-day ${styles.reason}`}>
+                    <h4>{reason.why}</h4>
+                    <span className={styles.count}>{reason.countText}</span>
+                  </li>
+                ) : null,
+                ...reason.rows.map((row) => (
+                  <Row key={`${reason.code} ${row.id}`}>
                     <Cell at="title">{row.title}</Cell>
                     {row.why ? <Cell at="note">{row.why}</Cell> : null}
                   </Row>
-                ))}
-              </List>
-              {reason.more ? <Link to={reason.more.href}>{reason.more.label}</Link> : null}
-            </div>
+                )),
+                reason.more ? (
+                  <li key={`${reason.code} more`} className={styles.more}>
+                    <Link to={reason.more.href}>{reason.more.label}</Link>
+                  </li>
+                ) : null,
+              ])}
+            </List>
           ))}
-        </section>
-      ))}
+        </div>
+      )}
     </section>
   );
 }

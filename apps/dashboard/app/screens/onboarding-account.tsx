@@ -1,5 +1,4 @@
 import { Button, Field } from "@agentify/ui";
-import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { OnboardingPress, OnboardingView } from "../../src/onboarding.js";
 import type { ShopJobView } from "../../src/shop-job-view.js";
@@ -15,13 +14,11 @@ export function OnboardingAccount({
   press,
   publish,
   job,
-  beside,
 }: Readonly<{
   job?: Pick<ShopJobView, "kind" | "status"> | null;
   view: OnboardingView;
   press?: OnboardingPress;
   publish?: Readonly<{ checkedJob: string; label: string }>;
-  beside?: ReactNode;
 }>) {
   const account = view.account;
   const requestNeedsCheck = press?.requestNeedsCheck === true && view.unread;
@@ -66,7 +63,6 @@ export function OnboardingAccount({
       <>
         {problem}
         {checkAgain}
-        {beside}
       </>
     );
   const form = account.form;
@@ -108,7 +104,6 @@ export function OnboardingAccount({
                 )
               ) : null}
               {checkAgain}
-              {beside}
             </div>
           </div>
         ) : null}
@@ -159,7 +154,6 @@ export function OnboardingAccount({
                   <Button pending={pending}>
                     {form.publish && publish ? publish.label : form.submit}
                   </Button>
-                  {beside}
                   {form.wallet &&
                   account.wallet?.coinbase != null &&
                   "chain" in account.wallet.coinbase ? (

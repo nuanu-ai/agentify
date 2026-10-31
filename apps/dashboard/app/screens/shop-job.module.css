@@ -7,9 +7,30 @@
 :global(.app-content) > .job:first-child {
   padding-top: var(--space-section);
 }
+.job > p {
+  max-width: 40rem;
+}
+.result {
+  gap: var(--space-card);
+}
+/* What the work says of itself leads the section, running or finished. */
+.job > h2,
+.outcome > h2 {
+  font-size: var(--text-section);
+}
 .job > h2 {
-  font-size: var(--text-heading);
   margin-bottom: calc(var(--gap-heading) - var(--space-block));
+}
+.outcome {
+  display: grid;
+  gap: var(--space-tight);
+}
+.outcome > * {
+  max-width: 40rem;
+  margin: 0;
+}
+.outcome > p {
+  color: var(--fg-2);
 }
 .progress {
   width: 100%;
@@ -34,30 +55,82 @@
 .checkForm {
   display: none;
 }
+.products {
+  display: grid;
+  gap: var(--space-block);
+}
+.products > :global(.list-box) {
+  margin: 0;
+}
+/* The time may wrap; the button beside it does not. */
 .checked {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-block);
+  justify-content: space-between;
+  gap: var(--space-control);
 }
 .checked > span {
   color: var(--muted);
   font-size: var(--text-small);
 }
-.group {
-  border-top: var(--hairline) solid var(--line);
-  padding-top: var(--space-card);
+.checked > :global(.button) {
+  flex: none;
+  white-space: nowrap;
 }
-.group h3 {
-  font-size: var(--text-heading);
-  margin-bottom: var(--gap-heading);
+/* With no lists under it, the line is the step itself: the button follows
+   the time instead of standing at the far edge. */
+.alone > .checked {
+  justify-content: flex-start;
+  gap: var(--space-block);
 }
-.group > div + div {
-  margin-top: var(--space-block);
-}
-.group p {
-  margin-bottom: var(--space-tight);
-}
-.group h3 span {
+.count {
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+/* A group's name and a reason's are rows of the group's own list, over the
+   rows they name; the list's day row lends them its frame. */
+:global(.list) > .groupHead,
+:global(.list) > .reason {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-snug) var(--space-control);
+}
+:global(.list) > .groupHead {
+  flex-wrap: wrap;
+  padding-block: var(--space-control);
+  border-bottom-color: var(--line-soft);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--text-body);
+}
+.groupHead > a {
+  font-size: var(--text-small);
+  font-weight: 500;
+}
+:global(.list) > .reason {
+  color: var(--fg-2);
+  font-size: var(--text-small);
+  font-weight: 400;
+}
+.reason > h4 {
+  margin: 0;
+  font: inherit;
+}
+.more {
+  padding: var(--space-control) 20px;
+  font-size: var(--text-small);
+}
+/* The inset of the list's own rows where its box is narrow. */
+@container (max-width: 860px) {
+  :global(.list) > :is(.groupHead, .reason, .more) {
+    padding-inline: var(--space-block);
+  }
+}
+/* The result's gaps are its own, whatever margins a next step brings along. */
+section.result > * {
+  margin-block: 0;
+}
+section.result > .products {
+  margin-top: calc(var(--space-page) - var(--space-card));
 }
