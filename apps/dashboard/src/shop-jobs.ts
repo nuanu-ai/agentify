@@ -397,7 +397,8 @@ export function postgresShopJobs(pool: Pool, ownershipPool: Pool = pool): ShopJo
           .where(
             and(eq(shopJobs.status, status), id === undefined ? undefined : eq(shopJobs.id, id)),
           )
-          .orderBy(asc(shopJobs.id))
+          // `startedAt` is written when the job is asked for and never changes.
+          .orderBy(sql`${shopJobs.data}->>'startedAt'`, asc(shopJobs.id))
           .limit(1)
           .for("update", { skipLocked: true });
         if (!row) return null;
