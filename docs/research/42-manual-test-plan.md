@@ -14,41 +14,76 @@ goods, the buyer's decision, the money, the screens and recovery.
 
 ## The run in short
 
-A run goes in tiers by how long its stories take: those that take minutes come
-first, those that take about an hour next, and those that take hours last. The
-report is written again at the end of every tier, so a run that stops partway
-still leaves a report saying what ran, what it found and what is left.
+A run goes in tiers by how long its stories take: stories of minutes first,
+stories of up to about an hour next, and the longest last. The report is
+written again at the end of every tier, so a run that stops partway still
+leaves a report saying what ran, what it found and what is left.
 
-Tier 0 is the day before the run, for what waits on other people or takes long
-to build. A person funds the buyers' wallets with test USDC and lists the
-run's Google accounts as test users. The WooCommerce lab's hard profile (Goods
-and instruments) is built, which takes about an hour on the lab's host, on the
-shared lab and on the organiser's local copy where H-21 and H-23 need it. The
-load stand is prepared and recorded as its own section describes, with its
-cards paused.
+Tier 0 comes before the run, for what waits on other people. A person funds
+the buyers' wallets with test USDC and lists the run's Google accounts as
+test users of the sign-in. The load stand, the merchants, cards and wallets
+that block T loads and times and that nothing else uses, is prepared and
+recorded with its cards paused. Where the shared WooCommerce lab has to build
+its hard profile again, the shop of 1,950 products with tax that the largest
+WooCommerce stories need, the build starts here too, since on the lab's host
+it took about an hour.
 
-Tier 1 runs on the organiser's local stack, a few minutes a story, apart from
-T-07, which waits out a thirty-minute deadline: block C, the fault stories of
-block J, T-01, T-05 and T-07, the parts of block D that run locally, E-05,
-G-03, H-06, H-08, H-23 and the local variants of H-05, H-07, H-12, H-20 and
-H-21, I-02, I-06, I-07, I-09, M-05, U-04 and U-07. At the same time the
-independent first attempts of blocks A, U and B start on the test channel and
-go on in the background, since nothing on the local stack touches the test
-channel.
+Tier 1 runs on the organiser's own local stack, where no real money moves and
+faults can be made at will. Each story takes minutes, except T-07, which
+waits out a thirty-minute deadline:
 
-Tier 2 runs on the test channel, about an hour a story: block B, block E apart
-from E-05, block F, block G on the live channel apart from G-03, the lab
-stories of block H on the basic and realistic profiles, the scanner stories
-I-01 and I-03 to I-05, M-02 to M-04, U-01 to U-03, U-05 and U-06, and the
-variants of C, D and J that need the test channel. K-01 to K-03 are a fresh
-reader's visit an hour or two after the sales they look at. Once the
-independent attempts have ended, block T runs on the test channel in the order
-T-02, T-04, T-06, T-03. Block L's bounded observation windows open when the
-tier starts and run in the background.
+- block C, orders meeting time, refusal and changing goods;
+- the fault stories of block J, lost answers, duplicate work and races;
+- the timings that need no test channel: a flood of price questions (T-01), a
+  price answered near the ten-second limit (T-05) and a WooCommerce shop
+  silent until a paid download's deadline (T-07);
+- the local checks of block D, the mistakes an engineer makes with the SDK;
+- WooCommerce faults on the organiser's copy of the lab: a shop unreachable or
+  garbled before a price (H-06), a shop order whose answer is lost (H-08),
+  Coinbase silent while a rate is saved (H-23), and the local variants of
+  H-05, H-07, H-12, H-20 and H-21;
+- identity and a person's data: the identity service unreadable (E-05), a scan
+  address carrying secrets (I-02), consent choices (I-06), the registration
+  report to the ad tracker (I-07) and product analytics (I-09);
+- a payout wallet replaced under a controllable clock (G-03), the payout's
+  data for a wallet other than Coinbase's and the limit of splits (M-05), and
+  finding an old order among hundreds (U-04).
 
-Tier 3 holds what takes hours: H-09 and H-11 on the hard profile, M-01, M-06
-and M-07, the end of L's windows, the combinations X-01 to X-04, and I-08
-last, because it searches every log line the run produced.
+At the same time the independent first attempts start on the test channel and
+go on in the background: block A's merchant and engineer, the newcomers who
+read the screens in block U, and the buyer agents' first tasks, B-01 and B-02.
+Nothing on the local stack touches the test channel.
+
+Tier 2 runs on the test channel, with block G on the live channel, and its
+stories take up to about an hour:
+
+- the rest of block B, the buying agent in controlled situations (B-03 to
+  B-08);
+- block E, identity and browser state, apart from E-05;
+- block F, parcels;
+- block H on the lab's basic and realistic shops: connecting, importing,
+  selling, tax and the exchange rate;
+- the scanner's stories I-01 and I-03 to I-05;
+- payments and wallet changes with real test settlement (M-02 to M-04);
+- the screens read by a person (U-01 to U-03 and U-05 to U-07);
+- the variants of C, D and J that need the test channel;
+- block K, a visit to the dashboard by a fresh reader an hour or two after the
+  sales;
+- block T on the test channel once the independent attempts have ended, in
+  the order T-02, T-04, T-06, T-03;
+- block G, the rules of live money, on the live channel and without a
+  purchase, apart from G-03.
+
+Block L, whether an agent finds the product in an outside catalogue, opens its
+observation windows when tier 2 starts and runs in the background.
+
+Tier 3 holds the hard profile's stories, which take hours: H-11, whether
+connecting a shop changes anything for its other customers, and H-09's import
+at the limit of products there. M-01, M-06 and M-07 are short, and they come
+here because they pay out, reconcile and close the orders the whole run made,
+with sales held quiet. Then come the end of L's windows, the combinations of
+ordinary failures X-01 to X-04, and I-08 last, because it searches every log
+line the run produced.
 
 Some promises take days to come true on their own. The run does not wait for
 them: each is held as the table says, and its story names the tests.
@@ -58,9 +93,9 @@ them: each is held as the table says, and its story names the tests.
 | F-05 | A WooCommerce parcel's seven days to ship | An SDK parcel on the test channel given ten minutes to ship; for the WooCommerce parcel, a test that the connector still sends a late shipment, and tests of the order's states that a missed deadline leaves it unfulfilled and a late shipment then reads shipped |
 | H-07 | A silent shop until a download's day-long deadline | T-07, on the local stack with that deadline set to thirty minutes |
 | H-22 | A day after the last rate was saved | The rate's age read at whatever age it has, and a test that prices with a rate saved twelve days earlier |
-| J-07 | A merchant's process stopped overnight | A local stop of ten and a half minutes plus a margin, and T-06's twenty minutes on the test channel |
+| J-07 | A merchant's process stopped overnight | The organiser's own merchant process on the local stack stopped for ten and a half minutes plus a margin, and the load stand's merchant program stopped for twenty minutes on the test channel (T-06) |
 | K-03 | The dashboard left open overnight | About an hour, since the dashboard refreshes nothing in the background |
-| I-07 | A day, and 30 days, before a click identifier is erased | Tests of the ad report, which move its clock |
+| I-07 | A day, and 30 days, before a click identifier is erased | Tests of the ad report that set the date |
 
 ## Four results, kept separate
 
@@ -1047,8 +1082,7 @@ WooCommerce and scanner identity do not receive lower priority merely because
 they are separate surfaces.
 
 Each row is a story. A story has one result for each aspect, business, UX, AX
-and DX, in the words "Run selection and completion" defines, and a Partial
-result names the variants that did not run. “Record”
+and DX, in the words "Run selection and completion" defines. “Record”
 requests evidence and never means that any observed outcome passes. The
 expected result is a consumer promise or a named product limit. Where the
 implementation predicts a result but that result leaves the user stranded,
@@ -1514,13 +1548,20 @@ story rather than every permutation of the same cause.
 
 A run goes in the tiers that "The run in short" lists, and its report is
 written again at the end of each one (Report and evidence). Tier 0 leaves
-nothing for a later tier to wait on: the buyers' wallets are funded, the
-Google accounts listed and the hard profile built, and the load stand is
-prepared and recorded with its cards paused before the first story of any
-letter (The load stand).
+nothing for a later tier to wait on a person for: the buyers' wallets are
+funded and the Google accounts listed, and the load stand is prepared and
+recorded with its cards paused before the first story of any letter (The load
+stand). In tier 0 the shared lab's hard profile is built only where `./lab.sh
+status` or `./lab.sh list` shows it must be, since on the fixture host the
+build took 3,921 seconds. The organiser's local copy builds the profiles its
+tier 1 stories need at the start of tier 1: the lab README's own session shows
+the hard profile built in 122 seconds, on a machine it does not name.
 
 The independent first attempts of A, U and B start in tier 1, before any
-participant is taught anything. A fresh participant's first attempt is spent
+participant is taught anything: block A's merchant and engineer, the newcomers
+of block U, and the buyer agents of B-01 and B-02. The rest of block B, in
+which the organiser puts an agent in controlled situations, follows in
+tier 2. A fresh participant's first attempt is spent
 only on a path with no blocker already known: when an earlier review has found
 a dead end there, record it as a known finding and run the independent attempt
 once its fix reaches the test channel. Block T on the test channel runs in
@@ -1536,7 +1577,9 @@ download sale on its own channel and only then exercises failures and
 recovery, so that no failure is read against a path that does not work at
 all. Within tier 2 the lab's stories follow the order of profiles that Goods
 and instruments gives: the basic profile's, with H-09's `over-limit` last,
-then the realistic profiles'. The hard profile belongs to tier 3. L's bounded
+then the realistic profiles'. The hard profile belongs to tier 3, and so do
+M-01, M-06 and M-07: they are short, but they pay out, reconcile and close the
+orders the whole run made, and block M holds sales quiet while it reconciles. L's bounded
 observation starts once its prerequisites are met, and the run does other work
 while it waits. K is a separate handover to a fresh reader, who opens the
 dashboard an hour or two after the sales. Scanner identity and privacy (I) are
@@ -1584,9 +1627,11 @@ narrower supported scope; they cannot turn an unmeasured promise into ready.
 Use these result words:
 
 - Pass: all stated actions ran and every required observation held.
-- Fail: an observed outcome violates the required result. A known documented
-  inability can still fail the actual customer task.
-- Partial: some variants ran and passed; name each missing variant.
+- Fail: an observed outcome of any variant violates the required result, even
+  where other variants passed or did not run. A known documented inability
+  can still fail the actual customer task.
+- Partial: every variant that ran passed, and others were blocked or not run;
+  name each of those and why it did not run.
 - Blocked: a named instrument, release, authorised environment or participant
   is missing. An absent product recovery feature is a finding, not equipment.
 - Not run: no execution evidence.
