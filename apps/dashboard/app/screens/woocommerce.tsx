@@ -37,10 +37,7 @@ export function WooShopScreen({ view, base }: Readonly<{ view: WooShopView; base
           <>
             {account.view === undefined ||
             (account.view.step.account === "none" && !account.press?.problem) ? null : (
-              <OnboardingAccount
-                view={account.view}
-                {...(account.press === undefined ? {} : { press: account.press })}
-              />
+              <OnboardingAccount view={account.view} press={account.press} />
             )}
             <NotConnected view={view} base={base} />
           </>
@@ -90,12 +87,7 @@ export function WooPage({
           )
         }
       >
-        <ShopAccount.Provider
-          value={{
-            ...(account === undefined ? {} : { view: account }),
-            ...(press === undefined ? {} : { press }),
-          }}
-        >
+        <ShopAccount.Provider value={{ view: account, press }}>
           <WooShopScreen view={view} base={base} />
         </ShopAccount.Provider>
         {elsewhere ? <p className="note">{elsewhere}</p> : null}

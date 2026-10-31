@@ -106,6 +106,14 @@ if (databaseUrl === null) {
       },
     });
 
+  const setupEvents = async (merchantId: string) =>
+    (
+      await pool.query(
+        "select actor_type,source,properties,refs from commerce_analytics_events where name='agc_setup_result' and refs->>'merchant'=$1 order by sequence",
+        [merchantId],
+      )
+    ).rows;
+
   describe("live-sales notices on PostgreSQL", () => {
     it("keeps one request notice per operator and rolls the request and name back if mail cannot be recorded", async () => {
       await person(true);
@@ -120,6 +128,7 @@ if (databaseUrl === null) {
         expect(await store.liveSalesRequest(seller.merchantId)).toBeNull();
         expect((await store.merchantById(seller.merchantId))?.serviceName).toBeNull();
         expect(await rows()).toHaveLength(0);
+        expect(await setupEvents(seller.merchantId)).toEqual([]);
       } finally {
         await pool.query("drop trigger refuse_live_mail on dashboard_live_sales_mail");
         await pool.query("drop function refuse_live_mail()");
@@ -129,6 +138,14 @@ if (databaseUrl === null) {
       );
       expect(concurrent.filter((result) => result.kind === "requested")).toHaveLength(1);
       expect(concurrent.filter((result) => result.kind === "pending")).toHaveLength(7);
+      expect(await setupEvents(seller.merchantId)).toEqual([
+        {
+          actor_type: "human",
+          source: "dashboard",
+          refs: { merchant: seller.merchantId, person: seller.ask.accountId },
+          properties: { step: "live_request", integration: "api", outcome: "completed" },
+        },
+      ]);
       const asked = await store.liveSalesRequest(seller.merchantId);
       if (!asked) throw new Error("No persisted request");
       expect(await rows()).toMatchObject([
@@ -156,6 +173,9 @@ if (databaseUrl === null) {
           state: "pending",
           decline: null,
         });
+        expect((await setupEvents(seller.merchantId)).map((row) => row.properties.step)).toEqual([
+          "live_request",
+        ]);
         expect(
           (await store.journal({ about: { merchant: seller.merchantId }, limit: 20 })).rows,
         ).toEqual([]);
@@ -164,6 +184,19 @@ if (databaseUrl === null) {
         await pool.query("drop function refuse_decline_mail()");
       }
       await store.declineLiveSales(seller.merchantId, asked.id, press(seller.merchantId));
+      await store.declineLiveSales(seller.merchantId, asked.id, press(seller.merchantId));
+      expect(
+        (await setupEvents(seller.merchantId)).filter(
+          (row) => row.properties.step === "live_decline",
+        ),
+      ).toEqual([
+        {
+          actor_type: "operator",
+          source: "dashboard",
+          refs: { merchant: seller.merchantId },
+          properties: { step: "live_decline", integration: "api", outcome: "completed" },
+        },
+      ]);
       clock += 1000;
       await turn();
       await turn();

@@ -408,13 +408,6 @@ if (databaseUrl === null) {
             publication: { status: "completed", published: 1, read: 1, total: 1 },
           });
         expect(await store.cards(one.merchantId)).toHaveLength(1);
-        expect(
-          (
-            await pool.query(
-              "select count(*)::int as count from commerce_analytics_events where name='agc_setup_result' and properties->>'step'='woo_import'",
-            )
-          ).rows[0],
-        ).toEqual({ count: 0 });
         expect((await rows("dashboard_live_publications"))[0]).toMatchObject({
           account_id: one.accountId,
           state: "completed",
@@ -452,6 +445,7 @@ if (databaseUrl === null) {
           reason: "ready",
           why: "",
           published: true,
+          publication: "accepted",
         },
         2,
       );
@@ -468,7 +462,30 @@ if (databaseUrl === null) {
         2,
       );
       expect(await rows("dashboard_live_sales_mail")).toEqual([]);
+      const importEvents = async () =>
+        (
+          await pool.query(
+            "select actor_type,source,properties from commerce_analytics_events where refs->>'merchant'=$1 and properties->>'step'='woo_import' order by sequence",
+            [one.merchantId],
+          )
+        ).rows;
+      expect(await importEvents()).toEqual([]);
       await shops.jobs.finish(publishing.id, { status: "completed", why: null, stopCode: null });
+      await shops.jobs.finish(publishing.id, { status: "completed", why: null, stopCode: null });
+      expect(await importEvents()).toEqual([
+        {
+          actor_type: "system",
+          source: "woocommerce",
+          properties: {
+            step: "woo_import",
+            integration: "woocommerce",
+            outcome: "completed",
+            imported_count: 1,
+            failed_count: 0,
+            skipped_count: 1,
+          },
+        },
+      ]);
       await shops.jobs.request({
         ...publishing,
         kind: "publish",
@@ -669,6 +686,23 @@ if (databaseUrl === null) {
         connectionRevision: "new-grant",
       });
       expect(latest.some((j) => j.kind === "publish")).toBe(false);
+      const automatic = await shops.jobs.claim();
+      if (!automatic || automatic.kind !== "check") throw new Error("automatic check missing");
+      await finishCheck(automatic.id);
+      expect(
+        (
+          await pool.query(
+            "select actor_type,source,refs from commerce_analytics_events where refs->>'merchant'=$1 and properties->>'step'='woo_check' order by sequence",
+            [one.merchantId],
+          )
+        ).rows,
+      ).toEqual(
+        Array.from({ length: 2 }, () => ({
+          actor_type: "system",
+          source: "woocommerce",
+          refs: { merchant: one.merchantId, person: one.accountId },
+        })),
+      );
     });
     it("keeps the withdrawal note whole and suppresses an earlier approval after the decision changed", async () => {
       const one = await seller({ withWallet: false });

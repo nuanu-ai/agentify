@@ -267,6 +267,7 @@ export interface PageServices {
   readonly workspace: WorkspaceDoor | null;
   /** "" when mounted at the root of its origin. */
   readonly base: string;
+  practice(person: Person): Promise<void>;
   readonly onboarding: {
     press(
       person: Person,
@@ -1326,7 +1327,18 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
                 status: 400,
                 view: { problem: "Choose one of the available ways to add products." },
               };
-            await identity.choosePlatform(person.id, chosen);
+            const integration = await gatewayAs(person, FRAME_WITHIN_MS)
+              .integration()
+              .catch(() => null);
+            if (integration?.ok !== true)
+              console.error(
+                "[analytics] a platform answer went unrecorded: its integration was not read",
+              );
+            await identity.choosePlatform(
+              person.id,
+              chosen,
+              integration?.ok === true ? integration.document.through : undefined,
+            );
           }
         } catch {
           return {
@@ -1343,6 +1355,20 @@ export function pageServicesFor(config: DashboardConfig, parts: PageParts): Page
         }
         return { kind: "redirect", location: `${base}/products` };
       },
+    },
+    async practice(person) {
+      try {
+        if (person.merchant === null || (await identity.analyticsOptedOut(person.id))) return;
+        await identity.observe({
+          name: "agc_practice_opened",
+          actor: "human",
+          source: "dashboard",
+          refs: { person: person.id, merchant: person.merchant.id },
+          fields: {},
+        });
+      } catch {
+        console.error("[analytics] a practice visit could not be recorded");
+      }
     },
     shown(screen, person, status, userAgent) {
       if (person === null && fetchedByAProgram(userAgent)) return;

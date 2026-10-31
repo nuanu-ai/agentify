@@ -365,6 +365,46 @@ describe("a durable shop job", () => {
       paused: false,
     });
   });
+  it("counts only real connector-owned pause and resume transitions", async () => {
+    const s = await setup([currency, { kind: "complete", total: 0 }]);
+    const id = await s.seed(11);
+    const publisher = shopPublisherFor(
+      s.h.gateway,
+      {
+        merchantId: s.h.merchant.id,
+        email: "owner@example.com",
+      },
+      s.shops,
+    );
+    await publisher.pause(id, "stopped_selling");
+    await publisher.pause(id, "stopped_selling");
+    await publisher.pause(id, null);
+    await publisher.pause(id, null);
+    await s.h.store.setCardPaused(s.h.merchant.id, id, true);
+    await publisher.pause(id, null);
+    expect(
+      s.h.store.recordedAnalytics
+        .filter(({ event }) => event.name === "agc_selling_changed")
+        .map(({ event }) => event),
+    ).toEqual([
+      {
+        name: "agc_selling_changed",
+        actor: "system",
+        source: "woocommerce",
+        refs: { merchant: s.h.merchant.id, item: id },
+        fields: { entity: "card", change: "paused" },
+      },
+      {
+        name: "agc_selling_changed",
+        actor: "system",
+        source: "woocommerce",
+        refs: { merchant: s.h.merchant.id, item: id },
+        fields: { entity: "card", change: "resumed" },
+      },
+    ]);
+    expect((await s.h.store.cardById(id))?.paused).toBe(true);
+  });
+
   it("withdraws a directly confirmed deleted product only after a complete catalogue", async () => {
     const s = await setup([currency, { kind: "complete", total: 0 }]);
     const id = await s.seed(11);

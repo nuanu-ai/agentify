@@ -34,6 +34,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "../../analytics/index.js";
+import { liveSalesResult } from "../../analytics/live-sales.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
@@ -420,6 +421,16 @@ export class PostgresStore implements Store {
         sellerName: input.sellerName,
         hasWallet: merchant.payoutWallet !== null,
       });
+      await recordAlong(
+        tx,
+        liveSalesResult(
+          "live_request",
+          input.merchantId,
+          input.evidence.integration,
+          input.accountId,
+        ),
+        new Date(at),
+      );
       return { kind: "requested", request };
     });
   }
@@ -453,6 +464,11 @@ export class PostgresStore implements Store {
         sellerName: merchant.serviceName ?? merchant.name,
         hasWallet: merchant.payoutWallet !== null,
       });
+      await recordAlong(
+        tx,
+        liveSalesResult("live_decline", merchantId, integrationOf(merchant.integration)),
+        new Date(press.at),
+      );
       return { changed: true, request };
     });
   }

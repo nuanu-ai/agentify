@@ -297,7 +297,8 @@ download conditions says "Off sale: it changed in your shop, and Agentify can't 
 now". A later check can update the reason while preserving the time the
 connector paused the card. The gateway stores an ordinary card pause and
 retains no connector-specific fields. A connector withdrawal or return to sale
-locks the card and writes the pause and ownership in one database transaction. A dashboard-owned trigger on updates to `cards.paused` clears
+locks the card and writes the pause, ownership and selling event in one database
+transaction. A dashboard-owned trigger on updates to `cards.paused` clears
 connector ownership for ordinary seller actions, including a repeated pause
 through the public API. Republishing updates the card document without touching
 its pause or the ownership marker. The memory adapter serializes dashboard

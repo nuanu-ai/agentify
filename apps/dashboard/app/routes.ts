@@ -65,6 +65,7 @@ export default [
     ]),
     layout("routes/merchant-only.tsx", [
       route("products", "routes/products.tsx"),
+      route("practice", "routes/practice.ts"),
       route("orders", "routes/orders.tsx"),
       route("receipts", "routes/receipts.tsx"),
       route("integrations", "routes/integrations.tsx"),

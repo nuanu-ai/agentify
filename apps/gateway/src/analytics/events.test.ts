@@ -15,6 +15,7 @@ import {
   type OrderCreated,
   type OrderOutcomeChanged,
   type PaymentResult,
+  type PracticeOpened,
   type SellingChanged,
   type SetupResult,
   type UiBlocked,
@@ -79,6 +80,104 @@ const approved: SetupResult = {
   refs: { merchant: "m-1", person: "p-9" },
   fields: { step: "live_approval", outcome: "completed", integration: "api" },
 };
+const platformAnswered: SetupResult = {
+  name: "agc_setup_result",
+  actor: "human",
+  source: "dashboard",
+  refs: { merchant: "m-1", person: "p-1" },
+  fields: { step: "platform_answer", platform: "code", integration: "none", outcome: "completed" },
+};
+const connectStarted: SetupResult = {
+  name: "agc_setup_result",
+  actor: "human",
+  source: "dashboard",
+  refs: { person: "p-1" },
+  fields: { step: "woo_connect", integration: "woocommerce", outcome: "completed" },
+};
+const preflightRead: SetupResult = {
+  name: "agc_setup_result",
+  actor: "human",
+  source: "dashboard",
+  refs: { person: "p-1" },
+  fields: {
+    step: "woo_preflight",
+    integration: "woocommerce",
+    outcome: "completed",
+    observed_ready_count: 2,
+    observed_read_count: 4,
+  },
+};
+const preflightUnread: SetupResult = {
+  name: "agc_setup_result",
+  actor: "human",
+  source: "dashboard",
+  refs: { person: "p-1" },
+  fields: {
+    step: "woo_preflight",
+    integration: "woocommerce",
+    outcome: "unknown",
+    reason_code: "timeout",
+  },
+};
+const shopChecked: SetupResult = {
+  name: "agc_setup_result",
+  actor: "system",
+  source: "woocommerce",
+  refs: { merchant: "m-1", person: "p-1" },
+  fields: {
+    step: "woo_check",
+    integration: "woocommerce",
+    outcome: "completed",
+    observed_ready_count: 2,
+    observed_read_count: 4,
+  },
+};
+const checkStopped: SetupResult = {
+  name: "agc_setup_result",
+  actor: "system",
+  source: "woocommerce",
+  refs: { merchant: "m-1", person: "p-1" },
+  fields: {
+    step: "woo_check",
+    integration: "woocommerce",
+    outcome: "unknown",
+    reason_code: "unknown",
+    observed_ready_count: 2,
+    observed_read_count: 4,
+  },
+};
+const liveRequested: SetupResult = {
+  name: "agc_setup_result",
+  actor: "human",
+  source: "dashboard",
+  refs: { merchant: "m-1", person: "p-1" },
+  fields: { step: "live_request", integration: "woocommerce", outcome: "completed" },
+};
+const liveDeclined: SetupResult = {
+  name: "agc_setup_result",
+  actor: "operator",
+  source: "dashboard",
+  refs: { merchant: "m-1" },
+  fields: { step: "live_decline", integration: "api", outcome: "completed" },
+};
+const practiceOpened: PracticeOpened = {
+  name: "agc_practice_opened",
+  actor: "human",
+  source: "dashboard",
+  refs: { merchant: "m-1", person: "p-1" },
+  fields: {},
+};
+const ONBOARDING: readonly AnalyticsEvent[] = [
+  platformAnswered,
+  connectStarted,
+  preflightRead,
+  preflightUnread,
+  shopChecked,
+  checkStopped,
+  liveRequested,
+  liveDeclined,
+  practiceOpened,
+];
 const published: CardPublishResult = {
   name: "agc_card_publish_result",
   actor: "merchant_worker",
@@ -146,6 +245,7 @@ const outcome: OrderOutcomeChanged = {
 };
 
 const SAMPLES: readonly AnalyticsEvent[] = [
+  ...ONBOARDING,
   viewed,
   confirmed,
   refusedAtStart,
@@ -188,8 +288,8 @@ const problemOf = (row: Row): string | null => {
 };
 
 describe("the analytics contract a recorded event is held to", () => {
-  it("accepts one event of each of the ten kinds as their emitters record them", () => {
-    expect(new Set(SAMPLES.map((event) => event.name)).size).toBe(10);
+  it("accepts one event of each of the eleven kinds as their emitters record them", () => {
+    expect(new Set(SAMPLES.map((event) => event.name)).size).toBe(11);
     for (const event of SAMPLES) {
       expect(problemOf(rowOf(event)), event.name).toBeNull();
     }
@@ -206,6 +306,20 @@ describe("the analytics contract a recorded event is held to", () => {
 
   it("refuses an event missing a reference it requires, naming that reference", () => {
     const required: readonly [AnalyticsEvent, string][] = [
+      [platformAnswered, "merchant"],
+      [platformAnswered, "person"],
+      [connectStarted, "person"],
+      [preflightRead, "person"],
+      [preflightUnread, "person"],
+      [shopChecked, "merchant"],
+      [shopChecked, "person"],
+      [checkStopped, "merchant"],
+      [checkStopped, "person"],
+      [liveRequested, "merchant"],
+      [liveRequested, "person"],
+      [liveDeclined, "merchant"],
+      [practiceOpened, "merchant"],
+      [practiceOpened, "person"],
       [confirmed, "person"],
       [created, "merchant"],
       [created, "person"],
@@ -262,6 +376,187 @@ describe("the analytics contract a recorded event is held to", () => {
     expect(problemOf({ ...rowOf(viewed), fields: null })).toContain("properties");
   });
 
+  it("keeps onboarding actors, sources and private payloads within each fact's contract", () => {
+    for (const event of ONBOARDING) {
+      expect(
+        problemOf({ ...rowOf(event), actor: event.actor === "human" ? "operator" : "human" }),
+      ).toContain("actor_type");
+      expect(problemOf({ ...rowOf(event), source: "gateway" })).toContain("source");
+      expect(
+        problemOf({ ...rowOf(event), fields: { ...event.fields, note: "private text" } }),
+      ).toContain("properties.note");
+      expect(problemOf({ ...rowOf(event), refs: { ...event.refs, order: "o-1" } })).toContain(
+        "refs.order",
+      );
+    }
+  });
+
+  it("accepts the platform answer independently of the merchant's actual integration", () => {
+    for (const platform of ["woocommerce", "code", "other"]) {
+      for (const integration of ["api", "woocommerce", "none"]) {
+        expect(
+          problemOf({
+            ...rowOf(platformAnswered),
+            fields: {
+              ...platformAnswered.fields,
+              platform,
+              integration,
+            },
+          }),
+        ).toBeNull();
+      }
+    }
+    for (const platform of ["api", "shopify", "", null]) {
+      expect(
+        problemOf({
+          ...rowOf(platformAnswered),
+          fields: {
+            ...platformAnswered.fields,
+            platform,
+          },
+        }),
+      ).toContain("properties.platform");
+    }
+    expect(
+      problemOf({
+        ...rowOf(platformAnswered),
+        fields: {
+          ...platformAnswered.fields,
+          integration: "code",
+        },
+      }),
+    ).toContain("properties.integration");
+  });
+
+  it("counts only observations and distinguishes an unread preflight from an observed zero", () => {
+    for (const event of [preflightRead, shopChecked, checkStopped]) {
+      for (const key of ["observed_ready_count", "observed_read_count"]) {
+        for (const value of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "2", null]) {
+          expect(
+            problemOf({ ...rowOf(event), fields: { ...event.fields, [key]: value } }),
+          ).toContain(`properties.${key}`);
+        }
+      }
+      expect(
+        problemOf({
+          ...rowOf(event),
+          fields: {
+            ...event.fields,
+            observed_ready_count: 0,
+            observed_read_count: 0,
+          },
+        }),
+      ).toBeNull();
+      expect(
+        problemOf({
+          ...rowOf(event),
+          fields: {
+            ...event.fields,
+            observed_ready_count: 5,
+            observed_read_count: 4,
+          },
+        }),
+      ).toContain("properties.observed_ready_count");
+      expect(
+        problemOf({ ...rowOf(event), fields: { ...event.fields, total_count: 500 } }),
+      ).toContain("properties.total_count");
+    }
+    expect(
+      problemOf({
+        ...rowOf(preflightUnread),
+        fields: {
+          ...preflightUnread.fields,
+          observed_ready_count: 0,
+          observed_read_count: 0,
+        },
+      }),
+    ).toContain("properties.observed_ready_count");
+    expect(
+      problemOf({
+        ...rowOf(shopChecked),
+        fields: {
+          ...shopChecked.fields,
+          outcome: "partial",
+        },
+      }),
+    ).toBeNull();
+    expect(
+      problemOf({
+        ...rowOf(preflightRead),
+        fields: {
+          ...preflightRead.fields,
+          outcome: "partial",
+        },
+      }),
+    ).toContain("properties.outcome");
+  });
+
+  it("keeps new settled results and decisions within the existing outcome and reason vocabulary", () => {
+    for (const event of [platformAnswered, connectStarted, preflightUnread, checkStopped]) {
+      for (const outcome of ["blocked", "failed", "unknown"]) {
+        expect(
+          problemOf({
+            ...rowOf(event),
+            fields: {
+              ...event.fields,
+              outcome,
+              reason_code: "unknown",
+            },
+          }),
+        ).toBeNull();
+      }
+      expect(
+        problemOf({
+          ...rowOf(event),
+          fields: {
+            ...event.fields,
+            outcome: "blocked",
+            reason_code: "unsupported_currency",
+          },
+        }),
+      ).toContain("properties.reason_code");
+      expect(
+        problemOf({
+          ...rowOf(event),
+          fields: {
+            ...without(event.fields, "reason_code"),
+            outcome: "failed",
+          },
+        }),
+      ).toContain("properties.reason_code");
+    }
+    for (const event of [connectStarted, preflightRead, shopChecked]) {
+      expect(
+        problemOf({ ...rowOf(event), fields: { ...event.fields, integration: "api" } }),
+      ).toContain("properties.integration");
+    }
+    for (const event of [
+      platformAnswered,
+      connectStarted,
+      preflightRead,
+      shopChecked,
+      liveRequested,
+      liveDeclined,
+    ]) {
+      expect(
+        problemOf({ ...rowOf(event), fields: { ...event.fields, reason_code: "unknown" } }),
+      ).toContain("properties.reason_code");
+    }
+    for (const event of [liveRequested, liveDeclined]) {
+      for (const outcome of ["blocked", "failed", "unknown", "pending", "declined"]) {
+        expect(problemOf({ ...rowOf(event), fields: { ...event.fields, outcome } })).toContain(
+          "properties.outcome",
+        );
+      }
+    }
+  });
+
+  it("still sends stored legacy facts and connector publication and pause facts", () => {
+    expect(problemOf({ ...rowOf(viewed), fields: { screen: "choose_name" } })).toBeNull();
+    expect(problemOf({ ...rowOf(imported), actor: "system" })).toBeNull();
+    expect(problemOf({ ...rowOf(paused), actor: "system", source: "woocommerce" })).toBeNull();
+  });
+
   it("holds each outcome to the fields that go with it", () => {
     const broken: readonly [string, Row, string][] = [
       [
@@ -290,7 +585,7 @@ describe("the analytics contract a recorded event is held to", () => {
         "actor_type",
       ],
       [
-        "only an import is partial",
+        "a wallet change cannot be partial",
         { ...rowOf(walletSaved), fields: { ...walletSaved.fields, outcome: "partial" } },
         "properties.outcome",
       ],
@@ -303,7 +598,7 @@ describe("the analytics contract a recorded event is held to", () => {
         "properties.outcome",
       ],
       [
-        "only an import counts products",
+        "a wallet change cannot count products",
         { ...rowOf(walletSaved), fields: { ...walletSaved.fields, imported_count: 0 } },
         "properties.imported_count",
       ],

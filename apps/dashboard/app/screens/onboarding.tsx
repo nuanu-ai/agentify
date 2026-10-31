@@ -93,7 +93,9 @@ function PlatformChoice({
       )}
       {practice ? (
         <p className={styles.practice}>
-          <a href="/docs/#how-to-start">Want to practice first?</a>
+          <Link to="/practice" reloadDocument prefetch="none">
+            Want to practice first?
+          </Link>
         </p>
       ) : null}
     </section>

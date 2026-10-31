@@ -199,6 +199,36 @@ if (databaseUrl === null) {
       }
     });
 
+    it("keeps a card pause and its event atomic, and counts a concurrent transition once", async () => {
+      const card = await store.publishCard(A, cardFor("shop-pause"), now, "woocommerce");
+      const event: AnalyticsEvent = {
+        name: "agc_selling_changed",
+        actor: "system",
+        source: "woocommerce",
+        refs: { merchant: A, item: card.id },
+        fields: { entity: "card", change: "paused" },
+      };
+      await pool.query(`create function refuse_connector_pause() returns trigger language plpgsql as
+        $$ begin raise exception 'pause commit refused'; end $$`);
+      await pool.query(`create constraint trigger refuse_connector_pause after update on cards
+        deferrable initially deferred for each row execute function refuse_connector_pause()`);
+      try {
+        await expect(store.setCardPaused(A, card.id, true, event)).rejects.toThrow();
+        expect((await store.cardById(card.id))?.paused).toBe(false);
+        expect(await recorded()).toEqual([]);
+      } finally {
+        await pool.query("drop trigger refuse_connector_pause on cards");
+        await pool.query("drop function refuse_connector_pause()");
+      }
+      await Promise.all(
+        Array.from({ length: 5 }, () => store.setCardPaused(A, card.id, true, event)),
+      );
+      expect((await store.cardById(card.id))?.paused).toBe(true);
+      expect(await recorded()).toEqual([
+        { name: event.name, refs: event.refs, properties: event.fields },
+      ]);
+    });
+
     it("records a pause, a stop, a name and a site only when the stored value changes", async () => {
       const published = await gateway.publishCard(A, cardFor("room-505"));
       const item = published.ok ? published.id : "";

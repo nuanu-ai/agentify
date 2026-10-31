@@ -225,6 +225,32 @@ const importResult = (
     fields: { step: "woo_import", integration: "woocommerce", ...settled, ...counts },
   }) as SetupResult;
 
+const shopDoorResult = (
+  person: Person,
+  step: "woo_connect" | "woo_preflight",
+  settled:
+    | { outcome: "completed" }
+    | { outcome: "blocked" | "failed" | "unknown"; reason_code: ReasonCode },
+  preview?: Extract<PublicShopRead, { kind: "read" }>,
+): SetupResult =>
+  ({
+    name: "agc_setup_result",
+    actor: "human",
+    source: "dashboard",
+    refs: { person: person.id, ...(person.merchant ? { merchant: person.merchant.id } : {}) },
+    fields: {
+      step,
+      integration: "woocommerce",
+      ...settled,
+      ...(step === "woo_preflight" && settled.outcome === "completed" && preview
+        ? {
+            observed_ready_count: preview.estimate.ready,
+            observed_read_count: preview.estimate.read,
+          }
+        : {}),
+    },
+  }) as SetupResult;
+
 const originOf = (connection: WooConnection): string => new URL(connection.shopUrl).origin;
 
 /**
@@ -715,6 +741,15 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       const wrong = whatIsWrongWithTheShopUrl(typed);
       const shopUrl = wrong === null ? shopUrlAs(typed) : typed;
       const connect = once(form.getAll("checked_shop")) === shopUrl;
+      const step = connect ? "woo_connect" : "woo_preflight";
+      const resulted = async (
+        settled: Parameters<typeof shopDoorResult>[2],
+        preview?: Extract<PublicShopRead, { kind: "read" }>,
+      ) => {
+        await shops
+          .recordAnalytics(shopDoorResult(person, step, settled, preview), new Date())
+          .catch(() => undefined);
+      };
       const token = theStateToken();
       let authorize = "";
       let cachedRead: ShopRead | null = null;
@@ -733,6 +768,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         | {
             readonly problem: Said;
             readonly status: number;
+            readonly reason: ReasonCode;
             readonly preview?: PublicShopRead;
             readonly address?: boolean;
           }
@@ -741,6 +777,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
       let timeoutAnswer: Checked = {
         problem: "Your account could not be checked just now. Press Check my shop again.",
         status: 503,
+        reason: "dependency_unavailable",
       };
       // All work before this race is read-only. A late answer cannot create a
       // grant after the page has already said it could not read the shop.
@@ -749,7 +786,8 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
         if (timedOut) return timeoutAnswer;
         if (baseRead.kind !== "view") return { failed: baseRead };
         cachedRead = baseRead.view;
-        if (wrong !== null) return { problem: wrong, status: 400, address: true };
+        if (wrong !== null)
+          return { problem: wrong, status: 400, reason: "invalid_input", address: true };
         authorize = authorizeUrlFor(shopUrl, {
           appName: APP_NAME,
           userId: token,
@@ -763,6 +801,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
               " will not send a shop's access credentials to an address that is not. Nothing here can connect a" +
               " shop until whoever runs this deployment puts it behind https.",
             status: 400,
+            reason: "unsupported_channel",
           };
         const connected = cachedRead.state.kind === "connected" ? cachedRead.state.shop : null;
         if (connected !== null && new URL(connected.shopUrl).origin !== shopUrl)
@@ -772,21 +811,33 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
               follow: "integrations",
             },
             status: 409,
+            reason: "integration_mismatch",
           };
         const gateway = gatewayAs(person);
         const allowed = await gateway.maySellThrough("woocommerce");
         if (timedOut) return timeoutAnswer;
         if (!allowed.ok)
-          return { problem: await refusedMove(gateway, "woocommerce", allowed), status: 409 };
+          return {
+            problem: await refusedMove(gateway, "woocommerce", allowed),
+            status: allowed.status === 0 || allowed.status >= 500 ? 503 : 409,
+            reason:
+              allowed.status === 0
+                ? "timeout"
+                : allowed.status >= 500
+                  ? "dependency_unavailable"
+                  : "integration_mismatch",
+          };
         timeoutAnswer = { preview: { kind: "unread" }, currency: null };
         const read = await preview(shopUrl);
         if (timedOut) return timeoutAnswer;
-        if (read.kind === "refused") return { problem: read.why, status: 400 };
+        if (read.kind === "refused")
+          return { problem: read.why, status: 400, reason: "catalogue_unavailable" };
         const total = read.kind === "read" ? read.estimate.total : (read.total ?? null);
         if (total !== null && total > PRODUCTS_AT_MOST)
           return {
             problem: `${shopNameOf(shopUrl)} lists ${total.toLocaleString("en-US")} products. Agentify reads up to 2,000 in one go, so it can't bring this shop over yet.`,
             status: 400,
+            reason: "invalid_input",
           };
         const sampled = read.sample ?? null;
         const decimals = sampled === null ? null : shopDecimalsOf(String(sampled.decimals));
@@ -795,8 +846,13 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
             return {
               problem: writesOtherDecimals(sampled.currency, sampled.decimals),
               status: 400,
+              reason: "invalid_input",
             };
-          timeoutAnswer = { problem: referenceUnanswered(sampled.currency), status: 503 };
+          timeoutAnswer = {
+            problem: referenceUnanswered(sampled.currency),
+            status: 503,
+            reason: "dependency_unavailable",
+          };
           const listed = await reference(sampled.currency);
           if (timedOut) return timeoutAnswer;
           if (!listed.ok)
@@ -806,6 +862,7 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
                   ? noReferenceFor(sampled.currency)
                   : referenceUnanswered(sampled.currency),
               status: listed.listed === false ? 400 : 503,
+              reason: listed.listed === false ? "invalid_input" : "dependency_unavailable",
             };
         }
         if (connect) {
@@ -813,11 +870,18 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
             problem:
               "Our server could not reach this shop. Check the address and shop status, then try again.",
             status: 503,
+            reason: "catalogue_unavailable",
             preview: read,
           };
           const looked = await grantScreen(authorize);
           if (timedOut) return timeoutAnswer;
-          if (!looked.ok) return { problem: looked.why, status: 400, preview: read };
+          if (!looked.ok)
+            return {
+              problem: looked.why,
+              status: 400,
+              reason: "catalogue_unavailable",
+              preview: read,
+            };
         }
         return {
           preview: read,
@@ -837,11 +901,21 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
             }, 15_000);
           }),
         ]);
+      } catch (error) {
+        await resulted({ outcome: "unknown", reason_code: "internal_error" });
+        throw error;
       } finally {
         clearTimeout(late);
       }
-      if ("failed" in checked) return checked.failed;
-      if ("problem" in checked)
+      if ("failed" in checked) {
+        await resulted({ outcome: "unknown", reason_code: "dependency_unavailable" });
+        return checked.failed;
+      }
+      if ("problem" in checked) {
+        await resulted({
+          outcome: timedOut || checked.status >= 500 ? "unknown" : "blocked",
+          reason_code: timedOut ? "timeout" : checked.reason,
+        });
         return drawChecked(
           {
             ...(checked.address
@@ -852,17 +926,36 @@ export function wooPagesFor(config: DashboardConfig, parts: WooParts): WooPages 
           },
           checked.status,
         );
-      if (!connect || timedOut) return drawChecked({ preview: checked.preview, typed: shopUrl });
+      }
+      if (!connect || timedOut) {
+        await resulted(
+          timedOut
+            ? { outcome: "unknown", reason_code: "timeout" }
+            : checked.preview.kind === "read"
+              ? { outcome: "completed" }
+              : { outcome: "unknown", reason_code: "catalogue_unavailable" },
+          checked.preview.kind === "read" ? checked.preview : undefined,
+        );
+        return drawChecked({ preview: checked.preview, typed: shopUrl });
+      }
       const startedAt = new Date();
-      await shops.beginGrant({
-        ...(person.merchant === null ? {} : { merchantId: person.merchant.id }),
-        token,
-        accountId: person.id,
-        shopUrl,
-        currency: checked.currency,
-        startedAt,
-        expiresAt: new Date(startedAt.getTime() + GRANT_MINUTES * 60_000),
-      });
+      try {
+        await shops.beginGrant(
+          {
+            ...(person.merchant === null ? {} : { merchantId: person.merchant.id }),
+            token,
+            accountId: person.id,
+            shopUrl,
+            currency: checked.currency,
+            startedAt,
+            expiresAt: new Date(startedAt.getTime() + GRANT_MINUTES * 60_000),
+          },
+          shopDoorResult(person, "woo_connect", { outcome: "completed" }),
+        );
+      } catch (error) {
+        await resulted({ outcome: "unknown", reason_code: "internal_error" });
+        throw error;
+      }
       noted(person, `started connecting the WooCommerce shop at ${shopUrl}`);
       return { kind: "redirect", location: authorize };
     },

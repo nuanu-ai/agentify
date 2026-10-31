@@ -596,6 +596,105 @@ const bannerIn = (html: string): string =>
   readable(/<section class="account-banner"[\s\S]*?<\/section>/.exec(html)?.[0] ?? "");
 
 describe("checking a shop before asking for access", () => {
+  it("distinguishes the public sample, a saved Connect request, and actual credentials", async () => {
+    const running = await started({
+      shop: async () =>
+        Response.json(
+          [
+            {
+              ...aProduct(),
+              is_on_backorder: false,
+              stock_availability: { text: "" },
+              low_stock_remaining: null,
+            },
+          ],
+          { headers: { "x-wp-total": "777" } },
+        ),
+    });
+    await running.signIn();
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    const connected = await running.post("/woocommerce/connect", {
+      shop_url: SHOP,
+      checked_shop: SHOP,
+    });
+    expect(connected.status).toBe(303);
+    const results = () =>
+      running.connectorAnalytics().filter((event) => event.name === "agc_setup_result");
+    expect(results().map((event) => event.fields)).toEqual([
+      {
+        step: "woo_preflight",
+        integration: "woocommerce",
+        outcome: "completed",
+        observed_ready_count: 1,
+        observed_read_count: 1,
+      },
+      { step: "woo_connect", integration: "woocommerce", outcome: "completed" },
+    ]);
+    expect(await running.shops.connectionOf(running.accountId)).toBeNull();
+    const token = tokenIn(connected.to ?? "");
+    await running.postJson("/woocommerce/callback", grantedBody(token));
+    expect(results().map((event) => event.fields?.step)).toEqual([
+      "woo_preflight",
+      "woo_connect",
+      "woo_connection",
+    ]);
+  });
+
+  it("does not call an unanswered integration check a confirmed connection conflict", async () => {
+    const running = await started();
+    await running.signIn();
+    vi.spyOn(running.harnessed.gateway, "switchHeldBy").mockImplementationOnce(
+      async () => await new Promise(() => undefined),
+    );
+    const response = await running.post("/woocommerce/connect", {
+      shop_url: SHOP,
+      checked_shop: SHOP,
+    });
+    expect(response.status).toBe(503);
+    expect(await running.shops.grantFor(running.accountId)).toBeNull();
+    expect(
+      running
+        .connectorAnalytics()
+        .filter((event) => event.name === "agc_setup_result")
+        .map((event) => event.fields),
+    ).toEqual([
+      {
+        step: "woo_connect",
+        integration: "woocommerce",
+        outcome: "unknown",
+        reason_code: "timeout",
+      },
+    ]);
+  });
+
+  it("records broad door refusals without pretending an unreadable sample has zero products", async () => {
+    const running = await started({
+      shop: async () => new Response("unreadable", { status: 503 }),
+    });
+    await running.signIn();
+    await running.post("/woocommerce/connect", { shop_url: "not a shop" });
+    await running.post("/woocommerce/connect", { shop_url: SHOP });
+    expect(
+      running
+        .connectorAnalytics()
+        .filter((event) => event.name === "agc_setup_result")
+        .map((event) => event.fields),
+    ).toEqual([
+      {
+        step: "woo_preflight",
+        integration: "woocommerce",
+        outcome: "blocked",
+        reason_code: "invalid_input",
+      },
+      {
+        step: "woo_preflight",
+        integration: "woocommerce",
+        outcome: "unknown",
+        reason_code: "catalogue_unavailable",
+      },
+    ]);
+  });
+
   it("leaves the integration and grant untouched until the second explicit press", async () => {
     const running = await started();
     await running.signIn();
@@ -3276,12 +3375,13 @@ describe("the analytics of a shop's connection and its imports", () => {
   };
 
   const imports = (running: Running) =>
-    running
-      .connectorAnalytics()
-      .filter(
-        (event): event is SetupResult =>
-          event.name === "agc_setup_result" && event.fields.step === "woo_import",
-      );
+    running.connectorAnalytics().filter(
+      (
+        event,
+      ): event is SetupResult & {
+        fields: Extract<SetupResult["fields"], { step: "woo_import" }>;
+      } => event.name === "agc_setup_result" && event.fields.step === "woo_import",
+    );
 
   /** A product the shop's protected check reads as a parcel, so a merchant with no site is refused it. */
   const parcelsAndDownloads: Standing["inspectProduct"] = async (_keys, merchantItemId) => {
@@ -3316,7 +3416,11 @@ describe("the analytics of a shop's connection and its imports", () => {
     await connectedFor(running);
 
     expect(
-      running.connectorAnalytics().filter((event) => event.name === "agc_setup_result"),
+      running
+        .connectorAnalytics()
+        .filter(
+          (event) => event.name === "agc_setup_result" && event.fields.step === "woo_connection",
+        ),
     ).toMatchObject([
       {
         actor: "human",

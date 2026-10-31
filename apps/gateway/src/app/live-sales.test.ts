@@ -81,6 +81,35 @@ describe("a merchant's live-sales request", () => {
     expect((await store.merchantById(input.merchantId))?.payoutWallet.address).toBeNull();
     expect(await store.payoutSplitAt(split.address)).toBeNull();
   });
+  it("counts a stored request and decline once, never a retry or a rolled-back request", async () => {
+    const { store } = await setup();
+    await requestLiveSales(store, input, at, "live");
+    await requestLiveSales(store, input, at + 1, "live");
+    const request = await store.liveSalesRequest(input.merchantId);
+    if (!request) throw new Error("request missing");
+    await declineLiveSales(store, input.merchantId, request.id, press("Private operator note"));
+    await declineLiveSales(store, input.merchantId, request.id, press("Repeated note"));
+    expect(store.recordedAnalytics.map(({ event }) => event)).toEqual([
+      {
+        name: "agc_setup_result",
+        actor: "human",
+        source: "dashboard",
+        refs: { merchant: input.merchantId, person: input.accountId },
+        fields: { step: "live_request", integration: "api", outcome: "completed" },
+      },
+      {
+        name: "agc_setup_result",
+        actor: "operator",
+        source: "dashboard",
+        refs: { merchant: input.merchantId },
+        fields: { step: "live_decline", integration: "api", outcome: "completed" },
+      },
+    ]);
+    const refused = await setup(true);
+    await expect(requestLiveSales(refused.store, input, at, "live")).rejects.toThrow();
+    expect(refused.store.recordedAnalytics).toEqual([]);
+  });
+
   it("accepts without a wallet and keeps a repeated request's date and evidence", async () => {
     const { store, notices } = await setup();
     const first = await requestLiveSales(store, input, at, "live");

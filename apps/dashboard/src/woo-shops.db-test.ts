@@ -268,6 +268,58 @@ if (databaseUrl === null) {
         )
       ).rows;
 
+    it("records a Connect only with its saved grant and leaves grant creation usable without the outbox", async () => {
+      await pool.query("delete from commerce_analytics_events");
+      const shops = postgresWooShops(pool, "woo-shops-contract-auth-secret");
+      const accountId = await accountOf("mch_start");
+      const event = {
+        name: "agc_setup_result" as const,
+        actor: "human" as const,
+        source: "dashboard" as const,
+        refs: { merchant: "mch_start", person: accountId },
+        fields: {
+          step: "woo_connect" as const,
+          integration: "woocommerce" as const,
+          outcome: "completed" as const,
+        },
+      };
+      const grant = {
+        token: "start-token",
+        accountId,
+        shopUrl: "https://shop.example.com",
+        currency: null,
+        startedAt: START,
+        expiresAt: LATER,
+      };
+      await pool.query(`create function refuse_grant_commit() returns trigger language plpgsql as
+        $$ begin raise exception 'grant commit refused'; end $$`);
+      await pool.query(`create constraint trigger refuse_grant_commit after insert on dashboard_woo_grants
+        deferrable initially deferred for each row execute function refuse_grant_commit()`);
+      try {
+        await expect(shops.beginGrant(grant, event)).rejects.toThrow();
+        expect(await shops.grantFor(accountId)).toBeNull();
+        expect(await recorded()).toEqual([]);
+      } finally {
+        await pool.query("drop trigger refuse_grant_commit on dashboard_woo_grants");
+        await pool.query("drop function refuse_grant_commit()");
+      }
+      await shops.beginGrant(grant, event);
+      expect(await shops.grantFor(accountId)).not.toBeNull();
+      expect(await recorded()).toHaveLength(1);
+      await pool.query(`create function refuse_grant_analytics() returns trigger language plpgsql as
+        $$ begin raise exception 'outbox refused'; end $$`);
+      await pool.query(`create trigger refuse_grant_analytics before insert on commerce_analytics_events
+        for each row execute function refuse_grant_analytics()`);
+      try {
+        await shops.beginGrant({ ...grant, token: "replacement-token" }, event);
+        expect((await shops.grantFor(accountId))?.token).toBe("replacement-token");
+        expect(await recorded()).toHaveLength(1);
+      } finally {
+        await pool.query("drop trigger refuse_grant_analytics on commerce_analytics_events");
+        await pool.query("drop function refuse_grant_analytics()");
+      }
+    });
+
     it("records the connection with the merchant the account names, and a late callback as blocked", async () => {
       await pool.query("delete from commerce_analytics_events");
       const shops = postgresWooShops(pool, "woo-shops-contract-auth-secret");

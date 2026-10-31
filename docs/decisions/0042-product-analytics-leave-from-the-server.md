@@ -23,10 +23,10 @@ an undercount wherever the browser prefetched a link on hover and answered the
 click from its cache.
 
 The contract is the analytics team's `commerce-v1`, and nothing leaves outside
-it: the ten events `agc_dashboard_viewed`, `agc_auth_result`,
+it: the eleven events `agc_dashboard_viewed`, `agc_auth_result`,
 `agc_merchant_created`, `agc_setup_result`, `agc_card_publish_result`,
 `agc_selling_changed`, `agc_ui_blocked`, `agc_order_created`,
-`agc_payment_result` and `agc_order_outcome_changed`, each with its fixed
+`agc_payment_result`, `agc_order_outcome_changed` and `agc_practice_opened`, each with its fixed
 fields, the values from its fixed lists and a reason from one fixed list of
 codes. A merchant, a person, a card, an order, a payment attempt and an
 operation are named only by a reference, the HMAC-SHA256 of the identifier
@@ -37,6 +37,16 @@ acted. An amount leaves only with a payment observed paid, as an exact decimal
 with its currency. Names, email addresses, wallets, keys, raw identifiers, the
 contents of a card or an order, and free text such as an error's message never
 leave.
+
+Setup results distinguish the saved platform answer, public shop preflight,
+connection request, terminal shop check, live-sales request and operator decline.
+Preflight and check counts describe only observed products; an unread preflight
+has no counts. A connection request completed means its grant request was saved;
+`woo_connection` means access arrived. Automatic publication uses the terminal
+`woo_import` result, and connector pauses use `agc_selling_changed`. Practice is
+an authenticated navigation to the existing documentation: the server records a
+real visit and redirects, suppressing prefetches and opted-out accounts. Direct
+visits to the documentation are outside this event.
 
 An event is one row in an outbox, written in the transaction of the fact it
 records, so a rolled-back fact leaves no event, and checked against the

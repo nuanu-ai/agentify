@@ -120,7 +120,7 @@ describe("connector pause ownership across dashboard processes", () => {
       expect(await restarted.cardPauses.list(merchantId)).toEqual({});
     },
   );
-  it("refreshes an owned pause's reason without restarting its clock or introducing connector analytics", async () => {
+  it("refreshes an owned pause's reason without restarting its clock or recording a second transition", async () => {
     await shopPublisherFor(gateway, acting(), shops()).pause(itemId, "stopped_selling");
     const first = (await shops().cardPauses.list(merchantId))[itemId];
     await shopPublisherFor(gateway, acting(), shops()).pause(itemId, "changed");
@@ -134,7 +134,7 @@ describe("connector pause ownership across dashboard processes", () => {
           "select name from commerce_analytics_events where name='agc_selling_changed'",
         )
       ).rowCount,
-    ).toBe(0);
+    ).toBe(1);
   });
   it("a redundant ordinary API pause takes ownership from the connector", async () => {
     await shopPublisherFor(gateway, acting(), shops()).pause(itemId, "stopped_selling");
@@ -194,9 +194,11 @@ describe("connector pause ownership across dashboard processes", () => {
     const transitions = await pool.query(
       "select actor_type, source, properties->>'change' as change from commerce_analytics_events where name='agc_selling_changed' order by sequence",
     );
-    expect(transitions.rows).toEqual([]);
+    expect(transitions.rows).toEqual([
+      { actor_type: "system", source: "woocommerce", change: "paused" },
+    ]);
   });
-  it("rolls back the card pause and ownership together when commit fails", async () => {
+  it("rolls back the card pause, ownership and analytics together when commit fails", async () => {
     await pool.query(
       "create function refuse_pause_commit() returns trigger language plpgsql as $$ begin raise exception 'pause commit refused'; end $$",
     );

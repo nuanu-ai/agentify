@@ -203,11 +203,11 @@ export interface WooShops extends WooCartResources {
   readonly cardPauses: WooCardPauses;
   /**
    * Records a product analytics event of the connector's that has no write of
-   * its own, such as an import's result, outside any transaction. It never
+   * its own, such as a refused Connect, outside any transaction. It never
    * rejects.
    */
   recordAnalytics(event: AnalyticsEvent, at: Date): Promise<void>;
-  beginGrant(grant: WooGrant): Promise<void>;
+  beginGrant(grant: WooGrant, analytics?: AnalyticsEvent): Promise<void>;
   /**
    * One account-serialised operation, because a callback is unauthenticated and
    * may arrive after the merchant began another Connect; split in two, the
@@ -548,7 +548,7 @@ export const postgresWooShops = (
     cardPauses: postgresWooCardPauses(pool),
     recordAnalytics: (event, at) => recordObserved(db, event, at),
 
-    async beginGrant(grant) {
+    async beginGrant(grant, event) {
       await db.transaction(async (tx) => {
         // Serialises two Connect presses by this account, so replacing its row
         // neither leaves an older token usable nor sweeps away another owner's
@@ -566,6 +566,7 @@ export const postgresWooShops = (
           expiresAt: grant.expiresAt,
           createdAt: grant.startedAt,
         });
+        if (event) await recordAlong(tx, event, grant.startedAt);
       });
     },
 
@@ -1101,7 +1102,7 @@ export const memoryWooShops = (): WooShops & {
       analytics.push({ event, at });
     },
 
-    async beginGrant(grant) {
+    async beginGrant(grant, event) {
       for (const [token, found] of grants) {
         if (found.accountId === grant.accountId) {
           grants.delete(token);
@@ -1109,6 +1110,7 @@ export const memoryWooShops = (): WooShops & {
       }
       grants.set(grant.token, grant);
       if (grant.merchantId) merchants.set(grant.accountId, grant.merchantId);
+      if (event) analytics.push({ event, at: grant.startedAt });
     },
 
     async connectFromGrant(token, keys, now) {

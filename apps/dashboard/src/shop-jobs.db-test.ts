@@ -48,26 +48,21 @@ if (databaseUrl === null) {
       kind: "check" as const,
     };
   };
+  const eventsFor = async (merchantId: string) =>
+    (
+      await pool.query(
+        "select actor_type,source,properties from commerce_analytics_events where name='agc_setup_result' and refs->>'merchant'=$1 order by sequence",
+        [merchantId],
+      )
+    ).rows;
   describe("persisted shop work on PostgreSQL", () => {
-    it.each(["completed", "partial", "unknown"] as const)(
-      "preserves the existing import event when durable publication finishes %s",
+    it.each(["completed", "unknown"] as const)(
+      "records a check's %s terminal observations once, without treating a queued job as a result",
       async (outcome) => {
         const input = await account();
         const jobs = postgresShopJobs(pool);
-        const { job } = await jobs.request({
-          ...input,
-          kind: "publish",
-          currency: { code: "USD", decimals: 2 },
-          rate: null,
-        });
-        const events = async () =>
-          (
-            await pool.query(
-              "select actor_type,source,refs,properties from commerce_analytics_events where refs->>'merchant'=$1 order by sequence",
-              [input.merchantId],
-            )
-          ).rows;
-        expect(await events()).toEqual([]);
+        const { job } = await jobs.request(input);
+        expect(await eventsFor(input.merchantId)).toEqual([]);
         expect((await jobs.claim())?.id).toBe(job.id);
         await jobs.record(
           job.id,
@@ -77,33 +72,89 @@ if (databaseUrl === null) {
             group: "ready",
             reason: "ready",
             why: "",
-            published: true,
-            publication: "accepted",
-          },
-          2,
-        );
-        await jobs.record(
-          job.id,
-          {
-            id: "28",
-            title: "Guide",
-            group: outcome === "partial" ? "fix" : outcome === "unknown" ? "ready" : "unsupported",
-            reason:
-              outcome === "partial"
-                ? "publication"
-                : outcome === "unknown"
-                  ? "publication_unknown"
-                  : "product_type",
-            why: "",
             published: false,
-            ...(outcome !== "completed"
-              ? { publication: outcome === "partial" ? ("refused" as const) : ("unknown" as const) }
-              : {}),
           },
-          2,
+          outcome === "completed" ? 1 : null,
         );
-        expect(await events()).toEqual([]);
-        const finish =
+        expect(await eventsFor(input.merchantId)).toEqual([]);
+        const result =
+          outcome === "completed"
+            ? { status: "completed" as const, why: null, stopCode: null }
+            : {
+                status: "stopped" as const,
+                why: "We could not read the rest.",
+                stopCode: "unknown" as const,
+              };
+        await Promise.all([
+          jobs.finish(job.id, result),
+          postgresShopJobs(pool).finish(job.id, result),
+        ]);
+        const recorded = await eventsFor(input.merchantId);
+        expect(recorded).toHaveLength(1);
+        expect(recorded[0]).toMatchObject({
+          actor_type: "system",
+          source: "woocommerce",
+          properties: {
+            step: "woo_check",
+            outcome,
+            observed_ready_count: 1,
+            observed_read_count: 1,
+          },
+        });
+        if (outcome === "unknown") expect(recorded[0].properties.reason_code).toBe("unknown");
+      },
+    );
+
+    it.each(["completed", "partial", "unknown"] as const)(
+      "retains the manual import contract when publication finishes %s",
+      async (outcome) => {
+        const input = await account();
+        const jobs = postgresShopJobs(pool);
+        const { job } = await jobs.request({
+          ...input,
+          kind: "publish",
+          currency: { code: "USD", decimals: 2 },
+          rate: null,
+        });
+        expect(await eventsFor(input.merchantId)).toEqual([]);
+        expect((await jobs.claim())?.id).toBe(job.id);
+        for (const [id, group, reason, published] of [
+          ["27", "ready", "ready", true],
+          ["28", "fix", "product_content", false],
+          ["29", "unanswered", "shop_check", false],
+          ["30", "not_selling", "withdrawn", false],
+          ["31", "unsupported", "product_type", false],
+        ] as const) {
+          await jobs.record(
+            job.id,
+            {
+              id,
+              title: "Guide",
+              group,
+              reason,
+              why: "",
+              published,
+              ...(published ? { publication: "accepted" as const } : {}),
+            },
+            5,
+          );
+        }
+        if (outcome !== "completed")
+          await jobs.record(
+            job.id,
+            {
+              id: "32",
+              title: "Guide",
+              group: outcome === "partial" ? "fix" : "ready",
+              reason: outcome === "partial" ? "publication" : "publication_unknown",
+              why: "",
+              published: false,
+              publication: outcome === "partial" ? "refused" : "unknown",
+            },
+            6,
+          );
+        expect(await eventsFor(input.merchantId)).toEqual([]);
+        const result =
           outcome === "unknown"
             ? {
                 status: "stopped" as const,
@@ -112,14 +163,13 @@ if (databaseUrl === null) {
               }
             : { status: "completed" as const, stopCode: null, why: null };
         await Promise.all([
-          jobs.finish(job.id, finish),
-          postgresShopJobs(pool).finish(job.id, finish),
+          jobs.finish(job.id, result),
+          postgresShopJobs(pool).finish(job.id, result),
         ]);
-        expect(await events()).toEqual([
+        expect(await eventsFor(input.merchantId)).toEqual([
           {
             actor_type: "human",
             source: "dashboard",
-            refs: { person: input.accountId, merchant: input.merchantId },
             properties: {
               step: "woo_import",
               integration: "woocommerce",
@@ -127,16 +177,68 @@ if (databaseUrl === null) {
               ...(outcome === "unknown" ? { reason_code: "internal_error" } : {}),
               imported_count: 1,
               failed_count: outcome === "completed" ? 0 : 1,
-              skipped_count: outcome === "completed" ? 1 : 0,
+              skipped_count: 4,
             },
           },
         ]);
-        const checked = await jobs.request(input);
-        expect((await jobs.claim())?.id).toBe(checked.job.id);
-        await jobs.finish(checked.job.id, { status: "completed", stopCode: null, why: null });
-        expect(await events()).toHaveLength(1);
       },
     );
+
+    it("rolls a terminal event back with the job, while a broken outbox never prevents completion", async () => {
+      const input = await account();
+      const jobs = postgresShopJobs(pool);
+      const { job } = await jobs.request(input);
+      expect((await jobs.claim())?.id).toBe(job.id);
+      await pool.query(
+        "create function refuse_job_commit() returns trigger language plpgsql as $$ begin if new.status='completed' then raise exception 'job commit refused'; end if; return new; end $$",
+      );
+      await pool.query(
+        "create constraint trigger refuse_job_commit after update on dashboard_shop_jobs deferrable initially deferred for each row execute function refuse_job_commit()",
+      );
+      try {
+        await expect(
+          jobs.finish(job.id, { status: "completed", why: null, stopCode: null }),
+        ).rejects.toThrow();
+        expect(await jobs.latest(input.merchantId)).toMatchObject([{ status: "running" }]);
+        expect(await eventsFor(input.merchantId)).toEqual([]);
+      } finally {
+        await pool.query("drop trigger refuse_job_commit on dashboard_shop_jobs");
+        await pool.query("drop function refuse_job_commit()");
+      }
+      await jobs.finish(job.id, { status: "completed", why: null, stopCode: null });
+      expect(await eventsFor(input.merchantId)).toHaveLength(1);
+      const next = await jobs.request(input);
+      expect((await jobs.claim())?.id).toBe(next.job.id);
+      await pool.query(
+        "create function refuse_job_analytics() returns trigger language plpgsql as $$ begin raise exception 'outbox refused'; end $$",
+      );
+      await pool.query(
+        "create trigger refuse_job_analytics before insert on commerce_analytics_events for each row execute function refuse_job_analytics()",
+      );
+      try {
+        await jobs.finish(next.job.id, { status: "completed", why: null, stopCode: null });
+        expect(await jobs.latest(input.merchantId)).toMatchObject([{ status: "completed" }]);
+        expect(await eventsFor(input.merchantId)).toHaveLength(1);
+      } finally {
+        await pool.query("drop trigger refuse_job_analytics on commerce_analytics_events");
+        await pool.query("drop function refuse_job_analytics()");
+      }
+      const unread = await jobs.request(input);
+      expect((await jobs.claim())?.id).toBe(unread.job.id);
+      await pool.query(
+        "alter table dashboard_shop_job_products rename to shop_products_unavailable",
+      );
+      try {
+        await jobs.finish(unread.job.id, { status: "completed", why: null, stopCode: null });
+        expect(await jobs.latest(input.merchantId)).toMatchObject([{ status: "completed" }]);
+        expect(await eventsFor(input.merchantId)).toHaveLength(1);
+      } finally {
+        await pool.query(
+          "alter table shop_products_unavailable rename to dashboard_shop_job_products",
+        );
+      }
+    });
+
     it("admits one active job across independent callers and database-enforces the same rule", async () => {
       const input = await account();
       await expect(

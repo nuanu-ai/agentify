@@ -120,6 +120,34 @@ const refusal = (method: string, stage: string, outcome: string, reason: string)
 });
 
 describe("what the identity records for product analytics", () => {
+  it("records the saved platform independently of the integration, once per changed answer", async () => {
+    const { identity, named } = setup();
+    const person = await identity.make(EMAIL, "mer_platform");
+    if (!person) throw new Error("account missing");
+    await identity.choosePlatform(person.id, "api", "woocommerce");
+    await identity.choosePlatform(person.id, "api", "woocommerce");
+    await expect(identity.choosePlatform("absent", "other", "none")).rejects.toThrow();
+    expect((await identity.onboardingChoices(person.id)).platform).toBe("api");
+    expect(named("agc_setup_result")).toEqual([
+      {
+        name: "agc_setup_result",
+        actor: "human",
+        source: "dashboard",
+        refs: { person: person.id, merchant: "mer_platform" },
+        fields: {
+          step: "platform_answer",
+          platform: "code",
+          integration: "woocommerce",
+          outcome: "completed",
+        },
+      },
+    ]);
+    await identity.setAnalyticsOptOut(person.id, true);
+    await identity.choosePlatform(person.id, "other", "woocommerce");
+    expect((await identity.onboardingChoices(person.id)).platform).toBe("other");
+    expect(named("agc_setup_result")).toHaveLength(1);
+  });
+
   it("records a first verification by link as one confirmed sign-in, and a returning one as not the first", async () => {
     const { signIn, named } = setup();
 

@@ -269,7 +269,11 @@ export interface DashboardIdentity {
   /** Whether this one account opted out of product analytics. */
   analyticsOptedOut(personId: string): Promise<boolean>;
   onboardingChoices(personId: string): Promise<OnboardingChoices>;
-  choosePlatform(personId: string, platform: Platform): Promise<void>;
+  choosePlatform(
+    personId: string,
+    platform: Platform,
+    integration?: "api" | "woocommerce" | "none",
+  ): Promise<void>;
   acknowledgeTest(personId: string): Promise<void>;
   /**
    * Sets that choice on this one account; another account naming the same

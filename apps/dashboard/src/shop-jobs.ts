@@ -158,6 +158,37 @@ const terminalImportResult = (job: ShopJob, rows: readonly JobProduct[]): Import
   };
 };
 
+const terminalResult = (job: ShopJob, rows: readonly JobProduct[]): SetupResult => {
+  const failure =
+    job.stopCode === "reconnect"
+      ? ({ outcome: "blocked", reason_code: "no_connection" } as const)
+      : job.stopCode === "rate_required"
+        ? ({ outcome: "blocked", reason_code: "invalid_input" } as const)
+        : ({
+            outcome: "unknown",
+            reason_code: job.stopCode === "unread" ? "catalogue_unavailable" : "unknown",
+          } as const);
+  const refs = { merchant: job.merchantId, person: job.accountId };
+  if (job.kind === "check")
+    return {
+      name: "agc_setup_result",
+      actor: "system",
+      source: "woocommerce",
+      refs,
+      fields: {
+        step: "woo_check",
+        integration: "woocommerce",
+        ...(job.status === "completed" ? ({ outcome: "completed" } as const) : failure),
+        observed_ready_count: rows.filter((row) => row.group === "ready").length,
+        observed_read_count: job.read,
+      },
+    };
+  const result = terminalImportResult(job, rows);
+  return job.publicationId === undefined
+    ? result
+    : { ...result, actor: "system", source: "woocommerce" };
+};
+
 export function memoryShopJobs(record?: (event: SetupResult, at: Date) => void): ShopJobs {
   const jobs = new Map<string, ShopJob>();
   const products = new Map<string, Map<string, JobProduct>>();
@@ -169,10 +200,9 @@ export function memoryShopJobs(record?: (event: SetupResult, at: Date) => void):
     jobs.set(id, job);
     if (job.status === "completed" || job.status === "stopped") {
       held.delete(id);
-      if (job.kind !== "publish" || job.publicationId !== undefined) return;
       try {
         record?.(
-          terminalImportResult(job, [...(products.get(id)?.values() ?? [])]),
+          terminalResult(job, [...(products.get(id)?.values() ?? [])]),
           new Date(job.endedAt ?? Date.now()),
         );
       } catch {
@@ -405,11 +435,7 @@ export function postgresShopJobs(pool: Pool, ownershipPool: Pool = pool): ShopJo
         if (data.status === "completed" || data.status === "stopped")
           await captureLivePublication(tx, data);
         await tx.update(shopJobs).set({ data, status: data.status }).where(eq(shopJobs.id, id));
-        if (
-          data.kind === "publish" &&
-          data.publicationId === undefined &&
-          (data.status === "completed" || data.status === "stopped")
-        ) {
+        if (data.status === "completed" || data.status === "stopped") {
           try {
             await tx.transaction(async (observation) => {
               const rows = await observation
@@ -418,7 +444,7 @@ export function postgresShopJobs(pool: Pool, ownershipPool: Pool = pool): ShopJo
                 .where(eq(shopJobProducts.jobId, id));
               await recordAlong(
                 observation,
-                terminalImportResult(
+                terminalResult(
                   data,
                   rows.map((row) => row.data),
                 ),

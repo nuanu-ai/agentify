@@ -7781,6 +7781,32 @@ describe("what the pages record for product analytics", () => {
     expect(recorded(running)).toStrictEqual([viewOf("cards", owner)]);
   });
 
+  it("counts only an authenticated real practice visit and still redirects when opted out", async () => {
+    const running = await started();
+    const stranger = await running.another();
+    expect((await stranger.get("/practice")).status).toBe(303);
+    await running.browser.signIn();
+    const owner = await theOwner(running);
+    await fromNow(running);
+    await running.browser.sending({ purpose: "prefetch" }).get("/practice");
+    expect(named(running, "agc_practice_opened")).toEqual([]);
+    const opened = await running.browser.get("/practice");
+    expect(opened.status).toBe(302);
+    expect(opened.to).toBe("/docs/#how-to-start");
+    expect(named(running, "agc_practice_opened")).toEqual([
+      {
+        name: "agc_practice_opened",
+        actor: "human",
+        source: "dashboard",
+        refs: owner,
+        fields: {},
+      },
+    ]);
+    await running.identity.setAnalyticsOptOut(owner.person, true);
+    expect((await running.browser.get("/practice")).to).toBe("/docs/#how-to-start");
+    expect(named(running, "agc_practice_opened")).toHaveLength(1);
+  });
+
   it("records no view for a prefetch, a read the gate sent elsewhere, or a page that is no screen", async () => {
     const running = await started();
     const stranger = await running.another();
@@ -8310,6 +8336,24 @@ describe("merchant onboarding choices over HTTP", () => {
     );
   });
 
+  it("saves a platform answer when integration enrichment is unavailable without inventing an absent integration", async () => {
+    const running = await started();
+    await running.browser.signIn(FRESH.email);
+    vi.spyOn(running.harnessed.gateway, "integrationOf").mockRejectedValue(
+      new Error("read unavailable"),
+    );
+    expect((await running.browser.post("/products", { platform: "other" })).status).toBe(303);
+    const person = await running.identity.byEmail(FRESH.email);
+    expect((await running.identity.onboardingChoices(person?.id ?? "missing")).platform).toBe(
+      "other",
+    );
+    expect(
+      (running.rows.commerce_analytics_events ?? []).filter(
+        (row) => row.name === "agc_setup_result",
+      ),
+    ).toEqual([]);
+  });
+
   it("records the selected platform, refuses unlisted input and returns to the same step after signing in again", async () => {
     const running = await started();
     await running.browser.signIn(FRESH.email);
@@ -8336,6 +8380,14 @@ describe("merchant onboarding choices over HTTP", () => {
     ).toHaveLength(3);
     const saved = await running.identity.byEmail(FRESH.email);
     expect((await running.identity.onboardingChoices(saved?.id ?? "missing")).platform).toBe("api");
+    expect(
+      (running.rows.commerce_analytics_events ?? [])
+        .filter((row) => row.name === "agc_setup_result")
+        .map((row) => row.fields),
+    ).toEqual([
+      { step: "platform_answer", platform: "other", integration: "api", outcome: "completed" },
+      { step: "platform_answer", platform: "code", integration: "api", outcome: "completed" },
+    ]);
     await running.browser.signIn(FRESH.email);
     const returned = await running.browser.get("/products");
     expect(
@@ -8386,11 +8438,11 @@ describe("merchant onboarding choices over HTTP", () => {
       dashboard: channel,
     });
     await running.browser.signIn(FRESH.email);
-    expect((await running.browser.get("/products")).html).toContain('href="/docs/#how-to-start"');
+    expect((await running.browser.get("/products")).html).toContain('href="/practice"');
     await running.browser.post("/products", { platform: "api" });
     for (const path of ["/products", "/keys", "/settings"]) {
       const page = await running.browser.get(path);
-      expect(page.html).not.toContain('href="/docs/#how-to-start"');
+      expect(page.html).not.toContain('href="/practice"');
       expect(page.html).not.toContain('href="https://test.agentify.ad/dashboard/sign-in"');
       expect(reasonsIn(page.html)).toEqual([]);
     }

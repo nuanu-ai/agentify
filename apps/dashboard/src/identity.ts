@@ -1682,15 +1682,56 @@ export function identityFor(config: DashboardConfig, parts: IdentityParts = {}):
       return { platform: platform ?? null, testAcknowledged: stored.testAcknowledged === true };
     },
 
-    async choosePlatform(personId, platform) {
+    async choosePlatform(personId, platform, integration) {
       if (platform !== "woocommerce" && platform !== "api" && platform !== "other")
         throw new Error("invalid platform");
-      const changed = await (await contextOf()).adapter.update({
-        model: "user",
-        where: [{ field: "id", value: personId }],
-        update: { onboardingPlatform: platform },
+      const choose = async (
+        bound: typeof auth,
+        record: (event: AnalyticsEvent) => Promise<void>,
+      ) => {
+        const adapter = (await bound.$context).adapter;
+        const before = await adapter.findOne<{
+          onboardingPlatform?: string;
+          merchantId?: string;
+          analyticsOptOut?: boolean;
+        }>({ model: "user", where: [{ field: "id", value: personId }] });
+        if (before === null) throw new Error("the account no longer exists");
+        if (before.onboardingPlatform === platform) return;
+        await adapter.update({
+          model: "user",
+          where: [{ field: "id", value: personId }],
+          update: { onboardingPlatform: platform },
+        });
+        if (integration !== undefined && before.merchantId && !before.analyticsOptOut)
+          await record({
+            name: "agc_setup_result",
+            actor: "human",
+            source: "dashboard",
+            refs: { person: personId, merchant: before.merchantId },
+            fields: {
+              step: "platform_answer",
+              platform: platform === "api" ? "code" : platform,
+              integration,
+              outcome: "completed",
+            },
+          });
+      };
+      if (parts.pool === undefined) {
+        await inMemoryTransaction(async (bound, rows) =>
+          choose(bound, async (event) => recordInMemory(rows, event)),
+        );
+        return;
+      }
+      await drizzle(parts.pool).transaction(async (tx) => {
+        await tx
+          .select({ id: accounts.id })
+          .from(accounts)
+          .where(eq(accounts.id, personId))
+          .for("update");
+        await choose(authFor(drizzleAdapter(tx, { provider: "pg", schema })), async (event) =>
+          recordAlong(tx, event, new Date()),
+        );
       });
-      if (changed === null) throw new Error("the account no longer exists");
     },
 
     async acknowledgeTest(personId) {

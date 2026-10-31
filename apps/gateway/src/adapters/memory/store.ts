@@ -10,6 +10,7 @@
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { AnalyticsEvent } from "../../analytics/events.js";
+import { liveSalesResult } from "../../analytics/live-sales.js";
 import type { Clock, Ids } from "../../ports/clock.js";
 import {
   answersQuery,
@@ -361,6 +362,15 @@ export class MemoryStore implements Store {
       row.serviceName = input.sellerName;
       this.#liveRequests.set(row.id, request);
       commit();
+      await this.recordAnalytics(
+        liveSalesResult(
+          "live_request",
+          input.merchantId,
+          input.evidence.integration,
+          input.accountId,
+        ),
+        at,
+      );
       return { kind: "requested", request: structuredClone(request) };
     });
   }
@@ -393,6 +403,10 @@ export class MemoryStore implements Store {
       this.#appended(entry);
       this.#liveRequests.set(merchantId, request);
       commit();
+      await this.recordAnalytics(
+        liveSalesResult("live_decline", merchantId, merchant.integration),
+        press.at,
+      );
       return { changed: true, request: structuredClone(request) };
     });
   }

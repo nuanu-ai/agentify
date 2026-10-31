@@ -58,7 +58,7 @@ describe("onboarding situations in the frame", () => {
           element.getAttribute("data-reason"),
         ),
       ).toEqual(facts.withdrawn || reason === null ? [] : [reason]);
-      expect(drawn.querySelector('a[href="/docs/#how-to-start"]') !== null).toBe(
+      expect(drawn.querySelector('a[href="/practice"]') !== null).toBe(
         row === 1 && facts.mode === "live",
       );
     },

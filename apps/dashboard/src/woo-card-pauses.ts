@@ -1,10 +1,19 @@
 /** Connector pause ownership lives with the connector; the gateway holds only a normal card pause. */
 import type { Gateway } from "@agentify/gateway";
+import { type AnalyticsEvent, recordAlong } from "@agentify/gateway/analytics";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { Pool } from "pg";
 
 type CardStore = Pick<Gateway["runtime"]["store"], "cardById" | "setCardPaused">;
+const changed = (merchantId: string, itemId: string, paused: boolean): AnalyticsEvent => ({
+  name: "agc_selling_changed",
+  actor: "system",
+  source: "woocommerce",
+  refs: { merchant: merchantId, item: itemId },
+  fields: { entity: "card", change: paused ? "paused" : "resumed" },
+});
+
 export type WooWithdrawalReason = "stopped_selling" | "changed";
 export interface WooCardPause {
   readonly at: number;
@@ -43,7 +52,7 @@ export function memoryWooCardPauses(): WooCardPauses {
           return;
         }
         if (!paused && ownership.pause === null) return;
-        await store.setCardPaused(merchantId, itemId, paused);
+        await store.setCardPaused(merchantId, itemId, paused, changed(merchantId, itemId, paused));
         await ownership.save(reason === null ? null : { at: Date.now(), reason });
       });
     },
@@ -115,6 +124,8 @@ export function postgresWooCardPauses(pool: Pool): WooCardPauses {
           await tx.execute(
             sql`insert into dashboard_woo_card_pauses (merchant_id,item_id,paused_at,reason) values (${merchantId},${itemId},${at},${reason})`,
           );
+        if (before.paused !== paused)
+          await recordAlong(tx, changed(merchantId, itemId, paused), at);
       });
     },
     async list(merchantId) {
