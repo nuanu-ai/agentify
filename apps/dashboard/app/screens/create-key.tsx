@@ -1,11 +1,10 @@
 import { Button, Field } from "@agentify/ui";
 import type { KeysView } from "../../src/keys.js";
 import { PostForm } from "../components/post-form.js";
-import styles from "./create-key.module.css";
 
 export function CreateKeyForm({ view, action }: Readonly<{ view: KeysView; action: string }>) {
   return (
-    <PostForm action={action} className={styles.keyForm} replace={false}>
+    <PostForm action={action} className="issue" replace={false}>
       {(pending) => (
         <>
           <input type="hidden" name="intent" value="create-key" />
