@@ -80,6 +80,7 @@ name. Notes written in Russian stay in Russian.
 | [91-load-and-timing](91-load-and-timing.md) | a pre-registered protocol for load and timing: endpoint latency, the gateway's new per-phase purchase metrics, settlement landing and an isolation flood, with predictions and decision rules fixed against release app-v0.28.0, for the local stack and the test channel | — | English | current |
 | [92-outside-service-facts](92-outside-service-facts.md) | what tests record of Coinbase's exchange rates, WooCommerce's own words and the facilitator's refusal codes, the weekly check that asks those services again and what its first run found, and the stand-ins of other services not yet recorded | — | English | current |
 | [93-mutation-kill-matrix-trial](93-mutation-kill-matrix-trial.md) | whether the mutants each test kills tell useless tests from useful ones: a trial on one package against the October test audit, with predictions fixed before the run | — | English | current |
+| [94-woo-catalogue-sync](94-woo-catalogue-sync.md) | how a connected WooCommerce shop is checked and synchronized: jobs and their queue, reading published products and confirming a paged read, judging, withdrawing and returning cards, how a job ends and how the screen reads progress | ADR-0023 | English | current |
 
 The folders beside some notes hold their data and scripts:
 `39-commission-split-experiment/`, `41-woo-parcel-probe/`,
