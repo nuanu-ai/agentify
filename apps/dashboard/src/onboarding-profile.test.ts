@@ -38,7 +38,10 @@ async function seller(
   return { served: open, browser, id, notices };
 }
 
-async function checkedShop(channel: "test" | "sandbox" = "test") {
+async function checkedShop(
+  channel: "test" | "sandbox" | "live" = "test",
+  group: "ready" | "fix" = "ready",
+) {
   const shops = memoryWooShops();
   const owned = await seller(channel, false, shops);
   const person = await owned.served.identity.byEmail(OWNER);
@@ -72,9 +75,9 @@ async function checkedShop(channel: "test" | "sandbox" = "test") {
     {
       id: "1",
       title: "Writing assistant",
-      group: "ready",
-      reason: "ready",
-      why: "",
+      group,
+      reason: group === "ready" ? "ready" : "price",
+      why: group === "ready" ? "" : "Set a price.",
       published: false,
     },
     1,
@@ -385,6 +388,22 @@ it("refuses a forged live request without server-observed integration evidence",
   expect(refused.status).toBe(409);
   expect(await served.harnessed.store.liveSalesRequest(id)).toBeNull();
   expect((await served.harnessed.store.merchantById(id))?.serviceName).toBeNull();
+});
+
+it("does not answer a request as sent when the integration moved while it was asked", async () => {
+  const { served, browser, id } = await seller();
+  const store = served.harnessed.store;
+  const asked = store.requestLiveSales.bind(store);
+  store.requestLiveSales = async (input, at) => {
+    await store.switchIntegration(id, "woocommerce");
+    return asked(input, at);
+  };
+  const refused = await browser.post("/products", {
+    intent: "request-live-sales",
+    seller_name: "Freeland",
+  });
+  expect(refused.status).toBe(409);
+  expect(await store.liveSalesRequest(id)).toBeNull();
 });
 
 it("keeps the sandbox wallet optional when its first seller name is saved", async () => {
