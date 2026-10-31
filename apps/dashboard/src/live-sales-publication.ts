@@ -244,11 +244,7 @@ async function advanceOne(
     .where(eq(accounts.id, intent.accountId));
   const inForce = (approvedAt: Date | null | undefined) =>
     approvedAt != null && new Date(approvedAt).getTime() === intent.event.approvalAt;
-  if (
-    inForce(merchant?.live_approved_at) &&
-    merchant?.integration !== "woocommerce" &&
-    intent.event.kind === "admitted"
-  )
+  if (inForce(merchant?.live_approved_at) && merchant?.integration !== "woocommerce")
     return db.transaction(async (tx) => {
       const {
         rows: [now],
@@ -267,14 +263,15 @@ async function advanceOne(
         .where(eq(livePublications.id, intent.id))
         .for("update");
       if (current?.state !== "pending" || current.jobId !== null) return;
-      if (now && inForce(now.live_approved_at) && now.integration !== "woocommerce")
-        await recordLiveSalesChange(tx, {
-          ...current.event,
-          integration: now.integration,
-          sellerName: now.service_name,
-          sellerSite: now.seller_site,
-          hasWallet: now.payout_wallet !== null,
-        });
+      // Back on WooCommerce since the read above: the next turn publishes the shop.
+      if (!now || now.integration === "woocommerce") return;
+      await recordLiveSalesChange(tx, {
+        ...current.event,
+        integration: now.integration,
+        sellerName: now.service_name,
+        sellerSite: now.seller_site,
+        hasWallet: now.payout_wallet !== null,
+      });
       await tx
         .update(livePublications)
         .set({ state: "completed" })

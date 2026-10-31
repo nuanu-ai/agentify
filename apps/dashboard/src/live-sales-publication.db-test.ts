@@ -810,6 +810,48 @@ if (databaseUrl === null) {
         (await rows("dashboard_live_sales_mail")).map((row) => [row.event.kind, row.event.next]),
       ).toEqual([["admitted", "connect"]]);
     });
+    it("leaves the publication waiting when a merchant returns to WooCommerce while the turn reads them", async () => {
+      const one = await seller();
+      const checking = await check(one);
+      await approve(one.merchantId);
+      await finishCheck(checking.id);
+      await store.switchIntegration(one.merchantId, "api");
+      const advancing = new Pool({
+        connectionString: databaseUrl,
+        application_name: "live-publication-advance",
+        max: 2,
+      });
+      const blocker = await pool.connect();
+      try {
+        await blocker.query("begin");
+        await blocker.query("update merchants set integration='woocommerce' where id=$1", [
+          one.merchantId,
+        ]);
+        const turn = advanceLivePublication(advancing, shops);
+        await expect
+          .poll(
+            async () =>
+              (
+                await pool.query(
+                  "select count(*)::int as n from pg_stat_activity where application_name=$1 and wait_event_type='Lock'",
+                  ["live-publication-advance"],
+                )
+              ).rows[0]?.n,
+          )
+          .toBe(1);
+        await blocker.query("commit");
+        await turn;
+      } finally {
+        blocker.release();
+        await advancing.end();
+      }
+      expect(await rows("dashboard_live_publications")).toMatchObject([{ state: "pending" }]);
+      expect(await rows("dashboard_live_sales_mail")).toEqual([]);
+      await advanceLivePublication(pool, shops);
+      expect(
+        (await shops.jobs.latest(one.merchantId)).filter((job) => job.kind === "publish"),
+      ).toMatchObject([{ status: "queued" }]);
+    });
     it("starts every admitted merchant's publication in one turn while another merchant's check runs", async () => {
       const busy = await seller();
       const running = await check(busy);
