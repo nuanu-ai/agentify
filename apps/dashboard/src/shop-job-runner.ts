@@ -153,6 +153,7 @@ export async function workShopJob(
             {
               ...row,
               published,
+              reason: published && row.reason === "seller_paused" ? "ready" : row.reason,
               why: published ? "" : "Sales are paused or not available in Agentify.",
             },
             null,
