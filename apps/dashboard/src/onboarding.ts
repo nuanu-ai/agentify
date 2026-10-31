@@ -26,6 +26,13 @@ export interface OnboardingPress {
   readonly requestResolvedProblem?: string;
 }
 
+const ASK_WAITS_FOR = {
+  code: "your code connects",
+  shop: "your shop is connected",
+  access: "your shop is connected with read and write access",
+  check: "a check finds a product ready for sale",
+} as const;
+
 interface AccountFacts {
   mode: SurfaceMode;
   sellerName: string;
@@ -105,11 +112,9 @@ export function onboardingAccountView(step: NextStep, account: Readonly<AccountF
               ]
             : declined
               ? [
-                  request
+                  step.askWaitsFor === null
                     ? "Fix what the note asks, then ask again."
-                    : step.page === "shop"
-                      ? "Fix what the note asks. You can ask again once a check finds a product ready for sale."
-                      : "Fix what the note asks. You can ask again once your code connects.",
+                    : `Fix what the note asks. You can ask again once ${ASK_WAITS_FOR[step.askWaitsFor]}.`,
                 ]
               : state === "request"
                 ? ["Live sales start once Agentify approves your shop."]

@@ -56,6 +56,12 @@ export interface NextStep {
   readonly account: AccountStep;
   /** Whether a request for live sales sent now would be taken. */
   readonly canAsk: boolean;
+  /**
+   * What a request for live sales waits for while it would not be taken: code
+   * that answers, a shop connection, write access to the shop, or a check that
+   * finds a product ready.
+   */
+  readonly askWaitsFor: "code" | "shop" | "access" | "check" | null;
   readonly otherWays: boolean;
 }
 
@@ -149,6 +155,15 @@ export function nextStepOf(facts: NextStepFacts): NextStep {
     account,
     canAsk:
       connected && (account === "request" || account === "declined" || account === "withdrawn"),
+    askWaitsFor: connected
+      ? null
+      : facts.through === "api"
+        ? "code"
+        : facts.shop === "read-only"
+          ? "access"
+          : facts.shop === "connected"
+            ? "check"
+            : "shop",
     otherWays: !started && facts.request === "none" && !facts.liveApproved,
     practice:
       facts.mode === "live" &&

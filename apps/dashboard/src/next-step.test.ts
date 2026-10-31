@@ -146,8 +146,8 @@ it("keeps active WooCommerce ahead of an old API key or contact", () => {
 describe("asking again after a decline or a withdrawal", () => {
   const declined = ONBOARDING_CASES.find((one) => one.row === 32)?.facts;
   if (declined === undefined) throw new Error("the shared situations have no declined request");
-  const askAgain = (facts: typeof declined) =>
-    onboardingAccountView(nextStepOf(facts), {
+  const askAgain = (facts: typeof declined) => {
+    const view = onboardingAccountView(nextStepOf(facts), {
       mode: facts.mode,
       sellerName: "Freeland",
       savedWallet: null,
@@ -159,24 +159,80 @@ describe("asking again after a decline or a withdrawal", () => {
         at: momentView("2026-10-31T09:40:00Z"),
         note: "Use the name buyers know.",
       },
-    }).form?.submit;
+    });
+    return [view.form?.submit, view.paragraphs.join(" ")];
+  };
+  const shop = { keys: 0, contact: null, through: "woocommerce" } as const;
+  const until = (what: string) => `Fix what the note asks. You can ask again once ${what}.`;
 
   it.each([
-    ["quiet code", declined, undefined],
-    ["connected code", { ...declined, contactAlive: true }, "Ask again"],
+    ["quiet code", declined, undefined, until("your code connects")],
+    [
+      "connected code",
+      { ...declined, contactAlive: true },
+      "Ask again",
+      "Fix what the note asks, then ask again.",
+    ],
     [
       "a shop with nothing ready",
-      { ...declined, keys: 0, contact: null, through: "woocommerce", shop: "connected", ready: 0 },
+      { ...declined, ...shop, shop: "connected", ready: 0 },
       undefined,
+      until("a check finds a product ready for sale"),
     ],
     [
       "a shop with a ready product",
-      { ...declined, keys: 0, contact: null, through: "woocommerce", shop: "connected", ready: 2 },
+      { ...declined, ...shop, shop: "connected", ready: 2 },
       "Ask again",
+      "Fix what the note asks, then ask again.",
     ],
-    ["withdrawn, quiet code", { ...declined, request: "none", withdrawn: true }, undefined],
-  ] as const)("offers Ask again only when asking can succeed: %s", (_, facts, submit) => {
-    expect(askAgain(facts)).toBe(submit);
+    [
+      "a read-only shop",
+      { ...declined, ...shop, shop: "read-only", ready: 2 },
+      undefined,
+      until("your shop is connected with read and write access"),
+    ],
+    [
+      "withdrawn, a shop with products on sale and no current check",
+      {
+        ...declined,
+        ...shop,
+        request: "none",
+        withdrawn: true,
+        cards: 3,
+        shop: "connected",
+        ready: null,
+      },
+      undefined,
+      until("a check finds a product ready for sale"),
+    ],
+    [
+      "withdrawn, a disconnected shop with products on sale",
+      {
+        ...declined,
+        ...shop,
+        request: "none",
+        withdrawn: true,
+        cards: 3,
+        shop: "none",
+        ready: null,
+      },
+      undefined,
+      until("your shop is connected"),
+    ],
+    [
+      "withdrawn, quiet code with products on sale",
+      { ...declined, request: "none", withdrawn: true, cards: 3 },
+      undefined,
+      until("your code connects"),
+    ],
+    [
+      "withdrawn, quiet code",
+      { ...declined, request: "none", withdrawn: true },
+      undefined,
+      until("your code connects"),
+    ],
+  ] as const)("offers Ask again only when asking can succeed: %s", (_, facts, submit, hint) => {
+    expect(askAgain(facts)).toEqual([submit, hint]);
   });
 
   it("shows the key and its guide, not the decision alone, to code that never connected", () => {
