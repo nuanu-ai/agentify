@@ -838,20 +838,31 @@ describe("a durable shop job", () => {
   });
   it("still recovers and checks connections in a turn whose automatic publication fails", async () => {
     const s = await setup([currency, item(11), complete]);
+    await s.shops.jobs.request({
+      merchantId: s.h.merchant.id,
+      accountId: s.person.id,
+      connectionRevision: "grant-0",
+      shopUrl: SHOP,
+      kind: "check",
+    });
+    const orphan = await s.shops.jobs.claim();
+    if (!orphan) throw new Error("The earlier check was not queued");
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const worker = startShopJobs({
       ...s.parts,
       advancePublications: async () => {
+        // The process that ran the earlier check dies after this one started.
+        await s.shops.jobs.close();
         throw new Error("One merchant's publication could not be advanced.");
       },
     });
     try {
       await vi.waitFor(
         async () =>
-          expect((await s.shops.jobs.latest(s.h.merchant.id))[0]).toMatchObject({
-            kind: "check",
-            status: "completed",
-          }),
+          // A new check can only start once the orphan has been recovered.
+          expect(await s.shops.jobs.latest(s.h.merchant.id)).toMatchObject([
+            { kind: "check", sequence: orphan.sequence + 1, status: "completed" },
+          ]),
         { timeout: 5000 },
       );
     } finally {
