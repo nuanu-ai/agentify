@@ -1,4 +1,6 @@
 /** Admission and first-wallet publication share the existing bounded shop worker. */
+
+import { failureNamed } from "@agentify/gateway/failure-named";
 import {
   type LiveSalesChange,
   type LiveSalesTransaction,
@@ -194,7 +196,15 @@ export async function advanceLivePublication(pool: Pool, shops: WooShops): Promi
     .from(livePublications)
     .where(and(eq(livePublications.state, "pending"), sql`${livePublications.jobId} is null`))
     .orderBy(asc(livePublications.createdAt));
-  for (const intent of intents) await advanceOne(db, shops, intent);
+  for (const intent of intents)
+    try {
+      await advanceOne(db, shops, intent);
+    } catch (error) {
+      // The intent stays pending for the next turn; one merchant must not hold up the rest.
+      console.error(
+        `[dashboard] an automatic publication could not be advanced: ${failureNamed(error)}`,
+      );
+    }
 }
 
 /** An active check never consumes the trigger. */

@@ -829,6 +829,35 @@ if (databaseUrl === null) {
       );
       await finishCheck(running.id);
     });
+    it("starts another merchant's publication when one merchant's cannot be advanced", async () => {
+      const broken = await seller();
+      await finishCheck((await check(broken)).id);
+      await approve(broken.merchantId);
+      const ready = await seller();
+      await finishCheck((await check(ready)).id);
+      await approve(ready.merchantId);
+      const failing: typeof shops = {
+        ...shops,
+        connectionOf: async (accountId) => {
+          if (accountId === broken.accountId) throw new Error("The connection could not be read.");
+          return await shops.connectionOf(accountId);
+        },
+      };
+      const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      try {
+        await expect(advanceLivePublication(pool, failing)).resolves.toBeUndefined();
+      } finally {
+        log.mockRestore();
+      }
+      expect(
+        (await shops.jobs.latest(ready.merchantId)).filter((job) => job.kind === "publish"),
+      ).toMatchObject([{ status: "queued" }]);
+      expect(await rows("dashboard_live_publications")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ merchant_id: broken.merchantId, state: "pending" }),
+        ]),
+      );
+    });
     it("erases a pending automatic publication with its owning account", async () => {
       const one = await seller();
       await approve(one.merchantId);

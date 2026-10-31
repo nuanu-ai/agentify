@@ -513,7 +513,11 @@ export function startShopJobs(parts: ShopWorkParts): {
       wakes.add(wake);
     });
   const reconcile = async () => {
-    await parts.advancePublications?.();
+    try {
+      await parts.advancePublications?.();
+    } catch (error) {
+      console.error(`[dashboard] automatic publication could not continue: ${failureNamed(error)}`);
+    }
     await parts.shops.jobs.interrupted();
     // A renewed grant or first rate remains durable when enqueue met another active job.
     for (const connection of await parts.shops.connections()) {

@@ -836,6 +836,29 @@ describe("a durable shop job", () => {
       { kind: "check", sequence: 1, status: "completed" },
     ]);
   });
+  it("still recovers and checks connections in a turn whose automatic publication fails", async () => {
+    const s = await setup([currency, item(11), complete]);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const worker = startShopJobs({
+      ...s.parts,
+      advancePublications: async () => {
+        throw new Error("One merchant's publication could not be advanced.");
+      },
+    });
+    try {
+      await vi.waitFor(
+        async () =>
+          expect((await s.shops.jobs.latest(s.h.merchant.id))[0]).toMatchObject({
+            kind: "check",
+            status: "completed",
+          }),
+        { timeout: 5000 },
+      );
+    } finally {
+      await worker.stop();
+      log.mockRestore();
+    }
+  });
   it("bounds the returned rows and preserves the requested fifty-row increment", async () => {
     const s = await setup([
       currency,
