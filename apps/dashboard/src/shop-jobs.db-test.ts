@@ -239,6 +239,21 @@ if (databaseUrl === null) {
       }
     });
 
+    it("starts queued work in the order it was asked for", async () => {
+      const jobs = postgresShopJobs(pool);
+      const asked: string[] = [];
+      for (let index = 0; index < 6; index++)
+        asked.push((await jobs.request(await account())).job.id);
+      const started: string[] = [];
+      try {
+        for (let job = await jobs.claim(); job !== null; job = await jobs.claim())
+          if (asked.includes(job.id)) started.push(job.id);
+      } finally {
+        await jobs.close();
+      }
+      expect(started).toEqual(asked);
+    });
+
     it("admits one active job across independent callers and database-enforces the same rule", async () => {
       const input = await account();
       await expect(
