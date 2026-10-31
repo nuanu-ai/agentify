@@ -742,6 +742,30 @@ export function describeStore(name: string, open: () => Promise<Store>): void {
         if (next.kind === "requested") expect(next.request.id).not.toBe(requested.request.id);
       });
 
+      it("records no request, name or second approval for a merchant already admitted or moved to another integration", async () => {
+        const store = await twoMerchants();
+        const ask = {
+          merchantId: A,
+          accountId: "acc_owner",
+          sellerName: "Freeland",
+          evidence: { integration: "api" as const, connectedAt: 1_000 },
+        };
+        await store.grantLiveApproval(A, 2_000);
+        expect(await store.requestLiveSales(ask, 3_000)).toEqual({ kind: "approved" });
+        await store.switchIntegration(B, "woocommerce");
+        expect(await store.requestLiveSales({ ...ask, merchantId: B }, 3_000)).toEqual({
+          kind: "moved",
+        });
+        expect(await store.requestLiveSales({ ...ask, merchantId: "mch_nobody" }, 3_000)).toEqual({
+          kind: "missing",
+        });
+        for (const id of [A, B]) {
+          expect(await store.liveSalesRequest(id)).toBeNull();
+          expect((await store.merchantById(id))?.serviceName).toBeNull();
+        }
+        expect((await store.merchantById(A))?.liveApprovedAt).toBe(2_000);
+      });
+
       it("is listed under a name for a catalog only where somebody set one", async () => {
         const store = await twoMerchants();
 
