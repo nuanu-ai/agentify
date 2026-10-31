@@ -151,7 +151,12 @@ export function nextStepOf(facts: NextStepFacts): NextStep {
       connected && (account === "request" || account === "declined" || account === "withdrawn"),
     otherWays: !started && facts.request === "none" && !facts.liveApproved,
     practice:
-      facts.mode === "live" && page === "platform" && !started && !facts.withdrawn && !facts.unread,
+      facts.mode === "live" &&
+      page === "platform" &&
+      !started &&
+      !facts.liveApproved &&
+      !facts.withdrawn &&
+      !facts.unread,
     acknowledgeTest: facts.mode === "test" && !facts.testAcknowledged && !facts.unread,
   };
 }
