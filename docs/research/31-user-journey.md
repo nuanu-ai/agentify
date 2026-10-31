@@ -73,7 +73,7 @@ this note's subject and nothing below is built for it.
 So "lead everyone to the cabinet" is right for the second and third kinds
 and wrong for the first. The porch keeps a bench: the report is a complete
 result on its own, and the door to the house is offered in words that say
-who it is for. ADR-0026 §5 opens the cabinet to anyone who can read their
+who it is for. ADR-0026 §1 opens the cabinet to anyone who can read their
 mail. That is an open door, not a funnel.
 
 ## What the site does today
