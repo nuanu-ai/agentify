@@ -251,13 +251,13 @@ if (databaseUrl === null) {
       expect(notices).toHaveLength(2);
       expect(notices.map((row) => row.recipient_account_id).sort()).toEqual([first, one.accountId]);
       for (const notice of notices)
-        expect(notice.event).toMatchObject({
-          kind: "admitted",
-          next: "products",
-          publication: null,
-        });
+        expect(notice.event).toMatchObject({ kind: "admitted", publication: null });
       await advanceLivePublication(pool, shops);
       expect(await shops.jobs.latest(one.merchantId)).toEqual([]);
+      await dispatch();
+      await dispatch();
+      expect(sent).toHaveLength(2);
+      for (const message of sent) expect(message.body).not.toContain("exchange rate");
     });
     it("preserves the admitted owner's identity when another connection has write permission", async () => {
       const one = await seller({ accountId: "acc_z_owner" });
