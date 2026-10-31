@@ -688,7 +688,9 @@ const pressSaid = (action: keyof typeof PRESS_WORDS, answer: ActionAnswer): stri
     case "done":
       return `${words.done}.`;
     case "unchanged":
-      return `${words.asked}: it already stood so, and nothing changed.`;
+      return action === "decline"
+        ? `${words.asked}: that request is no longer pending, and nothing changed.`
+        : `${words.asked}: it already stood so, and nothing changed.`;
     case "refused":
       return answer.said;
     case "unknown":
