@@ -426,14 +426,7 @@
         ]
       },
       "settlement": ["X402SettleErrorReason"],
-      "awaitingDecision": [
-        {
-          "code": "node_failure",
-          "list": "X402VerifyInvalidReason",
-          "seenIn": "1.60.0",
-          "seenOn": "2026-10-30"
-        }
-      ]
+      "awaitingDecision": []
     },
     {
       "package": "@x402/evm",

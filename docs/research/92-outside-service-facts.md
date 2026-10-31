@@ -84,9 +84,10 @@ appear in neither of Coinbase's lists and could be either:
 The facilitator recording also keeps a short list of codes awaiting a
 decision: codes a newer version names that the table does not read, each with
 the version and the date it was first seen, until the product owner decides
-how the gateway reads them. The decision on the two codes it holds is the
-question "How the gateway reads two refusal codes its table does not know" in
-`00-open-questions.md`, under Money.
+how the gateway reads them. It holds one code,
+`invalid_exact_evm_non_canonical_signature` from `@x402/evm`, and what a
+buyer is told for it is an open question under Money in
+`00-open-questions.md`.
 
 ## How the live check runs
 
@@ -154,9 +155,9 @@ place with a 403 or with a challenge page. With WooCommerce 9.9.0 standing in
 for the newest release it fails on the out-of-stock refusal, whose recorded
 statement 9.9.0 does not contain, and on the currency list, whose file
 WooCommerce added later; with 11.2.0 standing in, every fact holds and the run
-only reports the release. With `node_failure` taken off the list awaiting a
-decision it fails on that code, while the x402 code on the list is only
-reported.
+only reports the release. While the table did not read `node_failure`, taking
+it off the list awaiting a decision failed the run on that code, and the x402
+code left on the list was only reported.
 
 ## What the first run found
 
@@ -175,6 +176,17 @@ the product owner's decision, so each run reports them and passes. Every code
 the table reads is named by one of the recorded verification lists, and every
 verification code they name that belongs to the exact payment the gateway
 offers is one the table reads.
+
+On 2026-10-31 the product owner decided that `node_failure` is the
+facilitator's own failure, which the agent may retry. The table now reads it
+with the `failed_to_` codes as no verdict, and the code left the list awaiting
+a decision. The run that day passed. It reported `node_failure` among the
+codes the newest SDK adds that the table reads, and it named `node_failure`
+as a code the table reads that no recorded verification list names, since
+the gateway still pins 1.55.0. Both notices stay until the pin moves to a
+version that names the code and the recording is read again from it.
+`@coinbase/cdp-sdk` 1.58.0, the copy `@base-org/account` brings into the
+lockfile, already names it in `X402VerifyInvalidReason`.
 
 ## Stand-ins not yet recorded
 
@@ -195,8 +207,10 @@ credentials. The way to record it is one credentialed run of the existing
 facilitator smoke command that saves each status and body with its date; a
 scheduled re-read would need the key in a workflow.
 
-The same tests name about forty refusal codes by hand. They all appear in the
-recorded vocabulary, so moving them onto it would only make that visible. The
+The same tests name about forty refusal codes by hand. All but one appear in
+the recorded vocabulary, so moving them onto it would only make that visible.
+The exception is `node_failure`, which the pinned SDK does not name; the test
+says where it was read instead. The
 claim that an empty wallet is refused with
 `invalid_exact_evm_transaction_simulation_failed` was observed and not
 recorded; the public facilitator at `x402.org/facilitator` needs no key and
