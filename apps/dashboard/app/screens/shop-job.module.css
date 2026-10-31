@@ -85,7 +85,6 @@
 }
 .count {
   color: var(--muted);
-  font-variant-numeric: tabular-nums;
 }
 /* A group's name and a reason's are rows of the group's own list, over the
    rows they name; the list's day row lends them its frame. */
