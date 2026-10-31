@@ -386,6 +386,43 @@ if (databaseUrl === null) {
       expect(await rows()).toMatchObject([{ state: "suppressed", suppression: "role_changed" }]);
     });
 
+    it("does not tell a merchant they were declined once they are admitted", async () => {
+      const seller = await merchant();
+      const asked = await request(seller.ask);
+      await store.declineLiveSales(seller.merchantId, asked.id, press(seller.merchantId));
+      handover = "unknown";
+      clock += 1000;
+      await turn();
+      const declined = messages[0]?.idempotencyKey;
+      await store.grantLiveApproval(seller.merchantId, clock);
+      handover = "accepted";
+      clock += 86400_000;
+      await turn();
+      await turn();
+      expect(messages.filter((message) => message.idempotencyKey === declined)).toHaveLength(1);
+      expect((await rows()).find((row) => row.kind === "declined")).toMatchObject({
+        state: "suppressed",
+        suppression: "decision_changed",
+      });
+      expect((await rows()).find((row) => row.kind === "admitted")?.state).toBe("accepted");
+    });
+
+    it("does not ask operators about a request that is already answered", async () => {
+      const operator = await person(true);
+      const seller = await merchant();
+      const asked = await request(seller.ask);
+      await store.declineLiveSales(seller.merchantId, asked.id, press(seller.merchantId));
+      clock += 1000;
+      await turn();
+      await turn();
+      expect(messages.map((message) => message.to)).toEqual([seller.email]);
+      expect((await rows()).find((row) => row.recipient_account_id === operator.id)).toMatchObject({
+        kind: "requested",
+        state: "suppressed",
+        suppression: "request_answered",
+      });
+    });
+
     it("reminds current operators once and suppresses unanswered reminders after the request is decided", async () => {
       const oldOperator = await person(true);
       const seller = await merchant();
