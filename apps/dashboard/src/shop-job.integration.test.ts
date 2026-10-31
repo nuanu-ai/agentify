@@ -518,9 +518,7 @@ it("seller and operator observe the same job after leaving, without replacing a 
       stopCode: "reconnect",
       why: "Your shop refused access. Reconnect it, then check again.",
     });
-    // A page stops reading a job once it has ended, so a job started elsewhere shows on reload.
-    await dollarPage.reload();
-    await dollarPage.getByText("Reconnect required", { exact: true }).waitFor({ timeout: 10_000 });
+    await dollarPage.getByText("Reconnect required", { exact: true }).waitFor({ timeout: 25_000 });
     expect(await dollarPage.getByText("Connected", { exact: true }).count()).toBe(0);
     await dollarPage.close();
     const reconnectPage = await seller.newPage();

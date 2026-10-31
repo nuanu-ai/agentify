@@ -264,6 +264,14 @@ export function buildApp(config: DashboardConfig, parts: DashboardParts): Expres
         return;
       }
       const query = new URL(request.originalUrl, config.publicBaseUrl).searchParams;
+      if (query.has("latest")) {
+        // A page whose job has ended asks this often, so it reads no product rows.
+        const jobs = await shops.jobs.latest(merchantId);
+        const job =
+          jobs.find((one) => one.status === "queued" || one.status === "running") ?? jobs[0];
+        response.json(job ? { id: job.id, revision: job.revision } : null);
+        return;
+      }
       response.json(
         await inViewersZone(zoneIn(request.headers.cookie), () =>
           shopJobView(shops, merchantId, query, operator ? "operator" : "merchant"),

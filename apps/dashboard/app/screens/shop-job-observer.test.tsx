@@ -13,11 +13,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const job = (status: ShopJobState["status"]): ShopJobView =>
+const job = (status: ShopJobState["status"], id = "job-one", revision = 1): ShopJobView =>
   presentShopJob({
-    id: "job-one",
+    id,
     shopHost: "woo.nuanu.ai",
-    revision: 1,
+    revision,
     kind: "check",
     status,
     read: 1,
@@ -38,22 +38,34 @@ const started = job("running");
 
 function Watched() {
   const [view] = useShopJob(started, "/shop-job");
-  return <p>{view?.status}</p>;
+  return <p>{view?.id}</p>;
 }
 
-it("asks the server about a running job until it ends, and no more after", async () => {
+it("reads a running job until it ends, then asks only which job is latest until another starts", async () => {
   vi.useFakeTimers();
-  const answers = [job("running"), job("running"), job("completed")];
-  let asked = 0;
-  vi.stubGlobal("fetch", async () => {
-    const answer = answers[Math.min(asked, answers.length - 1)];
-    asked += 1;
-    return Response.json(answer);
+  const results = [job("running"), job("running"), job("completed", "job-one", 3)];
+  let latest = { id: "job-one", revision: 3 };
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", async (url: string) => {
+    asked.push(url);
+    if (url.endsWith("?latest")) return Response.json(latest);
+    return Response.json(results.shift() ?? job("completed", latest.id, latest.revision));
   });
   const Stub = createRoutesStub([{ path: "/", Component: Watched }]);
-  render(<Stub initialEntries={["/"]} />);
+  const shown = render(<Stub initialEntries={["/"]} />);
+  const resultsRead = () => asked.filter((url) => !url.endsWith("?latest")).length;
   await act(() => vi.advanceTimersByTimeAsync(3_000));
-  expect(asked).toBe(3);
+  expect(resultsRead()).toBe(3);
   await act(() => vi.advanceTimersByTimeAsync(60_000));
-  expect(asked).toBe(3);
+  expect(resultsRead()).toBe(3);
+  expect(asked.length).toBeGreaterThan(3);
+
+  latest = { id: "job-one", revision: 4 };
+  await act(() => vi.advanceTimersByTimeAsync(30_000));
+  expect(resultsRead()).toBe(4);
+
+  latest = { id: "job-two", revision: 1 };
+  await act(() => vi.advanceTimersByTimeAsync(30_000));
+  expect(resultsRead()).toBe(5);
+  expect(shown.container.textContent).toBe("job-two");
 });
