@@ -10,7 +10,7 @@
 import { listedAsOpen, type MerchantSelling } from "@agentify/core";
 import type { Card, Receipt, WorkerEnvelope } from "@nuanu-ai/agentify-contracts";
 import type { AnalyticsEvent } from "../../analytics/events.js";
-import { liveSalesResult } from "../../analytics/live-sales.js";
+import { liveSalesResult, sellerNameNamed } from "../../analytics/live-sales.js";
 import type { Clock, Ids } from "../../ports/clock.js";
 import {
   answersQuery,
@@ -359,9 +359,11 @@ export class MemoryStore implements Store {
         sellerName: input.sellerName,
         hasWallet: row.payoutWallet.address !== null,
       });
+      const named = row.serviceName !== input.sellerName;
       row.serviceName = input.sellerName;
       this.#liveRequests.set(row.id, request);
       commit();
+      if (named) await this.recordAnalytics(sellerNameNamed(input.merchantId), at);
       await this.recordAnalytics(
         liveSalesResult(
           "live_request",

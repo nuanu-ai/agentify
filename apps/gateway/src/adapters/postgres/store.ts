@@ -34,7 +34,7 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolConfig } from "pg";
 import type { DrizzleTransactionLike } from "pg-boss";
 import { type AnalyticsEvent, recordAlong, recordObserved } from "../../analytics/index.js";
-import { liveSalesResult } from "../../analytics/live-sales.js";
+import { liveSalesResult, sellerNameNamed } from "../../analytics/live-sales.js";
 import { failureNamed } from "../../failure-named.js";
 import type { Ids } from "../../ports/clock.js";
 import {
@@ -409,6 +409,8 @@ export class PostgresStore implements Store {
         .update(merchants)
         .set({ serviceName: input.sellerName, updatedAt: new Date(at) })
         .where(eq(merchants.id, input.merchantId));
+      if (merchant.serviceName !== input.sellerName)
+        await recordAlong(tx, sellerNameNamed(input.merchantId), new Date(at));
       await tx
         .insert(liveRequests)
         .values(values)

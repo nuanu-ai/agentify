@@ -13,3 +13,13 @@ export const liveSalesResult = (
     refs: { merchant, ...(step === "live_request" && person ? { person } : {}) },
     fields: { step, integration, outcome: "completed" },
   }) as SetupResult;
+
+/** The same step a seller name saved in Settings counts, for a name the request writes. */
+export const sellerNameNamed = (merchant: string): SetupResult =>
+  ({
+    name: "agc_setup_result",
+    actor: "human",
+    source: "dashboard",
+    refs: { merchant },
+    fields: { step: "seller_name", integration: "none", outcome: "completed" },
+  }) as SetupResult;
