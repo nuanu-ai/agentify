@@ -95,6 +95,13 @@ export interface ShopJobs {
   finish(id: string, result: JobFinish): Promise<void>;
   interrupted(): Promise<void>;
   snapshots(merchantId: string): Promise<readonly { job: ShopJob; rows: readonly JobProduct[] }[]>;
+  /**
+   * The one job a screen shows: the active one, else the latest. Its rows are
+   * read only once it has ended; while it runs a screen shows only counts.
+   */
+  shown(
+    merchantId: string,
+  ): Promise<{ job: ShopJob; rows: readonly JobProduct[]; counts: JobCounts } | null>;
   latest(merchantId: string): Promise<readonly ShopJob[]>;
   rows(merchantId: string, jobId: string): Promise<readonly JobProduct[]>;
 }
@@ -102,6 +109,24 @@ export interface ShopJobs {
 export const stoppedOnOurSide = (job: Pick<ShopJob, "stopCode" | "read">): boolean =>
   job.stopCode === "internal" ||
   ((job.stopCode === "interrupted" || job.stopCode === "unknown") && job.read === 0);
+interface JobCounts {
+  readonly ready: number;
+  readonly published: number;
+  /** Publication only: ready rows not on sale, other than the one whose outcome is unknown. */
+  readonly excluded: number;
+  readonly publicationUnknown: string | null;
+}
+const countsOf = (job: ShopJob, rows: readonly JobProduct[]): JobCounts => ({
+  ready: rows.filter((row) => row.group === "ready").length,
+  published: rows.filter((row) => row.published).length,
+  excluded:
+    job.kind === "publish"
+      ? rows.filter(
+          (row) => row.group === "ready" && !row.published && row.reason !== "publication_unknown",
+        ).length
+      : 0,
+  publicationUnknown: rows.find((row) => row.reason === "publication_unknown")?.title ?? null,
+});
 const active = (job: ShopJob) => job.status === "queued" || job.status === "running";
 const fresh = (input: JobRequest, sequence: number): ShopJob => ({
   ...input,
@@ -290,6 +315,19 @@ export function memoryShopJobs(record?: (event: SetupResult, at: Date) => void):
           .sort((a, b) => b.sequence - a.sequence)
           .map((job) => ({ job, rows: [...(products.get(job.id)?.values() ?? [])] })),
       );
+    },
+    async shown(merchantId) {
+      const mine = [...jobs.values()]
+        .filter((job) => job.merchantId === merchantId)
+        .sort((a, b) => b.sequence - a.sequence);
+      const job = mine.find(active) ?? mine[0];
+      if (!job) return null;
+      const rows = [...(products.get(job.id)?.values() ?? [])];
+      return structuredClone({
+        job,
+        rows: active(job) ? [] : rows,
+        counts: countsOf(job, rows),
+      });
     },
     async latest(merchantId) {
       return structuredClone(
@@ -551,6 +589,57 @@ export function postgresShopJobs(pool: Pool, ownershipPool: Pool = pool): ShopJo
               job,
               rows: rows.filter((row) => row.jobId === job.id).map((row) => row.data),
             }));
+        },
+        { isolationLevel: "repeatable read", accessMode: "read only" },
+      );
+    },
+    async shown(merchantId) {
+      return db.transaction(
+        async (tx) => {
+          const mine = (
+            await tx
+              .select({ data: shopJobs.data })
+              .from(shopJobs)
+              .where(eq(shopJobs.merchantId, merchantId))
+          )
+            .map((one) => one.data)
+            .sort((a, b) => b.sequence - a.sequence);
+          const job = mine.find(active) ?? mine[0];
+          if (!job) return null;
+          const row = shopJobProducts.data;
+          const ready = sql`${row}->>'group' = 'ready'`;
+          const published = sql`(${row}->>'published')::boolean`;
+          const unknown = sql`${row}->>'reason' = 'publication_unknown'`;
+          const [counted] = await tx
+            .select({
+              ready: sql<number>`(count(*) filter (where ${ready}))::int`,
+              published: sql<number>`(count(*) filter (where ${published}))::int`,
+              excluded: sql<number>`(count(*) filter (where ${ready} and not ${published} and not ${unknown}))::int`,
+              publicationUnknown: sql<
+                string | null
+              >`(array_agg(${row}->>'title' order by ${shopJobProducts.productId}) filter (where ${unknown}))[1]`,
+            })
+            .from(shopJobProducts)
+            .where(eq(shopJobProducts.jobId, job.id));
+          const rows = active(job)
+            ? []
+            : (
+                await tx
+                  .select({ data: shopJobProducts.data })
+                  .from(shopJobProducts)
+                  .where(eq(shopJobProducts.jobId, job.id))
+                  .orderBy(asc(shopJobProducts.productId))
+              ).map((one) => one.data);
+          return {
+            job,
+            rows,
+            counts: {
+              ready: counted?.ready ?? 0,
+              published: counted?.published ?? 0,
+              excluded: job.kind === "publish" ? (counted?.excluded ?? 0) : 0,
+              publicationUnknown: counted?.publicationUnknown ?? null,
+            },
+          };
         },
         { isolationLevel: "repeatable read", accessMode: "read only" },
       );

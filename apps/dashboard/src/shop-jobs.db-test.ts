@@ -254,6 +254,48 @@ if (databaseUrl === null) {
       expect(started).toEqual(asked);
     });
 
+    it("shows a running publication's counts on the screen, and its rows only once it ends", async () => {
+      const input = await account();
+      const shops = postgresWooShops(pool, "test-auth-secret-at-least-thirty-two-characters");
+      const { job } = await shops.jobs.request({
+        ...input,
+        kind: "publish",
+        currency: { code: "USD", decimals: 2 },
+        rate: null,
+      });
+      await shops.jobs.claim();
+      for (const [id, group, reason, published] of [
+        ["27", "ready", "ready", true],
+        ["28", "ready", "ready", false],
+        ["29", "fix", "product_content", false],
+        ["30", "ready", "publication_unknown", false],
+      ] as const)
+        await shops.jobs.record(
+          job.id,
+          { id, title: `Guide ${id}`, group, reason, why: "", published },
+          4,
+        );
+      const counts = { ready: 3, published: 1, excluded: 1, publicationUnknown: "Guide 30" };
+      try {
+        expect(await shops.jobs.shown(input.merchantId)).toEqual({
+          job: expect.objectContaining({ id: job.id, status: "running", read: 4 }),
+          rows: [],
+          counts,
+        });
+        expect(await shopJobView(shops, input.merchantId, new URLSearchParams())).toMatchObject({
+          status: "running",
+          ...counts,
+          groups: [],
+        });
+        await shops.jobs.finish(job.id, { status: "completed", why: null, stopCode: null });
+        const ended = await shops.jobs.shown(input.merchantId);
+        expect(ended?.counts).toEqual(counts);
+        expect(ended?.rows.map((row) => row.id)).toEqual(["27", "28", "29", "30"]);
+      } finally {
+        await shops.jobs.close();
+      }
+    });
+
     it("admits one active job across independent callers and database-enforces the same rule", async () => {
       const input = await account();
       await expect(

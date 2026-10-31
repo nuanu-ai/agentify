@@ -66,12 +66,9 @@ export async function shopJobView(
   query: URLSearchParams,
   audience: ShopJobAudience = "merchant",
 ): Promise<ShopJobView | null> {
-  const snapshots = await shops.jobs.snapshots(merchantId);
-  const snapshot =
-    snapshots.find(({ job }) => job.status === "queued" || job.status === "running") ??
-    snapshots[0];
+  const snapshot = await shops.jobs.shown(merchantId);
   if (!snapshot) return null;
-  const { job, rows } = snapshot;
+  const { job, rows, counts } = snapshot;
   const current = await jobIsCurrent(shops, job);
   const groups = (job.status === "queued" || job.status === "running" ? [] : GROUPS).flatMap(
     ([group, name]) => {
@@ -135,16 +132,7 @@ export async function shopJobView(
       status: job.status,
       read: job.read,
       total: job.total,
-      ready: rows.filter((row) => row.group === "ready").length,
-      published: rows.filter((row) => row.published).length,
-      excluded:
-        job.kind === "publish"
-          ? rows.filter(
-              (row) =>
-                row.group === "ready" && !row.published && row.reason !== "publication_unknown",
-            ).length
-          : 0,
-      publicationUnknown: rows.find((row) => row.reason === "publication_unknown")?.title ?? null,
+      ...counts,
       currency: job.currency?.code ?? null,
       when: momentView(job.endedAt ?? job.startedAt),
       why: job.why,
