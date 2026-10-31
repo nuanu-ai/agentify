@@ -142,6 +142,12 @@ if (databaseUrl === null) {
         {
           actor_type: "human",
           source: "dashboard",
+          refs: { merchant: seller.merchantId },
+          properties: { step: "seller_name", integration: "none", outcome: "completed" },
+        },
+        {
+          actor_type: "human",
+          source: "dashboard",
           refs: { merchant: seller.merchantId, person: seller.ask.accountId },
           properties: { step: "live_request", integration: "api", outcome: "completed" },
         },
@@ -174,6 +180,7 @@ if (databaseUrl === null) {
           decline: null,
         });
         expect((await setupEvents(seller.merchantId)).map((row) => row.properties.step)).toEqual([
+          "seller_name",
           "live_request",
         ]);
         expect(
