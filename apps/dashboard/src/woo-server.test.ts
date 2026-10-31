@@ -481,7 +481,7 @@ const started = async (standing: Standing = {}): Promise<Running> => {
                   }
                   yield { kind: "complete", total: found.products.length };
                 },
-            inspect: inspectProduct,
+            inspect: (keys, items) => Promise.all(items.map((one) => inspectProduct(keys, one))),
             guestCart: (url) =>
               guestCartRefusedWith(
                 url,

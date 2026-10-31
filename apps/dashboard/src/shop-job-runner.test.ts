@@ -12,12 +12,12 @@ import {
 } from "./shop-job-runner.js";
 import { shopJobView } from "./shop-job-view.js";
 import { cardsFromTheShop, type StoreProduct } from "./woo-catalog.js";
+import type { WooRequest } from "./woo-request.js";
 import {
   type ConnectedCatalogueEvent,
-  inspectProductInTheShop,
+  inspectProductsInTheShop,
   type ProductInspection,
 } from "./woo-shop.js";
-import type { WooRequest } from "./woo-request.js";
 import { memoryWooShops } from "./woo-shops.js";
 
 const SHOP = "https://woo.nuanu.ai";
@@ -108,7 +108,11 @@ async function setup(events: readonly ConnectedCatalogueEvent[], sellerSite?: st
     catalogue: async function* () {
       yield* events;
     },
-    inspect: async () => removed,
+    inspect: async () => {
+      throw new Error(
+        "This test did not say what the shop answers about a card missing from its list.",
+      );
+    },
     surfaceMode: "sandbox",
   };
   const run = async (
@@ -360,13 +364,14 @@ describe("a durable shop job", () => {
     const s = await setup([currency, { kind: "complete", total: 0 }]);
     const id = await s.seed(11);
     const result = await s.run("publish", {
-      inspect: async () => ({
-        ok: false,
-        again: false,
-        saidNo: false,
-        reconnect: true,
-        why: "The protected product check refused access.",
-      }),
+      inspect: async (_keys, items) =>
+        items.map(() => ({
+          ok: false,
+          again: false,
+          saidNo: false,
+          reconnect: true,
+          why: "The protected product check refused access.",
+        })),
     });
     expect(result).toMatchObject({ status: "stopped", stopCode: "reconnect", read: 1 });
     expect(await s.h.store.cardById(id)).toMatchObject({
@@ -416,7 +421,7 @@ describe("a durable shop job", () => {
   it("withdraws a directly confirmed deleted product only after a complete catalogue", async () => {
     const s = await setup([currency, { kind: "complete", total: 0 }]);
     const id = await s.seed(11);
-    await s.run();
+    await s.run("publish", { inspect: async (_keys, items) => items.map(() => removed) });
     expect(await s.h.store.cardById(id)).toMatchObject({
       paused: true,
     });
@@ -444,7 +449,8 @@ describe("a durable shop job", () => {
         inFlight -= 1;
       }
     };
-    const inspect: ShopWorkParts["inspect"] = (keys, id) => inspectProductInTheShop(keys, id, shop);
+    const inspect: ShopWorkParts["inspect"] = (keys, items) =>
+      inspectProductsInTheShop(keys, items, shop);
     await s.run("publish", { inspect });
     for (const id of ids) expect((await s.h.store.cardById(id))?.paused, id).toBe(true);
     expect(most).toBeLessThanOrEqual(4);
@@ -512,7 +518,11 @@ describe("a durable shop job", () => {
       ]);
       const deleted = await s.seed(11);
       const unread = await s.seed(12);
-      expect(await s.run("publish", { inspect: async () => unreadInspection })).toMatchObject({
+      expect(
+        await s.run("publish", {
+          inspect: async (_keys, items) => items.map(() => unreadInspection),
+        }),
+      ).toMatchObject({
         status: "completed",
         stopCode: null,
       });

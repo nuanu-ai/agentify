@@ -18,7 +18,7 @@ import {
   type ConnectedCatalogueEvent,
   connectedCatalogue,
   guestCartRefusedWith,
-  inspectProductInTheShop,
+  inspectProductsInTheShop,
   type ProductInspection,
   type ShopKeys,
   withdrawalReason,
@@ -112,7 +112,10 @@ export interface ShopWorkParts {
   readonly clientFor: (acting: Acting) => GatewayClient;
   readonly publisherFor: (acting: Acting) => ShopPublisher;
   readonly catalogue?: (keys: ShopKeys) => AsyncIterable<ConnectedCatalogueEvent>;
-  readonly inspect?: (keys: ShopKeys, id: string) => Promise<ProductInspection>;
+  readonly inspect?: (
+    keys: ShopKeys,
+    merchantItemIds: readonly string[],
+  ) => Promise<readonly ProductInspection[]>;
   readonly guestCart?: (url: string) => Promise<number | null>;
   readonly surfaceMode: Parameters<typeof readinessOf>[1];
 }
@@ -406,17 +409,29 @@ export async function workShopJob(
       stopped("unread", "The catalogue read did not finish. We don't know about the rest yet."),
     );
   // A complete list still cannot establish why a known product was omitted.
+  // A card the connector withdrew stays withdrawn until its product is listed again, which the
+  // list above already handles, so asking after it again would only repeat the shop's answer.
   let directlyRead = 0;
-  const missing = [...byProduct].filter(([id]) => !seen.has(id));
+  const missing = [...byProduct].filter(
+    ([id, card]) => !seen.has(id) && !(card.paused && card.connectorPausedAt !== null),
+  );
   total = seen.size + missing.length;
   await shops.jobs.total(job.id, total);
-  for (const [id, card] of missing) {
-    if (!(await current()))
-      return finish(stopped("changed", "The connection or rate changed. Sync again."));
-    const inspected = await (parts.inspect ?? inspectProductInTheShop)(
-      connection,
-      card.merchantItemId,
-    );
+  if (!(await current()))
+    return finish(stopped("changed", "The connection or rate changed. Sync again."));
+  const inspections =
+    missing.length === 0
+      ? []
+      : await (parts.inspect ?? inspectProductsInTheShop)(
+          connection,
+          missing.map(([, card]) => card.merchantItemId),
+        );
+  if (!(await current()))
+    return finish(stopped("changed", "The connection or rate changed. Sync again."));
+  for (const [index, [id, card]] of missing.entries()) {
+    const inspected = inspections[index];
+    if (inspected === undefined)
+      throw new Error("The shop's answers did not match the products asked about.");
     directlyRead++;
     if (!inspected.ok) {
       const obstacle = inspected.again ? undefined : inspected.obstacle;
