@@ -101,7 +101,11 @@ export function decisionMessage(parts: {
     action = "Open the publishing guide";
     link = `${new URL(baseUrl).origin}/docs/quickstart#_4-publish-one-card`;
   } else if (event.next === "settings") {
-    paragraphs = ["Finish your seller name and site in Settings before publishing products."];
+    paragraphs = [
+      event.integration === "woocommerce"
+        ? "Finish your seller name and site in Settings before publishing products."
+        : "Choose the name buyers see in Settings before publishing products.",
+    ];
     action = "Open Settings";
     link = `${baseUrl}/settings`;
   } else if (event.next === "connect") {

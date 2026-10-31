@@ -87,7 +87,11 @@ export async function recordLiveSalesChange(
     return;
   }
   if (event.kind === "first_wallet" && event.integration !== "woocommerce") return;
-  if (event.sellerName === null || event.sellerSite === null) {
+  // A code merchant's site is asked by the publish door, with an async or parcel card in hand.
+  if (
+    event.sellerName === null ||
+    (event.integration === "woocommerce" && event.sellerSite === null)
+  ) {
     await insertNotices(tx, decision(event, "settings"), at);
     return;
   }
