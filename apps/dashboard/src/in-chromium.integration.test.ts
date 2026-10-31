@@ -1094,7 +1094,7 @@ it("requires the test acknowledgement, keeps focus inside it and focuses the fir
     const dialog = page.getByRole("dialog", { name: "This is the test environment" });
     await dialog.waitFor();
     const start = dialog.getByRole("button", { name: "Start testing" });
-    expect(await start.isDisabled()).toBe(true);
+    await expect.poll(() => start.isDisabled()).toBe(true);
     await page.keyboard.press("Escape");
     expect(await dialog.isVisible()).toBe(true);
     for (let count = 0; count < 4; count += 1) {

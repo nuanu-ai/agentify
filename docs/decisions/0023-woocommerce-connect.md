@@ -44,7 +44,8 @@ each purchase still asks the shop for its current price and availability. A
 missing list entry alone or an incomplete or unknown answer establishes no
 withdrawal. The dashboard stores connector pause ownership separately from the
 gateway's ordinary card pause; synchronization resumes only a connector pause
-when the product qualifies again and preserves a merchant's pause.
+when the product qualifies again and preserves a merchant's pause. A price
+question applies the same withdrawal rule.
 
 The price answer's `quote_reference`, stamped
 with the price (ADR-0049), names the product and the settings it is sold under,

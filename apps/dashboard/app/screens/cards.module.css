@@ -66,3 +66,15 @@
 .shopStopped :global(.badge) {
   white-space: normal;
 }
+
+.shopStopped > a {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+@container (width > 860px) {
+  :global(.cell-state):has(.shopStopped) {
+    grid-column: 4 / -1;
+  }
+}

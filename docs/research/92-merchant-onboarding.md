@@ -11,10 +11,10 @@ email works.
 | 1 | Seller site from the confirmed shop origin | Implemented on the branch |
 | 2 | Next-step function, platform choice, code instructions, test acknowledgement | Implemented on the branch; analytics belongs to authorised slice 8 |
 | 3 | Public catalogue assessment before asking for access | Engineering checkpoint; protected catalogue dependency remains in slice 4 |
-| 4 | Stored shop jobs, automatic checks, grouped results and synchronization | Pending |
+| 4 | Stored shop jobs, automatic checks, grouped results and synchronization | Implemented in source; local checks passed |
 | 5 | Request for live sales, seller name, wallet after request, operator decision | Pending |
 | 6 | Publication after approval or first wallet, decision emails | Pending |
-| 7 | Withdraw a shop product when a purchase confirms it is no longer sold | Pending |
+| 7 | Withdraw a shop product when a purchase confirms it is no longer sold | Implemented in source; local checks passed |
 | 8 | Path analytics vocabulary, events, contract tests and ADR-0042 | Authorised; pending |
 
 ## Slice 1: the seller site

@@ -152,6 +152,7 @@ function started(
     shops: wooShops,
     identity,
     clientFor: (acting) => gatewayFor(application, acting, undefined, wooShops.cardPauses),
+    publisherFor: (acting) => shopPublisherFor(application, acting, wooShops),
     now: () => new Date(),
   });
 

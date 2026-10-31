@@ -444,17 +444,24 @@ nothing is taken off sale on that evidence. A product simply out of stock
 stays listed: its price questions refuse purchases until your shop has stock
 again.
 
-A product taken off sale by the connector says **Off sale: your shop stopped
-selling it** on Products, with the observation time. Change the product in
-your shop and sync again to return it to sale. A product you paused in Agentify
+A product taken off sale by the connector says **Off sale after a shop check**
+on Products, with the observation time. The shop may have stopped selling it,
+or it may no longer meet the connector's conditions. Once it is ready to sell,
+sync again to return it to sale. A product you paused in Agentify
 stays paused through synchronization; only you can resume your own pause.
 
 ## When a product changes in the shop
 
-The connector checks the product again at each price question, so a product
-the shop no longer sells cannot be bought through a stale listing. Run
-**Sync with your shop** to update the published products and apply the
-withdrawals described above.
+The connector checks the product again at each price question. When your shop
+directly confirms that the product was deleted, unpublished, withdrawn from
+sale or no longer meets the connector's conditions, the connector takes its
+Agentify card off sale by the same rule as synchronization. A refusal to ship
+to this buyer, a missing shipping or exchange rate, temporary lack of stock
+or an unknown shop answer takes nothing off sale.
+
+Once the product is ready again, run **Sync with your shop** to update it and
+return it to sale. A price question does not resume a paused product, and
+synchronization preserves a pause you made yourself.
 
 A change that lands after a buyer was quoted and before the order is placed,
 such as a new price or, for a parcel, a different shipping rate, leaves that

@@ -1479,6 +1479,7 @@ describe("importing the catalogue", () => {
 
     const refused = await running.post(`/products?resume=${published.id}`);
     expect(refused.status).toBe(409);
+    expect(readable(refused.html)).toContain("Sync with your shop");
     expect(readable(refused.html)).not.toContain("Product resumed");
     expect(await running.harnessed.store.cardById(published.id)).toMatchObject({
       paused: true,
