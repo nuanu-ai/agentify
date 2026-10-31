@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { nextStepOf } from "./next-step.js";
+import { onboardingAccountView } from "./onboarding.js";
 import { ONBOARDING_CASES } from "./testing/onboarding-cases.js";
+import { momentView } from "./views.js";
 
 const first = ONBOARDING_CASES[0]?.facts;
 if (first === undefined) throw new Error("the shared situations have no first visit");
@@ -134,4 +136,47 @@ it("keeps active WooCommerce ahead of an old API key or contact", () => {
       contactAlive: true,
     }).page,
   ).toBe("shop");
+});
+
+describe("asking again after a decline or a withdrawal", () => {
+  const declined = ONBOARDING_CASES.find((one) => one.row === 32)?.facts;
+  if (declined === undefined) throw new Error("the shared situations have no declined request");
+  const askAgain = (facts: typeof declined) =>
+    onboardingAccountView(nextStepOf(facts), {
+      mode: facts.mode,
+      sellerName: "Freeland",
+      savedWallet: null,
+      nameRule: "",
+      wallet: null,
+      email: "owner@shop.example",
+      request: null,
+      decision: {
+        at: momentView("2026-10-31T09:40:00Z"),
+        note: "Use the name buyers know.",
+      },
+    }).form?.submit;
+
+  it.each([
+    ["quiet code", declined, undefined],
+    ["connected code", { ...declined, contactAlive: true }, "Ask again"],
+    [
+      "a shop with nothing ready",
+      { ...declined, keys: 0, contact: null, through: "woocommerce", shop: "connected", ready: 0 },
+      undefined,
+    ],
+    [
+      "a shop with a ready product",
+      { ...declined, keys: 0, contact: null, through: "woocommerce", shop: "connected", ready: 2 },
+      "Ask again",
+    ],
+    ["withdrawn, quiet code", { ...declined, request: "none", withdrawn: true }, undefined],
+  ] as const)("offers Ask again only when asking can succeed: %s", (_, facts, submit) => {
+    expect(askAgain(facts)).toBe(submit);
+  });
+
+  it("shows the key and its guide, not the decision alone, to code that never connected", () => {
+    const step = nextStepOf({ ...declined, contact: null, request: "none", withdrawn: true });
+    expect(step.page).toBe("code");
+    expect(step.account).toBe("none");
+  });
 });
