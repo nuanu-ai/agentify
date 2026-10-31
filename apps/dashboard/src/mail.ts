@@ -38,13 +38,17 @@ const bytesOf = (attachment: Attachment): number => Buffer.byteLength(attachment
 
 /**
  * What became of a message handed to the provider. `"accepted"` is the
- * provider taking it and nothing more; `"refused"` is a clear answer that it
- * did not; `"unknown"` is no answer, a failure on the provider's side, or a
- * repeat of a key whose first message may have gone. A caller that may only
- * say a message went out when it did treats both of the others alike; one that
- * tells somebody what happened keeps them apart.
+ * provider taking it and nothing more; `"refused"` is a clear answer that this
+ * message is malformed (400, 422), which sending it again does not change;
+ * `"held"` is a clear answer that it did not go because the provider takes
+ * nothing from this account for now (a revoked key, a sender domain that lost
+ * its check, a spent quota), which a later try can get past; `"unknown"` is no
+ * answer, a failure on the provider's side, or a repeat of a key whose first
+ * message may have gone. A caller that may only say a message went out when it
+ * did treats the others alike; one that tells somebody what happened keeps
+ * them apart.
  */
-export type Handover = "accepted" | "refused" | "unknown";
+export type Handover = "accepted" | "refused" | "held" | "unknown";
 
 export type Postman = (message: Message) => Promise<Handover>;
 
@@ -121,12 +125,15 @@ function throughResend(config: MailConfig): Postman {
         // The status and nothing else: the body can carry the recipient's
         // address, and a log goes places the database does not.
         const told = answered.status === 409 || answered.status >= 500;
+        const malformed = answered.status === 400 || answered.status === 422;
         console.error(
           told
             ? `[dashboard] mail provider answered a message with ${answered.status}; whether it went is not known`
-            : `[dashboard] mail provider refused a message (${answered.status})`,
+            : malformed
+              ? `[dashboard] mail provider refused a message (${answered.status})`
+              : `[dashboard] mail provider took no message (${answered.status}); it can be tried again`,
         );
-        return told ? "unknown" : "refused";
+        return told ? "unknown" : malformed ? "refused" : "held";
       }
       // Every caller carries on regardless, so this log is the only account of
       // what became of a message. "Accepted", not "sent": what the provider

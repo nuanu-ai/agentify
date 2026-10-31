@@ -19,8 +19,8 @@ CREATE TABLE "dashboard_live_sales_mail" (
 	"last_attempt_at" timestamp with time zone,
 	"settled_at" timestamp with time zone,
 	CONSTRAINT "dashboard_live_sales_mail_kind" CHECK ("dashboard_live_sales_mail"."kind" in ('requested', 'declined', 'reminder')),
-	CONSTRAINT "dashboard_live_sales_mail_state" CHECK ("dashboard_live_sales_mail"."state" in ('pending', 'accepted', 'suppressed')),
-	CONSTRAINT "dashboard_live_sales_mail_outcome" CHECK ("dashboard_live_sales_mail"."last_outcome" is null or "dashboard_live_sales_mail"."last_outcome" in ('accepted', 'refused', 'unknown')),
+	CONSTRAINT "dashboard_live_sales_mail_state" CHECK ("dashboard_live_sales_mail"."state" in ('pending', 'accepted', 'suppressed', 'given_up')),
+	CONSTRAINT "dashboard_live_sales_mail_outcome" CHECK ("dashboard_live_sales_mail"."last_outcome" is null or "dashboard_live_sales_mail"."last_outcome" in ('accepted', 'refused', 'held', 'unknown')),
 	CONSTRAINT "dashboard_live_sales_mail_attempts" CHECK ("dashboard_live_sales_mail"."attempts" >= 0)
 );
 --> statement-breakpoint

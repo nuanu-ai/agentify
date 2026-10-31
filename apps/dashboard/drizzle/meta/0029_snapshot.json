@@ -748,11 +748,11 @@
         },
         "dashboard_live_sales_mail_state": {
           "name": "dashboard_live_sales_mail_state",
-          "value": "\"dashboard_live_sales_mail\".\"state\" in ('pending', 'accepted', 'suppressed')"
+          "value": "\"dashboard_live_sales_mail\".\"state\" in ('pending', 'accepted', 'suppressed', 'given_up')"
         },
         "dashboard_live_sales_mail_outcome": {
           "name": "dashboard_live_sales_mail_outcome",
-          "value": "\"dashboard_live_sales_mail\".\"last_outcome\" is null or \"dashboard_live_sales_mail\".\"last_outcome\" in ('accepted', 'refused', 'unknown')"
+          "value": "\"dashboard_live_sales_mail\".\"last_outcome\" is null or \"dashboard_live_sales_mail\".\"last_outcome\" in ('accepted', 'refused', 'held', 'unknown')"
         },
         "dashboard_live_sales_mail_attempts": {
           "name": "dashboard_live_sales_mail_attempts",

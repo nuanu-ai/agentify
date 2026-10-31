@@ -463,5 +463,7 @@ export const copierFor =
       ...copyMessage(request.email, filename, document, privacyUrl),
       idempotencyKey: `data-copy/${request.request}`,
     });
-    return { status: handed };
+    // The scanner's answer has three words; a provider that takes nothing from
+    // the account did not take this copy, which there is a refusal.
+    return { status: handed === "held" ? "refused" : handed };
   };

@@ -8,7 +8,7 @@ import { noDatabaseHere, readyDatabase, testDatabaseUrl } from "@agentify/gatewa
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { copierFor, postgresPersonRecords } from "./data-copy.js";
 import { migrateAccounts } from "./database.js";
 import { deliverLiveSalesMail, postgresLiveSalesNotices } from "./live-sales-mail.js";
@@ -335,24 +335,61 @@ if (databaseUrl === null) {
       expect(messages.some((message) => message.to === declined.email)).toBe(false);
     });
 
-    it("stops retrying an email the provider keeps refusing", async () => {
-      await person(true);
+    it("gives up an email the provider keeps calling malformed, as given up and said in the log", async () => {
+      const operator = await person(true);
       const seller = await merchant();
       await request(seller.ask);
       handover = "refused";
-      for (let days = 0; days < 30; days++) {
-        await turn();
-        clock += 86400_000;
+      const lines: string[] = [];
+      const log = vi.spyOn(console, "error").mockImplementation((...parts) => {
+        lines.push(parts.join(" "));
+      });
+      try {
+        for (let days = 0; days < 30; days++) {
+          await turn();
+          clock += 86400_000;
+        }
+      } finally {
+        log.mockRestore();
       }
       const settled = await rows();
+      // Not "suppressed", which says a message was never handed over: an
+      // earlier try whose outcome was unknown may have delivered this one.
       expect(settled.map((row) => [row.kind, row.state, row.last_outcome])).toEqual([
-        ["reminder", "suppressed", "refused"],
-        ["requested", "suppressed", "refused"],
+        ["reminder", "given_up", "refused"],
+        ["requested", "given_up", "refused"],
       ]);
+      const given = lines.filter((line) => line.includes("gave up"));
+      expect(given).toEqual([
+        expect.stringMatching(/requested.*400 or 422/),
+        expect.stringMatching(/reminder.*400 or 422/),
+      ]);
+      for (const address of [operator.email, seller.email])
+        expect(given.join("\n")).not.toContain(address);
       const tries = messages.length;
       clock += 30 * 86400_000;
       await turn();
       expect(messages).toHaveLength(tries);
+    });
+
+    it("keeps trying, without a limit, an email the provider holds back for the whole account", async () => {
+      await person(true);
+      const seller = await merchant();
+      await request(seller.ask);
+      handover = "held";
+      for (let days = 0; days < 30; days++) {
+        await turn();
+        clock += 86400_000;
+      }
+      expect((await rows()).map((row) => [row.kind, row.state, row.last_outcome])).toEqual([
+        ["reminder", "pending", "held"],
+        ["requested", "pending", "held"],
+      ]);
+      handover = "accepted";
+      clock += 86400_000;
+      await turn();
+      await turn();
+      expect((await rows()).map((row) => row.state)).toEqual(["accepted", "accepted"]);
     });
 
     it("allows only one concurrent dispatcher to hand over a recipient's message", async () => {

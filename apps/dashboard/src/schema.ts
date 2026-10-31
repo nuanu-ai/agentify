@@ -521,7 +521,7 @@ export const liveSalesMail = pgTable(
     event: jsonb("event").$type<import("./live-sales-events.js").LiveSalesMailEvent>().notNull(),
     message: jsonb("message").$type<import("./mail.js").Message>(),
     state: text("state")
-      .$type<"pending" | "accepted" | "suppressed">()
+      .$type<"pending" | "accepted" | "suppressed" | "given_up">()
       .notNull()
       .default("pending"),
     suppression: text("suppression"),
@@ -552,11 +552,11 @@ export const liveSalesMail = pgTable(
     ),
     check(
       "dashboard_live_sales_mail_state",
-      sql`${table.state} in ('pending', 'accepted', 'suppressed')`,
+      sql`${table.state} in ('pending', 'accepted', 'suppressed', 'given_up')`,
     ),
     check(
       "dashboard_live_sales_mail_outcome",
-      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('accepted', 'refused', 'unknown')`,
+      sql`${table.lastOutcome} is null or ${table.lastOutcome} in ('accepted', 'refused', 'held', 'unknown')`,
     ),
     check("dashboard_live_sales_mail_attempts", sql`${table.attempts} >= 0`),
   ],

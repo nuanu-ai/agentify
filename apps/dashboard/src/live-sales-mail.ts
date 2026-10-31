@@ -271,15 +271,20 @@ export async function deliverLiveSalesMail(parts: DeliveryParts): Promise<boolea
     }
     const settledAt = now();
     const attempts = row.attempts + 1;
+    // Only a provider calling this message malformed ends its tries; one that
+    // takes nothing from the account for now is waited out however long it takes.
     const givenUp = outcome === "refused" && attempts >= TRIES;
+    if (givenUp)
+      console.error(
+        `[dashboard] gave up a live-sales ${row.kind} email after ${attempts} tries; the provider called it malformed (400 or 422)`,
+      );
     await tx
       .update(liveSalesMail)
       .set({
         attempts,
         lastOutcome: outcome,
         lastAttemptAt: at,
-        state: outcome === "accepted" ? "accepted" : givenUp ? "suppressed" : "pending",
-        suppression: givenUp ? "refused" : null,
+        state: outcome === "accepted" ? "accepted" : givenUp ? "given_up" : "pending",
         settledAt: outcome === "accepted" || givenUp ? settledAt : null,
         nextAttemptAt: retryAt(settledAt, attempts),
       })
