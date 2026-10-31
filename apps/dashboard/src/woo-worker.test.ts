@@ -5029,7 +5029,7 @@ describe("a direct shop refusal during an unpaid purchase", () => {
     ["id", { id: "", name: "Guide" }],
     ["name", { id: "dl_guide", name: " " }],
   ] as const)(
-    "keeps a card on sale whose download has an empty %s, as a fix in the shop",
+    "takes a card off sale as changed whose download has an empty %s, since a purchase delivers the shop's download",
     async (_, download) => {
       response = {
         status: 200,
@@ -5041,8 +5041,8 @@ describe("a direct shop refusal during an unpaid purchase", () => {
       const purchase = h.gateway.beginPurchase(itemId, {});
       await work();
       expect((await purchase).step).toBe("not_selling");
-      expect(await h.store.cardById(itemId)).toMatchObject({ paused: false });
-      expect(await shops.cardPauses.list(h.merchant.id)).toEqual({});
+      expect(await h.store.cardById(itemId)).toMatchObject({ paused: true });
+      expect((await shops.cardPauses.list(h.merchant.id))[itemId]?.reason).toBe("changed");
     },
   );
   it("does not pause a product merely because no conversion rate is set", async () => {
